@@ -1,18 +1,18 @@
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 use nostr::nip90::{
-    JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX, JOB_RESULT_KIND_MIN,
-    JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK, KIND_JOB_IMAGE_GENERATION,
-    KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY, KIND_JOB_SANDBOX_RUN,
-    KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION, KIND_JOB_TEXT_EXTRACTION,
-    KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_feedback_kind, is_job_request_kind,
-    is_job_result_kind,
+    InputType, JOB_REQUEST_KIND_MAX, JOB_REQUEST_KIND_MIN, JOB_RESULT_KIND_MAX,
+    JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK,
+    KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY,
+    KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
+    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_feedback_kind,
+    is_job_request_kind, is_job_result_kind,
 };
 use nostr::{Event, EventTemplate};
 use nostr_client::{
     ConnectionState, PoolConfig, RelayAuthIdentity, RelayConfig, RelayMessage, RelayPool,
 };
 use serde_json::json;
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, HashMap, HashSet};
 use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
@@ -1322,7 +1322,14 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
             } else {
                 execution_input_from_request(request)
             };
-            let validation = if request.content.trim().is_empty() && request.inputs.is_empty() {
+            let validation = if request.kind == KIND_JOB_TEXT_GENERATION
+                && !encrypted
+                && normalized_text_generation_prompt(request).is_none()
+            {
+                JobInboxValidation::Invalid(
+                    "text-generation request missing prompt/text input".to_string(),
+                )
+            } else if request.content.trim().is_empty() && request.inputs.is_empty() {
                 JobInboxValidation::Invalid("request missing content/input payload".to_string())
             } else if encrypted && event.content.trim().is_empty() {
                 JobInboxValidation::Invalid(
@@ -1395,45 +1402,45 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
 fn execution_input_from_request(request: &JobRequest) -> Option<String> {
     let mut sections = Vec::<String>::new();
 
-    let content = request.content.trim();
-    if !content.is_empty() {
-        sections.push(format!("Content:\n{content}"));
-    }
+    if request.kind == KIND_JOB_TEXT_GENERATION {
+        if let Some(prompt) = normalized_text_generation_prompt(request) {
+            sections.push(format!("Prompt:\n{prompt}"));
+        }
 
-    if !request.inputs.is_empty() {
-        let inputs = request
+        let additional_inputs = request
             .inputs
             .iter()
-            .map(|input| {
-                let mut line = format!("- {}: {}", input.input_type.as_str(), input.data.trim());
-                if let Some(marker) = input
-                    .marker
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                {
-                    line.push_str(format!(" [marker={marker}]").as_str());
-                }
-                if let Some(relay) = input
-                    .relay
-                    .as_deref()
-                    .map(str::trim)
-                    .filter(|value| !value.is_empty())
-                {
-                    line.push_str(format!(" [relay={relay}]").as_str());
-                }
-                line
-            })
-            .collect::<Vec<_>>()
-            .join("\n");
-        sections.push(format!("Inputs:\n{inputs}"));
+            .filter(|input| input.input_type != InputType::Text)
+            .map(format_input_line)
+            .collect::<Vec<_>>();
+        if !additional_inputs.is_empty() {
+            sections.push(format!(
+                "Additional Inputs:\n{}",
+                additional_inputs.join("\n")
+            ));
+        }
+    } else {
+        let content = request.content.trim();
+        if !content.is_empty() {
+            sections.push(format!("Content:\n{content}"));
+        }
+
+        if !request.inputs.is_empty() {
+            let inputs = request
+                .inputs
+                .iter()
+                .map(format_input_line)
+                .collect::<Vec<_>>()
+                .join("\n");
+            sections.push(format!("Inputs:\n{inputs}"));
+        }
     }
 
-    if !request.params.is_empty() {
-        let params = request
-            .params
+    let normalized_params = normalized_request_params(request);
+    if !normalized_params.is_empty() {
+        let params = normalized_params
             .iter()
-            .map(|param| format!("- {}={}", param.key.trim(), param.value.trim()))
+            .map(|(key, value)| format!("- {key}={value}"))
             .collect::<Vec<_>>()
             .join("\n");
         sections.push(format!("Parameters:\n{params}"));
@@ -1453,6 +1460,81 @@ fn execution_input_from_request(request: &JobRequest) -> Option<String> {
     } else {
         Some(sections.join("\n\n"))
     }
+}
+
+fn normalized_text_generation_prompt(request: &JobRequest) -> Option<String> {
+    if request.kind != KIND_JOB_TEXT_GENERATION {
+        return None;
+    }
+
+    let mut segments = Vec::<String>::new();
+    push_unique_prompt_segment(&mut segments, request.content.as_str());
+    for input in request
+        .inputs
+        .iter()
+        .filter(|input| input.input_type == InputType::Text)
+    {
+        push_unique_prompt_segment(&mut segments, input.data.as_str());
+    }
+
+    if segments.is_empty() {
+        None
+    } else {
+        Some(segments.join("\n\n"))
+    }
+}
+
+fn push_unique_prompt_segment(segments: &mut Vec<String>, raw: &str) {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return;
+    }
+    if segments.iter().any(|existing| existing == trimmed) {
+        return;
+    }
+    segments.push(trimmed.to_string());
+}
+
+fn normalized_request_params(request: &JobRequest) -> Vec<(String, String)> {
+    let mut normalized = BTreeMap::<String, String>::new();
+    for param in &request.params {
+        let key = canonical_param_key(param.key.as_str());
+        let value = param.value.trim();
+        if key.is_empty() || value.is_empty() {
+            continue;
+        }
+        normalized.insert(key, value.to_string());
+    }
+    normalized.into_iter().collect()
+}
+
+fn canonical_param_key(raw: &str) -> String {
+    match raw.trim().to_ascii_lowercase().as_str() {
+        "top-k" | "top_k" => "top_k".to_string(),
+        "top-p" | "top_p" => "top_p".to_string(),
+        other => other.to_string(),
+    }
+}
+
+fn format_input_line(input: &nostr::nip90::JobInput) -> String {
+    let mut line = format!("- {}: {}", input.input_type.as_str(), input.data.trim());
+    if let Some(marker) = input
+        .marker
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        line.push_str(format!(" [marker={marker}]").as_str());
+    }
+    if let Some(relay) = input
+        .relay
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
+        line.push_str(format!(" [relay={relay}]").as_str());
+    }
+    line
 }
 
 fn event_to_buyer_response_event(
@@ -1624,7 +1706,7 @@ fn format_nip90_request_shape(
     let param_keys = request
         .params
         .iter()
-        .map(|param| param.key.clone())
+        .map(|param| canonical_param_key(param.key.as_str()))
         .collect::<Vec<_>>();
     let relays = request.relays.clone();
     let service_providers = request.service_providers.clone();
@@ -1757,11 +1839,13 @@ fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
 }
 
 fn extract_param(request: &JobRequest, key: &str) -> Option<String> {
+    let normalized_key = canonical_param_key(key);
     request
         .params
         .iter()
-        .find(|param| param.key.eq_ignore_ascii_case(key))
-        .map(|param| param.value.clone())
+        .rev()
+        .find(|param| canonical_param_key(param.key.as_str()) == normalized_key)
+        .map(|param| param.value.trim().to_string())
 }
 
 fn extract_ttl_seconds(request: &JobRequest) -> Option<u64> {
@@ -1837,6 +1921,7 @@ mod tests {
         ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,
         JobLifecycleStage, ProviderMode, ProviderRuntimeState,
     };
+    use crate::state::job_inbox::JobInboxValidation;
     use futures_util::{SinkExt, StreamExt};
     use nostr::Event;
     use nostr::nip90::{JobInput, JobRequest, KIND_JOB_TEXT_GENERATION};
@@ -1917,6 +2002,39 @@ mod tests {
     }
 
     #[test]
+    fn maps_5050_prompt_alias_and_normalized_params() {
+        let event = Event {
+            id: "req-5050-prompt".to_string(),
+            pubkey: "npub1buyer".to_string(),
+            created_at: 1_760_000_102,
+            kind: 5050,
+            tags: vec![
+                vec![
+                    "i".to_string(),
+                    "Write a haiku about rust".to_string(),
+                    "prompt".to_string(),
+                ],
+                vec!["param".to_string(), "top-k".to_string(), "20".to_string()],
+                vec!["param".to_string(), "top_p".to_string(), "0.95".to_string()],
+                vec!["bid".to_string(), "5000".to_string()],
+            ],
+            content: String::new(),
+            sig: "12".repeat(64),
+        };
+
+        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        assert!(matches!(row.validation, JobInboxValidation::Valid));
+        let execution_input = row
+            .execution_input
+            .as_deref()
+            .expect("execution input should be present");
+        assert!(execution_input.contains("Prompt:\nWrite a haiku about rust"));
+        assert!(execution_input.contains("top_k=20"));
+        assert!(execution_input.contains("top_p=0.95"));
+        assert!(!execution_input.contains("top-k=20"));
+    }
+
+    #[test]
     fn marks_missing_bid_as_pending_validation() {
         let event = Event {
             id: "req-002".to_string(),
@@ -1933,6 +2051,33 @@ mod tests {
         assert!(matches!(
             row.validation,
             crate::state::job_inbox::JobInboxValidation::Pending
+        ));
+    }
+
+    #[test]
+    fn marks_text_generation_request_without_prompt_as_invalid() {
+        let event = Event {
+            id: "req-5050-invalid".to_string(),
+            pubkey: "npub1buyer".to_string(),
+            created_at: 1_760_000_103,
+            kind: 5050,
+            tags: vec![
+                vec![
+                    "i".to_string(),
+                    "https://example.com".to_string(),
+                    "url".to_string(),
+                ],
+                vec!["bid".to_string(), "5000".to_string()],
+            ],
+            content: "   ".to_string(),
+            sig: "13".repeat(64),
+        };
+
+        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        assert!(matches!(
+            row.validation,
+            JobInboxValidation::Invalid(ref reason)
+                if reason == "text-generation request missing prompt/text input"
         ));
     }
 
@@ -2556,20 +2701,25 @@ mod tests {
     }
 
     #[test]
-    fn execution_input_from_request_preserves_content_inputs_and_params() {
+    fn execution_input_from_request_preserves_content_inputs_and_normalizes_text_generation_params()
+    {
         let request = JobRequest::new(KIND_JOB_TEXT_GENERATION)
             .expect("request kind should be valid")
             .add_input(JobInput::text("Attachment text"))
             .add_param("temperature", "0.1")
+            .add_param("top-k", "32")
+            .add_param("top_p", "0.85")
             .with_output("text/plain");
         let mut request = request;
         request.content = "Summarize the attachment.".to_string();
 
         let execution_input =
             execution_input_from_request(&request).expect("execution input should be captured");
-        assert!(execution_input.contains("Summarize the attachment."));
-        assert!(execution_input.contains("Attachment text"));
+        assert!(execution_input.contains("Prompt:\nSummarize the attachment.\n\nAttachment text"));
         assert!(execution_input.contains("temperature=0.1"));
+        assert!(execution_input.contains("top_k=32"));
+        assert!(execution_input.contains("top_p=0.85"));
+        assert!(!execution_input.contains("top-k=32"));
         assert!(execution_input.contains("Requested output: text/plain"));
     }
 

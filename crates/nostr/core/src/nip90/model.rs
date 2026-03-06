@@ -51,11 +51,11 @@ impl std::str::FromStr for InputType {
     type Err = Nip90Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.to_lowercase().as_str() {
+        match s.trim().to_ascii_lowercase().as_str() {
             "url" => Ok(InputType::Url),
             "event" => Ok(InputType::Event),
             "job" => Ok(InputType::Job),
-            "text" => Ok(InputType::Text),
+            "text" | "prompt" => Ok(InputType::Text),
             _ => Err(Nip90Error::InvalidInputType(s.to_string())),
         }
     }
