@@ -12,7 +12,9 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
-use crate::labor_orchestrator::CodexRunClassification;
+use crate::labor_orchestrator::{
+    CodexLaborApprovalEvent, CodexLaborBinding, CodexRunClassification,
+};
 use crate::ollama_execution::{
     OllamaExecutionCommand, OllamaExecutionProvenance, OllamaExecutionSnapshot,
     OllamaExecutionWorker,
@@ -405,6 +407,7 @@ pub struct AutopilotTurnMetadata {
     pub submission_seq: u64,
     pub thread_id: String,
     pub run_classification: CodexRunClassification,
+    pub labor_binding: Option<CodexLaborBinding>,
     pub is_cad_turn: bool,
     pub classifier_reason: String,
     pub submitted_at_epoch_ms: u64,
@@ -944,6 +947,7 @@ impl AutopilotChatState {
         &mut self,
         thread_id: &str,
         run_classification: CodexRunClassification,
+        labor_binding: Option<CodexLaborBinding>,
         is_cad_turn: bool,
         classifier_reason: impl Into<String>,
         submitted_at_epoch_ms: u64,
@@ -960,6 +964,7 @@ impl AutopilotChatState {
             submission_seq: self.next_turn_submission_seq,
             thread_id: thread_id.to_string(),
             run_classification,
+            labor_binding,
             is_cad_turn,
             classifier_reason: classifier_reason.into(),
             submitted_at_epoch_ms,
@@ -984,9 +989,15 @@ impl AutopilotChatState {
         selected_skill_names.dedup();
         if let Some(last) = self.pending_turn_metadata.back_mut() {
             last.selected_skill_names = selected_skill_names.clone();
+            if let Some(binding) = last.labor_binding.as_mut() {
+                binding.set_selected_skill_names(selected_skill_names.clone());
+            }
         }
         if let Some(last) = self.last_submitted_turn_metadata.as_mut() {
-            last.selected_skill_names = selected_skill_names;
+            last.selected_skill_names = selected_skill_names.clone();
+            if let Some(binding) = last.labor_binding.as_mut() {
+                binding.set_selected_skill_names(selected_skill_names);
+            }
         }
     }
 
@@ -1001,9 +1012,165 @@ impl AutopilotChatState {
             .or(self.last_submitted_turn_metadata.as_ref())
     }
 
+    pub fn record_turn_command_approval_requested(
+        &mut self,
+        turn_id: &str,
+        item_id: &str,
+        reason: Option<&str>,
+        command: Option<&str>,
+        cwd: Option<&str>,
+        recorded_at_epoch_ms: u64,
+    ) {
+        self.record_turn_approval_event(
+            turn_id,
+            CodexLaborApprovalEvent {
+                kind: "command_request".to_string(),
+                item_id: item_id.to_string(),
+                decision: None,
+                reason: reason.map(str::to_string),
+                command: command.map(str::to_string),
+                cwd: cwd.map(str::to_string),
+                grant_root: None,
+                recorded_at_epoch_ms,
+            },
+        );
+    }
+
+    pub fn record_turn_command_approval_response(
+        &mut self,
+        turn_id: &str,
+        item_id: &str,
+        decision: &str,
+        recorded_at_epoch_ms: u64,
+    ) {
+        self.record_turn_approval_event(
+            turn_id,
+            CodexLaborApprovalEvent {
+                kind: "command_response".to_string(),
+                item_id: item_id.to_string(),
+                decision: Some(decision.to_string()),
+                reason: None,
+                command: None,
+                cwd: None,
+                grant_root: None,
+                recorded_at_epoch_ms,
+            },
+        );
+    }
+
+    pub fn record_turn_file_change_approval_requested(
+        &mut self,
+        turn_id: &str,
+        item_id: &str,
+        reason: Option<&str>,
+        grant_root: Option<&str>,
+        recorded_at_epoch_ms: u64,
+    ) {
+        self.record_turn_approval_event(
+            turn_id,
+            CodexLaborApprovalEvent {
+                kind: "file_change_request".to_string(),
+                item_id: item_id.to_string(),
+                decision: None,
+                reason: reason.map(str::to_string),
+                command: None,
+                cwd: None,
+                grant_root: grant_root.map(str::to_string),
+                recorded_at_epoch_ms,
+            },
+        );
+    }
+
+    pub fn record_turn_file_change_approval_response(
+        &mut self,
+        turn_id: &str,
+        item_id: &str,
+        decision: &str,
+        recorded_at_epoch_ms: u64,
+    ) {
+        self.record_turn_approval_event(
+            turn_id,
+            CodexLaborApprovalEvent {
+                kind: "file_change_response".to_string(),
+                item_id: item_id.to_string(),
+                decision: Some(decision.to_string()),
+                reason: None,
+                command: None,
+                cwd: None,
+                grant_root: None,
+                recorded_at_epoch_ms,
+            },
+        );
+    }
+
+    pub fn record_turn_tool_request(
+        &mut self,
+        turn_id: &str,
+        request_id: &str,
+        call_id: &str,
+        tool_name: &str,
+        arguments: &str,
+        recorded_at_epoch_ms: u64,
+    ) {
+        if let Some(binding) = self.turn_labor_binding_mut(turn_id) {
+            binding.record_tool_request(
+                request_id,
+                call_id,
+                tool_name,
+                arguments,
+                recorded_at_epoch_ms,
+            );
+        }
+    }
+
+    pub fn record_turn_tool_result(
+        &mut self,
+        turn_id: &str,
+        request_id: &str,
+        call_id: &str,
+        tool_name: &str,
+        response_code: &str,
+        success: bool,
+        response_message: &str,
+        recorded_at_epoch_ms: u64,
+    ) {
+        if let Some(binding) = self.turn_labor_binding_mut(turn_id) {
+            binding.record_tool_result(
+                request_id,
+                call_id,
+                tool_name,
+                response_code,
+                success,
+                response_message,
+                recorded_at_epoch_ms,
+            );
+        }
+    }
+
+    fn record_turn_approval_event(&mut self, turn_id: &str, event: CodexLaborApprovalEvent) {
+        if let Some(binding) = self.turn_labor_binding_mut(turn_id) {
+            binding.record_approval_event(event);
+        }
+    }
+
+    fn turn_labor_binding_mut(&mut self, turn_id: &str) -> Option<&mut CodexLaborBinding> {
+        self.turn_metadata_by_turn_id
+            .get_mut(turn_id)
+            .and_then(|metadata| metadata.labor_binding.as_mut())
+    }
+
+    fn capture_turn_output_snapshot(&mut self, turn_id: &str, content: &str) {
+        if let Some(binding) = self.turn_labor_binding_mut(turn_id) {
+            binding.record_output_snapshot(content);
+        }
+    }
+
     pub fn mark_turn_started(&mut self, turn_id: String) {
         self.active_turn_id = Some(turn_id.clone());
-        if let Some(metadata) = self.pending_turn_metadata.pop_front() {
+        if let Some(mut metadata) = self.pending_turn_metadata.pop_front() {
+            if let Some(binding) = metadata.labor_binding.as_mut() {
+                binding.record_turn_started(turn_id.as_str());
+            }
             self.turn_metadata_by_turn_id
                 .insert(turn_id.clone(), metadata);
             if self.turn_metadata_by_turn_id.len() > 64 {
@@ -1105,6 +1272,7 @@ impl AutopilotChatState {
         if content.trim().is_empty() {
             return;
         }
+        let mut captured_output = None::<String>;
         let assistant_message_id = self
             .turn_assistant_message_ids
             .get(turn_id)
@@ -1129,11 +1297,16 @@ impl AutopilotChatState {
                 if message.content != rendered {
                     message.content = rendered;
                 }
+                self.capture_turn_output_snapshot(turn_id, content);
                 return;
             }
             if message.content != content {
                 message.content = content.to_string();
             }
+            captured_output = Some(content.to_string());
+        }
+        if let Some(captured_output) = captured_output {
+            self.capture_turn_output_snapshot(turn_id, captured_output.as_str());
         }
     }
 
@@ -1173,6 +1346,7 @@ impl AutopilotChatState {
     }
 
     pub fn mark_turn_completed_for(&mut self, turn_id: &str) {
+        let mut captured_output = None::<String>;
         let assistant_message_id = self
             .turn_assistant_message_ids
             .get(turn_id)
@@ -1185,6 +1359,9 @@ impl AutopilotChatState {
                 .find(|message| message.id == assistant_message_id)
         {
             message.status = AutopilotMessageStatus::Done;
+            if !message.content.trim().is_empty() {
+                captured_output = Some(message.content.clone());
+            }
             if self.active_assistant_message_id == Some(assistant_message_id) {
                 self.active_assistant_message_id = None;
             }
@@ -1192,6 +1369,9 @@ impl AutopilotChatState {
         self.last_turn_status = Some("completed".to_string());
         if self.active_turn_id.as_deref() == Some(turn_id) {
             self.active_turn_id = None;
+        }
+        if let Some(captured_output) = captured_output {
+            self.capture_turn_output_snapshot(turn_id, captured_output.as_str());
         }
     }
 
@@ -1207,6 +1387,7 @@ impl AutopilotChatState {
 
     pub fn mark_turn_error_for(&mut self, turn_id: &str, error: impl Into<String>) {
         let error = error.into();
+        let mut captured_output = None::<String>;
         let assistant_message_id = self
             .turn_assistant_message_ids
             .get(turn_id)
@@ -1223,6 +1404,9 @@ impl AutopilotChatState {
             if message.content.trim().is_empty() {
                 message.content.clone_from(&error);
             }
+            if !message.content.trim().is_empty() {
+                captured_output = Some(message.content.clone());
+            }
             if self.active_assistant_message_id == Some(assistant_message_id) {
                 self.active_assistant_message_id = None;
             }
@@ -1231,6 +1415,9 @@ impl AutopilotChatState {
         self.last_error = Some(error);
         if self.active_turn_id.as_deref() == Some(turn_id) {
             self.active_turn_id = None;
+        }
+        if let Some(captured_output) = captured_output {
+            self.capture_turn_output_snapshot(turn_id, captured_output.as_str());
         }
     }
 
@@ -4572,6 +4759,7 @@ mod tests {
         chat.record_turn_submission_metadata(
             "thread-1",
             crate::labor_orchestrator::CodexRunClassification::PersonalAgent,
+            None,
             true,
             "keyword-pair:design+rack",
             1000,
@@ -4612,6 +4800,7 @@ mod tests {
                 goal_id: "goal-earn".to_string(),
                 goal_title: "Earn bitcoin".to_string(),
             },
+            None,
             false,
             "no-cad-signals",
             1000,
@@ -4642,6 +4831,154 @@ mod tests {
     }
 
     #[test]
+    fn chat_state_updates_labor_binding_with_turn_and_output_provenance() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        let labor_binding = crate::labor_orchestrator::orchestrate_codex_turn(
+            crate::labor_orchestrator::CodexTurnExecutionRequest {
+                trigger: crate::labor_orchestrator::CodexRunTrigger::AutonomousGoal {
+                    goal_id: "goal-earn".to_string(),
+                    goal_title: "Earn bitcoin".to_string(),
+                },
+                submitted_at_epoch_ms: 1_000,
+                thread_id: "thread-1".to_string(),
+                input: vec![
+                    codex_client::UserInput::Text {
+                        text: "earn bitcoin".to_string(),
+                        text_elements: Vec::new(),
+                    },
+                    codex_client::UserInput::Skill {
+                        name: "blink".to_string(),
+                        path: std::path::PathBuf::from("/repo/skills/blink/SKILL.md"),
+                    },
+                ],
+                cwd: Some(std::path::PathBuf::from("/repo")),
+                approval_policy: Some(codex_client::AskForApproval::Never),
+                sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
+                model: Some("gpt-5.2-codex".to_string()),
+            },
+        )
+        .labor_binding
+        .expect("goal runs should create labor binding");
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            Some(labor_binding),
+            false,
+            "no-cad-signals",
+            1000,
+            Vec::new(),
+        );
+
+        chat.set_last_pending_turn_selected_skills(vec!["blink".to_string(), "blink".to_string()]);
+        chat.mark_turn_started("turn-1".to_string());
+        chat.set_turn_message_for_turn("turn-1", "final answer");
+
+        let bound = chat
+            .turn_metadata_for("turn-1")
+            .expect("turn metadata should bind");
+        let labor_binding = bound
+            .labor_binding
+            .as_ref()
+            .expect("labor binding should remain attached");
+        assert_eq!(labor_binding.provenance.turn_id.as_deref(), Some("turn-1"));
+        assert_eq!(
+            labor_binding.provenance.selected_skill_names,
+            vec!["blink".to_string()]
+        );
+        assert!(labor_binding.provenance.final_output_digest.is_some());
+        assert!(labor_binding.provenance.transcript_digest.is_some());
+    }
+
+    #[test]
+    fn chat_state_records_labor_approval_and_tool_events() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-1".to_string());
+        chat.submit_prompt("earn bitcoin".to_string());
+        let labor_binding = crate::labor_orchestrator::orchestrate_codex_turn(
+            crate::labor_orchestrator::CodexTurnExecutionRequest {
+                trigger: crate::labor_orchestrator::CodexRunTrigger::AutonomousGoal {
+                    goal_id: "goal-earn".to_string(),
+                    goal_title: "Earn bitcoin".to_string(),
+                },
+                submitted_at_epoch_ms: 1_000,
+                thread_id: "thread-1".to_string(),
+                input: vec![codex_client::UserInput::Text {
+                    text: "earn bitcoin".to_string(),
+                    text_elements: Vec::new(),
+                }],
+                cwd: Some(std::path::PathBuf::from("/repo")),
+                approval_policy: Some(codex_client::AskForApproval::Never),
+                sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
+                model: Some("gpt-5.2-codex".to_string()),
+            },
+        )
+        .labor_binding
+        .expect("goal runs should create labor binding");
+        chat.record_turn_submission_metadata(
+            "thread-1",
+            crate::labor_orchestrator::CodexRunClassification::AutonomousGoal {
+                goal_id: "goal-earn".to_string(),
+                goal_title: "Earn bitcoin".to_string(),
+            },
+            Some(labor_binding),
+            false,
+            "no-cad-signals",
+            1000,
+            Vec::new(),
+        );
+        chat.mark_turn_started("turn-1".to_string());
+
+        chat.record_turn_command_approval_requested(
+            "turn-1",
+            "item-1",
+            Some("needs command"),
+            Some("git status"),
+            Some("/repo"),
+            1010,
+        );
+        chat.record_turn_command_approval_response("turn-1", "item-1", "Never", 1020);
+        chat.record_turn_tool_request(
+            "turn-1",
+            "request-1",
+            "call-1",
+            "openagents.files.read",
+            "{\"path\":\"README.md\"}",
+            1030,
+        );
+        chat.record_turn_tool_result(
+            "turn-1",
+            "request-1",
+            "call-1",
+            "openagents.files.read",
+            "OK",
+            true,
+            "read completed",
+            1040,
+        );
+
+        let bound = chat
+            .turn_metadata_for("turn-1")
+            .expect("turn metadata should bind");
+        let labor_binding = bound
+            .labor_binding
+            .as_ref()
+            .expect("labor binding should remain attached");
+        assert_eq!(labor_binding.provenance.approval_events.len(), 2);
+        assert_eq!(labor_binding.provenance.tool_invocations.len(), 1);
+        assert_eq!(
+            labor_binding.provenance.tool_invocations[0]
+                .response_code
+                .as_deref(),
+            Some("OK")
+        );
+    }
+
+    #[test]
     fn chat_state_binds_turn_metadata_in_submission_order() {
         let mut chat = AutopilotChatState::default();
         chat.ensure_thread("thread-1".to_string());
@@ -4650,6 +4987,7 @@ mod tests {
         chat.record_turn_submission_metadata(
             "thread-1",
             crate::labor_orchestrator::CodexRunClassification::PersonalAgent,
+            None,
             false,
             "no-cad-signals",
             1010,
@@ -4662,6 +5000,7 @@ mod tests {
                 work_unit_id: "wu-2".to_string(),
                 contract_id: Some("contract-2".to_string()),
             },
+            None,
             true,
             "keyword-pair:design+bracket",
             1020,
@@ -4703,6 +5042,7 @@ mod tests {
         chat.record_turn_submission_metadata(
             "thread-1",
             crate::labor_orchestrator::CodexRunClassification::PersonalAgent,
+            None,
             true,
             "keyword-pair:design+fixture",
             1200,
