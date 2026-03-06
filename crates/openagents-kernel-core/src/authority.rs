@@ -1,6 +1,10 @@
 use crate::compute::{
     CapacityInstrument, CapacityLot, ComputeIndex, ComputeProduct, DeliveryProof,
 };
+use crate::data::{
+    AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
+    PermissionPolicy, RevocationReceipt, RevocationStatus,
+};
 use crate::labor::{
     ClaimHook, Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, Verdict,
     WorkUnit, WorkUnitStatus,
@@ -45,6 +49,26 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: PublishComputeIndexRequest,
     ) -> Result<PublishComputeIndexResponse>;
+    async fn register_data_asset(
+        &self,
+        req: RegisterDataAssetRequest,
+    ) -> Result<RegisterDataAssetResponse>;
+    async fn create_access_grant(
+        &self,
+        req: CreateAccessGrantRequest,
+    ) -> Result<CreateAccessGrantResponse>;
+    async fn accept_access_grant(
+        &self,
+        req: AcceptAccessGrantRequest,
+    ) -> Result<AcceptAccessGrantResponse>;
+    async fn issue_delivery_bundle(
+        &self,
+        req: IssueDeliveryBundleRequest,
+    ) -> Result<IssueDeliveryBundleResponse>;
+    async fn revoke_access_grant(
+        &self,
+        req: RevokeAccessGrantRequest,
+    ) -> Result<RevokeAccessGrantResponse>;
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot>;
 }
 
@@ -218,6 +242,102 @@ pub struct PublishComputeIndexResponse {
     pub receipt: Receipt,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RegisterDataAssetRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub asset: DataAsset,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RegisterDataAssetResponse {
+    pub asset: DataAsset,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateAccessGrantRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub grant: AccessGrant,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateAccessGrantResponse {
+    pub grant: AccessGrant,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AcceptAccessGrantRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub grant_id: String,
+    pub consumer_id: String,
+    pub accepted_at_ms: i64,
+    #[serde(default)]
+    pub settlement_price: Option<crate::receipts::Money>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct AcceptAccessGrantResponse {
+    pub grant: AccessGrant,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IssueDeliveryBundleRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub delivery_bundle: DeliveryBundle,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct IssueDeliveryBundleResponse {
+    pub delivery_bundle: DeliveryBundle,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevokeAccessGrantRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub revocation: RevocationReceipt,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RevokeAccessGrantResponse {
+    pub revocation: RevocationReceipt,
+    pub receipt: Receipt,
+}
+
 #[derive(Clone)]
 pub struct HttpKernelAuthorityClient {
     client: reqwest::Client,
@@ -306,6 +426,10 @@ struct LocalKernelAuthorityState {
     capacity_instruments: BTreeMap<String, CapacityInstrument>,
     delivery_proofs: BTreeMap<String, DeliveryProof>,
     compute_indices: BTreeMap<String, ComputeIndex>,
+    data_assets: BTreeMap<String, DataAsset>,
+    access_grants: BTreeMap<String, AccessGrant>,
+    delivery_bundles: BTreeMap<String, DeliveryBundle>,
+    revocations: BTreeMap<String, RevocationReceipt>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     receipts: Vec<Receipt>,
 }
@@ -379,6 +503,34 @@ impl LocalKernelAuthority {
             trace.contract_id = Some(contract_id.to_string());
         }
         trace
+    }
+
+    fn normalize_permission_policy(
+        mut permission_policy: PermissionPolicy,
+        default_id: &str,
+    ) -> PermissionPolicy {
+        if permission_policy.policy_id.trim().is_empty() {
+            permission_policy.policy_id = format!("policy.{default_id}");
+        }
+        permission_policy.allowed_scopes = permission_policy
+            .allowed_scopes
+            .into_iter()
+            .map(|scope| scope.trim().to_string())
+            .filter(|scope| !scope.is_empty())
+            .collect();
+        permission_policy.allowed_tool_tags = permission_policy
+            .allowed_tool_tags
+            .into_iter()
+            .map(|tag| tag.trim().to_string())
+            .filter(|tag| !tag.is_empty())
+            .collect();
+        permission_policy.allowed_origins = permission_policy
+            .allowed_origins
+            .into_iter()
+            .map(|origin| origin.trim().to_string())
+            .filter(|origin| !origin.is_empty())
+            .collect();
+        permission_policy
     }
 }
 
@@ -852,6 +1004,363 @@ impl KernelAuthority for LocalKernelAuthority {
         })
     }
 
+    async fn register_data_asset(
+        &self,
+        mut req: RegisterDataAssetRequest,
+    ) -> Result<RegisterDataAssetResponse> {
+        if req.asset.asset_id.trim().is_empty() {
+            return Err(anyhow!("data_asset_id_missing"));
+        }
+        if req.asset.provider_id.trim().is_empty() {
+            return Err(anyhow!("data_asset_provider_id_missing"));
+        }
+        if req.asset.asset_kind.trim().is_empty() {
+            return Err(anyhow!("data_asset_kind_missing"));
+        }
+        if req.asset.title.trim().is_empty() {
+            return Err(anyhow!("data_asset_title_missing"));
+        }
+        if let Some(default_policy) = req.asset.default_policy.take() {
+            let normalized = Self::normalize_permission_policy(
+                default_policy,
+                format!("asset.{}", req.asset.asset_id).as_str(),
+            );
+            req.asset.default_policy = Some(normalized);
+        }
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.data.asset:{}", req.asset.asset_id),
+            receipt_type: "kernel.data.asset.register.v1".to_string(),
+            created_at_ms: req.asset.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.asset)
+                .map_err(|error| anyhow!("failed to encode data asset: {error}"))?,
+            outputs_payload: json!({
+                "asset_id": req.asset.asset_id,
+                "provider_id": req.asset.provider_id,
+                "asset_kind": req.asset.asset_kind,
+                "status": req.asset.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        state
+            .data_assets
+            .insert(req.asset.asset_id.clone(), req.asset.clone());
+        state.receipts.push(receipt.clone());
+        Ok(RegisterDataAssetResponse {
+            asset: req.asset,
+            receipt,
+        })
+    }
+
+    async fn create_access_grant(
+        &self,
+        mut req: CreateAccessGrantRequest,
+    ) -> Result<CreateAccessGrantResponse> {
+        if req.grant.grant_id.trim().is_empty() {
+            return Err(anyhow!("access_grant_id_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let Some(asset) = state.data_assets.get(req.grant.asset_id.as_str()).cloned() else {
+            return Err(anyhow!("data_asset_not_found"));
+        };
+        if req.grant.provider_id.trim().is_empty() {
+            req.grant.provider_id.clone_from(&asset.provider_id);
+        }
+        if req.grant.provider_id != asset.provider_id {
+            return Err(anyhow!("data_asset_provider_mismatch"));
+        }
+        if req.grant.permission_policy.allowed_scopes.is_empty() {
+            req.grant.permission_policy = asset
+                .default_policy
+                .clone()
+                .unwrap_or_else(|| req.grant.permission_policy.clone());
+        }
+        req.grant.permission_policy = Self::normalize_permission_policy(
+            req.grant.permission_policy,
+            format!("grant.{}", req.grant.grant_id).as_str(),
+        );
+        if req.grant.permission_policy.allowed_scopes.is_empty() {
+            return Err(anyhow!("permission_policy_scope_missing"));
+        }
+        if req.grant.expires_at_ms <= req.grant.created_at_ms {
+            return Err(anyhow!("access_grant_window_invalid"));
+        }
+        req.grant.status = AccessGrantStatus::Offered;
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.data.grant:{}", req.grant.grant_id),
+            receipt_type: "kernel.data.grant.offer.v1".to_string(),
+            created_at_ms: req.grant.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.grant)
+                .map_err(|error| anyhow!("failed to encode access grant: {error}"))?,
+            outputs_payload: json!({
+                "grant_id": req.grant.grant_id,
+                "asset_id": req.grant.asset_id,
+                "provider_id": req.grant.provider_id,
+                "policy_id": req.grant.permission_policy.policy_id,
+                "status": req.grant.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .access_grants
+            .insert(req.grant.grant_id.clone(), req.grant.clone());
+        state.receipts.push(receipt.clone());
+        Ok(CreateAccessGrantResponse {
+            grant: req.grant,
+            receipt,
+        })
+    }
+
+    async fn accept_access_grant(
+        &self,
+        req: AcceptAccessGrantRequest,
+    ) -> Result<AcceptAccessGrantResponse> {
+        if req.grant_id.trim().is_empty() {
+            return Err(anyhow!("access_grant_id_missing"));
+        }
+        if req.consumer_id.trim().is_empty() {
+            return Err(anyhow!("access_grant_consumer_id_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let Some(existing_grant) = state.access_grants.get(req.grant_id.as_str()).cloned() else {
+            return Err(anyhow!("access_grant_not_found"));
+        };
+        if existing_grant
+            .consumer_id
+            .as_deref()
+            .is_some_and(|id| id != req.consumer_id)
+        {
+            return Err(anyhow!("access_grant_consumer_mismatch"));
+        }
+        if matches!(
+            existing_grant.status,
+            AccessGrantStatus::Revoked | AccessGrantStatus::Refunded | AccessGrantStatus::Expired
+        ) {
+            return Err(anyhow!("access_grant_not_accepting"));
+        }
+        let mut grant = existing_grant;
+        grant.consumer_id = Some(req.consumer_id.clone());
+        grant.accepted_at_ms = Some(req.accepted_at_ms);
+        if let Some(settlement_price) = req.settlement_price.clone() {
+            grant.offer_price = Some(settlement_price);
+        }
+        if grant.status == AccessGrantStatus::Offered {
+            grant.status = AccessGrantStatus::Accepted;
+        }
+        if !req.metadata.is_null() {
+            grant.metadata = req.metadata.clone();
+        }
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.data.grant.accept:{}", req.grant_id),
+            receipt_type: "kernel.data.grant.accept.v1".to_string(),
+            created_at_ms: req.accepted_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(json!({
+                "grant_id": req.grant_id,
+                "consumer_id": req.consumer_id,
+                "accepted_at_ms": req.accepted_at_ms,
+                "settlement_price": req.settlement_price,
+                "metadata": req.metadata,
+            }))
+            .map_err(|error| anyhow!("failed to encode grant acceptance: {error}"))?,
+            outputs_payload: json!({
+                "grant_id": grant.grant_id,
+                "asset_id": grant.asset_id,
+                "consumer_id": grant.consumer_id,
+                "status": grant.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .access_grants
+            .insert(req.grant_id.clone(), grant.clone());
+        state.receipts.push(receipt.clone());
+        Ok(AcceptAccessGrantResponse { grant, receipt })
+    }
+
+    async fn issue_delivery_bundle(
+        &self,
+        mut req: IssueDeliveryBundleRequest,
+    ) -> Result<IssueDeliveryBundleResponse> {
+        if req.delivery_bundle.delivery_bundle_id.trim().is_empty() {
+            return Err(anyhow!("delivery_bundle_id_missing"));
+        }
+        if req.delivery_bundle.delivery_ref.trim().is_empty() {
+            return Err(anyhow!("delivery_bundle_ref_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let Some(existing_grant) = state
+            .access_grants
+            .get(req.delivery_bundle.grant_id.as_str())
+            .cloned()
+        else {
+            return Err(anyhow!("access_grant_not_found"));
+        };
+        if !matches!(
+            existing_grant.status,
+            AccessGrantStatus::Accepted | AccessGrantStatus::Delivered
+        ) {
+            return Err(anyhow!("access_grant_not_ready_for_delivery"));
+        }
+        let consumer_id = existing_grant
+            .consumer_id
+            .clone()
+            .ok_or_else(|| anyhow!("access_grant_consumer_id_missing"))?;
+        req.delivery_bundle
+            .asset_id
+            .clone_from(&existing_grant.asset_id);
+        req.delivery_bundle
+            .provider_id
+            .clone_from(&existing_grant.provider_id);
+        req.delivery_bundle.consumer_id.clone_from(&consumer_id);
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!(
+                "receipt.kernel.data.delivery:{}",
+                req.delivery_bundle.delivery_bundle_id
+            ),
+            receipt_type: "kernel.data.delivery.issue.v1".to_string(),
+            created_at_ms: req.delivery_bundle.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.delivery_bundle)
+                .map_err(|error| anyhow!("failed to encode delivery bundle: {error}"))?,
+            outputs_payload: json!({
+                "delivery_bundle_id": req.delivery_bundle.delivery_bundle_id,
+                "grant_id": req.delivery_bundle.grant_id,
+                "asset_id": req.delivery_bundle.asset_id,
+                "consumer_id": req.delivery_bundle.consumer_id,
+                "status": req.delivery_bundle.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        let mut grant = existing_grant;
+        grant.status = AccessGrantStatus::Delivered;
+        state
+            .access_grants
+            .insert(req.delivery_bundle.grant_id.clone(), grant);
+        state.delivery_bundles.insert(
+            req.delivery_bundle.delivery_bundle_id.clone(),
+            req.delivery_bundle.clone(),
+        );
+        state.receipts.push(receipt.clone());
+        Ok(IssueDeliveryBundleResponse {
+            delivery_bundle: req.delivery_bundle,
+            receipt,
+        })
+    }
+
+    async fn revoke_access_grant(
+        &self,
+        mut req: RevokeAccessGrantRequest,
+    ) -> Result<RevokeAccessGrantResponse> {
+        if req.revocation.revocation_id.trim().is_empty() {
+            return Err(anyhow!("revocation_id_missing"));
+        }
+        if req.revocation.reason_code.trim().is_empty() {
+            return Err(anyhow!("revocation_reason_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let Some(existing_grant) = state
+            .access_grants
+            .get(req.revocation.grant_id.as_str())
+            .cloned()
+        else {
+            return Err(anyhow!("access_grant_not_found"));
+        };
+        req.revocation.asset_id.clone_from(&existing_grant.asset_id);
+        req.revocation
+            .provider_id
+            .clone_from(&existing_grant.provider_id);
+        req.revocation
+            .consumer_id
+            .clone_from(&existing_grant.consumer_id);
+        if req.revocation.revoked_delivery_bundle_ids.is_empty() {
+            req.revocation.revoked_delivery_bundle_ids = state
+                .delivery_bundles
+                .values()
+                .filter(|bundle| bundle.grant_id == existing_grant.grant_id)
+                .map(|bundle| bundle.delivery_bundle_id.clone())
+                .collect();
+        }
+        let mut grant = existing_grant;
+        for delivery_bundle_id in &req.revocation.revoked_delivery_bundle_ids {
+            if let Some(bundle) = state.delivery_bundles.get_mut(delivery_bundle_id.as_str()) {
+                bundle.status = DeliveryBundleStatus::Revoked;
+            }
+        }
+        req.revocation.status = if req.revocation.refund_amount.is_some() {
+            RevocationStatus::Refunded
+        } else {
+            RevocationStatus::Revoked
+        };
+        grant.status = if req.revocation.refund_amount.is_some() {
+            AccessGrantStatus::Refunded
+        } else {
+            AccessGrantStatus::Revoked
+        };
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!(
+                "receipt.kernel.data.revocation:{}",
+                req.revocation.revocation_id
+            ),
+            receipt_type: "kernel.data.revocation.record.v1".to_string(),
+            created_at_ms: req.revocation.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.revocation)
+                .map_err(|error| anyhow!("failed to encode revocation receipt: {error}"))?,
+            outputs_payload: json!({
+                "revocation_id": req.revocation.revocation_id,
+                "grant_id": req.revocation.grant_id,
+                "asset_id": req.revocation.asset_id,
+                "status": req.revocation.status,
+                "refund_amount": req.revocation.refund_amount,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .access_grants
+            .insert(req.revocation.grant_id.clone(), grant);
+        state
+            .revocations
+            .insert(req.revocation.revocation_id.clone(), req.revocation.clone());
+        state.receipts.push(receipt.clone());
+        Ok(RevokeAccessGrantResponse {
+            revocation: req.revocation,
+            receipt,
+        })
+    }
+
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot> {
         let state = self
             .state
@@ -930,6 +1439,50 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         req: PublishComputeIndexRequest,
     ) -> Result<PublishComputeIndexResponse> {
         self.post_json("/v1/kernel/compute/indices", &req).await
+    }
+
+    async fn register_data_asset(
+        &self,
+        req: RegisterDataAssetRequest,
+    ) -> Result<RegisterDataAssetResponse> {
+        self.post_json("/v1/kernel/data/assets", &req).await
+    }
+
+    async fn create_access_grant(
+        &self,
+        req: CreateAccessGrantRequest,
+    ) -> Result<CreateAccessGrantResponse> {
+        self.post_json("/v1/kernel/data/grants", &req).await
+    }
+
+    async fn accept_access_grant(
+        &self,
+        req: AcceptAccessGrantRequest,
+    ) -> Result<AcceptAccessGrantResponse> {
+        let path = format!("/v1/kernel/data/grants/{}/accept", req.grant_id.trim());
+        self.post_json(path.as_str(), &req).await
+    }
+
+    async fn issue_delivery_bundle(
+        &self,
+        req: IssueDeliveryBundleRequest,
+    ) -> Result<IssueDeliveryBundleResponse> {
+        let path = format!(
+            "/v1/kernel/data/grants/{}/deliveries",
+            req.delivery_bundle.grant_id.trim()
+        );
+        self.post_json(path.as_str(), &req).await
+    }
+
+    async fn revoke_access_grant(
+        &self,
+        req: RevokeAccessGrantRequest,
+    ) -> Result<RevokeAccessGrantResponse> {
+        let path = format!(
+            "/v1/kernel/data/grants/{}/revoke",
+            req.revocation.grant_id.trim()
+        );
+        self.post_json(path.as_str(), &req).await
     }
 
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot> {

@@ -36,6 +36,6 @@ The kernel should be able to answer:
 
 ## Current implementation status
 
-- `implemented`: none
-- `local prototype`: provenance and data-source references exist in kernel docs and local modeling, but not as a standalone market
-- `planned`: asset registry, grants, purchases, delivery receipts, revocation, and provider payout
+- `implemented`: starter authority flows in `openagents-kernel-core` and `apps/nexus-control` for asset registration, access grants, grant acceptance, delivery bundles, and revocation receipts
+- `local prototype`: richer provenance modeling, pricing, and private-data packaging still live mostly in docs and desktop-local concepts
+- `planned`: broader discovery, payout, provider economics, and product-facing UX

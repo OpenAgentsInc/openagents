@@ -15,12 +15,15 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use openagents_kernel_core::authority::{
-    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
-    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
-    CreateContractRequest, CreateContractResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
-    FinalizeVerdictRequest, FinalizeVerdictResponse, PublishComputeIndexRequest,
+    AcceptAccessGrantRequest, AcceptAccessGrantResponse, CreateAccessGrantRequest,
+    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
+    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
+    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
+    CreateWorkUnitRequest, CreateWorkUnitResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
+    IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, PublishComputeIndexRequest,
     PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
-    SubmitOutputRequest, SubmitOutputResponse,
+    RegisterDataAssetRequest, RegisterDataAssetResponse, RevokeAccessGrantRequest,
+    RevokeAccessGrantResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
@@ -620,6 +623,20 @@ pub fn build_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/compute/indices",
             post(publish_kernel_compute_index),
+        )
+        .route("/v1/kernel/data/assets", post(register_kernel_data_asset))
+        .route("/v1/kernel/data/grants", post(create_kernel_access_grant))
+        .route(
+            "/v1/kernel/data/grants/{grant_id}/accept",
+            post(accept_kernel_access_grant),
+        )
+        .route(
+            "/v1/kernel/data/grants/{grant_id}/deliveries",
+            post(issue_kernel_delivery_bundle),
+        )
+        .route(
+            "/v1/kernel/data/grants/{grant_id}/revoke",
+            post(revoke_kernel_access_grant),
         )
         .route(
             "/v1/kernel/snapshots/{minute_start_ms}",
@@ -1726,6 +1743,183 @@ async fn publish_kernel_compute_index(
     Ok(Json(result.response))
 }
 
+async fn register_kernel_data_asset(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<RegisterDataAssetRequest>,
+) -> Result<Json<RegisterDataAssetResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .register_data_asset(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.data.asset.registered",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn create_kernel_access_grant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateAccessGrantRequest>,
+) -> Result<Json<CreateAccessGrantResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_access_grant(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.data.grant.offered",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn accept_kernel_access_grant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(grant_id): Path<String>,
+    Json(mut request): Json<AcceptAccessGrantRequest>,
+) -> Result<Json<AcceptAccessGrantResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
+    if !request.grant_id.trim().is_empty() && request.grant_id != grant_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_access_grant_id_mismatch".to_string(),
+        });
+    }
+    request.grant_id = grant_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .accept_access_grant(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.data.grant.accepted",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn issue_kernel_delivery_bundle(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(grant_id): Path<String>,
+    Json(mut request): Json<IssueDeliveryBundleRequest>,
+) -> Result<Json<IssueDeliveryBundleResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
+    if !request.delivery_bundle.grant_id.trim().is_empty()
+        && request.delivery_bundle.grant_id != grant_id
+    {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_access_grant_id_mismatch".to_string(),
+        });
+    }
+    request.delivery_bundle.grant_id = grant_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .issue_delivery_bundle(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.data.delivery.issued",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn revoke_kernel_access_grant(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(grant_id): Path<String>,
+    Json(mut request): Json<RevokeAccessGrantRequest>,
+) -> Result<Json<RevokeAccessGrantResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let grant_id = normalize_required_field(grant_id.as_str(), "access_grant_id_missing")?;
+    if !request.revocation.grant_id.trim().is_empty() && request.revocation.grant_id != grant_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_access_grant_id_mismatch".to_string(),
+        });
+    }
+    request.revocation.grant_id = grant_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .revoke_access_grant(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.data.revocation.recorded",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
 async fn get_kernel_snapshot(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -1821,14 +2015,22 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "kernel_work_unit_not_found"
         | "compute_product_not_found"
         | "capacity_lot_not_found"
-        | "capacity_instrument_not_found" => StatusCode::NOT_FOUND,
+        | "capacity_instrument_not_found"
+        | "data_asset_not_found"
+        | "access_grant_not_found"
+        | "delivery_bundle_not_found" => StatusCode::NOT_FOUND,
         "kernel_idempotency_conflict"
         | "kernel_contract_id_mismatch"
         | "kernel_capacity_lot_id_mismatch"
+        | "kernel_access_grant_id_mismatch"
         | "compute_product_capacity_lot_mismatch"
         | "compute_product_capacity_instrument_mismatch"
         | "capacity_lot_instrument_mismatch"
-        | "compute_product_not_index_eligible" => StatusCode::CONFLICT,
+        | "compute_product_not_index_eligible"
+        | "data_asset_provider_mismatch"
+        | "access_grant_consumer_mismatch"
+        | "access_grant_already_revoked"
+        | "delivery_bundle_grant_mismatch" => StatusCode::CONFLICT,
         "work_unit_id_missing"
         | "contract_id_missing"
         | "receipt_id_missing"
@@ -1839,7 +2041,21 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_index_id_missing"
         | "capacity_lot_window_invalid"
         | "capacity_instrument_window_invalid"
-        | "compute_index_window_invalid" => StatusCode::BAD_REQUEST,
+        | "compute_index_window_invalid"
+        | "data_asset_id_missing"
+        | "data_asset_provider_id_missing"
+        | "data_asset_kind_missing"
+        | "data_asset_title_missing"
+        | "access_grant_id_missing"
+        | "access_grant_window_invalid"
+        | "access_grant_consumer_id_missing"
+        | "access_grant_not_accepting"
+        | "access_grant_not_ready_for_delivery"
+        | "delivery_bundle_id_missing"
+        | "delivery_bundle_ref_missing"
+        | "revocation_id_missing"
+        | "revocation_reason_missing"
+        | "permission_policy_scope_missing" => StatusCode::BAD_REQUEST,
         _ => StatusCode::BAD_REQUEST,
     };
     ApiError {
@@ -2467,18 +2683,25 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use openagents_kernel_core::authority::{
-        CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-        CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
-        CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
-        CreateWorkUnitRequest, CreateWorkUnitResponse, FinalizeVerdictRequest,
-        FinalizeVerdictResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
-        RecordDeliveryProofRequest, RecordDeliveryProofResponse, SubmitOutputRequest,
-        SubmitOutputResponse,
+        AcceptAccessGrantRequest, AcceptAccessGrantResponse, CreateAccessGrantRequest,
+        CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
+        CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
+        CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
+        CreateContractResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+        FinalizeVerdictRequest, FinalizeVerdictResponse, IssueDeliveryBundleRequest,
+        IssueDeliveryBundleResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
+        RecordDeliveryProofRequest, RecordDeliveryProofResponse, RegisterDataAssetRequest,
+        RegisterDataAssetResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
+        SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
         CapacityLotStatus, CapacityReserveState, ComputeIndex, ComputeIndexStatus, ComputeProduct,
         ComputeProductStatus, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
+    };
+    use openagents_kernel_core::data::{
+        AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
+        DeliveryBundleStatus, PermissionPolicy, RevocationReceipt, RevocationStatus,
     };
     use openagents_kernel_core::labor::{
         Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, SubmissionStatus,
@@ -2889,6 +3112,188 @@ mod tests {
                 status: ComputeIndexStatus::Published,
                 metadata: json!({
                     "source": "authoritative-kernel"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn data_asset_request(
+        asset_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RegisterDataAssetRequest {
+        RegisterDataAssetRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            asset: DataAsset {
+                asset_id: asset_id.to_string(),
+                provider_id: "provider.data.alpha".to_string(),
+                asset_kind: "conversation_bundle".to_string(),
+                title: "Claude sessions for repo alpha".to_string(),
+                description: Some("Private coding context from prior sessions.".to_string()),
+                content_digest: Some("sha256:data.asset.alpha".to_string()),
+                provenance_ref: Some("oa://data/assets/alpha/manifest".to_string()),
+                default_policy: Some(PermissionPolicy {
+                    policy_id: String::new(),
+                    allowed_scopes: vec!["read.context".to_string(), "derive.summary".to_string()],
+                    allowed_tool_tags: vec!["autopilot".to_string(), "codex".to_string()],
+                    allowed_origins: vec!["openagents.com".to_string()],
+                    export_allowed: false,
+                    derived_outputs_allowed: true,
+                    retention_seconds: Some(86_400),
+                    max_bundle_size_bytes: Some(32_768),
+                    metadata: json!({
+                        "classification": "private"
+                    }),
+                }),
+                price_hint: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                created_at_ms,
+                status: DataAssetStatus::Active,
+                metadata: json!({
+                    "source": "desktop"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn access_grant_request(
+        grant_id: &str,
+        asset_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateAccessGrantRequest {
+        CreateAccessGrantRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            grant: AccessGrant {
+                grant_id: grant_id.to_string(),
+                asset_id: asset_id.to_string(),
+                provider_id: "provider.data.alpha".to_string(),
+                consumer_id: None,
+                permission_policy: PermissionPolicy {
+                    policy_id: String::new(),
+                    allowed_scopes: vec!["read.context".to_string(), "derive.summary".to_string()],
+                    allowed_tool_tags: vec!["autopilot".to_string()],
+                    allowed_origins: vec!["openagents.com".to_string()],
+                    export_allowed: false,
+                    derived_outputs_allowed: true,
+                    retention_seconds: Some(7_200),
+                    max_bundle_size_bytes: Some(16_384),
+                    metadata: json!({
+                        "license": "bounded"
+                    }),
+                },
+                offer_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                warranty_window_ms: Some(300_000),
+                created_at_ms,
+                expires_at_ms: created_at_ms + 300_000,
+                accepted_at_ms: None,
+                status: AccessGrantStatus::Offered,
+                metadata: json!({
+                    "channel": "marketplace"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn accept_access_grant_request(
+        grant_id: &str,
+        consumer_id: &str,
+        idempotency_key: &str,
+        accepted_at_ms: i64,
+    ) -> AcceptAccessGrantRequest {
+        AcceptAccessGrantRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            grant_id: grant_id.to_string(),
+            consumer_id: consumer_id.to_string(),
+            accepted_at_ms,
+            settlement_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(250),
+            }),
+            metadata: json!({
+                "purchase_channel": "accept"
+            }),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn delivery_bundle_request(
+        delivery_bundle_id: &str,
+        grant_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> IssueDeliveryBundleRequest {
+        IssueDeliveryBundleRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            delivery_bundle: DeliveryBundle {
+                delivery_bundle_id: delivery_bundle_id.to_string(),
+                asset_id: String::new(),
+                grant_id: grant_id.to_string(),
+                provider_id: String::new(),
+                consumer_id: String::new(),
+                created_at_ms,
+                delivery_ref: "oa://deliveries/data-bundle-alpha".to_string(),
+                delivery_digest: Some("sha256:delivery.bundle.alpha".to_string()),
+                bundle_size_bytes: Some(8_192),
+                manifest_refs: vec!["oa://deliveries/data-bundle-alpha/manifest".to_string()],
+                expires_at_ms: Some(created_at_ms + 7_200_000),
+                status: DeliveryBundleStatus::Issued,
+                metadata: json!({
+                    "format": "jsonl"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn revoke_access_grant_request(
+        revocation_id: &str,
+        grant_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RevokeAccessGrantRequest {
+        RevokeAccessGrantRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            revocation: RevocationReceipt {
+                revocation_id: revocation_id.to_string(),
+                asset_id: String::new(),
+                grant_id: grant_id.to_string(),
+                provider_id: String::new(),
+                consumer_id: None,
+                created_at_ms,
+                reason_code: "policy_violation_detected".to_string(),
+                refund_amount: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(250),
+                }),
+                revoked_delivery_bundle_ids: Vec::new(),
+                replacement_delivery_bundle_id: None,
+                status: RevocationStatus::Refunded,
+                metadata: json!({
+                    "remedy": "full_refund"
                 }),
             },
             evidence: Vec::new(),
@@ -3596,8 +4001,9 @@ mod tests {
     async fn compute_market_flow_persists_authoritative_objects_and_metrics() -> Result<()> {
         let app = build_router(test_config()?);
         let session = create_session_token(&app).await?;
-        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(10_000);
-        let minute_start_ms = floor_to_minute_utc(created_at_ms);
+        let minute_start_ms =
+            floor_to_minute_utc((super::now_unix_ms() as i64).saturating_sub(30_000));
+        let created_at_ms = minute_start_ms.saturating_add(10_000);
 
         let product = app
             .clone()
@@ -3770,6 +4176,192 @@ mod tests {
                 .recent_receipts
                 .iter()
                 .any(|receipt| { receipt.receipt_type == "kernel.compute.delivery.recorded" })
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn data_market_flow_receipts_asset_grant_delivery_and_revocation() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(8_000);
+
+        let asset = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/assets")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&data_asset_request(
+                        "asset.data.alpha",
+                        "idemp.data.asset.alpha",
+                        created_at_ms,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(asset.status(), StatusCode::OK);
+        let asset_payload: RegisterDataAssetResponse = response_json(asset).await?;
+        assert_eq!(
+            asset_payload.receipt.receipt_type,
+            "kernel.data.asset.register.v1"
+        );
+
+        let grant = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&access_grant_request(
+                        "grant.data.alpha",
+                        "asset.data.alpha",
+                        "idemp.data.grant.alpha",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(grant.status(), StatusCode::OK);
+        let grant_payload: CreateAccessGrantResponse = response_json(grant).await?;
+        assert_eq!(
+            grant_payload.receipt.receipt_type,
+            "kernel.data.grant.offer.v1"
+        );
+        assert_eq!(
+            grant_payload.grant.permission_policy.policy_id,
+            "policy.grant.grant.data.alpha"
+        );
+
+        let accepted = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants/grant.data.alpha/accept")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &accept_access_grant_request(
+                            "grant.data.alpha",
+                            "consumer.data.alpha",
+                            "idemp.data.accept.alpha",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(accepted.status(), StatusCode::OK);
+        let accepted_payload: AcceptAccessGrantResponse = response_json(accepted).await?;
+        assert_eq!(
+            accepted_payload.receipt.receipt_type,
+            "kernel.data.grant.accept.v1"
+        );
+        assert_eq!(
+            accepted_payload.grant.consumer_id.as_deref(),
+            Some("consumer.data.alpha")
+        );
+
+        let delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants/grant.data.alpha/deliveries")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&delivery_bundle_request(
+                        "delivery.data.alpha",
+                        "grant.data.alpha",
+                        "idemp.data.delivery.alpha",
+                        created_at_ms + 3_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(delivery.status(), StatusCode::OK);
+        let delivery_payload: IssueDeliveryBundleResponse = response_json(delivery).await?;
+        assert_eq!(
+            delivery_payload.receipt.receipt_type,
+            "kernel.data.delivery.issue.v1"
+        );
+        assert_eq!(
+            delivery_payload.delivery_bundle.consumer_id,
+            "consumer.data.alpha"
+        );
+
+        let revocation = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/data/grants/grant.data.alpha/revoke")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &revoke_access_grant_request(
+                            "revocation.data.alpha",
+                            "grant.data.alpha",
+                            "idemp.data.revoke.alpha",
+                            created_at_ms + 4_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(revocation.status(), StatusCode::OK);
+        let revocation_payload: RevokeAccessGrantResponse = response_json(revocation).await?;
+        assert_eq!(
+            revocation_payload.receipt.receipt_type,
+            "kernel.data.revocation.record.v1"
+        );
+        assert_eq!(
+            revocation_payload.revocation.status,
+            RevocationStatus::Refunded
+        );
+        assert_eq!(
+            revocation_payload
+                .revocation
+                .revoked_delivery_bundle_ids
+                .len(),
+            1
+        );
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| { receipt.receipt_type == "kernel.data.asset.registered" })
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| { receipt.receipt_type == "kernel.data.grant.offered" })
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| { receipt.receipt_type == "kernel.data.delivery.issued" })
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| { receipt.receipt_type == "kernel.data.revocation.recorded" })
         );
 
         Ok(())
