@@ -872,6 +872,7 @@ pub(super) fn apply_stream_event_seq(state: &mut RenderState, stream_id: &str, s
         Ok(crate::sync_apply::StreamApplyDecision::Applied { .. }) => {
             state.sync_health.last_applied_event_seq = state.sync_apply_engine.max_checkpoint_seq();
             state.sync_health.cursor_last_advanced_seconds_ago = 0;
+            mirror_remote_checkpoint_ack(state, stream_id, seq);
             true
         }
         Ok(crate::sync_apply::StreamApplyDecision::Duplicate { .. }) => {
@@ -925,6 +926,20 @@ pub(super) fn apply_stream_event_seq(state: &mut RenderState, stream_id: &str, s
             state.sync_health.cursor_last_advanced_seconds_ago = 0;
             true
         }
+    }
+}
+
+fn mirror_remote_checkpoint_ack(state: &mut RenderState, stream_id: &str, seq: u64) {
+    let Some(client) = state.spacetime_presence.live_client() else {
+        return;
+    };
+    if let Err(error) =
+        client.ack_checkpoint(state.sync_lifecycle_worker_id.as_str(), stream_id, seq, seq)
+    {
+        state.sync_health.last_error = Some(format!(
+            "remote sync checkpoint mirror failed for {} seq {}: {}",
+            stream_id, seq, error
+        ));
     }
 }
 

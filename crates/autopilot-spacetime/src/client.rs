@@ -494,8 +494,8 @@ impl SpacetimeReducerHttpClient {
             .client
             .post(endpoint.as_str())
             .header("accept", "application/json")
-            .header("content-type", "application/json")
-            .json(&json!({ "query": query }));
+            .header("content-type", "text/plain")
+            .body(query.to_string());
         if let Some(token) = self.auth_token.as_deref() {
             request = request.bearer_auth(token);
         }

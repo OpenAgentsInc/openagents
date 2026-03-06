@@ -346,6 +346,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
     state.sync_bootstrap_error = None;
     state.hosted_control_base_url = None;
     state.hosted_control_bearer_token = None;
+    state.spacetime_presence.clear_live_client();
     let worker_id = state.sync_lifecycle_worker_id.clone();
     state.sync_lifecycle.mark_idle(worker_id.as_str());
     state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
@@ -395,10 +396,31 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
 
     match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, bound_nostr_pubkey) {
         Ok(Some(result)) => {
-            let note = format!(
+            let mut note = format!(
                 "Minted sync token via {} and prepared subscribe target {}",
                 result.control_token_endpoint, result.target.subscribe_url
             );
+            match autopilot_spacetime::live::LiveSpacetimeClient::new(
+                result.target.base_url.as_str(),
+                result.target.database.as_str(),
+                None,
+            ) {
+                Ok(live_client) => {
+                    state.spacetime_presence.configure_live_client(live_client.clone());
+                    match hydrate_remote_sync_checkpoints(state, &live_client) {
+                        Ok(adopted) if adopted > 0 => {
+                            note.push_str(format!(" and hydrated {adopted} remote checkpoints").as_str());
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            state.sync_bootstrap_error = Some(error.clone());
+                        }
+                    }
+                }
+                Err(error) => {
+                    state.sync_bootstrap_error = Some(error.clone());
+                }
+            }
             state.sync_bootstrap_note = Some(note.clone());
             state.sync_lifecycle.mark_connecting(worker_id.as_str());
             let replay_cursor = state.sync_apply_engine.max_checkpoint_seq();
@@ -416,6 +438,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
                 std::time::Instant::now(),
                 state.sync_lifecycle_snapshot.as_ref(),
             );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
         }
@@ -429,6 +452,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
                 std::time::Instant::now(),
                 state.sync_lifecycle_snapshot.as_ref(),
             );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
         }
@@ -445,10 +469,34 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
                 std::time::Instant::now(),
                 state.sync_lifecycle_snapshot.as_ref(),
             );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
             state.sync_health.last_error = Some(error);
         }
     }
+}
+
+fn hydrate_remote_sync_checkpoints(
+    state: &mut RenderState,
+    client: &autopilot_spacetime::live::LiveSpacetimeClient,
+) -> Result<usize, String> {
+    let checkpoints = client.list_checkpoints(state.sync_lifecycle_worker_id.as_str())?;
+    let mut adopted = 0_usize;
+    for checkpoint in checkpoints {
+        if state
+            .sync_apply_engine
+            .adopt_checkpoint_if_newer(
+                checkpoint.stream_id.as_str(),
+                checkpoint.last_applied_seq,
+            )?
+        {
+            adopted = adopted.saturating_add(1);
+        }
+    }
+    state.sync_health.last_applied_event_seq = state.sync_apply_engine.max_checkpoint_seq();
+    state.sync_health.cursor_position = state.sync_health.last_applied_event_seq;
+    state.sync_health.cursor_target_position = state.sync_health.last_applied_event_seq;
+    Ok(adopted)
 }
 
 fn bootstrap_runtime_lanes(state: &mut RenderState) {
