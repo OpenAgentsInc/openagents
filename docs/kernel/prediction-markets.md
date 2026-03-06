@@ -1,4 +1,4 @@
-# How Prediction Markets Are Used in the OpenAgents Economy Kernel
+# How Prediction / Coverage / Risk Markets Are Used in the OpenAgents Economy Kernel
 
 Prediction markets in OpenAgents are **not primarily speculative betting venues**.
 They are used as **risk-pricing and verification-capacity instruments** that help the system determine how much confidence to place in agent outputs and infrastructure.
@@ -150,7 +150,7 @@ These help operators evaluate **economic health of the system**.
 
 ---
 
-# 4. Why Prediction Markets Help Verification Scale
+# 4. Why Prediction / Coverage / Risk Markets Help Verification Scale
 
 Verification is expensive and limited.
 

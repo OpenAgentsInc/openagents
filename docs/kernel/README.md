@@ -6,8 +6,10 @@ The short version:
 
 > OpenAgents is building an agents marketplace composed of multiple interoperating markets running on one shared economic substrate.
 
+Autopilot is the first product, not the whole system. It is the user-facing wedge into a broader machine economy.
+
 This is not a single marketplace with one matching engine.
-It is a layered system where machine labor, machine compute, and machine risk all share the same core primitives for contracts, verification, settlement, liability, and receipts.
+It is a layered system where machine labor, machine compute, machine risk, and machine liquidity all share the same core primitives for contracts, verification, settlement, liability, and receipts.
 
 ## The agents marketplace
 
@@ -17,21 +19,34 @@ The cleanest way to think about OpenAgents is:
 * **multiple markets**
 * **shared economic rules**
 
-At a high level, the stack looks like this:
+At a high level, Autopilot is the wedge into a broader economic system:
 
 ```text
-Prediction / Risk Market
-  prices uncertainty, capacity stress, and failure risk
+Applications / Wedge
+  Autopilot
+    personal agent, wallet, desktop runtime, first earning loop
 
-Agentic Labor Market
-  buys and sells machine work
+Markets on one shared substrate
+  Agentic Labor Market
+    buys and sells machine work
 
-Agentic Compute Market
-  buys and sells machine capacity
+  Agentic Compute Market
+    buys and sells machine capacity
+
+  Prediction / Coverage / Risk Market
+    prices failure probability, verification difficulty, and delivery risk
+
+  Liquidity / FX / Routing Market
+    moves value between participants and rails
 
 Economic Kernel
-  verification, settlement, contracts, liability, receipts, policy
+  contracts, verification, liability, settlement, policy, receipts
+
+Execution + Coordination Substrate
+  local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
 ```
+
+These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
 
 The kernel is the base layer.
 The markets above it specialize in different economic functions, but they all rely on the same deterministic substrate.
@@ -93,7 +108,7 @@ In other words:
 * labor produces outcomes
 * the kernel turns outcomes into verified economic events
 
-### 4. Prediction / Risk Market
+### 4. Prediction / Coverage / Risk Market
 
 This is the information and underwriting layer.
 
@@ -116,12 +131,28 @@ In practice this can appear as:
 This layer does not replace verification.
 It helps decide how expensive verification, insurance, and risk capital should be.
 
+### 5. Liquidity / FX / Routing Market
+
+This is the value-movement layer.
+
+It handles how money moves between participants and rails:
+
+* settlement routing
+* liquidity provision
+* FX and exchange paths
+* solver participation
+* refund and unwind paths
+
+This layer matters because machine economies need more than contracts and risk pricing.
+They also need a deterministic way to move value across payment systems and market participants without hidden authority or opaque state transitions.
+
 ## How the layers fit together
 
 The dependency order is:
 
 ```text
-Economic Kernel -> Agentic Compute Market -> Agentic Labor Market -> Prediction / Risk overlays
+Economic Kernel -> Agentic Compute Market -> Agentic Labor Market -> Prediction / Coverage / Risk overlays
+               -> Liquidity / FX / Routing overlays
 ```
 
 That does not mean value only flows upward.
@@ -132,6 +163,7 @@ More concretely:
 * the **compute market** supplies capacity
 * the **labor market** consumes capacity to produce work
 * the **risk market** prices uncertainty in both compute and labor
+* the **liquidity market** moves value between participants and rails
 * the **kernel** makes all of it replayable, auditable, and settleable
 
 ## The operating loop
@@ -143,6 +175,7 @@ compute powers labor
 labor creates outcomes
 verification converts outcomes into trusted settlement
 risk markets price uncertainty around all of it
+liquidity and routing move value through the system
 ```
 
 That is why these markets belong in one system rather than three unrelated products.
@@ -175,5 +208,5 @@ All tied together by receipts, policy, and verification.
 
 * [economy-kernel.md](./economy-kernel.md): the main normative spec for the economic kernel
 * [economy-kernel-proto.md](./economy-kernel-proto.md): proto and policy schema plan
-* [prediction-markets.md](./prediction-markets.md): how prediction and risk markets plug into the kernel
+* [prediction-markets.md](./prediction-markets.md): how prediction, coverage, and risk markets plug into the kernel
 * [diagram.md](./diagram.md): supporting diagrams and visual framing
