@@ -35,11 +35,11 @@ Markets on one shared substrate
   Labor Market
     buys and sells machine work
 
-  Risk Market
-    prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
-
   Liquidity Market
     routing, FX, and value movement between participants and rails
+
+  Risk Market
+    prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
 
 Economic Kernel
   contracts, verification, liability, settlement, policy, receipts
