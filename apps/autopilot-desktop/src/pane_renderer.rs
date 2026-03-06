@@ -476,8 +476,6 @@ fn paint_go_online_pane(
     active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "mission-control", paint);
-
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let toggle_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
         "Go Online"
@@ -499,16 +497,11 @@ fn paint_go_online_pane(
         11.0,
         theme::text::MUTED,
     ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        "Hotbar: 1 chat, 2 keys, 3 wallet",
-        Point::new(title_x, content_bounds.origin.y + 54.0),
-        10.0,
-        theme::text::MUTED,
-    ));
 
-    let card_y = toggle_bounds.max_y() + 16.0;
+    let header_bottom_y = (content_bounds.origin.y + 50.0).max(toggle_bounds.max_y());
+    let card_y = header_bottom_y + 16.0;
     let card_gap = 12.0;
-    let top_card_height = 252.0;
+    let top_card_height = 240.0;
     let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(240.0);
     let left_card = Bounds::new(
         content_bounds.origin.x + 12.0,
@@ -569,7 +562,7 @@ fn paint_go_online_pane(
         paint,
         left_card.origin.x + 12.0,
         left_y,
-        "Execution backend",
+        "Backend",
         provider_runtime.execution_backend_label(),
         left_value_chunk_len,
     );
@@ -577,7 +570,7 @@ fn paint_go_online_pane(
         paint,
         left_card.origin.x + 12.0,
         left_y,
-        "Control authority",
+        "Control",
         provider_runtime.control_authority_label(backend_kernel_authority),
         left_value_chunk_len,
     );
@@ -585,7 +578,7 @@ fn paint_go_online_pane(
         paint,
         left_card.origin.x + 12.0,
         left_y,
-        "Projection stream",
+        "Projection",
         if earn_job_lifecycle_projection.authority == "non-authoritative" {
             provider_runtime.projection_authority_label()
         } else {
@@ -597,7 +590,7 @@ fn paint_go_online_pane(
         paint,
         left_card.origin.x + 12.0,
         left_y,
-        "Settlement truth",
+        "Settlement",
         provider_runtime.settlement_truth_label(),
         left_value_chunk_len,
     );
@@ -609,42 +602,46 @@ fn paint_go_online_pane(
         provider_runtime.mode.label(),
         left_value_chunk_len,
     );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Uptime (s)",
-        &provider_runtime.uptime_seconds(now).to_string(),
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "SA runner",
-        sa_lane.mode.label(),
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "SKL trust",
-        skl_lane.trust_tier.label(),
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Credit lane",
-        if ac_lane.credit_available {
-            "available"
-        } else {
-            "unavailable"
-        },
-        left_value_chunk_len,
-    );
+    if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
+        left_y = paint_wrapped_label_line(
+            paint,
+            left_card.origin.x + 12.0,
+            left_y,
+            "Uptime",
+            &provider_runtime.uptime_seconds(now).to_string(),
+            left_value_chunk_len,
+        );
+    }
+    if sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline {
+        left_y = paint_wrapped_label_line(
+            paint,
+            left_card.origin.x + 12.0,
+            left_y,
+            "Runner",
+            sa_lane.mode.label(),
+            left_value_chunk_len,
+        );
+    }
+    if skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown {
+        left_y = paint_wrapped_label_line(
+            paint,
+            left_card.origin.x + 12.0,
+            left_y,
+            "SKL trust",
+            skl_lane.trust_tier.label(),
+            left_value_chunk_len,
+        );
+    }
+    if ac_lane.credit_available {
+        left_y = paint_wrapped_label_line(
+            paint,
+            left_card.origin.x + 12.0,
+            left_y,
+            "Credit",
+            "available",
+            left_value_chunk_len,
+        );
+    }
     left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
@@ -659,19 +656,22 @@ fn paint_go_online_pane(
         },
         left_value_chunk_len,
     );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Serving model",
-        provider_runtime
-            .ollama
-            .ready_model
-            .as_deref()
-            .or(provider_runtime.ollama.configured_model.as_deref())
-            .unwrap_or("none"),
-        left_value_chunk_len,
-    );
+    if let Some(model) = provider_runtime
+        .ollama
+        .ready_model
+        .as_deref()
+        .or(provider_runtime.ollama.configured_model.as_deref())
+        .filter(|model| !model.trim().is_empty())
+    {
+        left_y = paint_wrapped_label_line(
+            paint,
+            left_card.origin.x + 12.0,
+            left_y,
+            "Model",
+            model,
+            left_value_chunk_len,
+        );
+    }
     if provider_blockers.is_empty() {
         paint.scene.draw_text(paint.text.layout(
             "Preflight clear",
@@ -3746,6 +3746,7 @@ pub(crate) fn paint_wrapped_label_line(
     value: &str,
     value_chunk_len: usize,
 ) -> f32 {
+    let value_x = x + mission_control_value_x_offset(label);
     paint.scene.draw_text(paint.text.layout(
         &format!("{label}:"),
         Point::new(x, y),
@@ -3757,13 +3758,17 @@ pub(crate) fn paint_wrapped_label_line(
     for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
-            Point::new(x + 122.0, line_y),
+            Point::new(value_x, line_y),
             theme::font_size::SM,
             theme::text::PRIMARY,
         ));
         line_y += 18.0;
     }
     line_y.max(y + 18.0)
+}
+
+fn mission_control_value_x_offset(label: &str) -> f32 {
+    (label.chars().count() as f32 * 6.4 + 18.0).clamp(82.0, 118.0)
 }
 
 pub(crate) fn paint_multiline_phrase(
@@ -3879,8 +3884,8 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 mod tests {
     use super::{
         create_invoice_view_state, mission_control_body_chunk_len, mission_control_value_chunk_len,
-        nostr_identity_view_state, pay_invoice_view_state, payment_terminal_status,
-        spark_wallet_view_state, split_text_for_display,
+        mission_control_value_x_offset, nostr_identity_view_state, pay_invoice_view_state,
+        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::PaneLoadState;
     use crate::spark_wallet::SparkPaneState;
@@ -3981,5 +3986,15 @@ mod tests {
         assert!(mission_control_body_chunk_len(narrow) >= 12);
         assert!(mission_control_value_chunk_len(wide) > mission_control_value_chunk_len(narrow));
         assert!(mission_control_body_chunk_len(wide) > mission_control_body_chunk_len(narrow));
+    }
+
+    #[test]
+    fn mission_control_value_offset_clamps_for_short_and_long_labels() {
+        assert_eq!(mission_control_value_x_offset("Mode"), 82.0);
+        assert!(mission_control_value_x_offset("Wallet status") > 82.0);
+        assert_eq!(
+            mission_control_value_x_offset("Projection authority status"),
+            118.0
+        );
     }
 }
