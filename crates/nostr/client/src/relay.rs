@@ -3,7 +3,7 @@
 use crate::error::{ClientError, Result};
 use crate::subscription::Subscription;
 use futures_util::{SinkExt, StreamExt, stream::SplitSink};
-use nostr::Event;
+use nostr::{Event, finalize_event};
 use serde_json::{Value, json};
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -49,14 +49,21 @@ pub struct PublishConfirmation {
 #[derive(Debug, Clone)]
 pub struct RelayConfig {
     pub connect_timeout: Duration,
+    pub nip42_identity: Option<RelayAuthIdentity>,
 }
 
 impl Default for RelayConfig {
     fn default() -> Self {
         Self {
             connect_timeout: Duration::from_secs(10),
+            nip42_identity: None,
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RelayAuthIdentity {
+    pub private_key_hex: String,
 }
 
 /// Relay connection.
@@ -142,6 +149,8 @@ impl RelayConnection {
         let subscriptions = Arc::clone(&self.subscriptions);
         let state = Arc::clone(&self.state);
         let relay_url = self.url.to_string();
+        let writer = Arc::clone(&self.writer);
+        let nip42_identity = self.config.nip42_identity.clone();
 
         let task = tokio::spawn(async move {
             while let Some(frame) = reader.next().await {
@@ -172,6 +181,33 @@ impl RelayConnection {
                                 .send(RelayMessage::Eose(subscription_id))
                                 .is_err()
                             {
+                                break;
+                            }
+                        }
+                        Ok(Some(RelayMessage::Auth(challenge))) => {
+                            if let Some(identity) = nip42_identity.as_ref()
+                                && let Err(error) = respond_to_auth_challenge(
+                                    relay_url.as_str(),
+                                    &writer,
+                                    identity,
+                                    challenge.as_str(),
+                                )
+                                .await
+                            {
+                                warn!(
+                                    "failed responding to auth challenge on {}: {}",
+                                    relay_url, error
+                                );
+                            } else if nip42_identity.is_some()
+                                && let Err(error) =
+                                    resend_active_subscriptions(&writer, &subscriptions).await
+                            {
+                                warn!(
+                                    "failed resending subscriptions after auth on {}: {}",
+                                    relay_url, error
+                                );
+                            }
+                            if incoming_tx.send(RelayMessage::Auth(challenge)).is_err() {
                                 break;
                             }
                         }
@@ -377,9 +413,73 @@ pub fn parse_relay_message(text: &str) -> Result<Option<RelayMessage>> {
     }
 }
 
+async fn respond_to_auth_challenge(
+    relay_url: &str,
+    writer: &Arc<Mutex<Option<WsWriter>>>,
+    identity: &RelayAuthIdentity,
+    challenge: &str,
+) -> Result<()> {
+    let private_key = parse_private_key_hex(identity.private_key_hex.as_str())?;
+    let template = nostr::nip42::create_auth_event_template(relay_url, challenge);
+    let event = finalize_event(&template, &private_key)
+        .map_err(|error| ClientError::Internal(format!("failed signing auth event: {error}")))?;
+    let text = serde_json::to_string(&json!(["AUTH", event]))?;
+    let mut writer_guard = writer.lock().await;
+    let writer = writer_guard.as_mut().ok_or(ClientError::NotConnected)?;
+    writer
+        .send(Message::Text(text.into()))
+        .await
+        .map_err(|error| ClientError::WebSocket(error.to_string()))
+}
+
+async fn resend_active_subscriptions(
+    writer: &Arc<Mutex<Option<WsWriter>>>,
+    subscriptions: &Arc<Mutex<HashMap<String, Subscription>>>,
+) -> Result<()> {
+    let active = subscriptions
+        .lock()
+        .await
+        .values()
+        .cloned()
+        .collect::<Vec<_>>();
+    if active.is_empty() {
+        return Ok(());
+    }
+    let mut writer_guard = writer.lock().await;
+    let writer = writer_guard.as_mut().ok_or(ClientError::NotConnected)?;
+    for subscription in active {
+        let text = serde_json::to_string(&build_req_payload(&subscription))?;
+        writer
+            .send(Message::Text(text.into()))
+            .await
+            .map_err(|error| ClientError::WebSocket(error.to_string()))?;
+    }
+    Ok(())
+}
+
+fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
+    let key_bytes = hex::decode(private_key_hex.trim()).map_err(|error| {
+        ClientError::InvalidRequest(format!("invalid private key hex: {error}"))
+    })?;
+    if key_bytes.len() != 32 {
+        return Err(ClientError::InvalidRequest(format!(
+            "invalid private key hex length {}, expected 32 bytes",
+            key_bytes.len()
+        )));
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(&key_bytes);
+    Ok(key)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use futures_util::{SinkExt, StreamExt};
+    use nostr::nip42::validate_auth_event;
+    use tokio::net::TcpListener;
+    use tokio_tungstenite::accept_async;
+    use tokio_tungstenite::tungstenite::Message;
 
     fn sample_event() -> Event {
         Event {
@@ -656,6 +756,76 @@ mod tests {
             assert_relay_message(actual, expected);
         }
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn auto_responds_to_auth_challenge_when_identity_is_configured() -> Result<()> {
+        let listener = TcpListener::bind("127.0.0.1:0").await?;
+        let addr = listener.local_addr()?;
+        let challenge = "relay-auth-challenge".to_string();
+        let relay_url = format!("ws://{}", addr);
+        let (auth_tx, auth_rx) = tokio::sync::oneshot::channel::<Event>();
+        let relay_url_for_server = relay_url.clone();
+        let challenge_for_server = challenge.clone();
+
+        let server = tokio::spawn(async move {
+            let (stream, _) = listener.accept().await.expect("accept websocket client");
+            let mut ws = accept_async(stream)
+                .await
+                .expect("upgrade websocket connection");
+
+            let auth_frame = serde_json::json!(["AUTH", challenge_for_server]);
+            ws.send(Message::Text(auth_frame.to_string().into()))
+                .await
+                .expect("send auth challenge");
+
+            while let Some(message) = ws.next().await {
+                let message = message.expect("receive websocket frame");
+                let Message::Text(text) = message else {
+                    continue;
+                };
+                let value: Value = serde_json::from_str(text.as_ref()).expect("parse relay frame");
+                let Some(frame) = value.as_array() else {
+                    continue;
+                };
+                if frame.first().and_then(Value::as_str) != Some("AUTH") {
+                    continue;
+                }
+                let event: Event =
+                    serde_json::from_value(frame[1].clone()).expect("parse auth event");
+                auth_tx.send(event).expect("deliver auth event");
+                break;
+            }
+        });
+
+        let connection = RelayConnection::with_config(
+            relay_url.as_str(),
+            RelayConfig {
+                nip42_identity: Some(RelayAuthIdentity {
+                    private_key_hex:
+                        "d217c1ff2f8a65c3e3a1740db3b9f58b8c848bb45e26d00ed4714e4a0f4ceecf"
+                            .to_string(),
+                }),
+                ..RelayConfig::default()
+            },
+        )?;
+        connection.connect().await?;
+
+        let auth_event = tokio::time::timeout(Duration::from_secs(2), auth_rx)
+            .await
+            .expect("wait for auth event")
+            .expect("auth event delivered");
+        validate_auth_event(
+            &auth_event,
+            relay_url_for_server.as_str(),
+            challenge.as_str(),
+            None,
+        )
+        .expect("auth event should validate");
+
+        let _ = connection.disconnect().await;
+        server.abort();
         Ok(())
     }
 }
