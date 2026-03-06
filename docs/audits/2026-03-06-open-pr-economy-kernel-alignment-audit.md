@@ -53,7 +53,7 @@ Current status:
 
 - `#2978` merged at `5388cdb786f53ea73d70feef2efecc3b98976438`
 - `#2932` merged at `674bfa363ba7376332399008c166a4700679691c`
-- `#2933` remains open
+- `#2933` merged at `fb42f9f5a937aa6dce46fcf076b1a37b2007edb2`
 
 Current in-repo protocol docs:
 
@@ -75,15 +75,15 @@ This audit has been updated to reflect the intended hierarchy more accurately:
 | --- | --- | --- | --- |
 | `#2978` | Yes | Merged | Merged after doc cleanup. |
 | `#2932` | Yes | Merged | Merged after SA revisions: durable approval proof, aligned guardian naming, explicit sat-denominated budget semantics, federation-as-hint wording, and removal of duplicated rail-proof hash definitions. |
-| `#2933` | Partly | Not as-is | Some content clearly belongs, especially AC spend-rail and SKL-revocation linkage. Other pieces should be revised or removed from core NIP text because they do not fit current NIP scope or duplicate existing mechanisms. |
+| `#2933` | Partly | Merged | Merged after AC/SA/SKL revisions: `cancel_until` instead of `hold_period_secs`, `33410`/`33411` moved to an optional SKL auth profile with ephemeral semantics, `33420` removed, `39250` dropped in favor of richer `39231` trajectory tags, `39260` cleaned up, and the `TRUE_NAME` profile deleted. |
 
 ## Substantive NIP Findings
 
-1. `#2932` and `#2933` overlap and compete to redefine SA / AC behavior rather than presenting one coherent NIP delta.
-2. `#2933` defines `kind:39250` audit entries as addressable, which makes a supposedly forensic audit stream mutable even on its own Nostr-native terms.
-3. `#2932` uses the same `budget` tag for multiple rails without a stable unit model, which is not a good NIP convention.
-4. `#2933` puts live-auth and operator-grant semantics into SKL core even though current SKL scope is registry/trust, not general authorization.
-5. `#2933` adds audit and delegation primitives without first proving they cannot be expressed more cleanly as extensions of SA's existing trajectory primitives.
+1. `#2932` and `#2933` initially overlapped on guardian and rail semantics, so the final merge path needed one converged vocabulary across SA and AC.
+2. `#2933` initially defined `kind:39250` audit entries as addressable, which was the wrong storage shape for forensic history and was revised away before merge.
+3. `#2932` initially used the same `budget` tag for multiple rails without a stable unit model, which was revised before merge.
+4. `#2933` initially put live-auth and permission-grant semantics into SKL core even though current SKL scope is registry/trust, not general authorization.
+5. `#2933` initially used `hold_period_secs` plus over-specific proof-hash definitions; the merged version instead uses absolute `cancel_until` timing and leaves detailed proof construction out of AC core.
 
 ## NIP Conventions Used For Review
 
@@ -258,13 +258,13 @@ These parts fit well enough and should likely be kept:
 - guardian-gated envelopes in AC if the naming is aligned with SA,
 - optional `security_posture` metadata in SA profile content.
 
-### Why it should not merge as-is
+### Issues identified before merge
 
-1. `hold_period_secs` is a weak fit for NIP time semantics.
+1. `hold_period_secs` was a weak fit for NIP time semantics.
 
 NIPs more commonly use explicit timestamps, for example NIP-40 `expiration`. For AC, an absolute `hold_until` / `cancel_until` style field would be clearer and easier to interpret than a relative duration that must be combined with `created_at`.
 
-2. `33410` / `33411` do not clearly belong in SKL core, and regular storage is a questionable choice for live challenge-response.
+2. `33410` / `33411` did not clearly belong in SKL core, and regular storage was a questionable choice for live challenge-response.
 
 Substantively, this looks more like:
 
@@ -273,11 +273,11 @@ Substantively, this looks more like:
 
 than part of SKL core registry/trust semantics. If kept, I would not put it in SKL core as regular events.
 
-3. `33420` Permission Grants do not clearly belong in SKL core.
+3. `33420` Permission Grants did not clearly belong in SKL core.
 
 Current SKL scope is canonical skill identity, manifests, trust signals, revocation, and discovery. Operator- or guardian-issued action grants are a different concern. They may be useful, but they read more like SA or a separate auth/capability profile than SKL core.
 
-4. `39250` does not belong as a new addressable audit kind because SA already has trajectories.
+4. `39250` did not belong as a new addressable audit kind because SA already has trajectories.
 
 SA already defines:
 
@@ -286,25 +286,31 @@ SA already defines:
 
 Those are already described as audit trail, live coordination, training data, and debugging artifacts. The more NIP-like move is to enrich `39231` content/tags for auditable actions, not to create a second replaceable audit log primitive.
 
-5. `39260` may belong in SA, but it should be justified against existing trajectory events.
+5. `39260` may belong in SA, but it needed cleanup against existing trajectory events and merged guardian vocabulary.
 
 Delegation is plausibly SA content. The open question is not "can SA have delegation?" but "does this need a new kind, or should delegation be modeled as a typed trajectory event first?" The PR should answer that explicitly.
 
-6. It overlaps with `#2932` on guardian and rail semantics, so the combined result still violates the “single way of doing each thing” rule unless the vocabulary is unified.
+6. The branch also carried `docs/TRUE_NAME_INTEGRATION_PROFILE.md`, which was ecosystem-specific and not needed for OpenAgents.
 
-### How to salvage it
+### Applied revisions before merge
 
-If you want the content merged, I would revise it in-place as follows:
+The merged `#2933` branch was revised as follows before merge:
 
-1. Keep AC `spend_rail`, `repay` rail clarification, Fedimint support, and SKL safety-label revocation.
-2. Replace `hold_period_secs` with an absolute-timestamp formulation.
-3. Either move `33410` / `33411` out of SKL core or explicitly mark them as an optional auth profile, ideally using ephemeral semantics if they remain live challenge-response events.
-4. Move `33420` out of SKL core unless you explicitly want SKL to own operator/guardian authorization contracts.
-5. Drop `39250` as a new addressable kind and instead extend `39231` trajectory events with the needed audit tags.
-6. Keep `39260` only if you conclude delegation really needs a first-class SA kind instead of a typed trajectory event.
-### Recommendation
+1. AC kept `spend_rail`, guardian-gated envelopes, and the SKL safety-label revocation trigger.
+2. AC replaced `hold_period_secs` with absolute `cancel_until` timing.
+3. AC renamed `spend_rail_keyset` to Cashu-specific `spend_cashu_keyset`.
+4. AC dropped the canonical proof-hash appendix and now leaves detailed proof construction out of core.
+5. SKL kept `assurance_tier` and optional `nip05` organizational identity.
+6. SKL moved `33410` / `33411` into an optional `SKL-Auth Challenge Profile` with ephemeral semantics.
+7. SKL removed `33420` from core.
+8. SA kept `security_posture`.
+9. SA dropped `39250` and instead extended `39231` trajectory events with audit-friendly tags.
+10. SA kept `39260`, but aligned it to the merged vocabulary (`credit`, `scope`, `approval_threshold`, `guardian`) and softened it to a `SHOULD` publish requirement.
+11. The `docs/TRUE_NAME_INTEGRATION_PROFILE.md` file was deleted from the PR branch.
 
-This PR should not merge as-is, but several of its substantive protocol ideas do belong and are worth keeping after the revisions above.
+### Result
+
+Merged after the revisions above.
 
 ## Relationship Between `#2932` And `#2933`
 
@@ -344,7 +350,7 @@ need one coherent final form across SA and AC. That is required by the standard 
 
 1. `#2978` merged with the doc cleanup.
 2. `#2932` merged after the substantive SA revisions listed above.
-3. `#2933` remains the unresolved protocol PR and should be judged against the substantive NIP points in this audit.
+3. `#2933` merged after the substantive AC/SA/SKL revisions listed above.
 
 ## Bottom Line
 
@@ -352,6 +358,6 @@ For the substantive NIP content:
 
 - `#2978` is done.
 - `#2932` was substantially sound and is now merged after targeted SA fixes.
-- `#2933` contains both good additions and some content that does not currently belong in core SKL/SA form.
+- `#2933` was mergeable after targeted narrowing: the good AC/SA/SKL additions stayed, while the misplaced core-auth, permission-grant, mutable-audit, and `TRUE_NAME` content was removed or reshaped.
 
 The main rule I used is the canonical NIP one from `/Users/christopherdavid/code/nips/README.md`: there should not be more than one way of doing the same thing. The merge path should therefore keep the good ideas, remove the misplaced ones, and converge SA/SKL/AC on one vocabulary for guardian approvals, rails, auditability, and proof semantics.
