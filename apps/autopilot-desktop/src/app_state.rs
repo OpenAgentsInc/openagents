@@ -1659,11 +1659,11 @@ macro_rules! impl_pane_status_access {
 
 #[allow(unused_imports)]
 pub use crate::state::operations::{
-    NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, ReciprocalLoopDirection,
-    ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition, ReciprocalLoopState,
-    RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState, StarterJobRow,
-    StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-    SyncRecoveryPhase,
+    BuyerResolutionMode, BuyerResolutionReason, NetworkRequestStatus, NetworkRequestSubmission,
+    NetworkRequestsState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+    ReciprocalLoopFailureDisposition, ReciprocalLoopState, RelayConnectionRow,
+    RelayConnectionStatus, RelayConnectionsState, StarterJobRow, StarterJobStatus,
+    StarterJobsState, SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -4168,21 +4168,21 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
-        CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
-        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
-        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
-        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
-        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
-        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
-        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
-        RelaySecuritySimulationPaneState, SettingsState, SparkPaneState,
-        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
-        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
-        TreasuryExchangeSimulationPaneState,
+        BuyerResolutionMode, BuyerResolutionReason, CadBuildFailureClass, CadBuildSessionPhase,
+        CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState,
+        CadDrawingViewDirection, CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction,
+        CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
+        CadThreeDMouseProfile, EarnJobLifecycleProjectionState, EarningsScoreboardState,
+        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
+        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
+        RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
+        SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
+        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+        SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -4334,6 +4334,7 @@ mod tests {
             published_request_event_id: Some(request_id.to_string()),
             request_type: "loop.pingpong.10sat".to_string(),
             payload: "{}".to_string(),
+            resolution_mode: BuyerResolutionMode::Race,
             target_provider_pubkeys: vec![target_peer_pubkey.to_string()],
             last_provider_pubkey: Some(target_peer_pubkey.to_string()),
             last_feedback_status: None,
@@ -4355,6 +4356,14 @@ mod tests {
             authority_status: Some("accepted".to_string()),
             authority_event_id: Some(request_id.to_string()),
             authority_error_class: None,
+            winning_provider_pubkey: Some(target_peer_pubkey.to_string()),
+            winning_result_event_id: Some(format!("result:{request_id}")),
+            resolution_reason_code: Some(
+                BuyerResolutionReason::FirstValidResult.code().to_string(),
+            ),
+            duplicate_outcomes: Vec::new(),
+            resolution_feedbacks: Vec::new(),
+            observed_buyer_event_ids: Vec::new(),
         }
     }
 
@@ -5745,6 +5754,7 @@ mod tests {
                 request_id: None,
                 request_type: "translate.text".to_string(),
                 payload: "{\"text\":\"hola\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
                 target_provider_pubkeys: vec!["npub1provider".to_string()],
                 skill_scope_id: Some("33400:npub1agent:summarize-text:0.1.0".to_string()),
                 credit_envelope_ref: Some("ac:39242:00000001".to_string()),
@@ -5771,6 +5781,7 @@ mod tests {
                 request_id: Some("req-001".to_string()),
                 request_type: "summarize.text".to_string(),
                 payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
                 target_provider_pubkeys: vec!["11".repeat(32)],
                 skill_scope_id: None,
                 credit_envelope_ref: None,
@@ -5780,13 +5791,14 @@ mod tests {
             })
             .expect("request should queue");
         let provider_pubkey = "22".repeat(32);
-        requests.apply_nip90_buyer_feedback_event(
+        let feedback_action = requests.apply_nip90_buyer_feedback_event(
             request_id.as_str(),
             provider_pubkey.as_str(),
             "feedback-001",
             Some("payment-required"),
             Some("pay invoice"),
         );
+        assert_eq!(feedback_action, None);
         let after_feedback = requests
             .submitted
             .iter()
@@ -5806,12 +5818,13 @@ mod tests {
             Some(provider_pubkey.as_str())
         );
 
-        requests.apply_nip90_buyer_result_event(
+        let result_action = requests.apply_nip90_buyer_result_event(
             request_id.as_str(),
             provider_pubkey.as_str(),
             "result-001",
             Some("success"),
         );
+        assert_eq!(result_action, None);
         let after_result = requests
             .submitted
             .iter()
@@ -5821,6 +5834,18 @@ mod tests {
         assert_eq!(
             after_result.last_result_event_id.as_deref(),
             Some("result-001")
+        );
+        assert_eq!(
+            after_result.winning_provider_pubkey.as_deref(),
+            Some(provider_pubkey.as_str())
+        );
+        assert_eq!(
+            after_result.winning_result_event_id.as_deref(),
+            Some("result-001")
+        );
+        assert_eq!(
+            after_result.resolution_reason_code.as_deref(),
+            Some(BuyerResolutionReason::FirstValidResult.code())
         );
     }
 
@@ -5832,6 +5857,7 @@ mod tests {
                 request_id: Some("req-pay-001".to_string()),
                 request_type: "summarize.text".to_string(),
                 payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
                 target_provider_pubkeys: vec!["11".repeat(32)],
                 skill_scope_id: None,
                 credit_envelope_ref: None,
@@ -5883,6 +5909,168 @@ mod tests {
         assert_eq!(row.payment_sent_at_epoch_seconds, Some(1_762_700_012));
         assert_eq!(row.payment_failed_at_epoch_seconds, None);
         assert_eq!(row.payment_error, None);
+    }
+
+    #[test]
+    fn network_requests_race_mode_flags_late_result_as_unpaid_duplicate() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-race-001".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 14,
+            })
+            .expect("request should queue");
+
+        let winner = "11".repeat(32);
+        let loser = "22".repeat(32);
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                winner.as_str(),
+                "result-winner-001",
+                Some("success"),
+            ),
+            None
+        );
+        let action = requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            loser.as_str(),
+            "result-loser-001",
+            Some("success"),
+        );
+        assert_eq!(
+            action,
+            Some(crate::state::operations::BuyerResolutionAction {
+                request_id: request_id.clone(),
+                provider_pubkey: loser.clone(),
+                reason: BuyerResolutionReason::LateResultUnpaid,
+            })
+        );
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(
+            request.winning_provider_pubkey.as_deref(),
+            Some(winner.as_str())
+        );
+        assert_eq!(request.duplicate_outcomes.len(), 1);
+        assert_eq!(
+            request.duplicate_outcomes[0].reason_code,
+            BuyerResolutionReason::LateResultUnpaid.code()
+        );
+    }
+
+    #[test]
+    fn network_requests_race_mode_flags_late_feedback_as_lost_race() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-race-002".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 15,
+            })
+            .expect("request should queue");
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                "11".repeat(32).as_str(),
+                "result-winner-002",
+                Some("success"),
+            ),
+            None
+        );
+        let loser = "33".repeat(32);
+        let action = requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            loser.as_str(),
+            "feedback-loser-002",
+            Some("processing"),
+            Some("still working"),
+        );
+        assert_eq!(
+            action,
+            Some(crate::state::operations::BuyerResolutionAction {
+                request_id: request_id.clone(),
+                provider_pubkey: loser.clone(),
+                reason: BuyerResolutionReason::LostRace,
+            })
+        );
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(request.duplicate_outcomes.len(), 1);
+        assert_eq!(
+            request.duplicate_outcomes[0].reason_code,
+            BuyerResolutionReason::LostRace.code()
+        );
+    }
+
+    #[test]
+    fn network_requests_ignore_duplicate_buyer_event_ids() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-race-003".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 16,
+            })
+            .expect("request should queue");
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                "11".repeat(32).as_str(),
+                "result-dup-003",
+                Some("success"),
+            ),
+            None
+        );
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                "11".repeat(32).as_str(),
+                "result-dup-003",
+                Some("success"),
+            ),
+            None
+        );
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(request.observed_buyer_event_ids.len(), 1);
+        assert!(request.duplicate_outcomes.is_empty());
     }
 
     #[test]
