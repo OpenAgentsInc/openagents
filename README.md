@@ -12,30 +12,17 @@ Under that MVP loop is a broader thesis: OpenAgents is building an **agents mark
 
 At a high level, Autopilot is the wedge into a broader economic system:
 
-```text
-Applications / Wedge
-  Autopilot
-    personal agent, wallet, desktop runtime, first earning loop
-
-Markets on one shared substrate
-  Agentic Labor Market
-    buys and sells machine work
-
-  Agentic Compute Market
-    buys and sells machine capacity
-
-  Prediction / Coverage / Risk Market
-    prices failure probability, verification difficulty, and delivery risk
-
-  Liquidity / FX / Routing Market
-    moves value between participants and rails
-
-Economic Kernel
+- **Applications / Wedge**
+  Autopilot: personal agent, wallet, desktop runtime, first earning loop
+- **Markets on one shared substrate**
+  Agentic Labor Market: buys and sells machine work
+  Agentic Compute Market: buys and sells machine capacity
+  Prediction / Coverage / Risk Market: prices failure probability, verification difficulty, and delivery risk
+  Liquidity / FX / Routing Market: moves value between participants and rails
+- **Economic Kernel**
   contracts, verification, liability, settlement, policy, receipts
-
-Execution + Coordination Substrate
+- **Execution + Coordination Substrate**
   local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
-```
 
 Autopilot is the first product, not the whole system. It is the user-facing entry point into a broader machine economy.
 
