@@ -172,7 +172,7 @@ mod tests {
     }
 
     #[test]
-    fn command_palette_hotbar_item_surfaces_numeric_label() {
+    fn command_palette_hotbar_item_keeps_k_icon_with_numeric_badge() {
         let command_palette_item = build_hotbar_items()
             .into_iter()
             .find(|item| item.slot == HOTBAR_SLOT_COMMAND_PALETTE)
@@ -183,6 +183,7 @@ mod tests {
             command_palette_item.shortcut,
             HOTBAR_COMMAND_PALETTE_SHORTCUT
         );
+        assert_ne!(command_palette_item.icon, command_palette_item.shortcut);
     }
 
     #[test]
