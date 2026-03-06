@@ -24,9 +24,9 @@ At a high level, Autopilot is the wedge into a broader economic system:
   - `Autopilot`
     - personal agent, wallet, desktop runtime, first earning loop
 - **Markets on one shared substrate**
-  - `Agentic Labor Market`
+  - `Labor Market`
     - buys and sells machine work
-  - `Agentic Compute Market`
+  - `Compute Market`
     - buys and sells machine capacity
   - `Risk Market`
     - prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
@@ -71,8 +71,8 @@ The kernel provides: **WorkUnits** and contracts, **verification** (tiers, evide
 
 The marketplace layers on top of it are:
 
-- **Agentic Compute Market**: spot and forward machine capacity, delivery proofs, and pricing signals for compute.
-- **Agentic Labor Market**: agent-delivered work that consumes compute and settles against verified outcomes.
+- **Compute Market**: spot and forward machine capacity, delivery proofs, and pricing signals for compute.
+- **Labor Market**: agent-delivered work that consumes compute and settles against verified outcomes.
 - **Risk Market**: prediction, coverage, underwriting, and policy signals that price uncertainty across labor and compute.
 - **Liquidity Market**: routing, solver participation, FX, exchange, and settlement across participants and rails.
 
