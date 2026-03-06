@@ -32,6 +32,20 @@ This is an extend-before-rewrite plan. The repo already retains core protocol mo
 
 Do not build v1 on `NIP-EE`. It is explicitly marked unrecommended and is useful here mainly as a warning: large private E2EE groups are hard, and we should keep a seam for a future Marmot/MLS-class transport without making this draft depend on it.
 
+### Transport modes
+
+The implementation should explicitly separate room authority from message transport so we can support multiple room types over time:
+
+- managed public or semi-private server channels: `NIP-29` + `NIP-28`
+- private DMs and small side rooms: `NIP-17` + `NIP-44` + `NIP-59`
+- future large-group E2EE rooms: Marmot or another successor to `NIP-EE` / MLS
+
+That means the desktop data model should not assume every room is backed by the same event kind family. It should assume:
+
+- one room identity and membership model
+- one transport mode per room
+- one projection pipeline that can ingest different canonical event envelopes
+
 ## Why This Stack
 
 ### Why not only NIP-28
@@ -164,6 +178,35 @@ Use recipient `10050` relay lists for delivery, and keep these chats clearly sep
 Practical guardrail:
 
 - if a chat needs roles, server moderation, or starts growing into a real shared room, move it into a `NIP-29` server channel instead of stretching `NIP-17`
+
+### 5.5 Optional E2EE group rooms
+
+We should explicitly preserve a future option for end-to-end encrypted group chat rooms.
+
+Current posture:
+
+- do not ship v1 group chat on `NIP-EE`
+- treat `NIP-EE` as useful background material only
+- treat Marmot as the current successor path to evaluate for large-group E2EE
+
+Product rule:
+
+- public and moderated server channels should still work without E2EE
+- E2EE group rooms should be an optional room type, not a hidden protocol switch under every channel
+- the room list and projection model should be able to distinguish:
+  - standard server channel
+  - DM / side room
+  - secure group room
+
+Engineering rule:
+
+- do not tie server/channel UX to `kind 42` only
+- keep a clean adapter boundary where a future Marmot/MLS room can provide:
+  - membership snapshots
+  - room metadata
+  - message timeline items
+  - reaction and reply references where supported
+  - local decrypt / failure states
 
 ### 6. Reactions and moderation
 
@@ -426,6 +469,307 @@ Do not move OpenAgents chat product logic into `wgpui`.
 - typing indicators
 - synced read cursors
 - faster cold start and search
+
+### Phase 6: optional secure-group transport spike
+
+- evaluate Marmot as the successor path to `NIP-EE`
+- decide whether secure rooms are:
+  - secure channels inside a managed server
+  - standalone secure rooms linked from a server
+- define device key, membership, welcome, and recovery UX
+- prove replay-safe local state storage and rekey handling
+
+## Suggested GitHub Issue Backlog
+
+The list below is the initial issue set needed to build this plan out fully. The titles are phrased so they can be opened directly as GitHub issues.
+
+### 1. Define OpenAgents managed-chat event contract
+
+Description:
+
+- Specify the exact hybrid contract for `NIP-29` groups plus `NIP-28` channels/messages.
+- Define required tags, optional tags, and OpenAgents-specific extension tags.
+- Lock down how `h`, `e`, `p`, `subject`, ordering, category hints, and channel type hints are represented.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/01.md`
+- `/Users/christopherdavid/code/nips/10.md`
+- `/Users/christopherdavid/code/nips/28.md`
+- `/Users/christopherdavid/code/nips/29.md`
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
+
+### 2. Add NIP-29 protocol helpers to crates/nostr/core
+
+Description:
+
+- Implement reusable builders/parsers/validators for group metadata, roles, membership, join/leave, and moderation events.
+- Keep app-specific product behavior out of the crate.
+- Add fixtures and tests for serialization and tag parsing.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/29.md`
+- `/Users/christopherdavid/code/openagents/docs/OWNERSHIP.md`
+- `/Users/christopherdavid/code/openagents/crates/nostr/core/src/nip28.rs`
+- `/Users/christopherdavid/code/openagents/crates/nostr/core/src/nip17.rs`
+
+### 3. Add hybrid channel helpers for NIP-28-in-NIP-29 rooms
+
+Description:
+
+- Extend the Nostr crate layer with helpers for channel create/update/message events that also carry group context.
+- Encode reply threading and mention rules consistently.
+- Validate that channel events can be projected deterministically across relays.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/28.md`
+- `/Users/christopherdavid/code/nips/29.md`
+- `/Users/christopherdavid/code/nips/10.md`
+- `/Users/christopherdavid/code/openagents/crates/nostr/core/src/nip28.rs`
+
+### 4. Implement managed group relay support in Nexus-adjacent infrastructure
+
+Description:
+
+- Decide whether Nexus directly owns managed group relay behavior or fronts a dedicated relay role.
+- Support group metadata reads, restricted writes, role enforcement, join requests, leave requests, and moderation.
+- Ensure relay-enforced truth, not client-enforced pretend moderation.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/29.md`
+- `/Users/christopherdavid/code/nips/42.md`
+- `/Users/christopherdavid/code/openagents/docs/MVP.md`
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
+
+### 5. Implement relay AUTH flow for restricted group chat reads and writes
+
+Description:
+
+- Add end-to-end `NIP-42` auth handling for chat subscriptions and message publishing.
+- Surface auth-required and restricted relay failures clearly in the desktop UI.
+- Reuse the existing relay client/auth primitives instead of inventing a chat-only auth path.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/42.md`
+- `/Users/christopherdavid/code/openagents/crates/nostr/client/src/relay.rs`
+- `/Users/christopherdavid/code/openagents/crates/nostr/core/src/nip42.rs`
+
+### 6. Build desktop room list, channel rail, and transcript shell
+
+Description:
+
+- Add the Discord-style shell in `apps/autopilot-desktop`: server/workspace rail, channel rail, transcript pane, header, and composer slot.
+- Keep the UI WGPUI-native and aligned with existing pane architecture.
+- Match the best interaction patterns from Primal without copying its visual style.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/primal/primal-web-app/src/pages/DirectMessages.tsx`
+- `/Users/christopherdavid/code/primal/primal-web-app/src/pages/DirectMessages.module.scss`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/chat.rs`
+- `/Users/christopherdavid/code/openagents/docs/OWNERSHIP.md`
+
+### 7. Implement local chat projection store and replay-safe rebuild
+
+Description:
+
+- Build the canonical local projection for servers, channels, messages, reply trees, reactions, unread counters, and member roster cache.
+- Make restart/reconnect rebuild deterministic from relay events plus local private state.
+- Do not let arrival order become truth.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/01.md`
+- `/Users/christopherdavid/code/nips/77.md`
+- `/Users/christopherdavid/code/openagents/docs/MVP.md`
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
+
+### 8. Add read-only managed group chat browsing
+
+Description:
+
+- Support joining or opening a managed server, listing channels, backfilling channel history, and rendering read-only transcripts.
+- This is the minimum product slice for validating the event model and relay behavior before sending is enabled.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/28.md`
+- `/Users/christopherdavid/code/nips/29.md`
+- `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessageConversation.tsx`
+
+### 9. Implement composer, send, local echo, ack, retry, and failure states
+
+Description:
+
+- Add message composition, optimistic local echo, relay acceptance tracking, resend paths, and explicit failed-send states.
+- Preserve truthful status instead of silently assuming publish success.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/01.md`
+- `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessagesComposer.tsx`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/chat.rs`
+
+### 10. Implement threaded replies, mentions, and reactions
+
+Description:
+
+- Support channel-root messages, threaded replies, mention tags, notification hooks, and `NIP-25` reactions.
+- Keep message threading deterministic and channel-local.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/10.md`
+- `/Users/christopherdavid/code/nips/25.md`
+- `/Users/christopherdavid/code/nips/28.md`
+- `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessageContent.tsx`
+
+### 11. Define and implement channel layout metadata
+
+Description:
+
+- Decide how category grouping, channel ordering, room types, and collapsed defaults are stored.
+- Prefer standard tags where possible.
+- Fall back to one narrow `NIP-78` app-data document only if the standard channel metadata becomes too awkward.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/28.md`
+- `/Users/christopherdavid/code/nips/78.md`
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
+
+### 12. Implement DMs and small private side rooms with NIP-17
+
+Description:
+
+- Add 1:1 DMs and small encrypted side rooms using `NIP-17`, `NIP-44`, and `NIP-59`.
+- Reuse existing Nostr identity and recipient DM relay lists.
+- Keep this room type visually distinct from managed server channels.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/17.md`
+- `/Users/christopherdavid/code/nips/44.md`
+- `/Users/christopherdavid/code/nips/59.md`
+- `/Users/christopherdavid/code/nips/51.md`
+- `/Users/christopherdavid/code/openagents/crates/nostr/core/src/nip17.rs`
+
+### 13. Add rich message rendering for media, links, invoices, and payment objects
+
+Description:
+
+- Render embedded media, link previews, note references where relevant, and wallet-related message objects such as invoices and payment requests.
+- Keep rendering deterministic and avoid side effects in the parser layer.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessageParsedContent.tsx`
+- `/Users/christopherdavid/code/primal/primal-web-app/src/components/DirectMessages/DirectMessageContent.tsx`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/wallet.rs`
+
+### 14. Implement unread state, read cursors, and notification counts
+
+Description:
+
+- Add per-room unread counts, last-read tracking, mention counts, and navigation badges.
+- Decide which parts remain local-only and which parts sync privately.
+- Keep unread rebuildable after reconnect and replay.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/primal/primal-web-app/src/components/NavMenu/NavMenu.tsx`
+- `/Users/christopherdavid/code/primal/primal-web-app/src/components/NavLink/NavLink.tsx`
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
+
+### 15. Implement member list, roles, and server moderation tools
+
+Description:
+
+- Surface group admins, members, roles, invite/join/leave state, message deletion, mute/remove-user controls, and metadata editing affordances.
+- Reflect actual relay policy and server state, not speculative UI state.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/29.md`
+- `/Users/christopherdavid/code/nips/28.md`
+- `/Users/christopherdavid/code/openagents/docs/MVP.md`
+
+### 16. Add gap recovery and efficient sync with NIP-77 fallback behavior
+
+Description:
+
+- Use `NIP-77` negentropy where supported for backfill and reconciliation.
+- Fall back to normal `REQ` / `EOSE` flows when not supported.
+- Prove that the projection stays deterministic in both modes.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/77.md`
+- `/Users/christopherdavid/code/openagents/crates/nostr/core/src/nip77/mod.rs`
+- `/Users/christopherdavid/code/openagents/crates/nostr/client/src/subscription.rs`
+
+### 17. Add chat-driven wallet actions and explicit payment status
+
+Description:
+
+- Let users open wallet actions from messages: pay invoice, request invoice, copy address, inspect payment status.
+- Never imply settlement success before Spark confirms it.
+- Reuse the current wallet primitives and desktop wallet panes.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/openagents/crates/spark/src/lib.rs`
+- `/Users/christopherdavid/code/openagents/apps/autopilot-desktop/src/panes/wallet.rs`
+- `/Users/christopherdavid/code/openagents/docs/MVP.md`
+
+### 18. Add presence, typing, and search acceleration behind an optional Spacetime adapter
+
+Description:
+
+- Introduce Spacetime only for derived accelerators such as presence, typing indicators, read cursors, and faster search.
+- Make sure deleting Spacetime state does not lose canonical chat history.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
+- `/Users/christopherdavid/code/openagents/docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`
+
+### 19. Evaluate Marmot / MLS secure-group rooms as an optional room type
+
+Description:
+
+- Spike end-to-end encrypted large-group chat as a future room type.
+- Treat `NIP-EE` as deprecated background material and Marmot as the current successor path to evaluate.
+- Answer the product and engineering questions:
+  - secure channels inside a managed server vs standalone secure rooms
+  - device key handling
+  - welcome / invite flow
+  - rekeying
+  - local encrypted state storage
+  - recovery and multi-device behavior
+
+Supporting material:
+
+- `/Users/christopherdavid/code/nips/EE.md`
+- `/Users/christopherdavid/code/pylon/docs/nips/EE.md`
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
+
+### 20. Build end-to-end regression coverage for managed chat, DMs, and optional secure rooms
+
+Description:
+
+- Add protocol fixtures, relay-behavior tests, projection rebuild tests, UI interaction tests, and wallet-in-chat tests.
+- Include reconnect, duplicate relay delivery, out-of-order events, auth failures, moderation events, DM unwrap failures, and future secure-room adapters.
+
+Supporting material:
+
+- `/Users/christopherdavid/code/openagents/crates/nostr/core/tests`
+- `/Users/christopherdavid/code/openagents/crates/nostr/client/tests`
+- `/Users/christopherdavid/code/openagents/docs/plans/nostr-group-chat.md`
 
 ## Main Risks And Open Questions
 
