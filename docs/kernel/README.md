@@ -29,10 +29,10 @@ At a high level, Autopilot is the wedge into a broader economic system:
     - buys and sells machine work
   - `Agentic Compute Market`
     - buys and sells machine capacity
-  - `Prediction / Coverage / Risk Market`
-    - prices failure probability, verification difficulty, and delivery risk
-  - `Liquidity / FX / Routing Market`
-    - moves value between participants and rails
+  - `Risk Market`
+    - prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
+  - `Liquidity Market`
+    - routing, FX, and value movement between participants and rails
 - **Economic Kernel**
   - contracts, verification, liability, settlement, policy, receipts
 - **Execution + Coordination Substrate**
@@ -100,7 +100,7 @@ In other words:
 * labor produces outcomes
 * the kernel turns outcomes into verified economic events
 
-### 4. Prediction / Coverage / Risk Market
+### 4. Risk Market
 
 This is the information and underwriting layer.
 
@@ -123,7 +123,7 @@ In practice this can appear as:
 This layer does not replace verification.
 It helps decide how expensive verification, insurance, and risk capital should be.
 
-### 5. Liquidity / FX / Routing Market
+### 5. Liquidity Market
 
 This is the value-movement layer.
 
@@ -143,8 +143,8 @@ They also need a deterministic way to move value across payment systems and mark
 The dependency order is:
 
 ```text
-Economic Kernel -> Agentic Compute Market -> Agentic Labor Market -> Prediction / Coverage / Risk overlays
-               -> Liquidity / FX / Routing overlays
+Economic Kernel -> Agentic Compute Market -> Agentic Labor Market -> Risk overlays
+               -> Liquidity overlays
 ```
 
 That does not mean value only flows upward.

@@ -28,10 +28,10 @@ At a high level, Autopilot is the wedge into a broader economic system:
     - buys and sells machine work
   - `Agentic Compute Market`
     - buys and sells machine capacity
-  - `Prediction / Coverage / Risk Market`
-    - prices failure probability, verification difficulty, and delivery risk
-  - `Liquidity / FX / Routing Market`
-    - moves value between participants and rails
+  - `Risk Market`
+    - prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
+  - `Liquidity Market`
+    - routing, FX, and value movement between participants and rails
 - **Economic Kernel**
   - contracts, verification, liability, settlement, policy, receipts
 - **Execution + Coordination Substrate**
@@ -41,7 +41,7 @@ Autopilot is the first product. It is the user-facing entry point into a broader
 
 These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
 
-The labor market turns compute into completed work. The compute market allocates scarce machine capacity. The prediction, coverage, and risk layer prices the probability that outcomes will succeed or fail before verification completes. The liquidity and routing layer moves value through the system. Together, these markets form a programmable economic substrate for machine work.
+The labor market turns compute into completed work. The compute market allocates scarce machine capacity. The risk layer prices the probability that outcomes will succeed or fail before verification completes. The liquidity layer moves value through the system. Together, these markets form a programmable economic substrate for machine work.
 
 In effect, the system treats uncertainty itself as a tradable signal. Market participants can post collateral backing beliefs about outcomes, underwrite warranties, insure compute delivery, or hedge future demand. The resulting prices feed back into verification policy, capital requirements, and autonomy throttles across the system.
 
@@ -73,8 +73,8 @@ The marketplace layers on top of it are:
 
 - **Agentic Compute Market**: spot and forward machine capacity, delivery proofs, and pricing signals for compute.
 - **Agentic Labor Market**: agent-delivered work that consumes compute and settles against verified outcomes.
-- **Prediction / Coverage / Risk Market**: coverage, underwriting, prediction, and policy signals that price uncertainty across labor and compute.
-- **Liquidity / FX / Routing Market**: value movement, solver participation, exchange, and settlement across participants and rails.
+- **Risk Market**: prediction, coverage, underwriting, and policy signals that price uncertainty across labor and compute.
+- **Liquidity Market**: routing, solver participation, FX, exchange, and settlement across participants and rails.
 
 Prediction and risk markets are used to price uncertainty across the system. Participants can post collateral backing beliefs about outcomes, underwrite warranties, or insure compute delivery. The resulting market signals — such as implied failure probability, calibration, and coverage depth — feed directly into policy decisions about verification tiers, collateral requirements, envelope limits, and autonomy throttles.
 
