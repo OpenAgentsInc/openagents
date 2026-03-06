@@ -1,5 +1,8 @@
+mod economy;
+
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 
 use axum::extract::{Path, State};
@@ -9,12 +12,17 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use serde::{Deserialize, Serialize};
 
+use crate::economy::{
+    AuthorityReceiptContext, PublicRuntimeSnapshot, PublicStatsSnapshot, ReceiptLedger,
+};
+
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";
 const ENV_SESSION_TTL_SECONDS: &str = "NEXUS_CONTROL_SESSION_TTL_SECONDS";
 const ENV_SYNC_TOKEN_TTL_SECONDS: &str = "NEXUS_CONTROL_SYNC_TOKEN_TTL_SECONDS";
 const ENV_SYNC_TOKEN_REFRESH_AFTER_SECONDS: &str = "NEXUS_CONTROL_SYNC_TOKEN_REFRESH_AFTER_SECONDS";
 const ENV_SYNC_STREAM_GRANTS: &str = "NEXUS_CONTROL_SYNC_STREAM_GRANTS";
 const ENV_HOSTED_NEXUS_RELAY_URL: &str = "NEXUS_CONTROL_HOSTED_NEXUS_RELAY_URL";
+const ENV_RECEIPT_LOG_PATH: &str = "NEXUS_CONTROL_RECEIPT_LOG_PATH";
 const ENV_STARTER_DEMAND_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_STARTER_DEMAND_BUDGET_CAP_SATS";
 const ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
@@ -55,6 +63,7 @@ pub struct ServiceConfig {
     pub sync_token_refresh_after_seconds: u64,
     pub sync_stream_grants: Vec<String>,
     pub hosted_nexus_relay_url: String,
+    pub receipt_log_path: Option<PathBuf>,
     pub starter_demand_budget_cap_sats: u64,
     pub starter_demand_dispatch_interval_seconds: u64,
     pub starter_demand_request_ttl_seconds: u64,
@@ -114,6 +123,11 @@ impl ServiceConfig {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| DEFAULT_HOSTED_NEXUS_RELAY_URL.to_string());
+        let receipt_log_path = std::env::var(ENV_RECEIPT_LOG_PATH)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
         let starter_demand_budget_cap_sats = parse_u64_env(
             ENV_STARTER_DEMAND_BUDGET_CAP_SATS,
             DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS,
@@ -182,6 +196,7 @@ impl ServiceConfig {
             sync_token_refresh_after_seconds,
             sync_stream_grants,
             hosted_nexus_relay_url,
+            receipt_log_path,
             starter_demand_budget_cap_sats,
             starter_demand_dispatch_interval_seconds,
             starter_demand_request_ttl_seconds,
@@ -370,11 +385,23 @@ struct AppState {
     store: Arc<RwLock<ControlStore>>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug)]
 struct ControlStore {
     sessions_by_access_token: HashMap<String, DesktopSessionRecord>,
     sync_tokens: HashMap<String, SyncTokenRecord>,
     starter_demand: StarterDemandState,
+    economy: ReceiptLedger,
+}
+
+impl ControlStore {
+    fn new(config: &ServiceConfig) -> Self {
+        Self {
+            sessions_by_access_token: HashMap::new(),
+            sync_tokens: HashMap::new(),
+            starter_demand: StarterDemandState::default(),
+            economy: ReceiptLedger::new(config.receipt_log_path.clone()),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -455,6 +482,12 @@ struct StarterDemandOfferRecord {
     failure_reason: Option<String>,
 }
 
+#[derive(Debug, Clone)]
+struct StarterDemandOfferEvent {
+    session_id: String,
+    offer: StarterDemandOfferRecord,
+}
+
 #[derive(Debug, Clone, Copy)]
 struct StarterDemandTemplate {
     capability: &'static str,
@@ -507,11 +540,12 @@ impl IntoResponse for ApiError {
 
 pub fn build_router(config: ServiceConfig) -> Router {
     let state = AppState {
+        store: Arc::new(RwLock::new(ControlStore::new(&config))),
         config,
-        store: Arc::new(RwLock::new(ControlStore::default())),
     };
     Router::new()
         .route("/healthz", get(healthz))
+        .route("/stats", get(public_stats))
         .route("/api/session/desktop", post(create_desktop_session))
         .route("/api/session/me", get(session_me))
         .route("/api/sync/token", post(create_sync_token))
@@ -548,6 +582,24 @@ async fn healthz() -> Json<HealthResponse> {
         ok: true,
         service: "nexus-control".to_string(),
     })
+}
+
+async fn public_stats(
+    State(state): State<AppState>,
+) -> Result<Json<PublicStatsSnapshot>, ApiError> {
+    let now = now_unix_ms();
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let expired_events =
+        prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    record_expired_offer_receipts(&mut store, expired_events, now);
+    let stats = store
+        .economy
+        .snapshot(&runtime_snapshot(&state.config, &store), now);
+    Ok(Json(stats))
 }
 
 async fn create_desktop_session(
@@ -587,6 +639,11 @@ async fn create_desktop_session(
     store
         .sessions_by_access_token
         .insert(access_token.clone(), record.clone());
+    store.economy.record(
+        "desktop_session.created",
+        now,
+        desktop_session_receipt_context(&record),
+    );
     drop(store);
 
     Ok(Json(DesktopSessionResponse {
@@ -635,11 +692,13 @@ async fn create_sync_token(
     let stream_grants = state.config.sync_stream_grants.clone();
     let expires_at_unix_ms =
         now.saturating_add(state.config.sync_token_ttl_seconds.saturating_mul(1_000));
+    let session_id = session.session_id.clone();
+    let account_id = session.account_id.clone();
     let record = SyncTokenRecord {
         token: token.clone(),
         rotation_id: rotation_id.clone(),
-        session_id: session.session_id,
-        account_id: session.account_id,
+        session_id,
+        account_id,
         scopes,
         stream_grants,
         issued_at_unix_ms: now,
@@ -652,6 +711,11 @@ async fn create_sync_token(
         reason: "session_store_poisoned".to_string(),
     })?;
     store.sync_tokens.insert(token.clone(), record.clone());
+    store.economy.record(
+        "sync_token.issued",
+        now,
+        sync_token_receipt_context(&session, &record),
+    );
     drop(store);
 
     Ok(Json(SyncTokenResponse {
@@ -678,6 +742,7 @@ async fn poll_starter_demand(
     Json(request): Json<StarterDemandPollRequest>,
 ) -> Result<Json<StarterDemandPollResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
     let relay_url = normalize_optional_field(request.primary_relay_url.as_deref());
     let provider_nostr_pubkey = normalize_optional_field(request.provider_nostr_pubkey.as_deref());
     let mut response = StarterDemandPollResponse {
@@ -697,36 +762,74 @@ async fn poll_starter_demand(
     };
 
     if relay_url.as_deref() != Some(state.config.hosted_nexus_relay_url.as_str()) {
-        let store = state.store.read().map_err(|_| ApiError {
+        let mut store = state.store.write().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
         response.budget_allocated_sats = store.starter_demand.budget_allocated_sats;
-        response.reason = Some("starter_demand_requires_openagents_hosted_nexus".to_string());
+        let reason = "starter_demand_requires_openagents_hosted_nexus".to_string();
+        response.reason = Some(reason.clone());
+        store.economy.record(
+            "starter_demand.ineligible",
+            now,
+            starter_offer_receipt_context(
+                Some(&session),
+                None,
+                Some(reason.as_str()),
+                relay_url.as_deref(),
+                None,
+            ),
+        );
         return Ok(Json(response));
     }
     if let Some(reason) =
         starter_demand_provider_proof_reason(&session, provider_nostr_pubkey.as_deref())
     {
-        let store = state.store.read().map_err(|_| ApiError {
+        let mut store = state.store.write().map_err(|_| ApiError {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             error: "internal_error",
             reason: "session_store_poisoned".to_string(),
         })?;
         response.budget_allocated_sats = store.starter_demand.budget_allocated_sats;
-        response.reason = Some(reason);
+        response.reason = Some(reason.clone());
+        store.economy.record(
+            "starter_demand.ineligible",
+            now,
+            starter_offer_receipt_context(
+                Some(&session),
+                None,
+                Some(reason.as_str()),
+                relay_url.as_deref(),
+                None,
+            ),
+        );
         return Ok(Json(response));
     }
 
-    let now = now_unix_ms();
     let mut store = state.store.write().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
-    maybe_dispatch_starter_offer(&mut store.starter_demand, &state.config, &session, now);
+    let expired_events =
+        prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    record_expired_offer_receipts(&mut store, expired_events, now);
+    let dispatched_offer =
+        maybe_dispatch_starter_offer(&mut store.starter_demand, &state.config, &session, now);
+    if let Some(offer) = dispatched_offer {
+        store.economy.record(
+            "starter_offer.dispatched",
+            now,
+            starter_offer_receipt_context(
+                Some(&session),
+                Some(&offer),
+                None,
+                relay_url.as_deref(),
+                None,
+            ),
+        );
+    }
     response.eligible = true;
     response.budget_allocated_sats = store.starter_demand.budget_allocated_sats;
     response.offers = store
@@ -771,79 +874,134 @@ async fn ack_starter_demand_offer(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
-    let offers = store
-        .starter_demand
-        .offers_by_session
-        .get_mut(session.session_id.as_str())
-        .ok_or_else(|| ApiError {
-            status: StatusCode::NOT_FOUND,
-            error: "not_found",
-            reason: "starter_offer_not_found".to_string(),
-        })?;
-    let offer = offers
-        .iter_mut()
-        .find(|offer| offer.request_id == request_id)
-        .ok_or_else(|| ApiError {
-            status: StatusCode::NOT_FOUND,
-            error: "not_found",
-            reason: "starter_offer_not_found".to_string(),
-        })?;
+    let expired_events =
+        prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    record_expired_offer_receipts(&mut store, expired_events, now);
+    let mut started_receipt_offer = None;
+    let mut expired_offer = None;
+    let mut released_budget_sats = 0u64;
+    let response = {
+        let offers = store
+            .starter_demand
+            .offers_by_session
+            .get_mut(session.session_id.as_str())
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
+        let offer = offers
+            .iter_mut()
+            .find(|offer| offer.request_id == request_id)
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
 
-    if offer.status == StarterOfferStatus::Offered {
-        let start_confirm_by_unix_ms = offer
-            .start_confirm_by_unix_ms
-            .unwrap_or(offer.created_at_unix_ms);
-        if now > start_confirm_by_unix_ms {
-            let released_budget_sats =
-                expire_offer(offer, now, "starter_offer_start_confirm_missed");
-            store.starter_demand.budget_allocated_sats = store
-                .starter_demand
-                .budget_allocated_sats
-                .saturating_sub(released_budget_sats);
+        if offer.status == StarterOfferStatus::Offered {
+            let start_confirm_by_unix_ms = offer
+                .start_confirm_by_unix_ms
+                .unwrap_or(offer.created_at_unix_ms);
+            if now > start_confirm_by_unix_ms {
+                released_budget_sats =
+                    expire_offer(offer, now, "starter_offer_start_confirm_missed");
+                expired_offer = Some(offer.clone());
+                None
+            } else {
+                let heartbeat_timeout_ms = state
+                    .config
+                    .starter_demand_heartbeat_timeout_seconds
+                    .saturating_mul(1_000);
+                let execution_expires_at_unix_ms = now.saturating_add(
+                    state
+                        .config
+                        .starter_demand_request_ttl_seconds
+                        .saturating_mul(1_000),
+                );
+                offer.status = StarterOfferStatus::Running;
+                offer.execution_started_at_unix_ms = Some(now);
+                offer.execution_expires_at_unix_ms = Some(execution_expires_at_unix_ms);
+                offer.last_heartbeat_at_unix_ms = Some(now);
+                offer.next_heartbeat_due_at_unix_ms =
+                    Some(now.saturating_add(heartbeat_timeout_ms));
+                offer.expires_at_unix_ms = execution_expires_at_unix_ms;
+                started_receipt_offer = Some(offer.clone());
+                Some(StarterDemandAckResponse {
+                    request_id: offer.request_id.clone(),
+                    status: offer.status.label().to_string(),
+                    started_at_unix_ms: offer.execution_started_at_unix_ms.unwrap_or(now),
+                    execution_expires_at_unix_ms: offer.execution_expires_at_unix_ms.unwrap_or(now),
+                    last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms.unwrap_or(now),
+                    next_heartbeat_due_at_unix_ms: offer
+                        .next_heartbeat_due_at_unix_ms
+                        .unwrap_or(now),
+                    heartbeat_timeout_seconds: state
+                        .config
+                        .starter_demand_heartbeat_timeout_seconds,
+                    heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(
+                        &state.config,
+                    ),
+                })
+            }
+        } else if offer.status != StarterOfferStatus::Running {
             return Err(ApiError {
                 status: StatusCode::CONFLICT,
                 error: "conflict",
-                reason: "starter_offer_start_confirm_missed".to_string(),
+                reason: format!("starter_offer_not_ackable status={}", offer.status.label()),
             });
+        } else {
+            Some(StarterDemandAckResponse {
+                request_id: offer.request_id.clone(),
+                status: offer.status.label().to_string(),
+                started_at_unix_ms: offer.execution_started_at_unix_ms.unwrap_or(now),
+                execution_expires_at_unix_ms: offer.execution_expires_at_unix_ms.unwrap_or(now),
+                last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms.unwrap_or(now),
+                next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms.unwrap_or(now),
+                heartbeat_timeout_seconds: state.config.starter_demand_heartbeat_timeout_seconds,
+                heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(
+                    &state.config,
+                ),
+            })
         }
+    };
 
-        let heartbeat_timeout_ms = state
-            .config
-            .starter_demand_heartbeat_timeout_seconds
-            .saturating_mul(1_000);
-        let execution_expires_at_unix_ms = now.saturating_add(
-            state
-                .config
-                .starter_demand_request_ttl_seconds
-                .saturating_mul(1_000),
+    if let Some(expired_offer) = expired_offer {
+        store.starter_demand.budget_allocated_sats = store
+            .starter_demand
+            .budget_allocated_sats
+            .saturating_sub(released_budget_sats);
+        store.economy.record(
+            "starter_offer.expired",
+            now,
+            starter_offer_receipt_context(
+                Some(&session),
+                Some(&expired_offer),
+                expired_offer.failure_reason.as_deref(),
+                None,
+                None,
+            ),
         );
-        offer.status = StarterOfferStatus::Running;
-        offer.execution_started_at_unix_ms = Some(now);
-        offer.execution_expires_at_unix_ms = Some(execution_expires_at_unix_ms);
-        offer.last_heartbeat_at_unix_ms = Some(now);
-        offer.next_heartbeat_due_at_unix_ms = Some(now.saturating_add(heartbeat_timeout_ms));
-        offer.expires_at_unix_ms = execution_expires_at_unix_ms;
-    }
-
-    if offer.status != StarterOfferStatus::Running {
         return Err(ApiError {
             status: StatusCode::CONFLICT,
             error: "conflict",
-            reason: format!("starter_offer_not_ackable status={}", offer.status.label()),
+            reason: "starter_offer_start_confirm_missed".to_string(),
         });
     }
 
-    Ok(Json(StarterDemandAckResponse {
-        request_id: offer.request_id.clone(),
-        status: offer.status.label().to_string(),
-        started_at_unix_ms: offer.execution_started_at_unix_ms.unwrap_or(now),
-        execution_expires_at_unix_ms: offer.execution_expires_at_unix_ms.unwrap_or(now),
-        last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms.unwrap_or(now),
-        next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms.unwrap_or(now),
-        heartbeat_timeout_seconds: state.config.starter_demand_heartbeat_timeout_seconds,
-        heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(&state.config),
-    }))
+    if let Some(started_offer) = started_receipt_offer {
+        store.economy.record(
+            "starter_offer.started",
+            now,
+            starter_offer_receipt_context(Some(&session), Some(&started_offer), None, None, None),
+        );
+    }
+
+    Ok(Json(response.ok_or_else(|| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "starter_offer_ack_response_missing".to_string(),
+    })?))
 }
 
 async fn heartbeat_starter_demand_offer(
@@ -871,75 +1029,111 @@ async fn heartbeat_starter_demand_offer(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
-    let offers = store
-        .starter_demand
-        .offers_by_session
-        .get_mut(session.session_id.as_str())
-        .ok_or_else(|| ApiError {
-            status: StatusCode::NOT_FOUND,
-            error: "not_found",
-            reason: "starter_offer_not_found".to_string(),
-        })?;
-    let offer = offers
-        .iter_mut()
-        .find(|offer| offer.request_id == request_id)
-        .ok_or_else(|| ApiError {
-            status: StatusCode::NOT_FOUND,
-            error: "not_found",
-            reason: "starter_offer_not_found".to_string(),
-        })?;
+    let expired_events =
+        prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    record_expired_offer_receipts(&mut store, expired_events, now);
+    let mut expired_offer = None;
+    let mut released_budget_sats = 0u64;
+    let mut heartbeat_offer = None;
+    let mut heartbeat_error_reason = None;
+    let response = {
+        let offers = store
+            .starter_demand
+            .offers_by_session
+            .get_mut(session.session_id.as_str())
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
+        let offer = offers
+            .iter_mut()
+            .find(|offer| offer.request_id == request_id)
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
 
-    if offer.status != StarterOfferStatus::Running {
-        return Err(ApiError {
-            status: StatusCode::CONFLICT,
-            error: "conflict",
-            reason: format!("starter_offer_not_running status={}", offer.status.label()),
-        });
-    }
+        if offer.status != StarterOfferStatus::Running {
+            return Err(ApiError {
+                status: StatusCode::CONFLICT,
+                error: "conflict",
+                reason: format!("starter_offer_not_running status={}", offer.status.label()),
+            });
+        }
 
-    let execution_expires_at_unix_ms = offer.execution_expires_at_unix_ms.unwrap_or(now);
-    let next_heartbeat_due_at_unix_ms = offer.next_heartbeat_due_at_unix_ms.unwrap_or(now);
-    if now > execution_expires_at_unix_ms {
-        let released_budget_sats = expire_offer(offer, now, "starter_offer_execution_expired");
+        let execution_expires_at_unix_ms = offer.execution_expires_at_unix_ms.unwrap_or(now);
+        let next_heartbeat_due_at_unix_ms = offer.next_heartbeat_due_at_unix_ms.unwrap_or(now);
+        if now > execution_expires_at_unix_ms {
+            released_budget_sats = expire_offer(offer, now, "starter_offer_execution_expired");
+            expired_offer = Some(offer.clone());
+            heartbeat_error_reason = Some("starter_offer_execution_expired".to_string());
+            None
+        } else if now > next_heartbeat_due_at_unix_ms {
+            released_budget_sats = expire_offer(offer, now, "starter_offer_heartbeat_missed");
+            expired_offer = Some(offer.clone());
+            heartbeat_error_reason = Some("starter_offer_heartbeat_missed".to_string());
+            None
+        } else {
+            let heartbeat_timeout_ms = state
+                .config
+                .starter_demand_heartbeat_timeout_seconds
+                .saturating_mul(1_000);
+            offer.last_heartbeat_at_unix_ms = Some(now);
+            offer.next_heartbeat_due_at_unix_ms = Some(now.saturating_add(heartbeat_timeout_ms));
+            heartbeat_offer = Some(offer.clone());
+            Some(StarterDemandHeartbeatResponse {
+                request_id: offer.request_id.clone(),
+                status: offer.status.label().to_string(),
+                last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms.unwrap_or(now),
+                next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms.unwrap_or(now),
+                execution_expires_at_unix_ms,
+                heartbeat_timeout_seconds: state.config.starter_demand_heartbeat_timeout_seconds,
+                heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(
+                    &state.config,
+                ),
+            })
+        }
+    };
+
+    if let Some(expired_offer) = expired_offer {
         store.starter_demand.budget_allocated_sats = store
             .starter_demand
             .budget_allocated_sats
             .saturating_sub(released_budget_sats);
+        store.economy.record(
+            "starter_offer.expired",
+            now,
+            starter_offer_receipt_context(
+                Some(&session),
+                Some(&expired_offer),
+                expired_offer.failure_reason.as_deref(),
+                None,
+                None,
+            ),
+        );
         return Err(ApiError {
             status: StatusCode::CONFLICT,
             error: "conflict",
-            reason: "starter_offer_execution_expired".to_string(),
-        });
-    }
-    if now > next_heartbeat_due_at_unix_ms {
-        let released_budget_sats = expire_offer(offer, now, "starter_offer_heartbeat_missed");
-        store.starter_demand.budget_allocated_sats = store
-            .starter_demand
-            .budget_allocated_sats
-            .saturating_sub(released_budget_sats);
-        return Err(ApiError {
-            status: StatusCode::CONFLICT,
-            error: "conflict",
-            reason: "starter_offer_heartbeat_missed".to_string(),
+            reason: heartbeat_error_reason
+                .unwrap_or_else(|| "starter_offer_heartbeat_conflict".to_string()),
         });
     }
 
-    let heartbeat_timeout_ms = state
-        .config
-        .starter_demand_heartbeat_timeout_seconds
-        .saturating_mul(1_000);
-    offer.last_heartbeat_at_unix_ms = Some(now);
-    offer.next_heartbeat_due_at_unix_ms = Some(now.saturating_add(heartbeat_timeout_ms));
-    Ok(Json(StarterDemandHeartbeatResponse {
-        request_id: offer.request_id.clone(),
-        status: offer.status.label().to_string(),
-        last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms.unwrap_or(now),
-        next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms.unwrap_or(now),
-        execution_expires_at_unix_ms,
-        heartbeat_timeout_seconds: state.config.starter_demand_heartbeat_timeout_seconds,
-        heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(&state.config),
-    }))
+    if let Some(heartbeat_offer) = heartbeat_offer {
+        store.economy.record(
+            "starter_offer.heartbeat",
+            now,
+            starter_offer_receipt_context(Some(&session), Some(&heartbeat_offer), None, None, None),
+        );
+    }
+
+    Ok(Json(response.ok_or_else(|| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "starter_offer_heartbeat_response_missing".to_string(),
+    })?))
 }
 
 async fn fail_starter_demand_offer(
@@ -959,8 +1153,16 @@ async fn fail_starter_demand_offer(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
-    let (response_request_id, response_status, response_released_at_unix_ms, released_budget_sats) = {
+    let expired_events =
+        prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    record_expired_offer_receipts(&mut store, expired_events, now);
+    let (
+        response_request_id,
+        response_status,
+        response_released_at_unix_ms,
+        released_budget_sats,
+        released_offer,
+    ) = {
         let offers = store
             .starter_demand
             .offers_by_session
@@ -979,9 +1181,12 @@ async fn fail_starter_demand_offer(
                 reason: "starter_offer_not_found".to_string(),
             })?;
 
+        let mut released_offer = None;
         let released_budget_sats = match offer.status {
             StarterOfferStatus::Offered | StarterOfferStatus::Running => {
-                release_offer(offer, now, failure_reason.as_str())
+                let released_budget_sats = release_offer(offer, now, failure_reason.as_str());
+                released_offer = Some(offer.clone());
+                released_budget_sats
             }
             StarterOfferStatus::Released => {
                 if offer.failure_reason.as_deref() != Some(failure_reason.as_str()) {
@@ -1010,12 +1215,26 @@ async fn fail_starter_demand_offer(
             offer.status.label().to_string(),
             offer.released_at_unix_ms.unwrap_or(now),
             released_budget_sats,
+            released_offer,
         )
     };
     store.starter_demand.budget_allocated_sats = store
         .starter_demand
         .budget_allocated_sats
         .saturating_sub(released_budget_sats);
+    if let Some(released_offer) = released_offer {
+        store.economy.record(
+            "starter_offer.released",
+            now,
+            starter_offer_receipt_context(
+                Some(&session),
+                Some(&released_offer),
+                released_offer.failure_reason.as_deref(),
+                None,
+                None,
+            ),
+        );
+    }
 
     Ok(Json(StarterDemandFailResponse {
         request_id: response_request_id,
@@ -1044,8 +1263,16 @@ async fn complete_starter_demand_offer(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
-    let (response_request_id, response_status, response_completed_at_unix_ms, released_budget_sats) = {
+    let expired_events =
+        prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    record_expired_offer_receipts(&mut store, expired_events, now);
+    let (
+        response_request_id,
+        response_status,
+        response_completed_at_unix_ms,
+        released_budget_sats,
+        completed_offer,
+    ) = {
         let offers = store
             .starter_demand
             .offers_by_session
@@ -1064,6 +1291,7 @@ async fn complete_starter_demand_offer(
                 reason: "starter_offer_not_found".to_string(),
             })?;
 
+        let mut completed_offer = None;
         let released_budget_sats = match offer.status {
             StarterOfferStatus::Running => {
                 offer.status = StarterOfferStatus::Completed;
@@ -1071,6 +1299,7 @@ async fn complete_starter_demand_offer(
                 offer.completed_at_unix_ms = Some(now);
                 offer.last_heartbeat_at_unix_ms = Some(now);
                 offer.next_heartbeat_due_at_unix_ms = None;
+                completed_offer = Some(offer.clone());
                 offer.price_sats
             }
             StarterOfferStatus::Completed => {
@@ -1108,12 +1337,26 @@ async fn complete_starter_demand_offer(
             offer.status.label().to_string(),
             offer.completed_at_unix_ms.unwrap_or(now),
             released_budget_sats,
+            completed_offer,
         )
     };
     store.starter_demand.budget_allocated_sats = store
         .starter_demand
         .budget_allocated_sats
         .saturating_sub(released_budget_sats);
+    if let Some(completed_offer) = completed_offer {
+        store.economy.record(
+            "starter_offer.completed",
+            now,
+            starter_offer_receipt_context(
+                Some(&session),
+                Some(&completed_offer),
+                None,
+                None,
+                Some(payment_pointer.as_str()),
+            ),
+        );
+    }
 
     Ok(Json(StarterDemandCompleteResponse {
         request_id: response_request_id,
@@ -1176,9 +1419,10 @@ fn prune_expired_starter_offers(
     state: &mut StarterDemandState,
     config: &ServiceConfig,
     now_unix_ms: u64,
-) {
+) -> Vec<StarterDemandOfferEvent> {
     let mut released_budget_sats = 0u64;
-    for offers in state.offers_by_session.values_mut() {
+    let mut expired_events = Vec::new();
+    for (session_id, offers) in &mut state.offers_by_session {
         for offer in offers.iter_mut() {
             if offer.status == StarterOfferStatus::Offered
                 && now_unix_ms
@@ -1191,6 +1435,10 @@ fn prune_expired_starter_offers(
                     now_unix_ms,
                     "starter_offer_start_confirm_missed",
                 ));
+                expired_events.push(StarterDemandOfferEvent {
+                    session_id: session_id.clone(),
+                    offer: offer.clone(),
+                });
             } else if offer.status == StarterOfferStatus::Running {
                 if now_unix_ms
                     > offer
@@ -1202,6 +1450,10 @@ fn prune_expired_starter_offers(
                         now_unix_ms,
                         "starter_offer_execution_expired",
                     ));
+                    expired_events.push(StarterDemandOfferEvent {
+                        session_id: session_id.clone(),
+                        offer: offer.clone(),
+                    });
                 } else if now_unix_ms
                     > offer
                         .next_heartbeat_due_at_unix_ms
@@ -1212,6 +1464,10 @@ fn prune_expired_starter_offers(
                         now_unix_ms,
                         "starter_offer_heartbeat_missed",
                     ));
+                    expired_events.push(StarterDemandOfferEvent {
+                        session_id: session_id.clone(),
+                        offer: offer.clone(),
+                    });
                 }
             }
         }
@@ -1238,6 +1494,7 @@ fn prune_expired_starter_offers(
     state.budget_allocated_sats = state
         .budget_allocated_sats
         .saturating_sub(released_budget_sats);
+    expired_events
 }
 
 fn maybe_dispatch_starter_offer(
@@ -1245,7 +1502,7 @@ fn maybe_dispatch_starter_offer(
     config: &ServiceConfig,
     session: &DesktopSessionRecord,
     now_unix_ms: u64,
-) {
+) -> Option<StarterDemandOfferRecord> {
     let active_offers = state
         .offers_by_session
         .get(session.session_id.as_str())
@@ -1262,7 +1519,7 @@ fn maybe_dispatch_starter_offer(
         })
         .unwrap_or(0);
     if active_offers >= config.starter_demand_max_active_offers_per_session {
-        return;
+        return None;
     }
 
     let last_dispatch_at = state
@@ -1275,14 +1532,14 @@ fn maybe_dispatch_starter_offer(
         .saturating_mul(1_000);
     if last_dispatch_at != 0 && now_unix_ms < last_dispatch_at.saturating_add(dispatch_interval_ms)
     {
-        return;
+        return None;
     }
 
     let remaining_budget_sats = config
         .starter_demand_budget_cap_sats
         .saturating_sub(state.budget_allocated_sats);
     let Some(template) = next_template_for_remaining_budget(state, remaining_budget_sats) else {
-        return;
+        return None;
     };
 
     let request_id = format!("starter-hosted-{:06}", state.next_offer_seq);
@@ -1319,13 +1576,14 @@ fn maybe_dispatch_starter_offer(
         .offers_by_session
         .entry(session.session_id.clone())
         .or_default()
-        .push(offer);
+        .push(offer.clone());
     state.budget_allocated_sats = state
         .budget_allocated_sats
         .saturating_add(template.payout_sats);
     state
         .last_dispatch_by_session
         .insert(session.session_id.clone(), now_unix_ms);
+    Some(offer)
 }
 
 fn starter_demand_provider_proof_reason(
@@ -1451,6 +1709,143 @@ fn starter_offer_response(record: &StarterDemandOfferRecord) -> StarterDemandOff
     }
 }
 
+fn record_expired_offer_receipts(
+    store: &mut ControlStore,
+    expired_events: Vec<StarterDemandOfferEvent>,
+    now_unix_ms: u64,
+) {
+    for event in expired_events {
+        let session = find_session_by_id(store, event.session_id.as_str()).cloned();
+        store.economy.record(
+            "starter_offer.expired",
+            now_unix_ms,
+            starter_offer_receipt_context(
+                session.as_ref(),
+                Some(&event.offer),
+                event.offer.failure_reason.as_deref(),
+                None,
+                None,
+            ),
+        );
+    }
+}
+
+fn find_session_by_id<'a>(
+    store: &'a ControlStore,
+    session_id: &str,
+) -> Option<&'a DesktopSessionRecord> {
+    store
+        .sessions_by_access_token
+        .values()
+        .find(|session| session.session_id == session_id)
+}
+
+fn runtime_snapshot(config: &ServiceConfig, store: &ControlStore) -> PublicRuntimeSnapshot {
+    let (starter_offers_waiting_ack, starter_offers_running) = store
+        .starter_demand
+        .offers_by_session
+        .values()
+        .flat_map(|offers| offers.iter())
+        .fold(
+            (0usize, 0usize),
+            |(waiting_ack, running), offer| match offer.status {
+                StarterOfferStatus::Offered => (waiting_ack.saturating_add(1), running),
+                StarterOfferStatus::Running => (waiting_ack, running.saturating_add(1)),
+                StarterOfferStatus::Completed
+                | StarterOfferStatus::Released
+                | StarterOfferStatus::Expired => (waiting_ack, running),
+            },
+        );
+    PublicRuntimeSnapshot {
+        hosted_nexus_relay_url: config.hosted_nexus_relay_url.clone(),
+        sessions_active: store.sessions_by_access_token.len(),
+        sync_tokens_active: store.sync_tokens.len(),
+        starter_demand_budget_cap_sats: config.starter_demand_budget_cap_sats,
+        starter_demand_budget_allocated_sats: store.starter_demand.budget_allocated_sats,
+        starter_offers_waiting_ack,
+        starter_offers_running,
+    }
+}
+
+fn desktop_session_receipt_context(record: &DesktopSessionRecord) -> AuthorityReceiptContext {
+    let mut attributes = std::collections::BTreeMap::new();
+    attributes.insert(
+        "desktop_client_id".to_string(),
+        record.desktop_client_id.clone(),
+    );
+    if let Some(device_name) = record.device_name.clone() {
+        attributes.insert("device_name".to_string(), device_name);
+    }
+    if let Some(client_version) = record.client_version.clone() {
+        attributes.insert("client_version".to_string(), client_version);
+    }
+    if let Some(bound_nostr_pubkey) = record.bound_nostr_pubkey.clone() {
+        attributes.insert("bound_nostr_pubkey".to_string(), bound_nostr_pubkey);
+    }
+    AuthorityReceiptContext {
+        session_id: Some(record.session_id.clone()),
+        account_id: Some(record.account_id.clone()),
+        status: Some("issued".to_string()),
+        attributes,
+        ..AuthorityReceiptContext::default()
+    }
+}
+
+fn sync_token_receipt_context(
+    session: &DesktopSessionRecord,
+    token: &SyncTokenRecord,
+) -> AuthorityReceiptContext {
+    let mut attributes = std::collections::BTreeMap::new();
+    attributes.insert("rotation_id".to_string(), token.rotation_id.clone());
+    attributes.insert("transport".to_string(), "spacetime_ws".to_string());
+    attributes.insert(
+        "protocol_version".to_string(),
+        "spacetime.sync.v1".to_string(),
+    );
+    AuthorityReceiptContext {
+        session_id: Some(session.session_id.clone()),
+        account_id: Some(session.account_id.clone()),
+        status: Some("issued".to_string()),
+        attributes,
+        ..AuthorityReceiptContext::default()
+    }
+}
+
+fn starter_offer_receipt_context(
+    session: Option<&DesktopSessionRecord>,
+    offer: Option<&StarterDemandOfferRecord>,
+    reason: Option<&str>,
+    relay_url: Option<&str>,
+    payment_pointer: Option<&str>,
+) -> AuthorityReceiptContext {
+    let mut attributes = std::collections::BTreeMap::new();
+    if let Some(session) = session {
+        attributes.insert(
+            "desktop_client_id".to_string(),
+            session.desktop_client_id.clone(),
+        );
+        if let Some(bound_nostr_pubkey) = session.bound_nostr_pubkey.clone() {
+            attributes.insert("bound_nostr_pubkey".to_string(), bound_nostr_pubkey);
+        }
+    }
+    if let Some(offer) = offer {
+        attributes.insert("capability".to_string(), offer.capability.clone());
+        attributes.insert("requester".to_string(), offer.requester.clone());
+        attributes.insert("request_kind".to_string(), offer.request_kind.to_string());
+    }
+    AuthorityReceiptContext {
+        session_id: session.map(|session| session.session_id.clone()),
+        account_id: session.map(|session| session.account_id.clone()),
+        request_id: offer.map(|offer| offer.request_id.clone()),
+        status: offer.map(|offer| offer.status.label().to_string()),
+        reason: reason.map(ToOwned::to_owned),
+        relay_url: relay_url.map(ToOwned::to_owned),
+        amount_sats: offer.map(|offer| offer.price_sats),
+        payment_pointer: payment_pointer.map(ToOwned::to_owned),
+        attributes,
+    }
+}
+
 fn parse_u64_env(key: &str, default: u64) -> Result<u64, String> {
     std::env::var(key)
         .ok()
@@ -1531,7 +1926,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{
-        DesktopSessionCreateRequest, DesktopSessionResponse, ServiceConfig,
+        DesktopSessionCreateRequest, DesktopSessionResponse, PublicStatsSnapshot, ServiceConfig,
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
         StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
@@ -1549,6 +1944,7 @@ mod tests {
                 "stream.earn_job_lifecycle_projection.v1".to_string(),
             ],
             hosted_nexus_relay_url: "wss://relay.openagents.dev".to_string(),
+            receipt_log_path: None,
             starter_demand_budget_cap_sats: 500,
             starter_demand_dispatch_interval_seconds: 1,
             starter_demand_request_ttl_seconds: 120,
@@ -1660,6 +2056,69 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn public_stats_reflects_backend_session_and_sync_receipts() -> Result<()> {
+        let app = build_router(test_config()?);
+
+        let empty_stats = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(empty_stats.status(), StatusCode::OK);
+        let empty: PublicStatsSnapshot = response_json(empty_stats).await?;
+        assert_eq!(empty.receipt_count, 0);
+        assert_eq!(empty.sessions_active, 0);
+        assert_eq!(empty.sync_tokens_active, 0);
+
+        let session = create_session_token(&app).await?;
+        let token_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/sync/token")
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(token_response.status(), StatusCode::OK);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.sessions_active, 1);
+        assert_eq!(stats.sessions_issued_24h, 1);
+        assert_eq!(stats.sync_tokens_active, 1);
+        assert_eq!(stats.sync_tokens_issued_24h, 1);
+        assert!(stats.receipt_count >= 2);
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "desktop_session.created")
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| receipt.receipt_type == "sync_token.issued")
+        );
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn hosted_starter_demand_dispatches_and_completes_offer() -> Result<()> {
         let app = build_router(test_config()?);
         let session = create_session_token(&app).await?;
@@ -1764,6 +2223,28 @@ mod tests {
         assert_eq!(completed.request_id, request_id);
         assert_eq!(completed.status, "completed");
         assert_eq!(completed.payment_pointer, "wallet:receive:001");
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.starter_offers_dispatched_24h, 1);
+        assert_eq!(stats.starter_offers_started_24h, 1);
+        assert_eq!(stats.starter_offer_heartbeats_24h, 1);
+        assert_eq!(stats.starter_offers_completed_24h, 1);
+        assert_eq!(
+            stats.starter_demand_paid_sats_24h,
+            first.offers[0].price_sats
+        );
+        assert_eq!(stats.starter_offers_waiting_ack, 0);
+        assert_eq!(stats.starter_offers_running, 0);
 
         Ok(())
     }
@@ -2023,6 +2504,42 @@ mod tests {
             body["reason"].as_str(),
             Some("starter_demand_provider_nostr_pubkey_mismatch")
         );
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn receipt_log_reloads_backend_receipts_when_configured() -> Result<()> {
+        let receipt_log_path = std::env::temp_dir().join(format!(
+            "nexus-control-receipts-{}.jsonl",
+            super::random_token()
+        ));
+        let _ = std::fs::remove_file(receipt_log_path.as_path());
+
+        let mut config = test_config()?;
+        config.receipt_log_path = Some(receipt_log_path.clone());
+
+        let app = build_router(config.clone());
+        let _session = create_session_token(&app).await?;
+
+        let log_contents = std::fs::read_to_string(receipt_log_path.as_path())?;
+        assert!(log_contents.contains("\"receipt_type\":\"desktop_session.created\""));
+
+        let reloaded_app = build_router(config);
+        let stats_response = reloaded_app
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert!(stats.receipt_persistence_enabled);
+        assert_eq!(stats.sessions_issued_24h, 1);
+        assert_eq!(stats.receipt_count, 1);
+
+        let _ = std::fs::remove_file(receipt_log_path.as_path());
         Ok(())
     }
 }
