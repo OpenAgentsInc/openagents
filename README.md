@@ -46,8 +46,6 @@ Execution + Coordination Substrate
   local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
 ```
 
-Autopilot is the first product. It is the user-facing entry point into a broader machine economy.
-
 These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
 
 The compute market allocates scarce machine capacity. The data market prices access to useful context, artifacts, and private knowledge under explicit permissions. The labor market turns compute and data into completed work. The liquidity market moves value through the system. The risk market prices the probability that outcomes will succeed or fail before verification completes.
