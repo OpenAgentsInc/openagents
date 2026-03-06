@@ -3234,15 +3234,10 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::AutopilotChat => {
-            if state.autopilot_chat.managed_chat_has_browseable_content() {
+            if state.autopilot_chat.chat_has_browseable_content() {
                 let workspace_count = chat_visible_workspace_row_count(
                     content_bounds,
-                    state
-                        .autopilot_chat
-                        .managed_chat_projection
-                        .snapshot
-                        .groups
-                        .len(),
+                    state.autopilot_chat.chat_workspace_entries().len(),
                 );
                 for index in 0..workspace_count {
                     if chat_workspace_row_bounds(content_bounds, index).contains(point) {
@@ -3250,14 +3245,19 @@ fn pane_hit_action_for_pane(
                     }
                 }
             }
-            let managed_channel_rows = if state.autopilot_chat.managed_chat_has_browseable_content()
-            {
-                Some(state.autopilot_chat.active_managed_chat_channel_rail_rows())
-            } else {
-                None
-            };
+            let browse_mode = state.autopilot_chat.chat_browse_mode();
+            let managed_channel_rows = (browse_mode == crate::app_state::ChatBrowseMode::Managed)
+                .then(|| state.autopilot_chat.active_managed_chat_channel_rail_rows());
+            let direct_room_count =
+                if browse_mode == crate::app_state::ChatBrowseMode::DirectMessages {
+                    state.autopilot_chat.active_direct_message_rooms().len()
+                } else {
+                    0
+                };
             let channel_count = if let Some(rows) = managed_channel_rows.as_ref() {
                 rows.len()
+            } else if browse_mode == crate::app_state::ChatBrowseMode::DirectMessages {
+                direct_room_count
             } else {
                 state.autopilot_chat.threads.len()
             };
@@ -3278,12 +3278,16 @@ fn pane_hit_action_for_pane(
                     return Some(PaneHitAction::ChatSelectThread(index));
                 }
             }
-            let can_send = if state.autopilot_chat.managed_chat_has_browseable_content() {
-                state
+            let can_send = match browse_mode {
+                crate::app_state::ChatBrowseMode::Managed => state
                     .autopilot_chat
-                    .managed_chat_can_send(state.chat_inputs.composer.get_value())
-            } else {
-                !state.chat_inputs.composer.get_value().trim().is_empty()
+                    .managed_chat_can_send(state.chat_inputs.composer.get_value()),
+                crate::app_state::ChatBrowseMode::DirectMessages => state
+                    .autopilot_chat
+                    .direct_message_can_send(state.chat_inputs.composer.get_value()),
+                crate::app_state::ChatBrowseMode::Autopilot => {
+                    !state.chat_inputs.composer.get_value().trim().is_empty()
+                }
             };
             if can_send && chat_send_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatSend);

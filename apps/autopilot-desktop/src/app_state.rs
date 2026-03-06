@@ -45,9 +45,11 @@ use crate::{
 mod app_state_domains;
 mod chat_projection;
 mod credentials_state;
+mod direct_messages;
 pub use app_state_domains::*;
 pub use chat_projection::*;
 pub use credentials_state::CredentialsState;
+pub use direct_messages::*;
 
 pub const WINDOW_TITLE: &str = "Autopilot";
 pub const WINDOW_WIDTH: f64 = 1280.0;
@@ -510,6 +512,20 @@ pub enum ManagedChatChannelRailRow {
     },
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ChatBrowseMode {
+    Autopilot,
+    Managed,
+    DirectMessages,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ChatWorkspaceSelection {
+    Autopilot,
+    ManagedGroup(String),
+    DirectMessages,
+}
+
 pub struct AutopilotChatState {
     pub connection_status: String,
     pub models: Vec<String>,
@@ -518,7 +534,9 @@ pub struct AutopilotChatState {
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub active_thread_id: Option<String>,
+    pub selected_workspace: ChatWorkspaceSelection,
     pub managed_chat_projection: ManagedChatProjectionState,
+    pub direct_message_projection: DirectMessageProjectionState,
     pub startup_new_thread_bootstrap_pending: bool,
     pub startup_new_thread_bootstrap_sent: bool,
     pub messages: Vec<AutopilotMessage>,
@@ -574,7 +592,9 @@ impl Default for AutopilotChatState {
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
             active_thread_id: None,
+            selected_workspace: ChatWorkspaceSelection::Autopilot,
             managed_chat_projection: ManagedChatProjectionState::default(),
+            direct_message_projection: DirectMessageProjectionState::default(),
             startup_new_thread_bootstrap_pending: true,
             startup_new_thread_bootstrap_sent: false,
             messages: Vec::new(),
@@ -763,12 +783,119 @@ impl AutopilotChatState {
         self.connection_status = status.into();
     }
 
-    pub fn managed_chat_has_browseable_content(&self) -> bool {
+    pub fn has_managed_chat_browseable_content(&self) -> bool {
         !self.managed_chat_projection.snapshot.groups.is_empty()
             && !self.managed_chat_projection.snapshot.channels.is_empty()
     }
 
+    pub fn has_direct_message_browseable_content(&self) -> bool {
+        !self.direct_message_projection.snapshot.rooms.is_empty()
+    }
+
+    pub fn chat_has_browseable_content(&self) -> bool {
+        self.has_managed_chat_browseable_content() || self.has_direct_message_browseable_content()
+    }
+
+    pub fn chat_browse_mode(&self) -> ChatBrowseMode {
+        match &self.selected_workspace {
+            ChatWorkspaceSelection::ManagedGroup(group_id)
+                if self
+                    .managed_chat_projection
+                    .snapshot
+                    .groups
+                    .iter()
+                    .any(|group| group.group_id == *group_id) =>
+            {
+                return ChatBrowseMode::Managed;
+            }
+            ChatWorkspaceSelection::DirectMessages
+                if self.has_direct_message_browseable_content() =>
+            {
+                return ChatBrowseMode::DirectMessages;
+            }
+            ChatWorkspaceSelection::Autopilot => {}
+            _ => {}
+        }
+
+        if self.has_managed_chat_browseable_content() {
+            ChatBrowseMode::Managed
+        } else if self.has_direct_message_browseable_content() {
+            ChatBrowseMode::DirectMessages
+        } else {
+            ChatBrowseMode::Autopilot
+        }
+    }
+
+    pub fn chat_workspace_entries(&self) -> Vec<ChatWorkspaceSelection> {
+        let mut entries = self
+            .managed_chat_projection
+            .snapshot
+            .groups
+            .iter()
+            .map(|group| ChatWorkspaceSelection::ManagedGroup(group.group_id.clone()))
+            .collect::<Vec<_>>();
+        if self.has_direct_message_browseable_content() {
+            entries.push(ChatWorkspaceSelection::DirectMessages);
+        }
+        if entries.is_empty() {
+            entries.push(ChatWorkspaceSelection::Autopilot);
+        }
+        entries
+    }
+
+    pub fn select_chat_workspace_by_index(&mut self, index: usize) -> bool {
+        let Some(selection) = self.chat_workspace_entries().get(index).cloned() else {
+            return false;
+        };
+
+        match selection {
+            ChatWorkspaceSelection::ManagedGroup(group_id) => {
+                match self.managed_chat_projection.set_selected_group(&group_id) {
+                    Ok(()) => {
+                        self.selected_workspace = ChatWorkspaceSelection::ManagedGroup(group_id);
+                        self.reset_transcript_scroll();
+                        self.last_error = None;
+                        true
+                    }
+                    Err(error) => {
+                        self.last_error = Some(error);
+                        false
+                    }
+                }
+            }
+            ChatWorkspaceSelection::DirectMessages => {
+                self.selected_workspace = ChatWorkspaceSelection::DirectMessages;
+                self.reset_transcript_scroll();
+                self.last_error = None;
+                true
+            }
+            ChatWorkspaceSelection::Autopilot => {
+                self.selected_workspace = ChatWorkspaceSelection::Autopilot;
+                self.reset_transcript_scroll();
+                self.last_error = None;
+                true
+            }
+        }
+    }
+
     pub fn active_managed_chat_group(&self) -> Option<&ManagedChatGroupProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::Managed {
+            return None;
+        }
+        let selected_workspace_group_id = match &self.selected_workspace {
+            ChatWorkspaceSelection::ManagedGroup(group_id) => Some(group_id.as_str()),
+            _ => None,
+        };
+        if let Some(selected_group_id) = selected_workspace_group_id
+            && let Some(group) = self
+                .managed_chat_projection
+                .snapshot
+                .groups
+                .iter()
+                .find(|group| group.group_id == selected_group_id)
+        {
+            return Some(group);
+        }
         if let Some(selected_group_id) = self
             .managed_chat_projection
             .local_state
@@ -787,6 +914,9 @@ impl AutopilotChatState {
     }
 
     pub fn active_managed_chat_channel(&self) -> Option<&ManagedChatChannelProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::Managed {
+            return None;
+        }
         let active_group = self.active_managed_chat_group()?;
         if let Some(selected_channel_id) = self
             .managed_chat_projection
@@ -815,6 +945,9 @@ impl AutopilotChatState {
     }
 
     pub fn active_managed_chat_channels(&self) -> Vec<&ManagedChatChannelProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::Managed {
+            return Vec::new();
+        }
         let Some(active_group) = self.active_managed_chat_group() else {
             return Vec::new();
         };
@@ -832,6 +965,9 @@ impl AutopilotChatState {
     }
 
     pub fn active_managed_chat_messages(&self) -> Vec<&ManagedChatMessageProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::Managed {
+            return Vec::new();
+        }
         let Some(active_channel) = self.active_managed_chat_channel() else {
             return Vec::new();
         };
@@ -848,6 +984,9 @@ impl AutopilotChatState {
     }
 
     pub fn active_managed_chat_channel_rail_rows(&self) -> Vec<ManagedChatChannelRailRow> {
+        if self.chat_browse_mode() != ChatBrowseMode::Managed {
+            return Vec::new();
+        }
         let Some(active_group) = self.active_managed_chat_group() else {
             return Vec::new();
         };
@@ -917,6 +1056,9 @@ impl AutopilotChatState {
     }
 
     pub fn active_managed_chat_retryable_message(&self) -> Option<&ManagedChatMessageProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::Managed {
+            return None;
+        }
         self.active_managed_chat_messages()
             .into_iter()
             .rev()
@@ -933,6 +1075,70 @@ impl AutopilotChatState {
         self.active_managed_chat_retryable_message().is_some()
     }
 
+    pub fn active_direct_message_room(&self) -> Option<&DirectMessageRoomProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::DirectMessages {
+            return None;
+        }
+        if let Some(selected_room_id) = self
+            .direct_message_projection
+            .local_state
+            .selected_room_id
+            .as_deref()
+            && let Some(room) = self
+                .direct_message_projection
+                .snapshot
+                .rooms
+                .iter()
+                .find(|room| room.room_id == selected_room_id)
+        {
+            return Some(room);
+        }
+        self.direct_message_projection.snapshot.rooms.first()
+    }
+
+    pub fn active_direct_message_rooms(&self) -> Vec<&DirectMessageRoomProjection> {
+        if self.chat_browse_mode() != ChatBrowseMode::DirectMessages {
+            return Vec::new();
+        }
+        self.direct_message_projection
+            .snapshot
+            .rooms
+            .iter()
+            .collect()
+    }
+
+    pub fn active_direct_message_messages(&self) -> Vec<&DirectMessageMessageProjection> {
+        let Some(active_room) = self.active_direct_message_room() else {
+            return Vec::new();
+        };
+        active_room
+            .message_ids
+            .iter()
+            .filter_map(|message_id| {
+                self.direct_message_projection
+                    .snapshot
+                    .messages
+                    .get(message_id)
+            })
+            .collect()
+    }
+
+    pub fn active_direct_message_retryable_message(
+        &self,
+    ) -> Option<&DirectMessageMessageProjection> {
+        self.active_direct_message_messages()
+            .into_iter()
+            .rev()
+            .find(|message| message.delivery_state.is_retryable())
+    }
+
+    pub fn direct_message_can_send(&self, composer_value: &str) -> bool {
+        if !composer_value.trim().is_empty() {
+            return true;
+        }
+        self.active_direct_message_retryable_message().is_some()
+    }
+
     pub fn select_managed_chat_group_by_index(&mut self, index: usize) -> bool {
         let Some(group_id) = self
             .managed_chat_projection
@@ -945,6 +1151,7 @@ impl AutopilotChatState {
         };
         match self.managed_chat_projection.set_selected_group(&group_id) {
             Ok(()) => {
+                self.selected_workspace = ChatWorkspaceSelection::ManagedGroup(group_id);
                 self.reset_transcript_scroll();
                 self.last_error = None;
                 true
@@ -975,6 +1182,7 @@ impl AutopilotChatState {
             .set_selected_channel(&group_id, &channel_id)
         {
             Ok(()) => {
+                self.selected_workspace = ChatWorkspaceSelection::ManagedGroup(group_id);
                 self.reset_transcript_scroll();
                 self.last_error = None;
                 true
@@ -1008,6 +1216,7 @@ impl AutopilotChatState {
             .set_selected_channel(&group_id, &channel_id)
         {
             Ok(()) => {
+                self.selected_workspace = ChatWorkspaceSelection::ManagedGroup(group_id);
                 self.reset_transcript_scroll();
                 self.last_error = None;
                 true
@@ -1043,6 +1252,30 @@ impl AutopilotChatState {
             .toggle_category_collapsed(&group_id, &category_id)
         {
             Ok(()) => {
+                self.last_error = None;
+                true
+            }
+            Err(error) => {
+                self.last_error = Some(error);
+                false
+            }
+        }
+    }
+
+    pub fn select_direct_message_room_by_index(&mut self, index: usize) -> bool {
+        let Some(room_id) = self
+            .direct_message_projection
+            .snapshot
+            .rooms
+            .get(index)
+            .map(|room| room.room_id.clone())
+        else {
+            return false;
+        };
+        match self.direct_message_projection.set_selected_room(&room_id) {
+            Ok(()) => {
+                self.selected_workspace = ChatWorkspaceSelection::DirectMessages;
+                self.reset_transcript_scroll();
                 self.last_error = None;
                 true
             }
@@ -4912,6 +5145,12 @@ impl RenderState {
         })
     }
 
+    pub fn sync_direct_message_identity(&mut self) {
+        self.autopilot_chat
+            .direct_message_projection
+            .set_identity(self.nostr_identity.as_ref());
+    }
+
     pub fn record_runtime_command_response(&mut self, response: RuntimeCommandResponse) {
         self.runtime_command_responses.push(response);
         if self.runtime_command_responses.len() > 128 {
@@ -6377,7 +6616,7 @@ mod tests {
             ),
         ]);
 
-        assert!(chat.managed_chat_has_browseable_content());
+        assert!(chat.has_managed_chat_browseable_content());
         assert_eq!(
             chat.active_managed_chat_group()
                 .map(|group| group.group_id.as_str()),
@@ -6503,6 +6742,51 @@ mod tests {
                 ..
             }) if category_id == "ops" && *collapsed
         ));
+    }
+
+    #[test]
+    fn chat_state_browses_direct_message_rooms_and_switches_workspace() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp.path().join("direct-messages.json");
+        let mut chat = AutopilotChatState::default();
+        chat.direct_message_projection =
+            super::DirectMessageProjectionState::from_projection_path_for_tests(path);
+        chat.direct_message_projection
+            .queue_outbound_message(super::DirectMessageOutboundMessage {
+                room_id: super::direct_message_room_id(None, &["11".repeat(32), "33".repeat(32)]),
+                message_id: "44".repeat(32),
+                author_pubkey: "11".repeat(32),
+                participant_pubkeys: vec!["11".repeat(32), "33".repeat(32)],
+                recipient_pubkeys: vec!["33".repeat(32)],
+                recipient_relay_hints: std::collections::BTreeMap::from([(
+                    "33".repeat(32),
+                    vec!["wss://relay.example".to_string()],
+                )]),
+                content: "hello".to_string(),
+                created_at: 50,
+                reply_to_event_id: None,
+                subject: None,
+                wrapped_events: Vec::new(),
+                delivery_state: super::ManagedChatDeliveryState::Publishing,
+                attempt_count: 1,
+                last_error: None,
+            })
+            .expect("queue direct outbound");
+
+        assert!(chat.has_direct_message_browseable_content());
+        assert_eq!(chat.chat_workspace_entries().len(), 1);
+        assert!(chat.select_chat_workspace_by_index(0));
+        assert_eq!(
+            chat.chat_browse_mode(),
+            super::ChatBrowseMode::DirectMessages
+        );
+        assert!(chat.select_direct_message_room_by_index(0));
+        assert_eq!(chat.active_direct_message_messages().len(), 1);
+        assert_eq!(
+            chat.active_direct_message_room()
+                .map(|room| room.participant_pubkeys.len()),
+            Some(2)
+        );
     }
 
     #[test]

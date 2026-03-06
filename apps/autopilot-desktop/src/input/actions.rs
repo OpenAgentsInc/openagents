@@ -3,6 +3,8 @@ use crate::bitcoin_display::format_sats_amount;
 
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Managed chat relay publish transport is not wired yet; local echo saved for retry.";
+const DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED: &str =
+    "Direct message relay publish transport is not wired yet; local echo saved for retry.";
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ManagedChatComposerIntent {
@@ -13,6 +15,19 @@ enum ManagedChatComposerIntent {
     Reaction {
         message_reference: String,
         reaction: String,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum DirectMessageComposerIntent {
+    CreateRoom {
+        participant_pubkeys: Vec<String>,
+        subject: Option<String>,
+        content: String,
+    },
+    RoomMessage {
+        content: String,
+        reply_reference: Option<String>,
     },
 }
 
@@ -28,10 +43,24 @@ pub(super) fn run_chat_submit_action_with_trigger(
     trigger: crate::labor_orchestrator::CodexRunTrigger,
 ) -> bool {
     focus_chat_composer(state);
-    if state.autopilot_chat.managed_chat_has_browseable_content() {
-        return run_managed_chat_submit_action(state);
-    }
     let prompt = state.chat_inputs.composer.get_value().trim().to_string();
+    match parse_direct_message_creation_intent(&prompt) {
+        Ok(Some(intent)) => {
+            return run_direct_message_submit_action(state, Some(intent));
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match state.autopilot_chat.chat_browse_mode() {
+        crate::app_state::ChatBrowseMode::Managed => return run_managed_chat_submit_action(state),
+        crate::app_state::ChatBrowseMode::DirectMessages => {
+            return run_direct_message_submit_action(state, None);
+        }
+        crate::app_state::ChatBrowseMode::Autopilot => {}
+    }
     let prompt_chars = prompt.chars().count();
     if prompt.is_empty() {
         return false;
@@ -349,6 +378,151 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
     }
 }
 
+fn run_direct_message_submit_action(
+    state: &mut crate::app_state::RenderState,
+    override_intent: Option<DirectMessageComposerIntent>,
+) -> bool {
+    let prompt = state.chat_inputs.composer.get_value().trim().to_string();
+    if prompt.is_empty() {
+        let Some(message_id) = state
+            .autopilot_chat
+            .active_direct_message_retryable_message()
+            .map(|message| message.message_id.clone())
+        else {
+            return false;
+        };
+        if let Err(error) = state
+            .autopilot_chat
+            .direct_message_projection
+            .retry_outbound_message(&message_id)
+        {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+        state.autopilot_chat.reset_transcript_scroll();
+        if let Err(error) = state
+            .autopilot_chat
+            .direct_message_projection
+            .fail_outbound_message(&message_id, DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED)
+        {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+        state.autopilot_chat.last_error =
+            Some(DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED.to_string());
+        return true;
+    }
+
+    let Some(identity) = state.nostr_identity.as_ref() else {
+        state.autopilot_chat.last_error =
+            Some("No Nostr identity is loaded for direct message publishing.".to_string());
+        return true;
+    };
+    let intent = match override_intent {
+        Some(intent) => intent,
+        None => match parse_direct_message_room_intent(&prompt) {
+            Ok(intent) => intent,
+            Err(error) => {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+        },
+    };
+
+    let (content, participant_pubkeys, subject, reply_target) = match intent {
+        DirectMessageComposerIntent::CreateRoom {
+            participant_pubkeys,
+            subject,
+            content,
+        } => (content, participant_pubkeys, subject, None),
+        DirectMessageComposerIntent::RoomMessage {
+            content,
+            reply_reference,
+        } => {
+            let Some(room) = state.autopilot_chat.active_direct_message_room().cloned() else {
+                state.autopilot_chat.last_error = Some(
+                    "No direct message room is selected. Use `dm <pubkey> <text>` or `room <pubkey[,pubkey...]> | <subject> | <text>`."
+                        .to_string(),
+                );
+                return true;
+            };
+            let reply_target = match reply_reference.as_deref() {
+                Some(reference) => {
+                    let Some(target_message) =
+                        resolve_direct_message_reference(&state.autopilot_chat, reference)
+                    else {
+                        state.autopilot_chat.last_error = Some(format!(
+                            "Unknown direct message reference for reply: {reference}"
+                        ));
+                        return true;
+                    };
+                    Some(target_message)
+                }
+                None => None,
+            };
+            (
+                content,
+                room.participant_pubkeys.clone(),
+                room.subject.clone(),
+                reply_target,
+            )
+        }
+    };
+
+    let recipient_relay_hints = resolve_direct_message_recipient_relay_hints(
+        state,
+        identity.public_key_hex.as_str(),
+        &participant_pubkeys,
+    );
+    let outbound_message = match build_direct_message_outbound_message(
+        identity,
+        participant_pubkeys,
+        recipient_relay_hints,
+        &content,
+        reply_target,
+        subject,
+    ) {
+        Ok(outbound_message) => outbound_message,
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    };
+    let message_id = outbound_message.message_id.clone();
+    let room_id = outbound_message.room_id.clone();
+
+    state.chat_inputs.composer.set_value(String::new());
+    if let Err(error) = state
+        .autopilot_chat
+        .direct_message_projection
+        .queue_outbound_message(outbound_message)
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    state.autopilot_chat.selected_workspace =
+        crate::app_state::ChatWorkspaceSelection::DirectMessages;
+    if let Err(error) = state
+        .autopilot_chat
+        .direct_message_projection
+        .set_selected_room(&room_id)
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    state.autopilot_chat.reset_transcript_scroll();
+    if let Err(error) = state
+        .autopilot_chat
+        .direct_message_projection
+        .fail_outbound_message(&message_id, DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED)
+    {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
+    state.autopilot_chat.last_error = Some(DIRECT_MESSAGE_PUBLISH_TRANSPORT_UNWIRED.to_string());
+    true
+}
+
 fn parse_managed_chat_composer_intent(prompt: &str) -> Result<ManagedChatComposerIntent, String> {
     let trimmed = prompt.trim();
     if let Some(rest) = trimmed.strip_prefix("reply ") {
@@ -564,6 +738,226 @@ fn build_managed_chat_outbound_message(
         channel_id: channel.channel_id.clone(),
         relay_url: relay_url.to_string(),
         event,
+        delivery_state: crate::app_state::ManagedChatDeliveryState::Publishing,
+        attempt_count: 1,
+        last_error: None,
+    })
+}
+
+fn parse_direct_message_creation_intent(
+    prompt: &str,
+) -> Result<Option<DirectMessageComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if let Some(rest) = trimmed.strip_prefix("dm ") {
+        let mut parts = rest.trim().splitn(2, char::is_whitespace);
+        let recipient_pubkey = parts
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "DM syntax is `dm <recipient-pubkey-hex> <text>`".to_string())?;
+        let content = parts
+            .next()
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| "DM syntax is `dm <recipient-pubkey-hex> <text>`".to_string())?;
+        return Ok(Some(DirectMessageComposerIntent::CreateRoom {
+            participant_pubkeys: vec![normalize_direct_message_recipient_pubkey(recipient_pubkey)?],
+            subject: None,
+            content: content.to_string(),
+        }));
+    }
+    if let Some(rest) = trimmed.strip_prefix("room ") {
+        let parts = rest.splitn(3, '|').map(str::trim).collect::<Vec<_>>();
+        if parts.len() != 3 || parts.iter().any(|part| part.is_empty()) {
+            return Err(
+                "Room syntax is `room <pubkey[,pubkey...]> | <subject> | <text>`".to_string(),
+            );
+        }
+        return Ok(Some(DirectMessageComposerIntent::CreateRoom {
+            participant_pubkeys: parse_direct_message_participant_pubkeys(parts[0])?,
+            subject: Some(parts[1].to_string()),
+            content: parts[2].to_string(),
+        }));
+    }
+    Ok(None)
+}
+
+fn parse_direct_message_room_intent(prompt: &str) -> Result<DirectMessageComposerIntent, String> {
+    if let Some(intent) = parse_direct_message_creation_intent(prompt)? {
+        return Ok(intent);
+    }
+    let trimmed = prompt.trim();
+    if let Some(rest) = trimmed.strip_prefix("reply ") {
+        let mut parts = rest.trim().splitn(2, char::is_whitespace);
+        let reference = parts
+            .next()
+            .map(str::trim)
+            .filter(|reference| !reference.is_empty())
+            .ok_or_else(|| {
+                "Reply syntax is `reply <message-number|id-prefix> <text>`".to_string()
+            })?;
+        let content = parts
+            .next()
+            .map(str::trim)
+            .filter(|content| !content.is_empty())
+            .ok_or_else(|| {
+                "Reply syntax is `reply <message-number|id-prefix> <text>`".to_string()
+            })?;
+        return Ok(DirectMessageComposerIntent::RoomMessage {
+            content: content.to_string(),
+            reply_reference: Some(reference.to_string()),
+        });
+    }
+    Ok(DirectMessageComposerIntent::RoomMessage {
+        content: trimmed.to_string(),
+        reply_reference: None,
+    })
+}
+
+fn parse_direct_message_participant_pubkeys(raw: &str) -> Result<Vec<String>, String> {
+    let participants = raw
+        .split(|ch: char| ch == ',' || ch.is_ascii_whitespace())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(normalize_direct_message_recipient_pubkey)
+        .collect::<Result<Vec<_>, _>>()?;
+    if participants.is_empty() {
+        return Err("Room syntax is `room <pubkey[,pubkey...]> | <subject> | <text>`".to_string());
+    }
+    Ok(participants)
+}
+
+fn normalize_direct_message_recipient_pubkey(pubkey: &str) -> Result<String, String> {
+    let normalized = pubkey.trim().to_ascii_lowercase();
+    if normalized.len() != 64 || !normalized.chars().all(|ch| ch.is_ascii_hexdigit()) {
+        return Err(format!(
+            "Direct message recipient must be a 64-character hex pubkey: {pubkey}"
+        ));
+    }
+    Ok(normalized)
+}
+
+fn resolve_direct_message_reference<'a>(
+    autopilot_chat: &'a crate::app_state::AutopilotChatState,
+    reference: &str,
+) -> Option<&'a crate::app_state::DirectMessageMessageProjection> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return None;
+    }
+
+    let active_messages = autopilot_chat.active_direct_message_messages();
+    if let Some(index_ref) = reference.strip_prefix('#').or(Some(reference))
+        && let Ok(index) = index_ref.parse::<usize>()
+        && index > 0
+    {
+        return active_messages.get(index - 1).copied();
+    }
+
+    let normalized = reference.trim_start_matches('#').to_ascii_lowercase();
+    active_messages
+        .into_iter()
+        .find(|message| message.message_id.starts_with(&normalized))
+}
+
+fn resolve_direct_message_recipient_relay_hints(
+    state: &crate::app_state::RenderState,
+    local_pubkey: &str,
+    participant_pubkeys: &[String],
+) -> std::collections::BTreeMap<String, Vec<String>> {
+    let local_pubkey = local_pubkey.to_ascii_lowercase();
+    let fallback_relays = state.configured_provider_relay_urls();
+    participant_pubkeys
+        .iter()
+        .filter(|pubkey| **pubkey != local_pubkey)
+        .map(|pubkey| {
+            let relays = state
+                .autopilot_chat
+                .direct_message_projection
+                .snapshot
+                .relay_lists
+                .get(pubkey.as_str())
+                .cloned()
+                .filter(|relays| !relays.is_empty())
+                .unwrap_or_else(|| fallback_relays.clone());
+            (pubkey.clone(), relays)
+        })
+        .collect()
+}
+
+fn build_direct_message_outbound_message(
+    identity: &nostr::NostrIdentity,
+    participant_pubkeys: Vec<String>,
+    recipient_relay_hints: std::collections::BTreeMap<String, Vec<String>>,
+    content: &str,
+    reply_target: Option<&crate::app_state::DirectMessageMessageProjection>,
+    subject: Option<String>,
+) -> Result<crate::app_state::DirectMessageOutboundMessage, String> {
+    let author_pubkey = normalize_direct_message_recipient_pubkey(&identity.public_key_hex)?;
+    let mut all_participants = participant_pubkeys
+        .into_iter()
+        .map(|pubkey| normalize_direct_message_recipient_pubkey(pubkey.as_str()))
+        .collect::<Result<Vec<_>, _>>()?;
+    all_participants.push(author_pubkey.clone());
+    all_participants.sort();
+    all_participants.dedup();
+
+    let recipient_pubkeys = all_participants
+        .iter()
+        .filter(|pubkey| **pubkey != author_pubkey)
+        .cloned()
+        .collect::<Vec<_>>();
+    if recipient_pubkeys.is_empty() {
+        return Err("Direct message room needs at least one remote participant.".to_string());
+    }
+
+    let normalized_subject = subject
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty());
+    let now_ms = current_epoch_millis();
+    let created_at = (now_ms / 1_000).max(1);
+    let private_key = parse_nostr_private_key_hex(identity.private_key_hex.as_str())?;
+    let mut message = nostr::nip17::ChatMessage::new(content);
+    for recipient_pubkey in &recipient_pubkeys {
+        let relay_hint = recipient_relay_hints
+            .get(recipient_pubkey.as_str())
+            .and_then(|relays| relays.first())
+            .cloned();
+        message = message.add_recipient(recipient_pubkey.clone(), relay_hint);
+    }
+    if let Some(reply_target) = reply_target {
+        message = message.reply_to(reply_target.message_id.clone());
+    }
+    if let Some(subject) = normalized_subject.as_deref() {
+        message = message.subject(subject);
+    }
+    let rumor = nostr::nip59::Rumor::new(message.to_unsigned_event(&author_pubkey, created_at))
+        .map_err(|error| format!("Failed to encode direct message rumor: {error}"))?;
+    let wrapped_events = recipient_pubkeys
+        .iter()
+        .map(|recipient_pubkey| {
+            nostr::nip17::send_chat_message(&message, &private_key, recipient_pubkey, created_at)
+                .map_err(|error| {
+                    format!("Failed to gift wrap direct message for {recipient_pubkey}: {error}")
+                })
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+
+    Ok(crate::app_state::DirectMessageOutboundMessage {
+        room_id: crate::app_state::direct_message_room_id(
+            normalized_subject.as_deref(),
+            &all_participants,
+        ),
+        message_id: rumor.id,
+        author_pubkey,
+        participant_pubkeys: all_participants,
+        recipient_pubkeys,
+        recipient_relay_hints,
+        content: content.to_string(),
+        created_at,
+        reply_to_event_id: reply_target.map(|message| message.message_id.clone()),
+        subject: normalized_subject,
+        wrapped_events,
         delivery_state: crate::app_state::ManagedChatDeliveryState::Publishing,
         attempt_count: 1,
         last_error: None,
@@ -1144,10 +1538,18 @@ pub(super) fn run_chat_select_thread_action(
     state: &mut crate::app_state::RenderState,
     index: usize,
 ) -> bool {
-    if state.autopilot_chat.managed_chat_has_browseable_content() {
-        return state
-            .autopilot_chat
-            .select_managed_chat_channel_row_by_index(index);
+    match state.autopilot_chat.chat_browse_mode() {
+        crate::app_state::ChatBrowseMode::Managed => {
+            return state
+                .autopilot_chat
+                .select_managed_chat_channel_row_by_index(index);
+        }
+        crate::app_state::ChatBrowseMode::DirectMessages => {
+            return state
+                .autopilot_chat
+                .select_direct_message_room_by_index(index);
+        }
+        crate::app_state::ChatBrowseMode::Autopilot => {}
     }
 
     let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
@@ -1200,19 +1602,17 @@ pub(super) fn run_chat_select_workspace_action(
     state: &mut crate::app_state::RenderState,
     index: usize,
 ) -> bool {
-    if !state.autopilot_chat.managed_chat_has_browseable_content() {
+    if !state.autopilot_chat.chat_has_browseable_content() {
         return false;
     }
-    state
-        .autopilot_chat
-        .select_managed_chat_group_by_index(index)
+    state.autopilot_chat.select_chat_workspace_by_index(index)
 }
 
 pub(super) fn run_chat_toggle_category_action(
     state: &mut crate::app_state::RenderState,
     index: usize,
 ) -> bool {
-    if !state.autopilot_chat.managed_chat_has_browseable_content() {
+    if state.autopilot_chat.chat_browse_mode() != crate::app_state::ChatBrowseMode::Managed {
         return false;
     }
     state
@@ -5503,6 +5903,7 @@ pub(super) fn run_alerts_recovery_action(
                             "Identity regenerated. Secrets are hidden by default.".to_string(),
                         );
                         queue_spark_command(state, SparkWalletCommand::Refresh);
+                        state.sync_direct_message_identity();
                         let _ = state.sync_provider_nip90_lane_identity();
                         crate::render::apply_spacetime_sync_bootstrap(state);
                         Ok("Identity lane recovered".to_string())
@@ -6659,10 +7060,12 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
-        ManagedChatComposerIntent, build_managed_chat_outbound_message,
+        DirectMessageComposerIntent, ManagedChatComposerIntent,
+        build_direct_message_outbound_message, build_managed_chat_outbound_message,
         build_managed_chat_reaction_event, build_nip90_request_event_for_network_submission,
         classify_provider_failure, extract_target_provider_pubkeys, is_taxonomy_failure_detail,
         loop_integrity_alert_specs, nip90_request_kind_for_request_type,
+        parse_direct_message_creation_intent, parse_direct_message_room_intent,
         parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
         resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
@@ -6715,13 +7118,14 @@ mod tests {
     }
 
     fn fixture_identity() -> nostr::NostrIdentity {
+        let private_key = [0x22u8; 32];
         nostr::NostrIdentity {
             identity_path: std::path::PathBuf::from("/tmp/test-identity.mnemonic"),
             mnemonic: "test mnemonic".to_string(),
             npub: "npub-test".to_string(),
             nsec: "nsec-test".to_string(),
-            public_key_hex: "11".repeat(32),
-            private_key_hex: "22".repeat(32),
+            public_key_hex: nostr::get_public_key_hex(&private_key).expect("fixture pubkey"),
+            private_key_hex: hex::encode(private_key),
         }
     }
 
@@ -7217,5 +7621,101 @@ mod tests {
             tag.first().map(String::as_str) == Some("p")
                 && tag.get(1).map(String::as_str) == Some(target_message.author_pubkey.as_str())
         }));
+    }
+
+    #[test]
+    fn direct_message_composer_parses_dm_room_and_reply_syntax() {
+        assert_eq!(
+            parse_direct_message_creation_intent(&format!("dm {} hello", "11".repeat(32))).unwrap(),
+            Some(DirectMessageComposerIntent::CreateRoom {
+                participant_pubkeys: vec!["11".repeat(32)],
+                subject: None,
+                content: "hello".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_direct_message_creation_intent(&format!(
+                "room {},{} | Design Review | kickoff",
+                "11".repeat(32),
+                "22".repeat(32)
+            ))
+            .unwrap(),
+            Some(DirectMessageComposerIntent::CreateRoom {
+                participant_pubkeys: vec!["11".repeat(32), "22".repeat(32)],
+                subject: Some("Design Review".to_string()),
+                content: "kickoff".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_direct_message_room_intent("reply #2 acknowledged").unwrap(),
+            DirectMessageComposerIntent::RoomMessage {
+                content: "acknowledged".to_string(),
+                reply_reference: Some("#2".to_string()),
+            }
+        );
+    }
+
+    #[test]
+    fn direct_message_builder_wraps_gift_events_and_room_identity() {
+        let identity = fixture_identity();
+        let reply_target = crate::app_state::DirectMessageMessageProjection {
+            message_id: "aa".repeat(32),
+            room_id: crate::app_state::direct_message_room_id(
+                None,
+                &[identity.public_key_hex.clone(), "33".repeat(32)],
+            ),
+            author_pubkey: "33".repeat(32),
+            participant_pubkeys: vec![identity.public_key_hex.clone(), "33".repeat(32)],
+            recipient_pubkeys: vec![identity.public_key_hex.clone()],
+            content: "root".to_string(),
+            created_at: 42,
+            reply_to_event_id: None,
+            subject: None,
+            wrapped_event_ids: Vec::new(),
+            delivery_state: crate::app_state::ManagedChatDeliveryState::Confirmed,
+            delivery_error: None,
+            attempt_count: 0,
+        };
+        let outbound = build_direct_message_outbound_message(
+            &identity,
+            vec!["33".repeat(32), "44".repeat(32)],
+            std::collections::BTreeMap::from([
+                ("33".repeat(32), vec!["wss://relay.one".to_string()]),
+                ("44".repeat(32), vec!["wss://relay.two".to_string()]),
+            ]),
+            "draft posted",
+            Some(&reply_target),
+            Some("Design Review".to_string()),
+        )
+        .unwrap();
+
+        assert_eq!(outbound.wrapped_events.len(), 2);
+        assert_eq!(
+            outbound.room_id,
+            crate::app_state::direct_message_room_id(
+                Some("Design Review"),
+                &[
+                    identity.public_key_hex.clone(),
+                    "33".repeat(32),
+                    "44".repeat(32)
+                ],
+            )
+        );
+        assert_eq!(
+            outbound.reply_to_event_id.as_deref(),
+            Some("aa".repeat(32).as_str())
+        );
+        assert!(
+            outbound
+                .wrapped_events
+                .iter()
+                .all(|event| event.kind == nostr::nip59::KIND_GIFT_WRAP)
+        );
+        assert!(
+            outbound
+                .wrapped_events
+                .iter()
+                .all(|event| !event.content.trim().is_empty())
+        );
     }
 }
