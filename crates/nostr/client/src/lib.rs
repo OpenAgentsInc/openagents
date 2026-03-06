@@ -30,4 +30,7 @@ pub use relay::{
     ConnectionState, PublishConfirmation, RelayAuthIdentity, RelayConfig, RelayConnection,
     RelayMessage,
 };
-pub use subscription::{EventCallback, Subscription};
+pub use subscription::{
+    EventCallback, GapRecoveryPlan, GapRecoveryTransport, RelayGapRecoveryCapability,
+    Subscription,
+};

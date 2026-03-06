@@ -1,8 +1,9 @@
 //! Single relay connection management.
 
 use crate::error::{ClientError, Result};
-use crate::subscription::Subscription;
+use crate::subscription::{Subscription, build_req_payload};
 use futures_util::{SinkExt, StreamExt, stream::SplitSink};
+use nostr::nip77::{NegClose, NegErr, NegMsg, NegOpen, NegentropyMessage};
 use nostr::{Event, finalize_event};
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -34,6 +35,8 @@ pub enum RelayMessage {
     Eose(String),
     Notice(String),
     Auth(String),
+    NegMsg(String, NegentropyMessage),
+    NegErr(String, String),
 }
 
 /// Publish confirmation from a relay.
@@ -303,6 +306,22 @@ impl RelayConnection {
         Ok(())
     }
 
+    /// Open a negentropy sync session on the relay.
+    pub async fn negentropy_open(&self, message: &NegOpen) -> Result<()> {
+        self.send_json(&message.to_json()).await
+    }
+
+    /// Send a negentropy follow-up message.
+    pub async fn negentropy_msg(&self, message: &NegMsg) -> Result<()> {
+        self.send_json(&message.to_json()).await
+    }
+
+    /// Close a negentropy sync session.
+    pub async fn negentropy_close(&self, subscription_id: &str) -> Result<()> {
+        self.send_json(&NegClose::new(subscription_id.to_string()).to_json())
+            .await
+    }
+
     /// Receive next message from relay.
     pub async fn recv(&self) -> Result<Option<RelayMessage>> {
         Ok(self.incoming_rx.lock().await.recv().await)
@@ -324,14 +343,6 @@ impl RelayConnection {
             .await
             .map_err(|error| ClientError::WebSocket(error.to_string()))
     }
-}
-
-fn build_req_payload(subscription: &Subscription) -> Value {
-    let mut frame = Vec::with_capacity(subscription.filters.len().saturating_add(2));
-    frame.push(Value::String("REQ".to_string()));
-    frame.push(Value::String(subscription.id.clone()));
-    frame.extend(subscription.filters.iter().cloned());
-    Value::Array(frame)
 }
 
 /// Parse relay protocol JSON text message into typed relay message.
@@ -409,6 +420,26 @@ pub fn parse_relay_message(text: &str) -> Result<Option<RelayMessage>> {
                 .to_string();
             Ok(Some(RelayMessage::Auth(challenge)))
         }
+        "NEG-MSG" => {
+            let message = NegMsg::from_json(&value)
+                .map_err(|error| ClientError::Protocol(format!("invalid NEG-MSG: {error}")))?;
+            let negentropy = NegentropyMessage::decode_hex(message.message.as_str())
+                .map_err(|error| {
+                    ClientError::Protocol(format!("invalid NEG-MSG payload: {error}"))
+                })?;
+            Ok(Some(RelayMessage::NegMsg(
+                message.subscription_id,
+                negentropy,
+            )))
+        }
+        "NEG-ERR" => {
+            let message = NegErr::from_json(&value)
+                .map_err(|error| ClientError::Protocol(format!("invalid NEG-ERR: {error}")))?;
+            Ok(Some(RelayMessage::NegErr(
+                message.subscription_id,
+                message.reason,
+            )))
+        }
         _ => Ok(None),
     }
 }
@@ -476,6 +507,7 @@ fn parse_private_key_hex(private_key_hex: &str) -> Result<[u8; 32]> {
 mod tests {
     use super::*;
     use futures_util::{SinkExt, StreamExt};
+    use nostr::nip77::{Bound, NegentropyMessage, Range};
     use nostr::nip42::validate_auth_event;
     use tokio::net::TcpListener;
     use tokio_tungstenite::accept_async;
@@ -531,6 +563,20 @@ mod tests {
             (RelayMessage::Auth(actual_challenge), RelayMessage::Auth(expected_challenge)) => {
                 assert_eq!(actual_challenge, expected_challenge);
             }
+            (
+                RelayMessage::NegMsg(actual_sub, actual_message),
+                RelayMessage::NegMsg(expected_sub, expected_message),
+            ) => {
+                assert_eq!(actual_sub, expected_sub);
+                assert_eq!(actual_message, expected_message);
+            }
+            (
+                RelayMessage::NegErr(actual_sub, actual_reason),
+                RelayMessage::NegErr(expected_sub, expected_reason),
+            ) => {
+                assert_eq!(actual_sub, expected_sub);
+                assert_eq!(actual_reason, expected_reason);
+            }
             _ => {}
         }
     }
@@ -546,6 +592,14 @@ mod tests {
             RelayMessage::Eose(subscription_id) => json!(["EOSE", subscription_id]),
             RelayMessage::Notice(message_text) => json!(["NOTICE", message_text]),
             RelayMessage::Auth(challenge) => json!(["AUTH", challenge]),
+            RelayMessage::NegMsg(subscription_id, message) => {
+                NegMsg::new(subscription_id.clone(), message)
+                    .expect("neg-msg")
+                    .to_json()
+            }
+            RelayMessage::NegErr(subscription_id, reason) => {
+                NegErr::new(subscription_id.clone(), reason.clone()).to_json()
+            }
         }
     }
 
@@ -557,6 +611,11 @@ mod tests {
             RelayMessage::Eose("sub".to_string()),
             RelayMessage::Notice("relay notice".to_string()),
             RelayMessage::Auth("challenge-token".to_string()),
+            RelayMessage::NegMsg(
+                "neg-sub".to_string(),
+                NegentropyMessage::new(vec![Range::skip(Bound::infinity())]),
+            ),
+            RelayMessage::NegErr("neg-sub".to_string(), "blocked: too large".to_string()),
         ];
 
         for expected in expected_messages {
@@ -744,6 +803,11 @@ mod tests {
             RelayMessage::Eose("sub-2".to_string()),
             RelayMessage::Notice("maintenance".to_string()),
             RelayMessage::Auth("challenge-2".to_string()),
+            RelayMessage::NegMsg(
+                "neg-sub".to_string(),
+                NegentropyMessage::new(vec![Range::skip(Bound::infinity())]),
+            ),
+            RelayMessage::NegErr("neg-sub".to_string(), "closed: stale".to_string()),
         ];
 
         for expected in messages {

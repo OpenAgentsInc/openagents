@@ -1813,6 +1813,62 @@ mod tests {
     }
 
     #[test]
+    fn managed_chat_projection_gap_recovery_matches_full_sync_snapshot() {
+        let full_dir = tempdir().unwrap();
+        let req_dir = tempdir().unwrap();
+        let neg_dir = tempdir().unwrap();
+        let full_path = full_dir.path().join("managed-full.json");
+        let req_path = req_dir.path().join("managed-req.json");
+        let neg_path = neg_dir.path().join("managed-neg.json");
+        let mut full = ManagedChatProjectionState::from_projection_path_for_tests(full_path);
+        let mut req = ManagedChatProjectionState::from_projection_path_for_tests(req_path);
+        let mut neg = ManagedChatProjectionState::from_projection_path_for_tests(neg_path);
+
+        let channel_create = build_channel_create_event('a', 20, "ops");
+        let channel_metadata =
+            build_channel_metadata_event('b', 21, &channel_create.id, "ops", 1);
+        let message_one = build_message_event('c', 'a', 30, &channel_create.id, "ready");
+        let message_two = build_reply_event(
+            'd',
+            'b',
+            31,
+            &channel_create.id,
+            &message_one.id,
+            &message_one.pubkey,
+            "copy",
+        );
+        let reaction = build_reaction_event('e', 'c', 32, &message_one.id);
+        let group = build_group_metadata_event('f', 10, "Ops");
+        let all_events = vec![
+            group.clone(),
+            channel_create.clone(),
+            channel_metadata.clone(),
+            message_one.clone(),
+            message_two.clone(),
+            reaction.clone(),
+        ];
+
+        full.replace_relay_events(all_events);
+        req.record_relay_events(vec![group.clone(), channel_create.clone()]);
+        req.record_relay_events(vec![
+            channel_metadata.clone(),
+            message_one.clone(),
+            message_two.clone(),
+            reaction.clone(),
+        ]);
+        neg.record_relay_events(vec![
+            group,
+            channel_create,
+            channel_metadata,
+            message_one,
+        ]);
+        neg.record_relay_events(vec![reaction, message_two]);
+
+        assert_eq!(req.snapshot, full.snapshot);
+        assert_eq!(neg.snapshot, full.snapshot);
+    }
+
+    #[test]
     fn managed_chat_projection_delete_event_falls_back_to_previous_metadata_and_applies_roster_moderation()
      {
         let temp = tempdir().unwrap();

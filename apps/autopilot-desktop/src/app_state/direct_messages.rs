@@ -1100,6 +1100,87 @@ mod tests {
     }
 
     #[test]
+    fn direct_message_projection_gap_recovery_matches_full_sync_snapshot() {
+        let full_dir = tempdir().expect("tempdir");
+        let req_dir = tempdir().expect("tempdir");
+        let neg_dir = tempdir().expect("tempdir");
+        let mut full =
+            DirectMessageProjectionState::from_projection_path_for_tests(full_dir.path().join("full.json"));
+        let mut req =
+            DirectMessageProjectionState::from_projection_path_for_tests(req_dir.path().join("req.json"));
+        let mut neg =
+            DirectMessageProjectionState::from_projection_path_for_tests(neg_dir.path().join("neg.json"));
+        let identity = fixture_identity();
+        full.set_identity(Some(&identity));
+        req.set_identity(Some(&identity));
+        neg.set_identity(Some(&identity));
+
+        let sender_one_secret = [3u8; 32];
+        let sender_two_secret = [4u8; 32];
+        let sender_one_pubkey =
+            nostr::get_public_key_hex(&sender_one_secret).expect("sender one pubkey");
+        let _sender_two_pubkey =
+            nostr::get_public_key_hex(&sender_two_secret).expect("sender two pubkey");
+
+        let dm_message = nostr::nip17::ChatMessage::new("hello there").add_recipient(
+            identity.public_key_hex.clone(),
+            Some("wss://relay.dm".to_string()),
+        );
+        let side_room_message = nostr::nip17::ChatMessage::new("draft posted")
+            .add_recipient(
+                identity.public_key_hex.clone(),
+                Some("wss://relay.side".to_string()),
+            )
+            .add_recipient(
+                sender_one_pubkey.clone(),
+                Some("wss://relay.side".to_string()),
+            )
+            .subject("Design Review");
+
+        let dm_wrap = nostr::nip17::send_chat_message(
+            &dm_message,
+            &sender_one_secret,
+            &identity.public_key_hex,
+            101,
+        )
+        .expect("dm wrap");
+        let side_room_wrap = nostr::nip17::send_chat_message(
+            &side_room_message,
+            &sender_two_secret,
+            &identity.public_key_hex,
+            202,
+        )
+        .expect("side room wrap");
+
+        let relay_list = nostr::nip17::DmRelayList::new()
+            .add_relay("wss://relay.dm")
+            .add_relay("wss://relay.dm-backup");
+        let relay_list_event = nostr::Event {
+            id: "ab".repeat(32),
+            pubkey: sender_one_pubkey.clone(),
+            created_at: 90,
+            kind: nostr::nip17::KIND_DM_RELAY_LIST,
+            tags: relay_list.to_unsigned_event(&sender_one_pubkey, 90).tags,
+            content: String::new(),
+            sig: "cd".repeat(64),
+        };
+
+        full.record_relay_events(vec![
+            relay_list_event.clone(),
+            dm_wrap.clone(),
+            side_room_wrap.clone(),
+        ]);
+        req.record_relay_events(vec![relay_list_event.clone(), dm_wrap.clone()]);
+        req.record_relay_events(vec![side_room_wrap.clone()]);
+        neg.record_relay_events(vec![relay_list_event, side_room_wrap]);
+        neg.record_relay_events(vec![dm_wrap]);
+
+        assert_eq!(req.snapshot, full.snapshot);
+        assert_eq!(neg.snapshot, full.snapshot);
+        assert_eq!(full.snapshot.rooms.len(), 2);
+    }
+
+    #[test]
     fn direct_message_projection_persists_outbound_retry_state() {
         let temp = tempdir().expect("tempdir");
         let path = temp.path().join("direct-messages.json");
