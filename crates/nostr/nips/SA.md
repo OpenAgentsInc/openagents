@@ -63,6 +63,7 @@ This NIP reserves the following event kinds:
 | 39221 | Skill Delivery | Ephemeral |
 | 39230 | Agent Trajectory Session | Addressable |
 | 39231 | Agent Trajectory Event | Regular |
+| 39260 | Agent Delegation | Regular |
 
 ## Agent Identity
 
@@ -140,6 +141,37 @@ Autonomy levels:
 - `supervised`: Agent requests approval before major actions
 - `bounded`: Agent acts within defined constraints without approval
 - `autonomous`: Agent acts freely toward goals
+
+### Security Posture Declaration
+
+Agents with tool-use capabilities SHOULD include a `security_posture` object in the profile `content` metadata. This declaration is informational — it gives consumers a machine-readable signal about the agent's security properties.
+
+```json
+{
+  "name": "ResearchBot",
+  "about": "I research topics and summarize findings",
+  "capabilities": ["research", "summarization"],
+  "autonomy_level": "bounded",
+  "version": "1.0.0",
+  "security_posture": {
+    "instruction_data_separation": true,
+    "tool_use_requires_guardian": false,
+    "hijacking_resistance_tier": "third-party-evaluated",
+    "evaluation_ref": "33400:<evaluator_pubkey>:<attestation_d_tag>"
+  }
+}
+```
+
+#### Field Definitions
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `instruction_data_separation` | boolean | Whether the agent implements separation between instruction context and external data inputs (mitigates indirect prompt injection). |
+| `tool_use_requires_guardian` | boolean | Whether tool invocations require guardian confirmation before execution. |
+| `hijacking_resistance_tier` | string | One of `self-assessed`, `third-party-evaluated`, `red-team-tested`. References the assurance tier taxonomy defined in NIP-SKL §4.3. |
+| `evaluation_ref` | string | OPTIONAL. NIP-33 `a`-tag reference to the SKL safety label or attestation event that supports the declared tier. |
+
+This declaration is OPTIONAL and non-normative. Consumers MAY use it to inform trust decisions (e.g., requiring `tool_use_requires_guardian: true` for high-value OSCE envelopes) but MUST NOT treat it as a security guarantee.
 
 ## Agent State
 
@@ -464,6 +496,13 @@ Individual events within a trajectory:
     ["e", "<session-event-id>", "<relay>", "root"],
     ["e", "<prev-event-id>", "<relay>", "reply"],  // for threading
     ["seq", "<sequence-number>"],
+    ["action_type", "tool_invocation"],  // optional: audit classification
+    ["tool_invoked", "web_search"],  // optional: tool identifier
+    ["input_hash", "<sha256-of-redacted-input>"],  // optional
+    ["output_hash", "<sha256-of-redacted-output>"],  // optional
+    ["guardian_approval_ref", "<kind:39213-event-id>"],  // optional
+    ["credit", "<envelope-id>"],  // optional: NIP-AC envelope linkage
+    ["parent_session", "<parent-session-event-id>"],  // optional: delegation chain
     ["h", "<group-id>"]  // if in a group
   ]
 }
@@ -482,6 +521,8 @@ The `content` field contains a JSON object with the event payload:
 }
 ```
 
+Agents that need audit-friendly trajectories SHOULD encode consequential actions as `kind:39231` events with `action_type`, `tool_invoked`, `input_hash`, `output_hash`, and optional `guardian_approval_ref`, `credit`, or `parent_session` tags. This keeps audit history append-only inside the existing trajectory stream instead of introducing a separate mutable audit log kind.
+
 ### Event Types
 
 | Type | Description | Example Content |
@@ -494,6 +535,7 @@ The `content` field contains a JSON object with the event payload:
 | `observation` | Tool result observation | `{"type":"observation","call_id":"c1","status":"ok"}` |
 | `thinking` | Agent reasoning (may be redacted) | `{"type":"thinking","content":"Analyzing...","sig":"<signature>"}` |
 | `subagent` | Subagent spawn/result | `{"type":"subagent","name":"explore","query":"find auth","result":"..."}` |
+| `delegation` | Delegation contract or handoff | `{"type":"delegation","sub_agent":"<pubkey>","scope":"skill","max_amount":500}` |
 | `question` | Agent asks operator | `{"type":"question","content":"Which auth method?","options":["OAuth","JWT"]}` |
 | `todos` | Task list update | `{"type":"todos","items":[{"status":"pending","content":"Fix bug"}]}` |
 | `phase` | Execution phase change | `{"type":"phase","phase":"explore"}` |
@@ -542,6 +584,56 @@ Trajectories can be verified and referenced:
 ```
 
 This allows payment events, reputation updates, or dispute claims to reference the work that was done.
+
+## Agent Delegation
+
+When an agent delegates a sub-task to another agent, the delegation MUST preserve authorization scope, audit chain integrity, and identity verification requirements.
+
+### Delegation Event
+
+The parent agent publishes a delegation event:
+
+```jsonc
+{
+  "kind": 39260,
+  "pubkey": "<parent_agent_pubkey>",
+  "created_at": 1740500200,
+  "tags": [
+    ["p", "<sub_agent_pubkey>"],
+    ["a", "33400:<sub_agent_skill_pubkey>:<d-tag>", "<relay>"],  // sub-agent manifest
+    ["scope", "skill", "33400:<sub_agent_skill_pubkey>:<d-tag>:<version>"],  // delegated scope
+    ["credit", "<parent_envelope_id>"],  // if AC-funded
+    ["max_amount", "500"],  // sub-budget in sats
+    ["capability", "web_search"],
+    ["capability", "summarize"],
+    ["parent_session", "<parent_session_event_id>"],
+    ["guardian_approval_ref", "<approval_event_id>"],  // if guardian approved delegation
+    ["exp", "1740586400"]
+  ],
+  "content": "Delegate web research sub-task to specialist agent."
+}
+```
+
+### Delegation Rules
+
+1. **SKL Manifest Required:** The sub-agent MUST hold a valid, non-revoked SKL manifest (`kind:33400`). The parent agent SHOULD verify this before delegating.
+
+2. **Scope Propagation:** If a delegation carries a `credit` tag, the sub-agent's `max_amount` MUST NOT exceed the parent envelope's remaining balance. The delegated `scope` and repeated `capability` tags MUST remain within the parent agent's authorized task or envelope scope.
+
+3. **Audit Chain:** The sub-agent's `kind:39231` trajectory events SHOULD reference the parent session via the `parent_session` tag. This creates a traceable chain from sub-agent actions back to the originating task.
+
+4. **Guardian Threshold:** If the parent agent requires guardian approval for high-value operations, the same `approval_threshold` and `guardian` policy applies to the delegation decision itself.
+
+5. **Authentication:** If the optional SKL authentication challenge profile is in use, the parent agent SHOULD issue a `kind:33410` challenge to the sub-agent before delegating, to verify the sub-agent currently holds its declared key.
+
+6. **Expiry:** Delegations MUST include an `exp` tag. Sub-agents MUST cease work after the delegation expires.
+
+### Normative Requirements
+
+- Agents that spawn sub-agents SHOULD publish `kind:39260` delegation events.
+- Sub-agents MUST NOT exceed the scope constraints specified in the delegation event.
+- Sub-agents SHOULD reference `parent_session` in their `kind:39231` trajectory events.
+- Single-agent deployments that do not delegate are not affected by this section.
 
 ## Skill Protection
 
@@ -1085,3 +1177,12 @@ Implementations MAY fulfill the `kind:39212` guardian approval request via NFC h
 - NIP-SKL (this repo): Agent Skill Registry
 - NIP-EE: MLS encryption (private trajectory groups) (draft / external)
 - [FROSTR](https://github.com/FROSTR-ORG): Threshold signatures for Nostr
+
+## Changelog
+
+**v4 (2026-03-05) — NIST AI Agent Standards Alignment**
+
+- Added Security Posture Declaration to agent profile (§Security Posture Declaration) — OPTIONAL `security_posture` object declaring instruction/data separation, guardian-gated tool use, and hijacking resistance tier.
+- Clarified that audit-friendly action history SHOULD be expressed through tagged `kind:39231` trajectory events rather than a separate audit kind.
+- Added Agent Delegation specification (`kind:39260`) for sub-agent task forwarding with scope propagation, audit chain integrity, and SKL manifest verification (§Agent Delegation) — SHOULD for agents that spawn sub-agents.
+- Satisfies requirements from: NIST CAISI Blog on Agent Hijacking (Jan 2025), CAISI RFI NIST-2025-0035 (Jan 2026), NCCoE AI Agent Identity Concept Paper (Feb 2026).
