@@ -1,4 +1,4 @@
-use crate::app_state::{PaneLoadState, ProviderMode, RenderState};
+use crate::app_state::{EarnFailureClass, PaneLoadState, ProviderMode, RenderState};
 use crate::pane_system::{
     AgentProfileStatePaneAction, AgentScheduleTickPaneAction, TrajectoryAuditPaneAction,
 };
@@ -25,7 +25,9 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: SaLaneSnaps
     state.provider_runtime.last_heartbeat_at = snapshot.last_heartbeat_at;
     state.provider_runtime.heartbeat_interval =
         std::time::Duration::from_secs(snapshot.heartbeat_seconds.max(1));
-    state.provider_runtime.queue_depth = snapshot.queue_depth;
+    state.provider_runtime.queue_depth = snapshot
+        .queue_depth
+        .max(state.active_job.inflight_job_count());
     state.provider_runtime.last_result = snapshot.last_result.clone();
     state.provider_runtime.degraded_reason_code = snapshot.degraded_reason_code.clone();
     state.provider_runtime.last_error_detail = snapshot.last_error_detail.clone();
@@ -47,10 +49,8 @@ pub(super) fn apply_command_response(
         .provider_runtime
         .last_authoritative_event_id
         .clone_from(&response.event_id);
-    state.provider_runtime.last_authoritative_error_class = response
-        .error
-        .as_ref()
-        .map(|error| error.class.label().to_string());
+    state.provider_runtime.last_authoritative_error_class =
+        response.error.as_ref().map(|_| EarnFailureClass::Execution);
     if response.status != RuntimeCommandStatus::Accepted {
         state.provider_runtime.last_error_detail = response
             .error

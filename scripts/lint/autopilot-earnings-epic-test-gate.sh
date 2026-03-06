@@ -108,9 +108,19 @@ run_test \
     provider_nip90_lane::tests::worker_ingests_live_relay_request \
     -- --nocapture
 run_test \
+    "Relay retry path stays transport-authoritative" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::relay_connections_add_retry_remove_flow \
+    -- --nocapture
+run_test \
     "Desktop E2E harness (relay -> execute -> publish -> wallet confirm)" \
     cargo test -p autopilot-desktop \
     provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end \
+    -- --nocapture
+run_test \
+    "Reciprocal loop two-identity relay/payment harness" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::reciprocal_loop_two_identity_relay_harness_runs_bidirectional_paid_cycles \
     -- --nocapture
 run_test \
     "Starter-demand generator budget/kill-switch controls" \
@@ -121,6 +131,41 @@ run_test \
     "Starter-demand provenance propagates into receipts/history" \
     cargo test -p autopilot-desktop \
     app_state::tests::starter_provenance_propagates_from_inbox_to_history_receipt \
+    -- --nocapture
+run_test \
+    "Mission Control aggregate counters pipeline" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::network_aggregate_counters_ \
+    -- --nocapture
+run_test \
+    "Failure taxonomy classifier wiring" \
+    cargo test -p autopilot-desktop \
+    input::actions::tests::provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation \
+    -- --nocapture
+run_test \
+    "Loop integrity SLO metrics projection" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::earnings_scoreboard_tracks_loop_integrity_slo_metrics \
+    -- --nocapture
+run_test \
+    "Loop integrity SLO alert thresholds" \
+    cargo test -p autopilot-desktop \
+    input::actions::tests::loop_integrity_alert_specs_flags_expected_slo_breaches \
+    -- --nocapture
+run_test \
+    "Simulation pane runtime gate predicates" \
+    cargo test -p autopilot-desktop \
+    pane_registry::tests::simulation_panes_respect_runtime_gate \
+    -- --nocapture
+run_test \
+    "Simulation pane commands hidden by default" \
+    cargo test -p autopilot-desktop \
+    render::tests::command_registry_hides_simulation_commands_when_disabled \
+    -- --nocapture
+run_test \
+    "Simulation pane tool-bridge isolation" \
+    cargo test -p autopilot-desktop \
+    input::tool_bridge::tests::resolve_pane_kind_gates_simulation_references \
     -- --nocapture
 run_test \
     "Earn bitcoin until +N sats flow" \
@@ -137,5 +182,8 @@ run_test \
     cargo test -p autopilot-desktop \
     state::autopilot_goals::tests::rollout_metrics_and_health_capture_false_success_latency_and_abort_distribution \
     -- --nocapture
+run_test \
+    "Earn docs reconciliation integrity" \
+    ./scripts/lint/autopilot-earn-doc-reconciliation-check.sh
 
 printf 'Autopilot earnings epic test matrix gate passed.\n'

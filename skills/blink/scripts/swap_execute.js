@@ -15,6 +15,11 @@
  *   node swap_execute.js btc-to-usd 2000 --dry-run
  *
  * CAUTION: Without --dry-run this performs a real wallet conversion.
+ *
+ * Originally authored by @AtlantisPleb (Christopher David) for the OpenAgents
+ * project under the Apache License 2.0. See NOTICE file for full attribution.
+ *
+ * Dependencies: None (uses Node.js built-in fetch)
  */
 
 const { getApiKey, getApiUrl } = require('./_blink_client');
@@ -35,6 +40,8 @@ async function main() {
   const apiKey = getApiKey();
   const apiUrl = getApiUrl();
 
+  console.error(`Estimating swap: ${parsed.direction} ${parsed.amount} ${parsed.unit}...`);
+
   const quoteResult = await estimateSwapQuote({
     direction: parsed.direction,
     amount: parsed.amount,
@@ -45,7 +52,9 @@ async function main() {
     apiUrl,
   });
 
+  // ── Dry-run: show quote details without executing ──
   if (parsed.dryRun) {
+    console.error('[DRY RUN] Would execute swap — no funds will be converted.');
     const output = {
       event: 'swap_execution',
       dryRun: true,
@@ -65,6 +74,9 @@ async function main() {
     console.log(JSON.stringify(output, null, 2));
     return;
   }
+
+  // ── Execute the swap ──
+  console.error('Executing swap...');
 
   const executionResult = await executeSwap({
     direction: parsed.direction,
@@ -92,10 +104,22 @@ async function main() {
     executedAtEpochSeconds: Math.floor(Date.now() / 1000),
   };
 
+  if (executionResult.status === 'SUCCESS') {
+    console.error('Swap executed successfully!');
+  } else if (executionResult.status === 'PENDING') {
+    console.error('Swap is pending...');
+  } else {
+    console.error(`Swap status: ${executionResult.status}`);
+  }
+
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch((error) => {
-  console.error('Error:', error.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('Error:', e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };

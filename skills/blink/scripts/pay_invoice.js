@@ -46,11 +46,11 @@ const PAY_INVOICE_MUTATION = `
 `;
 
 async function main() {
-  const { walletCurrency, remaining } = parseWalletArg(process.argv.slice(2));
+  const { walletCurrency, dryRun, force, remaining } = parseWalletArg(process.argv.slice(2));
   const rawInvoice = remaining[0];
 
   if (!rawInvoice) {
-    console.error('Usage: node pay_invoice.js <bolt11_invoice> [--wallet BTC|USD]');
+    console.error('Usage: node pay_invoice.js <bolt11_invoice> [--wallet BTC|USD] [--dry-run] [--force]');
     process.exit(1);
   }
 
@@ -64,6 +64,33 @@ async function main() {
   const wallet = await getWallet({ apiKey, apiUrl, currency: walletCurrency });
 
   console.error(`Using ${walletCurrency} wallet ${wallet.id} (balance: ${formatBalance(wallet)})`);
+
+  // ── Dry-run: resolve everything, show details, exit without sending ──
+  if (dryRun) {
+    console.error('[DRY RUN] Would send payment — no funds will be transferred.');
+    const output = {
+      dryRun: true,
+      paymentRequest,
+      walletId: wallet.id,
+      walletCurrency,
+      balance: wallet.balance,
+    };
+    if (walletCurrency === 'USD') {
+      output.balanceFormatted = `$${(wallet.balance / 100).toFixed(2)}`;
+    }
+    console.log(JSON.stringify(output, null, 2));
+    return;
+  }
+
+  // ── Balance check for BTC wallet ──
+  // For pay_invoice we don't decode the BOLT-11 amount, so we can only warn
+  // if the wallet is completely empty (0 sats). The API will reject if
+  // insufficient, but this catches the obvious case early.
+  if (!force && walletCurrency === 'BTC' && wallet.balance === 0) {
+    throw new Error(
+      `Insufficient balance: BTC wallet has 0 sats. Use --force to attempt anyway.`,
+    );
+  }
 
   const input = {
     walletId: wallet.id,
@@ -108,7 +135,11 @@ async function main() {
   console.log(JSON.stringify(output, null, 2));
 }
 
-main().catch((e) => {
-  console.error('Error:', e.message);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((e) => {
+    console.error('Error:', e.message);
+    process.exit(1);
+  });
+}
+
+module.exports = { main };

@@ -1,4 +1,5 @@
 use crate::app_state::PaneLoadState;
+use crate::state::provider_runtime::ProviderMode;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum JobDemandSource {
@@ -56,6 +57,7 @@ pub struct JobInboxRequest {
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
+    pub execution_input: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -69,6 +71,20 @@ pub struct JobInboxRequest {
     pub decision: JobInboxDecision,
 }
 
+impl JobInboxRequest {
+    pub const fn preview_only(&self, provider_mode: ProviderMode) -> bool {
+        matches!(provider_mode, ProviderMode::Offline)
+    }
+
+    pub const fn eligibility_label(&self, provider_mode: ProviderMode) -> &'static str {
+        if self.preview_only(provider_mode) {
+            "preview-only"
+        } else {
+            "claimable"
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct JobInboxNetworkRequest {
     pub request_id: String,
@@ -76,6 +92,12 @@ pub struct JobInboxNetworkRequest {
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
+    pub execution_input: Option<String>,
+    pub target_provider_pubkeys: Vec<String>,
+    pub encrypted: bool,
+    pub encrypted_payload: Option<String>,
+    pub parsed_event_shape: Option<String>,
+    pub raw_event_json: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -110,6 +132,14 @@ impl Default for JobInboxState {
 }
 
 impl JobInboxState {
+    pub const fn preview_block_reason(&self, provider_mode: ProviderMode) -> Option<&'static str> {
+        if matches!(provider_mode, ProviderMode::Offline) {
+            Some("Preview only while offline. Click Go Online to claim jobs.")
+        } else {
+            None
+        }
+    }
+
     pub fn upsert_network_request(&mut self, request: JobInboxNetworkRequest) {
         if let Some(existing) = self
             .requests
@@ -120,6 +150,7 @@ impl JobInboxState {
             existing.demand_source = request.demand_source;
             existing.request_kind = request.request_kind;
             existing.capability = request.capability;
+            existing.execution_input = request.execution_input;
             existing.skill_scope_id = request.skill_scope_id;
             existing.skl_manifest_a = request.skl_manifest_a;
             existing.skl_manifest_event_id = request.skl_manifest_event_id;
@@ -140,6 +171,7 @@ impl JobInboxState {
             demand_source: request.demand_source,
             request_kind: request.request_kind,
             capability: request.capability,
+            execution_input: request.execution_input,
             skill_scope_id: request.skill_scope_id,
             skl_manifest_a: request.skl_manifest_a,
             skl_manifest_event_id: request.skl_manifest_event_id,
@@ -175,16 +207,16 @@ impl JobInboxState {
             .find(|request| request.request_id == selected_id)
     }
 
-    pub fn decide_selected(&mut self, accepted: bool, reason: &str) -> Result<String, String> {
-        let selected_id = self
-            .selected_request_id
-            .as_deref()
-            .ok_or_else(|| "Select a request first".to_string())?
-            .to_string();
+    pub fn decide_request(
+        &mut self,
+        request_id: &str,
+        accepted: bool,
+        reason: &str,
+    ) -> Result<String, String> {
         let Some(request) = self
             .requests
             .iter_mut()
-            .find(|request| request.request_id == selected_id)
+            .find(|request| request.request_id == request_id)
         else {
             return Err("Selected request no longer exists".to_string());
         };
@@ -206,5 +238,98 @@ impl JobInboxState {
             format!("Rejected {} ({decision_reason})", request.request_id)
         });
         Ok(request.request_id.clone())
+    }
+
+    pub fn decide_selected(&mut self, accepted: bool, reason: &str) -> Result<String, String> {
+        let selected_id = self
+            .selected_request_id
+            .as_deref()
+            .ok_or_else(|| "Select a request first".to_string())?
+            .to_string();
+        self.decide_request(selected_id.as_str(), accepted, reason)
+    }
+
+    pub fn remove_requests_by_demand_source(
+        &mut self,
+        demand_source: JobDemandSource,
+        keep_request_id: Option<&str>,
+    ) -> usize {
+        let original_len = self.requests.len();
+        self.requests.retain(|request| {
+            request.demand_source != demand_source
+                || keep_request_id.is_some_and(|keep| request.request_id == keep)
+        });
+        if let Some(selected_id) = self.selected_request_id.as_deref()
+            && !self
+                .requests
+                .iter()
+                .any(|request| request.request_id == selected_id)
+        {
+            self.selected_request_id = self
+                .requests
+                .first()
+                .map(|request| request.request_id.clone());
+        }
+        original_len.saturating_sub(self.requests.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxState, JobInboxValidation,
+    };
+    use crate::app_state::PaneLoadState;
+    use crate::state::provider_runtime::ProviderMode;
+
+    fn fixture_request() -> JobInboxRequest {
+        JobInboxRequest {
+            request_id: "req-preview".to_string(),
+            requester: "buyer".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: 5050,
+            capability: "summarize.text".to_string(),
+            execution_input: Some("Summarize the attached text payload.".to_string()),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: None,
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: 42,
+            ttl_seconds: 60,
+            validation: JobInboxValidation::Valid,
+            arrival_seq: 1,
+            decision: JobInboxDecision::Pending,
+        }
+    }
+
+    #[test]
+    fn request_eligibility_is_preview_only_while_provider_offline() {
+        let request = fixture_request();
+        assert!(request.preview_only(ProviderMode::Offline));
+        assert_eq!(
+            request.eligibility_label(ProviderMode::Offline),
+            "preview-only"
+        );
+        assert_eq!(request.eligibility_label(ProviderMode::Online), "claimable");
+    }
+
+    #[test]
+    fn inbox_reports_preview_block_reason_only_while_offline() {
+        let inbox = JobInboxState {
+            load_state: PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            requests: vec![fixture_request()],
+            selected_request_id: Some("req-preview".to_string()),
+            next_arrival_seq: 2,
+        };
+
+        assert_eq!(
+            inbox.preview_block_reason(ProviderMode::Offline),
+            Some("Preview only while offline. Click Go Online to claim jobs.")
+        );
+        assert_eq!(inbox.preview_block_reason(ProviderMode::Online), None);
     }
 }

@@ -3,15 +3,15 @@ resolver = "2"
 members = [
     "apps/autopilot-desktop",
     "crates/cad",
+    "crates/autopilot-spacetime",
     "crates/codex-client",
-    "crates/email-agent",
     "crates/nostr/client",
     "crates/nostr/core",
     "crates/openagents-ios-domain",
     "crates/spark",
     "crates/wgpui-core",
     "crates/wgpui-render",
-    "crates/wgpui",
+    "crates/wgpui", "apps/nexus-control", "apps/nexus-relay",
 ]
 
 [workspace.lints.rust]

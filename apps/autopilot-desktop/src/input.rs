@@ -34,8 +34,8 @@ use winit::keyboard::{
 use winit::window::Fullscreen;
 
 use crate::app_state::{
-    ActivityEventDomain, ActivityEventRow, AlertDomain, App, CadCameraDragMode, CadCameraDragState,
-    CadHotkeyAction, ChatTranscriptSelectionDragState, JobInboxNetworkRequest, JobInboxValidation,
+    AlertDomain, App, CadCameraDragMode, CadCameraDragState, CadHotkeyAction,
+    ChatTranscriptSelectionDragState, EarnFailureClass, JobInboxNetworkRequest, JobInboxValidation,
     NetworkRequestSubmission, PaneKind, ProviderMode,
 };
 use crate::hotbar::{
@@ -43,17 +43,18 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::pane_registry::pane_spec_by_command_id;
+use crate::pane_registry::{pane_enabled_in_runtime, pane_spec_by_command_id};
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
     CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
     CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput, ReciprocalLoopPaneAction,
     RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
     SettingsPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction, cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_calculator_input_event,
+    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
     dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
@@ -68,8 +69,8 @@ use crate::render::{
     wallet_balance_sats_label_bounds,
 };
 use crate::runtime_lanes::{
-    AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
-    RuntimeLane, SaLifecycleCommand, SklDiscoveryTrustCommand,
+    AcCreditCommand, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLifecycleCommand,
+    SklDiscoveryTrustCommand,
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
@@ -109,6 +110,16 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
 
     match event {
         WindowEvent::CloseRequested => {
+            let worker_id = state.sync_lifecycle_worker_id.clone();
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                crate::sync_lifecycle::RuntimeSyncDisconnectReason::StreamClosed,
+                Some("desktop shutdown requested".to_string()),
+            );
+            state.sync_lifecycle.mark_idle(worker_id.as_str());
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            let _ = state.spacetime_presence.register_offline();
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             let _ = state.spark_worker.cancel_pending();
             if let Some(mut process) = state.cast_control_process.take() {
                 let _ = process.child.kill();
@@ -464,21 +475,43 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if run_auto_cast_control_loop(state, now) {
         changed = true;
     }
-    if run_auto_agent_network_simulation(state, now) {
-        changed = true;
-    }
-    if run_auto_treasury_exchange_simulation(state, now) {
-        changed = true;
-    }
-    if run_auto_relay_security_simulation(state, now) {
-        changed = true;
-    }
-    if run_auto_stable_sats_simulation(state, now) {
-        changed = true;
+    if state.simulation_panes_enabled {
+        if run_auto_agent_network_simulation(state, now) {
+            changed = true;
+        }
+        if run_auto_treasury_exchange_simulation(state, now) {
+            changed = true;
+        }
+        if run_auto_relay_security_simulation(state, now) {
+            changed = true;
+        }
+        if run_auto_stable_sats_simulation(state, now) {
+            changed = true;
+        }
     }
     if run_auto_starter_demand_generator(state, now) {
         changed = true;
     }
+    if reducers::run_job_inbox_auto_admission_tick(state) {
+        changed = true;
+    }
+    if reducers::run_active_job_execution_tick(state) {
+        changed = true;
+    }
+    if run_hosted_starter_lease_heartbeat(state, now) {
+        changed = true;
+    }
+    if run_reciprocal_loop_engine_tick(state) {
+        changed = true;
+    }
+    if run_open_network_paid_transition_reconciliation(state, now) {
+        changed = true;
+    }
+    if state.spacetime_presence.tick(state.provider_runtime.mode) {
+        changed = true;
+    }
+    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+    refresh_network_aggregate_counters(state, now);
     refresh_earnings_scoreboard(state, now);
     refresh_sync_health(state);
     mirror_ui_errors_to_console(state);
@@ -1847,7 +1880,10 @@ fn dispatch_mouse_scroll(
         if apply_cad_camera_zoom(state, point, *dy) {
             handled = true;
         } else {
-            handled |= dispatch_chat_scroll_event(state, point, *dy);
+            handled |= dispatch_activity_feed_detail_scroll_event(state, point, *dy);
+            if !handled {
+                handled |= dispatch_chat_scroll_event(state, point, *dy);
+            }
         }
     }
     handled |= dispatch_text_inputs(state, event);
@@ -2281,6 +2317,8 @@ pub(super) fn run_pane_hit_action(
                         "Identity regenerated. Secrets are hidden by default.".to_string(),
                     );
                     queue_spark_command(state, SparkWalletCommand::Refresh);
+                    let _ = state.sync_provider_nip90_lane_identity();
+                    crate::render::apply_spacetime_sync_bootstrap(state);
                 }
                 Err(err) => {
                     state.nostr_identity_error = Some(err.to_string());
@@ -2344,8 +2382,46 @@ pub(super) fn run_pane_hit_action(
                 state.provider_runtime.mode,
                 ProviderMode::Offline | ProviderMode::Degraded
             );
+            let worker_id = state.sync_lifecycle_worker_id.clone();
+            if wants_online {
+                state.sync_lifecycle.mark_connecting(worker_id.as_str());
+                if let Err(error) = state
+                    .spacetime_presence
+                    .register_online(state.nostr_identity.as_ref())
+                {
+                    let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+                    let _ = state.sync_lifecycle.mark_disconnect(
+                        worker_id.as_str(),
+                        reason,
+                        Some(error.clone()),
+                    );
+                    state.provider_runtime.last_result = Some(error.clone());
+                    state.provider_runtime.last_error_detail = Some(error);
+                    state.provider_runtime.mode = ProviderMode::Degraded;
+                    state.provider_runtime.degraded_reason_code =
+                        Some("SPACETIME_PRESENCE_BIND_FAILED".to_string());
+                    state.provider_runtime.last_authoritative_error_class =
+                        Some(EarnFailureClass::Execution);
+                    state.provider_runtime.mode_changed_at = std::time::Instant::now();
+                    state.sync_lifecycle_snapshot =
+                        state.sync_lifecycle.snapshot(worker_id.as_str());
+                    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+                    return true;
+                }
+            } else {
+                let _ = state.sync_lifecycle.mark_disconnect(
+                    worker_id.as_str(),
+                    crate::sync_lifecycle::RuntimeSyncDisconnectReason::StreamClosed,
+                    Some("operator toggled provider offline".to_string()),
+                );
+                state.sync_lifecycle.mark_idle(worker_id.as_str());
+                let _ = state.spacetime_presence.register_offline();
+            }
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+
             if wants_online {
                 queue_spark_command(state, SparkWalletCommand::Refresh);
+                let _ = state.sync_provider_nip90_lane_identity();
                 let _ = state.sync_provider_nip90_lane_relays();
             }
             if let Err(error) =
@@ -2353,11 +2429,19 @@ pub(super) fn run_pane_hit_action(
                     online: wants_online,
                 })
             {
+                let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+                let _ = state.sync_lifecycle.mark_disconnect(
+                    worker_id.as_str(),
+                    reason,
+                    Some(error.clone()),
+                );
                 state.provider_runtime.last_result = Some(error.clone());
                 state.provider_runtime.last_error_detail = Some(error);
                 state.provider_runtime.mode = ProviderMode::Degraded;
                 state.provider_runtime.degraded_reason_code =
                     Some("NIP90_INGRESS_QUEUE_ERROR".to_string());
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Relay);
                 state.provider_runtime.mode_changed_at = std::time::Instant::now();
             }
             match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline {
@@ -2369,8 +2453,25 @@ pub(super) fn run_pane_hit_action(
                     state.provider_runtime.last_authoritative_status = Some("pending".to_string());
                     state.provider_runtime.last_authoritative_event_id = None;
                     state.provider_runtime.last_authoritative_error_class = None;
+                    if wants_online {
+                        let refresh_after = state
+                            .sync_lifecycle
+                            .snapshot(worker_id.as_str())
+                            .and_then(|snapshot| snapshot.token_refresh_after_in_seconds);
+                        state
+                            .sync_lifecycle
+                            .mark_live(worker_id.as_str(), refresh_after);
+                    } else {
+                        state.sync_lifecycle.mark_idle(worker_id.as_str());
+                    }
                 }
                 Err(error) => {
+                    let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+                    let _ = state.sync_lifecycle.mark_disconnect(
+                        worker_id.as_str(),
+                        reason,
+                        Some(error.clone()),
+                    );
                     state.provider_runtime.last_result = Some(error.clone());
                     state.provider_runtime.last_error_detail = Some(error);
                     state.provider_runtime.mode = ProviderMode::Degraded;
@@ -2381,9 +2482,10 @@ pub(super) fn run_pane_hit_action(
                         Some(RuntimeCommandStatus::Retryable.label().to_string());
                     state.provider_runtime.last_authoritative_event_id = None;
                     state.provider_runtime.last_authoritative_error_class =
-                        Some(RuntimeCommandErrorClass::Transport.label().to_string());
+                        Some(EarnFailureClass::Execution);
                 }
             }
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
             true
         }
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
@@ -2398,6 +2500,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
+        PaneHitAction::ReciprocalLoop(action) => run_reciprocal_loop_action(state, action),
         PaneHitAction::ActivityFeed(action) => run_activity_feed_action(state, action),
         PaneHitAction::AlertsRecovery(action) => run_alerts_recovery_action(state, action),
         PaneHitAction::Settings(action) => run_settings_action(state, action),
@@ -2424,15 +2527,39 @@ pub(super) fn run_pane_hit_action(
             reducers::run_credit_settlement_ledger_action(state, action)
         }
         PaneHitAction::AgentNetworkSimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::AgentNetworkSimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "agent_network_simulation");
+            }
             run_agent_network_simulation_action(state, action)
         }
         PaneHitAction::TreasuryExchangeSimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::TreasuryExchangeSimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "treasury_exchange_simulation");
+            }
             run_treasury_exchange_simulation_action(state, action)
         }
         PaneHitAction::RelaySecuritySimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::RelaySecuritySimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "relay_security_simulation");
+            }
             run_relay_security_simulation_action(state, action)
         }
         PaneHitAction::StableSatsSimulation(action) => {
+            if !pane_enabled_in_runtime(
+                crate::app_state::PaneKind::StableSatsSimulation,
+                state.simulation_panes_enabled,
+            ) {
+                return simulation_pane_action_blocked(state, "stable_sats_simulation");
+            }
             run_stable_sats_simulation_action(state, action)
         }
         PaneHitAction::CadDemo(action) => reducers::run_cad_demo_action(state, action),
@@ -2440,6 +2567,17 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
         PaneHitAction::SparkPayInvoice(action) => run_pay_invoice_action(state, action),
     }
+}
+
+fn simulation_pane_action_blocked(
+    state: &mut crate::app_state::RenderState,
+    pane_key: &str,
+) -> bool {
+    state.provider_runtime.last_result = Some(format!(
+        "Simulation pane '{}' is disabled. Set OPENAGENTS_ENABLE_SIMULATION_PANES=1 for dev/test sessions.",
+        pane_key
+    ));
+    true
 }
 
 fn handle_chat_keyboard_input(
