@@ -24,14 +24,15 @@ use axum::response::{Html, IntoResponse, Response};
 use axum::routing::{any, get};
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt, TryStreamExt};
-use nostr_rs_relay_upstream as _;
 use nostr::{Event, nip01::classify_kind, nip42::validate_auth_event};
+use nostr_rs_relay_upstream as _;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{RwLock, mpsc};
 
 mod managed_groups;
+pub mod durable;
 
 use managed_groups::{ManagedGroupsState, event_group_id};
 

@@ -9,7 +9,7 @@ async fn main() -> Result<(), anyhow::Error> {
         .compact()
         .init();
 
-    let config = nexus_relay::RelayServiceConfig::from_env()
+    let config = nexus_relay::durable::DurableRelayConfig::from_env()
         .map_err(|error| anyhow::anyhow!("failed to load nexus-relay config: {error}"))?;
-    nexus_relay::run_server(config).await
+    nexus_relay::durable::run_server(config).await
 }
