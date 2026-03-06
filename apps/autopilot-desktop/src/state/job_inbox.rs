@@ -67,6 +67,7 @@ pub struct JobInboxRequest {
     pub execution_prompt: Option<String>,
     pub execution_params: Vec<JobExecutionParam>,
     pub requested_model: Option<String>,
+    pub requested_output_mime: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -105,6 +106,7 @@ pub struct JobInboxNetworkRequest {
     pub execution_prompt: Option<String>,
     pub execution_params: Vec<JobExecutionParam>,
     pub requested_model: Option<String>,
+    pub requested_output_mime: Option<String>,
     pub target_provider_pubkeys: Vec<String>,
     pub encrypted: bool,
     pub encrypted_payload: Option<String>,
@@ -166,6 +168,7 @@ impl JobInboxState {
             existing.execution_prompt = request.execution_prompt;
             existing.execution_params = request.execution_params;
             existing.requested_model = request.requested_model;
+            existing.requested_output_mime = request.requested_output_mime;
             existing.skill_scope_id = request.skill_scope_id;
             existing.skl_manifest_a = request.skl_manifest_a;
             existing.skl_manifest_event_id = request.skl_manifest_event_id;
@@ -190,6 +193,7 @@ impl JobInboxState {
             execution_prompt: request.execution_prompt,
             execution_params: request.execution_params,
             requested_model: request.requested_model,
+            requested_output_mime: request.requested_output_mime,
             skill_scope_id: request.skill_scope_id,
             skl_manifest_a: request.skl_manifest_a,
             skl_manifest_event_id: request.skl_manifest_event_id,
@@ -311,6 +315,7 @@ mod tests {
             execution_prompt: Some("Summarize the attached text payload.".to_string()),
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
+            requested_output_mime: Some("text/plain".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,

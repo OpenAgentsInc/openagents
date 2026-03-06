@@ -4180,6 +4180,11 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
+        if !self.provider_runtime.ollama.reachable {
+            blockers.push(ProviderBlocker::OllamaUnavailable);
+        } else if !self.provider_runtime.ollama.is_ready() {
+            blockers.push(ProviderBlocker::OllamaModelUnavailable);
+        }
         blockers
     }
 }
@@ -4244,6 +4249,7 @@ mod tests {
             execution_prompt: Some(format!("Prompt for {request_id}")),
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
+            requested_output_mime: Some("text/plain".to_string()),
             target_provider_pubkeys: Vec::new(),
             encrypted: false,
             encrypted_payload: None,
