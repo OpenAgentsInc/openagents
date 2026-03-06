@@ -41,6 +41,9 @@ mod sync_apply;
 mod sync_bootstrap;
 mod sync_lifecycle;
 
+#[cfg(test)]
+mod chat_regression_tests;
+
 use anyhow::{Context, Result};
 use app_state::App;
 use winit::application::ApplicationHandler;
