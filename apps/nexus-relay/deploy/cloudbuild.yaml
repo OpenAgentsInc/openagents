@@ -1,0 +1,18 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    env:
+      - DOCKER_BUILDKIT=1
+    args:
+      - buildx
+      - build
+      - --platform
+      - linux/amd64
+      - -f
+      - apps/nexus-relay/Dockerfile
+      - -t
+      - ${_IMAGE}
+      - --push
+      - .
+
+images:
+  - ${_IMAGE}

@@ -8,6 +8,7 @@ This directory is organized around a small number of canonical entry points.
 - `OWNERSHIP.md`: crate/app ownership boundaries.
 - `kernel/README.md`: marketplace and kernel architecture overview.
 - `autopilot-earn/README.md`: consolidated Autopilot Earn docs.
+- `deploy/NEXUS_GCP_RUNBOOK.md`: stateful Nexus deployment runbook.
 - `plans/deprecated/`: archived historical plans kept for provenance.
 - `audits/`: repo audits, gap analyses, and architecture reviews.
 
