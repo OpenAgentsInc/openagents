@@ -575,6 +575,21 @@ Why sixth:
 
 - managed-group behavior is important, but it should sit on top of the durable relay, not distort the migration order
 
+Current resolution:
+
+- defer managed-group enforcement during the durable relay cutover
+- keep `apps/nexus-relay/src/managed_groups.rs` as legacy/reference code only
+- do not wire it into the durable upstream by patching deep repository or query internals
+- revisit only after we have explicit thin hooks for:
+  - authenticated group read filtering
+  - authenticated group write admission
+  - relay-owned group snapshot emission
+
+Near-term product truth:
+
+- managed groups are not on the current production Nexus path
+- the durable relay should advertise this honestly in operator/runtime surfaces instead of implying support
+
 ### Issue 7: Add production deployment config for the single Nexus service
 
 Summary:
