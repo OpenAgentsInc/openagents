@@ -24,7 +24,7 @@ It is a layered system where machine compute, machine data, machine labor, machi
 | Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop. Broader compute market instruments remain prototyped in docs only. |
 | Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for assets, grants, deliveries, and revocations. Broader discovery, pricing, and product UX remain planned. |
 | Labor Market | `local prototype` | The repo has job lifecycle handling and kernel-shaped local models, but not a generalized authoritative labor market. |
-| Liquidity Market | `local prototype` | Wallet and payment-routing primitives exist, but there is no standalone liquidity market authority yet. |
+| Liquidity Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter quote, route, envelope, settlement, and reserve-partition authority flows. Broader routing, FX, and solver-market productization remain planned. |
 | Risk Market | `local prototype` | Prediction, coverage, and underwriting are modeled in docs and local kernel signals, not as a production authority surface. |
 | Kernel authority | `local prototype` | `apps/nexus-control` has thin hosted endpoints, while the richer kernel receipts and snapshots still live primarily in desktop-local modeling. |
 
@@ -169,8 +169,8 @@ They also need a deterministic way to move value across payment systems and mark
 
 Current status:
 
-- `local prototype`: wallet and payment-routing primitives exist
-- `planned`: quotes, route selection, envelope issuance, and authoritative liquidity settlement
+- `implemented`: starter quote, route selection, envelope issuance, settlement, and reserve-partition authority flows
+- `planned`: broader routing, FX, solver participation, and product-facing liquidity UX
 
 ### 6. Risk Market
 

@@ -179,6 +179,18 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub compute_indices_published_24h: u64,
     #[serde(default)]
+    pub liquidity_quotes_active: u64,
+    #[serde(default)]
+    pub liquidity_route_plans_active: u64,
+    #[serde(default)]
+    pub liquidity_envelopes_open: u64,
+    #[serde(default)]
+    pub liquidity_settlements_24h: u64,
+    #[serde(default)]
+    pub liquidity_reserve_partitions_active: u64,
+    #[serde(default)]
+    pub liquidity_value_moved_24h: u64,
+    #[serde(default)]
     pub audit_package_public_digest: String,
     #[serde(default)]
     pub audit_package_restricted_digest: String,

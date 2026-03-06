@@ -96,6 +96,12 @@ pub struct PublicStatsSnapshot {
     pub compute_delivery_proofs_24h: u64,
     pub compute_delivery_quantity_24h: u64,
     pub compute_indices_published_24h: u64,
+    pub liquidity_quotes_active: u64,
+    pub liquidity_route_plans_active: u64,
+    pub liquidity_envelopes_open: u64,
+    pub liquidity_settlements_24h: u64,
+    pub liquidity_reserve_partitions_active: u64,
+    pub liquidity_value_moved_24h: u64,
     pub recent_receipts: Vec<PublicRecentReceipt>,
 }
 
@@ -115,6 +121,12 @@ pub struct PublicRuntimeSnapshot {
     pub compute_delivery_proofs_24h: u64,
     pub compute_delivery_quantity_24h: u64,
     pub compute_indices_published_24h: u64,
+    pub liquidity_quotes_active: u64,
+    pub liquidity_route_plans_active: u64,
+    pub liquidity_envelopes_open: u64,
+    pub liquidity_settlements_24h: u64,
+    pub liquidity_reserve_partitions_active: u64,
+    pub liquidity_value_moved_24h: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -265,6 +277,12 @@ impl ReceiptLedger {
             compute_delivery_proofs_24h: runtime.compute_delivery_proofs_24h,
             compute_delivery_quantity_24h: runtime.compute_delivery_quantity_24h,
             compute_indices_published_24h: runtime.compute_indices_published_24h,
+            liquidity_quotes_active: runtime.liquidity_quotes_active,
+            liquidity_route_plans_active: runtime.liquidity_route_plans_active,
+            liquidity_envelopes_open: runtime.liquidity_envelopes_open,
+            liquidity_settlements_24h: runtime.liquidity_settlements_24h,
+            liquidity_reserve_partitions_active: runtime.liquidity_reserve_partitions_active,
+            liquidity_value_moved_24h: runtime.liquidity_value_moved_24h,
             recent_receipts: self.recent_receipts(),
         }
     }
@@ -453,6 +471,12 @@ mod tests {
                 compute_delivery_proofs_24h: 0,
                 compute_delivery_quantity_24h: 0,
                 compute_indices_published_24h: 0,
+                liquidity_quotes_active: 0,
+                liquidity_route_plans_active: 0,
+                liquidity_envelopes_open: 0,
+                liquidity_settlements_24h: 0,
+                liquidity_reserve_partitions_active: 0,
+                liquidity_value_moved_24h: 0,
             },
             6_000,
         );
