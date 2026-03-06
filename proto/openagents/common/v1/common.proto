@@ -1,0 +1,81 @@
+syntax = "proto3";
+
+package openagents.common.v1;
+
+enum Asset {
+  ASSET_UNSPECIFIED = 0;
+  ASSET_BTC_LN = 1;
+  ASSET_BTC_ONCHAIN = 2;
+  ASSET_USD = 3;
+  ASSET_USDC = 4;
+}
+
+enum FeedbackLatencyClass {
+  FEEDBACK_LATENCY_CLASS_UNSPECIFIED = 0;
+  FEEDBACK_LATENCY_CLASS_INSTANT = 1;
+  FEEDBACK_LATENCY_CLASS_SHORT = 2;
+  FEEDBACK_LATENCY_CLASS_LONG = 3;
+  FEEDBACK_LATENCY_CLASS_UNKNOWN = 4;
+}
+
+enum SeverityClass {
+  SEVERITY_CLASS_UNSPECIFIED = 0;
+  SEVERITY_CLASS_LOW = 1;
+  SEVERITY_CLASS_MEDIUM = 2;
+  SEVERITY_CLASS_HIGH = 3;
+  SEVERITY_CLASS_CRITICAL = 4;
+}
+
+enum VerificationTier {
+  VERIFICATION_TIER_UNSPECIFIED = 0;
+  VERIFICATION_TIER_TIER_0_OBJECTIVE = 1;
+  VERIFICATION_TIER_TIER_1_CORRELATED = 2;
+  VERIFICATION_TIER_TIER_2_HETEROGENEOUS = 3;
+  VERIFICATION_TIER_TIER_3_ADJUDICATION = 4;
+  VERIFICATION_TIER_TIER_4_HUMAN = 5;
+}
+
+enum ProvenanceGrade {
+  PROVENANCE_GRADE_UNSPECIFIED = 0;
+  PROVENANCE_GRADE_P0_MINIMAL = 1;
+  PROVENANCE_GRADE_P1_TOOLCHAIN = 2;
+  PROVENANCE_GRADE_P2_LINEAGE = 3;
+  PROVENANCE_GRADE_P3_ATTESTED = 4;
+}
+
+message Money {
+  Asset asset = 1;
+
+  oneof amount {
+    uint64 amount_msats = 2;
+    uint64 amount_sats = 3;
+  }
+}
+
+message TraceContext {
+  string session_id = 1;
+  string trajectory_hash = 2;
+  string job_hash = 3;
+  string run_id = 4;
+  string work_unit_id = 5;
+  string contract_id = 6;
+  string claim_id = 7;
+}
+
+message PolicyContext {
+  string policy_bundle_id = 1;
+  string policy_version = 2;
+  string approved_by = 3;
+}
+
+message EvidenceRef {
+  string kind = 1;
+  string uri = 2;
+  string digest = 3;
+}
+
+message ReceiptRef {
+  string receipt_id = 1;
+  string receipt_type = 2;
+  string canonical_hash = 3;
+}

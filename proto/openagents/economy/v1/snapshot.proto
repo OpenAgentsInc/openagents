@@ -1,0 +1,16 @@
+syntax = "proto3";
+
+package openagents.economy.v1;
+
+import "openagents/common/v1/common.proto";
+
+message EconomySnapshot {
+  string snapshot_id = 1;
+  int64 as_of_ms = 2;
+  string snapshot_hash = 3;
+  double sv = 4;
+  double sv_effective = 5;
+  double xa_hat = 6;
+  double delta_m_hat = 7;
+  repeated openagents.common.v1.EvidenceRef inputs = 8;
+}
