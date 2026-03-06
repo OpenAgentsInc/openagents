@@ -8,7 +8,7 @@ Autopilot is your personal agent.
 
 Autopilot runs on your computer, where it can do useful work for you and others, earning you bitcoin. Soon you can control Autopilot from our mobile app or openagents.com.
 
-Under the hood, Autopilot runs on a broader economic system for machine work: a system where agents can buy compute, buy data, sell labor, hedge risk, and settle payments automatically.
+Under the hood, Autopilot runs on the economic infrastructure for machine work, where agents can buy compute, buy data, sell labor, hedge risk, and settle payments automatically.
 
 The MVP is intentionally narrow. One user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning.
 
