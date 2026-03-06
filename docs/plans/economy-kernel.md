@@ -31,9 +31,68 @@ So the goal of the OpenAgents Economy Kernel is simple:
 
 > **Make work, verification, liability, and payment machine-legible—so autonomy can scale without collapsing trust.**
 
+---
+
+## Why this problem is bigger than “AI agents”
+
+The problem is not only about AI agents.
+
+It is about the **entire economic substrate that AI systems will run on.**
+
+As AI becomes more capable, two things are happening simultaneously:
+
+First, **software labor is exploding.**
+Agents can now write code, analyze data, generate artifacts, run workflows, and operate systems.
+
+Second, **compute is becoming the most important industrial input in the world.**
+Modern AI systems run on enormous GPU clusters, specialized accelerators, and distributed inference infrastructure. As demand rises, compute capacity itself becomes a scarce commodity.
+
+These two forces converge into a new economic structure:
+
+* **AI agents produce work**
+* **Compute infrastructure powers the work**
+* **Markets allocate both labor and capacity**
+
+Historically, economies developed specialized institutions to coordinate these layers.
+
+* Payment rails like **Visa and Stripe** move money.
+* Cloud platforms like **AWS** allocate compute.
+* Commodity exchanges like **CME** price scarce resources.
+* Insurance markets like **Lloyd’s of London** underwrite risk.
+
+In the agent economy, these layers begin to merge.
+
+Software agents must be able to:
+
+* buy compute
+* sell work
+* verify outcomes
+* hedge risk
+* insure performance
+* settle payments
+
+All automatically.
+
+This is why OpenAgents is not building just a marketplace or just an automation platform.
+
+The Economy Kernel is intended to become the **economic substrate for machine work**.
+
+You can think of it as a combination of:
+
+* **Stripe** — programmable settlement and payment proofs
+* **AWS** — programmable compute and service capacity
+* **CME** — programmable commodity markets and price discovery
+* **Lloyd’s** — programmable underwriting and liability markets
+
+All built around **deterministic receipts, policy gating, and verifiable outcomes.**
+
+---
+
 ## What the Economy Kernel does
 
-The Economy Kernel is not a wallet app. It’s not a UI. It’s not an exchange. It’s the underlying “economic operating system” that other products (Autopilot, the marketplace, compute, skills) can program against.
+The Economy Kernel is not a wallet app. It’s not a UI. It’s not an exchange.
+
+It is the underlying **economic operating system** that other products (Autopilot, the marketplace, compute, skills) can program against.
 
 It provides:
 
@@ -45,6 +104,15 @@ It provides:
 * **Bounded credit**: “envelopes” that let agents spend without ever getting a blank check
 * **Collateral**: bonds that make confidence real (skin in the game)
 * **Observability**: a public `/stats` dashboard that shows the health of the economy
+
+And, through extensions described later in this document:
+
+* **Compute markets** that allocate scarce GPU capacity
+* **Forward and futures instruments** that hedge future compute demand
+* **Coverage markets** that price the risk of incorrect outcomes
+* **Indices and metrics** that make the health of the agent economy measurable
+
+The kernel itself does not implement user interfaces or application workflows. Instead, it exposes a deterministic economic substrate that higher-level products can rely on.
 
 This kernel is built around a key principle:
 
@@ -61,13 +129,31 @@ The kernel tracks a central quantity: **verifiable share**, written `sv`.
 * When `sv` is low, you’re scaling risk.
 
 Autonomy is not gated by “how many tasks agents can do.”
-Autonomy is gated by `sv` and by the system’s ability to verify and underwrite outcomes safely.
+
+Autonomy is gated by **how much of that work can be verified and insured**.
+
+In other words:
+
+> **The scaling limit of the agent economy is verification capacity.**
+
+The Economy Kernel therefore treats verification as a **production resource**, not an afterthought.
 
 ## The second control: correlation risk
 
 The most dangerous trap is “AI verifies AI.”
 
-Not because AI can’t help, but because correlated checkers can manufacture false confidence. If the same kind of model checks the same kind of model, they often share blind spots. The kernel treats independence as a first-class requirement: it records whether verification was objective, heterogeneous, adjudicated, or human-underwritten.
+Not because AI cannot help verify work, but because **correlated checkers can manufacture false confidence**.
+
+If the same model family checks the same model family, they often share blind spots.
+
+The kernel therefore treats **verification independence as a first-class requirement**, recording:
+
+* checker lineage
+* correlation groups
+* heterogeneity constraints
+* adjudication steps
+
+This ensures that “verified” actually means **independently verified**.
 
 ## Why provenance matters
 
@@ -83,9 +169,44 @@ In a world where anyone can generate output, the scarce product becomes **proven
 
 The kernel turns provenance into a priced signal—because provenance reduces verification cost and makes underwriting possible.
 
+## Why compute markets belong in the same kernel
+
+The same infrastructure that makes agent labor trustworthy also makes **compute markets trustworthy**.
+
+Compute capacity is becoming a global commodity. But unlike oil or electricity, compute has complex characteristics:
+
+* heterogeneous hardware
+* variable performance
+* geographic constraints
+* unpredictable outages
+* difficult verification
+
+Without strong measurement and settlement infrastructure, compute markets are fragile.
+
+The Economy Kernel solves this by treating compute capacity like any other economic object:
+
+* capacity is defined by **standardized products**
+* delivery is proven by **delivery proofs and cost attestations**
+* failure triggers **bond draws and claims**
+* market activity emits **deterministic receipts**
+
+This allows the same substrate that coordinates agent labor to coordinate:
+
+* spot compute markets
+* forward capacity contracts
+* GPU futures
+* compute reservation options
+* capacity indices
+
+In other words, the kernel can coordinate both **machine labor** and the **machine infrastructure that powers it**.
+
 ## Why synthetic practice is core infrastructure
 
-Human verification capacity is not infinite, and it is not automatically replaced by automation. If you reduce “junior loops” (apprenticeship), you shrink future expertise. The kernel therefore treats training and simulation as production infrastructure:
+Human verification capacity is not infinite, and it is not automatically replaced by automation.
+
+If you reduce “junior loops” (apprenticeship), you shrink future expertise.
+
+The kernel therefore treats training and simulation as production infrastructure:
 
 * every incident becomes a ground-truth case
 * every ground-truth case becomes a simulation scenario
@@ -95,7 +216,13 @@ This is how verification scales without relying on a collapsing human pipeline.
 
 ---
 
-Sections 1–7 below are the core normative kernel. Section 8 is a supplemental compute-market extension that extends, rather than replaces, the core.
+Sections **1–7** below define the **core normative kernel**.
+
+Section **8** introduces a **compute-market extension** that allows the same infrastructure to power spot compute markets, forward capacity contracts, and hedging instruments.
+
+These extensions do not replace the kernel—they extend it.
+
+Together they form a system capable of coordinating **software labor, compute capacity, and economic risk** in a unified, machine-readable economy.
 
 ## 1. Invariants (Non-Negotiable)
 
