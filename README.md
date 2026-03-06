@@ -18,8 +18,6 @@ This repository exists to deliver that loop with clear authority, deterministic 
 
 Autopilot connects you to the OpenAgents Marketplace, which consists of five interlocking markets running on one shared economic substrate: compute, data, labor, liquidity, and risk.
 
-At a high level, Autopilot is the wedge into a broader economic system:
-
 ```text
 Applications / Wedge
   Autopilot
