@@ -4,6 +4,8 @@
 **Submitter:** OpenAgents  
 **Date:** March 4, 2026
 
+> Archival note: this document preserves submission materials prepared for NIST RFI `NIST-2025-0035` on March 4, 2026. It is not the normative source of truth for current OpenAgents product or protocol behavior.
+
 ---
 
 ## Table of Contents
