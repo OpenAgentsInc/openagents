@@ -29,7 +29,10 @@ const PANE_HOTBAR_CLEARANCE: f32 = 16.0;
 const PANE_BOTTOM_RESERVED: f32 =
     HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN + PANE_HOTBAR_CLEARANCE;
 const CHAT_PAD: f32 = 12.0;
-const CHAT_THREAD_RAIL_WIDTH: f32 = 170.0;
+const CHAT_WORKSPACE_RAIL_WIDTH: f32 = 68.0;
+const CHAT_THREAD_RAIL_WIDTH: f32 = 208.0;
+const CHAT_COLUMN_GAP: f32 = 10.0;
+const CHAT_TRANSCRIPT_HEADER_HEIGHT: f32 = 68.0;
 const CHAT_COMPOSER_MIN_HEIGHT: f32 = 30.0;
 const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
 const CHAT_SEND_WIDTH: f32 = 30.0;
@@ -1180,11 +1183,32 @@ pub fn pane_content_bounds(bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn chat_thread_rail_bounds(content_bounds: Bounds) -> Bounds {
+pub fn chat_workspace_rail_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.origin.x + CHAT_PAD,
         content_bounds.origin.y + CHAT_PAD,
+        CHAT_WORKSPACE_RAIL_WIDTH,
+        (content_bounds.size.height - CHAT_PAD * 2.0).max(120.0),
+    )
+}
+
+pub fn chat_thread_rail_bounds(content_bounds: Bounds) -> Bounds {
+    let workspace = chat_workspace_rail_bounds(content_bounds);
+    Bounds::new(
+        workspace.max_x() + CHAT_COLUMN_GAP,
+        content_bounds.origin.y + CHAT_PAD,
         CHAT_THREAD_RAIL_WIDTH,
+        (content_bounds.size.height - CHAT_PAD * 2.0).max(120.0),
+    )
+}
+
+fn chat_right_column_bounds(content_bounds: Bounds) -> Bounds {
+    let rail = chat_thread_rail_bounds(content_bounds);
+    let left = rail.max_x() + CHAT_COLUMN_GAP;
+    Bounds::new(
+        left,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.max_x() - left - CHAT_PAD).max(240.0),
         (content_bounds.size.height - CHAT_PAD * 2.0).max(120.0),
     )
 }
@@ -1327,9 +1351,10 @@ pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> B
 }
 
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
+    let right_column = chat_right_column_bounds(content_bounds);
     Bounds::new(
-        content_bounds.max_x() - CHAT_PAD - CHAT_SEND_WIDTH,
-        content_bounds.max_y() - CHAT_PAD - CHAT_SEND_WIDTH,
+        right_column.max_x() - CHAT_SEND_WIDTH,
+        right_column.max_y() - CHAT_SEND_WIDTH,
         CHAT_SEND_WIDTH,
         CHAT_SEND_WIDTH,
     )
@@ -1392,7 +1417,7 @@ fn chat_composer_visual_line_count(value: &str, composer_width: f32) -> usize {
 
 pub fn chat_composer_height_for_value(content_bounds: Bounds, value: &str) -> f32 {
     let send_bounds = chat_send_button_bounds(content_bounds);
-    let left = content_bounds.origin.x + CHAT_PAD;
+    let left = chat_right_column_bounds(content_bounds).origin.x;
     let composer_width = (send_bounds.origin.x - left - CHAT_PAD).max(120.0);
     let line_height = theme::font_size::SM * 1.4;
     let line_count = chat_composer_visual_line_count(value, composer_width);
@@ -1405,7 +1430,8 @@ pub fn chat_composer_input_bounds_with_height(
     composer_height: f32,
 ) -> Bounds {
     let send_bounds = chat_send_button_bounds(content_bounds);
-    let left = content_bounds.origin.x + CHAT_PAD;
+    let right_column = chat_right_column_bounds(content_bounds);
+    let left = right_column.origin.x;
     Bounds::new(
         left,
         send_bounds.max_y() - composer_height,
@@ -1420,12 +1446,12 @@ pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_transcript_bounds_with_height(content_bounds: Bounds, composer_height: f32) -> Bounds {
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
-    let left = content_bounds.origin.x + CHAT_PAD;
+    let right_column = chat_right_column_bounds(content_bounds);
     Bounds::new(
-        left,
-        content_bounds.origin.y + CHAT_PAD,
-        (content_bounds.max_x() - left - CHAT_PAD).max(220.0),
-        (composer_bounds.origin.y - (content_bounds.origin.y + CHAT_PAD) - CHAT_PAD).max(120.0),
+        right_column.origin.x,
+        right_column.origin.y,
+        right_column.size.width,
+        (composer_bounds.origin.y - right_column.origin.y - CHAT_PAD).max(120.0),
     )
 }
 
@@ -1440,6 +1466,19 @@ pub fn calculator_expression_input_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
     chat_transcript_bounds_with_height(content_bounds, CHAT_COMPOSER_MIN_HEIGHT)
+}
+
+pub fn chat_transcript_body_bounds_with_height(
+    content_bounds: Bounds,
+    composer_height: f32,
+) -> Bounds {
+    let transcript = chat_transcript_bounds_with_height(content_bounds, composer_height);
+    Bounds::new(
+        transcript.origin.x + 8.0,
+        transcript.origin.y + CHAT_TRANSCRIPT_HEADER_HEIGHT,
+        (transcript.size.width - 16.0).max(160.0),
+        (transcript.size.height - CHAT_TRANSCRIPT_HEADER_HEIGHT - 10.0).max(80.0),
+    )
 }
 
 pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -4361,13 +4400,15 @@ mod tests {
         cad_demo_warning_filter_severity_button_bounds, cad_demo_warning_marker_bounds,
         cad_demo_warning_panel_bounds, cad_demo_warning_row_bounds,
         cad_palette_action_for_command_id, cad_palette_command_specs, chat_composer_input_bounds,
-        chat_send_button_bounds, chat_transcript_bounds, codex_account_cancel_login_button_bounds,
-        codex_account_login_button_bounds, codex_account_logout_button_bounds,
-        codex_account_rate_limits_button_bounds, codex_account_refresh_button_bounds,
-        codex_apps_refresh_button_bounds, codex_config_batch_write_button_bounds,
-        codex_config_detect_external_button_bounds, codex_config_import_external_button_bounds,
-        codex_config_read_button_bounds, codex_config_requirements_button_bounds,
-        codex_config_write_button_bounds, codex_diagnostics_clear_events_button_bounds,
+        chat_send_button_bounds, chat_thread_rail_bounds, chat_transcript_body_bounds_with_height,
+        chat_transcript_bounds, chat_workspace_rail_bounds,
+        codex_account_cancel_login_button_bounds, codex_account_login_button_bounds,
+        codex_account_logout_button_bounds, codex_account_rate_limits_button_bounds,
+        codex_account_refresh_button_bounds, codex_apps_refresh_button_bounds,
+        codex_config_batch_write_button_bounds, codex_config_detect_external_button_bounds,
+        codex_config_import_external_button_bounds, codex_config_read_button_bounds,
+        codex_config_requirements_button_bounds, codex_config_write_button_bounds,
+        codex_diagnostics_clear_events_button_bounds,
         codex_diagnostics_disable_wire_log_button_bounds,
         codex_diagnostics_enable_wire_log_button_bounds,
         codex_labs_collaboration_modes_button_bounds, codex_labs_command_exec_button_bounds,
@@ -4469,9 +4510,9 @@ mod tests {
         let pane = Bounds::new(10.0, 20.0, 400.0, 300.0);
         let content = pane_content_bounds(pane);
 
-        assert!((content.origin.x - pane.origin.x).abs() <= f32::EPSILON);
+        assert!((content.origin.x - (pane.origin.x + 1.0)).abs() <= f32::EPSILON);
         assert!(content.origin.y > pane.origin.y);
-        assert!((content.size.width - pane.size.width).abs() <= f32::EPSILON);
+        assert!((content.size.width - (pane.size.width - 2.0)).abs() <= f32::EPSILON);
         assert!(content.size.height < pane.size.height);
     }
 
@@ -4492,11 +4533,22 @@ mod tests {
     #[test]
     fn chat_layout_has_non_overlapping_regions() {
         let content = Bounds::new(0.0, 0.0, 900.0, 500.0);
+        let workspace = chat_workspace_rail_bounds(content);
+        let channel = chat_thread_rail_bounds(content);
         let transcript = chat_transcript_bounds(content);
+        let transcript_body =
+            chat_transcript_body_bounds_with_height(content, super::CHAT_COMPOSER_MIN_HEIGHT);
         let composer = chat_composer_input_bounds(content);
         let send = chat_send_button_bounds(content);
 
+        assert!(content.contains(workspace.origin));
+        assert!(content.contains(channel.origin));
         assert!(content.contains(transcript.origin));
+        assert!(workspace.max_x() < channel.min_x());
+        assert!(channel.max_x() < transcript.min_x());
+        assert!(transcript.contains(transcript_body.origin));
+        assert!(transcript_body.max_x() <= transcript.max_x());
+        assert!(transcript_body.max_y() <= transcript.max_y());
         assert!(transcript.max_x() <= content.max_x());
         assert!(transcript.max_y() <= content.max_y());
         assert!(transcript.max_y() < composer.min_y());

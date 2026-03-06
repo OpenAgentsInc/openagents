@@ -9,8 +9,8 @@ use crate::app_state::{
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
     chat_composer_height_for_value, chat_composer_input_bounds_with_height,
-    chat_send_button_bounds, chat_transcript_bounds, chat_transcript_bounds_with_height,
-    pane_content_bounds,
+    chat_send_button_bounds, chat_thread_rail_bounds, chat_transcript_body_bounds_with_height,
+    chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
 };
 
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
@@ -22,6 +22,8 @@ const CHAT_PROGRESS_BLOCK_GAP: f32 = 4.0;
 const CHAT_ACTIVITY_HEADER_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_ROW_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_MAX_ROWS: usize = 14;
+const CHAT_SHELL_ROW_HEIGHT: f32 = 30.0;
+const CHAT_WORKSPACE_AVATAR_SIZE: f32 = 36.0;
 const CHAT_SEND_ICON_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M342.6 73.4C330.1 60.9 309.8 60.9 297.3 73.4L137.3 233.4C124.8 245.9 124.8 266.2 137.3 278.7C149.8 291.2 170.1 291.2 182.6 278.7L288 173.3L288 544C288 561.7 302.3 576 320 576C337.7 576 352 561.7 352 544L352 173.3L457.4 278.7C469.9 291.2 490.2 291.2 502.7 278.7C515.2 266.2 515.2 245.9 502.7 233.4L342.7 73.4z"/></svg>"##;
 
 #[derive(Clone, Copy, Debug)]
@@ -31,14 +33,17 @@ struct WrappedTranscriptLine {
     char_count: usize,
 }
 
-fn transcript_scroll_clip_bounds(content_bounds: Bounds) -> Bounds {
-    let transcript_bounds = chat_transcript_bounds(content_bounds);
-    Bounds::new(
-        transcript_bounds.origin.x + 8.0,
-        transcript_bounds.origin.y + 8.0,
-        (transcript_bounds.size.width - 16.0).max(0.0),
-        (transcript_bounds.size.height - 24.0).max(0.0),
-    )
+struct ChatShellWorkspace {
+    label: &'static str,
+    initials: &'static str,
+    accent: wgpui::Hsla,
+    active: bool,
+}
+
+struct ChatShellChannelEntry {
+    title: String,
+    subtitle: String,
+    active: bool,
 }
 
 fn paint_chat_send_button(bounds: Bounds, enabled: bool, paint: &mut PaintContext) {
@@ -89,12 +94,13 @@ fn transcript_scroll_clip_bounds_with_height(
     content_bounds: Bounds,
     composer_height: f32,
 ) -> Bounds {
-    let transcript_bounds = chat_transcript_bounds_with_height(content_bounds, composer_height);
+    let transcript_bounds =
+        chat_transcript_body_bounds_with_height(content_bounds, composer_height);
     Bounds::new(
-        transcript_bounds.origin.x + 8.0,
+        transcript_bounds.origin.x,
         transcript_bounds.origin.y + 8.0,
-        (transcript_bounds.size.width - 16.0).max(0.0),
-        (transcript_bounds.size.height - 24.0).max(0.0),
+        transcript_bounds.size.width.max(0.0),
+        (transcript_bounds.size.height - 16.0).max(0.0),
     )
 }
 
@@ -504,6 +510,310 @@ fn top_chat_content_bounds(state: &RenderState) -> Option<Bounds> {
         .map(|pane| pane_content_bounds(pane.bounds))
 }
 
+fn compact_shell_label(value: &str) -> String {
+    let trimmed = value.trim();
+    if trimmed.is_empty() {
+        return "untitled".to_string();
+    }
+    if trimmed.chars().count() <= 18 {
+        return trimmed.to_string();
+    }
+
+    let prefix = trimmed.chars().take(12).collect::<String>();
+    let suffix = trimmed
+        .chars()
+        .rev()
+        .take(4)
+        .collect::<String>()
+        .chars()
+        .rev()
+        .collect::<String>();
+    format!("{prefix}…{suffix}")
+}
+
+fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
+    autopilot_chat
+        .active_thread_id
+        .as_ref()
+        .and_then(|thread_id| autopilot_chat.thread_metadata.get(thread_id))
+        .and_then(|metadata| metadata.thread_name.as_ref())
+        .map(|name| compact_shell_label(name))
+        .or_else(|| {
+            autopilot_chat
+                .active_thread_id
+                .as_ref()
+                .map(|thread_id| compact_shell_label(thread_id))
+        })
+        .unwrap_or_else(|| "Mission control".to_string())
+}
+
+fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
+    let status = autopilot_chat
+        .active_thread_id
+        .as_ref()
+        .and_then(|thread_id| autopilot_chat.thread_metadata.get(thread_id))
+        .and_then(|metadata| metadata.status.as_ref())
+        .map(|value| value.trim().to_ascii_lowercase())
+        .unwrap_or_else(|| autopilot_chat.connection_status.trim().to_ascii_lowercase());
+    format!(
+        "autopilot thread  •  {}",
+        if status.is_empty() { "ready" } else { &status }
+    )
+}
+
+fn shell_workspaces() -> [ChatShellWorkspace; 3] {
+    [
+        ChatShellWorkspace {
+            label: "OpenAgents",
+            initials: "OA",
+            accent: theme::accent::PRIMARY,
+            active: true,
+        },
+        ChatShellWorkspace {
+            label: "Direct",
+            initials: "DM",
+            accent: theme::status::SUCCESS,
+            active: false,
+        },
+        ChatShellWorkspace {
+            label: "Ops",
+            initials: "OP",
+            accent: theme::status::WARNING,
+            active: false,
+        },
+    ]
+}
+
+fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellChannelEntry> {
+    let mut entries = vec![ChatShellChannelEntry {
+        title: "# mission-control".to_string(),
+        subtitle: "provider coordination".to_string(),
+        active: autopilot_chat.active_thread_id.is_none(),
+    }];
+
+    entries.extend(autopilot_chat.threads.iter().take(6).map(|thread_id| {
+        let metadata = autopilot_chat.thread_metadata.get(thread_id);
+        let title = metadata
+            .and_then(|value| value.thread_name.as_ref())
+            .map(|name| compact_shell_label(name))
+            .unwrap_or_else(|| compact_shell_label(thread_id));
+        let subtitle = metadata
+            .and_then(|value| value.status.as_ref())
+            .map(|status| status.trim().to_ascii_lowercase())
+            .filter(|status| !status.is_empty())
+            .unwrap_or_else(|| "thread".to_string());
+        ChatShellChannelEntry {
+            title: format!("# {title}"),
+            subtitle,
+            active: autopilot_chat.active_thread_id.as_deref() == Some(thread_id.as_str()),
+        }
+    }));
+
+    entries.push(ChatShellChannelEntry {
+        title: "@ approvals".to_string(),
+        subtitle: format!(
+            "{} pending",
+            autopilot_chat.pending_command_approvals.len()
+                + autopilot_chat.pending_file_change_approvals.len()
+                + autopilot_chat.pending_tool_calls.len()
+        ),
+        active: false,
+    });
+    entries
+}
+
+fn paint_chat_shell(
+    content_bounds: Bounds,
+    autopilot_chat: &AutopilotChatState,
+    paint: &mut PaintContext,
+) {
+    let workspace_bounds = chat_workspace_rail_bounds(content_bounds);
+    let channel_bounds = chat_thread_rail_bounds(content_bounds);
+    let transcript_bounds = chat_transcript_bounds(content_bounds);
+    let header_bounds = Bounds::new(
+        transcript_bounds.origin.x + 8.0,
+        transcript_bounds.origin.y + 8.0,
+        (transcript_bounds.size.width - 16.0).max(0.0),
+        52.0,
+    );
+
+    paint.scene.draw_quad(
+        Quad::new(workspace_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        "WORKSPACES",
+        Point::new(
+            workspace_bounds.origin.x + 8.0,
+            workspace_bounds.origin.y + 10.0,
+        ),
+        9.0,
+        theme::text::MUTED,
+    ));
+    for (index, workspace) in shell_workspaces().iter().enumerate() {
+        let avatar_bounds = Bounds::new(
+            workspace_bounds.origin.x
+                + (workspace_bounds.size.width - CHAT_WORKSPACE_AVATAR_SIZE) * 0.5,
+            workspace_bounds.origin.y + 28.0 + index as f32 * 52.0,
+            CHAT_WORKSPACE_AVATAR_SIZE,
+            CHAT_WORKSPACE_AVATAR_SIZE,
+        );
+        let background = if workspace.active {
+            workspace.accent
+        } else {
+            theme::bg::ELEVATED
+        };
+        let text_color = if workspace.active {
+            theme::bg::APP
+        } else {
+            theme::text::SECONDARY
+        };
+        paint.scene.draw_quad(
+            Quad::new(avatar_bounds)
+                .with_background(background)
+                .with_border(
+                    if workspace.active {
+                        workspace.accent
+                    } else {
+                        theme::border::DEFAULT
+                    },
+                    1.0,
+                )
+                .with_corner_radius(CHAT_WORKSPACE_AVATAR_SIZE * 0.5),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            workspace.initials,
+            Point::new(avatar_bounds.origin.x + 8.0, avatar_bounds.origin.y + 11.0),
+            11.0,
+            text_color,
+        ));
+        paint.scene.draw_text(paint.text.layout(
+            workspace.label,
+            Point::new(
+                workspace_bounds.origin.x + 10.0,
+                avatar_bounds.max_y() + 4.0,
+            ),
+            9.0,
+            if workspace.active {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        ));
+    }
+
+    paint.scene.draw_quad(
+        Quad::new(channel_bounds)
+            .with_background(theme::bg::ELEVATED.with_alpha(0.92))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        "OPENAGENTS / GROUP CHAT",
+        Point::new(
+            channel_bounds.origin.x + 12.0,
+            channel_bounds.origin.y + 12.0,
+        ),
+        9.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Channels",
+        Point::new(
+            channel_bounds.origin.x + 12.0,
+            channel_bounds.origin.y + 28.0,
+        ),
+        15.0,
+        theme::text::PRIMARY,
+    ));
+    let mut row_y = channel_bounds.origin.y + 54.0;
+    for entry in shell_channel_entries(autopilot_chat) {
+        let row_bounds = Bounds::new(
+            channel_bounds.origin.x + 8.0,
+            row_y,
+            (channel_bounds.size.width - 16.0).max(0.0),
+            CHAT_SHELL_ROW_HEIGHT,
+        );
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if entry.active {
+                    theme::accent::PRIMARY.with_alpha(0.16)
+                } else {
+                    theme::bg::APP.with_alpha(0.26)
+                })
+                .with_border(
+                    if entry.active {
+                        theme::accent::PRIMARY.with_alpha(0.45)
+                    } else {
+                        theme::border::DEFAULT.with_alpha(0.35)
+                    },
+                    1.0,
+                )
+                .with_corner_radius(8.0),
+        );
+        paint.scene.draw_text(paint.text.layout(
+            &entry.title,
+            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 6.0),
+            11.0,
+            if entry.active {
+                theme::text::PRIMARY
+            } else {
+                theme::text::SECONDARY
+            },
+        ));
+        paint.scene.draw_text(paint.text.layout_mono(
+            &entry.subtitle,
+            Point::new(row_bounds.origin.x + 10.0, row_bounds.origin.y + 18.0),
+            9.0,
+            theme::text::MUTED,
+        ));
+        row_y += CHAT_SHELL_ROW_HEIGHT + 6.0;
+    }
+
+    paint.scene.draw_quad(
+        Quad::new(transcript_bounds)
+            .with_background(theme::bg::APP.with_alpha(0.82))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(10.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(header_bounds)
+            .with_background(theme::bg::SURFACE.with_alpha(0.82))
+            .with_border(theme::border::DEFAULT.with_alpha(0.45), 1.0)
+            .with_corner_radius(8.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        &active_thread_title(autopilot_chat),
+        Point::new(header_bounds.origin.x + 12.0, header_bounds.origin.y + 10.0),
+        16.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &active_thread_subtitle(autopilot_chat),
+        Point::new(header_bounds.origin.x + 12.0, header_bounds.origin.y + 28.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    let status_text = format!(
+        "{}  •  {} model{}",
+        autopilot_chat.connection_status.trim(),
+        autopilot_chat.models.len(),
+        if autopilot_chat.models.len() == 1 {
+            ""
+        } else {
+            "s"
+        }
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        &status_text,
+        Point::new(header_bounds.max_x() - 150.0, header_bounds.origin.y + 18.0),
+        10.0,
+        theme::accent::PRIMARY,
+    ));
+}
+
 pub fn transcript_message_byte_offset_at_point(
     state: &mut RenderState,
     point: Point,
@@ -631,16 +941,11 @@ pub fn paint(
 ) {
     let composer_value = chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
-    let transcript_bounds = chat_transcript_bounds_with_height(content_bounds, composer_height);
+    let transcript_body_bounds =
+        chat_transcript_body_bounds_with_height(content_bounds, composer_height);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
     let send_bounds = chat_send_button_bounds(content_bounds);
-
-    paint.scene.draw_quad(
-        Quad::new(transcript_bounds)
-            .with_background(theme::bg::APP.with_alpha(0.82))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(6.0),
-    );
+    paint_chat_shell(content_bounds, autopilot_chat, paint);
 
     let transcript_scroll_clip =
         transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
@@ -760,11 +1065,11 @@ pub fn paint(
     }
     paint.scene.pop_clip();
 
-    let mut footer_y = transcript_bounds.max_y() - 14.0;
+    let mut footer_y = transcript_body_bounds.max_y() - 12.0;
     if let Some(error) = autopilot_chat.last_error.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             error,
-            Point::new(transcript_bounds.origin.x + 10.0, footer_y),
+            Point::new(transcript_body_bounds.origin.x, footer_y),
             11.0,
             theme::status::ERROR,
         ));
@@ -773,7 +1078,7 @@ pub fn paint(
     if let Some(copy_notice) = autopilot_chat.copy_notice.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             copy_notice,
-            Point::new(transcript_bounds.origin.x + 10.0, footer_y),
+            Point::new(transcript_body_bounds.origin.x, footer_y),
             11.0,
             theme::status::SUCCESS,
         ));
