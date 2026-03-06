@@ -1,0 +1,19 @@
+[package]
+name = "openagents-deck-worker"
+version = "0.1.0"
+edition = "2024"
+description = "Cloudflare Worker for the OpenAgents deck viewer"
+publish = false
+
+[workspace]
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+console_error_panic_hook = "0.1"
+worker = "0.7.5"
+
+[profile.release]
+opt-level = "s"
+lto = true

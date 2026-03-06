@@ -1,0 +1,19 @@
+{
+  "name": "openagents-deck",
+  "version": "0.1.0",
+  "private": true,
+  "description": "OpenAgents deck viewer Cloudflare deployment lane",
+  "scripts": {
+    "build:client": "wasm-pack build --target web --release --out-dir pkg",
+    "build:dist": "bun run build.ts",
+    "build:assets": "bun run build:client && bun run build:dist",
+    "build:worker": "cargo install -q worker-build && cd worker && worker-build --release",
+    "build": "bun run build:assets && bun run build:worker",
+    "dev": "bun run build && wrangler dev --local",
+    "deploy": "bun run build && wrangler deploy",
+    "deploy:dry-run": "bun run build && wrangler deploy --dry-run"
+  },
+  "devDependencies": {
+    "wrangler": "^4.48.0"
+  }
+}
