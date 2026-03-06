@@ -1,4 +1,4 @@
-# OpenAgents
+# OpenAgents: Autopilot
 
 OpenAgents builds **Autopilot**: your personal agent.
 
