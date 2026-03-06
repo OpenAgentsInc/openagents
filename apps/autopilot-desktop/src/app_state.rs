@@ -13,7 +13,8 @@ use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
 use crate::ollama_execution::{
-    OllamaExecutionCommand, OllamaExecutionSnapshot, OllamaExecutionWorker,
+    OllamaExecutionCommand, OllamaExecutionProvenance, OllamaExecutionSnapshot,
+    OllamaExecutionWorker,
 };
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
@@ -2584,6 +2585,7 @@ pub struct ActiveJobRecord {
     pub execution_prompt: Option<String>,
     pub execution_params: Vec<crate::state::job_inbox::JobExecutionParam>,
     pub requested_model: Option<String>,
+    pub execution_provenance: Option<OllamaExecutionProvenance>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -2665,6 +2667,7 @@ impl ActiveJobState {
             execution_prompt: request.execution_prompt.clone(),
             execution_params: request.execution_params.clone(),
             requested_model: request.requested_model.clone(),
+            execution_provenance: None,
             skill_scope_id: request.skill_scope_id.clone(),
             skl_manifest_a: request.skl_manifest_a.clone(),
             skl_manifest_event_id: request.skl_manifest_event_id.clone(),
@@ -2912,6 +2915,7 @@ pub struct JobHistoryReceiptRow {
     pub result_hash: String,
     pub payment_pointer: String,
     pub failure_reason: Option<String>,
+    pub execution_provenance: Option<OllamaExecutionProvenance>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -3065,6 +3069,7 @@ impl JobHistoryState {
             result_hash: format!("sha256:{}-{}", job.request_id, job.stage.label()),
             payment_pointer,
             failure_reason,
+            execution_provenance: job.execution_provenance.clone(),
         });
         self.page = 0;
         self.last_error = None;
@@ -4302,6 +4307,7 @@ mod tests {
             } else {
                 None
             },
+            execution_provenance: None,
         }
     }
 
@@ -5677,6 +5683,7 @@ mod tests {
             result_hash: "sha256:updated".to_string(),
             payment_pointer: "pay:updated".to_string(),
             failure_reason: Some("updated".to_string()),
+            execution_provenance: None,
         });
 
         assert_eq!(history.rows.len(), before);

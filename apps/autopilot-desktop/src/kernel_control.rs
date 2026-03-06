@@ -790,6 +790,10 @@ fn build_submit_output_request(state: &RenderState, job: &ActiveJobRecord) -> Su
                 "provider_thread_id": state.active_job.execution_thread_id.clone(),
                 "provider_turn_id": state.active_job.execution_turn_id.clone(),
                 "result_event_id": job.sa_tick_result_event_id.clone(),
+                "local_execution_provenance": job
+                    .execution_provenance
+                    .as_ref()
+                    .map(|provenance| provenance.receipt_payload()),
             }),
         },
         evidence: submission_evidence_refs(job, state.active_job.execution_output.as_deref()),
@@ -928,6 +932,32 @@ fn submission_evidence_refs(job: &ActiveJobRecord, execution_output: Option<&str
             output,
         ));
     }
+    if let Some(provenance) = job.execution_provenance.as_ref() {
+        evidence.push(EvidenceRef::new(
+            "execution_backend_ref",
+            format!("oa://autopilot/jobs/{}/execution/backend", job.job_id),
+            sha256_prefixed_text(provenance.base_url.as_str()),
+        ));
+        evidence.push(EvidenceRef::new(
+            "attestation:model_version",
+            format!(
+                "oa://autopilot/jobs/{}/execution/model/{}",
+                job.job_id,
+                canonical_kernel_id_component(provenance.served_model.as_str()),
+            ),
+            sha256_prefixed_text(provenance.served_model.as_str()),
+        ));
+        evidence.push(EvidenceRef::new(
+            "execution_prompt_digest",
+            format!("oa://autopilot/jobs/{}/execution/prompt", job.job_id),
+            provenance.normalized_prompt_digest.clone(),
+        ));
+        evidence.push(EvidenceRef::new(
+            "execution_options_digest",
+            format!("oa://autopilot/jobs/{}/execution/options", job.job_id),
+            provenance.normalized_options_digest.clone(),
+        ));
+    }
     evidence
 }
 
@@ -1041,8 +1071,9 @@ pub(crate) fn reset_request_decision_after_kernel_error(
 mod tests {
     use super::{
         KernelAuthorityMode, PendingSseEvent, ReceiptProjectionEnvelope, consume_sse_buffer,
-        flush_pending_sse_event, resolve_kernel_authority_mode,
+        flush_pending_sse_event, resolve_kernel_authority_mode, submission_evidence_refs,
     };
+    use crate::app_state::{ActiveJobRecord, JobDemandSource, JobLifecycleStage};
     use crate::economy_kernel_receipts::{
         PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
     };
@@ -1064,6 +1095,50 @@ mod tests {
         .with_hints(ReceiptHints::default())
         .build()
         .expect("fixture receipt")
+    }
+
+    fn fixture_active_job_with_ollama_provenance() -> ActiveJobRecord {
+        ActiveJobRecord {
+            job_id: "job-ollama-001".to_string(),
+            request_id: "req-ollama-001".to_string(),
+            requester: "npub1buyer".to_string(),
+            demand_source: JobDemandSource::OpenNetwork,
+            request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+            capability: "text.generation".to_string(),
+            execution_input: Some("Write a haiku about rust".to_string()),
+            execution_prompt: Some("Write a haiku about rust".to_string()),
+            execution_params: Vec::new(),
+            requested_model: Some("llama3.2:latest".to_string()),
+            execution_provenance: Some(crate::ollama_execution::OllamaExecutionProvenance {
+                requested_model: Some("llama3.2:latest".to_string()),
+                served_model: "llama3.2:latest".to_string(),
+                normalized_prompt_digest: "sha256:prompt".to_string(),
+                normalized_options_json: r#"{"num_predict":64}"#.to_string(),
+                normalized_options_digest: "sha256:options".to_string(),
+                base_url: "http://127.0.0.1:11434".to_string(),
+                total_duration_ns: Some(1_000_000),
+                load_duration_ns: Some(0),
+                prompt_token_count: Some(11),
+                generated_token_count: Some(7),
+                warm_start: Some(true),
+            }),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some("req-ollama-001".to_string()),
+            sa_tick_result_event_id: Some("result-ollama-001".to_string()),
+            sa_trajectory_session_id: Some("traj:req-ollama-001".to_string()),
+            ac_envelope_event_id: None,
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
+            quoted_price_sats: 21,
+            ttl_seconds: 90,
+            stage: JobLifecycleStage::Delivered,
+            invoice_id: None,
+            payment_id: None,
+            failure_reason: None,
+            events: Vec::new(),
+        }
     }
 
     #[test]
@@ -1146,5 +1221,27 @@ mod tests {
             }
             other => panic!("unexpected projection update: {other:?}"),
         }
+    }
+
+
+    #[test]
+    fn submission_evidence_refs_include_ollama_provenance() {
+        let job = fixture_active_job_with_ollama_provenance();
+        let evidence = submission_evidence_refs(&job, Some("hello from ollama"));
+
+        assert!(evidence.iter().any(|row| {
+            row.kind == "execution_backend_ref"
+                && row.uri == "oa://autopilot/jobs/job-ollama-001/execution/backend"
+        }));
+        assert!(evidence.iter().any(|row| {
+            row.kind == "attestation:model_version"
+                && row.uri == "oa://autopilot/jobs/job-ollama-001/execution/model/llama3.2_latest"
+        }));
+        assert!(evidence.iter().any(|row| {
+            row.kind == "execution_prompt_digest" && row.digest == "sha256:prompt"
+        }));
+        assert!(evidence.iter().any(|row| {
+            row.kind == "execution_options_digest" && row.digest == "sha256:options"
+        }));
     }
 }

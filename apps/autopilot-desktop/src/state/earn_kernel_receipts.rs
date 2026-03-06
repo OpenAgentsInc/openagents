@@ -1571,6 +1571,7 @@ impl EarnKernelReceiptState {
                 .as_ref()
                 .map(|pricing| btc_sats_money(pricing.liability_premium_sats)),
         };
+        let receipt_tags = ollama_execution_receipt_tags(job.execution_provenance.as_ref());
 
         let receipt = ReceiptBuilder::new(
             receipt_id,
@@ -1595,6 +1596,10 @@ impl EarnKernelReceiptState {
             "payment_pointer": if payment_pointer.is_empty() { None::<String> } else { Some(payment_pointer.to_string()) },
             "work_unit": work_unit_metadata_payload(job.job_id.as_str(), &metadata),
             "liability_pricing": stage_pricing.as_ref().map(pricing_payload),
+            "local_execution_provenance": job
+                .execution_provenance
+                .as_ref()
+                .map(|provenance| provenance.receipt_payload()),
         }))
         .with_outputs_payload(json!({
             "stage": stage.label(),
@@ -1606,9 +1611,14 @@ impl EarnKernelReceiptState {
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
             "liability_pricing": stage_pricing.as_ref().map(pricing_payload),
+            "local_execution_provenance": job
+                .execution_provenance
+                .as_ref()
+                .map(|provenance| provenance.receipt_payload()),
         }))
         .with_evidence(evidence)
         .with_hints(hints)
+        .with_tags(receipt_tags)
         .build();
 
         self.append_receipt(receipt, source_tag);
@@ -1824,6 +1834,7 @@ impl EarnKernelReceiptState {
         };
         let link_candidates =
             history_row_link_candidate_receipt_ids(row, stage, request_id.as_str());
+        let receipt_tags = ollama_execution_receipt_tags(row.execution_provenance.as_ref());
 
         let receipt = ReceiptBuilder::new(
             lifecycle_receipt_id(row.job_id.as_str(), stage, authority_key.as_str()),
@@ -1851,6 +1862,10 @@ impl EarnKernelReceiptState {
             "failure_reason": row.failure_reason,
             "work_unit": work_unit_metadata_payload(row.job_id.as_str(), &metadata),
             "liability_pricing": history_pricing.as_ref().map(pricing_payload),
+            "local_execution_provenance": row
+                .execution_provenance
+                .as_ref()
+                .map(|provenance| provenance.receipt_payload()),
         }))
         .with_outputs_payload(json!({
             "stage": stage.label(),
@@ -1863,6 +1878,10 @@ impl EarnKernelReceiptState {
             "policy_decision": policy_decision.decision,
             "policy_notes": policy_decision.notes,
             "liability_pricing": history_pricing.as_ref().map(pricing_payload),
+            "local_execution_provenance": row
+                .execution_provenance
+                .as_ref()
+                .map(|provenance| provenance.receipt_payload()),
         }))
         .with_evidence({
             let mut evidence = vec![EvidenceRef::new(
@@ -1975,6 +1994,7 @@ impl EarnKernelReceiptState {
                 .as_ref()
                 .map(|pricing| btc_sats_money(pricing.liability_premium_sats)),
         })
+        .with_tags(receipt_tags)
         .build();
 
         self.append_receipt(receipt, source_tag);
@@ -7045,14 +7065,18 @@ fn append_provenance_evidence_for_job_stage(
         ),
         digest_for_text(job.capability.as_str()),
     ));
-    evidence.push(EvidenceRef::new(
-        "attestation:model_version",
-        format!(
-            "oa://attestations/model/{}",
-            normalize_key(job.capability.as_str())
-        ),
-        digest_for_text(format!("model-version:{}:v1", job.capability).as_str()),
-    ));
+    if let Some(provenance) = job.execution_provenance.as_ref() {
+        append_ollama_execution_provenance_evidence(evidence, job.job_id.as_str(), provenance);
+    } else {
+        evidence.push(EvidenceRef::new(
+            "attestation:model_version",
+            format!(
+                "oa://attestations/model/{}",
+                normalize_key(job.capability.as_str())
+            ),
+            digest_for_text(format!("model-version:{}:v1", job.capability).as_str()),
+        ));
+    }
     if stage == JobLifecycleStage::Paid {
         evidence.push(EvidenceRef::new(
             "attestation:runtime_integrity",
@@ -7097,14 +7121,18 @@ fn append_provenance_evidence_for_history(
         ),
         digest_for_text("history_projection"),
     ));
-    evidence.push(EvidenceRef::new(
-        "attestation:model_version",
-        format!(
-            "oa://attestations/model/history/{}",
-            normalize_key(row.job_id.as_str())
-        ),
-        digest_for_text(format!("history-model:{}:v1", row.job_id).as_str()),
-    ));
+    if let Some(provenance) = row.execution_provenance.as_ref() {
+        append_ollama_execution_provenance_evidence(evidence, row.job_id.as_str(), provenance);
+    } else {
+        evidence.push(EvidenceRef::new(
+            "attestation:model_version",
+            format!(
+                "oa://attestations/model/history/{}",
+                normalize_key(row.job_id.as_str())
+            ),
+            digest_for_text(format!("history-model:{}:v1", row.job_id).as_str()),
+        ));
+    }
     if stage == JobLifecycleStage::Paid {
         evidence.push(EvidenceRef::new(
             "attestation:runtime_integrity",
@@ -7115,6 +7143,105 @@ fn append_provenance_evidence_for_history(
             digest_for_text(format!("history-runtime:{}:v1", row.job_id).as_str()),
         ));
     }
+}
+
+fn append_ollama_execution_provenance_evidence(
+    evidence: &mut Vec<EvidenceRef>,
+    job_id: &str,
+    provenance: &crate::ollama_execution::OllamaExecutionProvenance,
+) {
+    let normalized_job_id = normalize_key(job_id);
+    evidence.push(EvidenceRef::new(
+        "execution_backend_ref",
+        format!("oa://autopilot/jobs/{normalized_job_id}/execution/backend"),
+        digest_for_text(provenance.base_url.as_str()),
+    ));
+    evidence.push(EvidenceRef::new(
+        "attestation:model_version",
+        format!(
+            "oa://attestations/model/{}",
+            normalize_key(provenance.served_model.as_str())
+        ),
+        digest_for_text(provenance.served_model.as_str()),
+    ));
+    evidence.push(EvidenceRef::new(
+        "execution_prompt_digest",
+        format!("oa://autopilot/jobs/{normalized_job_id}/execution/prompt"),
+        provenance.normalized_prompt_digest.clone(),
+    ));
+    evidence.push(EvidenceRef::new(
+        "execution_options_digest",
+        format!("oa://autopilot/jobs/{normalized_job_id}/execution/options"),
+        provenance.normalized_options_digest.clone(),
+    ));
+    if let Some(warm_start) = provenance.warm_start {
+        let state = if warm_start { "warm" } else { "cold" };
+        evidence.push(EvidenceRef::new(
+            "execution_warm_state",
+            format!("oa://autopilot/jobs/{normalized_job_id}/execution/{state}"),
+            digest_for_text(state),
+        ));
+    }
+}
+
+fn ollama_execution_receipt_tags(
+    provenance: Option<&crate::ollama_execution::OllamaExecutionProvenance>,
+) -> BTreeMap<String, String> {
+    let Some(provenance) = provenance else {
+        return BTreeMap::new();
+    };
+
+    let mut tags = BTreeMap::from([("execution.backend".to_string(), "ollama".to_string())]);
+    if let Some(requested_model) = provenance.requested_model.as_deref() {
+        tags.insert(
+            "execution.model.requested".to_string(),
+            requested_model.to_string(),
+        );
+    }
+    tags.insert(
+        "execution.model.served".to_string(),
+        provenance.served_model.clone(),
+    );
+    tags.insert(
+        "execution.prompt_digest".to_string(),
+        provenance.normalized_prompt_digest.clone(),
+    );
+    tags.insert(
+        "execution.options_digest".to_string(),
+        provenance.normalized_options_digest.clone(),
+    );
+    tags.insert("execution.base_url".to_string(), provenance.base_url.clone());
+    if let Some(warm_start) = provenance.warm_start {
+        tags.insert(
+            "execution.warm_start".to_string(),
+            if warm_start { "true" } else { "false" }.to_string(),
+        );
+    }
+    if let Some(total_duration_ns) = provenance.total_duration_ns {
+        tags.insert(
+            "execution.total_duration_ns".to_string(),
+            total_duration_ns.to_string(),
+        );
+    }
+    if let Some(load_duration_ns) = provenance.load_duration_ns {
+        tags.insert(
+            "execution.load_duration_ns".to_string(),
+            load_duration_ns.to_string(),
+        );
+    }
+    if let Some(prompt_token_count) = provenance.prompt_token_count {
+        tags.insert(
+            "execution.prompt_tokens".to_string(),
+            prompt_token_count.to_string(),
+        );
+    }
+    if let Some(generated_token_count) = provenance.generated_token_count {
+        tags.insert(
+            "execution.generated_tokens".to_string(),
+            generated_token_count.to_string(),
+        );
+    }
+    tags
 }
 
 fn select_monitoring_rule<'a>(
@@ -10357,6 +10484,22 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
 mod tests {
     use super::*;
 
+    fn fixture_ollama_provenance() -> crate::ollama_execution::OllamaExecutionProvenance {
+        crate::ollama_execution::OllamaExecutionProvenance {
+            requested_model: Some("llama3.2:latest".to_string()),
+            served_model: "llama3.2:latest".to_string(),
+            normalized_prompt_digest: "sha256:prompt".to_string(),
+            normalized_options_json: "{\"num_predict\":64,\"top_k\":16}".to_string(),
+            normalized_options_digest: "sha256:options".to_string(),
+            base_url: "http://127.0.0.1:11434".to_string(),
+            total_duration_ns: Some(1_200_000),
+            load_duration_ns: Some(0),
+            prompt_token_count: Some(11),
+            generated_token_count: Some(7),
+            warm_start: Some(true),
+        }
+    }
+
     fn fixture_ingress_request() -> JobInboxNetworkRequest {
         JobInboxNetworkRequest {
             request_id: "req-123".to_string(),
@@ -10404,6 +10547,7 @@ mod tests {
             result_hash: "sha256:abc".to_string(),
             payment_pointer: payment_pointer.to_string(),
             failure_reason: None,
+            execution_provenance: Some(fixture_ollama_provenance()),
         }
     }
 
@@ -10419,6 +10563,7 @@ mod tests {
             execution_prompt: Some("Generate text for req-123".to_string()),
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
+            execution_provenance: Some(fixture_ollama_provenance()),
             skill_scope_id: Some("skill.scope".to_string()),
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -11680,6 +11825,67 @@ mod tests {
         assert!(lineage.contains(&ingress_receipt_id));
         assert!(lineage.contains(&settlement_receipt.receipt_id));
         assert!(lineage.len() >= 4);
+    }
+
+    #[test]
+    fn settlement_receipt_carries_ollama_execution_tags_and_evidence() {
+        let temp_dir = tempfile::tempdir().expect("tempdir");
+        let state_path = temp_dir.path().join("receipts.json");
+        let mut state = EarnKernelReceiptState::from_receipt_file_path(state_path);
+        let job = fixture_active_job("wallet-payment-ollama");
+
+        state.record_active_job_stage(&job, JobLifecycleStage::Paid, 1_762_000_050, "test.paid");
+
+        let settlement_receipt = state
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_type == "earn.job.settlement_observed.v1")
+            .expect("settlement receipt");
+        assert_eq!(
+            settlement_receipt
+                .tags
+                .get("execution.backend")
+                .map(String::as_str),
+            Some("ollama")
+        );
+        assert_eq!(
+            settlement_receipt
+                .tags
+                .get("execution.model.served")
+                .map(String::as_str),
+            Some("llama3.2:latest")
+        );
+        assert_eq!(
+            settlement_receipt
+                .tags
+                .get("execution.prompt_digest")
+                .map(String::as_str),
+            Some("sha256:prompt")
+        );
+        assert_eq!(
+            settlement_receipt
+                .tags
+                .get("execution.options_digest")
+                .map(String::as_str),
+            Some("sha256:options")
+        );
+        assert_eq!(
+            settlement_receipt
+                .tags
+                .get("execution.warm_start")
+                .map(String::as_str),
+            Some("true")
+        );
+        assert!(settlement_receipt.evidence.iter().any(|evidence| {
+            evidence.kind == "execution_prompt_digest" && evidence.digest == "sha256:prompt"
+        }));
+        assert!(settlement_receipt.evidence.iter().any(|evidence| {
+            evidence.kind == "execution_options_digest" && evidence.digest == "sha256:options"
+        }));
+        assert!(settlement_receipt.evidence.iter().any(|evidence| {
+            evidence.kind == "execution_backend_ref"
+                && evidence.uri == "oa://autopilot/jobs/job-req-123/execution/backend"
+        }));
     }
 
     #[test]

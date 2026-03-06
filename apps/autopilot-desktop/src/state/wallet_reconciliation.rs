@@ -363,6 +363,7 @@ mod tests {
             result_hash: "sha256:job-1".to_string(),
             payment_pointer: "wallet:pay:job-1".to_string(),
             failure_reason: None,
+            execution_provenance: None,
         }]);
 
         let mut wallet = SparkPaneState::default();

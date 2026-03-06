@@ -5013,6 +5013,7 @@ pub(super) fn run_starter_jobs_action(
                                 result_hash: "sha256:starter-quest-job".to_string(),
                                 payment_pointer: payout_pointer.clone(),
                                 failure_reason: None,
+                                execution_provenance: None,
                             };
                             state.job_history.upsert_row(receipt_row.clone());
                             state.earn_job_lifecycle_projection.record_history_receipt(
@@ -6625,6 +6626,7 @@ mod tests {
             execution_prompt: Some("Return the generated text result.".to_string()),
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
+            execution_provenance: None,
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -6662,6 +6664,7 @@ mod tests {
             result_hash: "sha256:test".to_string(),
             payment_pointer: payment_pointer.to_string(),
             failure_reason: None,
+            execution_provenance: None,
         }
     }
 
