@@ -89,10 +89,39 @@ Verification receipts land under:
 - The deploy path assumes the VM service account can read from Artifact Registry.
 - The durable relay data path and Nexus control receipt log path both live on the persistent disk.
 
-## 7) What this runbook intentionally does not cover yet
+## 7) Public cutover
 
-- public staging hostname
-- public TLS termination / DNS cutover
+The public cutover path uses a Cloudflare tunnel from the production VM.
+
+Why this path:
+
+- it keeps the durable Nexus runtime on a private stateful VM
+- it avoids pushing the durable relay back behind a stateless Cloud Run shape
+- it lets `nexus.openagents.com` move without needing a separate external load balancer first
+
+Script:
+
+```bash
+scripts/deploy/nexus/05-cutover-public-host.sh
+```
+
+What it does:
+
+- creates or reuses the named Cloudflare tunnel
+- routes `nexus.openagents.com` to that tunnel
+- installs a `nexus-cloudflared.service` unit on the VM
+- forwards public HTTPS / websocket traffic to `http://127.0.0.1:8080`
+
+Required local prerequisites:
+
+- `cloudflared` installed locally
+- local Cloudflare auth already present (`cloudflared login` completed previously)
+- access to the `openagents.com` zone in Cloudflare
+
+The VM remains private-by-default. Public ingress is handled through the tunnel rather than by assigning a public VM IP.
+
+## 8) What this runbook intentionally does not cover yet
+
 - backup / restore drills and retention policy
 - abuse controls and operator hardening
 
