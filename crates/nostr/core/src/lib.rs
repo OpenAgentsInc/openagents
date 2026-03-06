@@ -19,6 +19,7 @@ pub mod nip11;
 pub mod nip17;
 pub mod nip26;
 pub mod nip28;
+pub mod nip29;
 pub mod nip32;
 pub mod nip34;
 pub mod nip40;
@@ -65,3 +66,4 @@ pub use nip06::{
     derive_skill_keypair,
 };
 pub use nip28::*;
+pub use nip29::*;
