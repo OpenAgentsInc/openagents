@@ -22,6 +22,10 @@ const ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_REQUEST_TTL_SECONDS";
 const ENV_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION";
+const ENV_STARTER_DEMAND_START_CONFIRM_SECONDS: &str =
+    "NEXUS_CONTROL_STARTER_DEMAND_START_CONFIRM_SECONDS";
+const ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: &str =
+    "NEXUS_CONTROL_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS";
 
 const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42020";
 const DEFAULT_SESSION_TTL_SECONDS: u64 = 86_400;
@@ -32,6 +36,8 @@ const DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS: u64 = 5_000;
 const DEFAULT_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: u64 = 12;
 const DEFAULT_STARTER_DEMAND_REQUEST_TTL_SECONDS: u64 = 75;
 const DEFAULT_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION: usize = 1;
+const DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS: u64 = 15;
+const DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS: u64 = 30;
 const DEFAULT_SYNC_STREAM_GRANTS: [&str; 2] = [
     "stream.activity_projection.v1",
     "stream.earn_job_lifecycle_projection.v1",
@@ -52,6 +58,8 @@ pub struct ServiceConfig {
     pub starter_demand_dispatch_interval_seconds: u64,
     pub starter_demand_request_ttl_seconds: u64,
     pub starter_demand_max_active_offers_per_session: usize,
+    pub starter_demand_start_confirm_seconds: u64,
+    pub starter_demand_heartbeat_timeout_seconds: u64,
 }
 
 impl ServiceConfig {
@@ -122,6 +130,14 @@ impl ServiceConfig {
             ENV_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION,
             DEFAULT_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION,
         )?;
+        let starter_demand_start_confirm_seconds = parse_u64_env(
+            ENV_STARTER_DEMAND_START_CONFIRM_SECONDS,
+            DEFAULT_STARTER_DEMAND_START_CONFIRM_SECONDS,
+        )?;
+        let starter_demand_heartbeat_timeout_seconds = parse_u64_env(
+            ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS,
+            DEFAULT_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS,
+        )?;
         if starter_demand_dispatch_interval_seconds == 0 {
             return Err(format!(
                 "{ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS} must be greater than zero"
@@ -137,6 +153,26 @@ impl ServiceConfig {
                 "{ENV_STARTER_DEMAND_MAX_ACTIVE_OFFERS_PER_SESSION} must be greater than zero"
             ));
         }
+        if starter_demand_start_confirm_seconds == 0 {
+            return Err(format!(
+                "{ENV_STARTER_DEMAND_START_CONFIRM_SECONDS} must be greater than zero"
+            ));
+        }
+        if starter_demand_start_confirm_seconds >= starter_demand_request_ttl_seconds {
+            return Err(format!(
+                "{ENV_STARTER_DEMAND_START_CONFIRM_SECONDS} must be less than {ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS}"
+            ));
+        }
+        if starter_demand_heartbeat_timeout_seconds == 0 {
+            return Err(format!(
+                "{ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS} must be greater than zero"
+            ));
+        }
+        if starter_demand_heartbeat_timeout_seconds >= starter_demand_request_ttl_seconds {
+            return Err(format!(
+                "{ENV_STARTER_DEMAND_HEARTBEAT_TIMEOUT_SECONDS} must be less than {ENV_STARTER_DEMAND_REQUEST_TTL_SECONDS}"
+            ));
+        }
 
         Ok(Self {
             listen_addr,
@@ -149,6 +185,8 @@ impl ServiceConfig {
             starter_demand_dispatch_interval_seconds,
             starter_demand_request_ttl_seconds,
             starter_demand_max_active_offers_per_session,
+            starter_demand_start_confirm_seconds,
+            starter_demand_heartbeat_timeout_seconds,
         })
     }
 }
@@ -226,6 +264,11 @@ pub struct StarterDemandOffer {
     pub created_at_unix_ms: u64,
     pub expires_at_unix_ms: u64,
     pub status: String,
+    pub start_confirm_by_unix_ms: Option<u64>,
+    pub execution_started_at_unix_ms: Option<u64>,
+    pub execution_expires_at_unix_ms: Option<u64>,
+    pub last_heartbeat_at_unix_ms: Option<u64>,
+    pub next_heartbeat_due_at_unix_ms: Option<u64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -239,7 +282,58 @@ pub struct StarterDemandPollResponse {
     pub dispatch_interval_seconds: u64,
     pub request_ttl_seconds: u64,
     pub max_active_offers_per_session: usize,
+    pub start_confirm_seconds: u64,
+    pub heartbeat_timeout_seconds: u64,
+    pub heartbeat_interval_seconds: u64,
     pub offers: Vec<StarterDemandOffer>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandAckRequest {
+    pub provider_nostr_pubkey: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandAckResponse {
+    pub request_id: String,
+    pub status: String,
+    pub started_at_unix_ms: u64,
+    pub execution_expires_at_unix_ms: u64,
+    pub last_heartbeat_at_unix_ms: u64,
+    pub next_heartbeat_due_at_unix_ms: u64,
+    pub heartbeat_timeout_seconds: u64,
+    pub heartbeat_interval_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandHeartbeatRequest {
+    pub provider_nostr_pubkey: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandHeartbeatResponse {
+    pub request_id: String,
+    pub status: String,
+    pub last_heartbeat_at_unix_ms: u64,
+    pub next_heartbeat_due_at_unix_ms: u64,
+    pub execution_expires_at_unix_ms: u64,
+    pub heartbeat_timeout_seconds: u64,
+    pub heartbeat_interval_seconds: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandFailRequest {
+    pub failure_reason: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct StarterDemandFailResponse {
+    pub request_id: String,
+    pub status: String,
+    pub released_at_unix_ms: u64,
+    pub failure_reason: String,
+    pub budget_cap_sats: u64,
+    pub budget_allocated_sats: u64,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -319,15 +413,19 @@ struct SyncTokenRecord {
 #[derive(Debug, Clone, Copy, Eq, PartialEq)]
 enum StarterOfferStatus {
     Offered,
+    Running,
     Completed,
+    Released,
     Expired,
 }
 
 impl StarterOfferStatus {
     const fn label(self) -> &'static str {
         match self {
-            Self::Offered => "offered",
+            Self::Offered => "awaiting_ack",
+            Self::Running => "running",
             Self::Completed => "completed",
+            Self::Released => "released",
             Self::Expired => "expired",
         }
     }
@@ -344,9 +442,16 @@ struct StarterDemandOfferRecord {
     ttl_seconds: u64,
     created_at_unix_ms: u64,
     expires_at_unix_ms: u64,
+    start_confirm_by_unix_ms: Option<u64>,
+    execution_started_at_unix_ms: Option<u64>,
+    execution_expires_at_unix_ms: Option<u64>,
+    last_heartbeat_at_unix_ms: Option<u64>,
+    next_heartbeat_due_at_unix_ms: Option<u64>,
     status: StarterOfferStatus,
     payment_pointer: Option<String>,
     completed_at_unix_ms: Option<u64>,
+    released_at_unix_ms: Option<u64>,
+    failure_reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -410,6 +515,18 @@ pub fn build_router(config: ServiceConfig) -> Router {
         .route("/api/session/me", get(session_me))
         .route("/api/sync/token", post(create_sync_token))
         .route("/api/starter-demand/poll", post(poll_starter_demand))
+        .route(
+            "/api/starter-demand/offers/{request_id}/ack",
+            post(ack_starter_demand_offer),
+        )
+        .route(
+            "/api/starter-demand/offers/{request_id}/heartbeat",
+            post(heartbeat_starter_demand_offer),
+        )
+        .route(
+            "/api/starter-demand/offers/{request_id}/fail",
+            post(fail_starter_demand_offer),
+        )
         .route(
             "/api/starter-demand/offers/{request_id}/complete",
             post(complete_starter_demand_offer),
@@ -572,6 +689,9 @@ async fn poll_starter_demand(
         dispatch_interval_seconds: state.config.starter_demand_dispatch_interval_seconds,
         request_ttl_seconds: state.config.starter_demand_request_ttl_seconds,
         max_active_offers_per_session: state.config.starter_demand_max_active_offers_per_session,
+        start_confirm_seconds: state.config.starter_demand_start_confirm_seconds,
+        heartbeat_timeout_seconds: state.config.starter_demand_heartbeat_timeout_seconds,
+        heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(&state.config),
         offers: Vec::new(),
     };
 
@@ -592,7 +712,7 @@ async fn poll_starter_demand(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    prune_expired_starter_offers(&mut store.starter_demand, now);
+    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
     maybe_dispatch_starter_offer(
         &mut store.starter_demand,
         &state.config,
@@ -608,10 +728,276 @@ async fn poll_starter_demand(
         .get(session.session_id.as_str())
         .into_iter()
         .flat_map(|offers| offers.iter())
-        .filter(|offer| offer.status == StarterOfferStatus::Offered)
+        .filter(|offer| {
+            matches!(
+                offer.status,
+                StarterOfferStatus::Offered | StarterOfferStatus::Running
+            )
+        })
         .map(starter_offer_response)
         .collect();
     Ok(Json(response))
+}
+
+async fn ack_starter_demand_offer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(request_id): Path<String>,
+    Json(_request): Json<StarterDemandAckRequest>,
+) -> Result<Json<StarterDemandAckResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request_id = normalize_required_field(request_id.as_str(), "request_id_missing")?;
+    let now = now_unix_ms();
+
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    let offers = store
+        .starter_demand
+        .offers_by_session
+        .get_mut(session.session_id.as_str())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "starter_offer_not_found".to_string(),
+        })?;
+    let offer = offers
+        .iter_mut()
+        .find(|offer| offer.request_id == request_id)
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "starter_offer_not_found".to_string(),
+        })?;
+
+    if offer.status == StarterOfferStatus::Offered {
+        let start_confirm_by_unix_ms = offer
+            .start_confirm_by_unix_ms
+            .unwrap_or(offer.created_at_unix_ms);
+        if now > start_confirm_by_unix_ms {
+            let released_budget_sats =
+                expire_offer(offer, now, "starter_offer_start_confirm_missed");
+            store.starter_demand.budget_allocated_sats = store
+                .starter_demand
+                .budget_allocated_sats
+                .saturating_sub(released_budget_sats);
+            return Err(ApiError {
+                status: StatusCode::CONFLICT,
+                error: "conflict",
+                reason: "starter_offer_start_confirm_missed".to_string(),
+            });
+        }
+
+        let heartbeat_timeout_ms = state
+            .config
+            .starter_demand_heartbeat_timeout_seconds
+            .saturating_mul(1_000);
+        let execution_expires_at_unix_ms = now.saturating_add(
+            state
+                .config
+                .starter_demand_request_ttl_seconds
+                .saturating_mul(1_000),
+        );
+        offer.status = StarterOfferStatus::Running;
+        offer.execution_started_at_unix_ms = Some(now);
+        offer.execution_expires_at_unix_ms = Some(execution_expires_at_unix_ms);
+        offer.last_heartbeat_at_unix_ms = Some(now);
+        offer.next_heartbeat_due_at_unix_ms = Some(now.saturating_add(heartbeat_timeout_ms));
+        offer.expires_at_unix_ms = execution_expires_at_unix_ms;
+    }
+
+    if offer.status != StarterOfferStatus::Running {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: format!("starter_offer_not_ackable status={}", offer.status.label()),
+        });
+    }
+
+    Ok(Json(StarterDemandAckResponse {
+        request_id: offer.request_id.clone(),
+        status: offer.status.label().to_string(),
+        started_at_unix_ms: offer.execution_started_at_unix_ms.unwrap_or(now),
+        execution_expires_at_unix_ms: offer.execution_expires_at_unix_ms.unwrap_or(now),
+        last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms.unwrap_or(now),
+        next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms.unwrap_or(now),
+        heartbeat_timeout_seconds: state.config.starter_demand_heartbeat_timeout_seconds,
+        heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(&state.config),
+    }))
+}
+
+async fn heartbeat_starter_demand_offer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(request_id): Path<String>,
+    Json(_request): Json<StarterDemandHeartbeatRequest>,
+) -> Result<Json<StarterDemandHeartbeatResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request_id = normalize_required_field(request_id.as_str(), "request_id_missing")?;
+    let now = now_unix_ms();
+
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    let offers = store
+        .starter_demand
+        .offers_by_session
+        .get_mut(session.session_id.as_str())
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "starter_offer_not_found".to_string(),
+        })?;
+    let offer = offers
+        .iter_mut()
+        .find(|offer| offer.request_id == request_id)
+        .ok_or_else(|| ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "starter_offer_not_found".to_string(),
+        })?;
+
+    if offer.status != StarterOfferStatus::Running {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: format!("starter_offer_not_running status={}", offer.status.label()),
+        });
+    }
+
+    let execution_expires_at_unix_ms = offer.execution_expires_at_unix_ms.unwrap_or(now);
+    let next_heartbeat_due_at_unix_ms = offer.next_heartbeat_due_at_unix_ms.unwrap_or(now);
+    if now > execution_expires_at_unix_ms {
+        let released_budget_sats = expire_offer(offer, now, "starter_offer_execution_expired");
+        store.starter_demand.budget_allocated_sats = store
+            .starter_demand
+            .budget_allocated_sats
+            .saturating_sub(released_budget_sats);
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "starter_offer_execution_expired".to_string(),
+        });
+    }
+    if now > next_heartbeat_due_at_unix_ms {
+        let released_budget_sats = expire_offer(offer, now, "starter_offer_heartbeat_missed");
+        store.starter_demand.budget_allocated_sats = store
+            .starter_demand
+            .budget_allocated_sats
+            .saturating_sub(released_budget_sats);
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "starter_offer_heartbeat_missed".to_string(),
+        });
+    }
+
+    let heartbeat_timeout_ms = state
+        .config
+        .starter_demand_heartbeat_timeout_seconds
+        .saturating_mul(1_000);
+    offer.last_heartbeat_at_unix_ms = Some(now);
+    offer.next_heartbeat_due_at_unix_ms = Some(now.saturating_add(heartbeat_timeout_ms));
+    Ok(Json(StarterDemandHeartbeatResponse {
+        request_id: offer.request_id.clone(),
+        status: offer.status.label().to_string(),
+        last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms.unwrap_or(now),
+        next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms.unwrap_or(now),
+        execution_expires_at_unix_ms,
+        heartbeat_timeout_seconds: state.config.starter_demand_heartbeat_timeout_seconds,
+        heartbeat_interval_seconds: starter_demand_heartbeat_interval_seconds(&state.config),
+    }))
+}
+
+async fn fail_starter_demand_offer(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(request_id): Path<String>,
+    Json(request): Json<StarterDemandFailRequest>,
+) -> Result<Json<StarterDemandFailResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request_id = normalize_required_field(request_id.as_str(), "request_id_missing")?;
+    let failure_reason =
+        normalize_required_field(request.failure_reason.as_str(), "failure_reason_missing")?;
+    let now = now_unix_ms();
+
+    let mut store = state.store.write().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    let (response_request_id, response_status, response_released_at_unix_ms, released_budget_sats) = {
+        let offers = store
+            .starter_demand
+            .offers_by_session
+            .get_mut(session.session_id.as_str())
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
+        let offer = offers
+            .iter_mut()
+            .find(|offer| offer.request_id == request_id)
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
+
+        let released_budget_sats = match offer.status {
+            StarterOfferStatus::Offered | StarterOfferStatus::Running => {
+                release_offer(offer, now, failure_reason.as_str())
+            }
+            StarterOfferStatus::Released => {
+                if offer.failure_reason.as_deref() != Some(failure_reason.as_str()) {
+                    return Err(ApiError {
+                        status: StatusCode::CONFLICT,
+                        error: "conflict",
+                        reason: "starter_offer_already_released_with_different_reason".to_string(),
+                    });
+                }
+                0
+            }
+            StarterOfferStatus::Completed | StarterOfferStatus::Expired => {
+                return Err(ApiError {
+                    status: StatusCode::CONFLICT,
+                    error: "conflict",
+                    reason: format!(
+                        "starter_offer_not_releasable status={}",
+                        offer.status.label()
+                    ),
+                });
+            }
+        };
+
+        (
+            offer.request_id.clone(),
+            offer.status.label().to_string(),
+            offer.released_at_unix_ms.unwrap_or(now),
+            released_budget_sats,
+        )
+    };
+    store.starter_demand.budget_allocated_sats = store
+        .starter_demand
+        .budget_allocated_sats
+        .saturating_sub(released_budget_sats);
+
+    Ok(Json(StarterDemandFailResponse {
+        request_id: response_request_id,
+        status: response_status,
+        released_at_unix_ms: response_released_at_unix_ms,
+        failure_reason,
+        budget_cap_sats: state.config.starter_demand_budget_cap_sats,
+        budget_allocated_sats: store.starter_demand.budget_allocated_sats,
+    }))
 }
 
 async fn complete_starter_demand_offer(
@@ -631,55 +1017,82 @@ async fn complete_starter_demand_offer(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    prune_expired_starter_offers(&mut store.starter_demand, now);
-    let offers = store
-        .starter_demand
-        .offers_by_session
-        .get_mut(session.session_id.as_str())
-        .ok_or_else(|| ApiError {
-            status: StatusCode::NOT_FOUND,
-            error: "not_found",
-            reason: "starter_offer_not_found".to_string(),
-        })?;
-    let offer = offers
-        .iter_mut()
-        .find(|offer| offer.request_id == request_id)
-        .ok_or_else(|| ApiError {
-            status: StatusCode::NOT_FOUND,
-            error: "not_found",
-            reason: "starter_offer_not_found".to_string(),
-        })?;
+    prune_expired_starter_offers(&mut store.starter_demand, &state.config, now);
+    let (response_request_id, response_status, response_completed_at_unix_ms, released_budget_sats) = {
+        let offers = store
+            .starter_demand
+            .offers_by_session
+            .get_mut(session.session_id.as_str())
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
+        let offer = offers
+            .iter_mut()
+            .find(|offer| offer.request_id == request_id)
+            .ok_or_else(|| ApiError {
+                status: StatusCode::NOT_FOUND,
+                error: "not_found",
+                reason: "starter_offer_not_found".to_string(),
+            })?;
 
-    match offer.status {
-        StarterOfferStatus::Offered => {
-            offer.status = StarterOfferStatus::Completed;
-            offer.payment_pointer = Some(payment_pointer.clone());
-            offer.completed_at_unix_ms = Some(now);
-        }
-        StarterOfferStatus::Completed => {
-            if offer.payment_pointer.as_deref() != Some(payment_pointer.as_str()) {
+        let released_budget_sats = match offer.status {
+            StarterOfferStatus::Running => {
+                offer.status = StarterOfferStatus::Completed;
+                offer.payment_pointer = Some(payment_pointer.clone());
+                offer.completed_at_unix_ms = Some(now);
+                offer.last_heartbeat_at_unix_ms = Some(now);
+                offer.next_heartbeat_due_at_unix_ms = None;
+                offer.price_sats
+            }
+            StarterOfferStatus::Completed => {
+                if offer.payment_pointer.as_deref() != Some(payment_pointer.as_str()) {
+                    return Err(ApiError {
+                        status: StatusCode::CONFLICT,
+                        error: "conflict",
+                        reason: "starter_offer_already_completed_with_different_payment_pointer"
+                            .to_string(),
+                    });
+                }
+                0
+            }
+            StarterOfferStatus::Offered => {
                 return Err(ApiError {
                     status: StatusCode::CONFLICT,
                     error: "conflict",
-                    reason: "starter_offer_already_completed_with_different_payment_pointer"
-                        .to_string(),
+                    reason: "starter_offer_start_not_confirmed".to_string(),
                 });
             }
-        }
-        StarterOfferStatus::Expired => {
-            return Err(ApiError {
-                status: StatusCode::CONFLICT,
-                error: "conflict",
-                reason: "starter_offer_expired".to_string(),
-            });
-        }
-    }
+            StarterOfferStatus::Released | StarterOfferStatus::Expired => {
+                return Err(ApiError {
+                    status: StatusCode::CONFLICT,
+                    error: "conflict",
+                    reason: format!(
+                        "starter_offer_not_completable status={}",
+                        offer.status.label()
+                    ),
+                });
+            }
+        };
+
+        (
+            offer.request_id.clone(),
+            offer.status.label().to_string(),
+            offer.completed_at_unix_ms.unwrap_or(now),
+            released_budget_sats,
+        )
+    };
+    store.starter_demand.budget_allocated_sats = store
+        .starter_demand
+        .budget_allocated_sats
+        .saturating_sub(released_budget_sats);
 
     Ok(Json(StarterDemandCompleteResponse {
-        request_id: offer.request_id.clone(),
-        status: offer.status.label().to_string(),
+        request_id: response_request_id,
+        status: response_status,
         payment_pointer,
-        completed_at_unix_ms: offer.completed_at_unix_ms.unwrap_or(now),
+        completed_at_unix_ms: response_completed_at_unix_ms,
         budget_cap_sats: state.config.starter_demand_budget_cap_sats,
         budget_allocated_sats: store.starter_demand.budget_allocated_sats,
     }))
@@ -732,25 +1145,67 @@ fn authenticate_session(
     Ok(session)
 }
 
-fn prune_expired_starter_offers(state: &mut StarterDemandState, now_unix_ms: u64) {
+fn prune_expired_starter_offers(
+    state: &mut StarterDemandState,
+    config: &ServiceConfig,
+    now_unix_ms: u64,
+) {
     let mut released_budget_sats = 0u64;
     for offers in state.offers_by_session.values_mut() {
         for offer in offers.iter_mut() {
             if offer.status == StarterOfferStatus::Offered
-                && now_unix_ms >= offer.expires_at_unix_ms
+                && now_unix_ms
+                    > offer
+                        .start_confirm_by_unix_ms
+                        .unwrap_or(offer.created_at_unix_ms)
             {
-                offer.status = StarterOfferStatus::Expired;
-                released_budget_sats = released_budget_sats.saturating_add(offer.price_sats);
+                released_budget_sats = released_budget_sats.saturating_add(expire_offer(
+                    offer,
+                    now_unix_ms,
+                    "starter_offer_start_confirm_missed",
+                ));
+            } else if offer.status == StarterOfferStatus::Running {
+                if now_unix_ms
+                    > offer
+                        .execution_expires_at_unix_ms
+                        .unwrap_or(offer.expires_at_unix_ms)
+                {
+                    released_budget_sats = released_budget_sats.saturating_add(expire_offer(
+                        offer,
+                        now_unix_ms,
+                        "starter_offer_execution_expired",
+                    ));
+                } else if now_unix_ms
+                    > offer
+                        .next_heartbeat_due_at_unix_ms
+                        .unwrap_or(offer.expires_at_unix_ms)
+                {
+                    released_budget_sats = released_budget_sats.saturating_add(expire_offer(
+                        offer,
+                        now_unix_ms,
+                        "starter_offer_heartbeat_missed",
+                    ));
+                }
             }
         }
         offers.retain(|offer| {
             if offer.status == StarterOfferStatus::Completed {
                 return true;
             }
-            if offer.status == StarterOfferStatus::Offered {
+            if matches!(
+                offer.status,
+                StarterOfferStatus::Offered | StarterOfferStatus::Running
+            ) {
                 return true;
             }
-            now_unix_ms.saturating_sub(offer.expires_at_unix_ms) < 60_000
+            let terminal_at_unix_ms = offer
+                .released_at_unix_ms
+                .or(offer.completed_at_unix_ms)
+                .unwrap_or(offer.expires_at_unix_ms);
+            now_unix_ms.saturating_sub(terminal_at_unix_ms)
+                < config
+                    .starter_demand_dispatch_interval_seconds
+                    .saturating_mul(1_000)
         });
     }
     state.budget_allocated_sats = state
@@ -771,7 +1226,12 @@ fn maybe_dispatch_starter_offer(
         .map(|offers| {
             offers
                 .iter()
-                .filter(|offer| offer.status == StarterOfferStatus::Offered)
+                .filter(|offer| {
+                    matches!(
+                        offer.status,
+                        StarterOfferStatus::Offered | StarterOfferStatus::Running
+                    )
+                })
                 .count()
         })
         .unwrap_or(0);
@@ -803,7 +1263,11 @@ fn maybe_dispatch_starter_offer(
     state.next_offer_seq = state.next_offer_seq.saturating_add(1);
     let created_at_unix_ms = now_unix_ms;
     let ttl_seconds = config.starter_demand_request_ttl_seconds;
-    let expires_at_unix_ms = created_at_unix_ms.saturating_add(ttl_seconds.saturating_mul(1_000));
+    let start_confirm_by_unix_ms = created_at_unix_ms.saturating_add(
+        config
+            .starter_demand_start_confirm_seconds
+            .saturating_mul(1_000),
+    );
     let offer = StarterDemandOfferRecord {
         request_id: request_id.clone(),
         requester: STARTER_DEMAND_REQUESTER.to_string(),
@@ -813,10 +1277,17 @@ fn maybe_dispatch_starter_offer(
         price_sats: template.payout_sats,
         ttl_seconds,
         created_at_unix_ms,
-        expires_at_unix_ms,
+        expires_at_unix_ms: start_confirm_by_unix_ms,
+        start_confirm_by_unix_ms: Some(start_confirm_by_unix_ms),
+        execution_started_at_unix_ms: None,
+        execution_expires_at_unix_ms: None,
+        last_heartbeat_at_unix_ms: None,
+        next_heartbeat_due_at_unix_ms: None,
         status: StarterOfferStatus::Offered,
         payment_pointer: None,
         completed_at_unix_ms: None,
+        released_at_unix_ms: None,
+        failure_reason: None,
     };
     state
         .offers_by_session
@@ -829,6 +1300,67 @@ fn maybe_dispatch_starter_offer(
     state
         .last_dispatch_by_session
         .insert(session.session_id.clone(), now_unix_ms);
+}
+
+fn starter_demand_heartbeat_interval_seconds(config: &ServiceConfig) -> u64 {
+    config
+        .starter_demand_heartbeat_timeout_seconds
+        .saturating_div(2)
+        .max(1)
+}
+
+fn expire_offer(
+    offer: &mut StarterDemandOfferRecord,
+    now_unix_ms: u64,
+    failure_reason: &str,
+) -> u64 {
+    if matches!(
+        offer.status,
+        StarterOfferStatus::Completed | StarterOfferStatus::Released | StarterOfferStatus::Expired
+    ) {
+        return 0;
+    }
+    let released_budget_sats = if matches!(
+        offer.status,
+        StarterOfferStatus::Offered | StarterOfferStatus::Running
+    ) {
+        offer.price_sats
+    } else {
+        0
+    };
+    offer.status = StarterOfferStatus::Expired;
+    offer.released_at_unix_ms = Some(now_unix_ms);
+    offer.failure_reason = Some(failure_reason.to_string());
+    offer.next_heartbeat_due_at_unix_ms = None;
+    offer.expires_at_unix_ms = now_unix_ms;
+    released_budget_sats
+}
+
+fn release_offer(
+    offer: &mut StarterDemandOfferRecord,
+    now_unix_ms: u64,
+    failure_reason: &str,
+) -> u64 {
+    if matches!(
+        offer.status,
+        StarterOfferStatus::Completed | StarterOfferStatus::Released | StarterOfferStatus::Expired
+    ) {
+        return 0;
+    }
+    let released_budget_sats = if matches!(
+        offer.status,
+        StarterOfferStatus::Offered | StarterOfferStatus::Running
+    ) {
+        offer.price_sats
+    } else {
+        0
+    };
+    offer.status = StarterOfferStatus::Released;
+    offer.released_at_unix_ms = Some(now_unix_ms);
+    offer.failure_reason = Some(failure_reason.to_string());
+    offer.next_heartbeat_due_at_unix_ms = None;
+    offer.expires_at_unix_ms = now_unix_ms;
+    released_budget_sats
 }
 
 fn next_template_for_remaining_budget(
@@ -858,6 +1390,11 @@ fn starter_offer_response(record: &StarterDemandOfferRecord) -> StarterDemandOff
         created_at_unix_ms: record.created_at_unix_ms,
         expires_at_unix_ms: record.expires_at_unix_ms,
         status: record.status.label().to_string(),
+        start_confirm_by_unix_ms: record.start_confirm_by_unix_ms,
+        execution_started_at_unix_ms: record.execution_started_at_unix_ms,
+        execution_expires_at_unix_ms: record.execution_expires_at_unix_ms,
+        last_heartbeat_at_unix_ms: record.last_heartbeat_at_unix_ms,
+        next_heartbeat_due_at_unix_ms: record.next_heartbeat_due_at_unix_ms,
     }
 }
 
@@ -942,8 +1479,10 @@ mod tests {
 
     use super::{
         DesktopSessionCreateRequest, DesktopSessionResponse, ServiceConfig,
-        StarterDemandCompleteRequest, StarterDemandCompleteResponse, StarterDemandPollRequest,
-        StarterDemandPollResponse, SyncTokenResponse, build_router,
+        StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
+        StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
+        StarterDemandHeartbeatResponse, StarterDemandPollRequest, StarterDemandPollResponse,
+        SyncTokenResponse, build_router,
     };
 
     fn test_config() -> Result<ServiceConfig> {
@@ -961,6 +1500,21 @@ mod tests {
             starter_demand_dispatch_interval_seconds: 1,
             starter_demand_request_ttl_seconds: 120,
             starter_demand_max_active_offers_per_session: 1,
+            starter_demand_start_confirm_seconds: 5,
+            starter_demand_heartbeat_timeout_seconds: 5,
+        })
+    }
+
+    fn test_config_with_leases(
+        start_confirm_seconds: u64,
+        request_ttl_seconds: u64,
+        heartbeat_timeout_seconds: u64,
+    ) -> Result<ServiceConfig> {
+        Ok(ServiceConfig {
+            starter_demand_start_confirm_seconds: start_confirm_seconds,
+            starter_demand_request_ttl_seconds: request_ttl_seconds,
+            starter_demand_heartbeat_timeout_seconds: heartbeat_timeout_seconds,
+            ..test_config()?
         })
     }
 
@@ -970,10 +1524,18 @@ mod tests {
     }
 
     async fn create_session_token(app: &axum::Router) -> Result<DesktopSessionResponse> {
+        create_session_token_for(app, "desktop-alpha", "npub1alpha").await
+    }
+
+    async fn create_session_token_for(
+        app: &axum::Router,
+        desktop_client_id: &str,
+        bound_nostr_pubkey: &str,
+    ) -> Result<DesktopSessionResponse> {
         let create_request = DesktopSessionCreateRequest {
-            desktop_client_id: "desktop-alpha".to_string(),
+            desktop_client_id: desktop_client_id.to_string(),
             device_name: Some("Chris MacBook".to_string()),
-            bound_nostr_pubkey: Some("npub1alpha".to_string()),
+            bound_nostr_pubkey: Some(bound_nostr_pubkey.to_string()),
             client_version: Some("mvp".to_string()),
         };
         let response = app
@@ -1085,6 +1647,47 @@ mod tests {
         assert_eq!(second.offers.len(), 1);
         assert_eq!(second.offers[0].request_id, request_id);
 
+        let ack_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!("/api/starter-demand/offers/{}/ack", request_id))
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandAckRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(ack_response.status(), StatusCode::OK);
+        let acked: StarterDemandAckResponse = response_json(ack_response).await?;
+        assert_eq!(acked.request_id, request_id);
+        assert_eq!(acked.status, "running");
+
+        let heartbeat_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/starter-demand/offers/{}/heartbeat",
+                        request_id
+                    ))
+                    .header("authorization", format!("Bearer {}", session.access_token))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &StarterDemandHeartbeatRequest {
+                            provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                        },
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(heartbeat_response.status(), StatusCode::OK);
+        let heartbeat: StarterDemandHeartbeatResponse = response_json(heartbeat_response).await?;
+        assert_eq!(heartbeat.request_id, request_id);
+        assert_eq!(heartbeat.status, "running");
+
         let complete_response = app
             .clone()
             .oneshot(
@@ -1108,6 +1711,134 @@ mod tests {
         assert_eq!(completed.request_id, request_id);
         assert_eq!(completed.status, "completed");
         assert_eq!(completed.payment_pointer, "wallet:receive:001");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hosted_starter_demand_reissues_after_start_confirm_timeout() -> Result<()> {
+        let app = build_router(test_config_with_leases(1, 10, 3)?);
+        let session_alpha = create_session_token_for(&app, "desktop-alpha", "npub1alpha").await?;
+        let session_beta = create_session_token_for(&app, "desktop-beta", "npub1beta").await?;
+
+        let alpha_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", session_alpha.access_token),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(alpha_poll.status(), StatusCode::OK);
+        let alpha_payload: StarterDemandPollResponse = response_json(alpha_poll).await?;
+        let first_request_id = alpha_payload.offers[0].request_id.clone();
+
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+
+        let beta_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", session_beta.access_token),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1beta".to_string()),
+                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(beta_poll.status(), StatusCode::OK);
+        let beta_payload: StarterDemandPollResponse = response_json(beta_poll).await?;
+        assert_eq!(beta_payload.offers.len(), 1);
+        assert_ne!(beta_payload.offers[0].request_id, first_request_id);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn hosted_starter_demand_reissues_after_heartbeat_timeout() -> Result<()> {
+        let app = build_router(test_config_with_leases(1, 10, 1)?);
+        let session_alpha = create_session_token_for(&app, "desktop-alpha", "npub1alpha").await?;
+        let session_beta = create_session_token_for(&app, "desktop-beta", "npub1beta").await?;
+
+        let alpha_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", session_alpha.access_token),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                    })?))?,
+            )
+            .await?;
+        let alpha_payload: StarterDemandPollResponse = response_json(alpha_poll).await?;
+        let first_request_id = alpha_payload.offers[0].request_id.clone();
+
+        let ack_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri(format!(
+                        "/api/starter-demand/offers/{}/ack",
+                        first_request_id
+                    ))
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", session_alpha.access_token),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandAckRequest {
+                        provider_nostr_pubkey: Some("npub1alpha".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(ack_response.status(), StatusCode::OK);
+
+        tokio::time::sleep(std::time::Duration::from_millis(1_100)).await;
+
+        let beta_poll = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/starter-demand/poll")
+                    .header(
+                        "authorization",
+                        format!("Bearer {}", session_beta.access_token),
+                    )
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
+                        provider_nostr_pubkey: Some("npub1beta".to_string()),
+                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                    })?))?,
+            )
+            .await?;
+        assert_eq!(beta_poll.status(), StatusCode::OK);
+        let beta_payload: StarterDemandPollResponse = response_json(beta_poll).await?;
+        assert_eq!(beta_payload.offers.len(), 1);
+        assert_ne!(beta_payload.offers[0].request_id, first_request_id);
 
         Ok(())
     }

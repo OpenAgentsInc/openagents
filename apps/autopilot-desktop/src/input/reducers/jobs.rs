@@ -913,6 +913,10 @@ fn fail_active_job_execution(
     publish_feedback: bool,
 ) {
     let reason = reason.into();
+    let starter_request_id = state.active_job.job.as_ref().and_then(|job| {
+        (job.demand_source == crate::app_state::JobDemandSource::StarterDemand)
+            .then(|| job.request_id.clone())
+    });
     let Some(stage) = state.active_job.job.as_ref().map(|job| job.stage) else {
         return;
     };
@@ -937,7 +941,11 @@ fn fail_active_job_execution(
     state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
     state.provider_runtime.last_result = Some(format!("active job failed: {reason}"));
 
-    if publish_feedback {
+    if let Some(request_id) = starter_request_id.as_deref() {
+        release_hosted_starter_offer_if_configured(state, request_id, reason.as_str());
+    }
+
+    if publish_feedback && starter_request_id.is_none() {
         match queue_nip90_feedback_for_active_job(
             state,
             JobStatus::Error,
@@ -989,6 +997,87 @@ fn record_active_job_stage_transition(
         .record_active_job_stage(job, stage, current_epoch_seconds(), source);
 }
 
+fn ack_hosted_starter_offer_if_configured(
+    state: &mut RenderState,
+    request_id: &str,
+) -> Result<crate::starter_demand_client::StarterDemandAckResponse, String> {
+    let control_base_url = state
+        .hosted_control_base_url
+        .clone()
+        .ok_or_else(|| "Hosted starter jobs require an OpenAgents control base URL.".to_string())?;
+    let bearer_auth = state.hosted_control_bearer_token.clone().ok_or_else(|| {
+        "Hosted starter jobs require an authenticated OpenAgents session.".to_string()
+    })?;
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .map_err(|error| format!("starter demand ack client initialization failed: {error}"))?;
+    crate::starter_demand_client::ack_starter_demand_offer_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        request_id,
+        state
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.npub.as_str()),
+    )
+}
+
+fn hosted_starter_ack_should_drop_request(error: &str) -> bool {
+    let normalized = error.to_ascii_lowercase();
+    normalized.contains("starter_offer_start_confirm_missed")
+        || normalized.contains("starter_offer_not_ackable")
+        || normalized.contains("starter_offer_not_found")
+}
+
+fn release_hosted_starter_offer_if_configured(
+    state: &mut RenderState,
+    request_id: &str,
+    failure_reason: &str,
+) {
+    let Some(control_base_url) = state.hosted_control_base_url.clone() else {
+        return;
+    };
+    let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
+        return;
+    };
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            state.active_job.append_event(format!(
+                "hosted starter release client initialization failed: {error}"
+            ));
+            return;
+        }
+    };
+    match crate::starter_demand_client::fail_starter_demand_offer_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        request_id,
+        failure_reason,
+    ) {
+        Ok(response) => {
+            state.starter_jobs.mark_released(
+                response.request_id.as_str(),
+                response.failure_reason.as_str(),
+            );
+            state.starter_jobs.budget_cap_sats = response.budget_cap_sats;
+            state.starter_jobs.budget_allocated_sats = response.budget_allocated_sats;
+            state.starter_jobs.next_hosted_sync_due_at = Some(std::time::Instant::now());
+        }
+        Err(error) => {
+            state.active_job.append_event(format!(
+                "hosted starter release reconciliation failed: {error}"
+            ));
+        }
+    }
+}
+
 fn accept_request_by_id(
     state: &mut RenderState,
     request_id: &str,
@@ -999,10 +1088,59 @@ fn accept_request_by_id(
         return Err(reason);
     }
 
-    state.job_inbox.selected_request_id = Some(request_id.to_string());
-    let request_id = state
+    let preselected_request = state
         .job_inbox
-        .decide_request(request_id, true, decision_reason)?;
+        .requests
+        .iter()
+        .find(|request| request.request_id == request_id)
+        .cloned()
+        .ok_or_else(|| "Selected request no longer exists".to_string())?;
+    let starter_ack = if preselected_request.demand_source
+        == crate::app_state::JobDemandSource::StarterDemand
+    {
+        match ack_hosted_starter_offer_if_configured(state, request_id) {
+            Ok(response) => Some(response),
+            Err(error) => {
+                if hosted_starter_ack_should_drop_request(error.as_str()) {
+                    state
+                        .job_inbox
+                        .requests
+                        .retain(|request| request.request_id != request_id);
+                    if state.job_inbox.selected_request_id.as_deref() == Some(request_id) {
+                        state.job_inbox.selected_request_id = state
+                            .job_inbox
+                            .requests
+                            .first()
+                            .map(|request| request.request_id.clone());
+                    }
+                    state.starter_jobs.mark_released(request_id, "ack failed");
+                    state.starter_jobs.next_hosted_sync_due_at = Some(std::time::Instant::now());
+                }
+                return Err(error);
+            }
+        }
+    } else {
+        None
+    };
+
+    state.job_inbox.selected_request_id = Some(request_id.to_string());
+    let request_id = match state
+        .job_inbox
+        .decide_request(request_id, true, decision_reason)
+    {
+        Ok(request_id) => request_id,
+        Err(error) => {
+            if preselected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand
+            {
+                release_hosted_starter_offer_if_configured(
+                    state,
+                    request_id,
+                    "desktop_accept_decision_failed",
+                );
+            }
+            return Err(error);
+        }
+    };
     hydrate_request_runtime_context(state, request_id.as_str());
     let selected_request = state
         .job_inbox
@@ -1010,7 +1148,17 @@ fn accept_request_by_id(
         .iter()
         .find(|request| request.request_id == request_id)
         .cloned()
-        .ok_or_else(|| "Accepted request no longer exists".to_string())?;
+        .ok_or_else(|| {
+            if preselected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand
+            {
+                release_hosted_starter_offer_if_configured(
+                    state,
+                    request_id.as_str(),
+                    "accepted_request_missing_after_decision",
+                );
+            }
+            "Accepted request no longer exists".to_string()
+        })?;
 
     state.job_inbox.last_error = None;
     state.job_inbox.load_state = PaneLoadState::Ready;
@@ -1024,8 +1172,20 @@ fn accept_request_by_id(
         request_id
     ));
     state.active_job.start_from_request(&selected_request);
-    if selected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand {
-        state.starter_jobs.mark_running(request_id.as_str());
+    if selected_request.demand_source == crate::app_state::JobDemandSource::StarterDemand
+        && let Some(starter_ack) = starter_ack.as_ref()
+    {
+        state.starter_jobs.mark_running(
+            request_id.as_str(),
+            Some(starter_ack.started_at_unix_ms),
+            Some(starter_ack.execution_expires_at_unix_ms),
+            Some(starter_ack.last_heartbeat_at_unix_ms),
+            Some(starter_ack.next_heartbeat_due_at_unix_ms),
+            Some(
+                std::time::Instant::now()
+                    + std::time::Duration::from_secs(starter_ack.heartbeat_interval_seconds.max(1)),
+            ),
+        );
     }
     sync_provider_runtime_queue_depth(state);
     if let Some(job) = state.active_job.job.as_ref() {

@@ -3944,6 +3944,7 @@ const STARTER_DEMAND_MAX_INFLIGHT_ENV: &str = "OPENAGENTS_STARTER_DEMAND_MAX_INF
 const STARTER_DEMAND_LOCAL_SIMULATOR_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_STARTER_DEMAND_SIMULATOR";
 const STARTER_DEMAND_REQUEST_TIMEOUT_SECONDS: u64 = 75;
 const HOSTED_STARTER_DEMAND_POLL_INTERVAL_SECONDS: u64 = 3;
+const HOSTED_STARTER_DEMAND_HEARTBEAT_RETRY_SECONDS: u64 = 3;
 
 pub(super) fn run_auto_starter_demand_generator(
     state: &mut crate::app_state::RenderState,
@@ -3967,7 +3968,9 @@ fn run_hosted_starter_demand_sync(
         .filter(|job| job.demand_source == crate::app_state::JobDemandSource::StarterDemand)
         .map(|job| job.request_id.clone());
     let clear_hosted_rows = |state: &mut crate::app_state::RenderState, reason: &str| {
-        let mut changed = state.starter_jobs.clear_hosted_offers(reason);
+        let mut changed = state
+            .starter_jobs
+            .clear_hosted_offers_except(reason, active_starter_request_id.as_deref());
         let removed = state.job_inbox.remove_requests_by_demand_source(
             crate::app_state::JobDemandSource::StarterDemand,
             active_starter_request_id.as_deref(),
@@ -4073,8 +4076,13 @@ fn run_hosted_starter_demand_sync(
                 .unwrap_or_else(|| offer.capability.clone()),
             payout_sats: offer.price_sats,
             eligible: true,
-            status: crate::app_state::StarterJobStatus::Queued,
+            status: hosted_offer_status_to_starter_job_status(offer.status.as_str()),
             payout_pointer: None,
+            start_confirm_by_unix_ms: offer.start_confirm_by_unix_ms,
+            execution_started_at_unix_ms: offer.execution_started_at_unix_ms,
+            execution_expires_at_unix_ms: offer.execution_expires_at_unix_ms,
+            last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms,
+            next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms,
         })
         .collect::<Vec<_>>();
     state.starter_jobs.sync_hosted_offers(
@@ -4172,6 +4180,118 @@ fn run_hosted_starter_demand_sync(
         if response.offers.len() == 1 { "" } else { "s" }
     ));
     changed
+}
+
+pub(super) fn run_hosted_starter_lease_heartbeat(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some((request_id, demand_source, stage)) = state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| (job.request_id.clone(), job.demand_source, job.stage))
+    else {
+        return false;
+    };
+    if demand_source != crate::app_state::JobDemandSource::StarterDemand || stage.is_terminal() {
+        return false;
+    }
+    if state
+        .starter_jobs
+        .next_hosted_heartbeat_due_at
+        .is_some_and(|next_due_at| now < next_due_at)
+    {
+        return false;
+    }
+
+    let Some(control_base_url) = state.hosted_control_base_url.clone() else {
+        return false;
+    };
+    let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
+        return false;
+    };
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            state.starter_jobs.last_error = Some(format!(
+                "starter demand heartbeat client initialization failed: {error}"
+            ));
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            return true;
+        }
+    };
+    let provider_nostr_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str());
+    match crate::starter_demand_client::heartbeat_starter_demand_offer_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        request_id.as_str(),
+        provider_nostr_pubkey,
+    ) {
+        Ok(response) => {
+            state.starter_jobs.mark_heartbeat(
+                response.request_id.as_str(),
+                response.last_heartbeat_at_unix_ms,
+                response.next_heartbeat_due_at_unix_ms,
+                response.execution_expires_at_unix_ms,
+                Some(
+                    now + std::time::Duration::from_secs(
+                        response.heartbeat_interval_seconds.max(1),
+                    ),
+                ),
+            );
+            state.starter_jobs.next_hosted_sync_due_at = Some(now);
+            false
+        }
+        Err(error) => {
+            let normalized = error.to_ascii_lowercase();
+            if normalized.contains("starter_offer_heartbeat_missed")
+                || normalized.contains("starter_offer_execution_expired")
+                || normalized.contains("starter_offer_not_running")
+                || normalized.contains("starter_offer_not_found")
+            {
+                state.starter_jobs.mark_released(
+                    request_id.as_str(),
+                    "lease lost during hosted starter execution",
+                );
+                state.starter_jobs.next_hosted_sync_due_at = Some(now);
+                state.active_job.last_error = Some(format!(
+                    "hosted starter lease lost for {}: {}",
+                    request_id, error
+                ));
+                state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+                state.provider_runtime.last_error_detail =
+                    Some(format!("hosted starter lease lost: {error}"));
+                state.provider_runtime.last_result =
+                    Some(format!("hosted starter lease lost for {}", request_id));
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Execution);
+                if let Err(fail_error) = fail_hosted_starter_active_job_for_lease_loss(
+                    state,
+                    "active_job.hosted_starter_lease_lost",
+                ) {
+                    state.active_job.last_error = Some(fail_error);
+                }
+                return true;
+            }
+
+            state.starter_jobs.next_hosted_heartbeat_due_at = Some(
+                now + std::time::Duration::from_secs(HOSTED_STARTER_DEMAND_HEARTBEAT_RETRY_SECONDS),
+            );
+            state.starter_jobs.last_error = Some(format!(
+                "hosted starter heartbeat reconciliation failed: {error}"
+            ));
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            true
+        }
+    }
 }
 
 fn run_local_starter_demand_simulator(
@@ -5016,19 +5136,30 @@ pub(super) fn run_open_network_paid_transition_reconciliation(
         demand_source.label()
     ));
 
+    if demand_source == crate::app_state::JobDemandSource::StarterDemand
+        && let Err(error) = complete_hosted_starter_offer_if_configured(
+            state,
+            request_id.as_str(),
+            wallet_pointer.as_str(),
+        )
+    {
+        let message = format!(
+            "wallet pointer {} found but hosted starter completion failed: {}",
+            wallet_pointer, error
+        );
+        state.active_job.last_error = Some(message.clone());
+        state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+        state.provider_runtime.last_result = Some(message);
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+        return false;
+    }
+
     match super::reducers::transition_active_job_to_paid(
         state,
         "active_job.wallet_paid_transition",
         now,
     ) {
         Ok(crate::app_state::JobLifecycleStage::Paid) => {
-            if demand_source == crate::app_state::JobDemandSource::StarterDemand {
-                complete_hosted_starter_offer_if_configured(
-                    state,
-                    request_id.as_str(),
-                    wallet_pointer.as_str(),
-                );
-            }
             state.provider_runtime.last_result = Some(format!(
                 "{} job paid with wallet pointer {}",
                 demand_source.label(),
@@ -5060,12 +5191,12 @@ fn complete_hosted_starter_offer_if_configured(
     state: &mut crate::app_state::RenderState,
     request_id: &str,
     payment_pointer: &str,
-) {
+) -> Result<(), String> {
     let Some(control_base_url) = state.hosted_control_base_url.clone() else {
-        return;
+        return Ok(());
     };
     let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
-        return;
+        return Ok(());
     };
     let client = match reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
@@ -5073,11 +5204,9 @@ fn complete_hosted_starter_offer_if_configured(
     {
         Ok(client) => client,
         Err(error) => {
-            state.starter_jobs.last_error = Some(format!(
+            return Err(format!(
                 "starter demand completion client initialization failed: {error}"
             ));
-            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
-            return;
         }
     };
     match crate::starter_demand_client::complete_starter_demand_offer_blocking(
@@ -5095,14 +5224,55 @@ fn complete_hosted_starter_offer_if_configured(
             state.starter_jobs.budget_cap_sats = response.budget_cap_sats;
             state.starter_jobs.budget_allocated_sats = response.budget_allocated_sats;
             state.starter_jobs.next_hosted_sync_due_at = Some(std::time::Instant::now());
+            Ok(())
         }
-        Err(error) => {
-            state.starter_jobs.last_error = Some(format!(
-                "hosted starter completion reconciliation failed: {error}"
-            ));
-            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
-        }
+        Err(error) => Err(format!(
+            "hosted starter completion reconciliation failed: {error}"
+        )),
     }
+}
+
+fn hosted_offer_status_to_starter_job_status(status: &str) -> crate::app_state::StarterJobStatus {
+    if status.eq_ignore_ascii_case("running") {
+        crate::app_state::StarterJobStatus::Running
+    } else if status.eq_ignore_ascii_case("completed") {
+        crate::app_state::StarterJobStatus::Completed
+    } else {
+        crate::app_state::StarterJobStatus::Queued
+    }
+}
+
+fn fail_hosted_starter_active_job_for_lease_loss(
+    state: &mut crate::app_state::RenderState,
+    source: &str,
+) -> Result<(), String> {
+    let Some(job) = state.active_job.job.as_ref().cloned() else {
+        return Ok(());
+    };
+    state
+        .active_job
+        .mark_failed("hosted starter lease lost", "Hosted starter lease lost")?;
+    state.active_job.result_publish_in_flight = false;
+    state.active_job.execution_turn_completed = false;
+    state.active_job.execution_thread_start_command_seq = None;
+    state.active_job.execution_turn_start_command_seq = None;
+    state.active_job.execution_turn_interrupt_command_seq = None;
+    state
+        .job_history
+        .record_from_active_job(&job, crate::app_state::JobHistoryStatus::Failed);
+    state.earn_job_lifecycle_projection.record_active_job_stage(
+        &job,
+        crate::app_state::JobLifecycleStage::Failed,
+        current_epoch_seconds(),
+        source,
+    );
+    state.earn_kernel_receipts.record_active_job_stage(
+        &job,
+        crate::app_state::JobLifecycleStage::Failed,
+        current_epoch_seconds(),
+        source,
+    );
+    Ok(())
 }
 
 fn resolve_wallet_settlement_pointer_for_open_network_job(

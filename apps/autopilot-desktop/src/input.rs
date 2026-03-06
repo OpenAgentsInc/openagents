@@ -497,6 +497,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
     if reducers::run_active_job_execution_tick(state) {
         changed = true;
     }
+    if run_hosted_starter_lease_heartbeat(state, now) {
+        changed = true;
+    }
     if run_reciprocal_loop_engine_tick(state) {
         changed = true;
     }
