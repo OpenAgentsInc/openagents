@@ -2,7 +2,7 @@
 
 - Author: Codex
 - Status: complete
-- Scope: review of open PRs `#2978`, `#2932`, and `#2933` against the active SA/SKL/AC NIP surface already written to power app features, with the broader economy-kernel docs treated as downstream integration targets rather than override authority for the NIPs
+- Scope: review of open PRs `#2978`, `#2932`, and `#2933` against the active SA/SKL/AC NIP surface and established NIP conventions from `/Users/christopherdavid/code/nips/`
 
 ## Objective
 
@@ -10,7 +10,7 @@ Answer three questions:
 
 1. Which of the three currently open PRs can merge cleanly now?
 2. What should change in each PR before merge?
-3. How should SA/SKL/AC follow-on work stay coherent with the broader economy-kernel vision without forcing kernel assumptions over the established NIP suite?
+3. Which substantive parts of `#2932` and `#2933` belong in the NIPs, which should be changed, and which do not fit current NIP conventions?
 
 ## Sources Reviewed
 
@@ -23,6 +23,20 @@ Primary repo authority:
 - `crates/nostr/nips/SA.md`
 - `crates/nostr/nips/SKL.md`
 - `crates/nostr/nips/AC.md`
+
+Established NIP convention references:
+
+- `/Users/christopherdavid/code/nips/README.md`
+- `/Users/christopherdavid/code/nips/01.md`
+- `/Users/christopherdavid/code/nips/31.md`
+- `/Users/christopherdavid/code/nips/32.md`
+- `/Users/christopherdavid/code/nips/40.md`
+- `/Users/christopherdavid/code/nips/42.md`
+- `/Users/christopherdavid/code/nips/60.md`
+- `/Users/christopherdavid/code/nips/61.md`
+- `/Users/christopherdavid/code/nips/87.md`
+- `/Users/christopherdavid/code/nips/89.md`
+- `/Users/christopherdavid/code/nips/90.md`
 
 Broader vision reference:
 
@@ -46,62 +60,71 @@ Current in-repo protocol docs:
 This audit has been updated to reflect the intended hierarchy more accurately:
 
 1. The SA/SKL/AC NIPs in `crates/nostr/nips/` were written specifically to power parts of the app and are already partially implemented in `crates/nostr/core` and integrated in `apps/autopilot-desktop`.
-2. The default review posture should therefore be: hold the NIPs relatively stable, evaluate PRs primarily as changes to those established NIPs, and adapt economy-kernel planning downstream where possible.
-3. Nostr being a relay / websocket protocol is not itself a reason to reject NIP changes. The relevant review questions are whether a PR improves or degrades the NIP suite and whether it creates a coherent protocol surface across SA, SKL, and AC.
+2. The default review posture should therefore be: hold the NIPs relatively stable and evaluate PRs primarily as changes to those established NIPs.
+3. Nostr being a relay / websocket protocol is not itself a reason to reject NIP changes. The relevant review questions are whether a PR is backwards-compatible, whether it creates a single clear way of doing the thing, and whether the new semantics actually belong in that NIP.
 
 ## Executive Recommendation
 
 | PR | Standalone? | Merge now? | Recommendation |
 | --- | --- | --- | --- |
 | `#2978` | Yes | Yes | Merge first. The recommended cleanup has already been applied on the PR branch. |
-| `#2932` | Only as a targeted SA revision or clearly isolated profile | No | Do not merge into the active NIP surface as-is. Narrow it to a coherent SA delta, or isolate it as an explicit optional profile. |
-| `#2933` | No | No | Split it. It mixes several independent changes to the established NIPs and app-facing protocol surface in one branch. |
+| `#2932` | Yes | Not as-is | Mostly belongs, but it should be revised in-place before merge: fix approval-proof storage semantics, fix budget/unit ambiguity, and tighten federation / payment-rail semantics. |
+| `#2933` | Partly | Not as-is | Some content clearly belongs, especially AC spend-rail and SKL-revocation linkage. Other pieces should be revised or removed from core NIP text because they do not fit current NIP scope or duplicate existing mechanisms. |
 
-## Highest-Severity Findings
+## Substantive NIP Findings
 
 1. `#2932` and `#2933` overlap and compete to redefine SA / AC behavior rather than presenting one coherent NIP delta.
 2. `#2933` defines `kind:39250` audit entries as addressable, which makes a supposedly forensic audit stream mutable even on its own Nostr-native terms.
-3. Both protocol PRs add multiple new kinds and semantics at once, which makes it hard to judge whether each addition actually improves the NIP suite on its own merits.
-4. Both protocol PRs expand alternative rails and settlement semantics well beyond the current MVP wallet integration, so merging them now would create a larger gap between the active protocol docs and the active app behavior.
+3. `#2932` uses the same `budget` tag for multiple rails without a stable unit model, which is not a good NIP convention.
+4. `#2933` puts live-auth and operator-grant semantics into SKL core even though current SKL scope is registry/trust, not general authorization.
+5. `#2933` adds audit and delegation primitives without first proving they cannot be expressed more cleanly as extensions of SA's existing trajectory primitives.
 
-## Alignment Rules From Current Source Of Truth
+## NIP Conventions Used For Review
 
-These are the rules the protocol work needs to obey if it is going to stay aligned with the current repo direction.
+These are the conventions used for the substantive review below.
 
-### 1. SA/SKL/AC NIPs are already part of the app surface
+### 1. Backwards-compatible and optional
 
-`docs/NIP_SA_SKL_AC_IMPLEMENTATION_PLAN.md` is explicit that:
+From `/Users/christopherdavid/code/nips/README.md`:
 
-- SA, SKL, and AC modules exist in `crates/nostr/core`,
-- tests exist around those modules,
-- and `apps/autopilot-desktop` already includes typed SA/SKL/AC lanes.
+- new NIPs should be optional,
+- they should be backwards-compatible,
+- clients/relays that ignore them should still interoperate.
 
-So changes to these NIPs should be reviewed first as changes to the app's established protocol layer.
+Both `#2932` and `#2933` are mostly additive, which is good.
 
-### 2. Hold the NIPs relatively stable and adapt the kernel downstream
+### 2. One clear way of doing each thing
 
-The default posture should be:
+Also from `/Users/christopherdavid/code/nips/README.md`:
 
-- preserve the current NIP suite unless there is a strong protocol reason to change it,
-- evaluate proposed deltas in terms of whether they improve the NIPs and the app-facing surface,
-- and, once accepted, adapt the broader economy-kernel docs and proto plans to fit those accepted NIP shapes where possible.
+- there should be no more than one way of doing the same thing.
 
-The kernel planning docs are still useful as integration targets, but they should not be treated as an automatic veto over the NIP suite.
+This matters for:
 
-### 3. MVP payment truth is still Spark-first and Lightning-first
+- overlapping guardian / approval semantics across `#2932` and `#2933`,
+- separate audit-trail kinds when SA already has trajectory events,
+- and duplicated payment-proof semantics across SA and AC.
 
-`docs/MVP.md` is explicit:
+### 3. Storage type should match semantics
 
-- provider earnings settle into the built-in Spark wallet first,
-- wallet updates shown in UI must be authoritative,
-- withdrawal flows through paying a Lightning invoice,
-- MVP online mode is compute-provider only.
+From NIP-01 conventions:
 
-That does not make alternative rails invalid, but it does mean they should be merged carefully and usually as future-facing or profile-level expansions until the app actually supports them.
+- regular events are for durable records,
+- ephemeral events are not expected to be stored,
+- addressable events are replaceable by `(kind, pubkey, d)`.
 
-### 4. Broader economy-kernel docs should be made to fit accepted NIP changes
+If a new event is meant to be durable proof or append-only audit history, addressable or ephemeral storage may be the wrong choice.
 
-Where the economy-kernel docs currently assume a different authority or settlement framing, that should generally be treated as a downstream integration problem unless there is a strong reason to change the NIP itself.
+### 4. Reuse existing NIP patterns where they already fit
+
+Examples used here:
+
+- NIP-32 for labels and local-quorum interpretation,
+- NIP-40 for absolute expiry timestamps,
+- NIP-42 for live proof-of-possession challenge/response,
+- NIP-61 and NIP-87 for ecash mint / federation discoverability patterns,
+- NIP-89 for handler / capability advertisement,
+- NIP-90 for request / result / feedback marketplace flows.
 
 ## PR-by-PR Analysis
 
@@ -139,26 +162,41 @@ Merge this one first.
 - It tries to keep most changes additive rather than breaking.
 - It is closer to a profile than a core rewrite, which is the right instinct.
 
+### What substantively belongs
+
+These parts fit current NIP conventions reasonably well:
+
+- `cashu_mint` tags on `kind:39200` as optional inbound-rail hints,
+- a `federation` hint on `kind:39200`,
+- explicit guardian-related tags and events as an optional SA profile,
+- back-references from tick results to AC settlement receipts and NIP-90 results.
+
 ### Why it should not merge as-is
 
-1. It expands the established SA surface very broadly in one pass.
+1. `kind:39213` is defined as ephemeral even though later events are expected to reference it as proof of approval.
 
-It introduces new kinds and tags beyond the current SA kind table:
+That is a storage-type mismatch. If the approval is meant to be durable evidence, `39213` should be regular. If it is meant to be ephemeral only, later events should not treat its event id as durable proof.
 
-- `39200`
-- `39201`
-- `39202`
-- `39203`
-- `39210`
-- `39211`
-- `39220`
-- `39221`
-- `39230`
-- `39231`
+2. The extended `budget` tag is ambiguous about units.
 
-That is not automatically wrong, but it is a large SA revision and should be justified as one coherent protocol move.
+Using one `budget` tag for:
 
-2. It overlaps with `#2933` on guardian and envelope-related semantics, which means merging it independently would likely create two competing SA/AC stories.
+- Lightning sats,
+- Cashu msats,
+- Fedimint ecash,
+- and envelope-linked spending
+
+without an explicit unit convention is not a good NIP shape. This should be normalized, for example by keeping one base amount unit and moving rail-specific details into additional tags, or by explicitly adding a unit field.
+
+3. The `federation` tag format is not well aligned with existing ecash discoverability conventions.
+
+NIP-87 uses mint/federation announcement events with explicit `d` and `u` semantics. A value like `<federation-id>@<domain>` may still be useful as a hint, but it should be framed as a convenience identifier, not as the canonical federation locator.
+
+4. The `payment_rail` / `payment_proof` expansion on `kind:39220` belongs only if SA wants skill-license settlement proof to live in SA rather than AC.
+
+That is a real protocol choice. If kept, SA should reference one canonical proof-hash definition source instead of defining rail-proof semantics in parallel with AC.
+
+5. It overlaps with `#2933` on guardian and envelope-related semantics, which means the two PRs together currently violate the “single way of doing each thing” rule.
 
 Examples:
 
@@ -168,46 +206,19 @@ Examples:
 
 That needs one coherent protocol decision, not two partially overlapping ones.
 
-3. It mixes unit semantics in a way that will cause ambiguity.
-
-The same `budget` tag is described as:
-
-- sats for Lightning,
-- then "Cashu msats from mint",
-- then Fedimint ecash,
-- then envelope-linked spending.
-
-If the rail changes the denomination or unit semantics, the tag schema needs an explicit amount/unit model. Otherwise the same numeric field means different things in different rails.
-
-4. It pushes multi-rail provider settlement semantics much further than the current core SA text.
-
-That may be a valid future direction, but in NIP terms it argues for profile-gating or narrower scope unless we explicitly want SA core to absorb that complexity now.
-
-5. It adds more than the title suggests.
-
-The SA change also expands `kind:39220` payment proof semantics and introduces additional rail-specific proof expectations, including `bolt12`. That is broader than "optional guardian/Cashu/Fedimint profiles."
-
 ### How to realign it
 
 If we want to preserve the work, the cleanest path is:
 
-1. Decide explicitly which parts are true SA core changes and which parts are optional profiles.
-2. Reconcile it with `#2933` so there is one guardian / envelope / alternative-rail story across the NIP suite.
-3. Normalize budget amount and unit semantics before merging any of the new `budget` forms.
-4. Defer or clearly profile-gate provider-facing multi-rail settlement semantics until the app actually supports them.
-5. Only merge after the core-vs-profile boundary is made explicit in the NIP text itself.
-
-After that, any necessary economy-kernel planning changes should be made downstream to fit the accepted SA changes.
+1. Change `39213` to regular if it is meant to be referenced as proof.
+2. Fix the `budget` tag so amount and unit semantics are unambiguous.
+3. Clarify that `federation` is a hint / identifier, not a replacement for NIP-87-style federation discovery.
+4. Keep the guardian semantics in one naming scheme that can also coexist with AC.
+5. Choose one place for rail-proof hash definitions and make the other spec reference it.
 
 ### Recommendation
 
-Do not merge this PR as-is.
-
-If you want to keep momentum, recut it as:
-
-- a profile doc under `docs/` or a protocol appendix,
-- clearly marked non-normative if it is not intended as a core SA revision,
-- or a narrower SA-only protocol delta if it is intended to revise SA proper.
+This PR is mergeable in spirit, but I would revise the content above before merging.
 
 ## PR `#2933` `[NIP-AC] Add Cashu spending rail, SKL safety label revocation trigger, and Guardian gate integration`
 
@@ -221,94 +232,79 @@ If you want to keep momentum, recut it as:
   - auditability and delegation.
 - It also correctly noticed that the NIST bundle should be split out.
 
+### What substantively belongs
+
+These parts fit well enough and should likely be kept:
+
+- `spend_rail` as distinct from `repay` in AC,
+- explicit Fedimint support in `repay` examples,
+- SKL safety-label revocation as an AC policy hook,
+- guardian-gated envelopes in AC if the naming is aligned with SA,
+- optional `security_posture` metadata in SA profile content.
+
 ### Why it should not merge as-is
 
-1. It is too many PRs in one.
+1. `hold_period_secs` is a weak fit for NIP time semantics.
 
-This branch currently combines at least four different design tracks:
+NIPs more commonly use explicit timestamps, for example NIP-40 `expiration`. For AC, an absolute `hold_until` / `cancel_until` style field would be clearer and easier to interpret than a relative duration that must be combined with `created_at`.
 
-- AC rail expansion and guardian gating,
-- NIST-driven SKL auth/trust additions,
-- SA audit/delegation/hold-period behavior,
-- and `docs/TRUE_NAME_INTEGRATION_PROFILE.md`, which is an ecosystem-specific profile.
+2. `33410` / `33411` do not clearly belong in SKL core, and regular storage is a questionable choice for live challenge-response.
 
-That makes review shallow and merge sequencing unsafe.
+Substantively, this looks more like:
 
-2. It introduces a large set of new kinds and semantics in one branch.
+- a live proof-of-possession flow similar to NIP-42,
+- or an optional auth profile,
 
-Examples include:
+than part of SKL core registry/trust semantics. If kept, I would not put it in SKL core as regular events.
 
-- `33410`
-- `33411`
-- `33420`
-- `39246`
-- `39250`
-- `39260`
+3. `33420` Permission Grants do not clearly belong in SKL core.
 
-That breadth makes it hard to evaluate whether each new kind belongs in SKL, SA, or AC core.
+Current SKL scope is canonical skill identity, manifests, trust signals, revocation, and discovery. Operator- or guardian-issued action grants are a different concern. They may be useful, but they read more like SA or a separate auth/capability profile than SKL core.
 
-3. `kind:39250` as an addressable audit trail entry is the wrong storage shape.
+4. `39250` does not belong as a new addressable audit kind because SA already has trajectories.
 
-Audit history should be append-only. Making individual audit entries addressable means they can be replaced, which is a poor fit for the semantics the PR itself is trying to establish.
+SA already defines:
 
-4. It overlaps with `#2932` rather than cleanly superseding it.
+- `39230` Trajectory Session
+- `39231` Trajectory Event
 
-The branch touches SA, SKL, and AC at once, including guardian and rail semantics that are also being changed in `#2932`. That makes it hard to tell what the intended stable NIP suite actually is.
+Those are already described as audit trail, live coordination, training data, and debugging artifacts. The more NIP-like move is to enrich `39231` content/tags for auditable actions, not to create a second replaceable audit log primitive.
 
-5. It introduces trust-profile vocabulary that the active repo does not yet own.
+5. `39260` may belong in SA, but it should be justified against existing trajectory events.
 
-`docs/TRUE_NAME_INTEGRATION_PROFILE.md` is Satnam-specific and ecosystem-specific. Nothing else in the active MVP repo currently defines or implements that profile. In this pruned MVP repo, that belongs in backroom or in a clearly external profile package unless and until there is an active implementation owner.
+Delegation is plausibly SA content. The open question is not "can SA have delegation?" but "does this need a new kind, or should delegation be modeled as a typed trajectory event first?" The PR should answer that explicitly.
 
-6. It overreaches the scope of a clean single NIP revision.
+6. `docs/TRUE_NAME_INTEGRATION_PROFILE.md` is ecosystem-specific.
 
-The PR is trying to specify reversibility windows, permission grants, and sub-delegation economics all at once. Those may each be worthwhile, but they should be justified independently rather than bundled together.
+That is fine as a non-normative profile document. It does not belong as normative core SA/SKL/AC content.
+
+7. It overlaps with `#2932` on guardian and rail semantics, so the combined result still violates the “single way of doing each thing” rule unless the vocabulary is unified.
 
 ### How to salvage it
 
-Split it into separate follow-ons:
+If you want the content merged, I would revise it in-place as follows:
 
-1. An AC-focused PR:
-   - alternative spend rails,
-   - hold period / cancel semantics,
-   - and nothing else.
-
-2. A SKL-focused PR:
-   - optional organizational identity metadata,
-   - optional assurance-tier metadata,
-   - optional challenge-response profile,
-   - permission grants if they are truly part of SKL core.
-
-3. An SA-focused PR:
-   - how delegation, audit chain, and parent/child execution map to kernel evidence and contract lineage,
-   - whether any of that needs new Nostr kinds at all,
-   - and whether `39250` should be regular rather than addressable.
-
-4. A separate ecosystem-profile PR, if still desired:
-   - keep `TRUE_NAME` / Satnam-specific conventions out of the core MVP docs unless there is explicit adoption and ownership.
-
-5. Once those NIP deltas are accepted, update the economy-kernel planning docs downstream to fit them.
+1. Keep AC `spend_rail`, `repay` rail clarification, Fedimint support, and SKL safety-label revocation.
+2. Replace `hold_period_secs` with an absolute-timestamp formulation.
+3. Either move `33410` / `33411` out of SKL core or explicitly mark them as an optional auth profile, ideally using ephemeral semantics if they remain live challenge-response events.
+4. Move `33420` out of SKL core unless you explicitly want SKL to own operator/guardian authorization contracts.
+5. Drop `39250` as a new addressable kind and instead extend `39231` trajectory events with the needed audit tags.
+6. Keep `39260` only if you conclude delegation really needs a first-class SA kind instead of a typed trajectory event.
+7. Keep `TRUE_NAME` as a non-normative profile document only.
 
 ### Recommendation
 
-Do not merge this PR as-is.
-
-It should be split, and the accepted pieces should be treated as intentional NIP revisions with synchronized app-facing follow-on work.
+This PR should not merge as-is, but several of its substantive protocol ideas do belong and are worth keeping after the revisions above.
 
 ## Relationship Between `#2932` And `#2933`
 
-They should not both move forward unchanged.
+The key substantive issue across both PRs is this:
 
-Practical reading:
+- the SA guardian vocabulary,
+- envelope / approval terminology,
+- and alternative-rail proof semantics
 
-- `#2932` is a speculative SA profile branch for alt rails and guardian behavior.
-- `#2933` is a larger AC/SKL/SA redesign branch that reaches even further into authority and trust semantics.
-
-So the right sequencing is not "merge both in order." The right sequencing is:
-
-1. merge `#2978`,
-2. decide which intentional NIP deltas from `#2932` and `#2933` are actually wanted,
-3. reconcile overlaps so there is one coherent SA/SKL/AC story,
-4. then adapt the economy-kernel planning docs downstream to match the accepted NIP changes.
+need one coherent final form across SA and AC. That is required by the standard NIP criterion that there should not be more than one way of doing the same thing.
 
 ## Concrete Change List By PR
 
@@ -319,36 +315,36 @@ So the right sequencing is not "merge both in order." The right sequencing is:
 
 ## For `#2932`
 
-- Decide core-SA vs optional-profile status explicitly.
-- Reconcile guardian and envelope semantics with `#2933` before merging either branch.
-- Remove or defer rail-specific payment-proof requirements that the app does not yet consume.
+- Make `39213` regular if it is referenced as durable approval proof.
+- Fix `budget` amount/unit semantics.
+- Clarify `federation` as a hint rather than canonical federation discovery.
+- Keep guardian terminology aligned with AC.
 - Normalize amount-unit semantics across Lightning/Cashu/Fedimint.
-- Keep the resulting SA delta narrow enough that it reads as one coherent revision.
+- Avoid duplicating rail-proof definitions already better housed in AC.
 
 ## For `#2933`
 
-- Split the branch by concern.
-- Remove `docs/TRUE_NAME_INTEGRATION_PROFILE.md` from the MVP protocol merge path.
-- Revisit `39250` storage semantics so audit entries are append-only if kept.
-- Decide whether permission grants and challenge/response are SKL core or optional profile material.
-- Keep each accepted NIP delta narrow enough to justify itself on content, not bundle momentum.
+- Keep AC `spend_rail` and SKL safety-label revocation.
+- Replace relative `hold_period_secs` with absolute hold/cancel timing.
+- Move or profile-gate `33410` / `33411`.
+- Move or drop `33420` from SKL core.
+- Replace `39250` with richer `39231` trajectory semantics.
+- Keep `TRUE_NAME` non-normative only.
 
 ## Recommended Merge Order
 
 1. `#2978`, with the already-applied cleanup.
-2. No merge for `#2932` or `#2933` until there is a coherent NIP-level redesign and synchronization pass.
-3. After that redesign, re-open smaller PRs in this order:
-   - targeted NIP deltas
-   - downstream economy-kernel doc updates
+2. Revise `#2932` in-place using the substantive NIP fixes above, then merge if you still want the SA profile expansion.
+3. Revise `#2933` in-place using the substantive NIP fixes above, then merge the parts that clearly belong in AC / SA / optional profile form.
+4. After the accepted NIP surface is settled, adapt the economy-kernel docs downstream.
 
 ## Bottom Line
 
 The NIST PR is the only one that is truly standalone, and I would merge it first.
 
-The other two PRs are not wrong in spirit, but they are currently too broad and too overlapping to serve as clean revisions to the established SA/SKL/AC NIPs that already power parts of the app.
+For the substantive NIP content:
 
-So the right move is not to reject them because they use Nostr transport. It is to:
+- `#2932` is mostly compatible with NIP conventions, but it needs concrete semantic fixes before merge.
+- `#2933` contains both good additions and some content that does not currently belong in core SKL/SA form.
 
-- decide which NIP changes are actually wanted,
-- merge those as intentional, synchronized revisions to the active NIP suite,
-- and then adapt the broader economy-kernel planning docs downstream to fit the accepted NIP surface.
+The main rule I used is the canonical NIP one from `/Users/christopherdavid/code/nips/README.md`: there should not be more than one way of doing the same thing. The merge path should therefore keep the good ideas, remove the misplaced ones, and converge SA/SKL/AC on one vocabulary for guardian approvals, rails, auditability, and proof semantics.
