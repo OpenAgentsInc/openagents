@@ -5,6 +5,7 @@ use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use nostr::NostrIdentity;
+use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -30,6 +31,7 @@ use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
     SaLaneWorker, SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
 };
+use crate::state::autopilot_goals::GoalLaborLinkage;
 use crate::{
     codex_lane::{
         CodexLaneCommand, CodexLaneCommandResponse, CodexLaneNotification, CodexLaneSnapshot,
@@ -1030,6 +1032,62 @@ impl AutopilotChatState {
             .and_then(|binding| binding.verdict.as_ref())
     }
 
+    pub fn turn_labor_linkage_for(&self, turn_id: &str) -> Option<GoalLaborLinkage> {
+        let binding = self.turn_labor_binding_for(turn_id)?;
+        let mut labor = GoalLaborLinkage {
+            work_unit_id: Some(binding.work_unit_id.clone()),
+            contract_id: Some(binding.contract_id.clone()),
+            submission_id: binding
+                .submission
+                .as_ref()
+                .map(|submission| submission.submission.submission_id.clone()),
+            verdict_id: binding
+                .verdict
+                .as_ref()
+                .map(|verdict| verdict.verdict.verdict_id.clone()),
+            claim_id: binding.trace.claim_id.clone(),
+            settlement_id: None,
+            settlement_ready: Some(binding.is_settlement_ready()),
+            tool_evidence_refs: binding
+                .provenance
+                .tool_invocations
+                .iter()
+                .map(|invocation| {
+                    labor_tool_evidence_ref(
+                        binding.work_unit_id.as_str(),
+                        invocation.request_id.as_str(),
+                        invocation.call_id.as_str(),
+                        invocation.tool_name.as_str(),
+                        invocation.response_code.as_deref().unwrap_or("pending"),
+                        invocation.success.unwrap_or(false),
+                        invocation
+                            .response_message_digest
+                            .as_deref()
+                            .unwrap_or("sha256:pending"),
+                    )
+                })
+                .collect(),
+            submission_evidence_refs: binding
+                .submission
+                .as_ref()
+                .map(|submission| submission.evidence_refs.clone())
+                .unwrap_or_default(),
+            verdict_evidence_refs: binding
+                .verdict
+                .as_ref()
+                .map(|verdict| verdict.evidence_refs.clone())
+                .unwrap_or_default(),
+            settlement_evidence_refs: Vec::new(),
+        };
+        labor.tool_evidence_refs.sort_by(|left, right| {
+            left.kind
+                .cmp(&right.kind)
+                .then_with(|| left.uri.cmp(&right.uri))
+                .then_with(|| left.digest.cmp(&right.digest))
+        });
+        Some(labor)
+    }
+
     pub fn turn_labor_scope_payload(&self, turn_id: &str) -> Option<Value> {
         self.turn_labor_binding_for(turn_id)
             .map(CodexLaborBinding::scope_payload)
@@ -1851,6 +1909,37 @@ impl AutopilotChatState {
         *last_signature = Some(candidate);
         duplicate
     }
+}
+
+fn labor_tool_evidence_ref(
+    work_unit_id: &str,
+    request_id: &str,
+    call_id: &str,
+    tool_name: &str,
+    response_code: &str,
+    success: bool,
+    response_message_digest: &str,
+) -> EvidenceRef {
+    let uri = format!("oa://autopilot/codex/{work_unit_id}/tools/{request_id}/{call_id}");
+    let digest = sha256_prefixed_text(
+        format!(
+            "{work_unit_id}:{request_id}:{call_id}:{tool_name}:{response_code}:{success}:{response_message_digest}"
+        )
+        .as_str(),
+    );
+    let mut evidence = EvidenceRef::new("codex_tool_invocation", uri, digest);
+    evidence.meta.insert(
+        "tool_name".to_string(),
+        Value::String(tool_name.to_string()),
+    );
+    evidence.meta.insert(
+        "response_code".to_string(),
+        Value::String(response_code.to_string()),
+    );
+    evidence
+        .meta
+        .insert("success".to_string(), Value::Bool(success));
+    evidence
 }
 
 pub use crate::state::provider_runtime::{

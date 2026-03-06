@@ -1,8 +1,12 @@
 //! Autonomous goal loop runtime state for iterative turn execution.
 
+use openagents_kernel_core::ids::sha256_prefixed_text;
+use openagents_kernel_core::receipts::EvidenceRef;
 use serde::{Deserialize, Serialize};
 
-use crate::state::autopilot_goals::{GoalLifecycleStatus, GoalRecord, GoalRetryPolicy};
+use crate::state::autopilot_goals::{
+    GoalLaborLinkage, GoalLifecycleStatus, GoalRecord, GoalRetryPolicy,
+};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum GoalLoopPhase {
@@ -41,6 +45,8 @@ pub struct GoalLoopToolInvocationRecord {
     pub success: bool,
     pub response_message: String,
     pub recorded_at_epoch_seconds: u64,
+    #[serde(default)]
+    pub evidence_refs: Vec<EvidenceRef>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -66,6 +72,8 @@ pub struct GoalLoopAttemptRecord {
     pub condition_completion_reasons: Vec<String>,
     #[serde(default)]
     pub condition_stop_reasons: Vec<String>,
+    #[serde(default)]
+    pub labor: GoalLaborLinkage,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -139,6 +147,7 @@ impl GoalLoopExecutorState {
         now_epoch_seconds: u64,
         thread_id: Option<String>,
         selected_skills: Vec<String>,
+        labor: GoalLaborLinkage,
     ) {
         let Some(run) = self.active_run.as_mut() else {
             return;
@@ -160,6 +169,7 @@ impl GoalLoopExecutorState {
             condition_should_continue: None,
             condition_completion_reasons: Vec::new(),
             condition_stop_reasons: Vec::new(),
+            labor,
         });
     }
 
@@ -209,6 +219,26 @@ impl GoalLoopExecutorState {
         }
     }
 
+    pub fn merge_attempt_labor_linkage(&mut self, turn_id: Option<&str>, labor: GoalLaborLinkage) {
+        if labor.is_empty() {
+            return;
+        }
+        let Some(run) = self.active_run.as_mut() else {
+            return;
+        };
+        let attempt = if let Some(turn_id) = turn_id {
+            run.attempts
+                .iter_mut()
+                .rev()
+                .find(|attempt| attempt.turn_id.as_deref() == Some(turn_id))
+        } else {
+            run.attempts.last_mut()
+        };
+        if let Some(attempt) = attempt {
+            attempt.labor.merge_from(&labor);
+        }
+    }
+
     pub fn record_tool_invocation(
         &mut self,
         request_id: &str,
@@ -225,6 +255,14 @@ impl GoalLoopExecutorState {
         let Some(last) = run.attempts.last_mut() else {
             return;
         };
+        let evidence_ref = tool_invocation_evidence_ref(
+            request_id,
+            call_id,
+            tool_name,
+            response_code,
+            success,
+            response_message,
+        );
         last.tool_invocations.push(GoalLoopToolInvocationRecord {
             request_id: request_id.to_string(),
             call_id: call_id.to_string(),
@@ -233,7 +271,22 @@ impl GoalLoopExecutorState {
             success,
             response_message: response_message.to_string(),
             recorded_at_epoch_seconds,
+            evidence_refs: vec![evidence_ref.clone()],
         });
+        if !last
+            .labor
+            .tool_evidence_refs
+            .iter()
+            .any(|existing| existing == &evidence_ref)
+        {
+            last.labor.tool_evidence_refs.push(evidence_ref);
+            last.labor.tool_evidence_refs.sort_by(|left, right| {
+                left.kind
+                    .cmp(&right.kind)
+                    .then_with(|| left.uri.cmp(&right.uri))
+                    .then_with(|| left.digest.cmp(&right.digest))
+            });
+        }
         if last.tool_invocations.len() > 64 {
             let overflow = last.tool_invocations.len().saturating_sub(64);
             last.tool_invocations.drain(0..overflow);
@@ -294,6 +347,34 @@ impl GoalLoopExecutorState {
     }
 }
 
+fn tool_invocation_evidence_ref(
+    request_id: &str,
+    call_id: &str,
+    tool_name: &str,
+    response_code: &str,
+    success: bool,
+    response_message: &str,
+) -> EvidenceRef {
+    let uri = format!("oa://autopilot/codex/tools/{request_id}/{call_id}");
+    let digest = sha256_prefixed_text(
+        format!("{request_id}:{call_id}:{tool_name}:{response_code}:{success}:{response_message}")
+            .as_str(),
+    );
+    let mut evidence = EvidenceRef::new("codex_tool_invocation", uri, digest);
+    evidence.meta.insert(
+        "tool_name".to_string(),
+        serde_json::Value::String(tool_name.to_string()),
+    );
+    evidence.meta.insert(
+        "response_code".to_string(),
+        serde_json::Value::String(response_code.to_string()),
+    );
+    evidence
+        .meta
+        .insert("success".to_string(), serde_json::Value::Bool(success));
+    evidence
+}
+
 pub fn select_runnable_goal(goals: &[GoalRecord]) -> Option<&GoalRecord> {
     goals
         .iter()
@@ -329,8 +410,8 @@ pub fn retry_backoff_seconds(policy: &GoalRetryPolicy, retries_used: u32) -> u64
 mod tests {
     use super::{GoalLoopExecutorState, retry_backoff_seconds, select_runnable_goal};
     use crate::state::autopilot_goals::{
-        GoalConstraints, GoalLifecycleStatus, GoalObjective, GoalRecord, GoalRetryPolicy,
-        GoalScheduleConfig, GoalStopCondition,
+        GoalConstraints, GoalLaborLinkage, GoalLifecycleStatus, GoalObjective, GoalRecord,
+        GoalRetryPolicy, GoalScheduleConfig, GoalStopCondition,
     };
 
     fn sample_goal(goal_id: &str, lifecycle_status: GoalLifecycleStatus) -> GoalRecord {
@@ -414,8 +495,22 @@ mod tests {
             1_700_000_005,
             Some("thread-1".to_string()),
             vec!["blink".to_string(), "l402".to_string()],
+            GoalLaborLinkage {
+                work_unit_id: Some("work-unit-1".to_string()),
+                contract_id: Some("contract-1".to_string()),
+                ..GoalLaborLinkage::default()
+            },
         );
         executor.bind_attempt_turn_id("turn-1");
+        executor.merge_attempt_labor_linkage(
+            Some("turn-1"),
+            GoalLaborLinkage {
+                submission_id: Some("submission-1".to_string()),
+                verdict_id: Some("verdict-1".to_string()),
+                settlement_ready: Some(true),
+                ..GoalLaborLinkage::default()
+            },
+        );
         executor.record_tool_invocation(
             "request-1",
             "call-1",
@@ -449,5 +544,12 @@ mod tests {
         );
         assert_eq!(attempt.condition_goal_complete, Some(false));
         assert_eq!(attempt.condition_should_continue, Some(true));
+        assert_eq!(attempt.labor.work_unit_id.as_deref(), Some("work-unit-1"));
+        assert_eq!(attempt.labor.contract_id.as_deref(), Some("contract-1"));
+        assert_eq!(attempt.labor.submission_id.as_deref(), Some("submission-1"));
+        assert_eq!(attempt.labor.verdict_id.as_deref(), Some("verdict-1"));
+        assert_eq!(attempt.labor.settlement_ready, Some(true));
+        assert_eq!(attempt.labor.tool_evidence_refs.len(), 1);
+        assert_eq!(attempt.tool_invocations[0].evidence_refs.len(), 1);
     }
 }

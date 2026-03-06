@@ -76,6 +76,15 @@ fn advance_completed_turn_labor_pipeline(state: &mut RenderState, turn_id: &str)
     }
 }
 
+fn sync_goal_attempt_labor_linkage(state: &mut RenderState, turn_id: &str) {
+    let Some(labor) = state.autopilot_chat.turn_labor_linkage_for(turn_id) else {
+        return;
+    };
+    state
+        .goal_loop_executor
+        .merge_attempt_labor_linkage(Some(turn_id), labor);
+}
+
 fn cad_failure_class_from_tool_response(
     envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
 ) -> CadBuildFailureClass {
@@ -1163,6 +1172,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         state
                             .goal_loop_executor
                             .bind_attempt_turn_id(active_turn_id.as_str());
+                        sync_goal_attempt_labor_linkage(state, active_turn_id.as_str());
                     }
                 }
             }
@@ -1433,6 +1443,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         _ => {
                             state.autopilot_chat.mark_turn_completed_for(&turn_id);
                             advance_completed_turn_labor_pipeline(state, &turn_id);
+                            sync_goal_attempt_labor_linkage(state, &turn_id);
                         }
                     }
                     // Do not immediately clobber a valid streamed message with a stale/partial
