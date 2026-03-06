@@ -14,6 +14,8 @@ The MVP focuses on one user flow and outcome: a user goes online, offers spare c
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
 
+## The Agents Marketplace
+
 Under that MVP loop is a broader thesis: OpenAgents is building an **agents marketplace composed of multiple interoperating markets** running on one shared economic substrate.
 
 At a high level, Autopilot is the wedge into a broader economic system:
