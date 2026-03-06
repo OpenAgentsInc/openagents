@@ -6,6 +6,8 @@ Issue tracking:
 - Deployment config: https://github.com/OpenAgentsInc/openagents/issues/3047
 - Staging validation: https://github.com/OpenAgentsInc/openagents/issues/3048
 - Production cutover: https://github.com/OpenAgentsInc/openagents/issues/3049
+- Legacy surface retirement: https://github.com/OpenAgentsInc/openagents/issues/3050
+- Hardening + maintenance ops: https://github.com/OpenAgentsInc/openagents/issues/3051
 
 ## 1) Hosting decision
 
@@ -136,9 +138,55 @@ What it removes:
 
 This keeps the live infra aligned with the durable single-service Nexus runtime instead of leaving a second stale Nexus path behind.
 
-## 9) What this runbook intentionally does not cover yet
+## 9) Operator policy and limits
 
-- backup / restore drills and retention policy
-- abuse controls and operator hardening
+The durable upstream relay should run with an explicit operator policy file:
+
+- `apps/nexus-relay/deploy/upstream-config.toml`
+
+The current committed profile does this intentionally:
+
+- trusts `cf-connecting-ip` as the client IP header behind the Cloudflare tunnel
+- rejects events more than 30 minutes in the future
+- enables `nip42_auth`
+- enables scraper limiting
+- sets bounded global publish / subscription rates
+- keeps message and frame sizes capped at 128 KiB
+- lowers broadcast and persist buffers from upstream defaults to reduce runaway memory pressure
+
+This config is copied onto the VM by `scripts/deploy/nexus/03-configure-and-start.sh` and loaded through `NEXUS_RELAY_UPSTREAM_CONFIG_FILE`.
+
+## 10) Backup and restore
+
+Use the operator scripts:
+
+```bash
+scripts/deploy/nexus/07-backup-relay-data.sh
+NEXUS_BACKUP_ARCHIVE=/path/to/archive.tar.gz scripts/deploy/nexus/08-restore-relay-data.sh
+```
+
+Backup behavior:
+
+- creates a consistent SQLite backup using `sqlite3 .backup`
+- includes the Nexus control receipt log when present
+- writes a small metadata manifest
+- copies the backup archive to a local operator directory
+
+Restore behavior:
+
+- stops `nexus-relay`
+- preserves the pre-restore files under `${NEXUS_DATA_DIR}/pre-restore-<stamp>`
+- restores the SQLite database and receipt log
+- starts `nexus-relay` again
+
+Retention policy in this pass is intentionally simple:
+
+- no automatic event TTL pruning is enabled yet
+- keep point-in-time operator backup archives outside the repo
+- revisit automatic retention only after product policy for relay history is explicit
+
+## 11) What this runbook intentionally does not cover yet
+
+- deeper abuse controls beyond the current relay limit profile
 
 Those are tracked in later Nexus migration issues rather than hidden behind this baseline deploy story.

@@ -1,0 +1,23 @@
+[network]
+remote_ip_header = "cf-connecting-ip"
+
+[options]
+reject_future_seconds = 1800
+
+[limits]
+messages_per_sec = 50
+subscriptions_per_min = 60
+max_blocking_threads = 8
+max_event_bytes = 131072
+max_ws_message_bytes = 131072
+max_ws_frame_bytes = 131072
+broadcast_buffer = 4096
+event_persist_buffer = 1024
+limit_scrapers = true
+
+[authorization]
+nip42_auth = true
+nip42_dms = false
+
+# Retention is intentionally unset for now. We are not enabling automatic TTL
+# pruning until product/operator policy for relay history is explicitly decided.
