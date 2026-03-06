@@ -290,11 +290,7 @@ Those are already described as audit trail, live coordination, training data, an
 
 Delegation is plausibly SA content. The open question is not "can SA have delegation?" but "does this need a new kind, or should delegation be modeled as a typed trajectory event first?" The PR should answer that explicitly.
 
-6. `docs/TRUE_NAME_INTEGRATION_PROFILE.md` is ecosystem-specific.
-
-That is fine as a non-normative profile document. It does not belong as normative core SA/SKL/AC content.
-
-7. It overlaps with `#2932` on guardian and rail semantics, so the combined result still violates the “single way of doing each thing” rule unless the vocabulary is unified.
+6. It overlaps with `#2932` on guardian and rail semantics, so the combined result still violates the “single way of doing each thing” rule unless the vocabulary is unified.
 
 ### How to salvage it
 
@@ -306,8 +302,6 @@ If you want the content merged, I would revise it in-place as follows:
 4. Move `33420` out of SKL core unless you explicitly want SKL to own operator/guardian authorization contracts.
 5. Drop `39250` as a new addressable kind and instead extend `39231` trajectory events with the needed audit tags.
 6. Keep `39260` only if you conclude delegation really needs a first-class SA kind instead of a typed trajectory event.
-7. Keep `TRUE_NAME` as a non-normative profile document only.
-
 ### Recommendation
 
 This PR should not merge as-is, but several of its substantive protocol ideas do belong and are worth keeping after the revisions above.
@@ -345,7 +339,6 @@ need one coherent final form across SA and AC. That is required by the standard 
 - Move or profile-gate `33410` / `33411`.
 - Move or drop `33420` from SKL core.
 - Replace `39250` with richer `39231` trajectory semantics.
-- Keep `TRUE_NAME` non-normative only.
 
 ## Current Outcome
 
