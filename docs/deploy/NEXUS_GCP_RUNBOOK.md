@@ -120,7 +120,23 @@ Required local prerequisites:
 
 The VM remains private-by-default. Public ingress is handled through the tunnel rather than by assigning a public VM IP.
 
-## 8) What this runbook intentionally does not cover yet
+## 8) Retire the old Cloud Run surface
+
+Once the public hostname is confirmed on the durable VM path, remove the old stateless Cloud Run Nexus surface:
+
+```bash
+scripts/deploy/nexus/06-retire-cloud-run-surface.sh
+```
+
+What it removes:
+
+- the old `nexus.openagents.com` Cloud Run domain mapping
+- `openagents-nexus-relay`
+- `openagents-nexus-control`
+
+This keeps the live infra aligned with the durable single-service Nexus runtime instead of leaving a second stale Nexus path behind.
+
+## 9) What this runbook intentionally does not cover yet
 
 - backup / restore drills and retention policy
 - abuse controls and operator hardening
