@@ -24,6 +24,12 @@ pub(crate) const OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH: &str = "openagents_labor
 pub(crate) const OPENAGENTS_TOOL_LABOR_SUBMISSION_READY: &str = "openagents_labor_submission_ready";
 pub(crate) const OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST: &str = "openagents_labor_verifier_request";
 pub(crate) const OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH: &str = "openagents_labor_incident_attach";
+pub(crate) const OPENAGENTS_TOOL_LABOR_CLAIM_STATUS: &str = "openagents_labor_claim_status";
+pub(crate) const OPENAGENTS_TOOL_LABOR_CLAIM_OPEN: &str = "openagents_labor_claim_open";
+pub(crate) const OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW: &str = "openagents_labor_claim_review";
+pub(crate) const OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY: &str = "openagents_labor_claim_remedy";
+pub(crate) const OPENAGENTS_TOOL_LABOR_CLAIM_DENY: &str = "openagents_labor_claim_deny";
+pub(crate) const OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE: &str = "openagents_labor_claim_resolve";
 
 pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_PANE_LIST,
@@ -49,6 +55,12 @@ pub(crate) const OPENAGENTS_DYNAMIC_TOOL_NAMES: &[&str] = &[
     OPENAGENTS_TOOL_LABOR_SUBMISSION_READY,
     OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST,
     OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH,
+    OPENAGENTS_TOOL_LABOR_CLAIM_STATUS,
+    OPENAGENTS_TOOL_LABOR_CLAIM_OPEN,
+    OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW,
+    OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY,
+    OPENAGENTS_TOOL_LABOR_CLAIM_DENY,
+    OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE,
 ];
 
 pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
@@ -420,6 +432,93 @@ pub(crate) fn openagents_dynamic_tool_specs() -> Vec<DynamicToolSpec> {
                     "digest": { "type": "string" }
                 },
                 "required": ["kind", "uri", "digest"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_CLAIM_STATUS.to_string(),
+            description: "Inspect the active labor claim, dispute, and remedy state."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_CLAIM_OPEN.to_string(),
+            description: "Open a claim against the active labor contract when settlement is disputed."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" },
+                    "reason_code": { "type": "string" },
+                    "note": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_CLAIM_REVIEW.to_string(),
+            description: "Move the active labor claim into under-review state."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" },
+                    "note": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_CLAIM_REMEDY.to_string(),
+            description: "Issue a remedy proposal for the active labor claim."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" },
+                    "outcome": { "type": "string" },
+                    "note": { "type": "string" }
+                },
+                "required": ["outcome"],
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_CLAIM_DENY.to_string(),
+            description: "Deny the active labor claim with an explicit reason code."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" },
+                    "reason_code": { "type": "string" },
+                    "note": { "type": "string" }
+                },
+                "additionalProperties": false
+            }),
+        },
+        DynamicToolSpec {
+            name: OPENAGENTS_TOOL_LABOR_CLAIM_RESOLVE.to_string(),
+            description: "Resolve the active labor claim after review or remedy issuance."
+                .to_string(),
+            input_schema: json!({
+                "type": "object",
+                "properties": {
+                    "work_unit_id": { "type": "string" },
+                    "contract_id": { "type": "string" },
+                    "note": { "type": "string" }
+                },
                 "additionalProperties": false
             }),
         },
