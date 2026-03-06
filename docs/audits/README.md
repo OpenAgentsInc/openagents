@@ -1,5 +1,11 @@
 # Architecture Audit Cadence
 
+Point-in-time note:
+
+- Dated audits in this directory are historical snapshots of the repo on the day they were written.
+- They are useful for provenance and design history, but file paths, issue states, and implementation-status claims inside them may be superseded by later commits.
+- Current product and architecture authority lives in `README.md`, `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/kernel/`.
+
 ## Cadence
 
 - Run one full architecture hygiene audit every month.

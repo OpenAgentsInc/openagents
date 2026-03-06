@@ -7,7 +7,7 @@ These files are archival supporting materials. They are not the normative source
 Current repo authority remains:
 
 - `docs/MVP.md` for MVP product scope
-- `docs/plans/economy-kernel.md` for broader economy-kernel direction
+- `docs/kernel/economy-kernel.md` and `docs/kernel/README.md` for broader economy-kernel direction
 - `crates/nostr/nips/*.md` plus `docs/PROTOCOL_SURFACE.md` for the active in-repo SA/SKL/AC protocol surface
 
 Included documents:

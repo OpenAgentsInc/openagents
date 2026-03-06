@@ -341,9 +341,10 @@ Everything in this MVP must reinforce that difference.
 This spec is the first-run provider-beacon cut.
 
 - It complements (does not replace) `../MVP.md`.
-- It aligns with the phased liquidity strategy in:
-  - `../plans/hydra-x.md`
-  - `../plans/hydra-liquidity-engine.md`
+- It aligns with the current marketplace and liquidity-market direction in:
+  - `../kernel/README.md`
+  - `../kernel/liquidity-market.md`
+- Historical Hydra planning notes remain archived under `../plans/deprecated/`.
 - It is narrower than autonomous goal/swap operations documented in:
   - `AUTOPILOT_EARNINGS_AUTOMATION.md`
   - `AUTOPILOT_EARNINGS_OPERATOR_RUNBOOK.md`

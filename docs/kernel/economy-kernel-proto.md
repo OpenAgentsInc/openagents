@@ -15,21 +15,25 @@ Everything below stays aligned with your existing `openagents/*/v1` naming and w
 ## Status legend
 
 - `implemented`: shipped in the current MVP or repo entry points
-- `local prototype`: modeled in desktop-local kernel receipts, snapshots, or protocol notes, but not yet backed by authoritative backend services
+- `local prototype`: modeled in desktop-local kernel receipts, snapshots, or protocol notes, but not yet generalized into a full authoritative market surface
 - `planned`: target architecture, not yet shipped as a production market
 
 ## Current repo status
 
-There is still no checked-in `proto/` tree or generated kernel proto crate in this repo.
+The repo now includes a checked-in thin `proto/` tree plus a generated `openagents-kernel-proto` crate.
 
-This document is therefore a **proto plan**, not a description of a shipped wire contract.
+This document is therefore both:
+
+- a description of the **current thin wire slice** already checked into the repo, and
+- a **proto expansion plan** for the broader multi-market package surface that still needs to land.
 
 Today the repo ships:
 
 - an `implemented` compute-provider earn loop,
-- `local prototype` kernel receipts and snapshots in the desktop runtime,
-- thin hosted control endpoints in `apps/nexus-control`,
-- and `planned` multi-market proto boundaries for the broader marketplace.
+- `implemented` starter backend authority flows across compute, data, labor, liquidity, and risk in `apps/nexus-control` and `openagents-kernel-core`,
+- an `implemented` thin proto slice under `proto/openagents/{common,compute,economy,labor}/v1` with generated Rust types in `crates/openagents-kernel-proto`,
+- `local prototype` richer kernel receipts, incidents, and snapshots in the desktop runtime,
+- and `planned` broader package coverage for data, liquidity, risk, policy, safety, audit, and compliance.
 
 The asymmetry in this file is intentional but temporary: Compute and Risk are more detailed than Data and Liquidity because that is where the current spec work went deepest. The five-market architecture still includes all of them.
 
@@ -88,9 +92,9 @@ This proto plan should make all five explicit even when some packages remain thi
 
 | Market | Current or planned package roots | Core objects | Current repo status |
 | --- | --- | --- | --- |
-| `Compute` | `openagents.compute.v1`, `openagents.economy.v1`, `openagents.common.v1` | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` MVP slice; `planned` broader proto surface |
+| `Compute` | `openagents.compute.v1`, `openagents.economy.v1`, `openagents.common.v1` | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` thin proto slice in the repo; `planned` broader proto surface |
 | `Data` | `openagents.data.v1`, `openagents.common.v1`, `openagents.economy.v1` | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `implemented` starter authority slice in `kernel-core` and `nexus-control`; `planned` broader proto surface |
-| `Labor` | `openagents.aegis.outcomes.v1` today; later `openagents.labor.v1` if a public market alias is useful | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `local prototype`; `planned` authoritative proto surface |
+| `Labor` | `openagents.labor.v1`, `openagents.economy.v1`, `openagents.common.v1` | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `implemented` thin proto slice in the repo plus starter authority flows; `planned` broader claim and dispute surface |
 | `Liquidity` | `openagents.hydra.v1`, `openagents.liquidity.v1`, `openagents.common.v1`, `openagents.economy.v1` | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `implemented` starter authority slice in `kernel-core` and `nexus-control`; `planned` broader proto surface |
 | `Risk` | `openagents.aegis.markets.v1`, `openagents.policy.v1`, `openagents.economy.v1` | `CoverageOffer`, `CoverageBinding`, `ClaimResolution`, `RiskSignal`, `CalibrationMetric` | `implemented` starter authority slice in `kernel-core` and `nexus-control`; `planned` broader proto surface |
 
@@ -100,10 +104,13 @@ To make the five-market architecture canonical at the wire level, the proto tree
 
 - `openagents.data.v1`
 - `openagents.liquidity.v1`
-- a thin `openagents.compute.v1` starter slice in the repo itself
-- either `openagents.labor.v1` or a documented public mapping from the labor market to `openagents.aegis.outcomes.v1`
+- `openagents.risk.v1` or a documented long-term public mapping from the risk market to `openagents.aegis.markets.v1`
+- `openagents.policy.v1`
+- `openagents.audit.v1`
+- `openagents.safety.v1`
+- `openagents.compliance.v1`
 
-Until that lands, this document should be read as a plan for the desired package boundaries rather than a claim that the repo already ships them.
+Until that lands, this document should be read as a plan for the desired full package boundaries rather than a claim that the repo already ships complete wire coverage for every market.
 
 ### 1.3 Updated `proto/openagents/common/v1/common.proto`
 

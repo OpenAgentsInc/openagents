@@ -1,5 +1,8 @@
 # 2026-02-27 Full Codebase Architecture + Hygiene Audit
 
+> Historical note: This audit is a point-in-time snapshot from its date. Current product and architecture authority lives in `README.md`, `docs/MVP.md`, `docs/OWNERSHIP.md`, and `docs/kernel/`. File paths, issue states, and implementation-status claims here may be superseded by later commits.
+
+
 ## Status Gate
 
 - Open GitHub issues: none (`gh issue list --state open --limit 100` returned empty).

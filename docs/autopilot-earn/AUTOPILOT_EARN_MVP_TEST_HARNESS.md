@@ -170,22 +170,31 @@ Primary assertions:
 - wallet confirmation latency computes from reconciled payout receive timestamps,
 - degraded metric samples activate all expected SLO alerts while healthy samples clear them.
 
-### 11) Simulation Path Isolation (`autopilot-desktop`)
+### 11) Kernel Authority + Projection Coverage (`autopilot-desktop` + `nexus-control`)
 
 Files:
-- `apps/autopilot-desktop/src/pane_registry.rs` test `simulation_panes_respect_runtime_gate`
-- `apps/autopilot-desktop/src/render.rs` test `command_registry_hides_simulation_commands_when_disabled`
-- `apps/autopilot-desktop/src/input/tool_bridge.rs` test `resolve_pane_kind_gates_simulation_references`
+- `apps/autopilot-desktop/src/kernel_control.rs` tests:
+  - `resolve_kernel_authority_mode_uses_remote_when_complete_config_present`
+  - `flush_pending_sse_event_decodes_named_receipt_event`
+  - `consume_sse_buffer_ignores_keepalives_and_partial_lines`
+- `apps/nexus-control/src/lib.rs` tests:
+  - `kernel_authority_flow_persists_receipts_and_snapshot`
+  - `kernel_authority_enforces_idempotency_per_caller`
+  - `kernel_stream_routes_require_auth_and_return_sse`
 
 What it covers:
-- gates simulation-only panes behind an explicit runtime flag (`OPENAGENTS_ENABLE_SIMULATION_PANES`),
-- removes simulation pane commands from default command-palette routes,
-- blocks tool-bridge pane resolution for simulation panes when the runtime gate is disabled.
+- requires complete hosted-control config before the desktop enters remote kernel-authority mode,
+- parses authoritative receipt and snapshot projection envelopes from SSE without polling,
+- verifies the backend `work_unit -> contract -> submission -> verdict -> settlement` slice persists canonical receipts and minute snapshots,
+- verifies kernel stream routes require auth and expose realtime SSE projection lanes,
+- verifies idempotency is enforced per authenticated caller.
 
 Primary assertions:
-- simulation pane kinds are denied when runtime simulation gate is off and allowed when on,
-- default command registry excludes simulation pane commands,
-- tool-bridge pane resolution rejects simulation pane references unless runtime simulation gate is enabled.
+- incomplete desktop control config keeps kernel authority unavailable instead of silently falling back to local mutation,
+- receipt projection parsing ignores keepalives, tolerates partial buffers, and emits deterministic updates only for complete named events,
+- authoritative backend mutations persist canonical receipt hashes and deterministic minute snapshots,
+- replaying the same mutation with the same caller and idempotency key returns the same receipt,
+- receipt and snapshot projection routes stay non-authoritative and auth-gated.
 
 ### 12) Canonical Status Docs Consolidation (`docs` + lint harness)
 
@@ -210,7 +219,7 @@ Primary assertions:
 
 These provide additional coverage for payout hard-gates and reconciliation semantics.
 
-## Commands Executed
+## Representative Commands
 
 ```bash
 cargo test -p nostr-client --test dvm_submit_await_e2e
@@ -225,9 +234,12 @@ cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::networ
 cargo test -p autopilot-desktop --bin autopilot-desktop input::actions::tests::provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::earnings_scoreboard_tracks_loop_integrity_slo_metrics
 cargo test -p autopilot-desktop --bin autopilot-desktop input::actions::tests::loop_integrity_alert_specs_flags_expected_slo_breaches
-cargo test -p autopilot-desktop --bin autopilot-desktop pane_registry::tests::simulation_panes_respect_runtime_gate
-cargo test -p autopilot-desktop --bin autopilot-desktop render::tests::command_registry_hides_simulation_commands_when_disabled
-cargo test -p autopilot-desktop --bin autopilot-desktop input::tool_bridge::tests::resolve_pane_kind_gates_simulation_references
+cargo test -p autopilot-desktop --bin autopilot-desktop kernel_control::tests::resolve_kernel_authority_mode_uses_remote_when_complete_config_present
+cargo test -p autopilot-desktop --bin autopilot-desktop kernel_control::tests::flush_pending_sse_event_decodes_named_receipt_event
+cargo test -p autopilot-desktop --bin autopilot-desktop kernel_control::tests::consume_sse_buffer_ignores_keepalives_and_partial_lines
+cargo test -p nexus-control kernel_authority_flow_persists_receipts_and_snapshot
+cargo test -p nexus-control kernel_authority_enforces_idempotency_per_caller
+cargo test -p nexus-control kernel_stream_routes_require_auth_and_return_sse
 cargo test -p autopilot-desktop --bin autopilot-desktop app_state::tests::job_history_rejects_unconfirmed_success_settlement_from_active_job
 cargo test -p autopilot-desktop --bin autopilot-desktop state::earnings_gate::tests::accepts_wallet_backed_earnings_evidence
 cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconciliation::tests::reconciliation_distinguishes_earn_vs_swap_and_fee
@@ -235,7 +247,7 @@ cargo test -p autopilot-desktop --bin autopilot-desktop state::wallet_reconcilia
 
 ## Latest Run Result
 
-All commands above passed on 2026-03-04.
+The command list above reflects the maintained harness entry points for the current MVP earn slice. Passing status is tracked through current local verification and release-gate runs rather than through this document alone.
 
 ## Coverage Boundary (What This Does Not Prove)
 
