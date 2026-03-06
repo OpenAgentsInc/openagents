@@ -49,13 +49,12 @@ use crate::ollama_execution::OllamaExecutionCommand;
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction, CastControlPaneAction,
-    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
-    CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
-    CodexModelsPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
-    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
-    SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
+    CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
+    EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
+    PaneInput, ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
+    SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction, cad_demo_context_menu_bounds,
+    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
     dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
@@ -1531,6 +1530,7 @@ fn mirror_ui_error(channel: &'static str, value: Option<&str>) {
 }
 
 fn mirror_ui_errors_to_console(state: &crate::app_state::RenderState) {
+    let provider_preflight_error = provider_preflight_console_error(state);
     mirror_ui_error("autopilot.chat", state.autopilot_chat.last_error.as_deref());
     mirror_ui_error("cad.demo", state.cad_demo.last_error.as_deref());
     mirror_ui_error("spark.wallet", state.spark_wallet.last_error.as_deref());
@@ -1564,6 +1564,14 @@ fn mirror_ui_errors_to_console(state: &crate::app_state::RenderState) {
     mirror_ui_error("job.inbox", state.job_inbox.last_error.as_deref());
     mirror_ui_error("active.job", state.active_job.last_error.as_deref());
     mirror_ui_error("job.history", state.job_history.last_error.as_deref());
+    mirror_ui_error(
+        "mission.control.preflight",
+        provider_preflight_error.as_deref(),
+    );
+    mirror_ui_error(
+        "provider.runtime",
+        state.provider_runtime.last_error_detail.as_deref(),
+    );
     mirror_ui_error(
         "earnings.scoreboard",
         state.earnings_scoreboard.last_error.as_deref(),
@@ -2689,35 +2697,67 @@ pub(super) fn run_pane_hit_action(
     }
 }
 
-fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Option<String> {
-    let blockers = state.provider_blockers();
+fn provider_blocker_detail(
+    blocker: crate::app_state::ProviderBlocker,
+    spark_wallet_error: Option<&str>,
+    ollama_error: Option<&str>,
+) -> String {
+    let lane_error = match blocker {
+        crate::app_state::ProviderBlocker::WalletError => spark_wallet_error,
+        crate::app_state::ProviderBlocker::OllamaUnavailable
+        | crate::app_state::ProviderBlocker::OllamaModelUnavailable => ollama_error,
+        _ => None,
+    };
+
+    lane_error
+        .map(str::trim)
+        .filter(|entry| !entry.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| blocker.detail().to_string())
+}
+
+fn format_provider_blockers_for_display(
+    blockers: &[crate::app_state::ProviderBlocker],
+    spark_wallet_error: Option<&str>,
+    ollama_error: Option<&str>,
+) -> Option<String> {
     if blockers.is_empty() {
         return None;
     }
 
-    Some(format!(
-        "Cannot go online yet: {}",
+    Some(
         blockers
             .iter()
             .map(|blocker| {
-                if matches!(
-                    blocker,
-                    crate::app_state::ProviderBlocker::OllamaUnavailable
-                        | crate::app_state::ProviderBlocker::OllamaModelUnavailable
-                ) {
-                    state
-                        .provider_runtime
-                        .ollama
-                        .last_error
-                        .clone()
-                        .unwrap_or_else(|| blocker.detail().to_string())
-                } else {
-                    blocker.detail().to_string()
-                }
+                format!(
+                    "{} ({})",
+                    blocker.code(),
+                    provider_blocker_detail(*blocker, spark_wallet_error, ollama_error)
+                )
             })
             .collect::<Vec<_>>()
-            .join("; ")
-    ))
+            .join("; "),
+    )
+}
+
+fn provider_preflight_console_error(state: &crate::app_state::RenderState) -> Option<String> {
+    let blockers = state.provider_blockers();
+    format_provider_blockers_for_display(
+        blockers.as_slice(),
+        state.spark_wallet.last_error.as_deref(),
+        state.provider_runtime.ollama.last_error.as_deref(),
+    )
+    .map(|details| format!("Mission Control preflight blockers: {details}"))
+}
+
+fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Option<String> {
+    let blockers = state.provider_blockers();
+    format_provider_blockers_for_display(
+        blockers.as_slice(),
+        state.spark_wallet.last_error.as_deref(),
+        state.provider_runtime.ollama.last_error.as_deref(),
+    )
+    .map(|details| format!("Cannot go online yet: {details}"))
 }
 
 fn handle_chat_keyboard_input(
@@ -3095,12 +3135,13 @@ mod tests {
         build_goal_payout_evidence, build_pay_invoice_command, build_spark_command_for_action,
         cad_hit_action_blocks_camera_zoom, cad_hotkey_action_matrix, cad_pick_kind_label,
         cad_pick_kind_to_selection_kind, cad_policy_skill_candidates_for_turn,
-        cad_turn_approval_policy, goal_labor_linkage_from_binding, is_command_palette_shortcut,
-        is_toggle_fullscreen_shortcut, parse_positive_amount_str, resolve_turn_skill_by_name,
-        resolve_turn_skill_by_path, should_open_command_palette, terminal_goal_labor_linkage,
-        validate_lightning_payment_request,
+        cad_turn_approval_policy, format_provider_blockers_for_display,
+        goal_labor_linkage_from_binding, is_command_palette_shortcut,
+        is_toggle_fullscreen_shortcut, parse_positive_amount_str, provider_blocker_detail,
+        resolve_turn_skill_by_name, resolve_turn_skill_by_path, should_open_command_palette,
+        terminal_goal_labor_linkage, validate_lightning_payment_request,
     };
-    use crate::app_state::SkillRegistryDiscoveredSkill;
+    use crate::app_state::{ProviderBlocker, SkillRegistryDiscoveredSkill};
     use crate::labor_orchestrator::{
         CodexRunTrigger, CodexTurnExecutionRequest, orchestrate_codex_turn,
     };
@@ -3144,6 +3185,49 @@ mod tests {
                 .expect_err("empty amount should be rejected"),
             "Invoice amount is required"
         );
+    }
+
+    #[test]
+    fn provider_blocker_detail_prefers_runtime_error_context() {
+        assert_eq!(
+            provider_blocker_detail(
+                ProviderBlocker::OllamaUnavailable,
+                Some("wallet down"),
+                Some("No active job backend is available"),
+            ),
+            "No active job backend is available"
+        );
+        assert_eq!(
+            provider_blocker_detail(
+                ProviderBlocker::WalletError,
+                Some("Spark wallet lane failed"),
+                Some("ignored"),
+            ),
+            "Spark wallet lane failed"
+        );
+        assert_eq!(
+            provider_blocker_detail(ProviderBlocker::IdentityMissing, None, None),
+            "Nostr identity is not ready"
+        );
+    }
+
+    #[test]
+    fn format_provider_blockers_for_display_joins_codes_and_details() {
+        let details = format_provider_blockers_for_display(
+            &[
+                ProviderBlocker::WalletError,
+                ProviderBlocker::OllamaUnavailable,
+            ],
+            Some("Spark wallet lane failed"),
+            Some("No active job backend is available"),
+        )
+        .expect("blocker details");
+
+        assert_eq!(
+            details,
+            "WALLET_ERROR (Spark wallet lane failed); OLLAMA_UNAVAILABLE (No active job backend is available)"
+        );
+        assert!(format_provider_blockers_for_display(&[], None, None).is_none());
     }
 
     #[test]

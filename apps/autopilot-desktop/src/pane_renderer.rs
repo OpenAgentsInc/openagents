@@ -11,8 +11,7 @@ use crate::app_state::{
     NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
     ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
     SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
-    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
-    TrajectoryAuditPaneState,
+    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -508,9 +507,20 @@ fn paint_go_online_pane(
 
     let card_y = toggle_bounds.max_y() + 16.0;
     let card_gap = 12.0;
+    let top_card_height = 252.0;
     let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(240.0);
-    let left_card = Bounds::new(content_bounds.origin.x + 12.0, card_y, card_width, 220.0);
-    let right_card = Bounds::new(left_card.max_x() + card_gap, card_y, card_width, 220.0);
+    let left_card = Bounds::new(
+        content_bounds.origin.x + 12.0,
+        card_y,
+        card_width,
+        top_card_height,
+    );
+    let right_card = Bounds::new(
+        left_card.max_x() + card_gap,
+        card_y,
+        card_width,
+        top_card_height,
+    );
     let bottom_card = Bounds::new(
         content_bounds.origin.x + 12.0,
         left_card.max_y() + card_gap,
@@ -527,30 +537,50 @@ fn paint_go_online_pane(
     );
     paint_mission_control_card(bottom_card, "Job Flow", theme::border::DEFAULT, paint);
 
+    let left_clip = Bounds::new(
+        left_card.origin.x + 8.0,
+        left_card.origin.y + 8.0,
+        left_card.size.width - 16.0,
+        left_card.size.height - 16.0,
+    );
+    let right_clip = Bounds::new(
+        right_card.origin.x + 8.0,
+        right_card.origin.y + 8.0,
+        right_card.size.width - 16.0,
+        right_card.size.height - 16.0,
+    );
+    let left_value_chunk_len = mission_control_value_chunk_len(left_card);
+    let right_value_chunk_len = mission_control_value_chunk_len(right_card);
+    let left_body_chunk_len = mission_control_body_chunk_len(left_card);
+
     let now = std::time::Instant::now();
+    paint.scene.push_clip(left_clip);
     let mut left_y = left_card.origin.y + 32.0;
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "Lane",
         provider_runtime.execution_lane_label(),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "Execution backend",
         provider_runtime.execution_backend_label(),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "Control authority",
         provider_runtime.control_authority_label(backend_kernel_authority),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
@@ -560,43 +590,49 @@ fn paint_go_online_pane(
         } else {
             earn_job_lifecycle_projection.authority.as_str()
         },
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "Settlement truth",
         provider_runtime.settlement_truth_label(),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "Mode",
         provider_runtime.mode.label(),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "Uptime (s)",
         &provider_runtime.uptime_seconds(now).to_string(),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "SA runner",
         sa_lane.mode.label(),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
         "SKL trust",
         skl_lane.trust_tier.label(),
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
@@ -606,8 +642,9 @@ fn paint_go_online_pane(
         } else {
             "unavailable"
         },
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
@@ -619,8 +656,9 @@ fn paint_go_online_pane(
         } else {
             "offline"
         },
+        left_value_chunk_len,
     );
-    left_y = paint_label_line(
+    left_y = paint_wrapped_label_line(
         paint,
         left_card.origin.x + 12.0,
         left_y,
@@ -631,6 +669,7 @@ fn paint_go_online_pane(
             .as_deref()
             .or(provider_runtime.ollama.configured_model.as_deref())
             .unwrap_or("none"),
+        left_value_chunk_len,
     );
     if provider_blockers.is_empty() {
         paint.scene.draw_text(paint.text.layout(
@@ -648,56 +687,81 @@ fn paint_go_online_pane(
         ));
         let mut blocker_y = left_y + 18.0;
         for blocker in provider_blockers.iter().take(3) {
-            paint.scene.draw_text(paint.text.layout_mono(
-                &format!("{} - {}", blocker.code(), blocker.detail()),
+            for line in split_text_for_display(
+                &format!(
+                    "{} - {}",
+                    blocker.code(),
+                    mission_control_blocker_detail(*blocker, spark_wallet, provider_runtime)
+                ),
+                left_body_chunk_len,
+            ) {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &line,
+                    Point::new(left_card.origin.x + 12.0, blocker_y),
+                    10.0,
+                    theme::status::ERROR,
+                ));
+                blocker_y += 14.0;
+            }
+        }
+        let hidden_blockers = provider_blockers.len().saturating_sub(3);
+        if hidden_blockers > 0 {
+            paint.scene.draw_text(paint.text.layout(
+                &format!("+{hidden_blockers} more blockers"),
                 Point::new(left_card.origin.x + 12.0, blocker_y),
                 10.0,
                 theme::status::ERROR,
             ));
-            blocker_y += 14.0;
         }
     }
+    paint.scene.pop_clip();
 
+    paint.scene.push_clip(right_clip);
     let mut right_y = right_card.origin.y + 32.0;
     let wallet_balance = spark_wallet
         .balance
         .as_ref()
         .map(|balance| balance.total_sats().to_string())
         .unwrap_or_else(|| "loading".to_string());
-    right_y = paint_label_line(
+    right_y = paint_wrapped_label_line(
         paint,
         right_card.origin.x + 12.0,
         right_y,
         "Wallet sats",
         &wallet_balance,
+        right_value_chunk_len,
     );
-    right_y = paint_label_line(
+    right_y = paint_wrapped_label_line(
         paint,
         right_card.origin.x + 12.0,
         right_y,
         "Wallet status",
         spark_wallet.network_status_label(),
+        right_value_chunk_len,
     );
-    right_y = paint_label_line(
+    right_y = paint_wrapped_label_line(
         paint,
         right_card.origin.x + 12.0,
         right_y,
         "Sats today",
         &earnings_scoreboard.sats_today.to_string(),
+        right_value_chunk_len,
     );
-    right_y = paint_label_line(
+    right_y = paint_wrapped_label_line(
         paint,
         right_card.origin.x + 12.0,
         right_y,
         "Lifetime sats",
         &earnings_scoreboard.lifetime_sats.to_string(),
+        right_value_chunk_len,
     );
-    right_y = paint_label_line(
+    right_y = paint_wrapped_label_line(
         paint,
         right_card.origin.x + 12.0,
         right_y,
         "Jobs today",
         &earnings_scoreboard.jobs_today.to_string(),
+        right_value_chunk_len,
     );
     paint_first_sats_progress(
         Bounds::new(
@@ -709,6 +773,7 @@ fn paint_go_online_pane(
         earnings_scoreboard.lifetime_sats,
         paint,
     );
+    paint.scene.pop_clip();
 
     let active_summary = active_job.job.as_ref().map_or_else(
         || "No active job yet".to_string(),
@@ -3668,6 +3733,34 @@ pub(crate) fn paint_label_line(
     y + 18.0
 }
 
+pub(crate) fn paint_wrapped_label_line(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_chunk_len: usize,
+) -> f32 {
+    paint.scene.draw_text(paint.text.layout(
+        &format!("{label}:"),
+        Point::new(x, y),
+        theme::font_size::SM,
+        theme::text::MUTED,
+    ));
+
+    let mut line_y = y;
+    for chunk in split_text_for_display(value, value_chunk_len.max(1)) {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &chunk,
+            Point::new(x + 122.0, line_y),
+            theme::font_size::SM,
+            theme::text::PRIMARY,
+        ));
+        line_y += 18.0;
+    }
+    line_y.max(y + 18.0)
+}
+
 pub(crate) fn paint_multiline_phrase(
     paint: &mut PaintContext,
     x: f32,
@@ -3693,6 +3786,43 @@ pub(crate) fn paint_multiline_phrase(
         line_y += 18.0;
     }
     line_y
+}
+
+fn mission_control_value_chunk_len(card: Bounds) -> usize {
+    let value_width = (card.size.width - 146.0).max(48.0);
+    ((value_width / 6.2).floor() as usize).max(8)
+}
+
+fn mission_control_body_chunk_len(card: Bounds) -> usize {
+    let body_width = (card.size.width - 24.0).max(48.0);
+    ((body_width / 6.2).floor() as usize).max(12)
+}
+
+fn mission_control_blocker_detail(
+    blocker: ProviderBlocker,
+    spark_wallet: &SparkPaneState,
+    provider_runtime: &ProviderRuntimeState,
+) -> String {
+    match blocker {
+        ProviderBlocker::WalletError => spark_wallet
+            .last_error
+            .as_deref()
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| blocker.detail().to_string()),
+        ProviderBlocker::OllamaUnavailable | ProviderBlocker::OllamaModelUnavailable => {
+            provider_runtime
+                .ollama
+                .last_error
+                .as_deref()
+                .map(str::trim)
+                .filter(|entry| !entry.is_empty())
+                .map(ToString::to_string)
+                .unwrap_or_else(|| blocker.detail().to_string())
+        }
+        _ => blocker.detail().to_string(),
+    }
 }
 
 fn mask_secret(value: &str) -> String {
@@ -3743,11 +3873,13 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
 #[cfg(test)]
 mod tests {
     use super::{
-        create_invoice_view_state, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
+        create_invoice_view_state, mission_control_body_chunk_len, mission_control_value_chunk_len,
+        nostr_identity_view_state, pay_invoice_view_state, payment_terminal_status,
+        spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::PaneLoadState;
     use crate::spark_wallet::SparkPaneState;
+    use wgpui::Bounds;
 
     #[test]
     fn spark_wallet_view_state_prioritizes_error_then_loading_then_ready() {
@@ -3833,5 +3965,16 @@ mod tests {
                 "raw:{\"x\":1}".to_string(),
             ]
         );
+    }
+
+    #[test]
+    fn mission_control_chunk_lengths_respect_minimums() {
+        let narrow = Bounds::new(0.0, 0.0, 180.0, 100.0);
+        let wide = Bounds::new(0.0, 0.0, 360.0, 100.0);
+
+        assert!(mission_control_value_chunk_len(narrow) >= 8);
+        assert!(mission_control_body_chunk_len(narrow) >= 12);
+        assert!(mission_control_value_chunk_len(wide) > mission_control_value_chunk_len(narrow));
+        assert!(mission_control_body_chunk_len(wide) > mission_control_body_chunk_len(narrow));
     }
 }
