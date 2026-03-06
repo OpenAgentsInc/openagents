@@ -4,7 +4,7 @@
 **Submitter:** OpenAgents  
 **Date:** March 4, 2026
 
-> Archival note: this document preserves submission materials prepared for NIST RFI `NIST-2025-0035` on March 4, 2026. It is not the normative source of truth for current OpenAgents product or protocol behavior.
+> Archival note: this document preserves submission materials prepared for NIST RFI `NIST-2025-0035` on March 4, 2026. It is not the normative source of truth for current OpenAgents product or protocol behavior. Current normative protocol details live in `crates/nostr/nips/SA.md`, `crates/nostr/nips/SKL.md`, and `crates/nostr/nips/AC.md`.
 
 ---
 
@@ -138,7 +138,13 @@
   "created_at": 1735689900,
   "tags": [
     ["e", "<session_event_id>", "<relay>", "root"],
-    ["seq", "5"]
+    ["e", "<prev_event_id>", "<relay>", "reply"],
+    ["seq", "5"],
+    ["action_type", "tool_invocation"],
+    ["tool_invoked", "bash"],
+    ["input_hash", "<sha256_of_redacted_input>"],
+    ["output_hash", "<sha256_of_redacted_output>"],
+    ["credit", "envelope-xyz789"]
   ],
   "content": "{\"type\":\"tool\",\"name\":\"BashTool\",\"call_id\":\"c1\",\"command\":\"cargo test\",\"result\":\"64/128 passed\",\"tokens_in\":50,\"tokens_out\":200}",
   "sig": "..."
@@ -150,9 +156,13 @@
 - `agent`: Agent response
 - `tool`: Tool invocation result
 - `tool_start`: Tool invocation started
+- `tool_progress`: Tool invocation progress update
 - `observation`: Tool result observation
 - `thinking`: Agent reasoning (may be redacted)
+- `delegation`: Delegation contract or handoff
 - `session_end`: Session completed with summary
+
+**Audit note:** Consequential actions SHOULD be encoded in append-only `kind:39231` events with audit-friendly tags such as `action_type`, `tool_invoked`, `input_hash`, `output_hash`, and optional `guardian_approval_ref`, `credit`, or `parent_session`. This keeps audit history in the existing trajectory stream instead of a separate mutable audit log.
 
 ---
 
@@ -297,8 +307,9 @@ Skill author can pre-sign a revocation event and publish the signature (but not 
     ["issuer", "npub1issuer..."],
     ["provider", "npub1compute_provider..."],
     ["spend_rail", "cashu", "https://mint.example.com"],
-    ["repay", "bolt11", "<invoice_hash>"],
-    ["status", "active"]
+    ["spend_cashu_keyset", "<cashu_keyset_id>"],
+    ["repay", "bolt11", "<invoice_hash_pointer>"],
+    ["status", "accepted"]
   ],
   "content": "<optional NIP-44 encrypted private terms>",
   "sig": "..."
@@ -312,10 +323,11 @@ Skill author can pre-sign a revocation event and publish the signature (but not 
 3. **Provider verifies envelope:**
    - Fetch envelope event from relay
    - Verify issuer signature
-   - Check `status=active` (not revoked)
+   - Check `status=accepted` (not revoked)
    - Check `exp` > current time
    - Check spend amount + prior spends ≤ `max`
    - Check `scope` matches this job/resource
+   - If `cancel_until` is present, check for any `kind:39246` cancel event before finalizing irreversible delivery
 4. **If valid:** Provider delivers service, bills issuer.
 5. **If invalid:** Provider denies, agent receives error.
 
@@ -331,17 +343,18 @@ Skill author can pre-sign a revocation event and publish the signature (but not 
   "pubkey": "npub1agent...",
   "created_at": 1735690500,
   "tags": [
+    ["p", "npub1issuer..."],
     ["credit", "envelope-xyz789"],
-    ["provider", "npub1compute_provider..."],
-    ["amount", "3000"],
-    ["scope_proof", "<job_request_event_id>"]
+    ["scope", "nip90", "<job_request_event_id>"],
+    ["max", "3000"],
+    ["exp", "1735690800"]
   ],
-  "content": "Requesting 3000 sats for NIP-90 job execution",
+  "content": "{\"schema\":1,\"spend_sats\":3000,\"reason\":\"run nip90 job\"}",
   "sig": "..."
 }
 ```
 
-**Ephemeral:** Not stored by relays (kind 20000–29999 range).
+**Operational note:** This is a spend-time authorization event, not the durable audit record. Durable repayment evidence belongs in `kind:39244` settlement receipts and related `kind:39231` trajectory events.
 
 ---
 
@@ -357,21 +370,21 @@ Skill author can pre-sign a revocation event and publish the signature (but not 
   "tags": [
     ["credit", "envelope-xyz789"],
     ["p", "npub1agent..."],
+    ["issuer", "npub1issuer..."],
+    ["provider", "npub1compute_provider..."],
     ["scope", "nip90", "<job_request_id>"],
-    ["spent", "3000"],
-    ["fee", "100"],
-    ["job", "6050", "<job_result_event_id>"],
-    ["proof", "<lightning_preimage>"],
-    ["provider", "npub1compute_provider..."]
+    ["e", "<job_result_event_id>", "<relay>", "root"],
+    ["repay", "bolt11", "<invoice_hash_pointer>"],
+    ["status", "settled"]
   ],
-  "content": "Payment settled successfully for NIP-90 text generation job",
+  "content": "{\"schema\":1,\"spent_sats\":3000,\"fee_sats\":100,\"outcome\":\"success\"}",
   "sig": "..."
 }
 ```
 
 **Audit properties:**
-- Links envelope ID → scope ID → spend amount → outcome artifact (job result)
-- Includes payment proof (Lightning preimage or Cashu token redemption hash)
+- Links envelope ID → scope ID → repayment reference → outcome artifact (job result)
+- Uses rail-appropriate repayment references rather than standardizing proof construction in AC core
 - Signed by issuer (non-repudiation)
 - Can be used in dispute resolution ("agent paid for service X, received result Y")
 
@@ -389,11 +402,10 @@ Skill author can pre-sign a revocation event and publish the signature (but not 
   "tags": [
     ["credit", "envelope-xyz789"],
     ["p", "npub1agent..."],
-    ["default_amount", "3000"],
-    ["default_reason", "repayment_overdue"],
-    ["trajectory", "<session_event_id>"]
+    ["scope", "nip90", "<job_request_event_id>"],
+    ["status", "defaulted"]
   ],
-  "content": "Agent failed to repay 3000 sats within 7-day term. Envelope revoked, future credit limit reduced.",
+  "content": "{\"schema\":1,\"reason\":\"repayment_overdue\",\"loss_sats\":3000}",
   "sig": "..."
 }
 ```
@@ -506,11 +518,11 @@ Skill author can pre-sign a revocation event and publish the signature (but not 
 │                                                             │
 │  10. Issuer pays provider                                   │
 │      • Lightning invoice paid                               │
-│      • Preimage received                                    │
+│      • Settlement reference recorded                        │
 │                                                             │
 │  11. Issuer publishes settlement receipt (kind:39244)       │
 │      • Links: envelope → scope → spend → outcome            │
-│      • Includes payment proof                               │
+│      • Includes repayment rail reference                    │
 │                                                             │
 │  12. Agent updates state                                    │
 │      • Deducts 3000 sats from daily budget                  │
@@ -550,10 +562,10 @@ Skill author can pre-sign a revocation event and publish the signature (but not 
 │  5. Credit issuers subscribed to trusted labelers           │
 │     • Receive same label                                    │
 │                                                             │
-│  6. Issuer checks: active envelopes for this skill?         │
+│  6. Issuer checks: live envelopes for this skill?           │
 │     • Query: envelopes with scope containing skill address  │
 │                                                             │
-│  7. For each active envelope:                               │
+│  7. For each live envelope:                                 │
 │     • Update kind:39242 with status=revoked                 │
 │     • Add revoke_reason tag                                 │
 │     • Publish updated event                                 │
@@ -695,18 +707,22 @@ import { Event, finishEvent, getEventHash } from 'nostr-tools';
 interface Envelope {
   id: string;
   agent_pubkey: string;
+  provider_pubkey: string;
   scope: { type: string; id: string };
   max_sats: number;
   exp: number;
   spent: number;
-  status: 'active' | 'revoked' | 'exhausted';
+  status: 'offered' | 'accepted' | 'revoked' | 'spent' | 'settled' | 'defaulted';
 }
 
 class EnvelopeIssuer {
   private envelopes: Map<string, Envelope> = new Map();
 
+  constructor(private readonly issuerPrivkey: string) {}
+
   createEnvelope(
     agent_pubkey: string,
+    provider_pubkey: string,
     scope_type: string,
     scope_id: string,
     max_sats: number,
@@ -718,11 +734,12 @@ class EnvelopeIssuer {
     const envelope: Envelope = {
       id: envelope_id,
       agent_pubkey,
+      provider_pubkey,
       scope: { type: scope_type, id: scope_id },
       max_sats,
       exp,
       spent: 0,
-      status: 'active'
+      status: 'accepted'
     };
 
     this.envelopes.set(envelope_id, envelope);
@@ -737,18 +754,19 @@ class EnvelopeIssuer {
         ['scope', scope_type, scope_id],
         ['max', max_sats.toString()],
         ['exp', exp.toString()],
-        ['status', 'active']
+        ['provider', provider_pubkey],
+        ['status', 'accepted']
       ],
       content: ''
     };
 
-    return finishEvent(event, this.issuer_privkey);
+    return finishEvent(event, this.issuerPrivkey);
   }
 
   async verifySpend(
     envelope_id: string,
     amount: number,
-    scope_proof: string
+    scope_id: string
   ): Promise<{ valid: boolean; reason?: string }> {
     const envelope = this.envelopes.get(envelope_id);
 
@@ -756,13 +774,12 @@ class EnvelopeIssuer {
       return { valid: false, reason: 'Envelope not found' };
     }
 
-    if (envelope.status !== 'active') {
+    if (envelope.status !== 'accepted') {
       return { valid: false, reason: `Envelope ${envelope.status}` };
     }
 
     const now = Math.floor(Date.now() / 1000);
     if (now > envelope.exp) {
-      envelope.status = 'exhausted';
       return { valid: false, reason: 'Envelope expired' };
     }
 
@@ -771,7 +788,7 @@ class EnvelopeIssuer {
     }
 
     // Verify scope matches
-    if (scope_proof !== envelope.scope.id) {
+    if (scope_id !== envelope.scope.id) {
       return { valid: false, reason: 'Scope mismatch' };
     }
 
@@ -784,7 +801,7 @@ class EnvelopeIssuer {
     envelope_id: string,
     amount: number,
     job_result_id: string,
-    payment_proof: string
+    repay_reference: string
   ): Event {
     const envelope = this.envelopes.get(envelope_id);
     
@@ -794,12 +811,14 @@ class EnvelopeIssuer {
       tags: [
         ['credit', envelope_id],
         ['p', envelope.agent_pubkey],
+        ['issuer', 'npub1issuer...'],
+        ['provider', envelope.provider_pubkey],
         ['scope', envelope.scope.type, envelope.scope.id],
-        ['spent', amount.toString()],
-        ['job', '6050', job_result_id],
-        ['proof', payment_proof]
+        ['e', job_result_id, 'wss://relay.example.com', 'root'],
+        ['repay', 'bolt11', repay_reference],
+        ['status', 'settled']
       ],
-      content: 'Settlement complete'
+      content: JSON.stringify({ schema: 1, spent_sats: amount, outcome: 'success' })
     };
   }
 }

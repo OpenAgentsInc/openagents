@@ -89,7 +89,7 @@ Define **Outcome-Scoped Credit Envelopes (OSCE)**: bounded "credit envelopes" th
 - Agent can spend **only** toward this specific NIP-90 job (or L402 resource, or skill invocation).
 - Hard 5000-sat cap enforced by issuer (who controls the funds).
 - Expires in 24 hours.
-- Settlement produces auditable receipt (`kind:39244`) linking envelope ID → scope ID → payment proof → outcome artifact (e.g., NIP-90 job result).
+- Settlement produces auditable receipt (`kind:39244`) linking envelope ID → scope ID → repayment reference → outcome artifact (e.g., NIP-90 job result).
 
 **Result:** Payment authorization becomes a scoped, measurable capability. Compromised or misbehaving agents cannot drain unrestricted funds—worst case is they waste one envelope's cap.
 
@@ -748,7 +748,7 @@ NIP-SA trajectories provide full execution context:
 
 **NIST should treat payment authorization as first-class concern:**
 - Define scope-cap-expiry envelopes as best practice.
-- Require auditable settlement receipts (cryptographic proof of payment → outcome).
+- Require auditable settlement receipts (signed repayment reference → outcome).
 - Mandate spending anomaly detection (alert on rapid spend, out-of-scope attempts).
 
 ---
@@ -820,9 +820,9 @@ NIP-SA trajectories provide full execution context:
        "tags": [
          ["credit", "<envelope_id>"],
          ["scope", "nip90", "<job_hash>"],
-         ["spent", "3000"],
-         ["job", "6050", "<job_result_id>"],
-         ["proof", "<payment_preimage>"]
+         ["e", "<job_result_id>", "<relay>", "root"],
+         ["repay", "bolt11", "<invoice_hash_pointer>"],
+         ["status", "settled"]
        ]
      }
      ```
