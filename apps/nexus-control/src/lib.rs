@@ -5,8 +5,8 @@ use std::collections::{BTreeMap, HashMap};
 use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
-use std::time::Duration;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
@@ -15,8 +15,12 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use openagents_kernel_core::authority::{
+    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
+    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
     CreateContractRequest, CreateContractResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
-    FinalizeVerdictRequest, FinalizeVerdictResponse, SubmitOutputRequest, SubmitOutputResponse,
+    FinalizeVerdictRequest, FinalizeVerdictResponse, PublishComputeIndexRequest,
+    PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
@@ -592,12 +596,35 @@ pub fn build_router(config: ServiceConfig) -> Router {
         )
         .route("/v1/kernel/work_units", post(create_kernel_work_unit))
         .route("/v1/kernel/contracts", post(create_kernel_contract))
-        .route("/v1/kernel/contracts/{contract_id}/submit", post(submit_kernel_output))
+        .route(
+            "/v1/kernel/contracts/{contract_id}/submit",
+            post(submit_kernel_output),
+        )
         .route(
             "/v1/kernel/contracts/{contract_id}/verdict/finalize",
             post(finalize_kernel_verdict),
         )
-        .route("/v1/kernel/snapshots/{minute_start_ms}", get(get_kernel_snapshot))
+        .route(
+            "/v1/kernel/compute/products",
+            post(create_kernel_compute_product),
+        )
+        .route("/v1/kernel/compute/lots", post(create_kernel_capacity_lot))
+        .route(
+            "/v1/kernel/compute/instruments",
+            post(create_kernel_capacity_instrument),
+        )
+        .route(
+            "/v1/kernel/compute/lots/{lot_id}/delivery_proofs",
+            post(record_kernel_delivery_proof),
+        )
+        .route(
+            "/v1/kernel/compute/indices",
+            post(publish_kernel_compute_index),
+        )
+        .route(
+            "/v1/kernel/snapshots/{minute_start_ms}",
+            get(get_kernel_snapshot),
+        )
         .route("/v1/kernel/receipts/{receipt_id}", get(get_kernel_receipt))
         .route("/v1/kernel/stream/receipts", get(stream_kernel_receipts))
         .route("/v1/kernel/stream/snapshots", get(stream_kernel_snapshots))
@@ -633,7 +660,7 @@ async fn public_stats(
     record_expired_offer_receipts(&mut store, expired_events, now);
     let stats = store
         .economy
-        .snapshot(&runtime_snapshot(&state.config, &store), now);
+        .snapshot(&runtime_snapshot(&state.config, &store, now), now);
     Ok(Json(stats))
 }
 
@@ -1469,7 +1496,9 @@ async fn submit_kernel_output(
 ) -> Result<Json<SubmitOutputResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
     let contract_id = normalize_required_field(contract_id.as_str(), "contract_id_missing")?;
-    if !request.submission.contract_id.trim().is_empty() && request.submission.contract_id != contract_id {
+    if !request.submission.contract_id.trim().is_empty()
+        && request.submission.contract_id != contract_id
+    {
         return Err(ApiError {
             status: StatusCode::CONFLICT,
             error: "conflict",
@@ -1508,7 +1537,8 @@ async fn finalize_kernel_verdict(
 ) -> Result<Json<FinalizeVerdictResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
     let contract_id = normalize_required_field(contract_id.as_str(), "contract_id_missing")?;
-    if !request.verdict.contract_id.trim().is_empty() && request.verdict.contract_id != contract_id {
+    if !request.verdict.contract_id.trim().is_empty() && request.verdict.contract_id != contract_id
+    {
         return Err(ApiError {
             status: StatusCode::CONFLICT,
             error: "conflict",
@@ -1533,6 +1563,163 @@ async fn finalize_kernel_verdict(
         &session,
         now,
         "kernel.verdict.finalized",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn create_kernel_compute_product(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateComputeProductRequest>,
+) -> Result<Json<CreateComputeProductResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_compute_product(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.product.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn create_kernel_capacity_lot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateCapacityLotRequest>,
+) -> Result<Json<CreateCapacityLotResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_capacity_lot(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.lot.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn create_kernel_capacity_instrument(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateCapacityInstrumentRequest>,
+) -> Result<Json<CreateCapacityInstrumentResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_capacity_instrument(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.instrument.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn record_kernel_delivery_proof(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(lot_id): Path<String>,
+    Json(mut request): Json<RecordDeliveryProofRequest>,
+) -> Result<Json<RecordDeliveryProofResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let lot_id = normalize_required_field(lot_id.as_str(), "capacity_lot_id_missing")?;
+    if !request.delivery_proof.capacity_lot_id.trim().is_empty()
+        && request.delivery_proof.capacity_lot_id != lot_id
+    {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_capacity_lot_id_mismatch".to_string(),
+        });
+    }
+    request.delivery_proof.capacity_lot_id = lot_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .record_delivery_proof(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.delivery.recorded",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn publish_kernel_compute_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<PublishComputeIndexRequest>,
+) -> Result<Json<PublishComputeIndexResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .publish_compute_index(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.index.published",
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
@@ -1587,15 +1774,16 @@ async fn stream_kernel_receipts(
     headers: HeaderMap,
 ) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
-    let stream = BroadcastStream::new(state.kernel_receipt_tx.subscribe()).filter_map(|message| {
-        match message {
-            Ok(event) => {
-                let data = serde_json::to_string(&event).ok()?;
-                Some(Ok(Event::default().event("receipt").data(data)))
-            }
-            Err(_) => None,
-        }
-    });
+    let stream =
+        BroadcastStream::new(state.kernel_receipt_tx.subscribe()).filter_map(
+            |message| match message {
+                Ok(event) => {
+                    let data = serde_json::to_string(&event).ok()?;
+                    Some(Ok(Event::default().event("receipt").data(data)))
+                }
+                Err(_) => None,
+            },
+        );
     Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
 }
 
@@ -1629,11 +1817,29 @@ fn kernel_mutation_context(
 
 fn kernel_api_error(reason: String) -> ApiError {
     let status = match reason.as_str() {
-        "kernel_contract_not_found" | "kernel_work_unit_not_found" => StatusCode::NOT_FOUND,
-        "kernel_idempotency_conflict" | "kernel_contract_id_mismatch" => StatusCode::CONFLICT,
-        "work_unit_id_missing" | "contract_id_missing" | "receipt_id_missing" => {
-            StatusCode::BAD_REQUEST
-        }
+        "kernel_contract_not_found"
+        | "kernel_work_unit_not_found"
+        | "compute_product_not_found"
+        | "capacity_lot_not_found"
+        | "capacity_instrument_not_found" => StatusCode::NOT_FOUND,
+        "kernel_idempotency_conflict"
+        | "kernel_contract_id_mismatch"
+        | "kernel_capacity_lot_id_mismatch"
+        | "compute_product_capacity_lot_mismatch"
+        | "compute_product_capacity_instrument_mismatch"
+        | "capacity_lot_instrument_mismatch"
+        | "compute_product_not_index_eligible" => StatusCode::CONFLICT,
+        "work_unit_id_missing"
+        | "contract_id_missing"
+        | "receipt_id_missing"
+        | "compute_product_id_missing"
+        | "capacity_lot_id_missing"
+        | "capacity_instrument_id_missing"
+        | "delivery_proof_id_missing"
+        | "compute_index_id_missing"
+        | "capacity_lot_window_invalid"
+        | "capacity_instrument_window_invalid"
+        | "compute_index_window_invalid" => StatusCode::BAD_REQUEST,
         _ => StatusCode::BAD_REQUEST,
     };
     ApiError {
@@ -2065,7 +2271,11 @@ fn find_session_by_id<'a>(
         .find(|session| session.session_id == session_id)
 }
 
-fn runtime_snapshot(config: &ServiceConfig, store: &ControlStore) -> PublicRuntimeSnapshot {
+fn runtime_snapshot(
+    config: &ServiceConfig,
+    store: &ControlStore,
+    now_unix_ms: u64,
+) -> PublicRuntimeSnapshot {
     let (starter_offers_waiting_ack, starter_offers_running) = store
         .starter_demand
         .offers_by_session
@@ -2081,6 +2291,7 @@ fn runtime_snapshot(config: &ServiceConfig, store: &ControlStore) -> PublicRunti
                 | StarterOfferStatus::Expired => (waiting_ack, running),
             },
         );
+    let compute_metrics = store.kernel.compute_market_metrics(now_unix_ms as i64);
     PublicRuntimeSnapshot {
         hosted_nexus_relay_url: config.hosted_nexus_relay_url.clone(),
         sessions_active: store.sessions_by_access_token.len(),
@@ -2089,6 +2300,13 @@ fn runtime_snapshot(config: &ServiceConfig, store: &ControlStore) -> PublicRunti
         starter_demand_budget_allocated_sats: store.starter_demand.budget_allocated_sats,
         starter_offers_waiting_ack,
         starter_offers_running,
+        compute_products_active: compute_metrics.compute_products_active,
+        compute_capacity_lots_open: compute_metrics.compute_capacity_lots_open,
+        compute_capacity_lots_delivering: compute_metrics.compute_capacity_lots_delivering,
+        compute_instruments_active: compute_metrics.compute_instruments_active,
+        compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
+        compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
+        compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
     }
 }
 
@@ -2249,9 +2467,18 @@ mod tests {
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
     use openagents_kernel_core::authority::{
-        CreateContractRequest, CreateContractResponse, CreateWorkUnitRequest,
-        CreateWorkUnitResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
-        SubmitOutputRequest, SubmitOutputResponse,
+        CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
+        CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
+        CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
+        CreateWorkUnitRequest, CreateWorkUnitResponse, FinalizeVerdictRequest,
+        FinalizeVerdictResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
+        RecordDeliveryProofRequest, RecordDeliveryProofResponse, SubmitOutputRequest,
+        SubmitOutputResponse,
+    };
+    use openagents_kernel_core::compute::{
+        CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
+        CapacityLotStatus, CapacityReserveState, ComputeIndex, ComputeIndexStatus, ComputeProduct,
+        ComputeProductStatus, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
     };
     use openagents_kernel_core::labor::{
         Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, SubmissionStatus,
@@ -2492,6 +2719,180 @@ mod tests {
                 verification_correlated: Some(false),
                 ..ReceiptHints::default()
             },
+        }
+    }
+
+    fn compute_product_request(
+        product_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateComputeProductRequest {
+        CreateComputeProductRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            product: ComputeProduct {
+                product_id: product_id.to_string(),
+                resource_class: "gpu.h100".to_string(),
+                capacity_unit: "gpu_hour".to_string(),
+                window_spec: "1h".to_string(),
+                region_spec: vec!["us-central1".to_string()],
+                performance_band: Some("sxm".to_string()),
+                sla_terms_ref: Some("sla.compute.standard".to_string()),
+                cost_proof_required: true,
+                attestation_required: true,
+                settlement_mode: ComputeSettlementMode::Physical,
+                index_eligible: true,
+                status: ComputeProductStatus::Active,
+                version: "v1".to_string(),
+                created_at_ms,
+                metadata: json!({
+                    "summary": "Standardized H100 hourly lot."
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn capacity_lot_request(
+        capacity_lot_id: &str,
+        product_id: &str,
+        idempotency_key: &str,
+        delivery_start_ms: i64,
+    ) -> CreateCapacityLotRequest {
+        CreateCapacityLotRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            lot: CapacityLot {
+                capacity_lot_id: capacity_lot_id.to_string(),
+                product_id: product_id.to_string(),
+                provider_id: "desktop-provider.alpha".to_string(),
+                delivery_start_ms,
+                delivery_end_ms: delivery_start_ms + 3_600_000,
+                quantity: 10,
+                min_unit_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(150),
+                }),
+                region_hint: Some("us-central1".to_string()),
+                attestation_posture: Some("tpm+quote".to_string()),
+                reserve_state: CapacityReserveState::Available,
+                offer_expires_at_ms: delivery_start_ms + 300_000,
+                status: CapacityLotStatus::Open,
+                metadata: json!({
+                    "provider_class": "desktop"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn capacity_instrument_request(
+        instrument_id: &str,
+        product_id: &str,
+        capacity_lot_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateCapacityInstrumentRequest {
+        CreateCapacityInstrumentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            instrument: CapacityInstrument {
+                instrument_id: instrument_id.to_string(),
+                product_id: product_id.to_string(),
+                capacity_lot_id: Some(capacity_lot_id.to_string()),
+                buyer_id: Some("buyer.compute.alpha".to_string()),
+                provider_id: Some("desktop-provider.alpha".to_string()),
+                delivery_start_ms: created_at_ms + 60_000,
+                delivery_end_ms: created_at_ms + 3_660_000,
+                quantity: 10,
+                fixed_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(1_500),
+                }),
+                reference_index_id: Some("index.compute.alpha".to_string()),
+                kind: CapacityInstrumentKind::ForwardPhysical,
+                settlement_mode: ComputeSettlementMode::Physical,
+                created_at_ms,
+                status: CapacityInstrumentStatus::Active,
+                metadata: json!({
+                    "desk": "forward-physical"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn delivery_proof_request(
+        delivery_proof_id: &str,
+        product_id: &str,
+        capacity_lot_id: &str,
+        instrument_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> RecordDeliveryProofRequest {
+        RecordDeliveryProofRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            delivery_proof: DeliveryProof {
+                delivery_proof_id: delivery_proof_id.to_string(),
+                capacity_lot_id: capacity_lot_id.to_string(),
+                product_id: product_id.to_string(),
+                instrument_id: Some(instrument_id.to_string()),
+                contract_id: None,
+                created_at_ms,
+                metered_quantity: 6,
+                accepted_quantity: 6,
+                performance_band_observed: Some("sxm".to_string()),
+                variance_reason: None,
+                attestation_digest: Some("sha256:attestation.compute.alpha".to_string()),
+                cost_attestation_ref: Some("oa://attestations/compute-cost-alpha".to_string()),
+                status: DeliveryProofStatus::Accepted,
+                metadata: json!({
+                    "sample_count": 12
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_index_request(
+        index_id: &str,
+        product_id: &str,
+        idempotency_key: &str,
+        published_at_ms: i64,
+    ) -> PublishComputeIndexRequest {
+        PublishComputeIndexRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            index: ComputeIndex {
+                index_id: index_id.to_string(),
+                product_id: product_id.to_string(),
+                observation_window_start_ms: published_at_ms - 60_000,
+                observation_window_end_ms: published_at_ms + 1,
+                published_at_ms,
+                observation_count: 0,
+                total_accepted_quantity: 0,
+                reference_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(150),
+                }),
+                methodology: Some("accepted_quantity_vwap".to_string()),
+                status: ComputeIndexStatus::Published,
+                metadata: json!({
+                    "source": "authoritative-kernel"
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
         }
     }
 
@@ -3061,7 +3462,10 @@ mod tests {
             .await?;
         assert_eq!(work_unit.status(), StatusCode::OK);
         let work_unit_payload: CreateWorkUnitResponse = response_json(work_unit).await?;
-        assert_eq!(work_unit_payload.receipt.receipt_type, "kernel.work_unit.create.v1");
+        assert_eq!(
+            work_unit_payload.receipt.receipt_type,
+            "kernel.work_unit.create.v1"
+        );
         assert_eq!(work_unit_payload.work_unit.work_unit_id, "work_unit.alpha");
 
         let contract = app
@@ -3082,7 +3486,10 @@ mod tests {
             .await?;
         assert_eq!(contract.status(), StatusCode::OK);
         let contract_payload: CreateContractResponse = response_json(contract).await?;
-        assert_eq!(contract_payload.receipt.receipt_type, "kernel.contract.create.v1");
+        assert_eq!(
+            contract_payload.receipt.receipt_type,
+            "kernel.contract.create.v1"
+        );
         assert_eq!(contract_payload.contract.contract_id, "contract.alpha");
 
         let submission = app
@@ -3103,7 +3510,10 @@ mod tests {
             .await?;
         assert_eq!(submission.status(), StatusCode::OK);
         let submission_payload: SubmitOutputResponse = response_json(submission).await?;
-        assert_eq!(submission_payload.receipt.receipt_type, "kernel.output.submit.v1");
+        assert_eq!(
+            submission_payload.receipt.receipt_type,
+            "kernel.output.submit.v1"
+        );
         assert_eq!(
             submission_payload.submission.submission_id,
             "submission.contract.alpha"
@@ -3178,6 +3588,189 @@ mod tests {
         assert_eq!(snapshot.sv, 1.0);
         assert_eq!(snapshot.sv_effective, 1.0);
         assert_eq!(snapshot.inputs.len(), 4);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compute_market_flow_persists_authoritative_objects_and_metrics() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(10_000);
+        let minute_start_ms = floor_to_minute_utc(created_at_ms);
+
+        let product = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&compute_product_request(
+                        "product.compute.alpha",
+                        "idemp.compute.product.alpha",
+                        created_at_ms,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(product.status(), StatusCode::OK);
+        let product_payload: CreateComputeProductResponse = response_json(product).await?;
+        assert_eq!(
+            product_payload.receipt.receipt_type,
+            "kernel.compute.product.create.v1"
+        );
+
+        let lot = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&capacity_lot_request(
+                        "lot.compute.alpha",
+                        "product.compute.alpha",
+                        "idemp.compute.lot.alpha",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(lot.status(), StatusCode::OK);
+        let lot_payload: CreateCapacityLotResponse = response_json(lot).await?;
+        assert_eq!(
+            lot_payload.receipt.receipt_type,
+            "kernel.compute.lot.create.v1"
+        );
+
+        let instrument = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &capacity_instrument_request(
+                            "instrument.compute.alpha",
+                            "product.compute.alpha",
+                            "lot.compute.alpha",
+                            "idemp.compute.instrument.alpha",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(instrument.status(), StatusCode::OK);
+        let instrument_payload: CreateCapacityInstrumentResponse =
+            response_json(instrument).await?;
+        assert_eq!(
+            instrument_payload.receipt.receipt_type,
+            "kernel.compute.instrument.create.v1"
+        );
+
+        let delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots/lot.compute.alpha/delivery_proofs")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&delivery_proof_request(
+                        "delivery.compute.alpha",
+                        "product.compute.alpha",
+                        "lot.compute.alpha",
+                        "instrument.compute.alpha",
+                        "idemp.compute.delivery.alpha",
+                        created_at_ms + 3_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(delivery.status(), StatusCode::OK);
+        let delivery_payload: RecordDeliveryProofResponse = response_json(delivery).await?;
+        assert_eq!(
+            delivery_payload.receipt.receipt_type,
+            "kernel.compute.delivery.record.v1"
+        );
+
+        let index = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/indices")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&compute_index_request(
+                        "index.compute.alpha",
+                        "product.compute.alpha",
+                        "idemp.compute.index.alpha",
+                        created_at_ms + 4_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(index.status(), StatusCode::OK);
+        let index_payload: PublishComputeIndexResponse = response_json(index).await?;
+        assert_eq!(
+            index_payload.receipt.receipt_type,
+            "kernel.compute.index.publish.v1"
+        );
+        assert_eq!(index_payload.index.observation_count, 1);
+        assert_eq!(index_payload.index.total_accepted_quantity, 6);
+
+        let snapshot_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/kernel/snapshots/{minute_start_ms}"))
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(snapshot_response.status(), StatusCode::OK);
+        let snapshot: super::EconomySnapshot = response_json(snapshot_response).await?;
+        assert_eq!(snapshot.compute_products_active, 1);
+        assert_eq!(snapshot.compute_capacity_lots_open, 0);
+        assert_eq!(snapshot.compute_capacity_lots_delivering, 1);
+        assert_eq!(snapshot.compute_instruments_active, 1);
+        assert_eq!(snapshot.compute_delivery_proofs_24h, 1);
+        assert_eq!(snapshot.compute_delivery_quantity_24h, 6);
+        assert_eq!(snapshot.compute_indices_published_24h, 1);
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.compute_products_active, 1);
+        assert_eq!(stats.compute_capacity_lots_open, 0);
+        assert_eq!(stats.compute_capacity_lots_delivering, 1);
+        assert_eq!(stats.compute_instruments_active, 1);
+        assert_eq!(stats.compute_delivery_proofs_24h, 1);
+        assert_eq!(stats.compute_delivery_quantity_24h, 6);
+        assert_eq!(stats.compute_indices_published_24h, 1);
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| { receipt.receipt_type == "kernel.compute.product.created" })
+        );
+        assert!(
+            stats
+                .recent_receipts
+                .iter()
+                .any(|receipt| { receipt.receipt_type == "kernel.compute.delivery.recorded" })
+        );
 
         Ok(())
     }

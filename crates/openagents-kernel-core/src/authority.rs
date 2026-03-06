@@ -1,3 +1,6 @@
+use crate::compute::{
+    CapacityInstrument, CapacityLot, ComputeIndex, ComputeProduct, DeliveryProof,
+};
 use crate::labor::{
     ClaimHook, Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, Verdict,
     WorkUnit, WorkUnitStatus,
@@ -22,6 +25,26 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: FinalizeVerdictRequest,
     ) -> Result<FinalizeVerdictResponse>;
+    async fn create_compute_product(
+        &self,
+        req: CreateComputeProductRequest,
+    ) -> Result<CreateComputeProductResponse>;
+    async fn create_capacity_lot(
+        &self,
+        req: CreateCapacityLotRequest,
+    ) -> Result<CreateCapacityLotResponse>;
+    async fn create_capacity_instrument(
+        &self,
+        req: CreateCapacityInstrumentRequest,
+    ) -> Result<CreateCapacityInstrumentResponse>;
+    async fn record_delivery_proof(
+        &self,
+        req: RecordDeliveryProofRequest,
+    ) -> Result<RecordDeliveryProofResponse>;
+    async fn publish_compute_index(
+        &self,
+        req: PublishComputeIndexRequest,
+    ) -> Result<PublishComputeIndexResponse>;
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot>;
 }
 
@@ -102,6 +125,96 @@ pub struct FinalizeVerdictResponse {
     pub settlement_link: Option<SettlementLink>,
     #[serde(default)]
     pub claim_hook: Option<ClaimHook>,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateComputeProductRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub product: ComputeProduct,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateComputeProductResponse {
+    pub product: ComputeProduct,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateCapacityLotRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub lot: CapacityLot,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateCapacityLotResponse {
+    pub lot: CapacityLot,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateCapacityInstrumentRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub instrument: CapacityInstrument,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateCapacityInstrumentResponse {
+    pub instrument: CapacityInstrument,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecordDeliveryProofRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub delivery_proof: DeliveryProof,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecordDeliveryProofResponse {
+    pub delivery_proof: DeliveryProof,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublishComputeIndexRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub index: ComputeIndex,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublishComputeIndexResponse {
+    pub index: ComputeIndex,
     pub receipt: Receipt,
 }
 
@@ -188,6 +301,11 @@ struct LocalKernelAuthorityState {
     verdicts: BTreeMap<String, Verdict>,
     settlements: BTreeMap<String, SettlementLink>,
     claim_hooks: BTreeMap<String, ClaimHook>,
+    compute_products: BTreeMap<String, ComputeProduct>,
+    capacity_lots: BTreeMap<String, CapacityLot>,
+    capacity_instruments: BTreeMap<String, CapacityInstrument>,
+    delivery_proofs: BTreeMap<String, DeliveryProof>,
+    compute_indices: BTreeMap<String, ComputeIndex>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     receipts: Vec<Receipt>,
 }
@@ -266,13 +384,9 @@ impl LocalKernelAuthority {
 
 impl KernelAuthority for LocalKernelAuthority {
     async fn create_work_unit(&self, req: CreateWorkUnitRequest) -> Result<CreateWorkUnitResponse> {
-        let trace =
-            Self::normalize_work_trace(req.trace, req.work_unit.work_unit_id.as_str());
+        let trace = Self::normalize_work_trace(req.trace, req.work_unit.work_unit_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
-            receipt_id: format!(
-                "receipt.kernel.work_unit:{}",
-                req.work_unit.work_unit_id
-            ),
+            receipt_id: format!("receipt.kernel.work_unit:{}", req.work_unit.work_unit_id),
             receipt_type: "kernel.work_unit.create.v1".to_string(),
             created_at_ms: req.work_unit.created_at_ms,
             idempotency_key: req.idempotency_key,
@@ -299,15 +413,11 @@ impl KernelAuthority for LocalKernelAuthority {
         work_unit.work_unit_id.clone_from(&work_unit_id);
         state.work_units.insert(work_unit_id, work_unit.clone());
         state.receipts.push(receipt.clone());
-        Ok(CreateWorkUnitResponse {
-            work_unit,
-            receipt,
-        })
+        Ok(CreateWorkUnitResponse { work_unit, receipt })
     }
 
     async fn create_contract(&self, req: CreateContractRequest) -> Result<CreateContractResponse> {
-        let trace =
-            Self::normalize_contract_trace(req.trace, req.contract.contract_id.as_str());
+        let trace = Self::normalize_contract_trace(req.trace, req.contract.contract_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
             receipt_id: format!("receipt.kernel.contract:{}", req.contract.contract_id),
             receipt_type: "kernel.contract.create.v1".to_string(),
@@ -345,20 +455,13 @@ impl KernelAuthority for LocalKernelAuthority {
             work_unit.status = WorkUnitStatus::Contracted;
         }
         state.receipts.push(receipt.clone());
-        Ok(CreateContractResponse {
-            contract,
-            receipt,
-        })
+        Ok(CreateContractResponse { contract, receipt })
     }
 
     async fn submit_output(&self, req: SubmitOutputRequest) -> Result<SubmitOutputResponse> {
-        let trace =
-            Self::normalize_contract_trace(req.trace, req.submission.contract_id.as_str());
+        let trace = Self::normalize_contract_trace(req.trace, req.submission.contract_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
-            receipt_id: format!(
-                "receipt.kernel.submission:{}",
-                req.submission.submission_id
-            ),
+            receipt_id: format!("receipt.kernel.submission:{}", req.submission.submission_id),
             receipt_type: "kernel.output.submit.v1".to_string(),
             created_at_ms: req.submission.created_at_ms,
             idempotency_key: req.idempotency_key,
@@ -407,8 +510,7 @@ impl KernelAuthority for LocalKernelAuthority {
         &self,
         req: FinalizeVerdictRequest,
     ) -> Result<FinalizeVerdictResponse> {
-        let trace =
-            Self::normalize_contract_trace(req.trace, req.verdict.contract_id.as_str());
+        let trace = Self::normalize_contract_trace(req.trace, req.verdict.contract_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
             receipt_id: format!("receipt.kernel.verdict:{}", req.verdict.verdict_id),
             receipt_type: "kernel.verdict.finalize.v1".to_string(),
@@ -421,7 +523,7 @@ impl KernelAuthority for LocalKernelAuthority {
                 "settlement_link": req.settlement_link.clone(),
                 "claim_hook": req.claim_hook.clone(),
             }))
-                .map_err(|error| anyhow!("failed to encode verdict: {error}"))?,
+            .map_err(|error| anyhow!("failed to encode verdict: {error}"))?,
             outputs_payload: json!({
                 "contract_id": req.verdict.contract_id,
                 "verdict_id": req.verdict.verdict_id,
@@ -457,9 +559,10 @@ impl KernelAuthority for LocalKernelAuthority {
             .verdicts
             .insert(verdict.verdict_id.clone(), verdict.clone());
         if let Some(settlement_link) = settlement_link.as_ref() {
-            state
-                .settlements
-                .insert(settlement_link.settlement_id.clone(), settlement_link.clone());
+            state.settlements.insert(
+                settlement_link.settlement_id.clone(),
+                settlement_link.clone(),
+            );
         }
         if let Some(claim_hook) = claim_hook.as_ref() {
             state
@@ -487,6 +590,264 @@ impl KernelAuthority for LocalKernelAuthority {
             verdict,
             settlement_link,
             claim_hook,
+            receipt,
+        })
+    }
+
+    async fn create_compute_product(
+        &self,
+        req: CreateComputeProductRequest,
+    ) -> Result<CreateComputeProductResponse> {
+        if req.product.product_id.trim().is_empty() {
+            return Err(anyhow!("compute_product_id_missing"));
+        }
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.compute.product:{}", req.product.product_id),
+            receipt_type: "kernel.compute.product.create.v1".to_string(),
+            created_at_ms: req.product.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.product)
+                .map_err(|error| anyhow!("failed to encode compute product: {error}"))?,
+            outputs_payload: json!({
+                "product_id": req.product.product_id,
+                "status": req.product.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        state
+            .compute_products
+            .insert(req.product.product_id.clone(), req.product.clone());
+        state.receipts.push(receipt.clone());
+        Ok(CreateComputeProductResponse {
+            product: req.product,
+            receipt,
+        })
+    }
+
+    async fn create_capacity_lot(
+        &self,
+        req: CreateCapacityLotRequest,
+    ) -> Result<CreateCapacityLotResponse> {
+        if req.lot.capacity_lot_id.trim().is_empty() {
+            return Err(anyhow!("capacity_lot_id_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        if !state
+            .compute_products
+            .contains_key(req.lot.product_id.as_str())
+        {
+            return Err(anyhow!("compute_product_not_found"));
+        }
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.compute.lot:{}", req.lot.capacity_lot_id),
+            receipt_type: "kernel.compute.lot.create.v1".to_string(),
+            created_at_ms: req.lot.delivery_start_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.lot)
+                .map_err(|error| anyhow!("failed to encode capacity lot: {error}"))?,
+            outputs_payload: json!({
+                "capacity_lot_id": req.lot.capacity_lot_id,
+                "product_id": req.lot.product_id,
+                "status": req.lot.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .capacity_lots
+            .insert(req.lot.capacity_lot_id.clone(), req.lot.clone());
+        state.receipts.push(receipt.clone());
+        Ok(CreateCapacityLotResponse {
+            lot: req.lot,
+            receipt,
+        })
+    }
+
+    async fn create_capacity_instrument(
+        &self,
+        req: CreateCapacityInstrumentRequest,
+    ) -> Result<CreateCapacityInstrumentResponse> {
+        if req.instrument.instrument_id.trim().is_empty() {
+            return Err(anyhow!("capacity_instrument_id_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        if !state
+            .compute_products
+            .contains_key(req.instrument.product_id.as_str())
+        {
+            return Err(anyhow!("compute_product_not_found"));
+        }
+        if let Some(capacity_lot_id) = req.instrument.capacity_lot_id.as_deref()
+            && !state.capacity_lots.contains_key(capacity_lot_id)
+        {
+            return Err(anyhow!("capacity_lot_not_found"));
+        }
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!(
+                "receipt.kernel.compute.instrument:{}",
+                req.instrument.instrument_id
+            ),
+            receipt_type: "kernel.compute.instrument.create.v1".to_string(),
+            created_at_ms: req.instrument.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.instrument)
+                .map_err(|error| anyhow!("failed to encode capacity instrument: {error}"))?,
+            outputs_payload: json!({
+                "instrument_id": req.instrument.instrument_id,
+                "product_id": req.instrument.product_id,
+                "status": req.instrument.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .capacity_instruments
+            .insert(req.instrument.instrument_id.clone(), req.instrument.clone());
+        state.receipts.push(receipt.clone());
+        Ok(CreateCapacityInstrumentResponse {
+            instrument: req.instrument,
+            receipt,
+        })
+    }
+
+    async fn record_delivery_proof(
+        &self,
+        req: RecordDeliveryProofRequest,
+    ) -> Result<RecordDeliveryProofResponse> {
+        if req.delivery_proof.delivery_proof_id.trim().is_empty() {
+            return Err(anyhow!("delivery_proof_id_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        if let Some(instrument_id) = req.delivery_proof.instrument_id.as_deref()
+            && !state.capacity_instruments.contains_key(instrument_id)
+        {
+            return Err(anyhow!("capacity_instrument_not_found"));
+        }
+        let Some(lot) = state
+            .capacity_lots
+            .get_mut(req.delivery_proof.capacity_lot_id.as_str())
+        else {
+            return Err(anyhow!("capacity_lot_not_found"));
+        };
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!(
+                "receipt.kernel.compute.delivery:{}",
+                req.delivery_proof.delivery_proof_id
+            ),
+            receipt_type: "kernel.compute.delivery.record.v1".to_string(),
+            created_at_ms: req.delivery_proof.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.delivery_proof)
+                .map_err(|error| anyhow!("failed to encode delivery proof: {error}"))?,
+            outputs_payload: json!({
+                "delivery_proof_id": req.delivery_proof.delivery_proof_id,
+                "capacity_lot_id": req.delivery_proof.capacity_lot_id,
+                "accepted_quantity": req.delivery_proof.accepted_quantity,
+                "status": req.delivery_proof.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        lot.status = if req.delivery_proof.accepted_quantity >= lot.quantity {
+            crate::compute::CapacityLotStatus::Delivered
+        } else {
+            crate::compute::CapacityLotStatus::Delivering
+        };
+        lot.reserve_state = if req.delivery_proof.accepted_quantity >= lot.quantity {
+            crate::compute::CapacityReserveState::Exhausted
+        } else {
+            crate::compute::CapacityReserveState::Reserved
+        };
+        state.delivery_proofs.insert(
+            req.delivery_proof.delivery_proof_id.clone(),
+            req.delivery_proof.clone(),
+        );
+        state.receipts.push(receipt.clone());
+        Ok(RecordDeliveryProofResponse {
+            delivery_proof: req.delivery_proof,
+            receipt,
+        })
+    }
+
+    async fn publish_compute_index(
+        &self,
+        mut req: PublishComputeIndexRequest,
+    ) -> Result<PublishComputeIndexResponse> {
+        if req.index.index_id.trim().is_empty() {
+            return Err(anyhow!("compute_index_id_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let Some(product) = state.compute_products.get(req.index.product_id.as_str()) else {
+            return Err(anyhow!("compute_product_not_found"));
+        };
+        if !product.index_eligible {
+            return Err(anyhow!("compute_product_not_index_eligible"));
+        }
+        let (observation_count, total_accepted_quantity) = state
+            .delivery_proofs
+            .values()
+            .filter(|proof| {
+                proof.product_id == req.index.product_id
+                    && proof.created_at_ms >= req.index.observation_window_start_ms
+                    && proof.created_at_ms < req.index.observation_window_end_ms
+            })
+            .fold((0u64, 0u64), |(count, total), proof| {
+                (
+                    count.saturating_add(1),
+                    total.saturating_add(proof.accepted_quantity),
+                )
+            });
+        req.index.observation_count = observation_count;
+        req.index.total_accepted_quantity = total_accepted_quantity;
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.compute.index:{}", req.index.index_id),
+            receipt_type: "kernel.compute.index.publish.v1".to_string(),
+            created_at_ms: req.index.published_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.index)
+                .map_err(|error| anyhow!("failed to encode compute index: {error}"))?,
+            outputs_payload: json!({
+                "index_id": req.index.index_id,
+                "product_id": req.index.product_id,
+                "observation_count": req.index.observation_count,
+                "total_accepted_quantity": req.index.total_accepted_quantity,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .compute_indices
+            .insert(req.index.index_id.clone(), req.index.clone());
+        state.receipts.push(receipt.clone());
+        Ok(PublishComputeIndexResponse {
+            index: req.index,
             receipt,
         })
     }
@@ -532,6 +893,45 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         self.post_json(path.as_str(), &req).await
     }
 
+    async fn create_compute_product(
+        &self,
+        req: CreateComputeProductRequest,
+    ) -> Result<CreateComputeProductResponse> {
+        self.post_json("/v1/kernel/compute/products", &req).await
+    }
+
+    async fn create_capacity_lot(
+        &self,
+        req: CreateCapacityLotRequest,
+    ) -> Result<CreateCapacityLotResponse> {
+        self.post_json("/v1/kernel/compute/lots", &req).await
+    }
+
+    async fn create_capacity_instrument(
+        &self,
+        req: CreateCapacityInstrumentRequest,
+    ) -> Result<CreateCapacityInstrumentResponse> {
+        self.post_json("/v1/kernel/compute/instruments", &req).await
+    }
+
+    async fn record_delivery_proof(
+        &self,
+        req: RecordDeliveryProofRequest,
+    ) -> Result<RecordDeliveryProofResponse> {
+        let path = format!(
+            "/v1/kernel/compute/lots/{}/delivery_proofs",
+            req.delivery_proof.capacity_lot_id.trim()
+        );
+        self.post_json(path.as_str(), &req).await
+    }
+
+    async fn publish_compute_index(
+        &self,
+        req: PublishComputeIndexRequest,
+    ) -> Result<PublishComputeIndexResponse> {
+        self.post_json("/v1/kernel/compute/indices", &req).await
+    }
+
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot> {
         let path = format!("/v1/kernel/snapshots/{minute_start_ms}");
         self.get_json(path.as_str()).await
@@ -559,12 +959,10 @@ fn normalize_http_base_url(base_url: &str) -> Result<String> {
     if trimmed.is_empty() {
         return Err(anyhow!("kernel authority base url cannot be empty"));
     }
-    let mut url =
-        Url::parse(trimmed).map_err(|error| anyhow!("invalid kernel authority base url: {error}"))?;
+    let mut url = Url::parse(trimmed)
+        .map_err(|error| anyhow!("invalid kernel authority base url: {error}"))?;
     if url.scheme() != "http" && url.scheme() != "https" {
-        return Err(anyhow!(
-            "kernel authority base url must use http or https"
-        ));
+        return Err(anyhow!("kernel authority base url must use http or https"));
     }
     let normalized_path = url.path().trim_end_matches('/').to_string();
     if normalized_path.is_empty() {
@@ -644,12 +1042,11 @@ mod tests {
 
     #[test]
     fn canonical_endpoint_rejects_relative_path() {
-        let error = canonical_kernel_endpoint("https://control.example.com", "v1/kernel/work_units")
-            .expect_err("relative paths should fail");
+        let error =
+            canonical_kernel_endpoint("https://control.example.com", "v1/kernel/work_units")
+                .expect_err("relative paths should fail");
         assert!(
-            error
-                .to_string()
-                .contains("path must start with '/'"),
+            error.to_string().contains("path must start with '/'"),
             "unexpected error: {error}"
         );
     }
