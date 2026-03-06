@@ -595,6 +595,31 @@ fn paint_go_online_pane(
             "unavailable"
         },
     );
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Ollama",
+        if provider_runtime.ollama.is_ready() {
+            "ready"
+        } else if provider_runtime.ollama.reachable {
+            "degraded"
+        } else {
+            "offline"
+        },
+    );
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Serving model",
+        provider_runtime
+            .ollama
+            .ready_model
+            .as_deref()
+            .or(provider_runtime.ollama.configured_model.as_deref())
+            .unwrap_or("none"),
+    );
     if provider_blockers.is_empty() {
         paint.scene.draw_text(paint.text.layout(
             "Preflight clear",
@@ -891,6 +916,41 @@ fn paint_provider_status_pane(
         "Queue depth",
         &provider_runtime.queue_depth.to_string(),
     );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Ollama",
+        if provider_runtime.ollama.is_ready() {
+            "ready"
+        } else if provider_runtime.ollama.reachable {
+            "degraded"
+        } else {
+            "offline"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Configured model",
+        provider_runtime
+            .ollama
+            .configured_model
+            .as_deref()
+            .unwrap_or("none"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Serving model",
+        provider_runtime
+            .ollama
+            .ready_model
+            .as_deref()
+            .unwrap_or("none"),
+    );
     if let Some(last_completed) = provider_runtime.last_completed_job_at {
         let seconds = now
             .checked_duration_since(last_completed)
@@ -966,6 +1026,13 @@ fn paint_provider_status_pane(
     } else {
         "ready"
     };
+    let ollama_status = if provider_blockers.contains(&ProviderBlocker::OllamaUnavailable)
+        || provider_blockers.contains(&ProviderBlocker::OllamaModelUnavailable)
+    {
+        "degraded"
+    } else {
+        "ready"
+    };
     paint.scene.draw_text(paint.text.layout_mono(
         &format!("identity: {identity_status}"),
         Point::new(content_bounds.origin.x + 12.0, dep_y),
@@ -981,13 +1048,73 @@ fn paint_provider_status_pane(
     ));
     dep_y += 14.0;
     paint.scene.draw_text(paint.text.layout_mono(
+        &format!("ollama: {ollama_status}"),
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    dep_y += 14.0;
+    paint.scene.draw_text(paint.text.layout_mono(
         "relay: unknown (lane pending)",
         Point::new(content_bounds.origin.x + 12.0, dep_y),
         10.0,
         theme::text::PRIMARY,
     ));
+    dep_y += 18.0;
 
-    if let Some(error) = provider_runtime.last_error_detail.as_deref() {
+    paint.scene.draw_text(paint.text.layout(
+        "Ollama inventory",
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    dep_y += 16.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "installed: {}",
+            if provider_runtime.ollama.available_models.is_empty() {
+                "none".to_string()
+            } else {
+                provider_runtime.ollama.available_models.join(", ")
+            }
+        ),
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    dep_y += 14.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!(
+            "loaded: {}",
+            if provider_runtime.ollama.loaded_models.is_empty() {
+                "none".to_string()
+            } else {
+                provider_runtime.ollama.loaded_models.join(", ")
+            }
+        ),
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    dep_y += 14.0;
+    if let Some(metrics) = provider_runtime.ollama.last_metrics.as_ref() {
+        let total_ms = metrics.total_duration_ns.map(|ns| ns / 1_000_000).unwrap_or(0);
+        let eval_tokens = metrics.eval_count.unwrap_or(0);
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("last gen: total={}ms eval_tokens={}", total_ms, eval_tokens),
+            Point::new(content_bounds.origin.x + 12.0, dep_y),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+        dep_y += 14.0;
+    }
+
+    if let Some(error) = provider_runtime
+        .ollama
+        .last_error
+        .as_deref()
+        .or(provider_runtime.last_error_detail.as_deref())
+    {
         paint.scene.draw_text(paint.text.layout(
             "Last error",
             Point::new(content_bounds.origin.x + 12.0, dep_y + 18.0),

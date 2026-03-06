@@ -14,9 +14,7 @@ use nostr::nip90::{JobFeedback, JobStatus, create_job_feedback_event};
 use nostr::{Event, EventTemplate, NostrIdentity};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
-    let previous_mode = state.provider_nip90_lane.mode;
     let selected_url = state.relay_connections.selected_url.clone();
-    let provider_was_offline = state.provider_runtime.mode == ProviderMode::Offline;
     state.provider_nip90_lane = snapshot;
     state.relay_connections.relays = state
         .provider_nip90_lane
@@ -48,6 +46,19 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
                 .first()
                 .map(|relay| relay.url.clone())
         });
+    sync_provider_runtime_mode_from_provider_state(state);
+}
+
+pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderState) {
+    let now = std::time::Instant::now();
+    let provider_was_offline = state.provider_runtime.mode == ProviderMode::Offline;
+    let relay_error = state.provider_nip90_lane.last_error.clone();
+    let ollama_error = state
+        .provider_runtime
+        .ollama
+        .last_error
+        .clone()
+        .or_else(|| state.ollama_execution.last_error.clone());
 
     if provider_was_offline && state.provider_nip90_lane.mode != ProviderNip90LaneMode::Online {
         state.provider_runtime.mode = ProviderMode::Offline;
@@ -59,25 +70,63 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
         ) {
             state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
         }
-    } else if let Some(last_error) = state.provider_nip90_lane.last_error.as_deref() {
+        return;
+    }
+
+    if let Some(last_error) = relay_error {
         state.provider_runtime.mode = ProviderMode::Degraded;
         state.provider_runtime.degraded_reason_code = Some("NIP90_RELAY_INGRESS_ERROR".to_string());
-        state.provider_runtime.last_error_detail = Some(last_error.to_string());
+        state.provider_runtime.last_error_detail = Some(last_error);
         state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Relay);
         state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
-        state.provider_runtime.mode_changed_at = std::time::Instant::now();
-    } else if state.provider_nip90_lane.mode == ProviderNip90LaneMode::Online
-        && previous_mode != state.provider_nip90_lane.mode
-        && state.provider_runtime.mode != ProviderMode::Offline
-    {
+        state.provider_runtime.mode_changed_at = now;
+        return;
+    }
+
+    if state.provider_nip90_lane.mode != ProviderNip90LaneMode::Online {
+        return;
+    }
+
+    if !state.provider_runtime.ollama.reachable {
+        state.provider_runtime.mode = ProviderMode::Degraded;
+        state.provider_runtime.degraded_reason_code = Some("OLLAMA_UNAVAILABLE".to_string());
+        state.provider_runtime.last_error_detail = Some(
+            ollama_error.unwrap_or_else(|| "Local Ollama backend is unavailable".to_string()),
+        );
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
+        state.provider_runtime.last_result = state.provider_runtime.ollama.last_action.clone();
+        state.provider_runtime.mode_changed_at = now;
+        return;
+    }
+
+    if !state.provider_runtime.ollama.is_ready() {
+        state.provider_runtime.mode = ProviderMode::Degraded;
+        state.provider_runtime.degraded_reason_code =
+            Some("OLLAMA_MODEL_UNAVAILABLE".to_string());
+        state.provider_runtime.last_error_detail = Some(ollama_error.unwrap_or_else(|| {
+            "Configured Ollama serving model is unavailable".to_string()
+        }));
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
+        state.provider_runtime.last_result = state.provider_runtime.ollama.last_action.clone();
+        state.provider_runtime.mode_changed_at = now;
+        return;
+    }
+
+    if state.provider_runtime.mode != ProviderMode::Offline {
         state.provider_runtime.mode = ProviderMode::Online;
         state.provider_runtime.degraded_reason_code = None;
         state.provider_runtime.last_error_detail = None;
-        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay) {
+        if state.provider_runtime.last_authoritative_error_class
+            == Some(EarnFailureClass::Relay)
+            || state.provider_runtime.last_authoritative_error_class
+                == Some(EarnFailureClass::Execution)
+        {
             state.provider_runtime.last_authoritative_error_class = None;
         }
-        state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
-        state.provider_runtime.mode_changed_at = std::time::Instant::now();
+        state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone().or_else(
+            || state.provider_runtime.ollama.last_action.clone(),
+        );
+        state.provider_runtime.mode_changed_at = now;
     }
 }
 

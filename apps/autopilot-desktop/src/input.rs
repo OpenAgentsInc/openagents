@@ -43,6 +43,7 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
+use crate::ollama_execution::OllamaExecutionCommand;
 use crate::pane_registry::{pane_enabled_in_runtime, pane_spec_by_command_id};
 use crate::pane_system::{
     ActivityFeedPaneAction, AgentNetworkSimulationPaneAction, AlertsRecoveryPaneAction,
@@ -2388,6 +2389,19 @@ pub(super) fn run_pane_hit_action(
             );
             let worker_id = state.sync_lifecycle_worker_id.clone();
             if wants_online {
+                let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::Refresh);
+                let _ = state
+                    .queue_ollama_execution_command(OllamaExecutionCommand::WarmConfiguredModel);
+                if let Some(reason) = provider_go_online_block_reason(state) {
+                    state.provider_runtime.last_result = Some(reason.clone());
+                    state.provider_runtime.last_error_detail = Some(reason);
+                    state.provider_runtime.last_authoritative_error_class =
+                        Some(EarnFailureClass::Execution);
+                    state.provider_runtime.mode = ProviderMode::Offline;
+                    state.provider_runtime.degraded_reason_code = None;
+                    state.provider_runtime.mode_changed_at = std::time::Instant::now();
+                    return true;
+                }
                 state.sync_lifecycle.mark_connecting(worker_id.as_str());
                 if let Err(error) = state
                     .spacetime_presence
@@ -2420,6 +2434,8 @@ pub(super) fn run_pane_hit_action(
                 );
                 state.sync_lifecycle.mark_idle(worker_id.as_str());
                 let _ = state.spacetime_presence.register_offline();
+                let _ = state
+                    .queue_ollama_execution_command(OllamaExecutionCommand::UnloadConfiguredModel);
             }
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
 
@@ -2571,6 +2587,37 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
         PaneHitAction::SparkPayInvoice(action) => run_pay_invoice_action(state, action),
     }
+}
+
+fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Option<String> {
+    let blockers = state.provider_blockers();
+    if blockers.is_empty() {
+        return None;
+    }
+
+    Some(format!(
+        "Cannot go online yet: {}",
+        blockers
+            .iter()
+            .map(|blocker| {
+                if matches!(
+                    blocker,
+                    crate::app_state::ProviderBlocker::OllamaUnavailable
+                        | crate::app_state::ProviderBlocker::OllamaModelUnavailable
+                ) {
+                    state
+                        .provider_runtime
+                        .ollama
+                        .last_error
+                        .clone()
+                        .unwrap_or_else(|| blocker.detail().to_string())
+                } else {
+                    blocker.detail().to_string()
+                }
+            })
+            .collect::<Vec<_>>()
+            .join("; ")
+    ))
 }
 
 fn simulation_pane_action_blocked(

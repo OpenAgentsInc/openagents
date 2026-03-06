@@ -12,13 +12,18 @@ use crate::pane_system::{
     ActiveJobPaneAction, JobHistoryPaneAction, JobInboxPaneAction, PaneController,
 };
 use crate::provider_nip90_lane::{
-    ProviderNip90LaneCommand, ProviderNip90PublishOutcome, ProviderNip90PublishRole,
+    ProviderNip90LaneCommand, ProviderNip90OllamaCapability, ProviderNip90PublishOutcome,
+    ProviderNip90PublishRole,
 };
+use crate::state::provider_runtime::ProviderOllamaRuntimeState;
 use nostr::nip90::{
     JobFeedback, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION, create_job_feedback_event,
     create_job_result_event,
 };
 use nostr::{Event, EventTemplate, NostrIdentity};
+
+const MIN_PROVIDER_PRICE_SATS: u64 = 1;
+const MIN_PROVIDER_TTL_SECONDS: u64 = 30;
 
 pub(super) fn run_job_inbox_action(state: &mut RenderState, action: JobInboxPaneAction) -> bool {
     match action {
@@ -476,6 +481,20 @@ pub(super) fn apply_active_job_ollama_update(
     match update {
         crate::ollama_execution::OllamaExecutionUpdate::Snapshot(snapshot) => {
             state.ollama_execution = *snapshot;
+            sync_provider_runtime_ollama_state(state);
+            let _ = state.queue_provider_nip90_lane_command(
+                ProviderNip90LaneCommand::ConfigureOllamaCapability {
+                    capability: ProviderNip90OllamaCapability {
+                        reachable: state.ollama_execution.reachable,
+                        configured_model: state.ollama_execution.configured_model.clone(),
+                        ready_model: state.ollama_execution.ready_model.clone(),
+                        available_models: state.ollama_execution.available_models.clone(),
+                        loaded_models: state.ollama_execution.loaded_models.clone(),
+                        last_error: state.ollama_execution.last_error.clone(),
+                    },
+                },
+            );
+            super::provider_ingress::sync_provider_runtime_mode_from_provider_state(state);
             true
         }
         crate::ollama_execution::OllamaExecutionUpdate::Started(started) => {
@@ -488,6 +507,19 @@ pub(super) fn apply_active_job_ollama_update(
             apply_ollama_execution_failed(state, failed)
         }
     }
+}
+
+fn sync_provider_runtime_ollama_state(state: &mut RenderState) {
+    state.provider_runtime.ollama.reachable = state.ollama_execution.reachable;
+    state.provider_runtime.ollama.configured_model = state.ollama_execution.configured_model.clone();
+    state.provider_runtime.ollama.ready_model = state.ollama_execution.ready_model.clone();
+    state.provider_runtime.ollama.available_models = state.ollama_execution.available_models.clone();
+    state.provider_runtime.ollama.loaded_models = state.ollama_execution.loaded_models.clone();
+    state.provider_runtime.ollama.last_error = state.ollama_execution.last_error.clone();
+    state.provider_runtime.ollama.last_action = state.ollama_execution.last_action.clone();
+    state.provider_runtime.ollama.last_request_id = state.ollama_execution.last_request_id.clone();
+    state.provider_runtime.ollama.last_metrics = state.ollama_execution.last_metrics.clone();
+    state.provider_runtime.ollama.refreshed_at = state.ollama_execution.refreshed_at;
 }
 
 pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPaneAction) -> bool {
@@ -1498,26 +1530,6 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
         .requests
         .iter()
         .find(|request| request.request_id == request_id)?;
-    if request.request_kind == KIND_JOB_TEXT_GENERATION {
-        if !state.ollama_execution.reachable {
-            return Some(
-                state
-                    .ollama_execution
-                    .last_error
-                    .clone()
-                    .unwrap_or_else(|| "Local Ollama backend is unavailable".to_string()),
-            );
-        }
-        if state.ollama_execution.ready_model.is_none() && request.requested_model.is_none() {
-            return Some(
-                state
-                    .ollama_execution
-                    .last_error
-                    .clone()
-                    .unwrap_or_else(|| "No usable local Ollama model is configured".to_string()),
-            );
-        }
-    }
     match &request.validation {
         JobInboxValidation::Valid => {}
         JobInboxValidation::Pending => {
@@ -1530,13 +1542,30 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
         }
     }
 
+    if request.price_sats < MIN_PROVIDER_PRICE_SATS {
+        return Some(format!(
+            "Price below provider minimum: {} sats offered, {} sats required",
+            request.price_sats, MIN_PROVIDER_PRICE_SATS
+        ));
+    }
+    if request.ttl_seconds < MIN_PROVIDER_TTL_SECONDS {
+        return Some(format!(
+            "TTL too short for sane execution: {}s offered, {}s required",
+            request.ttl_seconds, MIN_PROVIDER_TTL_SECONDS
+        ));
+    }
+    if let Some(reason) = ollama_request_accept_block_reason(&state.provider_runtime.ollama, request)
+    {
+        return Some(reason);
+    }
+
     let provider_blockers = state.provider_blockers();
     if !provider_blockers.is_empty() {
         return Some(format!(
             "Provider preflight blocked: {}",
             provider_blockers
                 .iter()
-                .map(|blocker| blocker.code())
+                .map(|blocker| format!("{} ({})", blocker.code(), blocker.detail()))
                 .collect::<Vec<_>>()
                 .join(", ")
         ));
@@ -1557,13 +1586,30 @@ fn next_invalid_request_rejection(state: &RenderState) -> Option<(String, String
 }
 
 fn next_auto_accept_request_id(state: &RenderState) -> Option<String> {
-    next_auto_accept_request_id_for(
+    if next_auto_accept_request_id_for(
         state.job_inbox.requests.as_slice(),
         state.provider_runtime.mode,
         state.provider_blockers().len(),
         state.active_job.inflight_job_count(),
         provider_inflight_limit(state),
     )
+    .is_none()
+    {
+        return None;
+    }
+
+    state.job_inbox.requests.iter().find_map(|request| {
+        if !matches!(request.decision, JobInboxDecision::Pending)
+            || !matches!(request.validation, JobInboxValidation::Valid)
+        {
+            return None;
+        }
+        if request_accept_block_reason(state, request.request_id.as_str()).is_none() {
+            Some(request.request_id.clone())
+        } else {
+            None
+        }
+    })
 }
 
 fn provider_inflight_limit(state: &RenderState) -> usize {
@@ -1572,6 +1618,73 @@ fn provider_inflight_limit(state: &RenderState) -> usize {
 
 fn sync_provider_runtime_queue_depth(state: &mut RenderState) {
     state.provider_runtime.queue_depth = state.active_job.inflight_job_count();
+}
+
+fn ollama_request_accept_block_reason(
+    ollama: &ProviderOllamaRuntimeState,
+    request: &JobInboxRequest,
+) -> Option<String> {
+    if request.request_kind != KIND_JOB_TEXT_GENERATION {
+        return Some(format!(
+            "Unsupported request kind {}; Ollama provider serves only kind 5050 text generation",
+            request.request_kind
+        ));
+    }
+    if request
+        .execution_prompt
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        return Some("text-generation request missing prompt/text input".to_string());
+    }
+    if let Some(output_mime) = request.requested_output_mime.as_deref()
+        && !matches!(output_mime, "text/plain" | "text/markdown")
+    {
+        return Some(format!(
+            "Unsupported output MIME '{}'; provider currently serves text/plain or text/markdown",
+            output_mime
+        ));
+    }
+    if !ollama.reachable {
+        return Some(
+            ollama
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "Local Ollama backend is unavailable".to_string()),
+        );
+    }
+    if let Some(requested_model) = request.requested_model.as_deref() {
+        if !ollama
+            .available_models
+            .iter()
+            .any(|candidate| candidate == requested_model)
+        {
+            return Some(format!(
+                "Requested Ollama model '{}' is not installed locally",
+                requested_model
+            ));
+        }
+        if let Some(serving_model) = ollama
+            .ready_model
+            .as_deref()
+            .or(ollama.configured_model.as_deref())
+            && requested_model != serving_model
+        {
+            return Some(format!(
+                "Requested Ollama model '{}' is blocked by local policy; provider currently serves '{}'",
+                requested_model, serving_model
+            ));
+        }
+    } else if !ollama.is_ready() {
+        return Some(
+            ollama
+                .last_error
+                .clone()
+                .unwrap_or_else(|| "Configured Ollama serving model is unavailable".to_string()),
+        );
+    }
+    None
 }
 
 fn next_invalid_request_rejection_for(requests: &[JobInboxRequest]) -> Option<(String, String)> {
@@ -1620,12 +1733,13 @@ mod tests {
         ProviderExecutionBackend, next_auto_accept_request_id_for,
         next_invalid_request_rejection_for, provider_execution_backend_for_kind,
         turn_completed_failed, visible_result_content_for_job_kind,
+        ollama_request_accept_block_reason,
     };
     use crate::app_state::{
         JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
     };
     use crate::ollama_execution::OllamaExecutionSnapshot;
-    use crate::state::provider_runtime::ProviderMode;
+    use crate::state::provider_runtime::{ProviderMode, ProviderOllamaRuntimeState};
     use nostr::nip90::KIND_JOB_TEXT_GENERATION;
 
     fn fixture_request(
@@ -1643,6 +1757,7 @@ mod tests {
             execution_prompt: Some(format!("Prompt for {request_id}")),
             execution_params: Vec::new(),
             requested_model: None,
+            requested_output_mime: Some("text/plain".to_string()),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -1654,6 +1769,24 @@ mod tests {
             validation,
             arrival_seq: 1,
             decision,
+        }
+    }
+
+    fn fixture_ollama_runtime() -> ProviderOllamaRuntimeState {
+        ProviderOllamaRuntimeState {
+            reachable: true,
+            configured_model: Some("llama3.2:latest".to_string()),
+            ready_model: Some("llama3.2:latest".to_string()),
+            available_models: vec![
+                "llama3.2:latest".to_string(),
+                "mistral:latest".to_string(),
+            ],
+            loaded_models: vec!["llama3.2:latest".to_string()],
+            last_error: None,
+            last_action: Some("Ollama ready".to_string()),
+            last_request_id: None,
+            last_metrics: None,
+            refreshed_at: None,
         }
     }
 
@@ -1753,6 +1886,60 @@ mod tests {
             ..OllamaExecutionSnapshot::default()
         };
         assert!(!snapshot.is_ready());
+    }
+
+    #[test]
+    fn ollama_rejects_requested_model_missing_locally() {
+        let ollama = fixture_ollama_runtime();
+        let mut request = fixture_request(
+            "req-model-missing",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.requested_model = Some("phi4:latest".to_string());
+
+        assert_eq!(
+            ollama_request_accept_block_reason(&ollama, &request),
+            Some("Requested Ollama model 'phi4:latest' is not installed locally".to_string())
+        );
+    }
+
+    #[test]
+    fn ollama_rejects_requested_model_blocked_by_local_policy() {
+        let ollama = fixture_ollama_runtime();
+        let mut request = fixture_request(
+            "req-model-blocked",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.requested_model = Some("mistral:latest".to_string());
+
+        assert_eq!(
+            ollama_request_accept_block_reason(&ollama, &request),
+            Some(
+                "Requested Ollama model 'mistral:latest' is blocked by local policy; provider currently serves 'llama3.2:latest'"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn ollama_rejects_unsupported_output_mime() {
+        let ollama = fixture_ollama_runtime();
+        let mut request = fixture_request(
+            "req-output",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.requested_output_mime = Some("application/json".to_string());
+
+        assert_eq!(
+            ollama_request_accept_block_reason(&ollama, &request),
+            Some(
+                "Unsupported output MIME 'application/json'; provider currently serves text/plain or text/markdown"
+                    .to_string()
+            )
+        );
     }
 }
 

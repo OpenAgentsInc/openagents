@@ -11,6 +11,7 @@ const REFRESH_INTERVAL: Duration = Duration::from_secs(5);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const DEFAULT_OLLAMA_BASE_URL: &str = "http://127.0.0.1:11434";
 const DEFAULT_KEEP_ALIVE: &str = "5m";
+const UNLOAD_KEEP_ALIVE: u8 = 0;
 const ENV_OLLAMA_BASE_URL: &str = "OPENAGENTS_OLLAMA_BASE_URL";
 const ENV_OLLAMA_MODEL: &str = "OPENAGENTS_OLLAMA_MODEL";
 
@@ -78,6 +79,8 @@ pub struct OllamaGenerateJob {
 #[derive(Clone, Debug)]
 pub enum OllamaExecutionCommand {
     Refresh,
+    WarmConfiguredModel,
+    UnloadConfiguredModel,
     Generate(OllamaGenerateJob),
 }
 
@@ -199,7 +202,7 @@ impl OllamaExecutionState {
         self.snapshot.ready_model = None;
         self.snapshot.last_metrics = None;
 
-        let Some(client) = self.client.as_ref() else {
+        let Some(client) = self.client.clone() else {
             self.snapshot.reachable = false;
             self.snapshot.last_error = Some("Ollama HTTP client unavailable".to_string());
             self.snapshot.last_action = Some("Ollama refresh failed".to_string());
@@ -222,9 +225,9 @@ impl OllamaExecutionState {
             }
         };
 
-        match fetch_available_models(client, &base_url) {
+        match fetch_available_models(&client, &base_url) {
             Ok(models) => {
-                let loaded_models = fetch_loaded_models(client, &base_url).unwrap_or_default();
+                let loaded_models = fetch_loaded_models(&client, &base_url).unwrap_or_default();
                 self.snapshot.reachable = true;
                 self.snapshot.available_models = models;
                 self.snapshot.loaded_models = loaded_models;
@@ -239,7 +242,7 @@ impl OllamaExecutionState {
                         .iter()
                         .any(|candidate| candidate == configured_model)
                     {
-                        match validate_model(client, &base_url, configured_model) {
+                        match validate_model(&client, &base_url, configured_model) {
                             Ok(()) => {
                                 self.snapshot.ready_model = Some(configured_model.to_string());
                             }
@@ -286,7 +289,7 @@ impl OllamaExecutionState {
         };
 
         self.maybe_refresh_snapshot(update_tx, true);
-        let Some(client) = self.client.as_ref() else {
+        let Some(client) = self.client.clone() else {
             self.fail_job(
                 update_tx,
                 job.request_id.as_str(),
@@ -335,7 +338,7 @@ impl OllamaExecutionState {
             return;
         }
 
-        if let Err(error) = validate_model(client, &base_url, model.as_str()) {
+        if let Err(error) = validate_model(&client, &base_url, model.as_str()) {
             self.fail_job(update_tx, job.request_id.as_str(), error);
             return;
         }
@@ -357,7 +360,7 @@ impl OllamaExecutionState {
             model: model.clone(),
         }));
 
-        match execute_generate(client, &base_url, body) {
+        match execute_generate(&client, &base_url, body) {
             Ok(result) => {
                 self.snapshot.reachable = true;
                 self.snapshot.last_error = None;
@@ -380,6 +383,136 @@ impl OllamaExecutionState {
             Err(error) => {
                 self.fail_job(update_tx, job.request_id.as_str(), error);
             }
+        }
+    }
+
+    fn handle_warm_configured_model(&mut self, update_tx: &Sender<OllamaExecutionUpdate>) {
+        self.maybe_refresh_snapshot(update_tx, true);
+        let Some(client) = self.client.clone() else {
+            self.snapshot.reachable = false;
+            self.snapshot.last_error = Some("Ollama HTTP client unavailable".to_string());
+            self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+            self.snapshot.refreshed_at = Some(Instant::now());
+            self.publish_snapshot(update_tx);
+            return;
+        };
+        let base_url = match validate_local_base_url(self.config.base_url.as_str()) {
+            Ok(value) => value,
+            Err(error) => {
+                self.snapshot.reachable = false;
+                self.snapshot.last_error = Some(error);
+                self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+                self.snapshot.refreshed_at = Some(Instant::now());
+                self.publish_snapshot(update_tx);
+                return;
+            }
+        };
+        let Some(model) = self.selected_model_for_runtime() else {
+            self.snapshot.last_error =
+                Some("Set OPENAGENTS_OLLAMA_MODEL to serve kind 5050 jobs".to_string());
+            self.snapshot.last_action = Some("Ollama warm-up skipped".to_string());
+            self.snapshot.refreshed_at = Some(Instant::now());
+            self.publish_snapshot(update_tx);
+            return;
+        };
+        if let Err(error) = validate_model(&client, &base_url, model.as_str()) {
+            self.snapshot.last_error = Some(error);
+            self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+            self.snapshot.refreshed_at = Some(Instant::now());
+            self.publish_snapshot(update_tx);
+            return;
+        }
+        match execute_model_lifecycle_request(
+            &client,
+            &base_url,
+            model.as_str(),
+            DEFAULT_KEEP_ALIVE,
+        )
+        {
+            Ok(()) => {
+                self.snapshot.reachable = true;
+                self.snapshot.ready_model = Some(model.clone());
+                self.snapshot.last_error = None;
+                self.snapshot.last_action = Some(format!(
+                    "Warmed local Ollama model '{}' for provider mode",
+                    model
+                ));
+            }
+            Err(error) => {
+                self.snapshot.last_error = Some(error);
+                self.snapshot.last_action = Some("Ollama warm-up failed".to_string());
+            }
+        }
+        self.refresh_loaded_models(&client, &base_url);
+        self.snapshot.refreshed_at = Some(Instant::now());
+        self.publish_snapshot(update_tx);
+    }
+
+    fn handle_unload_configured_model(&mut self, update_tx: &Sender<OllamaExecutionUpdate>) {
+        self.maybe_refresh_snapshot(update_tx, true);
+        let Some(client) = self.client.clone() else {
+            self.snapshot.reachable = false;
+            self.snapshot.last_error = Some("Ollama HTTP client unavailable".to_string());
+            self.snapshot.last_action = Some("Ollama unload failed".to_string());
+            self.snapshot.refreshed_at = Some(Instant::now());
+            self.publish_snapshot(update_tx);
+            return;
+        };
+        let base_url = match validate_local_base_url(self.config.base_url.as_str()) {
+            Ok(value) => value,
+            Err(error) => {
+                self.snapshot.reachable = false;
+                self.snapshot.last_error = Some(error);
+                self.snapshot.last_action = Some("Ollama unload failed".to_string());
+                self.snapshot.refreshed_at = Some(Instant::now());
+                self.publish_snapshot(update_tx);
+                return;
+            }
+        };
+        let Some(model) = self.selected_model_for_runtime() else {
+            self.snapshot.last_action = Some("Ollama unload skipped".to_string());
+            self.snapshot.refreshed_at = Some(Instant::now());
+            self.publish_snapshot(update_tx);
+            return;
+        };
+        match execute_model_lifecycle_request(
+            &client,
+            &base_url,
+            model.as_str(),
+            UNLOAD_KEEP_ALIVE,
+        )
+        {
+            Ok(()) => {
+                self.snapshot.reachable = true;
+                self.snapshot.last_error = None;
+                self.snapshot.last_action = Some(format!(
+                    "Unloaded local Ollama model '{}' after going offline",
+                    model
+                ));
+            }
+            Err(error) => {
+                self.snapshot.last_error = Some(error);
+                self.snapshot.last_action = Some("Ollama unload failed".to_string());
+            }
+        }
+        self.refresh_loaded_models(&client, &base_url);
+        self.snapshot.refreshed_at = Some(Instant::now());
+        self.publish_snapshot(update_tx);
+    }
+
+    fn selected_model_for_runtime(&self) -> Option<String> {
+        normalize_optional_text(
+            self.snapshot
+                .ready_model
+                .as_deref()
+                .or(self.snapshot.configured_model.as_deref())
+                .unwrap_or_default(),
+        )
+    }
+
+    fn refresh_loaded_models(&mut self, client: &Client, base_url: &Url) {
+        if let Ok(models) = fetch_loaded_models(client, base_url) {
+            self.snapshot.loaded_models = models;
         }
     }
 
@@ -412,6 +545,12 @@ fn run_ollama_execution_loop(
     loop {
         match command_rx.recv_timeout(LANE_POLL) {
             Ok(OllamaExecutionCommand::Refresh) => state.maybe_refresh_snapshot(&update_tx, true),
+            Ok(OllamaExecutionCommand::WarmConfiguredModel) => {
+                state.handle_warm_configured_model(&update_tx)
+            }
+            Ok(OllamaExecutionCommand::UnloadConfiguredModel) => {
+                state.handle_unload_configured_model(&update_tx)
+            }
             Ok(OllamaExecutionCommand::Generate(job)) => state.handle_generate(&update_tx, job),
             Err(RecvTimeoutError::Timeout) => state.maybe_refresh_snapshot(&update_tx, false),
             Err(RecvTimeoutError::Disconnected) => break,
@@ -633,6 +772,34 @@ fn execute_generate(
             eval_duration_ns: payload.eval_duration,
         },
     })
+}
+
+fn execute_model_lifecycle_request<T: serde::Serialize>(
+    client: &Client,
+    base_url: &Url,
+    model: &str,
+    keep_alive: T,
+) -> Result<(), String> {
+    let url = base_url
+        .join("api/generate")
+        .map_err(|error| format!("invalid Ollama generate URL: {error}"))?;
+    let response = client
+        .post(url)
+        .json(&json!({
+            "model": model,
+            "prompt": "",
+            "stream": false,
+            "keep_alive": keep_alive,
+        }))
+        .send()
+        .map_err(|error| format!("Ollama lifecycle request failed: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "Ollama lifecycle request failed with status {}",
+            response.status()
+        ));
+    }
+    Ok(())
 }
 
 #[derive(Deserialize)]

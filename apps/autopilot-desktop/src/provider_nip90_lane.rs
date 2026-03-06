@@ -4,8 +4,8 @@ use nostr::nip90::{
     JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK,
     KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY,
     KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
-    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_feedback_kind,
-    is_job_request_kind, is_job_result_kind,
+    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
+    is_job_feedback_kind, is_job_request_kind, is_job_result_kind,
 };
 use nostr::{Event, EventTemplate};
 use nostr_client::{
@@ -26,6 +26,9 @@ const NIP89_HANDLER_KIND: u16 = 31_990;
 const HANDLER_PUBLISH_RETRY: Duration = Duration::from_secs(10);
 const HANDLER_METADATA_NAME: &str = "Autopilot";
 const HANDLER_METADATA_ABOUT: &str = "OpenAgents Autopilot compute provider for open NIP-90 jobs.";
+const HANDLER_STATUS_HEALTHY: &str = "healthy";
+const HANDLER_STATUS_DEGRADED: &str = "degraded";
+const SUPPORTED_TEXT_OUTPUT_MIME: [&str; 2] = ["text/plain", "text/markdown"];
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderNip90LaneMode {
@@ -88,6 +91,22 @@ pub struct ProviderNip90LaneSnapshot {
     pub last_action: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProviderNip90OllamaCapability {
+    pub reachable: bool,
+    pub configured_model: Option<String>,
+    pub ready_model: Option<String>,
+    pub available_models: Vec<String>,
+    pub loaded_models: Vec<String>,
+    pub last_error: Option<String>,
+}
+
+impl ProviderNip90OllamaCapability {
+    pub fn is_ready(&self) -> bool {
+        self.reachable && self.ready_model.is_some()
+    }
+}
+
 impl ProviderNip90LaneSnapshot {
     pub fn with_relays(relays: Vec<String>) -> Self {
         let configured_relays = normalize_relays(relays);
@@ -121,6 +140,9 @@ impl Default for ProviderNip90LaneSnapshot {
 pub enum ProviderNip90LaneCommand {
     ConfigureIdentity {
         identity: Option<ProviderNip90AuthIdentity>,
+    },
+    ConfigureOllamaCapability {
+        capability: ProviderNip90OllamaCapability,
     },
     ConfigureRelays {
         relays: Vec<String>,
@@ -260,12 +282,20 @@ struct ProviderNip90LaneState {
     wants_online: bool,
     pool: Option<Arc<RelayPool>>,
     auth_identity: Option<ProviderNip90AuthIdentity>,
-    handler_info_published: bool,
+    ollama_capability: ProviderNip90OllamaCapability,
+    handler_publication_state: HandlerPublicationState,
     next_handler_publish_retry_at: Option<Instant>,
     tracked_buyer_request_ids: Vec<String>,
     relay_last_seen: HashMap<String, Instant>,
     relay_latency_ms: HashMap<String, u32>,
     relay_last_error: HashMap<String, String>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum HandlerPublicationState {
+    None,
+    Healthy,
+    Disabled,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -328,7 +358,8 @@ fn run_lane_loop(
         wants_online: false,
         pool: None,
         auth_identity: None,
-        handler_info_published: false,
+        ollama_capability: ProviderNip90OllamaCapability::default(),
+        handler_publication_state: HandlerPublicationState::None,
         next_handler_publish_retry_at: None,
         tracked_buyer_request_ids: Vec::new(),
         relay_last_seen: HashMap::new(),
@@ -346,6 +377,7 @@ fn run_lane_loop(
             Ok(command) => {
                 match command {
                     ProviderNip90LaneCommand::ConfigureIdentity { .. }
+                    | ProviderNip90LaneCommand::ConfigureOllamaCapability { .. }
                     | ProviderNip90LaneCommand::ConfigureRelays { .. }
                     | ProviderNip90LaneCommand::SetOnline { .. }
                     | ProviderNip90LaneCommand::TrackBuyerRequestIds { .. } => {
@@ -488,7 +520,7 @@ fn handle_command(
                 return;
             }
             state.auth_identity = identity;
-            state.handler_info_published = false;
+            state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             state.snapshot.last_action = Some("Updated provider relay identity".to_string());
             if state.pool.is_some() {
@@ -501,6 +533,35 @@ fn handle_command(
             }
             refresh_relay_health_snapshot(runtime, state);
         }
+        ProviderNip90LaneCommand::ConfigureOllamaCapability { capability } => {
+            if capability == state.ollama_capability {
+                return;
+            }
+            let was_ready = state.ollama_capability.is_ready();
+            let is_ready = capability.is_ready();
+            let status = if is_ready {
+                format!(
+                    "Ollama capability ready for model '{}'",
+                    capability.ready_model.as_deref().unwrap_or("unknown")
+                )
+            } else {
+                capability
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Ollama capability unavailable".to_string())
+            };
+            state.ollama_capability = capability;
+            state.handler_publication_state = HandlerPublicationState::None;
+            state.next_handler_publish_retry_at = None;
+            state.snapshot.last_action = Some(if is_ready {
+                status
+            } else if was_ready {
+                format!("Ollama capability degraded: {status}")
+            } else {
+                format!("Ollama capability pending: {status}")
+            });
+            refresh_relay_health_snapshot(runtime, state);
+        }
         ProviderNip90LaneCommand::ConfigureRelays { relays } => {
             let normalized = normalize_relays(relays);
             if normalized == state.snapshot.configured_relays {
@@ -508,7 +569,7 @@ fn handle_command(
             }
 
             state.snapshot.configured_relays = normalized;
-            state.handler_info_published = false;
+            state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             state.snapshot.connected_relays = 0;
             prune_relay_observation_maps(state);
@@ -530,7 +591,7 @@ fn handle_command(
         }
         ProviderNip90LaneCommand::SetOnline { online } => {
             state.wants_online = online;
-            state.handler_info_published = false;
+            state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             if online {
                 state.snapshot.mode = ProviderNip90LaneMode::Connecting;
@@ -1017,7 +1078,7 @@ fn maybe_publish_handler_info(
     state: &mut ProviderNip90LaneState,
     update_tx: &Sender<ProviderNip90LaneUpdate>,
 ) {
-    if !state.wants_online || state.handler_info_published || state.snapshot.connected_relays == 0 {
+    if !state.wants_online || state.snapshot.connected_relays == 0 {
         return;
     }
     if state
@@ -1030,7 +1091,16 @@ fn maybe_publish_handler_info(
         return;
     };
 
-    let event = match build_provider_handler_event(&identity) {
+    let desired_publication = if state.ollama_capability.is_ready() {
+        HandlerPublicationState::Healthy
+    } else {
+        HandlerPublicationState::Disabled
+    };
+    if state.handler_publication_state == desired_publication {
+        return;
+    }
+
+    let event = match build_provider_handler_event(&identity, desired_publication, state) {
         Ok(event) => event,
         Err(error) => {
             state.snapshot.last_error = Some(error.clone());
@@ -1048,7 +1118,7 @@ fn maybe_publish_handler_info(
         event,
     );
     if published {
-        state.handler_info_published = true;
+        state.handler_publication_state = desired_publication;
         state.next_handler_publish_retry_at = None;
     } else {
         state.next_handler_publish_retry_at = Some(Instant::now() + HANDLER_PUBLISH_RETRY);
@@ -1303,6 +1373,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         execution_prompt,
         execution_params,
         requested_model,
+        requested_output_mime,
         validation,
         parsed_event_shape,
     ) = match parsed.as_ref() {
@@ -1332,6 +1403,20 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
                 JobInboxValidation::Invalid(
                     "text-generation request missing prompt/text input".to_string(),
                 )
+            } else if request.kind != KIND_JOB_TEXT_GENERATION {
+                JobInboxValidation::Invalid(format!(
+                    "unsupported request kind {}; provider currently serves only kind 5050 text generation",
+                    request.kind
+                ))
+            } else if let Some(output_mime) = requested_output_mime(request) {
+                if supported_output_mime(output_mime.as_str()) {
+                    JobInboxValidation::Valid
+                } else {
+                    JobInboxValidation::Invalid(format!(
+                        "unsupported output MIME '{}'; provider currently serves text/plain or text/markdown",
+                        output_mime
+                    ))
+                }
             } else if request.content.trim().is_empty() && request.inputs.is_empty() {
                 JobInboxValidation::Invalid("request missing content/input payload".to_string())
             } else if encrypted && event.content.trim().is_empty() {
@@ -1363,6 +1448,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
                     .map(|(key, value)| JobExecutionParam { key, value })
                     .collect::<Vec<_>>(),
                 extract_param(request, "model"),
+                requested_output_mime(request),
                 validation,
                 parsed_event_shape,
             )
@@ -1377,6 +1463,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
             None,
             None,
             Vec::new(),
+            None,
             None,
             JobInboxValidation::Invalid(format!("invalid NIP-90 request tags: {error}")),
             Some(format!(
@@ -1396,6 +1483,7 @@ fn event_to_inbox_request(event: &Event) -> Option<JobInboxNetworkRequest> {
         execution_prompt,
         execution_params,
         requested_model,
+        requested_output_mime,
         target_provider_pubkeys,
         encrypted,
         encrypted_payload,
@@ -1461,12 +1549,7 @@ fn execution_input_from_request(request: &JobRequest) -> Option<String> {
         sections.push(format!("Parameters:\n{params}"));
     }
 
-    if let Some(output) = request
-        .output
-        .as_deref()
-        .map(str::trim)
-        .filter(|value| !value.is_empty())
-    {
+    if let Some(output) = requested_output_mime(request) {
         sections.push(format!("Requested output: {output}"));
     }
 
@@ -1521,6 +1604,21 @@ fn normalized_request_params(request: &JobRequest) -> Vec<(String, String)> {
         normalized.insert(key, value.to_string());
     }
     normalized.into_iter().collect()
+}
+
+fn requested_output_mime(request: &JobRequest) -> Option<String> {
+    request
+        .output
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn supported_output_mime(value: &str) -> bool {
+    SUPPORTED_TEXT_OUTPUT_MIME
+        .iter()
+        .any(|candidate| candidate.eq_ignore_ascii_case(value))
 }
 
 fn canonical_param_key(raw: &str) -> String {
@@ -1785,7 +1883,11 @@ fn summarize_string_list(values: &[String], max_items: usize) -> String {
     }
 }
 
-fn build_provider_handler_event(identity: &ProviderNip90AuthIdentity) -> Result<Event, String> {
+fn build_provider_handler_event(
+    identity: &ProviderNip90AuthIdentity,
+    publication_state: HandlerPublicationState,
+    state: &ProviderNip90LaneState,
+) -> Result<Event, String> {
     let created_at = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|error| format!("failed reading system clock for handler event: {error}"))?
@@ -1799,12 +1901,26 @@ fn build_provider_handler_event(identity: &ProviderNip90AuthIdentity) -> Result<
         vec!["t".to_string(), "autopilot".to_string()],
         vec!["t".to_string(), "openagents".to_string()],
     ];
-    for kind in supported_handler_kinds() {
-        tags.push(vec!["k".to_string(), kind.to_string()]);
+    if publication_state == HandlerPublicationState::Healthy {
+        for kind in supported_handler_kinds() {
+            tags.push(vec!["k".to_string(), kind.to_string()]);
+        }
     }
     let content = serde_json::json!({
         "name": HANDLER_METADATA_NAME,
         "about": HANDLER_METADATA_ABOUT,
+        "backend": "ollama",
+        "status": if publication_state == HandlerPublicationState::Healthy {
+            HANDLER_STATUS_HEALTHY
+        } else {
+            HANDLER_STATUS_DEGRADED
+        },
+        "serving_model": state
+            .ollama_capability
+            .ready_model
+            .as_deref()
+            .or(state.ollama_capability.configured_model.as_deref()),
+        "last_error": state.ollama_capability.last_error.clone(),
     })
     .to_string();
     let template = EventTemplate {
@@ -1819,17 +1935,7 @@ fn build_provider_handler_event(identity: &ProviderNip90AuthIdentity) -> Result<
 }
 
 fn supported_handler_kinds() -> &'static [u16] {
-    &[
-        KIND_JOB_TEXT_GENERATION,
-        KIND_JOB_SUMMARIZATION,
-        KIND_JOB_TRANSLATION,
-        KIND_JOB_TEXT_EXTRACTION,
-        KIND_JOB_PATCH_GEN,
-        KIND_JOB_CODE_REVIEW,
-        KIND_JOB_REPO_INDEX,
-        KIND_JOB_SANDBOX_RUN,
-        KIND_JOB_RLM_SUBQUERY,
-    ]
+    &[KIND_JOB_TEXT_GENERATION]
 }
 
 fn handler_request_id(public_key_hex: &str) -> String {
@@ -1928,7 +2034,8 @@ fn normalize_relays(relays: Vec<String>) -> Vec<String> {
 mod tests {
     use super::{
         ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand,
-        ProviderNip90LaneUpdate, ProviderNip90LaneWorker, ProviderNip90PublishRole,
+        ProviderNip90LaneUpdate, ProviderNip90LaneWorker, ProviderNip90OllamaCapability,
+        ProviderNip90PublishRole,
         ProviderNip90RelayStatus, event_to_buyer_response_event, event_to_inbox_request,
         execution_input_from_request,
     };
@@ -1961,6 +2068,17 @@ mod tests {
             .expect("derive fixture pubkey"),
             private_key_hex: "d217c1ff2f8a65c3e3a1740db3b9f58b8c848bb45e26d00ed4714e4a0f4ceecf"
                 .to_string(),
+        }
+    }
+
+    fn fixture_ollama_capability() -> ProviderNip90OllamaCapability {
+        ProviderNip90OllamaCapability {
+            reachable: true,
+            configured_model: Some("llama3.2:latest".to_string()),
+            ready_model: Some("llama3.2:latest".to_string()),
+            available_models: vec!["llama3.2:latest".to_string()],
+            loaded_models: vec!["llama3.2:latest".to_string()],
+            last_error: None,
         }
     }
 
@@ -2055,9 +2173,13 @@ mod tests {
             id: "req-002".to_string(),
             pubkey: "npub1buyer".to_string(),
             created_at: 1_760_000_101,
-            kind: 5930,
-            tags: vec![],
-            content: "echo hi".to_string(),
+            kind: 5050,
+            tags: vec![vec![
+                "i".to_string(),
+                "generate summary".to_string(),
+                "prompt".to_string(),
+            ]],
+            content: String::new(),
             sig: "22".repeat(64),
         };
 
@@ -2094,6 +2216,38 @@ mod tests {
             JobInboxValidation::Invalid(ref reason)
                 if reason == "text-generation request missing prompt/text input"
         ));
+    }
+
+    #[test]
+    fn marks_unsupported_output_mime_as_invalid() {
+        let event = Event {
+            id: "req-5050-output-invalid".to_string(),
+            pubkey: "npub1buyer".to_string(),
+            created_at: 1_760_000_104,
+            kind: 5050,
+            tags: vec![
+                vec![
+                    "i".to_string(),
+                    "Write a haiku about rust".to_string(),
+                    "prompt".to_string(),
+                ],
+                vec!["output".to_string(), "application/json".to_string()],
+                vec!["bid".to_string(), "5000".to_string()],
+            ],
+            content: String::new(),
+            sig: "14".repeat(64),
+        };
+
+        let row = event_to_inbox_request(&event).expect("event should map to inbox row");
+        assert!(matches!(
+            row.validation,
+            JobInboxValidation::Invalid(ref reason)
+                if reason.contains("unsupported output MIME")
+        ));
+        assert_eq!(
+            row.requested_output_mime.as_deref(),
+            Some("application/json")
+        );
     }
 
     #[test]
@@ -2453,6 +2607,11 @@ mod tests {
             })
             .expect("queue identity command");
         worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureOllamaCapability {
+                capability: fixture_ollama_capability(),
+            })
+            .expect("queue ollama capability command");
+        worker
             .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
             .expect("queue online command");
 
@@ -2498,6 +2657,68 @@ mod tests {
         let metadata: serde_json::Value =
             serde_json::from_str(published.content.as_str()).expect("parse handler metadata");
         assert_eq!(metadata["name"], "Autopilot");
+        assert_eq!(metadata["status"], "healthy");
+        assert_eq!(metadata["serving_model"], "llama3.2:latest");
+
+        let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
+        relay_task.abort();
+    }
+
+    #[test]
+    fn worker_publishes_disabled_handler_when_ollama_unhealthy() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_for_publish());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureIdentity {
+                identity: Some(fixture_auth_identity()),
+            })
+            .expect("queue identity command");
+        worker
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("queue online command");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(4);
+        let mut capability_outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.role == ProviderNip90PublishRole::Capability
+                {
+                    assert!(outcome.accepted_relays >= 1);
+                    capability_outcome_seen = true;
+                }
+            }
+            if capability_outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(
+            capability_outcome_seen,
+            "expected capability publish outcome after going online"
+        );
+        let published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive handler event");
+        assert_eq!(published.kind, 31_990);
+        assert!(
+            !published.tags.iter().any(|tag| {
+                tag.first().is_some_and(|value| value == "k")
+                    && tag.get(1).is_some_and(|value| value == "5050")
+            }),
+            "expected disabled handler to omit supported kind tags"
+        );
+        let metadata: serde_json::Value =
+            serde_json::from_str(published.content.as_str()).expect("parse handler metadata");
+        assert_eq!(metadata["status"], "degraded");
 
         let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
         relay_task.abort();

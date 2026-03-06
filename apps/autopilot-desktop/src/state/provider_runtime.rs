@@ -6,6 +6,8 @@
 
 use std::time::Instant;
 
+use crate::ollama_execution::OllamaExecutionMetrics;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderMode {
     Offline,
@@ -31,6 +33,8 @@ pub enum ProviderBlocker {
     WalletError,
     SkillTrustUnavailable,
     CreditLaneUnavailable,
+    OllamaUnavailable,
+    OllamaModelUnavailable,
 }
 
 impl ProviderBlocker {
@@ -40,6 +44,8 @@ impl ProviderBlocker {
             Self::WalletError => "WALLET_ERROR",
             Self::SkillTrustUnavailable => "SKL_TRUST_UNAVAILABLE",
             Self::CreditLaneUnavailable => "AC_CREDIT_UNAVAILABLE",
+            Self::OllamaUnavailable => "OLLAMA_UNAVAILABLE",
+            Self::OllamaModelUnavailable => "OLLAMA_MODEL_UNAVAILABLE",
         }
     }
 
@@ -49,6 +55,8 @@ impl ProviderBlocker {
             Self::WalletError => "Spark wallet reports an error",
             Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
             Self::CreditLaneUnavailable => "AC credit lane is not available",
+            Self::OllamaUnavailable => "Local Ollama backend is unavailable",
+            Self::OllamaModelUnavailable => "Configured Ollama serving model is unavailable",
         }
     }
 }
@@ -72,6 +80,26 @@ impl EarnFailureClass {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ProviderOllamaRuntimeState {
+    pub reachable: bool,
+    pub configured_model: Option<String>,
+    pub ready_model: Option<String>,
+    pub available_models: Vec<String>,
+    pub loaded_models: Vec<String>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub last_request_id: Option<String>,
+    pub last_metrics: Option<OllamaExecutionMetrics>,
+    pub refreshed_at: Option<Instant>,
+}
+
+impl ProviderOllamaRuntimeState {
+    pub fn is_ready(&self) -> bool {
+        self.reachable && self.ready_model.is_some()
+    }
+}
+
 pub struct ProviderRuntimeState {
     pub mode: ProviderMode,
     pub mode_changed_at: Instant,
@@ -87,6 +115,7 @@ pub struct ProviderRuntimeState {
     pub last_authoritative_status: Option<String>,
     pub last_authoritative_event_id: Option<String>,
     pub last_authoritative_error_class: Option<EarnFailureClass>,
+    pub ollama: ProviderOllamaRuntimeState,
 }
 
 impl Default for ProviderRuntimeState {
@@ -107,6 +136,7 @@ impl Default for ProviderRuntimeState {
             last_authoritative_status: None,
             last_authoritative_event_id: None,
             last_authoritative_error_class: None,
+            ollama: ProviderOllamaRuntimeState::default(),
         }
     }
 }
