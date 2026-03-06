@@ -3517,10 +3517,12 @@ pub(super) fn run_relay_connections_action(
         }
         RelayConnectionsPaneAction::AddRelay => {
             let relay_url = state.relay_connections_inputs.relay_url.get_value();
-            match state.relay_connections.add_relay(relay_url) {
+            match state.settings.add_backup_relay(relay_url, true) {
                 Ok(()) => {
-                    state.provider_runtime.last_result =
-                        state.relay_connections.last_action.clone();
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
+                    state.provider_runtime.last_result = state.settings.last_action.clone();
                     let _ = state.sync_provider_nip90_lane_relays();
                 }
                 Err(error) => {
@@ -3529,9 +3531,17 @@ pub(super) fn run_relay_connections_action(
             }
         }
         RelayConnectionsPaneAction::RemoveSelected => {
-            match state.relay_connections.remove_selected() {
-                Ok(url) => {
-                    state.provider_runtime.last_result = Some(format!("removed relay {url}"));
+            let selected = state.relay_connections.selected_url.clone();
+            match selected
+                .as_deref()
+                .ok_or_else(|| "Select a relay first".to_string())
+                .and_then(|relay_url| state.settings.remove_configured_relay(relay_url, true))
+            {
+                Ok(message) => {
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
+                    state.provider_runtime.last_result = Some(message);
                     let _ = state.sync_provider_nip90_lane_relays();
                 }
                 Err(error) => {
@@ -3566,6 +3576,19 @@ pub(super) fn run_sync_health_action(
     match action {
         SyncHealthPaneAction::Rebootstrap => {
             state.sync_health.rebootstrap();
+            let worker_id = state.sync_lifecycle_worker_id.clone();
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor,
+                Some("manual sync rebootstrap requested".to_string()),
+            );
+            state.sync_lifecycle.mark_replay_bootstrap(
+                worker_id.as_str(),
+                state.sync_health.cursor_position,
+                Some(state.sync_health.cursor_position),
+            );
+            state.sync_lifecycle.mark_connecting(worker_id.as_str());
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
             state.provider_runtime.last_result = state.sync_health.last_action.clone();
             refresh_sync_health(state);
             true
@@ -3621,80 +3644,148 @@ pub(super) fn run_network_requests_action(
                     return true;
                 }
             };
-
-            let scope = if let Some(skill_scope) = skill_scope_id.as_deref() {
-                format!("skill:{skill_scope}:constraints")
-            } else {
-                format!("network:{request_type}:{budget_sats}")
-            };
-            let queue_result = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
-                scope,
-                request_type: request_type.clone(),
-                payload: payload.clone(),
-                skill_scope_id: skill_scope_id.clone(),
-                credit_envelope_ref: credit_envelope_ref.clone(),
-                requested_sats: budget_sats,
+            let target_provider_pubkeys = extract_target_provider_pubkeys(payload.as_str());
+            if let Err(error) = submit_signed_network_request(
+                state,
+                request_type,
+                payload,
+                skill_scope_id,
+                credit_envelope_ref,
+                budget_sats,
                 timeout_seconds,
-            });
-            match queue_result {
-                Ok(command_seq) => {
-                    match state.network_requests.queue_request_submission(
-                        NetworkRequestSubmission {
-                            request_type,
-                            payload,
-                            skill_scope_id,
-                            credit_envelope_ref,
-                            budget_sats,
-                            timeout_seconds,
-                            authority_command_seq: command_seq,
-                        },
-                    ) {
-                        Ok(request_id) => {
-                            state.provider_runtime.last_result = Some(format!(
-                                "Queued network request {request_id} -> AC cmd#{command_seq}"
-                            ));
-                            if local_network_request_inject_enabled() {
-                                state
-                                    .job_inbox
-                                    .upsert_network_request(JobInboxNetworkRequest {
-                                        request_id: request_id.clone(),
-                                        requester: "network-buyer".to_string(),
-                                        demand_source: crate::app_state::JobDemandSource::OpenNetwork,
-                                        request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
-                                        capability: "local.injected.request".to_string(),
-                                        skill_scope_id: None,
-                                        skl_manifest_a: None,
-                                        skl_manifest_event_id: None,
-                                        sa_tick_request_event_id: None,
-                                        sa_tick_result_event_id: None,
-                                        ac_envelope_event_id: None,
-                                        price_sats: budget_sats,
-                                        ttl_seconds: timeout_seconds,
-                                        validation: JobInboxValidation::Pending,
-                                    });
-                            }
-                            state.sync_health.last_applied_event_seq =
-                                state.sync_health.last_applied_event_seq.saturating_add(1);
-                            state.sync_health.cursor_last_advanced_seconds_ago = 0;
-                            refresh_sync_health(state);
-                        }
-                        Err(error) => {
-                            state.network_requests.last_error = Some(error);
-                        }
-                    }
-                }
-                Err(error) => {
-                    state.network_requests.last_error = Some(error.clone());
-                    state.network_requests.mark_authority_enqueue_failure(
-                        state.next_runtime_command_seq.saturating_sub(1),
-                        RuntimeCommandErrorClass::Transport.label(),
-                        &error,
-                    );
-                }
+                target_provider_pubkeys,
+            ) {
+                state.network_requests.last_error = Some(error);
+                state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
             }
             true
         }
     }
+}
+
+fn submit_signed_network_request(
+    state: &mut crate::app_state::RenderState,
+    request_type: String,
+    payload: String,
+    skill_scope_id: Option<String>,
+    credit_envelope_ref: Option<String>,
+    budget_sats: u64,
+    timeout_seconds: u64,
+    target_provider_pubkeys: Vec<String>,
+) -> Result<String, String> {
+    let configured_relays = state.configured_provider_relay_urls();
+    let request_event = build_nip90_request_event_for_network_submission(
+        state.nostr_identity.as_ref(),
+        request_type.as_str(),
+        payload.as_str(),
+        skill_scope_id.as_deref(),
+        credit_envelope_ref.as_deref(),
+        crate::app_state::BuyerResolutionMode::Race,
+        budget_sats,
+        timeout_seconds,
+        configured_relays.as_slice(),
+        target_provider_pubkeys.as_slice(),
+    )?;
+    let published_request_id = request_event.id.clone();
+    let command_seq = state.reserve_runtime_command_seq();
+    let request_id = state
+        .network_requests
+        .queue_request_submission(NetworkRequestSubmission {
+            request_id: Some(published_request_id.clone()),
+            request_type,
+            payload,
+            resolution_mode: crate::app_state::BuyerResolutionMode::Race,
+            target_provider_pubkeys: target_provider_pubkeys.clone(),
+            skill_scope_id,
+            credit_envelope_ref,
+            budget_sats,
+            timeout_seconds,
+            authority_command_seq: command_seq,
+        })?;
+    state.network_requests.mark_direct_authority_ready(
+        request_id.as_str(),
+        "relay-direct",
+        Some(published_request_id.as_str()),
+    );
+    state.provider_runtime.last_result = Some(format!("Queued network request {request_id}"));
+
+    let tracked_request_ids = state
+        .network_requests
+        .submitted
+        .iter()
+        .map(|request| request.request_id.clone())
+        .collect::<Vec<_>>();
+    if let Err(error) = state.queue_provider_nip90_lane_command(
+        crate::provider_nip90_lane::ProviderNip90LaneCommand::TrackBuyerRequestIds {
+            request_ids: tracked_request_ids,
+        },
+    ) {
+        state.provider_runtime.last_error_detail = Some(error.clone());
+        state.provider_runtime.last_result = Some(format!(
+            "failed to track buyer request id {} for relay correlation: {}",
+            request_id, error
+        ));
+    }
+    if let Err(error) = state.queue_provider_nip90_lane_command(
+        crate::provider_nip90_lane::ProviderNip90LaneCommand::PublishEvent {
+            request_id: request_id.clone(),
+            role: crate::provider_nip90_lane::ProviderNip90PublishRole::Request,
+            event: Box::new(request_event),
+        },
+    ) {
+        state.network_requests.apply_nip90_request_publish_outcome(
+            request_id.as_str(),
+            request_id.as_str(),
+            0,
+            0,
+            Some(error.as_str()),
+        );
+        state.provider_runtime.last_error_detail = Some(error.clone());
+        state.provider_runtime.last_result = Some(format!(
+            "failed to queue NIP-90 request publish for {}: {}",
+            request_id, error
+        ));
+        return Err(error);
+    }
+    state.provider_runtime.last_result = Some(format!(
+        "Queued NIP-90 request {} -> AC cmd#{}",
+        request_id, command_seq
+    ));
+
+    if local_network_request_inject_enabled() {
+        state
+            .job_inbox
+            .upsert_network_request(JobInboxNetworkRequest {
+                request_id: request_id.clone(),
+                requester: "network-buyer".to_string(),
+                demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+                request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+                capability: "local.injected.request".to_string(),
+                execution_input: Some(state.network_requests.submitted.last().map_or_else(
+                    || "Execute the injected local network request payload.".to_string(),
+                    |request| request.payload.clone(),
+                )),
+                target_provider_pubkeys,
+                encrypted: false,
+                encrypted_payload: None,
+                parsed_event_shape: None,
+                raw_event_json: None,
+                skill_scope_id: None,
+                skl_manifest_a: None,
+                skl_manifest_event_id: None,
+                sa_tick_request_event_id: Some(request_id.clone()),
+                sa_tick_result_event_id: None,
+                ac_envelope_event_id: None,
+                price_sats: budget_sats,
+                ttl_seconds: timeout_seconds,
+                validation: JobInboxValidation::Pending,
+            });
+    }
+    state.sync_health.last_applied_event_seq =
+        state.sync_health.last_applied_event_seq.saturating_add(1);
+    state.sync_health.cursor_last_advanced_seconds_ago = 0;
+    refresh_sync_health(state);
+    Ok(request_id)
 }
 
 fn local_network_request_inject_enabled() -> bool {
@@ -3704,13 +3795,501 @@ fn local_network_request_inject_enabled() -> bool {
         .unwrap_or(false)
 }
 
+fn extract_target_provider_pubkeys(payload: &str) -> Vec<String> {
+    let mut providers = Vec::<String>::new();
+    let Ok(value) = serde_json::from_str::<serde_json::Value>(payload) else {
+        return providers;
+    };
+
+    if let Some(provider) = value
+        .get("target_provider_pubkey")
+        .and_then(serde_json::Value::as_str)
+    {
+        providers.push(provider.to_string());
+    }
+    if let Some(provider) = value
+        .get("target_provider")
+        .and_then(serde_json::Value::as_str)
+    {
+        providers.push(provider.to_string());
+    }
+    if let Some(provider_list) = value
+        .get("target_provider_pubkeys")
+        .and_then(serde_json::Value::as_array)
+    {
+        providers.extend(
+            provider_list
+                .iter()
+                .filter_map(serde_json::Value::as_str)
+                .map(ToString::to_string),
+        );
+    }
+
+    providers = providers
+        .into_iter()
+        .map(|provider| provider.trim().to_string())
+        .filter(|provider| !provider.is_empty())
+        .collect::<Vec<_>>();
+    providers.sort();
+    providers.dedup();
+    providers
+}
+
+fn build_nip90_request_event_for_network_submission(
+    identity: Option<&nostr::NostrIdentity>,
+    request_type: &str,
+    payload: &str,
+    skill_scope_id: Option<&str>,
+    credit_envelope_ref: Option<&str>,
+    resolution_mode: crate::app_state::BuyerResolutionMode,
+    budget_sats: u64,
+    timeout_seconds: u64,
+    relay_urls: &[String],
+    target_provider_pubkeys: &[String],
+) -> Result<nostr::Event, String> {
+    let Some(identity) = identity else {
+        return Err("Cannot publish NIP-90 request: Nostr identity unavailable".to_string());
+    };
+
+    let request_kind = nip90_request_kind_for_request_type(request_type);
+    let mut request = nostr::nip90::JobRequest::new(request_kind)
+        .map_err(|error| format!("Cannot build NIP-90 request: {error}"))?
+        .add_input(nostr::nip90::JobInput::text(payload))
+        .add_param("request_type", request_type)
+        .add_param("oa_resolution_mode", resolution_mode.label())
+        .add_param("timeout_seconds", timeout_seconds.to_string())
+        .with_bid(budget_sats.saturating_mul(1000));
+    if let Some(scope_id) = skill_scope_id {
+        let scope_id = scope_id.trim();
+        if !scope_id.is_empty() {
+            request = request.add_param("skill_scope_id", scope_id);
+        }
+    }
+    if let Some(envelope_ref) = credit_envelope_ref {
+        let envelope_ref = envelope_ref.trim();
+        if !envelope_ref.is_empty() {
+            request = request.add_param("credit_envelope_ref", envelope_ref);
+        }
+    }
+    let normalized_relays = relay_urls
+        .iter()
+        .map(|relay| relay.trim().to_string())
+        .filter(|relay| !relay.is_empty())
+        .collect::<Vec<_>>();
+    if normalized_relays.is_empty() {
+        return Err(
+            "Cannot publish NIP-90 request: no relay URLs configured for request publication"
+                .to_string(),
+        );
+    }
+    for relay in normalized_relays {
+        request = request.add_relay(relay);
+    }
+    for provider in target_provider_pubkeys {
+        let provider = provider.trim();
+        if !provider.is_empty() {
+            request = request.add_service_provider(provider.to_string());
+        }
+    }
+
+    let template = nostr::nip90::create_job_request_event(&request);
+    sign_nip90_template(identity, &template)
+}
+
+fn nip90_request_kind_for_request_type(request_type: &str) -> u16 {
+    let request_type = request_type.trim().to_ascii_lowercase();
+    if request_type.contains("summary") || request_type.contains("summariz") {
+        nostr::nip90::KIND_JOB_SUMMARIZATION
+    } else if request_type.contains("translate") {
+        nostr::nip90::KIND_JOB_TRANSLATION
+    } else if request_type.contains("extract") {
+        nostr::nip90::KIND_JOB_TEXT_EXTRACTION
+    } else {
+        nostr::nip90::KIND_JOB_TEXT_GENERATION
+    }
+}
+
+fn sign_nip90_template(
+    identity: &nostr::NostrIdentity,
+    template: &nostr::EventTemplate,
+) -> Result<nostr::Event, String> {
+    let private_key = parse_nostr_private_key_hex(identity.private_key_hex.as_str())?;
+    nostr::finalize_event(template, &private_key)
+        .map_err(|error| format!("Cannot sign NIP-90 request: {error}"))
+}
+
+fn parse_nostr_private_key_hex(private_key_hex: &str) -> Result<[u8; 32], String> {
+    let key_bytes = hex::decode(private_key_hex.trim())
+        .map_err(|error| format!("invalid identity private_key_hex: {error}"))?;
+    if key_bytes.len() != 32 {
+        return Err(format!(
+            "invalid identity private_key_hex length {}, expected 32 bytes",
+            key_bytes.len()
+        ));
+    }
+    let mut key = [0u8; 32];
+    key.copy_from_slice(key_bytes.as_slice());
+    Ok(key)
+}
+
 const STARTER_DEMAND_BUDGET_SATS_ENV: &str = "OPENAGENTS_STARTER_DEMAND_BUDGET_SATS";
 const STARTER_DEMAND_DISPATCH_INTERVAL_ENV: &str =
     "OPENAGENTS_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
 const STARTER_DEMAND_MAX_INFLIGHT_ENV: &str = "OPENAGENTS_STARTER_DEMAND_MAX_INFLIGHT";
+const STARTER_DEMAND_LOCAL_SIMULATOR_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_STARTER_DEMAND_SIMULATOR";
 const STARTER_DEMAND_REQUEST_TIMEOUT_SECONDS: u64 = 75;
+const HOSTED_STARTER_DEMAND_POLL_INTERVAL_SECONDS: u64 = 3;
+const HOSTED_STARTER_DEMAND_HEARTBEAT_RETRY_SECONDS: u64 = 3;
 
 pub(super) fn run_auto_starter_demand_generator(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    if starter_demand_local_simulator_enabled() {
+        return run_local_starter_demand_simulator(state, now);
+    }
+
+    run_hosted_starter_demand_sync(state, now)
+}
+
+fn run_hosted_starter_demand_sync(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let active_starter_request_id = state
+        .active_job
+        .job
+        .as_ref()
+        .filter(|job| job.demand_source == crate::app_state::JobDemandSource::StarterDemand)
+        .map(|job| job.request_id.clone());
+    let clear_hosted_rows = |state: &mut crate::app_state::RenderState, reason: &str| {
+        let mut changed = state
+            .starter_jobs
+            .clear_hosted_offers_except(reason, active_starter_request_id.as_deref());
+        let removed = state.job_inbox.remove_requests_by_demand_source(
+            crate::app_state::JobDemandSource::StarterDemand,
+            active_starter_request_id.as_deref(),
+        );
+        changed |= removed > 0;
+        changed
+    };
+
+    if state.settings.document.primary_relay_url
+        != crate::app_state::DEFAULT_NEXUS_PRIMARY_RELAY_URL
+    {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs are only available on the OpenAgents Nexus relay.",
+        );
+    }
+    if !matches!(state.provider_runtime.mode, ProviderMode::Online)
+        || state.provider_nip90_lane.connected_relays == 0
+    {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs become available after Go Online on the OpenAgents Nexus.",
+        );
+    }
+    if state
+        .starter_jobs
+        .next_hosted_sync_due_at
+        .is_some_and(|next_due_at| now < next_due_at)
+    {
+        return false;
+    }
+
+    let Some(control_base_url) = state.hosted_control_base_url.clone() else {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs require an OpenAgents control base URL.",
+        );
+    };
+    let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
+        return clear_hosted_rows(
+            state,
+            "Hosted starter jobs require an authenticated OpenAgents session.",
+        );
+    };
+
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            let message = format!("starter demand client initialization failed: {error}");
+            state.starter_jobs.last_error = Some(message.clone());
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_error_detail = Some(message.clone());
+            state.provider_runtime.last_result = Some(message);
+            return true;
+        }
+    };
+    let poll_request = crate::starter_demand_client::StarterDemandPollRequest {
+        provider_nostr_pubkey: state
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.npub.clone()),
+        primary_relay_url: Some(state.settings.document.primary_relay_url.clone()),
+    };
+    let response = match crate::starter_demand_client::poll_starter_demand_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        &poll_request,
+    ) {
+        Ok(response) => response,
+        Err(error) => {
+            state.starter_jobs.next_hosted_sync_due_at = Some(
+                now + std::time::Duration::from_secs(HOSTED_STARTER_DEMAND_POLL_INTERVAL_SECONDS),
+            );
+            state.starter_jobs.last_error = Some(error.clone());
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_error_detail = Some(error.clone());
+            state.provider_runtime.last_result =
+                Some(format!("hosted starter demand sync failed: {error}"));
+            return true;
+        }
+    };
+
+    if !response.eligible {
+        let reason = response
+            .reason
+            .as_deref()
+            .unwrap_or("Hosted starter jobs are not eligible for this session.");
+        return clear_hosted_rows(state, reason);
+    }
+
+    let hosted_jobs = response
+        .offers
+        .iter()
+        .map(|offer| crate::app_state::StarterJobRow {
+            job_id: offer.request_id.clone(),
+            summary: offer
+                .execution_input
+                .clone()
+                .unwrap_or_else(|| offer.capability.clone()),
+            payout_sats: offer.price_sats,
+            eligible: true,
+            status: hosted_offer_status_to_starter_job_status(offer.status.as_str()),
+            payout_pointer: None,
+            start_confirm_by_unix_ms: offer.start_confirm_by_unix_ms,
+            execution_started_at_unix_ms: offer.execution_started_at_unix_ms,
+            execution_expires_at_unix_ms: offer.execution_expires_at_unix_ms,
+            last_heartbeat_at_unix_ms: offer.last_heartbeat_at_unix_ms,
+            next_heartbeat_due_at_unix_ms: offer.next_heartbeat_due_at_unix_ms,
+        })
+        .collect::<Vec<_>>();
+    state.starter_jobs.sync_hosted_offers(
+        hosted_jobs,
+        response.budget_cap_sats,
+        response.budget_allocated_sats,
+        response.dispatch_interval_seconds,
+        response.max_active_offers_per_session,
+        Some(now + std::time::Duration::from_secs(HOSTED_STARTER_DEMAND_POLL_INTERVAL_SECONDS)),
+        "Synced hosted starter-demand offers from Nexus",
+    );
+
+    let keep_request_id = active_starter_request_id.clone().or_else(|| {
+        response
+            .offers
+            .first()
+            .map(|offer| offer.request_id.clone())
+    });
+    let removed = state.job_inbox.remove_requests_by_demand_source(
+        crate::app_state::JobDemandSource::StarterDemand,
+        keep_request_id.as_deref(),
+    );
+    let mut changed = removed > 0;
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+
+    for offer in &response.offers {
+        let request = JobInboxNetworkRequest {
+            request_id: offer.request_id.clone(),
+            requester: offer.requester.clone(),
+            demand_source: crate::app_state::JobDemandSource::StarterDemand,
+            request_kind: offer.request_kind,
+            capability: offer.capability.clone(),
+            execution_input: offer.execution_input.clone(),
+            target_provider_pubkeys: Vec::new(),
+            encrypted: false,
+            encrypted_payload: None,
+            parsed_event_shape: Some(format!(
+                "starter.offer authority={} status={} ttl_seconds={}",
+                response.authority, offer.status, offer.ttl_seconds
+            )),
+            raw_event_json: None,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some(offer.request_id.clone()),
+            sa_tick_result_event_id: None,
+            ac_envelope_event_id: None,
+            price_sats: offer.price_sats,
+            ttl_seconds: offer.ttl_seconds,
+            validation: JobInboxValidation::Valid,
+        };
+        let is_new = !state
+            .job_inbox
+            .requests
+            .iter()
+            .any(|existing| existing.request_id == offer.request_id);
+        state.job_inbox.upsert_network_request(request.clone());
+        if is_new {
+            changed = true;
+            state.earn_job_lifecycle_projection.record_ingress_request(
+                &request,
+                now_epoch_seconds,
+                "starter.hosted.ingress",
+            );
+            state.earn_kernel_receipts.record_ingress_request(
+                &request,
+                now_epoch_seconds,
+                "starter.hosted.ingress",
+            );
+            state
+                .activity_feed
+                .upsert_event(crate::app_state::ActivityEventRow {
+                    event_id: format!("starter.hosted.offer:{}", offer.request_id),
+                    domain: crate::app_state::ActivityEventDomain::Network,
+                    source_tag: "starter.hosted".to_string(),
+                    summary: "Hosted starter offer arrived".to_string(),
+                    detail: format!(
+                        "request={} payout_sats={} authority={} relay={}",
+                        offer.request_id,
+                        offer.price_sats,
+                        response.authority,
+                        response.hosted_nexus_relay_url
+                    ),
+                    occurred_at_epoch_seconds: now_epoch_seconds,
+                });
+            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
+        }
+    }
+
+    state.provider_runtime.last_result = Some(format!(
+        "hosted starter demand synced ({} offer{})",
+        response.offers.len(),
+        if response.offers.len() == 1 { "" } else { "s" }
+    ));
+    changed
+}
+
+pub(super) fn run_hosted_starter_lease_heartbeat(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some((request_id, demand_source, stage)) = state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| (job.request_id.clone(), job.demand_source, job.stage))
+    else {
+        return false;
+    };
+    if demand_source != crate::app_state::JobDemandSource::StarterDemand || stage.is_terminal() {
+        return false;
+    }
+    if state
+        .starter_jobs
+        .next_hosted_heartbeat_due_at
+        .is_some_and(|next_due_at| now < next_due_at)
+    {
+        return false;
+    }
+
+    let Some(control_base_url) = state.hosted_control_base_url.clone() else {
+        return false;
+    };
+    let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
+        return false;
+    };
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            state.starter_jobs.last_error = Some(format!(
+                "starter demand heartbeat client initialization failed: {error}"
+            ));
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            return true;
+        }
+    };
+    let provider_nostr_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str());
+    match crate::starter_demand_client::heartbeat_starter_demand_offer_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        request_id.as_str(),
+        provider_nostr_pubkey,
+    ) {
+        Ok(response) => {
+            state.starter_jobs.mark_heartbeat(
+                response.request_id.as_str(),
+                response.last_heartbeat_at_unix_ms,
+                response.next_heartbeat_due_at_unix_ms,
+                response.execution_expires_at_unix_ms,
+                Some(
+                    now + std::time::Duration::from_secs(
+                        response.heartbeat_interval_seconds.max(1),
+                    ),
+                ),
+            );
+            state.starter_jobs.next_hosted_sync_due_at = Some(now);
+            false
+        }
+        Err(error) => {
+            let normalized = error.to_ascii_lowercase();
+            if normalized.contains("starter_offer_heartbeat_missed")
+                || normalized.contains("starter_offer_execution_expired")
+                || normalized.contains("starter_offer_not_running")
+                || normalized.contains("starter_offer_not_found")
+            {
+                state.starter_jobs.mark_released(
+                    request_id.as_str(),
+                    "lease lost during hosted starter execution",
+                );
+                state.starter_jobs.next_hosted_sync_due_at = Some(now);
+                state.active_job.last_error = Some(format!(
+                    "hosted starter lease lost for {}: {}",
+                    request_id, error
+                ));
+                state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+                state.provider_runtime.last_error_detail =
+                    Some(format!("hosted starter lease lost: {error}"));
+                state.provider_runtime.last_result =
+                    Some(format!("hosted starter lease lost for {}", request_id));
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Execution);
+                if let Err(fail_error) = fail_hosted_starter_active_job_for_lease_loss(
+                    state,
+                    "active_job.hosted_starter_lease_lost",
+                ) {
+                    state.active_job.last_error = Some(fail_error);
+                }
+                return true;
+            }
+
+            state.starter_jobs.next_hosted_heartbeat_due_at = Some(
+                now + std::time::Duration::from_secs(HOSTED_STARTER_DEMAND_HEARTBEAT_RETRY_SECONDS),
+            );
+            state.starter_jobs.last_error = Some(format!(
+                "hosted starter heartbeat reconciliation failed: {error}"
+            ));
+            state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+            true
+        }
+    }
+}
+
+fn run_local_starter_demand_simulator(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
 ) -> bool {
@@ -3781,6 +4360,18 @@ pub(super) fn run_auto_starter_demand_generator(
     }
 }
 
+fn starter_demand_local_simulator_enabled() -> bool {
+    std::env::var(STARTER_DEMAND_LOCAL_SIMULATOR_ENV)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn queue_starter_demand_request(
     state: &mut crate::app_state::RenderState,
     starter_job: &crate::app_state::StarterJobRow,
@@ -3793,49 +4384,65 @@ fn queue_starter_demand_request(
     })
     .to_string();
     let timeout_seconds = STARTER_DEMAND_REQUEST_TIMEOUT_SECONDS;
-    let scope = format!(
-        "starter.quest:{}:{}",
-        starter_job.job_id, starter_job.payout_sats
-    );
-    let command_seq = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
-        scope,
-        request_type: request_type.clone(),
-        payload: payload.clone(),
-        skill_scope_id: None,
-        credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
-        requested_sats: starter_job.payout_sats,
-        timeout_seconds,
-    })?;
+    let command_seq = state.reserve_runtime_command_seq();
     let request_id = state
         .network_requests
         .queue_request_submission(NetworkRequestSubmission {
+            request_id: None,
             request_type,
             payload,
+            resolution_mode: crate::app_state::BuyerResolutionMode::Race,
+            target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
-            credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
+            credit_envelope_ref: None,
             budget_sats: starter_job.payout_sats,
             timeout_seconds,
             authority_command_seq: command_seq,
         })?;
+    state.network_requests.mark_direct_authority_ready(
+        request_id.as_str(),
+        "starter-hosted",
+        Some(request_id.as_str()),
+    );
 
+    let starter_request = JobInboxNetworkRequest {
+        request_id: request_id.clone(),
+        requester: "starter-demand".to_string(),
+        demand_source: crate::app_state::JobDemandSource::StarterDemand,
+        request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+        capability: "starter.quest.dispatch".to_string(),
+        execution_input: Some(format!(
+            "Starter quest {}\n\n{}",
+            starter_job.job_id, starter_job.summary
+        )),
+        target_provider_pubkeys: Vec::new(),
+        encrypted: false,
+        encrypted_payload: None,
+        parsed_event_shape: None,
+        raw_event_json: None,
+        skill_scope_id: None,
+        skl_manifest_a: None,
+        skl_manifest_event_id: None,
+        sa_tick_request_event_id: Some(request_id.clone()),
+        sa_tick_result_event_id: None,
+        ac_envelope_event_id: None,
+        price_sats: starter_job.payout_sats,
+        ttl_seconds: timeout_seconds,
+        validation: JobInboxValidation::Valid,
+    };
     state
         .job_inbox
-        .upsert_network_request(JobInboxNetworkRequest {
-            request_id: request_id.clone(),
-            requester: "starter-demand".to_string(),
-            demand_source: crate::app_state::JobDemandSource::StarterDemand,
-            request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
-            capability: "starter.quest.dispatch".to_string(),
-            skill_scope_id: None,
-            skl_manifest_a: None,
-            skl_manifest_event_id: None,
-            sa_tick_request_event_id: None,
-            sa_tick_result_event_id: None,
-            ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
-            price_sats: starter_job.payout_sats,
-            ttl_seconds: timeout_seconds,
-            validation: JobInboxValidation::Valid,
-        });
+        .upsert_network_request(starter_request.clone());
+    state.earn_job_lifecycle_projection.record_ingress_request(
+        &starter_request,
+        now_epoch_seconds,
+        "starter.quest.ingress",
+    );
+    state.earn_kernel_receipts.record_ingress_request(
+        &starter_request,
+        now_epoch_seconds,
+        "starter.quest.ingress",
+    );
     state.sync_health.last_applied_event_seq =
         state.sync_health.last_applied_event_seq.saturating_add(1);
     state.sync_health.cursor_last_advanced_seconds_ago = 0;
@@ -3876,7 +4483,7 @@ fn starter_demand_dispatch_interval_seconds() -> u64 {
 }
 
 fn starter_demand_max_inflight_jobs() -> usize {
-    parse_env_u64_with_default(STARTER_DEMAND_MAX_INFLIGHT_ENV, 3, 1, 12) as usize
+    parse_env_u64_with_default(STARTER_DEMAND_MAX_INFLIGHT_ENV, 1, 1, 1) as usize
 }
 
 fn parse_env_u64_with_default(key: &str, default: u64, min: u64, max: u64) -> u64 {
@@ -3885,6 +4492,413 @@ fn parse_env_u64_with_default(key: &str, default: u64, min: u64, max: u64) -> u6
         .and_then(|raw| raw.trim().parse::<u64>().ok())
         .map(|value| value.clamp(min, max))
         .unwrap_or(default)
+}
+
+const RECIPROCAL_LOOP_AUTOSTART_ENV: &str = "OPENAGENTS_RECIPROCAL_LOOP_AUTOSTART";
+const RECIPROCAL_LOOP_PEER_PUBKEY_ENV: &str = "OPENAGENTS_RECIPROCAL_LOOP_PEER_PUBKEY";
+const RECIPROCAL_LOOP_REQUEST_TYPE: &str = "loop.pingpong.10sat";
+
+pub(super) fn run_reciprocal_loop_engine_tick(state: &mut crate::app_state::RenderState) -> bool {
+    let mut changed = false;
+    let now_epoch_seconds = current_epoch_seconds();
+    if sync_reciprocal_loop_identity_and_peer(state) {
+        changed = true;
+    }
+
+    let outbound_failed_before = state.reciprocal_loop.local_to_peer_failed;
+    let inbound_failed_before = state.reciprocal_loop.peer_to_local_failed;
+    if state
+        .reciprocal_loop
+        .reconcile_outbound_terminal_statuses(state.network_requests.submitted.as_slice())
+    {
+        changed = true;
+    }
+    if state
+        .reciprocal_loop
+        .reconcile_inbound_history(state.job_history.rows.as_slice())
+    {
+        changed = true;
+    }
+
+    if state.reciprocal_loop.local_to_peer_failed > outbound_failed_before {
+        let detail = state
+            .reciprocal_loop
+            .last_failure_detail
+            .clone()
+            .unwrap_or_else(|| "reciprocal loop outbound payment failed".to_string());
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Payment,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Payment,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Payment,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if state.reciprocal_loop.peer_to_local_failed > inbound_failed_before {
+        let detail = state
+            .reciprocal_loop
+            .last_failure_detail
+            .clone()
+            .unwrap_or_else(|| "reciprocal loop inbound job failed".to_string());
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Reconciliation,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if state
+        .reciprocal_loop
+        .clear_retry_backoff_if_elapsed(now_epoch_seconds)
+    {
+        changed = true;
+    }
+    state
+        .reciprocal_loop
+        .mark_peer_wait_started(now_epoch_seconds);
+
+    if state
+        .reciprocal_loop
+        .outbound_stale_timed_out(now_epoch_seconds)
+        && let Some(request_id) = state.reciprocal_loop.mark_outbound_stale_timeout()
+    {
+        let detail = format!(
+            "outbound request {} exceeded stale timeout ({}s)",
+            request_id, state.reciprocal_loop.stale_timeout_seconds
+        );
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Execution,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if state
+        .reciprocal_loop
+        .inbound_wait_timed_out(now_epoch_seconds)
+    {
+        state.reciprocal_loop.mark_inbound_stale_timeout();
+        let detail = format!(
+            "peer inbound wait exceeded stale timeout ({}s)",
+            state.reciprocal_loop.stale_timeout_seconds
+        );
+        let terminal = state.reciprocal_loop.record_recoverable_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            detail.as_str(),
+            now_epoch_seconds,
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Job,
+            if terminal {
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+            } else {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+            },
+            crate::app_state::EarnFailureClass::Reconciliation,
+            detail.as_str(),
+        );
+        changed = true;
+    }
+
+    if let Some(limit_violation) = state.reciprocal_loop.in_flight_limit_violation() {
+        state.reciprocal_loop.record_terminal_failure(
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            limit_violation.as_str(),
+        );
+        set_reciprocal_loop_runtime_failure(
+            state,
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            crate::app_state::ReciprocalLoopFailureDisposition::Terminal,
+            crate::app_state::EarnFailureClass::Execution,
+            limit_violation.as_str(),
+        );
+        changed = true;
+        return changed;
+    }
+
+    if state.reciprocal_loop.in_backoff_window(now_epoch_seconds) {
+        return changed;
+    }
+
+    if !state.reciprocal_loop.running
+        && !state.reciprocal_loop.kill_switch_active
+        && reciprocal_loop_autostart_enabled()
+    {
+        if state.reciprocal_loop.start().is_ok() {
+            state.provider_runtime.last_result = Some("reciprocal loop autostarted".to_string());
+            changed = true;
+        }
+    }
+
+    if !state.reciprocal_loop.ready_to_dispatch() {
+        return changed;
+    }
+
+    let Some(peer_pubkey) = state.reciprocal_loop.peer_pubkey.clone() else {
+        return changed;
+    };
+    let amount_sats = state.reciprocal_loop.amount_sats;
+    let timeout_seconds = state.reciprocal_loop.timeout_seconds;
+    let skill_scope_id = Some(state.reciprocal_loop.skill_scope_id.clone());
+    let credit_envelope_ref = state.ac_lane.envelope_event_id.clone();
+    let sequence = state
+        .reciprocal_loop
+        .local_to_peer_dispatched
+        .saturating_add(1);
+    let payload = reciprocal_loop_payload(peer_pubkey.as_str(), amount_sats, sequence);
+
+    match submit_signed_network_request(
+        state,
+        RECIPROCAL_LOOP_REQUEST_TYPE.to_string(),
+        payload,
+        skill_scope_id,
+        credit_envelope_ref,
+        amount_sats,
+        timeout_seconds,
+        vec![peer_pubkey],
+    ) {
+        Ok(request_id) => {
+            state
+                .reciprocal_loop
+                .register_outbound_dispatch(request_id.as_str(), now_epoch_seconds);
+            state.provider_runtime.last_result = Some(format!(
+                "reciprocal loop dispatched {} sats request {}",
+                amount_sats, request_id
+            ));
+            if state.provider_runtime.last_authoritative_error_class
+                == Some(EarnFailureClass::Execution)
+            {
+                state.provider_runtime.last_authoritative_error_class = None;
+            }
+            state.provider_runtime.last_authoritative_status = Some("ok".to_string());
+            changed = true;
+        }
+        Err(error) => {
+            let (failure_class, disposition, earn_failure_class) =
+                classify_reciprocal_loop_dispatch_error(error.as_str());
+            match disposition {
+                crate::app_state::ReciprocalLoopFailureDisposition::Recoverable => {
+                    let terminal = state.reciprocal_loop.record_recoverable_failure(
+                        failure_class,
+                        error.as_str(),
+                        now_epoch_seconds,
+                    );
+                    set_reciprocal_loop_runtime_failure(
+                        state,
+                        failure_class,
+                        if terminal {
+                            crate::app_state::ReciprocalLoopFailureDisposition::Terminal
+                        } else {
+                            crate::app_state::ReciprocalLoopFailureDisposition::Recoverable
+                        },
+                        earn_failure_class,
+                        error.as_str(),
+                    );
+                }
+                crate::app_state::ReciprocalLoopFailureDisposition::Terminal => {
+                    state
+                        .reciprocal_loop
+                        .record_terminal_failure(failure_class, error.as_str());
+                    set_reciprocal_loop_runtime_failure(
+                        state,
+                        failure_class,
+                        crate::app_state::ReciprocalLoopFailureDisposition::Terminal,
+                        earn_failure_class,
+                        error.as_str(),
+                    );
+                }
+            }
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+fn set_reciprocal_loop_runtime_failure(
+    state: &mut crate::app_state::RenderState,
+    class: crate::app_state::ReciprocalLoopFailureClass,
+    disposition: crate::app_state::ReciprocalLoopFailureDisposition,
+    earn_failure_class: crate::app_state::EarnFailureClass,
+    detail: &str,
+) {
+    let detail = detail.trim();
+    let detail = if detail.is_empty() {
+        "reciprocal loop runtime failure"
+    } else {
+        detail
+    };
+    state.provider_runtime.last_error_detail = Some(detail.to_string());
+    state.provider_runtime.last_result = Some(format!(
+        "reciprocal loop {} failure class={} detail={}",
+        disposition.label(),
+        class.label(),
+        detail
+    ));
+    state.provider_runtime.last_authoritative_status = Some(disposition.label().to_string());
+    state.provider_runtime.last_authoritative_error_class = Some(earn_failure_class);
+}
+
+fn classify_reciprocal_loop_dispatch_error(
+    error: &str,
+) -> (
+    crate::app_state::ReciprocalLoopFailureClass,
+    crate::app_state::ReciprocalLoopFailureDisposition,
+    crate::app_state::EarnFailureClass,
+) {
+    let normalized = error.to_ascii_lowercase();
+    let relay_markers = ["relay", "websocket", "tls", "publish", "connection"];
+    if relay_markers
+        .iter()
+        .any(|marker| normalized.contains(marker))
+    {
+        return (
+            crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+            crate::app_state::ReciprocalLoopFailureDisposition::Recoverable,
+            crate::app_state::EarnFailureClass::Relay,
+        );
+    }
+
+    let wallet_markers = ["wallet", "spark", "invoice", "payment", "bolt11"];
+    if wallet_markers
+        .iter()
+        .any(|marker| normalized.contains(marker))
+    {
+        return (
+            crate::app_state::ReciprocalLoopFailureClass::Payment,
+            crate::app_state::ReciprocalLoopFailureDisposition::Recoverable,
+            crate::app_state::EarnFailureClass::Payment,
+        );
+    }
+
+    (
+        crate::app_state::ReciprocalLoopFailureClass::Dispatch,
+        crate::app_state::ReciprocalLoopFailureDisposition::Terminal,
+        crate::app_state::EarnFailureClass::Execution,
+    )
+}
+
+fn sync_reciprocal_loop_identity_and_peer(state: &mut crate::app_state::RenderState) -> bool {
+    let mut changed = false;
+    let before_local = state.reciprocal_loop.local_pubkey.clone();
+    let local_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.public_key_hex.as_str());
+    state.reciprocal_loop.set_local_pubkey(local_pubkey);
+    if before_local != state.reciprocal_loop.local_pubkey {
+        changed = true;
+    }
+
+    if state.reciprocal_loop.peer_pubkey.is_none()
+        && let Some(peer_pubkey) = reciprocal_loop_peer_pubkey_from_env()
+    {
+        state
+            .reciprocal_loop
+            .set_peer_pubkey(Some(peer_pubkey.as_str()));
+        changed = true;
+    }
+
+    changed
+}
+
+fn reciprocal_loop_payload(peer_pubkey: &str, amount_sats: u64, sequence: u64) -> String {
+    serde_json::json!({
+        "prompt": format!(
+            "Reciprocal loop task #{}: respond with 'pong' and include the sequence id.",
+            sequence
+        ),
+        "loop_scope": "earn.loop.pingpong.v1",
+        "loop_amount_sats": amount_sats,
+        "loop_sequence": sequence,
+        "target_provider_pubkeys": [peer_pubkey],
+    })
+    .to_string()
+}
+
+fn reciprocal_loop_peer_pubkey_from_env() -> Option<String> {
+    std::env::var(RECIPROCAL_LOOP_PEER_PUBKEY_ENV)
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+fn reciprocal_loop_autostart_enabled() -> bool {
+    std::env::var(RECIPROCAL_LOOP_AUTOSTART_ENV)
+        .ok()
+        .map(|value| matches!(value.trim(), "1" | "true" | "TRUE" | "yes" | "on"))
+        .unwrap_or(false)
+}
+
+pub(super) fn run_reciprocal_loop_action(
+    state: &mut crate::app_state::RenderState,
+    action: ReciprocalLoopPaneAction,
+) -> bool {
+    let _ = sync_reciprocal_loop_identity_and_peer(state);
+    match action {
+        ReciprocalLoopPaneAction::Start => match state.reciprocal_loop.start() {
+            Ok(()) => {
+                state.provider_runtime.last_result =
+                    Some("reciprocal loop started from pane".to_string());
+                state.provider_runtime.last_authoritative_status = Some("running".to_string());
+            }
+            Err(error) => {
+                state.provider_runtime.last_error_detail = Some(error.clone());
+                state.provider_runtime.last_result =
+                    Some(format!("reciprocal loop start failed: {error}"));
+            }
+        },
+        ReciprocalLoopPaneAction::Stop => {
+            state
+                .reciprocal_loop
+                .stop("operator requested stop from pane");
+            state.provider_runtime.last_result =
+                Some("reciprocal loop stopped from pane".to_string());
+            state.provider_runtime.last_authoritative_status = Some("stopped".to_string());
+        }
+        ReciprocalLoopPaneAction::Reset => {
+            state.reciprocal_loop.reset_counters();
+            state.provider_runtime.last_result =
+                Some("reciprocal loop counters reset from pane".to_string());
+        }
+    }
+    true
 }
 
 pub(super) fn run_starter_jobs_action(
@@ -3902,6 +4916,14 @@ pub(super) fn run_starter_jobs_action(
             true
         }
         StarterJobsPaneAction::ToggleKillSwitch => {
+            if !starter_demand_local_simulator_enabled() {
+                state.starter_jobs.last_error = Some(
+                    "Hosted starter-demand controls live in Nexus; the desktop pane is read-only."
+                        .to_string(),
+                );
+                state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            }
             let enabled = state.starter_jobs.toggle_kill_switch();
             state.provider_runtime.last_result = Some(if enabled {
                 "starter demand kill switch enabled".to_string()
@@ -3911,6 +4933,14 @@ pub(super) fn run_starter_jobs_action(
             true
         }
         StarterJobsPaneAction::CompleteSelected => {
+            if !starter_demand_local_simulator_enabled() {
+                state.starter_jobs.last_error = Some(
+                    "Hosted starter jobs settle through the normal provider execution path."
+                        .to_string(),
+                );
+                state.starter_jobs.load_state = crate::app_state::PaneLoadState::Error;
+                return true;
+            }
             match state.starter_jobs.start_selected_execution() {
                 Ok((job_id, payout_sats)) => {
                     let payout_pointer =
@@ -3938,42 +4968,45 @@ pub(super) fn run_starter_jobs_action(
                             ));
                             state.provider_runtime.last_result =
                                 Some(format!("completed starter quest {}", job_id));
-                            state
-                                .job_history
-                                .upsert_row(crate::app_state::JobHistoryReceiptRow {
-                                    job_id: job_id.clone(),
-                                    status: crate::app_state::JobHistoryStatus::Succeeded,
-                                    demand_source:
-                                        crate::app_state::JobDemandSource::StarterDemand,
-                                    completed_at_epoch_seconds: state
-                                        .job_history
-                                        .reference_epoch_seconds
-                                        .saturating_add(state.job_history.rows.len() as u64 * 19),
-                                    skill_scope_id: state
-                                        .network_requests
-                                        .submitted
-                                        .first()
-                                        .and_then(|request| request.skill_scope_id.clone()),
-                                    skl_manifest_a: state.skl_lane.manifest_a.clone(),
-                                    skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
-                                    sa_tick_result_event_id: state
-                                        .sa_lane
-                                        .last_tick_result_event_id
-                                        .clone(),
-                                    sa_trajectory_session_id: Some(
-                                        "traj:starter-quest".to_string(),
-                                    ),
-                                    ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
-                                    ac_settlement_event_id: state
-                                        .ac_lane
-                                        .settlement_event_id
-                                        .clone(),
-                                    ac_default_event_id: None,
-                                    payout_sats,
-                                    result_hash: "sha256:starter-quest-job".to_string(),
-                                    payment_pointer: payout_pointer.clone(),
-                                    failure_reason: None,
-                                });
+                            let receipt_row = crate::app_state::JobHistoryReceiptRow {
+                                job_id: job_id.clone(),
+                                status: crate::app_state::JobHistoryStatus::Succeeded,
+                                demand_source: crate::app_state::JobDemandSource::StarterDemand,
+                                completed_at_epoch_seconds: state
+                                    .job_history
+                                    .reference_epoch_seconds
+                                    .saturating_add(state.job_history.rows.len() as u64 * 19),
+                                skill_scope_id: state
+                                    .network_requests
+                                    .submitted
+                                    .first()
+                                    .and_then(|request| request.skill_scope_id.clone()),
+                                skl_manifest_a: state.skl_lane.manifest_a.clone(),
+                                skl_manifest_event_id: state.skl_lane.manifest_event_id.clone(),
+                                sa_tick_result_event_id: state
+                                    .sa_lane
+                                    .last_tick_result_event_id
+                                    .clone(),
+                                sa_trajectory_session_id: Some("traj:starter-quest".to_string()),
+                                ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
+                                ac_settlement_event_id: state.ac_lane.settlement_event_id.clone(),
+                                ac_default_event_id: None,
+                                payout_sats,
+                                result_hash: "sha256:starter-quest-job".to_string(),
+                                payment_pointer: payout_pointer.clone(),
+                                failure_reason: None,
+                            };
+                            state.job_history.upsert_row(receipt_row.clone());
+                            state.earn_job_lifecycle_projection.record_history_receipt(
+                                &receipt_row,
+                                receipt_row.completed_at_epoch_seconds,
+                                "starter.quest.settlement",
+                            );
+                            state.earn_kernel_receipts.record_history_receipt(
+                                &receipt_row,
+                                receipt_row.completed_at_epoch_seconds,
+                                "starter.quest.settlement",
+                            );
                             state
                                 .activity_feed
                                 .upsert_event(crate::app_state::ActivityEventRow {
@@ -4034,14 +5067,241 @@ fn is_synthetic_local_payment_pointer(pointer: &str) -> bool {
         || normalized.starts_with("pay-req-")
 }
 
+pub(super) fn run_open_network_paid_transition_reconciliation(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) -> bool {
+    let Some((request_id, demand_source)) = state
+        .active_job
+        .job
+        .as_ref()
+        .map(|job| (job.request_id.clone(), job.demand_source))
+    else {
+        return false;
+    };
+    if state
+        .active_job
+        .job
+        .as_ref()
+        .is_none_or(|job| job.stage != crate::app_state::JobLifecycleStage::Delivered)
+    {
+        return false;
+    }
+
+    let maybe_existing_pointer = state
+        .active_job
+        .job
+        .as_ref()
+        .and_then(|job| job.payment_id.clone());
+    let wallet_pointer = maybe_existing_pointer.or_else(|| {
+        resolve_wallet_settlement_pointer_for_open_network_job(
+            state.active_job.job.as_ref()?,
+            state.job_history.rows.as_slice(),
+            state.spark_wallet.recent_payments.as_slice(),
+        )
+    });
+
+    let Some(wallet_pointer) = wallet_pointer else {
+        let missing_detail = format!(
+            "{} delivered job {} is waiting for wallet-authoritative payment evidence",
+            demand_source.label(),
+            request_id
+        );
+        if state.active_job.last_error.as_deref() != Some(missing_detail.as_str()) {
+            state.active_job.last_error = Some(missing_detail.clone());
+            state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_result = Some(missing_detail);
+            state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+        }
+        return false;
+    };
+
+    if let Some(active_job) = state.active_job.job.as_mut() {
+        active_job.payment_id = Some(wallet_pointer.clone());
+    }
+    state.active_job.append_event(format!(
+        "wallet-authoritative payment pointer {} observed for delivered {} job",
+        wallet_pointer,
+        demand_source.label()
+    ));
+
+    if demand_source == crate::app_state::JobDemandSource::StarterDemand
+        && let Err(error) = complete_hosted_starter_offer_if_configured(
+            state,
+            request_id.as_str(),
+            wallet_pointer.as_str(),
+        )
+    {
+        let message = format!(
+            "wallet pointer {} found but hosted starter completion failed: {}",
+            wallet_pointer, error
+        );
+        state.active_job.last_error = Some(message.clone());
+        state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+        state.provider_runtime.last_result = Some(message);
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+        return false;
+    }
+
+    match super::reducers::transition_active_job_to_paid(
+        state,
+        "active_job.wallet_paid_transition",
+        now,
+    ) {
+        Ok(crate::app_state::JobLifecycleStage::Paid) => {
+            state.provider_runtime.last_result = Some(format!(
+                "{} job paid with wallet pointer {}",
+                demand_source.label(),
+                wallet_pointer
+            ));
+            if state.provider_runtime.last_authoritative_error_class
+                == Some(EarnFailureClass::Payment)
+            {
+                state.provider_runtime.last_authoritative_error_class = None;
+            }
+            true
+        }
+        Ok(_) => false,
+        Err(error) => {
+            let message = format!(
+                "wallet pointer {} found but paid transition failed: {}",
+                wallet_pointer, error
+            );
+            state.active_job.last_error = Some(message.clone());
+            state.active_job.load_state = crate::app_state::PaneLoadState::Error;
+            state.provider_runtime.last_result = Some(message);
+            state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Payment);
+            false
+        }
+    }
+}
+
+fn complete_hosted_starter_offer_if_configured(
+    state: &mut crate::app_state::RenderState,
+    request_id: &str,
+    payment_pointer: &str,
+) -> Result<(), String> {
+    let Some(control_base_url) = state.hosted_control_base_url.clone() else {
+        return Ok(());
+    };
+    let Some(bearer_auth) = state.hosted_control_bearer_token.clone() else {
+        return Ok(());
+    };
+    let client = match reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+    {
+        Ok(client) => client,
+        Err(error) => {
+            return Err(format!(
+                "starter demand completion client initialization failed: {error}"
+            ));
+        }
+    };
+    match crate::starter_demand_client::complete_starter_demand_offer_blocking(
+        &client,
+        control_base_url.as_str(),
+        bearer_auth.as_str(),
+        request_id,
+        payment_pointer,
+    ) {
+        Ok(response) => {
+            state.starter_jobs.mark_completed(
+                response.request_id.as_str(),
+                response.payment_pointer.as_str(),
+            );
+            state.starter_jobs.budget_cap_sats = response.budget_cap_sats;
+            state.starter_jobs.budget_allocated_sats = response.budget_allocated_sats;
+            state.starter_jobs.next_hosted_sync_due_at = Some(std::time::Instant::now());
+            Ok(())
+        }
+        Err(error) => Err(format!(
+            "hosted starter completion reconciliation failed: {error}"
+        )),
+    }
+}
+
+fn hosted_offer_status_to_starter_job_status(status: &str) -> crate::app_state::StarterJobStatus {
+    if status.eq_ignore_ascii_case("running") {
+        crate::app_state::StarterJobStatus::Running
+    } else if status.eq_ignore_ascii_case("completed") {
+        crate::app_state::StarterJobStatus::Completed
+    } else {
+        crate::app_state::StarterJobStatus::Queued
+    }
+}
+
+fn fail_hosted_starter_active_job_for_lease_loss(
+    state: &mut crate::app_state::RenderState,
+    source: &str,
+) -> Result<(), String> {
+    let Some(job) = state.active_job.job.as_ref().cloned() else {
+        return Ok(());
+    };
+    state
+        .active_job
+        .mark_failed("hosted starter lease lost", "Hosted starter lease lost")?;
+    state.active_job.result_publish_in_flight = false;
+    state.active_job.execution_turn_completed = false;
+    state.active_job.execution_thread_start_command_seq = None;
+    state.active_job.execution_turn_start_command_seq = None;
+    state.active_job.execution_turn_interrupt_command_seq = None;
+    state
+        .job_history
+        .record_from_active_job(&job, crate::app_state::JobHistoryStatus::Failed);
+    state.earn_job_lifecycle_projection.record_active_job_stage(
+        &job,
+        crate::app_state::JobLifecycleStage::Failed,
+        current_epoch_seconds(),
+        source,
+    );
+    state.earn_kernel_receipts.record_active_job_stage(
+        &job,
+        crate::app_state::JobLifecycleStage::Failed,
+        current_epoch_seconds(),
+        source,
+    );
+    Ok(())
+}
+
+fn resolve_wallet_settlement_pointer_for_open_network_job(
+    job: &crate::app_state::ActiveJobRecord,
+    history_rows: &[crate::app_state::JobHistoryReceiptRow],
+    recent_payments: &[openagents_spark::PaymentSummary],
+) -> Option<String> {
+    let used_pointers = history_rows
+        .iter()
+        .map(|row| row.payment_pointer.clone())
+        .collect::<std::collections::HashSet<_>>();
+    recent_payments
+        .iter()
+        .filter(|payment| {
+            payment.direction.eq_ignore_ascii_case("receive")
+                && payment.status.eq_ignore_ascii_case("succeeded")
+                && !payment.id.trim().is_empty()
+                && !used_pointers.contains(payment.id.as_str())
+                && !is_synthetic_local_payment_pointer(payment.id.as_str())
+                && (job.quoted_price_sats == 0 || payment.amount_sats == job.quoted_price_sats)
+        })
+        .max_by(|left, right| left.timestamp.cmp(&right.timestamp))
+        .map(|payment| payment.id.clone())
+}
+
 pub(super) fn run_activity_feed_action(
     state: &mut crate::app_state::RenderState,
     action: ActivityFeedPaneAction,
 ) -> bool {
     match action {
         ActivityFeedPaneAction::Refresh => {
-            let rows = build_activity_feed_snapshot_events(state);
-            state.activity_feed.record_refresh(rows);
+            let _ = state.activity_feed.reload_projection();
+            true
+        }
+        ActivityFeedPaneAction::PreviousPage => {
+            state.activity_feed.previous_page();
+            true
+        }
+        ActivityFeedPaneAction::NextPage => {
+            state.activity_feed.next_page();
             true
         }
         ActivityFeedPaneAction::SetFilter(filter) => {
@@ -4114,6 +5374,8 @@ pub(super) fn run_alerts_recovery_action(
                             "Identity regenerated. Secrets are hidden by default.".to_string(),
                         );
                         queue_spark_command(state, SparkWalletCommand::Refresh);
+                        let _ = state.sync_provider_nip90_lane_identity();
+                        crate::render::apply_spacetime_sync_bootstrap(state);
                         Ok("Identity lane recovered".to_string())
                     }
                     Err(error) => Err(format!("Identity recovery failed: {error}")),
@@ -4131,7 +5393,10 @@ pub(super) fn run_alerts_recovery_action(
                             .map(|row| row.url.clone());
                     }
                     match state.relay_connections.retry_selected() {
-                        Ok(url) => Ok(format!("Relay reconnect attempted for {url}")),
+                        Ok(url) => {
+                            let _ = state.sync_provider_nip90_lane_relays();
+                            Ok(format!("Relay reconnect attempted for {url}"))
+                        }
                         Err(error) => Err(error),
                     }
                 }
@@ -4232,7 +5497,10 @@ pub(super) fn run_settings_action(
                     state
                         .relay_connections_inputs
                         .relay_url
-                        .set_value(state.settings.document.relay_url.clone());
+                        .set_value(state.settings.document.primary_relay_url.clone());
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
                     let _ = state.sync_provider_nip90_lane_relays();
                     state
                         .spark_inputs
@@ -4244,7 +5512,17 @@ pub(super) fn run_settings_action(
                         .set_value(state.settings.document.wallet_default_send_sats.to_string());
                     state.provider_runtime.last_result = state.settings.last_action.clone();
                     if state.settings.document.reconnect_required {
-                        state.sync_health.subscription_state = "resubscribing".to_string();
+                        let worker_id = state.sync_lifecycle_worker_id.clone();
+                        let _ = state.sync_lifecycle.mark_disconnect(
+                            worker_id.as_str(),
+                            crate::sync_lifecycle::RuntimeSyncDisconnectReason::Network,
+                            Some(
+                                "settings updated connectivity; sync reconnect required"
+                                    .to_string(),
+                            ),
+                        );
+                        state.sync_lifecycle_snapshot =
+                            state.sync_lifecycle.snapshot(worker_id.as_str());
                         state.sync_health.last_action = Some(
                             "Settings changed connectivity lanes; reconnect required".to_string(),
                         );
@@ -4263,7 +5541,10 @@ pub(super) fn run_settings_action(
                     state
                         .relay_connections_inputs
                         .relay_url
-                        .set_value(state.settings.document.relay_url.clone());
+                        .set_value(state.settings.document.primary_relay_url.clone());
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
                     let _ = state.sync_provider_nip90_lane_relays();
                     state
                         .spark_inputs
@@ -4393,188 +5674,6 @@ pub(super) fn run_credentials_action(
     true
 }
 
-pub(super) fn build_activity_feed_snapshot_events(
-    state: &crate::app_state::RenderState,
-) -> Vec<ActivityEventRow> {
-    let now_epoch = state
-        .job_history
-        .reference_epoch_seconds
-        .saturating_add(state.job_history.rows.len() as u64 * 23);
-    let mut rows = Vec::new();
-
-    for message in state.autopilot_chat.messages.iter().rev().take(6) {
-        let role = match message.role {
-            crate::app_state::AutopilotRole::User => "user",
-            crate::app_state::AutopilotRole::Codex => "codex",
-        };
-        let status = match message.status {
-            crate::app_state::AutopilotMessageStatus::Queued => "queued",
-            crate::app_state::AutopilotMessageStatus::Running => "running",
-            crate::app_state::AutopilotMessageStatus::Done => "done",
-            crate::app_state::AutopilotMessageStatus::Error => "error",
-        };
-        rows.push(ActivityEventRow {
-            event_id: format!("chat:msg:{}", message.id),
-            domain: ActivityEventDomain::Chat,
-            source_tag: ActivityEventDomain::Chat.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(message.id),
-            summary: format!("{role} message {status}"),
-            detail: message.content.clone(),
-        });
-    }
-
-    for (index, event) in state.cad_demo.cad_events.iter().rev().take(16).enumerate() {
-        rows.push(ActivityEventRow {
-            event_id: event.event_id.clone(),
-            domain: ActivityEventDomain::Cad,
-            source_tag: format!("cad.{}", event.kind.as_str()),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(8 + index as u64),
-            summary: event.summary.clone(),
-            detail: format!(
-                "doc={} rev={} variant={} {}",
-                event.document_id,
-                event.document_revision,
-                event.variant_id.as_deref().unwrap_or("none"),
-                event.detail
-            ),
-        });
-    }
-
-    for receipt in state.job_history.rows.iter().take(6) {
-        rows.push(ActivityEventRow {
-            event_id: format!("job:receipt:{}", receipt.job_id),
-            domain: ActivityEventDomain::Job,
-            source_tag: ActivityEventDomain::Job.source_tag().to_string(),
-            occurred_at_epoch_seconds: receipt.completed_at_epoch_seconds,
-            summary: format!(
-                "{} {} sats {}",
-                receipt.job_id,
-                receipt.payout_sats,
-                receipt.status.label()
-            ),
-            detail: receipt.payment_pointer.clone(),
-        });
-    }
-
-    if let Some(last_payment_id) = state.spark_wallet.last_payment_id.as_deref() {
-        rows.push(ActivityEventRow {
-            event_id: format!("wallet:payment:{last_payment_id}"),
-            domain: ActivityEventDomain::Wallet,
-            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch,
-            summary: "Spark payment pointer updated".to_string(),
-            detail: last_payment_id.to_string(),
-        });
-    }
-    if let Some(wallet_action) = state.spark_wallet.last_action.as_deref() {
-        rows.push(ActivityEventRow {
-            event_id: "wallet:last_action".to_string(),
-            domain: ActivityEventDomain::Wallet,
-            source_tag: ActivityEventDomain::Wallet.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(1),
-            summary: "Wallet activity".to_string(),
-            detail: wallet_action.to_string(),
-        });
-    }
-
-    for (idx, request) in state.network_requests.submitted.iter().take(6).enumerate() {
-        rows.push(ActivityEventRow {
-            event_id: format!("network:request:{}", request.request_id),
-            domain: ActivityEventDomain::Network,
-            source_tag: ActivityEventDomain::Network.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(20 + idx as u64 * 2),
-            summary: format!("{} {}", request.request_id, request.status.label()),
-            detail: format!("{} -> {}", request.request_type, request.response_stream_id),
-        });
-    }
-
-    if let Some(profile_event_id) = state.sa_lane.profile_event_id.as_deref() {
-        rows.push(ActivityEventRow {
-            event_id: format!("sa:profile:{profile_event_id}"),
-            domain: ActivityEventDomain::Sa,
-            source_tag: ActivityEventDomain::Sa.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(3),
-            summary: format!("SA profile {}", state.sa_lane.mode.label()),
-            detail: profile_event_id.to_string(),
-        });
-    }
-    if let Some(tick_event_id) = state.sa_lane.last_tick_result_event_id.as_deref() {
-        rows.push(ActivityEventRow {
-            event_id: format!("sa:tick:{tick_event_id}"),
-            domain: ActivityEventDomain::Sa,
-            source_tag: ActivityEventDomain::Sa.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(4),
-            summary: format!("SA tick {}", state.sa_lane.tick_count),
-            detail: tick_event_id.to_string(),
-        });
-    }
-
-    if let Some(manifest) = state.skl_lane.manifest_a.as_deref() {
-        rows.push(ActivityEventRow {
-            event_id: format!("skl:manifest:{manifest}"),
-            domain: ActivityEventDomain::Skl,
-            source_tag: ActivityEventDomain::Skl.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(5),
-            summary: format!("SKL trust {}", state.skl_lane.trust_tier.label()),
-            detail: manifest.to_string(),
-        });
-    }
-
-    if let Some(intent_event_id) = state.ac_lane.intent_event_id.as_deref() {
-        rows.push(ActivityEventRow {
-            event_id: format!("ac:intent:{intent_event_id}"),
-            domain: ActivityEventDomain::Ac,
-            source_tag: ActivityEventDomain::Ac.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch.saturating_sub(6),
-            summary: if state.ac_lane.credit_available {
-                "AC credit available".to_string()
-            } else {
-                "AC credit unavailable".to_string()
-            },
-            detail: intent_event_id.to_string(),
-        });
-    }
-
-    for response in state.runtime_command_responses.iter().rev().take(12) {
-        let domain = match response.lane {
-            RuntimeLane::SaLifecycle => ActivityEventDomain::Sa,
-            RuntimeLane::SklDiscoveryTrust => ActivityEventDomain::Skl,
-            RuntimeLane::AcCredit => ActivityEventDomain::Ac,
-        };
-        rows.push(ActivityEventRow {
-            event_id: format!("runtime:cmd:{}", response.command_seq),
-            domain,
-            source_tag: domain.source_tag().to_string(),
-            occurred_at_epoch_seconds: now_epoch
-                .saturating_sub(7_u64.saturating_add(response.command_seq)),
-            summary: format!("{} {}", response.command.label(), response.status.label()),
-            detail: response
-                .event_id
-                .clone()
-                .unwrap_or_else(|| "event:n/a".to_string()),
-        });
-    }
-
-    rows.push(ActivityEventRow {
-        event_id: format!("sync:cursor:{}", state.sync_health.last_applied_event_seq),
-        domain: ActivityEventDomain::Sync,
-        source_tag: ActivityEventDomain::Sync.source_tag().to_string(),
-        occurred_at_epoch_seconds: now_epoch.saturating_sub(2),
-        summary: format!(
-            "cursor={} phase={}",
-            state.sync_health.last_applied_event_seq,
-            state.sync_health.recovery_phase.label()
-        ),
-        detail: format!(
-            "stale_age={}s duplicate_drops={}",
-            state.sync_health.cursor_last_advanced_seconds_ago,
-            state.sync_health.duplicate_drop_count
-        ),
-    });
-
-    rows
-}
-
 pub(super) fn refresh_earnings_scoreboard(
     state: &mut crate::app_state::RenderState,
     now: std::time::Instant,
@@ -4585,14 +5684,470 @@ pub(super) fn refresh_earnings_scoreboard(
         &state.job_history,
         &state.spark_wallet,
     );
+
+    let succeeded_jobs = state
+        .job_history
+        .rows
+        .iter()
+        .filter(|row| row.status == crate::app_state::JobHistoryStatus::Succeeded)
+        .count();
+    let reconciled_jobs = state
+        .job_history
+        .wallet_reconciled_payout_rows(&state.spark_wallet)
+        .len();
+    let failure = classify_provider_failure(
+        state.provider_nip90_lane.last_error.as_deref(),
+        state.provider_runtime.degraded_reason_code.as_deref(),
+        state.provider_runtime.last_error_detail.as_deref(),
+        state.active_job.last_error.as_deref(),
+        state.spark_wallet.last_error.as_deref(),
+        state.spark_wallet.balance.is_some() && state.spark_wallet.last_error.is_none(),
+        succeeded_jobs,
+        reconciled_jobs,
+    );
+    if let Some((class, detail)) = failure {
+        state.provider_runtime.last_authoritative_error_class = Some(class);
+        state.provider_runtime.last_error_detail = Some(detail);
+    } else {
+        state.provider_runtime.last_authoritative_error_class = None;
+        if state
+            .provider_runtime
+            .last_error_detail
+            .as_deref()
+            .is_some_and(is_taxonomy_failure_detail)
+        {
+            state.provider_runtime.last_error_detail = None;
+        }
+    }
+
+    refresh_loop_integrity_slo_alerts(state);
+}
+
+fn classify_provider_failure(
+    relay_lane_error: Option<&str>,
+    degraded_reason_code: Option<&str>,
+    runtime_error_detail: Option<&str>,
+    active_job_error: Option<&str>,
+    wallet_error: Option<&str>,
+    wallet_ready: bool,
+    succeeded_jobs: usize,
+    reconciled_jobs: usize,
+) -> Option<(crate::app_state::EarnFailureClass, String)> {
+    if let Some(error) = relay_lane_error {
+        return Some((
+            crate::app_state::EarnFailureClass::Relay,
+            taxonomy_failure_detail(crate::app_state::EarnFailureClass::Relay, error),
+        ));
+    }
+    if degraded_reason_code.is_some_and(|code| code.starts_with("NIP90_")) {
+        return Some((
+            crate::app_state::EarnFailureClass::Relay,
+            taxonomy_failure_detail(
+                crate::app_state::EarnFailureClass::Relay,
+                runtime_error_detail.unwrap_or("relay lane degraded"),
+            ),
+        ));
+    }
+    if let Some(error) = active_job_error {
+        return Some((
+            crate::app_state::EarnFailureClass::Execution,
+            taxonomy_failure_detail(crate::app_state::EarnFailureClass::Execution, error),
+        ));
+    }
+    if degraded_reason_code.is_some_and(|code| code.starts_with("SA_")) {
+        return Some((
+            crate::app_state::EarnFailureClass::Execution,
+            taxonomy_failure_detail(
+                crate::app_state::EarnFailureClass::Execution,
+                runtime_error_detail.unwrap_or("execution lane degraded"),
+            ),
+        ));
+    }
+    if let Some(error) = wallet_error {
+        return Some((
+            crate::app_state::EarnFailureClass::Payment,
+            taxonomy_failure_detail(crate::app_state::EarnFailureClass::Payment, error),
+        ));
+    }
+    if wallet_ready && succeeded_jobs > reconciled_jobs {
+        let missing = succeeded_jobs.saturating_sub(reconciled_jobs);
+        return Some((
+            crate::app_state::EarnFailureClass::Reconciliation,
+            taxonomy_failure_detail(
+                crate::app_state::EarnFailureClass::Reconciliation,
+                format!("{missing} succeeded job(s) missing wallet-confirmed payout evidence"),
+            ),
+        ));
+    }
+
+    None
+}
+
+fn taxonomy_failure_detail(
+    class: crate::app_state::EarnFailureClass,
+    detail: impl AsRef<str>,
+) -> String {
+    let detail = detail.as_ref().trim();
+    if detail.is_empty() {
+        class.label().to_string()
+    } else if detail
+        .to_ascii_lowercase()
+        .starts_with(&format!("{}:", class.label()))
+    {
+        detail.to_string()
+    } else {
+        format!("{}: {}", class.label(), detail)
+    }
+}
+
+fn is_taxonomy_failure_detail(detail: &str) -> bool {
+    [
+        crate::app_state::EarnFailureClass::Relay,
+        crate::app_state::EarnFailureClass::Execution,
+        crate::app_state::EarnFailureClass::Payment,
+        crate::app_state::EarnFailureClass::Reconciliation,
+    ]
+    .into_iter()
+    .any(|class| detail.to_ascii_lowercase().starts_with(class.label()))
+}
+
+const FIRST_JOB_LATENCY_SLO_SECONDS: u64 = 300;
+const COMPLETION_RATIO_SLO_BPS: u16 = 7_500;
+const PAYOUT_SUCCESS_SLO_BPS: u16 = 9_000;
+const WALLET_CONFIRM_LATENCY_SLO_SECONDS: u64 = 300;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct LoopIntegrityAlertSpec {
+    alert_id: &'static str,
+    domain: crate::app_state::AlertDomain,
+    severity: crate::app_state::AlertSeverity,
+    active: bool,
+    summary: String,
+    remediation: String,
+}
+
+fn loop_integrity_alert_specs(
+    first_job_latency_seconds: Option<u64>,
+    completion_ratio_bps: Option<u16>,
+    payout_success_ratio_bps: Option<u16>,
+    avg_wallet_confirmation_latency_seconds: Option<u64>,
+) -> Vec<LoopIntegrityAlertSpec> {
+    let first_job_active =
+        first_job_latency_seconds.is_some_and(|latency| latency > FIRST_JOB_LATENCY_SLO_SECONDS);
+    let completion_active =
+        completion_ratio_bps.is_some_and(|ratio| ratio < COMPLETION_RATIO_SLO_BPS);
+    let payout_active =
+        payout_success_ratio_bps.is_some_and(|ratio| ratio < PAYOUT_SUCCESS_SLO_BPS);
+    let wallet_latency_active = avg_wallet_confirmation_latency_seconds
+        .is_some_and(|latency| latency > WALLET_CONFIRM_LATENCY_SLO_SECONDS);
+
+    vec![
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:first-job-latency",
+            domain: crate::app_state::AlertDomain::ProviderRuntime,
+            severity: crate::app_state::AlertSeverity::Warning,
+            active: first_job_active,
+            summary: first_job_latency_seconds.map_or_else(
+                || "SLO first-job latency unavailable".to_string(),
+                |latency| {
+                    format!(
+                        "SLO first-job latency {}s (target <= {}s)",
+                        latency, FIRST_JOB_LATENCY_SLO_SECONDS
+                    )
+                },
+            ),
+            remediation:
+                "Check relay connectivity and starter-demand health to reduce time-to-first-job."
+                    .to_string(),
+        },
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:completion-ratio",
+            domain: crate::app_state::AlertDomain::ProviderRuntime,
+            severity: crate::app_state::AlertSeverity::Warning,
+            active: completion_active,
+            summary: completion_ratio_bps.map_or_else(
+                || "SLO completion ratio unavailable".to_string(),
+                |ratio| {
+                    format!(
+                        "SLO completion ratio {:.2}% (target >= {:.2}%)",
+                        ratio as f64 / 100.0,
+                        COMPLETION_RATIO_SLO_BPS as f64 / 100.0
+                    )
+                },
+            ),
+            remediation:
+                "Inspect execution failures in Active Job and resolve blocking runtime dependencies."
+                    .to_string(),
+        },
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:payout-success-ratio",
+            domain: crate::app_state::AlertDomain::Wallet,
+            severity: crate::app_state::AlertSeverity::Critical,
+            active: payout_active,
+            summary: payout_success_ratio_bps.map_or_else(
+                || "SLO payout success ratio unavailable".to_string(),
+                |ratio| {
+                    format!(
+                        "SLO payout success ratio {:.2}% (target >= {:.2}%)",
+                        ratio as f64 / 100.0,
+                        PAYOUT_SUCCESS_SLO_BPS as f64 / 100.0
+                    )
+                },
+            ),
+            remediation: "Audit wallet reconciliation mismatches and verify payout pointers against settled receive payments.".to_string(),
+        },
+        LoopIntegrityAlertSpec {
+            alert_id: "alert:slo:wallet-confirm-latency",
+            domain: crate::app_state::AlertDomain::Wallet,
+            severity: crate::app_state::AlertSeverity::Warning,
+            active: wallet_latency_active,
+            summary: avg_wallet_confirmation_latency_seconds.map_or_else(
+                || "SLO wallet confirmation latency unavailable".to_string(),
+                |latency| {
+                    format!(
+                        "SLO wallet confirm latency {}s (target <= {}s)",
+                        latency, WALLET_CONFIRM_LATENCY_SLO_SECONDS
+                    )
+                },
+            ),
+            remediation:
+                "Investigate payment settlement delays and wallet ingest lag before accepting more demand."
+                    .to_string(),
+        },
+    ]
+}
+
+fn refresh_loop_integrity_slo_alerts(state: &mut crate::app_state::RenderState) {
+    let specs = loop_integrity_alert_specs(
+        state.earnings_scoreboard.first_job_latency_seconds,
+        state.earnings_scoreboard.completion_ratio_bps,
+        state.earnings_scoreboard.payout_success_ratio_bps,
+        state
+            .earnings_scoreboard
+            .avg_wallet_confirmation_latency_seconds,
+    );
+    let now_epoch_seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |duration| duration.as_secs());
+
+    let mut active_count = 0usize;
+    for spec in specs {
+        if let Some(existing) = state
+            .alerts_recovery
+            .alerts
+            .iter_mut()
+            .find(|alert| alert.alert_id == spec.alert_id)
+        {
+            if spec.active {
+                active_count = active_count.saturating_add(1);
+                existing.domain = spec.domain;
+                existing.severity = spec.severity;
+                existing.lifecycle = crate::app_state::AlertLifecycle::Active;
+                existing.summary = spec.summary;
+                existing.remediation = spec.remediation;
+                existing.last_transition_epoch_seconds = now_epoch_seconds;
+            } else if existing.lifecycle != crate::app_state::AlertLifecycle::Resolved {
+                existing.lifecycle = crate::app_state::AlertLifecycle::Resolved;
+                existing.summary = format!("{} (recovered)", spec.summary);
+                existing.last_transition_epoch_seconds = now_epoch_seconds;
+            }
+            continue;
+        }
+
+        if spec.active {
+            active_count = active_count.saturating_add(1);
+            state
+                .alerts_recovery
+                .alerts
+                .push(crate::app_state::RecoveryAlertRow {
+                    alert_id: spec.alert_id.to_string(),
+                    domain: spec.domain,
+                    severity: spec.severity,
+                    lifecycle: crate::app_state::AlertLifecycle::Active,
+                    summary: spec.summary,
+                    remediation: spec.remediation,
+                    last_transition_epoch_seconds: now_epoch_seconds,
+                });
+        }
+    }
+
+    if active_count > 0 {
+        state.alerts_recovery.load_state = crate::app_state::PaneLoadState::Ready;
+        state.alerts_recovery.last_error = None;
+        state.alerts_recovery.last_action = Some(format!(
+            "Loop integrity SLO alerts active: {}",
+            active_count
+        ));
+    }
+}
+
+pub(super) fn refresh_network_aggregate_counters(
+    state: &mut crate::app_state::RenderState,
+    now: std::time::Instant,
+) {
+    state.network_aggregate_counters.refresh_from_sources(
+        now,
+        &state.spacetime_presence_snapshot,
+        &state.job_history,
+        &state.spark_wallet,
+    );
+
+    let now_epoch_ms = current_epoch_millis().min(i64::MAX as u64) as i64;
+    let computed_snapshot = {
+        let receipts = state.earn_kernel_receipts.receipts.as_slice();
+        state
+            .economy_snapshot
+            .compute_minute_snapshot(now_epoch_ms, receipts)
+    };
+    if let Some(compute_result) = computed_snapshot {
+        state.earn_kernel_receipts.record_economy_snapshot_receipt(
+            compute_result.snapshot.snapshot_id.as_str(),
+            compute_result.snapshot.as_of_ms,
+            compute_result.snapshot.snapshot_hash.as_str(),
+            compute_result.snapshot.sv,
+            compute_result.snapshot.sv_effective,
+            compute_result.snapshot.rho,
+            compute_result.snapshot.rho_effective,
+            compute_result.snapshot.n,
+            compute_result.snapshot.nv,
+            compute_result.snapshot.delta_m_hat,
+            compute_result.snapshot.xa_hat,
+            compute_result.snapshot.correlated_verification_share,
+            match compute_result
+                .snapshot
+                .liability_premiums_collected_24h
+                .amount
+            {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            match compute_result.snapshot.claims_paid_24h.amount {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            match compute_result.snapshot.bonded_exposure_24h.amount {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            match compute_result.snapshot.capital_reserves_24h.amount {
+                crate::economy_kernel_receipts::MoneyAmount::AmountSats(value) => value,
+                crate::economy_kernel_receipts::MoneyAmount::AmountMsats(value) => value / 1_000,
+            },
+            compute_result.snapshot.loss_ratio,
+            compute_result.snapshot.capital_coverage_ratio,
+            compute_result.snapshot.drift_alerts_24h,
+            compute_result.snapshot.drift_signals,
+            compute_result.snapshot.top_drift_signals,
+            compute_result.snapshot.rollback_attempts_24h,
+            compute_result.snapshot.rollback_successes_24h,
+            compute_result.snapshot.rollback_success_rate,
+            compute_result
+                .snapshot
+                .top_rollback_reason_codes
+                .into_iter()
+                .map(|row| (row.reason_code, row.count_24h))
+                .collect(),
+            compute_result.snapshot.audit_package_public_digest,
+            compute_result.snapshot.audit_package_restricted_digest,
+            compute_result.input_evidence,
+            "economy.snapshot.minute",
+        );
+    }
 }
 
 pub(super) fn refresh_sync_health(state: &mut crate::app_state::RenderState) {
-    state.sync_health.refresh_from_runtime(
-        std::time::Instant::now(),
-        &state.provider_runtime,
-        &state.relay_connections,
+    let now = std::time::Instant::now();
+    let worker_id = state.sync_lifecycle_worker_id.clone();
+
+    state.sync_lifecycle.mark_replay_progress(
+        worker_id.as_str(),
+        state.sync_health.last_applied_event_seq,
+        Some(state.sync_health.last_applied_event_seq),
     );
+
+    if let Some(error) = state.sync_bootstrap_error.as_deref() {
+        let reason = crate::sync_lifecycle::classify_disconnect_reason(error);
+        let already_marked = state
+            .sync_lifecycle
+            .snapshot(worker_id.as_str())
+            .is_some_and(|snapshot| {
+                snapshot.state == crate::sync_lifecycle::RuntimeSyncConnectionState::Backoff
+                    && snapshot.last_disconnect_reason == Some(reason)
+                    && snapshot.last_error.as_deref() == Some(error)
+            });
+        if !already_marked {
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(error.to_string()),
+            );
+        }
+    } else if state
+        .sync_bootstrap_note
+        .as_deref()
+        .is_some_and(|note| note.contains("disabled"))
+    {
+        state.sync_lifecycle.mark_idle(worker_id.as_str());
+    } else {
+        let current = state.sync_lifecycle.snapshot(worker_id.as_str());
+        if !current.as_ref().is_some_and(|snapshot| {
+            matches!(
+                snapshot.state,
+                crate::sync_lifecycle::RuntimeSyncConnectionState::Live
+                    | crate::sync_lifecycle::RuntimeSyncConnectionState::Backoff
+            )
+        }) {
+            let refresh_after = current
+                .as_ref()
+                .and_then(|snapshot| snapshot.token_refresh_after_in_seconds);
+            state.sync_lifecycle.mark_connecting(worker_id.as_str());
+            state
+                .sync_lifecycle
+                .mark_live(worker_id.as_str(), refresh_after);
+        }
+    }
+
+    state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+    state
+        .sync_health
+        .refresh_from_lifecycle(now, state.sync_lifecycle_snapshot.as_ref());
+
+    let stale_backoff_already_marked =
+        state
+            .sync_lifecycle_snapshot
+            .as_ref()
+            .is_some_and(|snapshot| {
+                snapshot.state == crate::sync_lifecycle::RuntimeSyncConnectionState::Backoff
+                    && snapshot.last_disconnect_reason
+                        == Some(crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor)
+            });
+    if state.sync_health.cursor_is_stale() && !stale_backoff_already_marked {
+        let _ = state.sync_lifecycle.mark_disconnect(
+            worker_id.as_str(),
+            crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor,
+            Some("sync cursor stale; replay rebootstrap required".to_string()),
+        );
+        state.sync_lifecycle.mark_replay_bootstrap(
+            worker_id.as_str(),
+            state.sync_health.cursor_position,
+            Some(state.sync_health.cursor_position),
+        );
+        state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+        state
+            .sync_health
+            .refresh_from_lifecycle(now, state.sync_lifecycle_snapshot.as_ref());
+        state.sync_health.last_action =
+            Some("Spacetime cursor stale; click Rebootstrap sync".to_string());
+    }
+
+    if let Some(error) = state.sync_bootstrap_error.as_deref() {
+        state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
+        state.sync_health.last_error = Some(error.to_string());
+    } else if let Some(note) = state.sync_bootstrap_note.as_deref() {
+        if state.sync_health.last_action.is_none() {
+            state.sync_health.last_action = Some(note.to_string());
+        }
+    }
 }
 
 pub(super) fn upsert_runtime_incident_alert(
@@ -4923,6 +6478,33 @@ pub(super) fn queue_spark_command(
     command: SparkWalletCommand,
 ) {
     state.spark_wallet.last_error = None;
+    if let SparkWalletCommand::SendPayment {
+        payment_request,
+        amount_sats,
+    } = &command
+    {
+        let caller_identity = state
+            .nostr_identity
+            .as_ref()
+            .map(|identity| identity.npub.as_str())
+            .unwrap_or("autopilot-desktop");
+        let now_epoch_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_millis() as i64);
+        if let Err(error) = state
+            .earn_kernel_receipts
+            .record_wallet_withdraw_send_attempt(
+                caller_identity,
+                payment_request.as_str(),
+                *amount_sats,
+                now_epoch_ms,
+                "spark.send_payment",
+            )
+        {
+            state.spark_wallet.last_error = Some(error);
+            return;
+        }
+    }
     if let Err(error) = state.spark_worker.enqueue(command) {
         state.spark_wallet.last_error = Some(error);
     }
@@ -4944,9 +6526,12 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
-        resolve_wallet_blink_env_from_secure_values,
+        build_nip90_request_event_for_network_submission, classify_provider_failure,
+        extract_target_provider_pubkeys, is_taxonomy_failure_detail, loop_integrity_alert_specs,
+        nip90_request_kind_for_request_type, resolve_wallet_blink_env_from_secure_values,
+        resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
-        stable_sats_real_round_phase_from_operation_count,
+        stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
     };
 
     fn fixture_wallet() -> crate::app_state::StableSatsAgentWalletState {
@@ -4991,6 +6576,191 @@ mod tests {
                 has_value: true,
             },
         ]
+    }
+
+    fn fixture_identity() -> nostr::NostrIdentity {
+        nostr::NostrIdentity {
+            identity_path: std::path::PathBuf::from("/tmp/test-identity.mnemonic"),
+            mnemonic: "test mnemonic".to_string(),
+            npub: "npub-test".to_string(),
+            nsec: "nsec-test".to_string(),
+            public_key_hex: "11".repeat(32),
+            private_key_hex: "22".repeat(32),
+        }
+    }
+
+    fn fixture_open_network_delivered_job(
+        quoted_price_sats: u64,
+    ) -> crate::app_state::ActiveJobRecord {
+        crate::app_state::ActiveJobRecord {
+            job_id: "job-open-network-001".to_string(),
+            request_id: "req-open-network-001".to_string(),
+            requester: "11".repeat(32),
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            request_kind: nostr::nip90::KIND_JOB_TEXT_GENERATION,
+            capability: "text.generation".to_string(),
+            execution_input: Some("Return the generated text result.".to_string()),
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_request_event_id: Some("req-open-network-001".to_string()),
+            sa_tick_result_event_id: Some("result-open-network-001".to_string()),
+            sa_trajectory_session_id: Some("traj:req-open-network-001".to_string()),
+            ac_envelope_event_id: None,
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
+            quoted_price_sats,
+            ttl_seconds: 75,
+            stage: crate::app_state::JobLifecycleStage::Delivered,
+            invoice_id: None,
+            payment_id: None,
+            failure_reason: None,
+            events: vec![],
+        }
+    }
+
+    fn fixture_history_row(payment_pointer: &str) -> crate::app_state::JobHistoryReceiptRow {
+        crate::app_state::JobHistoryReceiptRow {
+            job_id: "job-history-001".to_string(),
+            status: crate::app_state::JobHistoryStatus::Succeeded,
+            demand_source: crate::app_state::JobDemandSource::OpenNetwork,
+            completed_at_epoch_seconds: 1_762_700_000,
+            skill_scope_id: None,
+            skl_manifest_a: None,
+            skl_manifest_event_id: None,
+            sa_tick_result_event_id: None,
+            sa_trajectory_session_id: None,
+            ac_envelope_event_id: None,
+            ac_settlement_event_id: None,
+            ac_default_event_id: None,
+            payout_sats: 10,
+            result_hash: "sha256:test".to_string(),
+            payment_pointer: payment_pointer.to_string(),
+            failure_reason: None,
+        }
+    }
+
+    #[test]
+    fn resolves_open_network_wallet_pointer_preferring_latest_matching_receive() {
+        let job = fixture_open_network_delivered_job(10);
+        let history_rows = vec![fixture_history_row("wallet-used-001")];
+        let payments = vec![
+            openagents_spark::PaymentSummary {
+                id: "wallet-send-001".to_string(),
+                direction: "send".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_001,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-failed-001".to_string(),
+                direction: "receive".to_string(),
+                status: "failed".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_002,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-wrong-amount-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 9,
+                timestamp: 1_762_700_003,
+            },
+            openagents_spark::PaymentSummary {
+                id: "pending:req-open-network-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_004,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-used-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_005,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-pointer-001".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_006,
+            },
+            openagents_spark::PaymentSummary {
+                id: "wallet-pointer-002".to_string(),
+                direction: "receive".to_string(),
+                status: "succeeded".to_string(),
+                amount_sats: 10,
+                timestamp: 1_762_700_007,
+            },
+        ];
+
+        let pointer = resolve_wallet_settlement_pointer_for_open_network_job(
+            &job,
+            history_rows.as_slice(),
+            payments.as_slice(),
+        )
+        .expect("expected wallet pointer candidate");
+        assert_eq!(pointer, "wallet-pointer-002");
+    }
+
+    #[test]
+    fn extracts_optional_target_provider_pubkeys_from_payload_json() {
+        let payload = serde_json::json!({
+            "target_provider_pubkey": "pubkey-a",
+            "target_provider_pubkeys": ["pubkey-b", "pubkey-a", ""]
+        })
+        .to_string();
+        let providers = extract_target_provider_pubkeys(payload.as_str());
+        assert_eq!(
+            providers,
+            vec!["pubkey-a".to_string(), "pubkey-b".to_string()]
+        );
+    }
+
+    #[test]
+    fn builds_signed_nip90_request_event_with_targeting_and_relays() {
+        let identity = fixture_identity();
+        let event = build_nip90_request_event_for_network_submission(
+            Some(&identity),
+            "summarize.text",
+            "{\"prompt\":\"hello\"}",
+            Some("scope-1"),
+            Some("ac-env-1"),
+            crate::app_state::BuyerResolutionMode::Race,
+            10,
+            60,
+            &["wss://relay.one".to_string(), "wss://relay.two".to_string()],
+            &["provider-pubkey-1".to_string()],
+        )
+        .expect("request event should build");
+        assert_eq!(
+            event.kind,
+            nip90_request_kind_for_request_type("summarize.text")
+        );
+        let request = nostr::nip90::JobRequest::from_event(&event).expect("request should parse");
+        assert_eq!(request.bid, Some(10_000));
+        assert_eq!(request.relays.len(), 2);
+        assert_eq!(
+            request.service_providers,
+            vec!["provider-pubkey-1".to_string()]
+        );
+        assert_eq!(request.inputs.len(), 1);
+        assert_eq!(
+            request
+                .params
+                .iter()
+                .filter(|p| p.key == "request_type")
+                .count(),
+            1
+        );
+        assert!(
+            request
+                .params
+                .iter()
+                .any(|p| p.key == "oa_resolution_mode" && p.value == "race")
+        );
     }
 
     #[test]
@@ -5123,5 +6893,82 @@ mod tests {
 
         let totals = stable_sats_period_convert_totals_from_receipts(receipts.as_slice(), cutoff);
         assert_eq!(totals, (1_200, 345));
+    }
+
+    #[test]
+    fn provider_failure_taxonomy_classifies_relay_execution_payment_and_reconciliation() {
+        let relay = classify_provider_failure(
+            Some("relay timeout"),
+            None,
+            None,
+            Some("active job failed"),
+            Some("wallet offline"),
+            true,
+            3,
+            1,
+        )
+        .expect("relay failure should classify");
+        assert_eq!(relay.0, crate::app_state::EarnFailureClass::Relay);
+        assert!(relay.1.starts_with("relay:"));
+
+        let execution = classify_provider_failure(
+            None,
+            Some("SA_COMMAND_REJECTED"),
+            Some("sa lane rejected command"),
+            Some("active job failed"),
+            Some("wallet offline"),
+            true,
+            3,
+            1,
+        )
+        .expect("execution failure should classify");
+        assert_eq!(execution.0, crate::app_state::EarnFailureClass::Execution);
+        assert!(execution.1.starts_with("execution:"));
+
+        let payment = classify_provider_failure(
+            None,
+            None,
+            None,
+            None,
+            Some("wallet backend unavailable"),
+            true,
+            3,
+            1,
+        )
+        .expect("payment failure should classify");
+        assert_eq!(payment.0, crate::app_state::EarnFailureClass::Payment);
+        assert!(payment.1.starts_with("payment:"));
+
+        let reconciliation = classify_provider_failure(None, None, None, None, None, true, 4, 2)
+            .expect("reconciliation mismatch should classify");
+        assert_eq!(
+            reconciliation.0,
+            crate::app_state::EarnFailureClass::Reconciliation
+        );
+        assert!(reconciliation.1.starts_with("reconciliation:"));
+    }
+
+    #[test]
+    fn taxonomy_failure_detail_helpers_prefix_and_detect_labels() {
+        let relay = taxonomy_failure_detail(
+            crate::app_state::EarnFailureClass::Relay,
+            " relay publish failed ",
+        );
+        assert_eq!(relay, "relay: relay publish failed");
+        assert!(is_taxonomy_failure_detail(relay.as_str()));
+        assert!(!is_taxonomy_failure_detail("wallet backend unavailable"));
+    }
+
+    #[test]
+    fn loop_integrity_alert_specs_flags_expected_slo_breaches() {
+        let degraded_specs =
+            loop_integrity_alert_specs(Some(600), Some(6_000), Some(8_000), Some(420));
+        assert_eq!(degraded_specs.len(), 4);
+        assert!(degraded_specs.iter().all(|spec| spec.active));
+
+        let healthy_specs =
+            loop_integrity_alert_specs(Some(45), Some(9_500), Some(10_000), Some(90));
+        assert_eq!(healthy_specs.len(), 4);
+        assert!(healthy_specs.iter().all(|spec| !spec.active));
     }
 }

@@ -1,10 +1,11 @@
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
 use nostr::NostrIdentity;
+use serde::{Deserialize, Serialize};
 use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::renderer::Renderer;
@@ -12,12 +13,12 @@ use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
 use crate::provider_nip90_lane::{
-    ProviderNip90LaneCommand, ProviderNip90LaneSnapshot, ProviderNip90LaneWorker,
+    ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
+    ProviderNip90LaneWorker,
 };
 use crate::runtime_lanes::{
     AcCreditCommand, AcLaneSnapshot, AcLaneWorker, RuntimeCommandResponse, SaLaneSnapshot,
-    SaLaneWorker, SaLifecycleCommand, SkillTrustTier, SklDiscoveryTrustCommand, SklLaneSnapshot,
-    SklLaneWorker,
+    SaLaneWorker, SaLifecycleCommand, SklDiscoveryTrustCommand, SklLaneSnapshot, SklLaneWorker,
 };
 use crate::{
     codex_lane::{
@@ -70,6 +71,7 @@ pub enum PaneKind {
     SyncHealth,
     NetworkRequests,
     StarterJobs,
+    ReciprocalLoop,
     ActivityFeed,
     AlertsRecovery,
     Settings,
@@ -77,11 +79,6 @@ pub enum PaneKind {
     JobInbox,
     ActiveJob,
     JobHistory,
-    EmailInbox,
-    EmailDraftQueue,
-    EmailApprovalQueue,
-    EmailSendLog,
-    EmailFollowUpQueue,
     NostrIdentity,
     SparkWallet,
     SparkCreateInvoice,
@@ -1587,7 +1584,9 @@ impl AutopilotChatState {
     }
 }
 
-pub use crate::state::provider_runtime::{ProviderBlocker, ProviderMode, ProviderRuntimeState};
+pub use crate::state::provider_runtime::{
+    EarnFailureClass, ProviderBlocker, ProviderMode, ProviderRuntimeState,
+};
 #[allow(unused_imports)]
 pub use crate::state::{
     alerts_recovery::{
@@ -1661,12 +1660,14 @@ macro_rules! impl_pane_status_access {
 
 #[allow(unused_imports)]
 pub use crate::state::operations::{
-    NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, RelayConnectionRow,
+    BuyerResolutionMode, BuyerResolutionReason, NetworkRequestStatus, NetworkRequestSubmission,
+    NetworkRequestsState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+    ReciprocalLoopFailureDisposition, ReciprocalLoopState, RelayConnectionRow,
     RelayConnectionStatus, RelayConnectionsState, StarterJobRow, StarterJobStatus,
     StarterJobsState, SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum ActivityEventDomain {
     Chat,
     Cad,
@@ -1721,10 +1722,11 @@ pub enum ActivityFeedFilter {
     Sa,
     Skl,
     Ac,
+    Nip90,
 }
 
 impl ActivityFeedFilter {
-    pub const fn all() -> [Self; 10] {
+    pub const fn all() -> [Self; 11] {
         [
             Self::All,
             Self::Chat,
@@ -1736,6 +1738,7 @@ impl ActivityFeedFilter {
             Self::Sa,
             Self::Skl,
             Self::Ac,
+            Self::Nip90,
         ]
     }
 
@@ -1751,10 +1754,21 @@ impl ActivityFeedFilter {
             Self::Sa => "sa",
             Self::Skl => "skl",
             Self::Ac => "ac",
+            Self::Nip90 => "nip90",
         }
     }
 
-    pub fn matches(self, domain: ActivityEventDomain) -> bool {
+    pub fn matches_row(self, row: &ActivityEventRow) -> bool {
+        if !self.matches_domain(row.domain) {
+            return false;
+        }
+        match self {
+            Self::Nip90 => row.source_tag.starts_with("nip90."),
+            _ => true,
+        }
+    }
+
+    pub fn matches_domain(self, domain: ActivityEventDomain) -> bool {
         match self {
             Self::All => true,
             Self::Chat => domain == ActivityEventDomain::Chat,
@@ -1766,11 +1780,12 @@ impl ActivityFeedFilter {
             Self::Sa => domain == ActivityEventDomain::Sa,
             Self::Skl => domain == ActivityEventDomain::Skl,
             Self::Ac => domain == ActivityEventDomain::Ac,
+            Self::Nip90 => domain == ActivityEventDomain::Network,
         }
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ActivityEventRow {
     pub event_id: String,
     pub domain: ActivityEventDomain,
@@ -1780,34 +1795,155 @@ pub struct ActivityEventRow {
     pub detail: String,
 }
 
+const ACTIVITY_PROJECTION_SCHEMA_VERSION: u16 = 1;
+const ACTIVITY_PROJECTION_STREAM_ID: &str = "stream.activity_projection.v1";
+const ACTIVITY_PROJECTION_ROW_LIMIT: usize = 256;
+const ACTIVITY_FEED_PAGE_SIZE: usize = 8;
+const ACTIVITY_FEED_NIP90_WINDOW_SIZE: usize = 50;
+const ACTIVITY_FEED_SCROLL_NOTCH_PIXELS: f32 = 24.0;
+
+#[derive(Debug, Serialize, Deserialize)]
+struct ActivityProjectionDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    rows: Vec<ActivityEventRow>,
+}
+
 pub struct ActivityFeedState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub active_filter: ActivityFeedFilter,
+    pub page: usize,
     pub rows: Vec<ActivityEventRow>,
     pub selected_event_id: Option<String>,
+    pub detail_scroll_line_offset: usize,
+    pub projection_stream_id: String,
+    projection_file_path: PathBuf,
 }
 
 impl Default for ActivityFeedState {
     fn default() -> Self {
-        Self {
-            load_state: PaneLoadState::Loading,
-            last_error: None,
-            last_action: Some("Waiting for activity feed lane snapshot".to_string()),
-            active_filter: ActivityFeedFilter::All,
-            rows: Vec::new(),
-            selected_event_id: None,
-        }
+        let projection_file_path = activity_projection_file_path();
+        Self::from_projection_file_path(projection_file_path)
     }
 }
 
 impl ActivityFeedState {
+    fn from_projection_file_path(projection_file_path: PathBuf) -> Self {
+        let (rows, load_state, last_error, last_action) =
+            match load_activity_projection_rows(projection_file_path.as_path()) {
+                Ok(rows) => (
+                    rows,
+                    PaneLoadState::Ready,
+                    None,
+                    Some("Loaded activity projection stream".to_string()),
+                ),
+                Err(error) => (
+                    Vec::new(),
+                    PaneLoadState::Error,
+                    Some(error),
+                    Some("Activity projection stream load failed".to_string()),
+                ),
+            };
+        let selected_event_id = rows.first().map(|row| row.event_id.clone());
+        Self {
+            load_state,
+            last_error,
+            last_action: last_action.map(|action| format!("{action} ({} rows)", rows.len())),
+            active_filter: ActivityFeedFilter::All,
+            page: 0,
+            rows,
+            selected_event_id,
+            detail_scroll_line_offset: 0,
+            projection_stream_id: ACTIVITY_PROJECTION_STREAM_ID.to_string(),
+            projection_file_path,
+        }
+    }
+
+    #[cfg(test)]
+    fn from_projection_path_for_tests(projection_file_path: PathBuf) -> Self {
+        Self::from_projection_file_path(projection_file_path)
+    }
+
     pub fn visible_rows(&self) -> Vec<&ActivityEventRow> {
-        self.rows
+        let filtered = self.filtered_rows();
+        let page = self.page.min(self.total_pages().saturating_sub(1));
+        let start = page.saturating_mul(ACTIVITY_FEED_PAGE_SIZE);
+        let end = (start + ACTIVITY_FEED_PAGE_SIZE).min(filtered.len());
+        filtered[start..end].to_vec()
+    }
+
+    fn filtered_rows(&self) -> Vec<&ActivityEventRow> {
+        let mut rows = self
+            .rows
             .iter()
-            .filter(|row| self.active_filter.matches(row.domain))
-            .collect()
+            .filter(|row| self.active_filter.matches_row(row))
+            .collect::<Vec<_>>();
+        if self.active_filter == ActivityFeedFilter::Nip90 {
+            rows.truncate(ACTIVITY_FEED_NIP90_WINDOW_SIZE);
+        }
+        rows
+    }
+
+    pub fn filtered_row_count(&self) -> usize {
+        self.filtered_rows().len()
+    }
+
+    pub fn total_pages(&self) -> usize {
+        let filtered = self.filtered_rows();
+        ((filtered.len() + ACTIVITY_FEED_PAGE_SIZE.saturating_sub(1))
+            / ACTIVITY_FEED_PAGE_SIZE.max(1))
+        .max(1)
+    }
+
+    pub fn previous_page(&mut self) {
+        if self.page > 0 {
+            self.page -= 1;
+            self.ensure_selected_visible();
+            self.reset_detail_scroll();
+            self.pane_set_ready(format!(
+                "Activity page -> {}/{}",
+                self.page.saturating_add(1),
+                self.total_pages()
+            ));
+        }
+    }
+
+    pub fn next_page(&mut self) {
+        let total_pages = self.total_pages();
+        if self.page + 1 < total_pages {
+            self.page += 1;
+            self.ensure_selected_visible();
+            self.reset_detail_scroll();
+            self.pane_set_ready(format!(
+                "Activity page -> {}/{}",
+                self.page.saturating_add(1),
+                total_pages
+            ));
+        }
+    }
+
+    fn clamp_page(&mut self) {
+        self.page = self.page.min(self.total_pages().saturating_sub(1));
+    }
+
+    fn ensure_selected_visible(&mut self) {
+        let (selected_visible, first_visible_id) = {
+            let visible = self.visible_rows();
+            let selected_visible = self
+                .selected_event_id
+                .as_deref()
+                .is_some_and(|selected| visible.iter().any(|row| row.event_id == selected));
+            let first_visible_id = visible.first().map(|row| row.event_id.clone());
+            (selected_visible, first_visible_id)
+        };
+        if !selected_visible {
+            if self.selected_event_id != first_visible_id {
+                self.reset_detail_scroll();
+            }
+            self.selected_event_id = first_visible_id;
+        }
     }
 
     pub fn selected(&self) -> Option<&ActivityEventRow> {
@@ -1823,6 +1959,7 @@ impl ActivityFeedState {
         else {
             return false;
         };
+        self.reset_detail_scroll();
         self.selected_event_id = Some(event_id);
         self.pane_clear_error();
         true
@@ -1830,13 +1967,59 @@ impl ActivityFeedState {
 
     pub fn set_filter(&mut self, filter: ActivityFeedFilter) {
         self.active_filter = filter;
-        if self
-            .selected()
-            .is_none_or(|row| !filter.matches(row.domain))
-        {
-            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
-        }
+        self.page = 0;
+        self.reset_detail_scroll();
+        self.ensure_selected_visible();
         self.pane_set_ready(format!("Activity filter -> {}", filter.label()));
+    }
+
+    pub fn detail_scroll_offset_for(&self, total_lines: usize, visible_lines: usize) -> usize {
+        let visible_lines = visible_lines.max(1);
+        let max_start = total_lines.saturating_sub(visible_lines);
+        self.detail_scroll_line_offset.min(max_start)
+    }
+
+    pub fn scroll_detail_lines_by(
+        &mut self,
+        delta_pixels: f32,
+        total_lines: usize,
+        visible_lines: usize,
+    ) -> bool {
+        if !delta_pixels.is_finite() || delta_pixels.abs() <= f32::EPSILON {
+            return false;
+        }
+        let visible_lines = visible_lines.max(1);
+        let max_start = total_lines.saturating_sub(visible_lines);
+        if max_start == 0 {
+            if self.detail_scroll_line_offset != 0 {
+                self.detail_scroll_line_offset = 0;
+                return true;
+            }
+            return false;
+        }
+
+        let mut line_delta = (delta_pixels / ACTIVITY_FEED_SCROLL_NOTCH_PIXELS).round() as isize;
+        if line_delta == 0 {
+            line_delta = if delta_pixels.is_sign_positive() {
+                1
+            } else {
+                -1
+            };
+        }
+
+        let next = (self
+            .detail_scroll_offset_for(total_lines, visible_lines)
+            .saturating_add_signed(line_delta))
+        .min(max_start);
+        if next == self.detail_scroll_line_offset {
+            return false;
+        }
+        self.detail_scroll_line_offset = next;
+        true
+    }
+
+    pub fn reset_detail_scroll(&mut self) {
+        self.detail_scroll_line_offset = 0;
     }
 
     pub fn upsert_event(&mut self, row: ActivityEventRow) {
@@ -1849,35 +2032,111 @@ impl ActivityFeedState {
         } else {
             self.rows.push(row);
         }
+        self.rows = normalize_activity_projection_rows(std::mem::take(&mut self.rows));
+        self.clamp_page();
+        self.ensure_selected_visible();
 
-        self.rows.sort_by(|lhs, rhs| {
-            rhs.occurred_at_epoch_seconds
-                .cmp(&lhs.occurred_at_epoch_seconds)
-                .then_with(|| lhs.event_id.cmp(&rhs.event_id))
-        });
-        self.rows.truncate(96);
+        if let Err(error) = persist_activity_projection_rows(
+            self.projection_file_path.as_path(),
+            self.rows.as_slice(),
+        ) {
+            self.last_error = Some(error);
+            self.load_state = PaneLoadState::Error;
+        } else {
+            self.load_state = PaneLoadState::Ready;
+            self.last_error = None;
+        }
     }
 
-    pub fn record_refresh(&mut self, rows: Vec<ActivityEventRow>) {
-        for row in rows {
-            self.upsert_event(row);
-        }
-
-        if self.selected().is_none() {
-            self.selected_event_id = self.visible_rows().first().map(|row| row.event_id.clone());
-        }
-
+    pub fn reload_projection(&mut self) -> Result<(), String> {
+        let rows = load_activity_projection_rows(self.projection_file_path.as_path())
+            .map_err(|error| self.pane_set_error(error))?;
+        self.rows = rows;
+        self.clamp_page();
+        self.ensure_selected_visible();
         self.pane_set_ready(format!(
-            "Activity feed refreshed ({} events)",
+            "Activity projection reloaded ({} events)",
             self.rows.len()
         ));
+        Ok(())
     }
 }
+
+fn activity_projection_file_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".openagents")
+        .join("autopilot-activity-projection-v1.json")
+}
+
+fn normalize_activity_projection_rows(mut rows: Vec<ActivityEventRow>) -> Vec<ActivityEventRow> {
+    rows.sort_by(|lhs, rhs| {
+        rhs.occurred_at_epoch_seconds
+            .cmp(&lhs.occurred_at_epoch_seconds)
+            .then_with(|| lhs.event_id.cmp(&rhs.event_id))
+    });
+    let mut seen_event_ids = HashSet::new();
+    rows.retain(|row| seen_event_ids.insert(row.event_id.clone()));
+    rows.truncate(ACTIVITY_PROJECTION_ROW_LIMIT);
+    rows
+}
+
+fn persist_activity_projection_rows(path: &Path, rows: &[ActivityEventRow]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create activity projection dir: {error}"))?;
+    }
+    let document = ActivityProjectionDocumentV1 {
+        schema_version: ACTIVITY_PROJECTION_SCHEMA_VERSION,
+        stream_id: ACTIVITY_PROJECTION_STREAM_ID.to_string(),
+        rows: normalize_activity_projection_rows(rows.to_vec()),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode activity projection rows: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write activity projection temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist activity projection rows: {error}"))?;
+    Ok(())
+}
+
+fn load_activity_projection_rows(path: &Path) -> Result<Vec<ActivityEventRow>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => return Err(format!("Failed to read activity projection rows: {error}")),
+    };
+    let document = serde_json::from_str::<ActivityProjectionDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse activity projection rows: {error}"))?;
+    if document.schema_version != ACTIVITY_PROJECTION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported activity projection schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != ACTIVITY_PROJECTION_STREAM_ID {
+        return Err(format!(
+            "Unsupported activity projection stream id: {}",
+            document.stream_id
+        ));
+    }
+    Ok(normalize_activity_projection_rows(document.rows))
+}
+
+pub(crate) const DEFAULT_NEXUS_PRIMARY_RELAY_URL: &str = "wss://relay.openagents.dev";
+const DEFAULT_PUBLIC_BACKUP_RELAY_URLS: [&str; 3] = [
+    "wss://relay.primal.net",
+    "wss://relay.damus.io",
+    "wss://relay.nostr.band",
+];
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SettingsDocumentV1 {
     pub schema_version: u16,
-    pub relay_url: String,
+    pub primary_relay_url: String,
+    pub backup_relay_urls: Vec<String>,
     pub identity_path: String,
     pub wallet_default_send_sats: u64,
     pub provider_max_queue_depth: u32,
@@ -1887,13 +2146,35 @@ pub struct SettingsDocumentV1 {
 impl Default for SettingsDocumentV1 {
     fn default() -> Self {
         Self {
-            schema_version: 1,
-            relay_url: "wss://relay.damus.io".to_string(),
+            schema_version: 2,
+            primary_relay_url: DEFAULT_NEXUS_PRIMARY_RELAY_URL.to_string(),
+            backup_relay_urls: DEFAULT_PUBLIC_BACKUP_RELAY_URLS
+                .iter()
+                .map(|value| value.to_string())
+                .collect(),
             identity_path: settings_identity_path(),
             wallet_default_send_sats: 1000,
-            provider_max_queue_depth: 4,
+            provider_max_queue_depth: 1,
             reconnect_required: false,
         }
+    }
+}
+
+impl SettingsDocumentV1 {
+    pub fn configured_relay_urls(&self) -> Vec<String> {
+        let mut relays = Vec::with_capacity(self.backup_relay_urls.len().saturating_add(1));
+        let primary = self.primary_relay_url.trim();
+        if !primary.is_empty() {
+            relays.push(primary.to_string());
+        }
+        relays.extend(
+            self.backup_relay_urls
+                .iter()
+                .map(|relay| relay.trim())
+                .filter(|relay| !relay.is_empty())
+                .map(ToString::to_string),
+        );
+        dedupe_relay_urls(relays)
     }
 }
 
@@ -1943,12 +2224,12 @@ impl SettingsState {
 
     pub fn apply_updates(
         &mut self,
-        relay_url: &str,
+        primary_relay_url: &str,
         wallet_default_send_sats: &str,
         provider_max_queue_depth: &str,
     ) -> Result<(), String> {
         self.apply_updates_internal(
-            relay_url,
+            primary_relay_url,
             wallet_default_send_sats,
             provider_max_queue_depth,
             true,
@@ -1957,16 +2238,16 @@ impl SettingsState {
 
     fn apply_updates_internal(
         &mut self,
-        relay_url: &str,
+        primary_relay_url: &str,
         wallet_default_send_sats: &str,
         provider_max_queue_depth: &str,
         persist: bool,
     ) -> Result<(), String> {
-        let relay_url = relay_url.trim();
-        if relay_url.is_empty() {
+        let primary_relay_url = primary_relay_url.trim();
+        if primary_relay_url.is_empty() {
             return Err(self.pane_set_error("Relay URL is required"));
         }
-        if !relay_url.starts_with("wss://") {
+        if !primary_relay_url.starts_with("wss://") {
             return Err(self.pane_set_error("Relay URL must start with wss://"));
         }
 
@@ -1984,13 +2265,24 @@ impl SettingsState {
             .trim()
             .parse::<u32>()
             .map_err(|error| format!("Provider max queue depth must be an integer: {error}"))?;
-        if provider_max_queue_depth == 0 || provider_max_queue_depth > 512 {
-            return Err(self.pane_set_error("Provider max queue depth must be between 1 and 512"));
+        if provider_max_queue_depth != 1 {
+            return Err(
+                self.pane_set_error("MVP currently supports exactly 1 inflight provider job")
+            );
         }
 
-        let reconnect_required = relay_url != self.document.relay_url
+        let reconnect_required = primary_relay_url != self.document.primary_relay_url
             || provider_max_queue_depth != self.document.provider_max_queue_depth;
-        self.document.relay_url = relay_url.to_string();
+        if primary_relay_url != self.document.primary_relay_url {
+            let previous_primary = self.document.primary_relay_url.clone();
+            let mut backup_relay_urls = self.document.backup_relay_urls.clone();
+            backup_relay_urls.retain(|relay| relay != primary_relay_url);
+            if !previous_primary.trim().is_empty() && previous_primary != primary_relay_url {
+                backup_relay_urls.insert(0, previous_primary);
+            }
+            self.document.primary_relay_url = primary_relay_url.to_string();
+            self.document.backup_relay_urls = dedupe_relay_urls(backup_relay_urls);
+        }
         self.document.wallet_default_send_sats = wallet_default_send_sats;
         self.document.provider_max_queue_depth = provider_max_queue_depth;
         self.document.reconnect_required = reconnect_required;
@@ -2020,6 +2312,75 @@ impl SettingsState {
         Ok(())
     }
 
+    pub fn add_backup_relay(&mut self, relay_url: &str, persist: bool) -> Result<(), String> {
+        let relay_url = relay_url.trim();
+        if relay_url.is_empty() {
+            return Err(self.pane_set_error("Relay URL cannot be empty"));
+        }
+        if !relay_url.starts_with("wss://") {
+            return Err(self.pane_set_error("Relay URL must start with wss://"));
+        }
+        if relay_url == self.document.primary_relay_url {
+            return Err(self.pane_set_error("Relay is already configured as primary"));
+        }
+        if self
+            .document
+            .backup_relay_urls
+            .iter()
+            .any(|existing| existing == relay_url)
+        {
+            return Err(self.pane_set_error("Relay already configured"));
+        }
+
+        self.document.backup_relay_urls.push(relay_url.to_string());
+        self.document.backup_relay_urls =
+            dedupe_relay_urls(self.document.backup_relay_urls.clone());
+        self.document.reconnect_required = true;
+        if persist {
+            self.persist_to_disk()?;
+        }
+        self.pane_set_ready(format!("Added backup relay {relay_url}"));
+        Ok(())
+    }
+
+    pub fn remove_configured_relay(
+        &mut self,
+        relay_url: &str,
+        persist: bool,
+    ) -> Result<String, String> {
+        let relay_url = relay_url.trim();
+        if relay_url.is_empty() {
+            return Err(self.pane_set_error("Select a relay first"));
+        }
+
+        let message = if relay_url == self.document.primary_relay_url {
+            if self.document.backup_relay_urls.is_empty() {
+                return Err(self.pane_set_error("At least one relay must remain configured"));
+            }
+            let next_primary = self.document.backup_relay_urls.remove(0);
+            self.document.primary_relay_url = next_primary.clone();
+            format!("Removed primary relay {relay_url}; promoted {next_primary}")
+        } else {
+            let before = self.document.backup_relay_urls.len();
+            self.document
+                .backup_relay_urls
+                .retain(|relay| relay != relay_url);
+            if self.document.backup_relay_urls.len() == before {
+                return Err(self.pane_set_error("Selected relay no longer exists"));
+            }
+            format!("Removed backup relay {relay_url}")
+        };
+
+        self.document.backup_relay_urls =
+            dedupe_relay_urls(self.document.backup_relay_urls.clone());
+        self.document.reconnect_required = true;
+        if persist {
+            self.persist_to_disk()?;
+        }
+        self.pane_set_ready(message.clone());
+        Ok(message)
+    }
+
     fn persist_to_disk(&mut self) -> Result<(), String> {
         let path = settings_file_path();
         if let Some(parent) = path.parent() {
@@ -2036,7 +2397,7 @@ impl SettingsPaneInputs {
     pub fn from_state(settings: &SettingsState) -> Self {
         Self {
             relay_url: TextInput::new()
-                .value(settings.document.relay_url.clone())
+                .value(settings.document.primary_relay_url.clone())
                 .placeholder("wss://relay.example.com"),
             wallet_default_send_sats: TextInput::new()
                 .value(settings.document.wallet_default_send_sats.to_string())
@@ -2049,7 +2410,7 @@ impl SettingsPaneInputs {
 
     pub fn sync_from_state(&mut self, settings: &SettingsState) {
         self.relay_url
-            .set_value(settings.document.relay_url.clone());
+            .set_value(settings.document.primary_relay_url.clone());
         self.wallet_default_send_sats
             .set_value(settings.document.wallet_default_send_sats.to_string());
         self.provider_max_queue_depth
@@ -2073,9 +2434,10 @@ fn settings_identity_path() -> String {
 
 fn serialize_settings_document(document: &SettingsDocumentV1) -> String {
     format!(
-        "schema_version={}\nrelay_url={}\nidentity_path={}\nwallet_default_send_sats={}\nprovider_max_queue_depth={}\nreconnect_required={}\n",
+        "schema_version={}\nprimary_relay_url={}\nbackup_relay_urls={}\nidentity_path={}\nwallet_default_send_sats={}\nprovider_max_queue_depth={}\nreconnect_required={}\n",
         document.schema_version,
-        document.relay_url,
+        document.primary_relay_url,
+        document.backup_relay_urls.join(","),
         document.identity_path,
         document.wallet_default_send_sats,
         document.provider_max_queue_depth,
@@ -2085,6 +2447,7 @@ fn serialize_settings_document(document: &SettingsDocumentV1) -> String {
 
 fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
     let mut document = SettingsDocumentV1::default();
+    let mut legacy_relay_url = None::<String>;
     for line in raw.lines() {
         let trimmed = line.trim();
         if trimmed.is_empty() || trimmed.starts_with('#') {
@@ -2100,7 +2463,16 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
                     .parse::<u16>()
                     .map_err(|error| format!("Invalid schema version: {error}"))?;
             }
-            "relay_url" => document.relay_url = value.trim().to_string(),
+            "primary_relay_url" => document.primary_relay_url = value.trim().to_string(),
+            "backup_relay_urls" => {
+                document.backup_relay_urls = value
+                    .split(',')
+                    .map(str::trim)
+                    .filter(|relay| !relay.is_empty())
+                    .map(ToOwned::to_owned)
+                    .collect();
+            }
+            "relay_url" => legacy_relay_url = Some(value.trim().to_string()),
             "identity_path" => document.identity_path = value.trim().to_string(),
             "wallet_default_send_sats" => {
                 document.wallet_default_send_sats = value
@@ -2124,20 +2496,47 @@ fn parse_settings_document(raw: &str) -> Result<SettingsDocumentV1, String> {
         }
     }
 
-    if document.schema_version != 1 {
+    if document.schema_version == 1
+        && let Some(legacy_relay_url) = legacy_relay_url
+    {
+        document.primary_relay_url = legacy_relay_url;
+        document.backup_relay_urls.clear();
+        document.schema_version = 2;
+    }
+
+    if document.schema_version != 2 {
         return Err(format!(
-            "Unsupported schema version {}, expected 1",
+            "Unsupported schema version {}, expected 2",
             document.schema_version
         ));
     }
 
+    if document.primary_relay_url.trim().is_empty() {
+        document.primary_relay_url = DEFAULT_NEXUS_PRIMARY_RELAY_URL.to_string();
+    }
+    document
+        .backup_relay_urls
+        .retain(|relay| relay != &document.primary_relay_url);
+    document.backup_relay_urls = dedupe_relay_urls(document.backup_relay_urls);
+
     // Identity path authority is the resolved mnemonic path.
     document.identity_path = settings_identity_path();
+    document.provider_max_queue_depth = 1;
 
     Ok(document)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+fn dedupe_relay_urls(relays: Vec<String>) -> Vec<String> {
+    let mut seen = std::collections::HashSet::<String>::new();
+    relays
+        .into_iter()
+        .map(|relay| relay.trim().to_string())
+        .filter(|relay| !relay.is_empty())
+        .filter(|relay| seen.insert(relay.clone()))
+        .collect()
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub enum JobLifecycleStage {
     Received,
     Accepted,
@@ -2158,6 +2557,10 @@ impl JobLifecycleStage {
             Self::Failed => "failed",
         }
     }
+
+    pub const fn is_terminal(self) -> bool {
+        matches!(self, Self::Paid | Self::Failed)
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2174,6 +2577,7 @@ pub struct ActiveJobRecord {
     pub demand_source: JobDemandSource,
     pub request_kind: u16,
     pub capability: String,
+    pub execution_input: Option<String>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -2184,6 +2588,7 @@ pub struct ActiveJobRecord {
     pub ac_settlement_event_id: Option<String>,
     pub ac_default_event_id: Option<String>,
     pub quoted_price_sats: u64,
+    pub ttl_seconds: u64,
     pub stage: JobLifecycleStage,
     pub invoice_id: Option<String>,
     pub payment_id: Option<String>,
@@ -2196,6 +2601,15 @@ pub struct ActiveJobState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub runtime_supports_abort: bool,
+    pub execution_thread_id: Option<String>,
+    pub execution_turn_id: Option<String>,
+    pub execution_output: Option<String>,
+    pub execution_turn_completed: bool,
+    pub execution_thread_start_command_seq: Option<u64>,
+    pub execution_turn_start_command_seq: Option<u64>,
+    pub execution_turn_interrupt_command_seq: Option<u64>,
+    pub execution_deadline_epoch_seconds: Option<u64>,
+    pub result_publish_in_flight: bool,
     pub job: Option<ActiveJobRecord>,
     next_event_seq: u64,
 }
@@ -2207,6 +2621,15 @@ impl Default for ActiveJobState {
             last_error: None,
             last_action: Some("Waiting for active job lane snapshot".to_string()),
             runtime_supports_abort: false,
+            execution_thread_id: None,
+            execution_turn_id: None,
+            execution_output: None,
+            execution_turn_completed: false,
+            execution_thread_start_command_seq: None,
+            execution_turn_start_command_seq: None,
+            execution_turn_interrupt_command_seq: None,
+            execution_deadline_epoch_seconds: None,
+            result_publish_in_flight: false,
             job: None,
             next_event_seq: 1,
         }
@@ -2214,6 +2637,13 @@ impl Default for ActiveJobState {
 }
 
 impl ActiveJobState {
+    pub fn inflight_job_count(&self) -> u32 {
+        self.job
+            .as_ref()
+            .filter(|job| !job.stage.is_terminal())
+            .map_or(0, |_| 1)
+    }
+
     pub fn start_from_request(&mut self, request: &JobInboxRequest) {
         let job_id = format!("job-{}", request.request_id);
         self.job = Some(ActiveJobRecord {
@@ -2223,6 +2653,7 @@ impl ActiveJobState {
             demand_source: request.demand_source,
             request_kind: request.request_kind,
             capability: request.capability.clone(),
+            execution_input: request.execution_input.clone(),
             skill_scope_id: request.skill_scope_id.clone(),
             skl_manifest_a: request.skl_manifest_a.clone(),
             skl_manifest_event_id: request.skl_manifest_event_id.clone(),
@@ -2233,6 +2664,7 @@ impl ActiveJobState {
             ac_settlement_event_id: None,
             ac_default_event_id: None,
             quoted_price_sats: request.price_sats,
+            ttl_seconds: request.ttl_seconds,
             stage: JobLifecycleStage::Accepted,
             invoice_id: None,
             payment_id: None,
@@ -2240,6 +2672,16 @@ impl ActiveJobState {
             events: Vec::new(),
         });
         self.next_event_seq = 1;
+        self.runtime_supports_abort = false;
+        self.execution_thread_id = None;
+        self.execution_turn_id = None;
+        self.execution_output = None;
+        self.execution_turn_completed = false;
+        self.execution_thread_start_command_seq = None;
+        self.execution_turn_start_command_seq = None;
+        self.execution_turn_interrupt_command_seq = None;
+        self.execution_deadline_epoch_seconds = None;
+        self.result_publish_in_flight = false;
         self.append_event("received request from inbox");
         self.append_event("accepted request and queued runtime execution");
         self.load_state = PaneLoadState::Ready;
@@ -2344,6 +2786,10 @@ impl ActiveJobState {
             self.load_state = PaneLoadState::Error;
             return Err("Abort unavailable".to_string());
         }
+        self.mark_failed(reason, "Aborted active job")
+    }
+
+    pub fn mark_failed(&mut self, reason: &str, action_label: &str) -> Result<(), String> {
         let Some(job) = self.job.as_mut() else {
             self.last_error = Some("No active job selected".to_string());
             self.load_state = PaneLoadState::Error;
@@ -2353,10 +2799,12 @@ impl ActiveJobState {
         let reason_text = reason.trim().to_string();
         job.stage = JobLifecycleStage::Failed;
         job.failure_reason = Some(reason_text.clone());
-        self.append_event(format!("job aborted: {reason_text}"));
+        self.append_event(format!("job failed: {reason_text}"));
         self.last_error = None;
         self.load_state = PaneLoadState::Ready;
-        self.last_action = Some("Aborted active job".to_string());
+        self.runtime_supports_abort = false;
+        self.execution_turn_interrupt_command_seq = None;
+        self.last_action = Some(action_label.to_string());
         Ok(())
     }
 }
@@ -2710,6 +3158,353 @@ fn is_settled_wallet_payment_status(status: &str) -> bool {
     )
 }
 
+const EARN_JOB_LIFECYCLE_PROJECTION_SCHEMA_VERSION: u16 = 1;
+const EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID: &str = "stream.earn_job_lifecycle_projection.v1";
+const EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY: &str = "non-authoritative";
+const EARN_JOB_LIFECYCLE_PROJECTION_ROW_LIMIT: usize = 256;
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct EarnJobLifecycleProjectionRow {
+    pub stream_seq: u64,
+    pub event_id: String,
+    pub job_id: String,
+    pub request_id: String,
+    pub stage: JobLifecycleStage,
+    pub source_tag: String,
+    pub occurred_at_epoch_seconds: u64,
+    pub quoted_price_sats: u64,
+    pub payment_pointer: Option<String>,
+    pub settlement_authority: String,
+    pub settlement_authoritative: bool,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct EarnJobLifecycleProjectionDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    authority: String,
+    rows: Vec<EarnJobLifecycleProjectionRow>,
+}
+
+pub struct EarnJobLifecycleProjectionState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub stream_id: String,
+    pub authority: String,
+    pub rows: Vec<EarnJobLifecycleProjectionRow>,
+    projection_file_path: PathBuf,
+}
+
+impl Default for EarnJobLifecycleProjectionState {
+    fn default() -> Self {
+        let projection_file_path = earn_job_lifecycle_projection_file_path();
+        Self::from_projection_file_path(projection_file_path)
+    }
+}
+
+impl EarnJobLifecycleProjectionState {
+    fn from_projection_file_path(projection_file_path: PathBuf) -> Self {
+        let (rows, load_state, last_error, last_action) =
+            match load_earn_job_lifecycle_projection_rows(projection_file_path.as_path()) {
+                Ok(rows) => (
+                    rows,
+                    PaneLoadState::Ready,
+                    None,
+                    Some("Loaded earn lifecycle projection stream".to_string()),
+                ),
+                Err(error) => (
+                    Vec::new(),
+                    PaneLoadState::Error,
+                    Some(error),
+                    Some("Earn lifecycle projection stream load failed".to_string()),
+                ),
+            };
+        Self {
+            load_state,
+            last_error,
+            last_action: last_action.map(|action| format!("{action} ({} rows)", rows.len())),
+            stream_id: EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID.to_string(),
+            authority: EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY.to_string(),
+            rows,
+            projection_file_path,
+        }
+    }
+
+    #[cfg(test)]
+    fn from_projection_path_for_tests(projection_file_path: PathBuf) -> Self {
+        Self::from_projection_file_path(projection_file_path)
+    }
+
+    pub fn record_ingress_request(
+        &mut self,
+        request: &JobInboxNetworkRequest,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let job_id = format!("job-{}", request.request_id);
+        let authority_key = request.request_id.as_str();
+        let (settlement_authority, settlement_authoritative) = settle_authority_for_pointer(None);
+        let row = EarnJobLifecycleProjectionRow {
+            stream_seq: 0,
+            event_id: earn_job_lifecycle_event_id(
+                job_id.as_str(),
+                JobLifecycleStage::Received,
+                authority_key,
+            ),
+            job_id,
+            request_id: request.request_id.clone(),
+            stage: JobLifecycleStage::Received,
+            source_tag: source_tag.to_string(),
+            occurred_at_epoch_seconds,
+            quoted_price_sats: request.price_sats,
+            payment_pointer: None,
+            settlement_authority,
+            settlement_authoritative,
+        };
+        self.upsert_row(row);
+    }
+
+    pub fn record_active_job_stage(
+        &mut self,
+        job: &ActiveJobRecord,
+        stage: JobLifecycleStage,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let payment_pointer = job.payment_id.clone().or_else(|| job.invoice_id.clone());
+        let (settlement_authority, settlement_authoritative) =
+            settle_authority_for_pointer(payment_pointer.as_deref());
+        let authority_key = match stage {
+            JobLifecycleStage::Received | JobLifecycleStage::Accepted => job.request_id.as_str(),
+            JobLifecycleStage::Running => job
+                .sa_tick_request_event_id
+                .as_deref()
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Delivered => job
+                .sa_tick_result_event_id
+                .as_deref()
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Paid => payment_pointer
+                .as_deref()
+                .or(job.ac_settlement_event_id.as_deref())
+                .or(job.sa_tick_result_event_id.as_deref())
+                .unwrap_or(job.request_id.as_str()),
+            JobLifecycleStage::Failed => job
+                .ac_default_event_id
+                .as_deref()
+                .or(job.failure_reason.as_deref())
+                .unwrap_or(job.request_id.as_str()),
+        };
+        let row = EarnJobLifecycleProjectionRow {
+            stream_seq: 0,
+            event_id: earn_job_lifecycle_event_id(job.job_id.as_str(), stage, authority_key),
+            job_id: job.job_id.clone(),
+            request_id: job.request_id.clone(),
+            stage,
+            source_tag: source_tag.to_string(),
+            occurred_at_epoch_seconds,
+            quoted_price_sats: job.quoted_price_sats,
+            payment_pointer,
+            settlement_authority,
+            settlement_authoritative,
+        };
+        self.upsert_row(row);
+    }
+
+    pub fn record_history_receipt(
+        &mut self,
+        row: &JobHistoryReceiptRow,
+        occurred_at_epoch_seconds: u64,
+        source_tag: &str,
+    ) {
+        let stage = if row.status == JobHistoryStatus::Succeeded {
+            JobLifecycleStage::Paid
+        } else {
+            JobLifecycleStage::Failed
+        };
+        let payment_pointer = Some(row.payment_pointer.clone());
+        let (settlement_authority, settlement_authoritative) =
+            settle_authority_for_pointer(payment_pointer.as_deref());
+        let authority_key = if stage == JobLifecycleStage::Paid {
+            row.payment_pointer.as_str()
+        } else {
+            row.result_hash.as_str()
+        };
+        let request_id = infer_request_id_from_job_id(row.job_id.as_str());
+        let projection_row = EarnJobLifecycleProjectionRow {
+            stream_seq: 0,
+            event_id: earn_job_lifecycle_event_id(row.job_id.as_str(), stage, authority_key),
+            job_id: row.job_id.clone(),
+            request_id,
+            stage,
+            source_tag: source_tag.to_string(),
+            occurred_at_epoch_seconds,
+            quoted_price_sats: row.payout_sats,
+            payment_pointer,
+            settlement_authority,
+            settlement_authoritative,
+        };
+        self.upsert_row(projection_row);
+    }
+
+    fn upsert_row(&mut self, mut row: EarnJobLifecycleProjectionRow) {
+        if let Some(existing) = self
+            .rows
+            .iter_mut()
+            .find(|existing| existing.event_id == row.event_id)
+        {
+            row.stream_seq = existing.stream_seq;
+            *existing = row;
+        } else {
+            row.stream_seq = self
+                .rows
+                .iter()
+                .map(|existing| existing.stream_seq)
+                .max()
+                .unwrap_or(0)
+                .saturating_add(1);
+            self.rows.push(row);
+        }
+        self.rows = normalize_earn_job_lifecycle_projection_rows(std::mem::take(&mut self.rows));
+        if let Some(latest) = self.rows.first() {
+            self.last_action = Some(format!(
+                "Projected {} stage {} ({})",
+                latest.job_id,
+                latest.stage.label(),
+                latest.source_tag
+            ));
+        }
+        if let Err(error) = persist_earn_job_lifecycle_projection_rows(
+            self.projection_file_path.as_path(),
+            self.rows.as_slice(),
+        ) {
+            self.last_error = Some(error);
+            self.load_state = PaneLoadState::Error;
+        } else {
+            self.last_error = None;
+            self.load_state = PaneLoadState::Ready;
+        }
+    }
+}
+
+fn earn_job_lifecycle_projection_file_path() -> PathBuf {
+    std::env::var("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("."))
+        .join(".openagents")
+        .join("autopilot-earn-job-lifecycle-projection-v1.json")
+}
+
+fn earn_job_lifecycle_event_id(
+    job_id: &str,
+    stage: JobLifecycleStage,
+    authority_key: &str,
+) -> String {
+    format!(
+        "earn.lifecycle:{}:{}:{}",
+        job_id.trim(),
+        stage.label(),
+        normalize_projection_key(authority_key)
+    )
+}
+
+fn normalize_projection_key(value: &str) -> String {
+    value
+        .trim()
+        .chars()
+        .map(|ch| if ch.is_whitespace() { '_' } else { ch })
+        .collect()
+}
+
+fn infer_request_id_from_job_id(job_id: &str) -> String {
+    job_id
+        .strip_prefix("job-")
+        .map(ToString::to_string)
+        .unwrap_or_else(|| job_id.to_string())
+}
+
+fn settle_authority_for_pointer(payment_pointer: Option<&str>) -> (String, bool) {
+    if is_authoritative_payment_pointer(payment_pointer) {
+        ("wallet.reconciliation".to_string(), true)
+    } else {
+        ("projection.non_authoritative".to_string(), false)
+    }
+}
+
+fn normalize_earn_job_lifecycle_projection_rows(
+    mut rows: Vec<EarnJobLifecycleProjectionRow>,
+) -> Vec<EarnJobLifecycleProjectionRow> {
+    rows.sort_by(|lhs, rhs| {
+        rhs.stream_seq
+            .cmp(&lhs.stream_seq)
+            .then_with(|| lhs.event_id.cmp(&rhs.event_id))
+    });
+    let mut seen_event_ids = HashSet::new();
+    rows.retain(|row| seen_event_ids.insert(row.event_id.clone()));
+    rows.truncate(EARN_JOB_LIFECYCLE_PROJECTION_ROW_LIMIT);
+    rows
+}
+
+fn persist_earn_job_lifecycle_projection_rows(
+    path: &Path,
+    rows: &[EarnJobLifecycleProjectionRow],
+) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create earn lifecycle projection dir: {error}"))?;
+    }
+    let document = EarnJobLifecycleProjectionDocumentV1 {
+        schema_version: EARN_JOB_LIFECYCLE_PROJECTION_SCHEMA_VERSION,
+        stream_id: EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID.to_string(),
+        authority: EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY.to_string(),
+        rows: normalize_earn_job_lifecycle_projection_rows(rows.to_vec()),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode earn lifecycle projection rows: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    std::fs::write(&temp_path, payload)
+        .map_err(|error| format!("Failed to write earn lifecycle projection temp file: {error}"))?;
+    std::fs::rename(&temp_path, path)
+        .map_err(|error| format!("Failed to persist earn lifecycle projection rows: {error}"))?;
+    Ok(())
+}
+
+fn load_earn_job_lifecycle_projection_rows(
+    path: &Path,
+) -> Result<Vec<EarnJobLifecycleProjectionRow>, String> {
+    let raw = match std::fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(error) => {
+            return Err(format!(
+                "Failed to read earn lifecycle projection rows: {error}"
+            ));
+        }
+    };
+    let document = serde_json::from_str::<EarnJobLifecycleProjectionDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse earn lifecycle projection rows: {error}"))?;
+    if document.schema_version != EARN_JOB_LIFECYCLE_PROJECTION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported earn lifecycle projection schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != EARN_JOB_LIFECYCLE_PROJECTION_STREAM_ID {
+        return Err(format!(
+            "Unsupported earn lifecycle projection stream id: {}",
+            document.stream_id
+        ));
+    }
+    if document.authority != EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY {
+        return Err(format!(
+            "Unsupported earn lifecycle projection authority marker: {}",
+            document.authority
+        ));
+    }
+    Ok(normalize_earn_job_lifecycle_projection_rows(document.rows))
+}
+
 pub struct EarningsScoreboardState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -2719,8 +3514,14 @@ pub struct EarningsScoreboardState {
     pub jobs_today: u64,
     pub last_job_result: String,
     pub online_uptime_seconds: u64,
+    pub first_job_latency_seconds: Option<u64>,
+    pub completion_ratio_bps: Option<u16>,
+    pub payout_success_ratio_bps: Option<u16>,
+    pub avg_wallet_confirmation_latency_seconds: Option<u64>,
     pub stale_after: Duration,
     pub last_refreshed_at: Option<Instant>,
+    tracked_online_since: Option<Instant>,
+    first_completed_since_online: Option<Instant>,
 }
 
 impl Default for EarningsScoreboardState {
@@ -2734,8 +3535,14 @@ impl Default for EarningsScoreboardState {
             jobs_today: 0,
             last_job_result: "none".to_string(),
             online_uptime_seconds: 0,
+            first_job_latency_seconds: None,
+            completion_ratio_bps: None,
+            payout_success_ratio_bps: None,
+            avg_wallet_confirmation_latency_seconds: None,
             stale_after: Duration::from_secs(12),
             last_refreshed_at: None,
+            tracked_online_since: None,
+            first_completed_since_online: None,
         }
     }
 }
@@ -2751,6 +3558,29 @@ impl EarningsScoreboardState {
         self.last_refreshed_at = Some(now);
         self.online_uptime_seconds = provider_runtime.uptime_seconds(now);
         self.last_error = None;
+
+        if self.tracked_online_since != provider_runtime.online_since {
+            self.tracked_online_since = provider_runtime.online_since;
+            self.first_completed_since_online = None;
+        }
+        if self.tracked_online_since.is_none() {
+            self.first_job_latency_seconds = None;
+            self.first_completed_since_online = None;
+        } else {
+            if self.first_completed_since_online.is_none()
+                && let Some(last_completed) = provider_runtime.last_completed_job_at
+                && self
+                    .tracked_online_since
+                    .is_some_and(|online_since| last_completed >= online_since)
+            {
+                self.first_completed_since_online = Some(last_completed);
+            }
+            self.first_job_latency_seconds = self.tracked_online_since.and_then(|online_since| {
+                let end = self.first_completed_since_online.unwrap_or(now);
+                end.checked_duration_since(online_since)
+                    .map(|duration| duration.as_secs())
+            });
+        }
 
         if let Some(error) = spark_wallet.last_error.as_deref() {
             self.load_state = PaneLoadState::Error;
@@ -2780,6 +3610,29 @@ impl EarningsScoreboardState {
             .iter()
             .map(|row| row.payout_sats)
             .sum();
+        let total_terminal_jobs = job_history.rows.len() as u64;
+        let completed_jobs = job_history
+            .rows
+            .iter()
+            .filter(|row| row.status == JobHistoryStatus::Succeeded)
+            .count() as u64;
+        self.completion_ratio_bps = ratio_bps(completed_jobs, total_terminal_jobs);
+        self.payout_success_ratio_bps =
+            ratio_bps(reconciled_payout_rows.len() as u64, completed_jobs);
+        self.avg_wallet_confirmation_latency_seconds = if reconciled_payout_rows.is_empty() {
+            None
+        } else {
+            Some(
+                reconciled_payout_rows
+                    .iter()
+                    .map(|row| {
+                        row.wallet_received_at_epoch_seconds
+                            .saturating_sub(row.completed_at_epoch_seconds)
+                    })
+                    .sum::<u64>()
+                    / reconciled_payout_rows.len() as u64,
+            )
+        };
 
         self.last_job_result = job_history
             .rows
@@ -2792,6 +3645,140 @@ impl EarningsScoreboardState {
                 }
             })
             .unwrap_or_else(|| "none".to_string());
+    }
+
+    pub fn is_stale(&self, now: Instant) -> bool {
+        self.last_refreshed_at
+            .is_none_or(|refresh| now.duration_since(refresh) > self.stale_after)
+    }
+}
+
+fn ratio_bps(numerator: u64, denominator: u64) -> Option<u16> {
+    if denominator == 0 {
+        return None;
+    }
+    let ratio = ((numerator as u128) * 10_000u128 / (denominator as u128)).min(10_000u128);
+    Some(ratio as u16)
+}
+
+pub struct NetworkAggregateCountersState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub source_tag: String,
+    pub providers_online_source_tag: String,
+    pub providers_online_source_detail: Option<String>,
+    pub providers_online: u64,
+    pub jobs_completed: u64,
+    pub sats_paid: u64,
+    pub global_earnings_today_sats: u64,
+    pub stale_after: Duration,
+    pub last_refreshed_at: Option<Instant>,
+}
+
+impl Default for NetworkAggregateCountersState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for aggregate counters service refresh".to_string()),
+            source_tag: "aggregate.pending".to_string(),
+            providers_online_source_tag: "spacetime.presence.pending".to_string(),
+            providers_online_source_detail: None,
+            providers_online: 0,
+            jobs_completed: 0,
+            sats_paid: 0,
+            global_earnings_today_sats: 0,
+            stale_after: Duration::from_secs(12),
+            last_refreshed_at: None,
+        }
+    }
+}
+
+impl NetworkAggregateCountersState {
+    pub fn refresh_from_sources(
+        &mut self,
+        now: Instant,
+        spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
+        job_history: &JobHistoryState,
+        spark_wallet: &SparkPaneState,
+    ) {
+        self.last_refreshed_at = Some(now);
+        self.providers_online = spacetime_presence.providers_online;
+        self.providers_online_source_tag = format!(
+            "spacetime.presence.{}",
+            spacetime_presence.counter_cardinality
+        );
+        self.providers_online_source_detail = None;
+
+        let presence_issue = if let Some(error) = spacetime_presence.last_error.as_deref() {
+            self.providers_online_source_tag = "spacetime.presence.degraded".to_string();
+            self.providers_online_source_detail = Some(error.to_string());
+            Some(format!("Spacetime presence error: {error}"))
+        } else if spacetime_presence.node_status == "unregistered" {
+            self.providers_online_source_tag = "spacetime.presence.unavailable".to_string();
+            self.providers_online_source_detail =
+                Some("Provider presence not registered".to_string());
+            Some("Spacetime presence unavailable".to_string())
+        } else if spacetime_presence.node_offline_reason.as_deref() == Some("ttl_expired") {
+            self.providers_online_source_tag = "spacetime.presence.stale".to_string();
+            self.providers_online_source_detail = Some("Provider presence TTL expired".to_string());
+            None
+        } else {
+            None
+        };
+
+        let reconciled_payout_rows = job_history.wallet_reconciled_payout_rows(spark_wallet);
+        let threshold = job_history.reference_epoch_seconds.saturating_sub(86_400);
+        self.jobs_completed = reconciled_payout_rows.len() as u64;
+        self.sats_paid = reconciled_payout_rows
+            .iter()
+            .map(|row| row.payout_sats)
+            .sum();
+        self.global_earnings_today_sats = reconciled_payout_rows
+            .iter()
+            .filter(|row| row.wallet_received_at_epoch_seconds >= threshold)
+            .map(|row| row.payout_sats)
+            .sum();
+
+        self.last_error = None;
+        if let Some(error) = spark_wallet.last_error.as_deref() {
+            self.load_state = PaneLoadState::Error;
+            self.last_error = Some(format!("Wallet source error: {error}"));
+            self.last_action = Some("Aggregate counters degraded due to wallet error".to_string());
+            self.source_tag = "aggregate.degraded.wallet".to_string();
+        } else if spark_wallet.balance.is_none() {
+            self.load_state = PaneLoadState::Loading;
+            self.last_action = Some("Aggregate counters waiting for wallet refresh".to_string());
+            self.source_tag = "aggregate.pending.wallet".to_string();
+        } else {
+            self.load_state = PaneLoadState::Ready;
+            self.last_action = Some(
+                "Aggregate counters refreshed from wallet-reconciled payouts and Spacetime presence"
+                    .to_string(),
+            );
+            self.source_tag = "aggregate.wallet-reconciled.spacetime-presence".to_string();
+        }
+
+        if let Some(issue) = presence_issue {
+            if self.load_state == PaneLoadState::Ready {
+                self.load_state = PaneLoadState::Error;
+                self.source_tag = "aggregate.degraded.spacetime-presence".to_string();
+            }
+
+            self.last_error = match self.last_error.take() {
+                Some(existing) => Some(format!("{existing}; {issue}")),
+                None => Some(issue),
+            };
+            self.last_action =
+                Some("Aggregate counters degraded due to Spacetime presence source".to_string());
+        } else if self.providers_online_source_tag == "spacetime.presence.stale" {
+            self.source_tag = "aggregate.stale.spacetime-presence".to_string();
+            self.last_action = Some(
+                "Aggregate counters refreshed; providers_online source is stale (TTL expiry)"
+                    .to_string(),
+            );
+        }
     }
 
     pub fn is_stale(&self, now: Instant) -> bool {
@@ -2866,6 +3853,7 @@ impl_pane_status_access!(
     SyncHealthState,
     NetworkRequestsState,
     StarterJobsState,
+    ReciprocalLoopState,
     ActivityFeedState,
     AlertsRecoveryState,
     SettingsState,
@@ -2952,10 +3940,22 @@ pub struct RenderState {
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
     pub earnings_scoreboard: EarningsScoreboardState,
+    pub network_aggregate_counters: NetworkAggregateCountersState,
     pub relay_connections: RelayConnectionsState,
     pub sync_health: SyncHealthState,
+    pub sync_bootstrap_note: Option<String>,
+    pub sync_bootstrap_error: Option<String>,
+    pub hosted_control_base_url: Option<String>,
+    pub hosted_control_bearer_token: Option<String>,
+    pub sync_apply_engine: crate::sync_apply::SyncApplyEngine,
+    pub sync_lifecycle_worker_id: String,
+    pub sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager,
+    pub sync_lifecycle_snapshot: Option<crate::sync_lifecycle::RuntimeSyncHealthSnapshot>,
+    pub spacetime_presence: crate::spacetime_presence::SpacetimePresenceRuntime,
+    pub spacetime_presence_snapshot: crate::spacetime_presence::SpacetimePresenceSnapshot,
     pub network_requests: NetworkRequestsState,
     pub starter_jobs: StarterJobsState,
+    pub reciprocal_loop: ReciprocalLoopState,
     pub activity_feed: ActivityFeedState,
     pub alerts_recovery: AlertsRecoveryState,
     pub settings: SettingsState,
@@ -2963,6 +3963,9 @@ pub struct RenderState {
     pub job_inbox: JobInboxState,
     pub active_job: ActiveJobState,
     pub job_history: JobHistoryState,
+    pub earn_job_lifecycle_projection: EarnJobLifecycleProjectionState,
+    pub earn_kernel_receipts: crate::state::earn_kernel_receipts::EarnKernelReceiptState,
+    pub economy_snapshot: crate::state::economy_snapshot::EconomySnapshotState,
     pub agent_profile_state: AgentProfileStatePaneState,
     pub agent_schedule_tick: AgentScheduleTickPaneState,
     pub trajectory_audit: TrajectoryAuditPaneState,
@@ -2977,6 +3980,7 @@ pub struct RenderState {
     pub treasury_exchange_simulation: TreasuryExchangeSimulationPaneState,
     pub relay_security_simulation: RelaySecuritySimulationPaneState,
     pub stable_sats_simulation: StableSatsSimulationPaneState,
+    pub simulation_panes_enabled: bool,
     pub autopilot_goals: crate::state::autopilot_goals::AutopilotGoalsState,
     pub goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState,
     pub goal_restart_recovery_ran: bool,
@@ -2996,6 +4000,10 @@ impl RenderState {
         let seq = self.next_runtime_command_seq;
         self.next_runtime_command_seq = self.next_runtime_command_seq.saturating_add(1);
         seq
+    }
+
+    pub fn reserve_runtime_command_seq(&mut self) -> u64 {
+        self.allocate_runtime_command_seq()
     }
 
     pub fn queue_sa_command(&mut self, command: SaLifecycleCommand) -> Result<u64, String> {
@@ -3100,30 +4108,37 @@ impl RenderState {
     }
 
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
-        let mut relays = self
-            .relay_connections
-            .relays
-            .iter()
-            .map(|row| row.url.trim())
-            .filter(|url| !url.is_empty())
-            .map(ToString::to_string)
-            .collect::<Vec<_>>();
-
+        let relays = self.settings.document.configured_relay_urls();
         if relays.is_empty() {
-            let default_relay = self.settings.document.relay_url.trim();
-            if !default_relay.is_empty() {
-                relays.push(default_relay.to_string());
-            }
+            return self
+                .relay_connections
+                .relays
+                .iter()
+                .map(|row| row.url.trim())
+                .filter(|url| !url.is_empty())
+                .map(ToString::to_string)
+                .collect();
         }
-
-        let mut seen = std::collections::HashSet::<String>::new();
-        relays.retain(|relay| seen.insert(relay.clone()));
         relays
     }
 
     pub fn sync_provider_nip90_lane_relays(&mut self) -> Result<(), String> {
         let relays = self.configured_provider_relay_urls();
         self.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::ConfigureRelays { relays })
+    }
+
+    pub fn sync_provider_nip90_lane_identity(&mut self) -> Result<(), String> {
+        let identity = self
+            .nostr_identity
+            .as_ref()
+            .map(|identity| ProviderNip90AuthIdentity {
+                npub: identity.npub.clone(),
+                public_key_hex: identity.public_key_hex.clone(),
+                private_key_hex: identity.private_key_hex.clone(),
+            });
+        self.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::ConfigureIdentity {
+            identity,
+        })
     }
 
     pub fn record_runtime_command_response(&mut self, response: RuntimeCommandResponse) {
@@ -3142,12 +4157,6 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
-        if self.skl_lane.trust_tier != SkillTrustTier::Trusted {
-            blockers.push(ProviderBlocker::SkillTrustUnavailable);
-        }
-        if !self.ac_lane.credit_available {
-            blockers.push(ProviderBlocker::CreditLaneUnavailable);
-        }
         blockers
     }
 }
@@ -3158,19 +4167,21 @@ mod tests {
         ActiveJobState, ActivityEventDomain, ActivityEventRow, ActivityFeedFilter,
         ActivityFeedState, AgentNetworkSimulationPaneState, AlertDomain, AlertLifecycle,
         AlertsRecoveryState, AutopilotChatState, AutopilotMessageStatus, AutopilotRole,
-        CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap, CadContextMenuTargetKind,
-        CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
-        CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
-        CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile, EarningsScoreboardState,
+        BuyerResolutionMode, BuyerResolutionReason, CadBuildFailureClass, CadBuildSessionPhase,
+        CadCameraViewSnap, CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState,
+        CadDrawingViewDirection, CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction,
+        CadProjectionMode, CadSectionAxis, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
+        CadThreeDMouseProfile, EarnJobLifecycleProjectionState, EarningsScoreboardState,
         JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
         JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
-        JobInboxValidation,
-        JobLifecycleStage, NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState,
-        NostrSecretState, ProviderMode, ProviderRuntimeState, RecoveryAlertRow, RelayConnectionRow,
+        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
+        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
         RelayConnectionStatus, RelayConnectionsState, RelaySecuritySimulationPaneState,
         SettingsState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SyncHealthState, SyncRecoveryPhase,
-        TreasuryExchangeSimulationPaneState,
+        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+        SyncRecoveryPhase, TreasuryExchangeSimulationPaneState,
     };
 
     fn fixture_inbox_request(
@@ -3204,6 +4215,14 @@ mod tests {
             demand_source,
             request_kind: 5050,
             capability: capability.to_string(),
+            execution_input: Some(format!(
+                "Execute capability `{capability}` for request `{request_id}`."
+            )),
+            target_provider_pubkeys: Vec::new(),
+            encrypted: false,
+            encrypted_payload: None,
+            parsed_event_shape: None,
+            raw_event_json: None,
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -3262,6 +4281,26 @@ mod tests {
         history
     }
 
+    fn fixture_presence_snapshot(
+        providers_online: u64,
+        node_status: &str,
+        last_error: Option<&str>,
+        offline_reason: Option<&str>,
+    ) -> crate::spacetime_presence::SpacetimePresenceSnapshot {
+        crate::spacetime_presence::SpacetimePresenceSnapshot {
+            providers_online,
+            counter_source: "spacetime.presence".to_string(),
+            counter_cardinality: "identity".to_string(),
+            node_id: "device:test".to_string(),
+            session_id: "sess:test".to_string(),
+            node_status: node_status.to_string(),
+            node_last_seen_unix_ms: Some(1_761_920_000_000),
+            node_offline_reason: offline_reason.map(ToString::to_string),
+            last_error: last_error.map(ToString::to_string),
+            last_action: Some("fixture presence snapshot".to_string()),
+        }
+    }
+
     fn fixture_starter_job(
         job_id: &str,
         payout_sats: u64,
@@ -3275,6 +4314,99 @@ mod tests {
             eligible,
             status,
             payout_pointer: None,
+            start_confirm_by_unix_ms: None,
+            execution_started_at_unix_ms: None,
+            execution_expires_at_unix_ms: None,
+            last_heartbeat_at_unix_ms: None,
+            next_heartbeat_due_at_unix_ms: None,
+        }
+    }
+
+    fn fixture_loop_submitted_request(
+        request_id: &str,
+        status: NetworkRequestStatus,
+        target_peer_pubkey: &str,
+        skill_scope_id: &str,
+    ) -> SubmittedNetworkRequest {
+        SubmittedNetworkRequest {
+            request_id: request_id.to_string(),
+            published_request_event_id: Some(request_id.to_string()),
+            request_type: "loop.pingpong.10sat".to_string(),
+            payload: "{}".to_string(),
+            resolution_mode: BuyerResolutionMode::Race,
+            target_provider_pubkeys: vec![target_peer_pubkey.to_string()],
+            last_provider_pubkey: Some(target_peer_pubkey.to_string()),
+            last_feedback_status: None,
+            last_feedback_event_id: None,
+            last_result_event_id: None,
+            last_payment_pointer: Some(format!("wallet:{request_id}")),
+            payment_required_at_epoch_seconds: Some(1_762_800_000),
+            payment_sent_at_epoch_seconds: Some(1_762_800_001),
+            payment_failed_at_epoch_seconds: None,
+            payment_error: None,
+            pending_bolt11: None,
+            skill_scope_id: Some(skill_scope_id.to_string()),
+            credit_envelope_ref: Some("ac:envelope:test".to_string()),
+            budget_sats: 10,
+            timeout_seconds: 90,
+            response_stream_id: format!("stream:{request_id}"),
+            status,
+            authority_command_seq: 1,
+            authority_status: Some("accepted".to_string()),
+            authority_event_id: Some(request_id.to_string()),
+            authority_error_class: None,
+            winning_provider_pubkey: Some(target_peer_pubkey.to_string()),
+            winning_result_event_id: Some(format!("result:{request_id}")),
+            resolution_reason_code: Some(
+                BuyerResolutionReason::FirstValidResult.code().to_string(),
+            ),
+            duplicate_outcomes: Vec::new(),
+            resolution_feedbacks: Vec::new(),
+            observed_buyer_event_ids: Vec::new(),
+        }
+    }
+
+    #[derive(Default)]
+    struct DeterministicRelayFixture {
+        targeted_ingress: std::collections::BTreeMap<String, std::collections::VecDeque<String>>,
+        feedback_event_ids: Vec<String>,
+        result_event_ids: Vec<String>,
+    }
+
+    impl DeterministicRelayFixture {
+        fn queue_targeted_request(&mut self, request_id: &str, target_pubkey: &str) {
+            self.targeted_ingress
+                .entry(target_pubkey.to_string())
+                .or_default()
+                .push_back(request_id.to_string());
+        }
+
+        fn take_next_for(&mut self, target_pubkey: &str) -> Option<String> {
+            self.targeted_ingress
+                .get_mut(target_pubkey)
+                .and_then(std::collections::VecDeque::pop_front)
+        }
+
+        fn publish_feedback(
+            &mut self,
+            request_id: &str,
+            from_pubkey: &str,
+            to_pubkey: &str,
+        ) -> String {
+            let event_id = format!("feedback:{request_id}:{from_pubkey}:{to_pubkey}");
+            self.feedback_event_ids.push(event_id.clone());
+            event_id
+        }
+
+        fn publish_result(
+            &mut self,
+            request_id: &str,
+            from_pubkey: &str,
+            to_pubkey: &str,
+        ) -> String {
+            let event_id = format!("result:{request_id}:{from_pubkey}:{to_pubkey}");
+            self.result_event_ids.push(event_id.clone());
+            event_id
         }
     }
 
@@ -3291,6 +4423,34 @@ mod tests {
             summary: format!("summary {event_id}"),
             detail: format!("detail {event_id}"),
         }
+    }
+
+    fn activity_feed_projection_test_path(name: &str) -> std::path::PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openagents-activity-feed-{name}-{}-{nonce}.json",
+            std::process::id()
+        ))
+    }
+
+    fn activity_feed_state_for_tests(name: &str) -> ActivityFeedState {
+        let path = activity_feed_projection_test_path(name);
+        let _ = std::fs::remove_file(path.as_path());
+        ActivityFeedState::from_projection_path_for_tests(path)
+    }
+
+    fn earn_projection_test_path(name: &str) -> std::path::PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system clock should be after unix epoch")
+            .as_nanos();
+        std::env::temp_dir().join(format!(
+            "openagents-earn-projection-{name}-{}-{nonce}.json",
+            std::process::id()
+        ))
     }
 
     fn fixture_alert(
@@ -3842,6 +5002,66 @@ mod tests {
     }
 
     #[test]
+    fn active_job_inflight_count_drops_to_zero_for_terminal_stages() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-inflight",
+            "summarize.text",
+            1500,
+            300,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        assert_eq!(active.inflight_job_count(), 1);
+        active
+            .advance_stage()
+            .expect("accepted->running should succeed");
+        assert_eq!(active.inflight_job_count(), 1);
+        active
+            .advance_stage()
+            .expect("running->delivered should succeed");
+        active.job.as_mut().expect("active job exists").payment_id =
+            Some("wallet:payment:req-inflight".to_string());
+        active
+            .advance_stage()
+            .expect("delivered->paid should succeed");
+        assert_eq!(active.inflight_job_count(), 0);
+    }
+
+    #[test]
+    fn active_job_start_copies_execution_input_and_ttl() {
+        let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
+            "req-exec",
+            "summarize.text",
+            1500,
+            91,
+            JobInboxValidation::Valid,
+        )]);
+        assert!(inbox.select_by_index(0));
+        let request = inbox
+            .selected_request()
+            .expect("request should exist")
+            .clone();
+
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&request);
+        let job = active.job.as_ref().expect("active job should exist");
+        assert_eq!(job.ttl_seconds, 91);
+        assert_eq!(
+            job.execution_input.as_deref(),
+            Some("Execute capability `summarize.text` for request `req-exec`.")
+        );
+        assert!(active.execution_thread_id.is_none());
+        assert!(!active.runtime_supports_abort);
+    }
+
+    #[test]
     fn job_history_rejects_unconfirmed_success_settlement_from_active_job() {
         let mut inbox = seed_job_inbox(vec![fixture_inbox_request(
             "req-unconfirmed",
@@ -4101,6 +5321,224 @@ mod tests {
     }
 
     #[test]
+    fn reciprocal_loop_two_identity_relay_harness_runs_bidirectional_paid_cycles() {
+        let pubkey_a = "11".repeat(32);
+        let pubkey_b = "22".repeat(32);
+
+        let mut loop_a = ReciprocalLoopState::default();
+        loop_a.set_local_pubkey(Some(pubkey_a.as_str()));
+        loop_a.set_peer_pubkey(Some(pubkey_b.as_str()));
+        loop_a.start().expect("loop A should start");
+
+        let mut loop_b = ReciprocalLoopState::default();
+        loop_b.set_local_pubkey(Some(pubkey_b.as_str()));
+        loop_b.set_peer_pubkey(Some(pubkey_a.as_str()));
+        loop_b.start().expect("loop B should start");
+
+        let mut relay = DeterministicRelayFixture::default();
+        let mut submitted_a = Vec::<SubmittedNetworkRequest>::new();
+        let mut submitted_b = Vec::<SubmittedNetworkRequest>::new();
+        let mut history_a = Vec::<super::JobHistoryReceiptRow>::new();
+        let mut history_b = Vec::<super::JobHistoryReceiptRow>::new();
+        let mut request_routes = Vec::<(String, char)>::new();
+        let cycles = 4u64;
+        let mut now_epoch_seconds = 1_762_900_000u64;
+
+        for cycle in 0..cycles {
+            let a_ready = loop_a.ready_to_dispatch();
+            let b_ready = loop_b.ready_to_dispatch();
+            assert_ne!(
+                a_ready, b_ready,
+                "exactly one loop side must be dispatch-ready per cycle"
+            );
+
+            if a_ready {
+                let request_id = format!("req-a-to-b-{:02}", cycle + 1);
+                request_routes.push((request_id.clone(), 'a'));
+                loop_a.register_outbound_dispatch(request_id.as_str(), now_epoch_seconds);
+                relay.queue_targeted_request(request_id.as_str(), pubkey_b.as_str());
+                assert_eq!(
+                    relay.take_next_for(pubkey_b.as_str()).as_deref(),
+                    Some(request_id.as_str())
+                );
+                assert!(
+                    relay.take_next_for(pubkey_a.as_str()).is_none(),
+                    "targeted relay ingestion should not deliver sender's own request"
+                );
+
+                let mut outbound = fixture_loop_submitted_request(
+                    request_id.as_str(),
+                    NetworkRequestStatus::Paid,
+                    pubkey_b.as_str(),
+                    loop_a.skill_scope_id.as_str(),
+                );
+                outbound.last_payment_pointer = Some(format!("wallet:pay:{request_id}"));
+                submitted_a.push(outbound);
+                assert!(
+                    loop_a.reconcile_outbound_terminal_statuses(submitted_a.as_slice()),
+                    "outbound paid status should reconcile once for A->B cycle"
+                );
+
+                let job_id = format!("job-{request_id}");
+                let mut inbound = fixture_history_row(
+                    job_id.as_str(),
+                    JobHistoryStatus::Succeeded,
+                    now_epoch_seconds,
+                    10,
+                );
+                inbound.skill_scope_id = Some(loop_b.skill_scope_id.clone());
+                inbound.payment_pointer = format!("wallet:recv:{request_id}");
+                history_b.push(inbound);
+                assert!(
+                    loop_b.reconcile_inbound_history(history_b.as_slice()),
+                    "inbound paid receipt should reconcile once for A->B cycle"
+                );
+
+                let feedback = relay.publish_feedback(
+                    request_id.as_str(),
+                    pubkey_b.as_str(),
+                    pubkey_a.as_str(),
+                );
+                let result =
+                    relay.publish_result(request_id.as_str(), pubkey_b.as_str(), pubkey_a.as_str());
+                assert!(feedback.contains(request_id.as_str()));
+                assert!(result.contains(request_id.as_str()));
+            } else {
+                let request_id = format!("req-b-to-a-{:02}", cycle + 1);
+                request_routes.push((request_id.clone(), 'b'));
+                loop_b.register_outbound_dispatch(request_id.as_str(), now_epoch_seconds);
+                relay.queue_targeted_request(request_id.as_str(), pubkey_a.as_str());
+                assert_eq!(
+                    relay.take_next_for(pubkey_a.as_str()).as_deref(),
+                    Some(request_id.as_str())
+                );
+                assert!(
+                    relay.take_next_for(pubkey_b.as_str()).is_none(),
+                    "targeted relay ingestion should not deliver sender's own request"
+                );
+
+                let mut outbound = fixture_loop_submitted_request(
+                    request_id.as_str(),
+                    NetworkRequestStatus::Paid,
+                    pubkey_a.as_str(),
+                    loop_b.skill_scope_id.as_str(),
+                );
+                outbound.last_payment_pointer = Some(format!("wallet:pay:{request_id}"));
+                submitted_b.push(outbound);
+                assert!(
+                    loop_b.reconcile_outbound_terminal_statuses(submitted_b.as_slice()),
+                    "outbound paid status should reconcile once for B->A cycle"
+                );
+
+                let job_id = format!("job-{request_id}");
+                let mut inbound = fixture_history_row(
+                    job_id.as_str(),
+                    JobHistoryStatus::Succeeded,
+                    now_epoch_seconds,
+                    10,
+                );
+                inbound.skill_scope_id = Some(loop_a.skill_scope_id.clone());
+                inbound.payment_pointer = format!("wallet:recv:{request_id}");
+                history_a.push(inbound);
+                assert!(
+                    loop_a.reconcile_inbound_history(history_a.as_slice()),
+                    "inbound paid receipt should reconcile once for B->A cycle"
+                );
+
+                let feedback = relay.publish_feedback(
+                    request_id.as_str(),
+                    pubkey_a.as_str(),
+                    pubkey_b.as_str(),
+                );
+                let result =
+                    relay.publish_result(request_id.as_str(), pubkey_a.as_str(), pubkey_b.as_str());
+                assert!(feedback.contains(request_id.as_str()));
+                assert!(result.contains(request_id.as_str()));
+            }
+            now_epoch_seconds = now_epoch_seconds.saturating_add(1);
+        }
+
+        assert_eq!(relay.feedback_event_ids.len() as u64, cycles);
+        assert_eq!(relay.result_event_ids.len() as u64, cycles);
+        assert_eq!(loop_a.local_to_peer_paid, 2);
+        assert_eq!(loop_a.peer_to_local_paid, 2);
+        assert_eq!(loop_b.local_to_peer_paid, 2);
+        assert_eq!(loop_b.peer_to_local_paid, 2);
+        assert_eq!(loop_a.sats_sent, 20);
+        assert_eq!(loop_a.sats_received, 20);
+        assert_eq!(loop_b.sats_sent, 20);
+        assert_eq!(loop_b.sats_received, 20);
+
+        for (request_id, sender) in request_routes {
+            match sender {
+                'a' => {
+                    let outbound = submitted_a
+                        .iter()
+                        .find(|request| request.request_id == request_id)
+                        .expect("A outbound request should be tracked");
+                    assert_eq!(outbound.status, NetworkRequestStatus::Paid);
+                    assert!(
+                        outbound
+                            .last_payment_pointer
+                            .as_deref()
+                            .is_some_and(|pointer| pointer.starts_with("wallet:pay:")),
+                        "A outbound payment must be wallet-authoritative"
+                    );
+                    let inbound = history_b
+                        .iter()
+                        .find(|row| row.job_id == format!("job-{request_id}"))
+                        .expect("B inbound history row should correlate to outbound request");
+                    assert_eq!(inbound.status, JobHistoryStatus::Succeeded);
+                    assert!(
+                        inbound.payment_pointer.starts_with("wallet:recv:"),
+                        "B inbound payout pointer must be wallet-authoritative"
+                    );
+                }
+                'b' => {
+                    let outbound = submitted_b
+                        .iter()
+                        .find(|request| request.request_id == request_id)
+                        .expect("B outbound request should be tracked");
+                    assert_eq!(outbound.status, NetworkRequestStatus::Paid);
+                    assert!(
+                        outbound
+                            .last_payment_pointer
+                            .as_deref()
+                            .is_some_and(|pointer| pointer.starts_with("wallet:pay:")),
+                        "B outbound payment must be wallet-authoritative"
+                    );
+                    let inbound = history_a
+                        .iter()
+                        .find(|row| row.job_id == format!("job-{request_id}"))
+                        .expect("A inbound history row should correlate to outbound request");
+                    assert_eq!(inbound.status, JobHistoryStatus::Succeeded);
+                    assert!(
+                        inbound.payment_pointer.starts_with("wallet:recv:"),
+                        "A inbound payout pointer must be wallet-authoritative"
+                    );
+                }
+                _ => panic!("unexpected sender tag"),
+            }
+        }
+
+        let dispatches_before_stop = loop_a.local_to_peer_dispatched;
+        loop_a.stop("operator stop test");
+        assert!(loop_a.kill_switch_active);
+        assert!(!loop_a.ready_to_dispatch());
+        if loop_a.ready_to_dispatch() {
+            loop_a.register_outbound_dispatch("req-after-stop", now_epoch_seconds);
+        }
+        assert_eq!(
+            loop_a.local_to_peer_dispatched, dispatches_before_stop,
+            "stop should halt post-stop dispatches"
+        );
+        loop_a
+            .start()
+            .expect("loop should restart after explicit operator start");
+        assert!(!loop_a.kill_switch_active);
+    }
+
+    #[test]
     fn starter_provenance_propagates_from_inbox_to_history_receipt() {
         let mut inbox = seed_job_inbox(vec![fixture_inbox_request_with_source(
             "req-starter-provenance",
@@ -4142,7 +5580,9 @@ mod tests {
         active.job.as_mut().expect("active job").payment_id =
             Some("wallet-payment-starter-provenance".to_string());
         assert_eq!(
-            active.advance_stage().expect("delivered->paid should succeed"),
+            active
+                .advance_stage()
+                .expect("delivered->paid should succeed"),
             JobLifecycleStage::Paid
         );
 
@@ -4228,7 +5668,7 @@ mod tests {
         assert!(relays.retry_selected().is_ok());
         assert_eq!(
             relays.selected().map(|row| row.status),
-            Some(RelayConnectionStatus::Connected)
+            Some(RelayConnectionStatus::Connecting)
         );
 
         assert!(relays.remove_selected().is_ok());
@@ -4242,22 +5682,26 @@ mod tests {
 
     #[test]
     fn sync_health_detects_stale_cursor_and_rebootstrap() {
-        let mut provider = ProviderRuntimeState::default();
-        provider.mode = ProviderMode::Online;
-        let mut relays = RelayConnectionsState::default();
-        relays.relays.push(RelayConnectionRow {
-            url: "wss://relay-a.example".to_string(),
-            status: RelayConnectionStatus::Connected,
-            latency_ms: Some(42),
-            last_seen_seconds_ago: Some(0),
-            last_error: None,
-        });
+        let worker_id = "desktopw:test:sync";
+        let mut lifecycle = crate::sync_lifecycle::RuntimeSyncLifecycleManager::default();
+        lifecycle.mark_connecting(worker_id);
+        lifecycle.mark_replay_bootstrap(worker_id, 42, Some(42));
+        lifecycle.mark_live(worker_id, Some(120));
         let mut sync = SyncHealthState::default();
+        sync.last_applied_event_seq = 42;
+        let snapshot = lifecycle
+            .snapshot(worker_id)
+            .expect("snapshot should exist");
 
-        sync.cursor_last_advanced_seconds_ago = sync.cursor_stale_after_seconds + 5;
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+        let now = std::time::Instant::now();
+        sync.refresh_from_lifecycle(now, Some(&snapshot));
+        sync.refresh_from_lifecycle(
+            now + std::time::Duration::from_secs(sync.cursor_stale_after_seconds + 5),
+            Some(&snapshot),
+        );
         assert_eq!(sync.load_state, super::PaneLoadState::Error);
         assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Reconnecting);
+        assert!(sync.stale_cursor_reason.is_some());
 
         sync.rebootstrap();
         assert_eq!(sync.load_state, super::PaneLoadState::Ready);
@@ -4266,47 +5710,39 @@ mod tests {
     }
 
     #[test]
-    fn sync_health_does_not_mark_stale_while_provider_is_offline() {
-        let provider = ProviderRuntimeState::default();
-        let mut relays = RelayConnectionsState::default();
-        relays.relays.push(RelayConnectionRow {
-            url: "wss://relay-a.example".to_string(),
-            status: RelayConnectionStatus::Connected,
-            latency_ms: Some(42),
-            last_seen_seconds_ago: Some(0),
-            last_error: None,
-        });
+    fn sync_health_stays_idle_without_lifecycle_snapshot() {
         let mut sync = SyncHealthState::default();
-
-        sync.cursor_last_advanced_seconds_ago = sync.cursor_stale_after_seconds + 5;
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
-
-        assert_eq!(sync.load_state, super::PaneLoadState::Ready);
+        sync.refresh_from_lifecycle(std::time::Instant::now(), None);
+        assert_eq!(sync.load_state, super::PaneLoadState::Loading);
         assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Idle);
         assert_eq!(sync.last_error, None);
         assert_eq!(sync.cursor_last_advanced_seconds_ago, 0);
     }
 
     #[test]
-    fn sync_health_marks_resubscribing_when_relays_are_lost() {
-        let provider = ProviderRuntimeState::default();
-        let mut relays = RelayConnectionsState::default();
-        relays.relays.push(RelayConnectionRow {
-            url: "wss://relay-a.example".to_string(),
-            status: RelayConnectionStatus::Connected,
-            latency_ms: Some(42),
-            last_seen_seconds_ago: Some(0),
-            last_error: None,
-        });
+    fn sync_health_marks_resubscribing_when_lifecycle_enters_backoff() {
+        let worker_id = "desktopw:test:backoff";
+        let mut lifecycle = crate::sync_lifecycle::RuntimeSyncLifecycleManager::default();
+        lifecycle.mark_connecting(worker_id);
+        lifecycle.mark_live(worker_id, Some(30));
+        let _ = lifecycle.mark_disconnect(
+            worker_id,
+            crate::sync_lifecycle::RuntimeSyncDisconnectReason::Network,
+            Some("relay dropped connection".to_string()),
+        );
+        let snapshot = lifecycle
+            .snapshot(worker_id)
+            .expect("snapshot should exist");
         let mut sync = SyncHealthState::default();
 
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
-        assert_eq!(sync.subscription_state, "subscribed");
-
-        relays.relays[0].status = RelayConnectionStatus::Error;
-        relays.relays[0].last_error = Some("relay dropped connection".to_string());
-        sync.refresh_from_runtime(std::time::Instant::now(), &provider, &relays);
+        sync.refresh_from_lifecycle(std::time::Instant::now(), Some(&snapshot));
         assert_eq!(sync.subscription_state, "resubscribing");
+        assert_eq!(sync.recovery_phase, SyncRecoveryPhase::Reconnecting);
+        assert_eq!(sync.disconnect_reason.as_deref(), Some("network"));
+        assert!(
+            sync.reconnect_posture.starts_with("backoff"),
+            "reconnect posture should expose backoff details"
+        );
     }
 
     #[test]
@@ -4314,8 +5750,11 @@ mod tests {
         let mut requests = NetworkRequestsState::default();
         let request_id = requests
             .queue_request_submission(NetworkRequestSubmission {
+                request_id: None,
                 request_type: "translate.text".to_string(),
                 payload: "{\"text\":\"hola\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["npub1provider".to_string()],
                 skill_scope_id: Some("33400:npub1agent:summarize-text:0.1.0".to_string()),
                 credit_envelope_ref: Some("ac:39242:00000001".to_string()),
                 budget_sats: 1200,
@@ -4331,6 +5770,306 @@ mod tests {
         assert_eq!(first.response_stream_id, format!("stream:{request_id}"));
         assert_eq!(first.status, NetworkRequestStatus::Submitted);
         assert_eq!(first.authority_command_seq, 44);
+    }
+
+    #[test]
+    fn network_requests_track_buyer_feedback_and_result_correlation() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-001".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 9,
+            })
+            .expect("request should queue");
+        let provider_pubkey = "22".repeat(32);
+        let feedback_action = requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "feedback-001",
+            Some("payment-required"),
+            Some("pay invoice"),
+        );
+        assert_eq!(feedback_action, None);
+        let after_feedback = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after feedback");
+        assert_eq!(after_feedback.status, NetworkRequestStatus::PaymentRequired);
+        assert_eq!(
+            after_feedback.last_feedback_status.as_deref(),
+            Some("payment-required")
+        );
+        assert_eq!(
+            after_feedback.last_feedback_event_id.as_deref(),
+            Some("feedback-001")
+        );
+        assert_eq!(
+            after_feedback.last_provider_pubkey.as_deref(),
+            Some(provider_pubkey.as_str())
+        );
+
+        let result_action = requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            provider_pubkey.as_str(),
+            "result-001",
+            Some("success"),
+        );
+        assert_eq!(result_action, None);
+        let after_result = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist after result");
+        assert_eq!(after_result.status, NetworkRequestStatus::ResultReceived);
+        assert_eq!(
+            after_result.last_result_event_id.as_deref(),
+            Some("result-001")
+        );
+        assert_eq!(
+            after_result.winning_provider_pubkey.as_deref(),
+            Some(provider_pubkey.as_str())
+        );
+        assert_eq!(
+            after_result.winning_result_event_id.as_deref(),
+            Some("result-001")
+        );
+        assert_eq!(
+            after_result.resolution_reason_code.as_deref(),
+            Some(BuyerResolutionReason::FirstValidResult.code())
+        );
+    }
+
+    #[test]
+    fn network_requests_record_auto_payment_pointer_and_timestamps() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-pay-001".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: vec!["11".repeat(32)],
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 12,
+            })
+            .expect("request should queue");
+        requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            "22".repeat(32).as_str(),
+            "feedback-pay-001",
+            Some("payment-required"),
+            Some("pay to continue"),
+        );
+
+        let prepared = requests
+            .prepare_auto_payment_attempt(
+                request_id.as_str(),
+                "lnbc1paymentrequired",
+                Some(10_000),
+                1_762_700_010,
+            )
+            .expect("auto-payment should prepare");
+        assert_eq!(prepared.0, "lnbc1paymentrequired");
+        assert_eq!(prepared.1, Some(10));
+        assert_eq!(
+            requests.pending_auto_payment_request_id.as_deref(),
+            Some(request_id.as_str())
+        );
+
+        requests.mark_auto_payment_sent(
+            request_id.as_str(),
+            "wallet-payment-req-pay-001",
+            1_762_700_012,
+        );
+
+        let row = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request row should remain present");
+        assert_eq!(row.status, NetworkRequestStatus::Paid);
+        assert_eq!(
+            row.last_payment_pointer.as_deref(),
+            Some("wallet-payment-req-pay-001")
+        );
+        assert_eq!(row.payment_required_at_epoch_seconds, Some(1_762_700_010));
+        assert_eq!(row.payment_sent_at_epoch_seconds, Some(1_762_700_012));
+        assert_eq!(row.payment_failed_at_epoch_seconds, None);
+        assert_eq!(row.payment_error, None);
+    }
+
+    #[test]
+    fn network_requests_race_mode_flags_late_result_as_unpaid_duplicate() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-race-001".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 14,
+            })
+            .expect("request should queue");
+
+        let winner = "11".repeat(32);
+        let loser = "22".repeat(32);
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                winner.as_str(),
+                "result-winner-001",
+                Some("success"),
+            ),
+            None
+        );
+        let action = requests.apply_nip90_buyer_result_event(
+            request_id.as_str(),
+            loser.as_str(),
+            "result-loser-001",
+            Some("success"),
+        );
+        assert_eq!(
+            action,
+            Some(crate::state::operations::BuyerResolutionAction {
+                request_id: request_id.clone(),
+                provider_pubkey: loser.clone(),
+                reason: BuyerResolutionReason::LateResultUnpaid,
+            })
+        );
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(
+            request.winning_provider_pubkey.as_deref(),
+            Some(winner.as_str())
+        );
+        assert_eq!(request.duplicate_outcomes.len(), 1);
+        assert_eq!(
+            request.duplicate_outcomes[0].reason_code,
+            BuyerResolutionReason::LateResultUnpaid.code()
+        );
+    }
+
+    #[test]
+    fn network_requests_race_mode_flags_late_feedback_as_lost_race() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-race-002".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 15,
+            })
+            .expect("request should queue");
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                "11".repeat(32).as_str(),
+                "result-winner-002",
+                Some("success"),
+            ),
+            None
+        );
+        let loser = "33".repeat(32);
+        let action = requests.apply_nip90_buyer_feedback_event(
+            request_id.as_str(),
+            loser.as_str(),
+            "feedback-loser-002",
+            Some("processing"),
+            Some("still working"),
+        );
+        assert_eq!(
+            action,
+            Some(crate::state::operations::BuyerResolutionAction {
+                request_id: request_id.clone(),
+                provider_pubkey: loser.clone(),
+                reason: BuyerResolutionReason::LostRace,
+            })
+        );
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(request.duplicate_outcomes.len(), 1);
+        assert_eq!(
+            request.duplicate_outcomes[0].reason_code,
+            BuyerResolutionReason::LostRace.code()
+        );
+    }
+
+    #[test]
+    fn network_requests_ignore_duplicate_buyer_event_ids() {
+        let mut requests = NetworkRequestsState::default();
+        let request_id = requests
+            .queue_request_submission(NetworkRequestSubmission {
+                request_id: Some("req-race-003".to_string()),
+                request_type: "summarize.text".to_string(),
+                payload: "{\"prompt\":\"hello\"}".to_string(),
+                resolution_mode: BuyerResolutionMode::Race,
+                target_provider_pubkeys: Vec::new(),
+                skill_scope_id: None,
+                credit_envelope_ref: None,
+                budget_sats: 10,
+                timeout_seconds: 60,
+                authority_command_seq: 16,
+            })
+            .expect("request should queue");
+
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                "11".repeat(32).as_str(),
+                "result-dup-003",
+                Some("success"),
+            ),
+            None
+        );
+        assert_eq!(
+            requests.apply_nip90_buyer_result_event(
+                request_id.as_str(),
+                "11".repeat(32).as_str(),
+                "result-dup-003",
+                Some("success"),
+            ),
+            None
+        );
+
+        let request = requests
+            .submitted
+            .iter()
+            .find(|request| request.request_id == request_id)
+            .expect("request should exist");
+        assert_eq!(request.observed_buyer_event_ids.len(), 1);
+        assert!(request.duplicate_outcomes.is_empty());
     }
 
     #[test]
@@ -4576,27 +6315,30 @@ mod tests {
             .expect("interval check should not error");
         assert!(blocked_by_interval.is_none());
 
-        let second = starter_jobs
+        let blocked_by_cap = starter_jobs
             .dispatch_next_if_due(now + std::time::Duration::from_secs(1))
-            .expect("second dispatch should not error")
-            .expect("second starter quest should dispatch");
-        assert_eq!(starter_jobs.inflight_jobs(), 2);
-        assert!(starter_jobs.budget_allocated_sats <= starter_jobs.budget_cap_sats);
-
-        let exhausted = starter_jobs
-            .dispatch_next_if_due(now + std::time::Duration::from_secs(2))
-            .expect("budget check should not error");
-        assert!(exhausted.is_none());
+            .expect("second dispatch check should not error");
+        assert!(blocked_by_cap.is_none());
+        assert_eq!(starter_jobs.inflight_jobs(), 1);
         assert!(
             starter_jobs
                 .last_action
                 .as_deref()
-                .is_some_and(|value| value.contains("budget exhausted"))
+                .is_some_and(|value| value.contains("max=1"))
         );
 
-        assert!(starter_jobs.rollback_dispatched_job(&second.job_id));
+        assert!(starter_jobs.rollback_dispatched_job(&first.job_id));
+        assert_eq!(starter_jobs.inflight_jobs(), 0);
+
+        let second = starter_jobs
+            .dispatch_next_if_due(now + std::time::Duration::from_secs(2))
+            .expect("dispatch after rollback should not error")
+            .expect("second starter quest should dispatch after inflight slot opens");
         assert_eq!(starter_jobs.inflight_jobs(), 1);
-        assert_eq!(starter_jobs.budget_allocated_sats, first.payout_sats);
+
+        assert!(starter_jobs.rollback_dispatched_job(&second.job_id));
+        assert_eq!(starter_jobs.inflight_jobs(), 0);
+        assert_eq!(starter_jobs.budget_allocated_sats, 0);
     }
 
     #[test]
@@ -4644,8 +6386,207 @@ mod tests {
     }
 
     #[test]
+    fn reciprocal_loop_start_direction_is_deterministic_per_identity_pair() {
+        let mut loop_a = ReciprocalLoopState::default();
+        loop_a.set_local_pubkey(Some("11".repeat(32).as_str()));
+        loop_a.set_peer_pubkey(Some("22".repeat(32).as_str()));
+        loop_a.start().expect("loop A should start");
+        assert_eq!(loop_a.next_direction, ReciprocalLoopDirection::LocalToPeer);
+
+        let mut loop_b = ReciprocalLoopState::default();
+        loop_b.set_local_pubkey(Some("22".repeat(32).as_str()));
+        loop_b.set_peer_pubkey(Some("11".repeat(32).as_str()));
+        loop_b.start().expect("loop B should start");
+        assert_eq!(loop_b.next_direction, ReciprocalLoopDirection::PeerToLocal);
+    }
+
+    #[test]
+    fn reciprocal_loop_reconciles_outbound_and_inbound_paid_events_once() {
+        let local_pubkey = "11".repeat(32);
+        let peer_pubkey = "22".repeat(32);
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some(local_pubkey.as_str()));
+        reciprocal_loop.set_peer_pubkey(Some(peer_pubkey.as_str()));
+        reciprocal_loop.start().expect("loop should start");
+
+        reciprocal_loop.register_outbound_dispatch("loop-req-001", 1_762_800_000);
+        assert_eq!(reciprocal_loop.local_to_peer_dispatched, 1);
+        assert_eq!(
+            reciprocal_loop.in_flight_request_id.as_deref(),
+            Some("loop-req-001")
+        );
+
+        let outbound = fixture_loop_submitted_request(
+            "loop-req-001",
+            NetworkRequestStatus::Paid,
+            peer_pubkey.as_str(),
+            reciprocal_loop.skill_scope_id.as_str(),
+        );
+        assert!(
+            reciprocal_loop.reconcile_outbound_terminal_statuses(std::slice::from_ref(&outbound))
+        );
+        assert_eq!(reciprocal_loop.local_to_peer_paid, 1);
+        assert_eq!(reciprocal_loop.sats_sent, 10);
+        assert!(reciprocal_loop.in_flight_request_id.is_none());
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::PeerToLocal
+        );
+        assert_eq!(
+            reciprocal_loop.last_payment_pointer.as_deref(),
+            Some("wallet:loop-req-001")
+        );
+        assert!(
+            !reciprocal_loop.reconcile_outbound_terminal_statuses(std::slice::from_ref(&outbound))
+        );
+        assert_eq!(
+            reciprocal_loop.local_to_peer_paid, 1,
+            "outbound terminal event should be counted exactly once"
+        );
+
+        let mut inbound = fixture_history_row(
+            "loop-job-001",
+            JobHistoryStatus::Succeeded,
+            1_762_800_010,
+            10,
+        );
+        inbound.demand_source = JobDemandSource::OpenNetwork;
+        inbound.skill_scope_id = Some(reciprocal_loop.skill_scope_id.clone());
+        inbound.payment_pointer = "wallet:loop-inbound-001".to_string();
+
+        assert!(reciprocal_loop.reconcile_inbound_history(std::slice::from_ref(&inbound)));
+        assert_eq!(reciprocal_loop.peer_to_local_paid, 1);
+        assert_eq!(reciprocal_loop.sats_received, 10);
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::LocalToPeer
+        );
+        assert_eq!(
+            reciprocal_loop.last_payment_pointer.as_deref(),
+            Some("wallet:loop-inbound-001")
+        );
+        assert!(!reciprocal_loop.reconcile_inbound_history(&[inbound]));
+        assert_eq!(
+            reciprocal_loop.peer_to_local_paid, 1,
+            "inbound terminal event should be counted exactly once"
+        );
+    }
+
+    #[test]
+    fn reciprocal_loop_stop_engages_kill_switch_and_blocks_dispatch() {
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some("11".repeat(32).as_str()));
+        reciprocal_loop.set_peer_pubkey(Some("22".repeat(32).as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        assert!(reciprocal_loop.ready_to_dispatch());
+
+        reciprocal_loop.stop("operator stop");
+        assert!(!reciprocal_loop.running);
+        assert!(reciprocal_loop.kill_switch_active);
+        assert!(!reciprocal_loop.ready_to_dispatch());
+    }
+
+    #[test]
+    fn reciprocal_loop_retry_backoff_is_bounded_and_escalates_to_terminal() {
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some("11".repeat(32).as_str()));
+        reciprocal_loop.set_peer_pubkey(Some("22".repeat(32).as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        reciprocal_loop.max_retry_attempts = 2;
+        reciprocal_loop.retry_backoff_seconds = 1;
+        reciprocal_loop.retry_backoff_max_seconds = 4;
+
+        assert!(!reciprocal_loop.record_recoverable_failure(
+            ReciprocalLoopFailureClass::Dispatch,
+            "relay timeout",
+            100
+        ));
+        assert_eq!(reciprocal_loop.retry_attempts, 1);
+        assert_eq!(
+            reciprocal_loop.last_failure_disposition,
+            Some(ReciprocalLoopFailureDisposition::Recoverable)
+        );
+        assert_eq!(reciprocal_loop.retry_backoff_until_epoch_seconds, Some(101));
+        assert!(reciprocal_loop.in_backoff_window(100));
+        assert!(reciprocal_loop.clear_retry_backoff_if_elapsed(101));
+        assert!(!reciprocal_loop.in_backoff_window(101));
+
+        assert!(!reciprocal_loop.record_recoverable_failure(
+            ReciprocalLoopFailureClass::Dispatch,
+            "relay timeout",
+            200
+        ));
+        assert_eq!(reciprocal_loop.retry_attempts, 2);
+        assert_eq!(reciprocal_loop.retry_backoff_until_epoch_seconds, Some(202));
+
+        assert!(reciprocal_loop.record_recoverable_failure(
+            ReciprocalLoopFailureClass::Dispatch,
+            "relay timeout",
+            300
+        ));
+        assert!(!reciprocal_loop.running);
+        assert!(reciprocal_loop.kill_switch_active);
+        assert_eq!(
+            reciprocal_loop.last_failure_disposition,
+            Some(ReciprocalLoopFailureDisposition::Terminal)
+        );
+    }
+
+    #[test]
+    fn reciprocal_loop_outbound_stale_timeout_marks_request_terminal_once() {
+        let local_pubkey = "11".repeat(32);
+        let peer_pubkey = "22".repeat(32);
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some(local_pubkey.as_str()));
+        reciprocal_loop.set_peer_pubkey(Some(peer_pubkey.as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        reciprocal_loop.register_outbound_dispatch("loop-req-stale-001", 1_762_800_000);
+
+        assert!(!reciprocal_loop.outbound_stale_timed_out(1_762_800_060));
+        assert!(reciprocal_loop.outbound_stale_timed_out(1_762_800_150));
+        let timed_out = reciprocal_loop
+            .mark_outbound_stale_timeout()
+            .expect("stale request should be marked");
+        assert_eq!(timed_out, "loop-req-stale-001");
+        assert_eq!(reciprocal_loop.local_to_peer_failed, 1);
+        assert!(reciprocal_loop.in_flight_request_id.is_none());
+
+        let late_paid = fixture_loop_submitted_request(
+            "loop-req-stale-001",
+            NetworkRequestStatus::Paid,
+            peer_pubkey.as_str(),
+            reciprocal_loop.skill_scope_id.as_str(),
+        );
+        assert!(
+            !reciprocal_loop.reconcile_outbound_terminal_statuses(std::slice::from_ref(&late_paid))
+        );
+        assert_eq!(reciprocal_loop.local_to_peer_paid, 0);
+    }
+
+    #[test]
+    fn reciprocal_loop_peer_wait_timeout_recovers_to_local_dispatch_turn() {
+        let mut reciprocal_loop = ReciprocalLoopState::default();
+        reciprocal_loop.set_local_pubkey(Some("22".repeat(32).as_str()));
+        reciprocal_loop.set_peer_pubkey(Some("11".repeat(32).as_str()));
+        reciprocal_loop.start().expect("loop should start");
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::PeerToLocal
+        );
+        reciprocal_loop.mark_peer_wait_started(1_762_800_000);
+        assert!(!reciprocal_loop.inbound_wait_timed_out(1_762_800_060));
+        assert!(reciprocal_loop.inbound_wait_timed_out(1_762_800_150));
+        reciprocal_loop.mark_inbound_stale_timeout();
+        assert_eq!(reciprocal_loop.peer_to_local_failed, 1);
+        assert_eq!(
+            reciprocal_loop.next_direction,
+            ReciprocalLoopDirection::LocalToPeer
+        );
+    }
+
+    #[test]
     fn activity_feed_upsert_deduplicates_stable_event_ids() {
-        let mut feed = ActivityFeedState::default();
+        let mut feed = activity_feed_state_for_tests("dedupe");
         feed.upsert_event(fixture_activity_event(
             "wallet:payment:latest",
             ActivityEventDomain::Wallet,
@@ -4677,6 +6618,313 @@ mod tests {
                 .into_iter()
                 .all(|row| row.domain == ActivityEventDomain::Cad)
         );
+    }
+
+    #[test]
+    fn activity_feed_nip90_filter_limits_to_latest_fifty_events() {
+        let mut feed = activity_feed_state_for_tests("nip90-limit");
+        for index in 0..60_u64 {
+            let mut row = fixture_activity_event(
+                format!("nip90:req:{index}").as_str(),
+                ActivityEventDomain::Network,
+                1_761_920_700 + index,
+            );
+            row.source_tag = if index % 2 == 0 {
+                "nip90.relay".to_string()
+            } else {
+                "nip90.publish".to_string()
+            };
+            feed.upsert_event(row);
+        }
+        for index in 0..5_u64 {
+            let mut row = fixture_activity_event(
+                format!("network:other:{index}").as_str(),
+                ActivityEventDomain::Network,
+                1_761_921_000 + index,
+            );
+            row.source_tag = "network.manual".to_string();
+            feed.upsert_event(row);
+        }
+
+        feed.set_filter(ActivityFeedFilter::Nip90);
+        let visible = feed.visible_rows();
+        assert_eq!(feed.filtered_row_count(), 50);
+        assert_eq!(feed.total_pages(), 7);
+        assert_eq!(visible.len(), 8);
+        assert!(
+            visible
+                .iter()
+                .all(|row| row.source_tag.starts_with("nip90.")),
+            "nip90 filter should exclude non-nip90 network rows"
+        );
+        assert_eq!(
+            visible.first().map(|row| row.event_id.as_str()),
+            Some("nip90:req:59")
+        );
+        assert_eq!(
+            visible.last().map(|row| row.event_id.as_str()),
+            Some("nip90:req:52")
+        );
+    }
+
+    #[test]
+    fn activity_feed_pagination_moves_through_filtered_rows() {
+        let mut feed = activity_feed_state_for_tests("paging");
+        for index in 0..18_u64 {
+            feed.upsert_event(fixture_activity_event(
+                format!("job:event:{index}").as_str(),
+                ActivityEventDomain::Job,
+                1_761_922_000 + index,
+            ));
+        }
+        feed.set_filter(ActivityFeedFilter::Job);
+        assert_eq!(feed.page, 0);
+        assert_eq!(feed.total_pages(), 3);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:17")
+        );
+
+        feed.next_page();
+        assert_eq!(feed.page, 1);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:9")
+        );
+        assert_eq!(feed.selected_event_id.as_deref(), Some("job:event:9"));
+
+        feed.next_page();
+        assert_eq!(feed.page, 2);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:1")
+        );
+        assert_eq!(feed.selected_event_id.as_deref(), Some("job:event:1"));
+
+        feed.next_page();
+        assert_eq!(feed.page, 2);
+
+        feed.previous_page();
+        assert_eq!(feed.page, 1);
+        assert_eq!(
+            feed.visible_rows().first().map(|row| row.event_id.as_str()),
+            Some("job:event:9")
+        );
+    }
+
+    #[test]
+    fn activity_feed_detail_scroll_clamps_and_resets_on_navigation() {
+        let mut feed = activity_feed_state_for_tests("detail-scroll");
+        for index in 0..12_u64 {
+            let mut row = fixture_activity_event(
+                format!("network:event:{index}").as_str(),
+                ActivityEventDomain::Network,
+                1_761_922_300 + index,
+            );
+            row.detail = (0..18)
+                .map(|line| format!("line-{line} {}", row.event_id))
+                .collect::<Vec<_>>()
+                .join("\n");
+            feed.upsert_event(row);
+        }
+        feed.set_filter(ActivityFeedFilter::Network);
+        assert!(feed.select_visible_row(0));
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+
+        let total_lines = 18;
+        let visible_lines = 5;
+        assert!(feed.scroll_detail_lines_by(9_999.0, total_lines, visible_lines));
+        assert_eq!(
+            feed.detail_scroll_offset_for(total_lines, visible_lines),
+            13
+        );
+        assert!(feed.scroll_detail_lines_by(-9_999.0, total_lines, visible_lines));
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+
+        assert!(feed.scroll_detail_lines_by(240.0, total_lines, visible_lines));
+        assert!(feed.detail_scroll_line_offset > 0);
+        assert!(feed.select_visible_row(1));
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+
+        assert!(feed.scroll_detail_lines_by(240.0, total_lines, visible_lines));
+        feed.next_page();
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+        assert!(feed.scroll_detail_lines_by(240.0, total_lines, visible_lines));
+        feed.previous_page();
+        assert_eq!(feed.detail_scroll_line_offset, 0);
+    }
+
+    #[test]
+    fn activity_feed_projection_rows_survive_restart() {
+        let path = activity_feed_projection_test_path("restart");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut feed = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        feed.upsert_event(fixture_activity_event(
+            "chat:turn:42",
+            ActivityEventDomain::Chat,
+            1_761_920_301,
+        ));
+        feed.upsert_event(fixture_activity_event(
+            "job:receipt:42",
+            ActivityEventDomain::Job,
+            1_761_920_311,
+        ));
+        let expected_rows = feed.rows.clone();
+
+        let reloaded = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        assert_eq!(reloaded.rows, expected_rows);
+        assert_eq!(
+            reloaded.selected_event_id.as_deref(),
+            reloaded.rows.first().map(|row| row.event_id.as_str())
+        );
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn activity_feed_reload_projection_refreshes_from_projection_stream() {
+        let path = activity_feed_projection_test_path("reload");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut primary = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        primary.upsert_event(fixture_activity_event(
+            "network:request:1",
+            ActivityEventDomain::Network,
+            1_761_920_340,
+        ));
+
+        let mut secondary = ActivityFeedState::from_projection_path_for_tests(path.clone());
+        secondary.upsert_event(fixture_activity_event(
+            "sync:checkpoint:2",
+            ActivityEventDomain::Sync,
+            1_761_920_360,
+        ));
+
+        assert!(
+            primary
+                .rows
+                .iter()
+                .all(|row| row.event_id != "sync:checkpoint:2")
+        );
+        primary
+            .reload_projection()
+            .expect("projection reload should reconcile rows");
+        assert!(
+            primary
+                .rows
+                .iter()
+                .any(|row| row.event_id == "sync:checkpoint:2")
+        );
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn earn_projection_replays_and_dedupes_job_lifecycle_rows() {
+        let path = earn_projection_test_path("replay-dedupe");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut projection =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(path.clone());
+        let request = fixture_inbox_request(
+            "req-projection",
+            "summarize.text",
+            700,
+            120,
+            JobInboxValidation::Valid,
+        );
+        projection.record_ingress_request(&request, 1_761_920_400, "nip90.relay.ingress");
+
+        let mut inbox = seed_job_inbox(vec![request]);
+        assert!(inbox.select_by_index(0));
+        let selected = inbox
+            .selected_request()
+            .expect("selected request should exist")
+            .clone();
+        let mut active = ActiveJobState::default();
+        active.start_from_request(&selected);
+        let job = active.job.as_ref().expect("active job should exist");
+        projection.record_active_job_stage(
+            job,
+            JobLifecycleStage::Accepted,
+            1_761_920_420,
+            "job.inbox.accept",
+        );
+        projection.record_active_job_stage(
+            job,
+            JobLifecycleStage::Accepted,
+            1_761_920_421,
+            "job.inbox.accept.duplicate",
+        );
+
+        let accepted_rows = projection
+            .rows
+            .iter()
+            .filter(|row| row.stage == JobLifecycleStage::Accepted)
+            .count();
+        assert_eq!(accepted_rows, 1);
+
+        let reloaded =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(path.clone());
+        assert_eq!(reloaded.rows, projection.rows);
+        assert_eq!(
+            reloaded.authority,
+            super::EARN_JOB_LIFECYCLE_PROJECTION_AUTHORITY
+        );
+        let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn earn_projection_marks_settlement_authority_without_changing_wallet_truth() {
+        let path = earn_projection_test_path("authority");
+        let _ = std::fs::remove_file(path.as_path());
+        let mut projection =
+            EarnJobLifecycleProjectionState::from_projection_path_for_tests(path.clone());
+
+        let mut non_authoritative = fixture_history_row(
+            "job-non-authoritative",
+            JobHistoryStatus::Succeeded,
+            1_761_920_450,
+            50,
+        );
+        non_authoritative.payment_pointer = "pending:req-non-authoritative".to_string();
+        projection.record_history_receipt(
+            &non_authoritative,
+            non_authoritative.completed_at_epoch_seconds,
+            "earn.history.non_authoritative",
+        );
+
+        let mut authoritative = fixture_history_row(
+            "job-authoritative",
+            JobHistoryStatus::Succeeded,
+            1_761_920_470,
+            75,
+        );
+        authoritative.payment_pointer = "wallet-payment-777".to_string();
+        projection.record_history_receipt(
+            &authoritative,
+            authoritative.completed_at_epoch_seconds,
+            "earn.history.wallet_authoritative",
+        );
+
+        let non_authoritative_row = projection
+            .rows
+            .iter()
+            .find(|row| row.job_id == "job-non-authoritative")
+            .expect("non-authoritative projection row should exist");
+        assert!(!non_authoritative_row.settlement_authoritative);
+        assert_eq!(
+            non_authoritative_row.settlement_authority,
+            "projection.non_authoritative"
+        );
+
+        let authoritative_row = projection
+            .rows
+            .iter()
+            .find(|row| row.job_id == "job-authoritative")
+            .expect("authoritative projection row should exist");
+        assert!(authoritative_row.settlement_authoritative);
+        assert_eq!(
+            authoritative_row.settlement_authority,
+            "wallet.reconciliation"
+        );
+        let _ = std::fs::remove_file(path.as_path());
     }
 
     #[test]
@@ -4715,11 +6963,22 @@ mod tests {
     fn settings_updates_validate_ranges_and_reconnect_notice() {
         let mut settings = SettingsState::default();
         settings
-            .apply_updates_internal("wss://relay.primal.net", "2500", "8", false)
+            .apply_updates_internal("wss://relay.primal.net", "2500", "1", false)
             .expect("valid settings update should apply");
-        assert_eq!(settings.document.relay_url, "wss://relay.primal.net");
+        assert_eq!(
+            settings.document.primary_relay_url,
+            "wss://relay.primal.net"
+        );
+        assert_eq!(
+            settings
+                .document
+                .backup_relay_urls
+                .first()
+                .map(String::as_str),
+            Some(super::DEFAULT_NEXUS_PRIMARY_RELAY_URL)
+        );
         assert_eq!(settings.document.wallet_default_send_sats, 2500);
-        assert_eq!(settings.document.provider_max_queue_depth, 8);
+        assert_eq!(settings.document.provider_max_queue_depth, 1);
         assert!(settings.document.reconnect_required);
 
         let invalid = settings.apply_updates_internal("https://bad-relay", "0", "0", false);
@@ -4731,6 +6990,11 @@ mod tests {
     fn settings_document_default_uses_identity_authority_path() {
         let document = super::SettingsDocumentV1::default();
         assert!(document.identity_path.contains("identity.mnemonic"));
+        assert_eq!(
+            document.primary_relay_url,
+            super::DEFAULT_NEXUS_PRIMARY_RELAY_URL
+        );
+        assert_eq!(document.backup_relay_urls.len(), 3);
     }
 
     #[test]
@@ -4739,6 +7003,30 @@ mod tests {
         let document = super::parse_settings_document(raw).expect("settings parse should succeed");
         assert_ne!(document.identity_path, "~/.openagents/nostr/identity.json");
         assert!(document.identity_path.contains("identity.mnemonic"));
+        assert_eq!(document.provider_max_queue_depth, 1);
+        assert_eq!(document.primary_relay_url, "wss://relay.example");
+        assert!(document.backup_relay_urls.is_empty());
+    }
+
+    #[test]
+    fn settings_document_configured_relay_urls_keep_primary_first() {
+        let document = super::SettingsDocumentV1 {
+            primary_relay_url: "wss://relay.openagents.dev".to_string(),
+            backup_relay_urls: vec![
+                "wss://relay.primal.net".to_string(),
+                "wss://relay.openagents.dev".to_string(),
+                "wss://relay.damus.io".to_string(),
+            ],
+            ..super::SettingsDocumentV1::default()
+        };
+        assert_eq!(
+            document.configured_relay_urls(),
+            vec![
+                "wss://relay.openagents.dev".to_string(),
+                "wss://relay.primal.net".to_string(),
+                "wss://relay.damus.io".to_string()
+            ]
+        );
     }
 
     #[test]
@@ -4822,6 +7110,228 @@ mod tests {
                 .last_error
                 .as_deref()
                 .is_some_and(|error| error.contains("wallet backend unavailable"))
+        );
+    }
+
+    #[test]
+    fn earnings_scoreboard_tracks_loop_integrity_slo_metrics() {
+        let mut score = EarningsScoreboardState::default();
+        let now = std::time::Instant::now();
+        let mut provider = ProviderRuntimeState::default();
+        provider.online_since = Some(now - std::time::Duration::from_secs(120));
+        provider.last_completed_job_at = Some(now - std::time::Duration::from_secs(90));
+
+        let mut succeeded_row = fixture_history_row(
+            "job-loop-metric-001",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            2_100,
+        );
+        succeeded_row.payment_pointer = "wallet-loop-metric-001".to_string();
+        let failed_row = fixture_history_row(
+            "job-loop-metric-002",
+            JobHistoryStatus::Failed,
+            1_761_919_980,
+            0,
+        );
+        let history = seed_job_history(vec![succeeded_row, failed_row]);
+
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-loop-metric-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 2_100,
+                timestamp: 1_761_920_000,
+            });
+
+        score.refresh_from_sources(now, &provider, &history, &spark);
+
+        assert_eq!(score.first_job_latency_seconds, Some(30));
+        assert_eq!(score.completion_ratio_bps, Some(5_000));
+        assert_eq!(score.payout_success_ratio_bps, Some(10_000));
+        assert_eq!(score.avg_wallet_confirmation_latency_seconds, Some(30));
+    }
+
+    #[test]
+    fn earnings_scoreboard_tracks_pending_first_job_latency_before_completion() {
+        let mut score = EarningsScoreboardState::default();
+        let now = std::time::Instant::now();
+        let mut provider = ProviderRuntimeState::default();
+        provider.online_since = Some(now - std::time::Duration::from_secs(70));
+
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 100,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        score.refresh_from_sources(now, &provider, &history, &spark);
+
+        assert_eq!(score.first_job_latency_seconds, Some(70));
+        assert_eq!(score.completion_ratio_bps, None);
+        assert_eq!(score.payout_success_ratio_bps, None);
+        assert_eq!(score.avg_wallet_confirmation_latency_seconds, None);
+    }
+
+    #[test]
+    fn network_aggregate_counters_refreshes_from_wallet_reconciled_payouts() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let presence = fixture_presence_snapshot(7, "online", None, None);
+        let mut row = fixture_history_row(
+            "job-network-aggregate-001",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            2100,
+        );
+        row.payment_pointer = "wallet-payment-aggregate-001".to_string();
+        let history = seed_job_history(vec![row]);
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 1000,
+            lightning_sats: 2000,
+            onchain_sats: 3000,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-payment-aggregate-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 2100,
+                timestamp: history.reference_epoch_seconds,
+            });
+
+        let now = std::time::Instant::now();
+        counters.refresh_from_sources(now, &presence, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Ready);
+        assert_eq!(
+            counters.source_tag,
+            "aggregate.wallet-reconciled.spacetime-presence"
+        );
+        assert_eq!(counters.providers_online, 7);
+        assert_eq!(
+            counters.providers_online_source_tag,
+            "spacetime.presence.identity"
+        );
+        assert_eq!(counters.jobs_completed, 1);
+        assert_eq!(counters.sats_paid, 2100);
+        assert_eq!(counters.global_earnings_today_sats, 2100);
+        assert!(!counters.is_stale(now));
+    }
+
+    #[test]
+    fn network_aggregate_counters_ignore_unreconciled_history_rows() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let presence = fixture_presence_snapshot(3, "online", None, None);
+        let mut row = fixture_history_row(
+            "job-network-aggregate-002",
+            JobHistoryStatus::Succeeded,
+            1_761_919_970,
+            4200,
+        );
+        row.payment_pointer = "wallet-payment-missing".to_string();
+        let history = seed_job_history(vec![row]);
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 4_200,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Ready);
+        assert_eq!(counters.providers_online, 3);
+        assert_eq!(counters.jobs_completed, 0);
+        assert_eq!(counters.sats_paid, 0);
+        assert_eq!(counters.global_earnings_today_sats, 0);
+    }
+
+    #[test]
+    fn network_aggregate_counters_surface_wallet_errors() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let presence = fixture_presence_snapshot(2, "online", None, None);
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.last_error = Some("wallet service unavailable".to_string());
+
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Error);
+        assert_eq!(counters.source_tag, "aggregate.degraded.wallet");
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("wallet service unavailable"))
+        );
+    }
+
+    #[test]
+    fn network_aggregate_counters_surface_spacetime_presence_degraded_state() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let presence =
+            fixture_presence_snapshot(0, "unregistered", Some("presence query timeout"), None);
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 0,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Error);
+        assert_eq!(counters.source_tag, "aggregate.degraded.spacetime-presence");
+        assert_eq!(
+            counters.providers_online_source_tag,
+            "spacetime.presence.degraded"
+        );
+        assert!(
+            counters
+                .last_error
+                .as_deref()
+                .is_some_and(|error| error.contains("presence query timeout"))
+        );
+    }
+
+    #[test]
+    fn network_aggregate_counters_surface_spacetime_presence_stale_state() {
+        let mut counters = NetworkAggregateCountersState::default();
+        let presence = fixture_presence_snapshot(0, "offline", None, Some("ttl_expired"));
+        let history = JobHistoryState::default();
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 0,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+
+        counters.refresh_from_sources(std::time::Instant::now(), &presence, &history, &spark);
+
+        assert_eq!(counters.load_state, super::PaneLoadState::Ready);
+        assert_eq!(counters.source_tag, "aggregate.stale.spacetime-presence");
+        assert_eq!(
+            counters.providers_online_source_tag,
+            "spacetime.presence.stale"
+        );
+        assert!(
+            counters
+                .last_action
+                .as_deref()
+                .is_some_and(|action| action.contains("stale"))
         );
     }
 

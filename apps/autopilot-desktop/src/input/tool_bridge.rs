@@ -20,7 +20,9 @@ use crate::openagents_dynamic_tools::{
     OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
     OPENAGENTS_TOOL_TREASURY_TRANSFER, OPENAGENTS_TOOL_WALLET_CHECK,
 };
-use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
+use crate::pane_registry::{
+    pane_enabled_in_runtime, pane_spec, pane_spec_by_command_id, pane_specs,
+};
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AgentNetworkSimulationPaneAction,
     AgentProfileStatePaneAction, AgentScheduleTickPaneAction, AlertsRecoveryPaneAction,
@@ -29,10 +31,10 @@ use crate::pane_system::{
     CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
     CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
     JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
-    TreasuryExchangeSimulationPaneAction,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
+    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -621,6 +623,7 @@ fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
     let registered = pane_specs()
         .iter()
         .filter(|spec| spec.kind != PaneKind::Empty)
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, state.simulation_panes_enabled))
         .map(|spec| {
             json!({
                 "kind": pane_kind_key(spec.kind),
@@ -672,8 +675,12 @@ fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
 }
 
 fn execute_pane_open(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(pane_ref) else {
-        return pane_resolution_error("OA-PANE-OPEN-NOT-FOUND", pane_ref);
+    let Some(kind) = resolve_pane_kind(state, pane_ref) else {
+        return pane_resolution_error(
+            "OA-PANE-OPEN-NOT-FOUND",
+            pane_ref,
+            state.simulation_panes_enabled,
+        );
     };
     let pane_id = PaneController::create_for_kind(state, kind);
     ToolBridgeResultEnvelope::ok(
@@ -688,8 +695,12 @@ fn execute_pane_open(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResul
 }
 
 fn execute_pane_focus(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(pane_ref) else {
-        return pane_resolution_error("OA-PANE-FOCUS-NOT-FOUND", pane_ref);
+    let Some(kind) = resolve_pane_kind(state, pane_ref) else {
+        return pane_resolution_error(
+            "OA-PANE-FOCUS-NOT-FOUND",
+            pane_ref,
+            state.simulation_panes_enabled,
+        );
     };
     let pane = state
         .panes
@@ -720,8 +731,12 @@ fn execute_pane_focus(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResu
 }
 
 fn execute_pane_close(state: &mut RenderState, pane_ref: &str) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(pane_ref) else {
-        return pane_resolution_error("OA-PANE-CLOSE-NOT-FOUND", pane_ref);
+    let Some(kind) = resolve_pane_kind(state, pane_ref) else {
+        return pane_resolution_error(
+            "OA-PANE-CLOSE-NOT-FOUND",
+            pane_ref,
+            state.simulation_panes_enabled,
+        );
     };
     let pane = state
         .panes
@@ -755,8 +770,12 @@ fn execute_pane_set_input(
     state: &mut RenderState,
     args: &PaneInputArgs,
 ) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(args.pane.trim()) else {
-        return pane_resolution_error("OA-PANE-SET-INPUT-NOT-FOUND", args.pane.trim());
+    let Some(kind) = resolve_pane_kind(state, args.pane.trim()) else {
+        return pane_resolution_error(
+            "OA-PANE-SET-INPUT-NOT-FOUND",
+            args.pane.trim(),
+            state.simulation_panes_enabled,
+        );
     };
     let _ = PaneController::create_for_kind(state, kind);
     let field = normalize_key(&args.field);
@@ -806,8 +825,12 @@ fn execute_pane_set_input(
 }
 
 fn execute_pane_action(state: &mut RenderState, args: &PaneActionArgs) -> ToolBridgeResultEnvelope {
-    let Some(kind) = resolve_pane_kind(args.pane.trim()) else {
-        return pane_resolution_error("OA-PANE-ACTION-NOT-FOUND", args.pane.trim());
+    let Some(kind) = resolve_pane_kind(state, args.pane.trim()) else {
+        return pane_resolution_error(
+            "OA-PANE-ACTION-NOT-FOUND",
+            args.pane.trim(),
+            state.simulation_panes_enabled,
+        );
     };
     let _ = PaneController::create_for_kind(state, kind);
     let action_key = normalize_key(&args.action);
@@ -1118,8 +1141,26 @@ fn pane_action_to_hit_action(
             )),
             _ => unsupported(),
         },
+        PaneKind::ReciprocalLoop => match action {
+            "start" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Start,
+            )),
+            "stop" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Stop,
+            )),
+            "reset" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Reset,
+            )),
+            _ => unsupported(),
+        },
         PaneKind::ActivityFeed => match action {
             "refresh" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::Refresh)),
+            "previous_page" | "prev_page" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::PreviousPage,
+            )),
+            "next_page" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::NextPage,
+            )),
             "select_row" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SelectRow(require_index(action)?),
             )),
@@ -1128,6 +1169,9 @@ fn pane_action_to_hit_action(
             )),
             "filter_chat" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Chat),
+            )),
+            "filter_cad" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Cad),
             )),
             "filter_job" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Job),
@@ -1140,6 +1184,18 @@ fn pane_action_to_hit_action(
             )),
             "filter_sync" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sync),
+            )),
+            "filter_sa" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sa),
+            )),
+            "filter_skl" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Skl),
+            )),
+            "filter_ac" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Ac),
+            )),
+            "filter_nip90" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Nip90),
             )),
             _ => unsupported(),
         },
@@ -1496,13 +1552,7 @@ fn pane_action_to_hit_action(
             ))),
             _ => unsupported(),
         },
-        PaneKind::ProviderStatus
-        | PaneKind::Empty
-        | PaneKind::EmailInbox
-        | PaneKind::EmailDraftQueue
-        | PaneKind::EmailSendLog
-        | PaneKind::EmailApprovalQueue
-        | PaneKind::EmailFollowUpQueue => unsupported(),
+        PaneKind::ProviderStatus | PaneKind::Empty => unsupported(),
     }
 }
 
@@ -2699,6 +2749,31 @@ fn execute_swap_execute(
         parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
     };
     let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    let caller_identity = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str())
+        .unwrap_or("autopilot-desktop");
+    let now_epoch_ms = now_epoch_seconds.saturating_mul(1_000) as i64;
+    if let Err(error) = state.earn_kernel_receipts.record_swap_execute_attempt(
+        caller_identity,
+        goal_id,
+        quote_id,
+        worker_request_id,
+        now_epoch_ms,
+        "tool_bridge.swap_execute",
+    ) {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-IDEMPOTENCY-CONFLICT",
+            format!("Swap execute rejected by idempotency policy: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+                "worker_request_id": worker_request_id,
+                "reason_code": "IDEMPOTENCY_CONFLICT",
+            }),
+        );
+    }
     state
         .stable_sats_simulation
         .record_treasury_operation_queued(
@@ -4422,7 +4497,11 @@ fn cad_action_from_key(
     Ok(value)
 }
 
-fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope {
+fn pane_resolution_error(
+    code: &str,
+    pane_ref: &str,
+    simulation_panes_enabled: bool,
+) -> ToolBridgeResultEnvelope {
     ToolBridgeResultEnvelope::error(
         code,
         format!("Could not resolve pane reference '{}'", pane_ref),
@@ -4431,6 +4510,7 @@ fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope
             "supported_panes": pane_specs()
                 .iter()
                 .filter(|spec| spec.kind != PaneKind::Empty)
+                .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
                 .map(|spec| {
                     json!({
                         "kind": pane_kind_key(spec.kind),
@@ -4443,12 +4523,18 @@ fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope
     )
 }
 
-fn resolve_pane_kind(raw: &str) -> Option<PaneKind> {
+fn resolve_pane_kind(state: &RenderState, raw: &str) -> Option<PaneKind> {
+    resolve_pane_kind_for_runtime(raw, state.simulation_panes_enabled)
+}
+
+fn resolve_pane_kind_for_runtime(raw: &str, simulation_panes_enabled: bool) -> Option<PaneKind> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         return None;
     }
-    if let Some(spec) = pane_spec_by_command_id(trimmed) {
+    if let Some(spec) = pane_spec_by_command_id(trimmed)
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
+    {
         return Some(spec.kind);
     }
 
@@ -4460,6 +4546,7 @@ fn resolve_pane_kind(raw: &str) -> Option<PaneKind> {
     pane_specs()
         .iter()
         .filter(|spec| spec.kind != PaneKind::Empty)
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
         .find_map(|spec| {
             let title_key = normalize_key(spec.title);
             let kind_key = normalize_key(pane_kind_key(spec.kind));
@@ -4488,6 +4575,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
         PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
+        PaneKind::ReciprocalLoop => &["reciprocal_loop", "earn_loop", "pingpong_loop"],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
@@ -4512,6 +4600,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::SyncHealth => "sync_health",
         PaneKind::NetworkRequests => "network_requests",
         PaneKind::StarterJobs => "starter_jobs",
+        PaneKind::ReciprocalLoop => "reciprocal_loop",
         PaneKind::ActivityFeed => "activity_feed",
         PaneKind::AlertsRecovery => "alerts_recovery",
         PaneKind::Settings => "settings",
@@ -4520,11 +4609,6 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::JobInbox => "job_inbox",
         PaneKind::ActiveJob => "active_job",
         PaneKind::JobHistory => "job_history",
-        PaneKind::EmailInbox => "email_inbox",
-        PaneKind::EmailDraftQueue => "email_draft_queue",
-        PaneKind::EmailApprovalQueue => "email_approval_queue",
-        PaneKind::EmailSendLog => "email_send_log",
-        PaneKind::EmailFollowUpQueue => "email_follow_up_queue",
         PaneKind::NostrIdentity => "nostr_identity",
         PaneKind::SparkWallet => "spark_wallet",
         PaneKind::SparkCreateInvoice => "spark_create_invoice",
@@ -4569,9 +4653,9 @@ mod tests {
         cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
         pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
         parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
-        parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset, resolve_pane_kind,
-        run_blink_swap_script_json, select_existing_blink_swap_script_path,
-        validate_direction_unit,
+        parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset,
+        resolve_pane_kind_for_runtime, run_blink_swap_script_json,
+        select_existing_blink_swap_script_path, validate_direction_unit,
     };
     use crate::app_state::{
         AutopilotToolCallRequest, CadDemoPaneState, CadDemoWarningState, CadViewportLayout,
@@ -4681,24 +4765,45 @@ mod tests {
     #[test]
     fn resolve_pane_kind_accepts_command_id_title_and_alias() {
         assert_eq!(
-            resolve_pane_kind("pane.wallet"),
+            resolve_pane_kind_for_runtime("pane.wallet", false),
             Some(PaneKind::SparkWallet)
         );
         assert_eq!(
-            resolve_pane_kind("Spark Lightning Wallet"),
+            resolve_pane_kind_for_runtime("Spark Lightning Wallet", false),
             Some(PaneKind::SparkWallet)
         );
-        assert_eq!(resolve_pane_kind("wallet"), Some(PaneKind::SparkWallet));
         assert_eq!(
-            resolve_pane_kind("pane.calculator"),
+            resolve_pane_kind_for_runtime("wallet", false),
+            Some(PaneKind::SparkWallet)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("pane.calculator", false),
             Some(PaneKind::Calculator)
         );
-        assert_eq!(resolve_pane_kind("calc"), Some(PaneKind::Calculator));
+        assert_eq!(
+            resolve_pane_kind_for_runtime("calc", false),
+            Some(PaneKind::Calculator)
+        );
     }
 
     #[test]
     fn resolve_pane_kind_rejects_unknown_reference() {
-        assert_eq!(resolve_pane_kind("not-a-real-pane"), None);
+        assert_eq!(
+            resolve_pane_kind_for_runtime("not-a-real-pane", false),
+            None
+        );
+    }
+
+    #[test]
+    fn resolve_pane_kind_gates_simulation_references() {
+        assert_eq!(
+            resolve_pane_kind_for_runtime("pane.agent_network_simulation", false),
+            None
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("pane.agent_network_simulation", true),
+            Some(PaneKind::AgentNetworkSimulation)
+        );
     }
 
     #[test]

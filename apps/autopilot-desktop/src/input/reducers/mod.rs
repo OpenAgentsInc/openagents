@@ -37,6 +37,50 @@ pub(super) fn run_job_history_action(
     jobs::run_job_history_action(state, action)
 }
 
+pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool {
+    jobs::run_job_inbox_auto_admission_tick(state)
+}
+
+pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
+    jobs::run_active_job_execution_tick(state)
+}
+
+pub(super) fn active_job_owns_codex_command_response(
+    state: &RenderState,
+    command_seq: u64,
+) -> bool {
+    jobs::active_job_owns_codex_command_response(state, command_seq)
+}
+
+pub(super) fn apply_active_job_codex_command_response(
+    state: &mut RenderState,
+    response: &crate::codex_lane::CodexLaneCommandResponse,
+) {
+    jobs::apply_active_job_codex_command_response(state, response)
+}
+
+pub(super) fn apply_active_job_codex_notification(
+    state: &mut RenderState,
+    notification: &crate::codex_lane::CodexLaneNotification,
+) -> bool {
+    jobs::apply_active_job_codex_notification(state, notification)
+}
+
+pub(super) fn apply_active_job_publish_outcome(
+    state: &mut RenderState,
+    outcome: &crate::provider_nip90_lane::ProviderNip90PublishOutcome,
+) {
+    jobs::apply_active_job_publish_outcome(state, outcome)
+}
+
+pub(super) fn transition_active_job_to_paid(
+    state: &mut RenderState,
+    source: &str,
+    now: std::time::Instant,
+) -> Result<crate::app_state::JobLifecycleStage, String> {
+    jobs::transition_active_job_to_paid(state, source, now)
+}
+
 pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     let mut changed = false;
 
@@ -78,6 +122,9 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
             }
             crate::provider_nip90_lane::ProviderNip90LaneUpdate::IngressedRequest(request) => {
                 provider_ingress::apply_ingressed_request(state, request);
+            }
+            crate::provider_nip90_lane::ProviderNip90LaneUpdate::BuyerResponseEvent(event) => {
+                provider_ingress::apply_buyer_response_event(state, event);
             }
             crate::provider_nip90_lane::ProviderNip90LaneUpdate::PublishOutcome(outcome) => {
                 provider_ingress::apply_publish_outcome(state, outcome);
@@ -802,6 +849,10 @@ pub(super) fn sync_cad_build_progress_to_chat(state: &mut RenderState) {
 }
 
 fn apply_runtime_command_response(state: &mut RenderState, response: RuntimeCommandResponse) {
+    if !apply_stream_event_seq(state, "runtime.command", response.command_seq) {
+        return;
+    }
+
     let summary = command_response_summary(&response);
     match response.lane {
         RuntimeLane::SaLifecycle => sa::apply_command_response(state, &response, &summary),
@@ -813,10 +864,83 @@ fn apply_runtime_command_response(state: &mut RenderState, response: RuntimeComm
         super::upsert_runtime_incident_alert(state, &response);
     }
 
-    state.sync_health.last_applied_event_seq =
-        state.sync_health.last_applied_event_seq.saturating_add(1);
-    state.sync_health.cursor_last_advanced_seconds_ago = 0;
     state.record_runtime_command_response(response);
+}
+
+pub(super) fn apply_stream_event_seq(state: &mut RenderState, stream_id: &str, seq: u64) -> bool {
+    match state.sync_apply_engine.apply_seq(stream_id, seq) {
+        Ok(crate::sync_apply::StreamApplyDecision::Applied { .. }) => {
+            state.sync_health.last_applied_event_seq = state.sync_apply_engine.max_checkpoint_seq();
+            state.sync_health.cursor_last_advanced_seconds_ago = 0;
+            mirror_remote_checkpoint_ack(state, stream_id, seq);
+            true
+        }
+        Ok(crate::sync_apply::StreamApplyDecision::Duplicate { .. }) => {
+            state.sync_health.duplicate_drop_count =
+                state.sync_health.duplicate_drop_count.saturating_add(1);
+            state.sync_health.last_action = Some(format!(
+                "Dropped duplicate stream event {} seq={}",
+                stream_id, seq
+            ));
+            false
+        }
+        Ok(crate::sync_apply::StreamApplyDecision::OutOfOrder {
+            expected_seq,
+            received_seq,
+            ..
+        }) => {
+            let rewind_to = expected_seq.saturating_sub(1);
+            let _ = state.sync_apply_engine.rewind_stream(stream_id, rewind_to);
+            state.sync_health.rebootstrap();
+            state.sync_health.last_error = Some(format!(
+                "Out-of-order stream event {} expected={} received={}; rewound to {}",
+                stream_id, expected_seq, received_seq, rewind_to
+            ));
+            state.sync_health.last_action =
+                Some(format!("Replay rebootstrap required for {stream_id}"));
+            let worker_id = state.sync_lifecycle_worker_id.clone();
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor,
+                Some(format!(
+                    "out-of-order stream event {} expected={} received={}",
+                    stream_id, expected_seq, received_seq
+                )),
+            );
+            state.sync_lifecycle.mark_replay_bootstrap(
+                worker_id.as_str(),
+                rewind_to,
+                Some(rewind_to),
+            );
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            false
+        }
+        Err(error) => {
+            state.sync_health.last_error = Some(format!(
+                "sync checkpoint apply failed for {} seq {}: {}",
+                stream_id, seq, error
+            ));
+            state.sync_health.load_state = crate::app_state::PaneLoadState::Error;
+            state.sync_health.last_applied_event_seq =
+                state.sync_health.last_applied_event_seq.saturating_add(1);
+            state.sync_health.cursor_last_advanced_seconds_ago = 0;
+            true
+        }
+    }
+}
+
+fn mirror_remote_checkpoint_ack(state: &mut RenderState, stream_id: &str, seq: u64) {
+    let Some(client) = state.spacetime_presence.live_client() else {
+        return;
+    };
+    if let Err(error) =
+        client.ack_checkpoint(state.sync_lifecycle_worker_id.as_str(), stream_id, seq, seq)
+    {
+        state.sync_health.last_error = Some(format!(
+            "remote sync checkpoint mirror failed for {} seq {}: {}",
+            stream_id, seq, error
+        ));
+    }
 }
 
 fn command_response_summary(response: &RuntimeCommandResponse) -> String {

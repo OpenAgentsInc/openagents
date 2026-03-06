@@ -2,6 +2,21 @@
 
 This document defines the active pane surfaces in `apps/autopilot-desktop` and how they are opened.
 
+Simulation-only pane flows are isolated from the default production UX route and require explicit opt-in via `OPENAGENTS_ENABLE_SIMULATION_PANES=1`.
+
+## Spacetime Rollout Semantics
+
+Current docs reflect **Phase 1 (mirror/proxy semantics)** from `docs/SPACETIME_ROLLOUT_INDEX.md`:
+
+- Sync bootstrap/token contracts are real and enforced.
+- Replay-safe apply/checkpoint behavior is real and enforced.
+- Presence/projection panes expose Spacetime-shaped state and stream ids while remote live subscription cutover completes.
+
+Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approved domains) are tracked in:
+
+- `docs/SPACETIME_ROLLOUT_INDEX.md`
+- `docs/SPACETIME_SYNC_RELEASE_GATES.md`
+
 ## Pane Inventory
 
 - `Autopilot Chat`
@@ -23,33 +38,51 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
+  - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
+  - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
   - Action: toggle online/offline.
 - `Provider Status`
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
+  - Shows canonical failure taxonomy class (`relay`, `execution`, `payment`, `reconciliation`) with concise diagnostics sourced from runtime/wallet/reconciliation authority.
   - Action: read-only operational visibility.
 - `Relay Connections`
-  - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields.
+  - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
+  - The default configuration should preinstall the OpenAgents-hosted Nexus as the primary relay, with a curated default public relay set visible and manageable alongside it.
+  - Provider-mode NIP-90 intake should span the full configured reachable relay set and deduplicate repeated requests across relays; it is not restricted to Nexus-originated jobs.
+  - Provider capability, feedback, and result events should fan out to every healthy configured relay by default; relay publish is best-effort and partial failures must remain visible.
+  - The initial default public relay set should be chosen from relays where OpenAgents observes moderate-to-high recent NIP-90 job volume.
+  - User-run Nexus deployments are assumed to be public/open relays by default. Closed/private relay posture is a future configuration path, not near-term product scope.
   - Inputs/actions: add relay (`wss://` validation), select row, retry selected, remove selected.
+  - Retry is a reconnect attempt (`connecting`) only; connected state is set by relay transport health, not pane-local simulation.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Sync Health`
   - Spacetime sync diagnostics for connection state, subscription state, cursor progress, stale detection, replay count, and duplicate-drop count.
+  - Source is lifecycle/apply telemetry (`spacetime.sync.lifecycle`) in current rollout phase.
   - Action: `Rebootstrap sync` for deterministic recovery lifecycle reset.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Network Requests`
   - Buyer-side request composer for network submission.
   - Inputs: request type, payload, budget sats, timeout seconds (validated before submit).
+  - MVP OpenAgents-posted public jobs should default to `race` resolution mode; future `windowed` mode can be added later for quality-sensitive jobs.
   - Output: submitted request rows with request id and response stream linkage.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Starter Jobs`
-  - Seed-demand queue focused on first-earnings path, explicitly separated from open-network job intake.
+  - Secondary detail/debug pane for seed-demand metadata; starter jobs still appear in the normal `Job Inbox`, `Active Job`, and `Job History` surfaces with a visible source marker and are not separated from the main earn flow.
+  - Initially this pane is populated only when connected to the OpenAgents-hosted Nexus; connecting through a third-party Nexus does not qualify for OpenAgents starter jobs.
+  - Eligibility is determined by starter-demand policy; initial OpenAgents starter jobs target Autopilot users only.
+  - Eligibility should come from OpenAgents-hosted-Nexus proof where available, not solely from a user-supplied Nostr client tag.
+  - Stronger anti-spoofing attestation is roadmap hardening, not an MVP prerequisite for this pane.
   - Shows eligibility and payout sats per starter job.
+  - Shows assignment lease state, aggressive start-confirm timer, and reassignment timer for hosted starter jobs when available.
   - Tracks completion with payout pointer linkage for wallet/history visibility.
   - Includes explicit dispatch safety controls: sats budget cap telemetry, inflight cap telemetry, and immediate kill-switch toggle.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Activity Feed`
   - Unified event stream across chat, jobs, wallet, network, and sync lanes.
+  - Source badge is projection stream id (`stream.activity_projection.v1`), replay-safe and deduplicated.
   - Event rows carry stable event IDs and deterministic source tags to avoid duplicate replay rows.
   - Filters by domain (`all`, `chat`, `job`, `wallet`, `network`, `sync`) with selected-row details.
+  - Continues to show observed network/job activity while offline so the app feels live before provider mode is enabled.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Alerts and Recovery`
   - Deterministic incident queue across identity, wallet, relay, provider, and sync domains.
@@ -57,7 +90,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Actions: run selected recovery, acknowledge selected alert, resolve selected alert.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Settings`
-  - MVP settings for relay URL, wallet send-default sats, and provider queue-depth default.
+  - MVP settings for primary Nexus/relay URL, backup relay set, wallet send-default sats, and provider queue-depth default (`1` active job initially).
   - Includes schema/version and identity path visibility.
   - Validation blocks invalid relay URL prefixes and impossible numeric ranges before save.
   - Save flow persists schema-backed settings and explicitly flags reconnect-required changes.
@@ -65,34 +98,25 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 - `Earnings Scoreboard`
   - Canonical MVP earnings metrics sourced from wallet/runtime/history lanes.
   - Shows sats today, lifetime sats, jobs today, last job result, and current online uptime.
+  - Includes loop-integrity SLO metrics: first-job latency, completion ratio, payout success ratio, and wallet confirmation latency.
   - Actions: refresh metrics and stale-state visibility.
 - `Job Inbox`
   - Deterministic intake pane for incoming NIP-90 requests with stable request IDs and replay-safe ordering.
-  - Shows requester, capability, demand source (`open-network` vs `starter-demand`), price, ttl, validation state, and decision state per request.
-  - Actions: select request, accept selected (with reason), reject selected (with reason).
+  - Remains visible while offline in preview mode so the user can see reachable market activity before opting into provider mode.
+  - Shows requester, capability, demand source (`open-network` vs `starter-demand`) with a visible source badge or star, price, ttl, validation state, and decision state per request.
+  - Offline rows are read-only and visibly marked as preview/unclaimable until the user clicks `Go Online`.
+  - Auto-accept is the default provider policy for matching jobs while online.
+  - Actions: select request, view why it auto-accepted/rejected, and apply manual accept/reject override only for debug, hold, or policy-tuning cases.
 - `Active Job`
   - In-flight job lifecycle pane for one selected job (`received -> accepted -> running -> delivered -> paid`).
+  - Source badge is lifecycle projection stream id (`stream.earn_job_lifecycle_projection.v1`), non-authoritative for settlement.
   - Shows append-only execution log events, request demand source, invoice/payment linkage, and failure reason when present.
   - Actions: advance stage, abort job (disabled when runtime lane does not support cancel).
 - `Job History`
   - Deterministic receipt/history pane for completed/failed jobs with immutable metadata.
+  - Source badge is lifecycle projection stream id (`stream.earn_job_lifecycle_projection.v1`), while wallet reconciliation remains payout truth.
   - Includes status/time filters, job-id search, and pagination.
-  - Row model includes `job_id`, `status`, `demand source`, `completed timestamp`, `result hash`, and `payment pointer`.
-- `Email Inbox`
-  - Communication-lane inbox view for imported inbound messages.
-  - Rows show message id, sender, and normalized summary.
-- `Email Draft Queue`
-  - Draft lifecycle view for generated candidate responses.
-  - Rows show draft id, approval readiness, and confidence metadata.
-- `Email Approval Queue`
-  - Operator approval view for explicit approve/reject/edit decisions before send.
-  - Rows show draft id, actor/policy path, and rejection reasons.
-- `Email Send Log`
-  - Send attempt history view for outbound communication execution.
-  - Rows show send id, delivery status, and provider message linkage.
-- `Email Follow-up Queue`
-  - Scheduled follow-up queue driven by explicit policy rules.
-  - Rows show follow-up id, next execution window, and defer/failure reasons.
+  - Row model includes `job_id`, `status`, `demand source` with visible marker, `completed timestamp`, `result hash`, `payment pointer`, and unpaid/lost-race reason when present.
 - `Agent Profile and State`
   - SA profile/state/goals pane for `39200`, `39201`, and `39203` event visibility.
   - Actions: publish profile, publish encrypted state, update goals snapshot.
@@ -133,6 +157,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
   - Actions: regenerate keys, reveal/hide secrets, copy `nsec`.
 - `Spark Lightning Wallet`
   - Shows wallet connectivity, balances, addresses, invoice creation, payment sending, and recent payment status.
+  - All provider earnings settle into this wallet first in MVP; external wallet usage happens through withdraw/pay-invoice flow rather than payout routing configuration.
   - Explicit pane state machine: `loading` (awaiting first refresh), `ready`, `error`.
   - Actions: refresh wallet, generate receive addresses, copy Spark address, create invoice, send payment.
 - `Create Lightning Invoice`
@@ -143,6 +168,7 @@ This document defines the active pane surfaces in `apps/autopilot-desktop` and h
 - `Pay Lightning Invoice`
   - Dedicated payment pane for paying a Lightning invoice/payment request.
   - Inputs: payment request (required), send sats (optional).
+  - Available regardless of provider online/offline state; withdraw does not require leaving earn mode first.
   - Explicit pane state machine: `loading`, `ready`, `error`.
   - Action: pay invoice (`Enter` submit and button submit are equivalent).
 
@@ -163,6 +189,10 @@ Badge semantics:
   - Values combine runtime snapshots and local operator state.
 - `source: runtime+wallet+local`
   - Values aggregate multiple lanes plus local app events.
+- `source: spacetime.sync.lifecycle`
+  - Values are derived from sync lifecycle/apply telemetry state.
+- `source: stream.*`
+  - Values are backed by replay-safe projection stream rows for the named stream id.
 
 Current pane badge mapping:
 
@@ -178,20 +208,15 @@ Current pane badge mapping:
 - `Provider Status`: `source: runtime`
 - `Earnings Scoreboard`: `source: runtime+wallet`
 - `Relay Connections`: `source: runtime`
-- `Sync Health`: `source: runtime`
+- `Sync Health`: `source: spacetime.sync.lifecycle`
 - `Network Requests`: `source: runtime`
 - `Starter Jobs`: `source: runtime`
-- `Activity Feed`: `source: runtime+wallet+local`
+- `Activity Feed`: `source: stream.activity_projection.v1`
 - `Alerts and Recovery`: `source: runtime`
 - `Settings`: `source: local`
 - `Job Inbox`: `source: runtime`
-- `Active Job`: `source: runtime`
-- `Job History`: `source: runtime`
-- `Email Inbox`: `source: runtime`
-- `Email Draft Queue`: `source: runtime`
-- `Email Approval Queue`: `source: runtime`
-- `Email Send Log`: `source: runtime`
-- `Email Follow-up Queue`: `source: runtime`
+- `Active Job`: `source: stream.earn_job_lifecycle_projection.v1`
+- `Job History`: `source: stream.earn_job_lifecycle_projection.v1`
 - `Nostr Keys (NIP-06)`: `source: local`
 - `Agent Profile and State`: `source: runtime`
 - `Agent Schedule and Tick`: `source: runtime`
@@ -233,11 +258,6 @@ Current pane badge mapping:
   - `Job Inbox` -> opens `Job Inbox`.
   - `Active Job` -> opens `Active Job`.
   - `Job History` -> opens `Job History`.
-  - `Email Inbox` -> opens `Email Inbox`.
-  - `Email Draft Queue` -> opens `Email Draft Queue`.
-  - `Email Approval Queue` -> opens `Email Approval Queue`.
-  - `Email Send Log` -> opens `Email Send Log`.
-  - `Email Follow-up Queue` -> opens `Email Follow-up Queue`.
   - `Agent Profile and State` -> opens `Agent Profile and State`.
   - `Agent Schedule and Tick` -> opens `Agent Schedule and Tick`.
   - `Trajectory Audit` -> opens `Trajectory Audit`.
@@ -253,7 +273,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Email Inbox, Email Draft Queue, Email Approval Queue, Email Send Log, Email Follow-up Queue, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 

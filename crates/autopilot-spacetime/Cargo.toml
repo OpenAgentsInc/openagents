@@ -1,0 +1,18 @@
+[package]
+name = "autopilot-spacetime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "OpenAgents Spacetime sync schema and reducer primitives"
+
+[lints]
+workspace = true
+
+[dependencies]
+reqwest = { workspace = true, features = ["blocking"] }
+serde_json = "1"
+bitcoin = { workspace = true }
+hex = { workspace = true }
+sha2 = "0.10"

@@ -80,7 +80,35 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 46] = [
+pub const SIMULATION_PANES_ENV: &str = "OPENAGENTS_ENABLE_SIMULATION_PANES";
+
+pub fn simulation_panes_enabled_from_env() -> bool {
+    std::env::var(SIMULATION_PANES_ENV)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
+pub fn is_simulation_pane(kind: PaneKind) -> bool {
+    matches!(
+        kind,
+        PaneKind::AgentNetworkSimulation
+            | PaneKind::TreasuryExchangeSimulation
+            | PaneKind::RelaySecuritySimulation
+            | PaneKind::StableSatsSimulation
+    )
+}
+
+pub fn pane_enabled_in_runtime(kind: PaneKind, simulation_panes_enabled: bool) -> bool {
+    simulation_panes_enabled || !is_simulation_pane(kind)
+}
+
+const PANE_SPECS: [PaneSpec; 42] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -97,7 +125,7 @@ const PANE_SPECS: [PaneSpec; 46] = [
         default_width: 940.0,
         default_height: 540.0,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.codex",
             label: "Autopilot Chat",
@@ -218,15 +246,15 @@ const PANE_SPECS: [PaneSpec; 46] = [
     },
     PaneSpec {
         kind: PaneKind::GoOnline,
-        title: "Go Online",
-        default_width: 560.0,
-        default_height: 300.0,
+        title: "Mission Control",
+        default_width: 1040.0,
+        default_height: 620.0,
         singleton: true,
-        startup: false,
+        startup: true,
         command: Some(PaneCommandSpec {
-            id: "pane.go_online",
-            label: "Go Online",
-            description: "Open SA runner toggle with SKL trust gate and AC lane status",
+            id: "pane.mission_control",
+            label: "Mission Control",
+            description: "Open the earn-first control panel for wallet, jobs, and provider state",
             keybinding: None,
         }),
         hotbar: None,
@@ -317,6 +345,21 @@ const PANE_SPECS: [PaneSpec; 46] = [
             id: "pane.starter_jobs",
             label: "Starter Jobs",
             description: "Open starter-demand queue and completion payouts pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::ReciprocalLoop,
+        title: "Reciprocal Loop",
+        default_width: 860.0,
+        default_height: 440.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.reciprocal_loop",
+            label: "Reciprocal Loop",
+            description: "Open two-key 10-sat ping-pong loop controls and metrics",
             keybinding: None,
         }),
         hotbar: None,
@@ -422,81 +465,6 @@ const PANE_SPECS: [PaneSpec; 46] = [
             id: "pane.job_history",
             label: "Job History",
             description: "Open immutable receipts with SA/SKL/AC proof links",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::EmailInbox,
-        title: "Email Inbox",
-        default_width: 900.0,
-        default_height: 500.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.email_inbox",
-            label: "Email Inbox",
-            description: "Open email inbox queue with latest imported message summaries",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::EmailDraftQueue,
-        title: "Email Draft Queue",
-        default_width: 940.0,
-        default_height: 520.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.email_draft_queue",
-            label: "Email Draft Queue",
-            description: "Open generated email drafts and approval-readiness metadata",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::EmailApprovalQueue,
-        title: "Email Approval Queue",
-        default_width: 920.0,
-        default_height: 500.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.email_approval_queue",
-            label: "Email Approval Queue",
-            description: "Open approval decisions with actor, reason, and policy path details",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::EmailSendLog,
-        title: "Email Send Log",
-        default_width: 920.0,
-        default_height: 480.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.email_send_log",
-            label: "Email Send Log",
-            description: "Open send attempts and outcome telemetry for email lane",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::EmailFollowUpQueue,
-        title: "Email Follow-up Queue",
-        default_width: 920.0,
-        default_height: 480.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.email_follow_up_queue",
-            label: "Email Follow-up Queue",
-            description: "Open follow-up jobs with schedule status, policy reason, and retry state",
             keybinding: None,
         }),
         hotbar: None,
@@ -772,7 +740,7 @@ const PANE_SPECS: [PaneSpec; 46] = [
         default_width: 1020.0,
         default_height: 620.0,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.cad_demo",
             label: "CAD Demo",
@@ -786,8 +754,8 @@ const PANE_SPECS: [PaneSpec; 46] = [
 #[cfg(test)]
 mod tests {
     use super::{
-        pane_kind_for_hotbar_slot, pane_spec, pane_spec_by_command_id, pane_specs,
-        startup_pane_kinds,
+        is_simulation_pane, pane_enabled_in_runtime, pane_kind_for_hotbar_slot, pane_spec,
+        pane_spec_by_command_id, pane_specs, startup_pane_kinds,
     };
     use crate::app_state::PaneKind;
     use std::collections::BTreeSet;
@@ -877,14 +845,26 @@ mod tests {
     }
 
     #[test]
-    fn cad_demo_command_maps_to_singleton_startup_pane() {
+    fn cad_demo_command_maps_to_singleton_non_startup_pane() {
         let spec = pane_spec_by_command_id("pane.cad_demo")
             .expect("cad demo command should resolve to a pane spec");
         assert_eq!(spec.kind, PaneKind::CadDemo);
         assert!(spec.singleton, "cad demo pane must be singleton");
         assert!(
+            !spec.startup,
+            "cad demo pane should not auto-open during startup"
+        );
+    }
+
+    #[test]
+    fn mission_control_command_maps_to_singleton_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.mission_control")
+            .expect("mission control command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::GoOnline);
+        assert!(spec.singleton, "mission control pane must be singleton");
+        assert!(
             spec.startup,
-            "cad demo pane should auto-open during startup"
+            "mission control pane should auto-open during startup"
         );
     }
 
@@ -901,5 +881,22 @@ mod tests {
             !spec.startup,
             "calculator pane should not auto-open during startup"
         );
+    }
+
+    #[test]
+    fn simulation_panes_respect_runtime_gate() {
+        let simulation_kinds = [
+            PaneKind::AgentNetworkSimulation,
+            PaneKind::TreasuryExchangeSimulation,
+            PaneKind::RelaySecuritySimulation,
+            PaneKind::StableSatsSimulation,
+        ];
+        for kind in simulation_kinds {
+            assert!(is_simulation_pane(kind));
+            assert!(!pane_enabled_in_runtime(kind, false));
+            assert!(pane_enabled_in_runtime(kind, true));
+        }
+        assert!(!is_simulation_pane(PaneKind::EarningsScoreboard));
+        assert!(pane_enabled_in_runtime(PaneKind::EarningsScoreboard, false));
     }
 }

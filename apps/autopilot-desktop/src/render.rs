@@ -14,14 +14,15 @@ use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
 
 use crate::app_state::{
-    JobHistoryStatus, PaneKind, ProviderMode, RelayConnectionStatus, RenderState, SidebarState,
-    WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
+    PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
 };
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::pane_registry::{pane_specs, startup_pane_kinds};
+use crate::pane_registry::{
+    pane_enabled_in_runtime, pane_specs, simulation_panes_enabled_from_env, startup_pane_kinds,
+};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
@@ -43,6 +44,7 @@ const SIDEBAR_HANDLE_ICON_SIZE: f32 = 16.0;
 const SIDEBAR_HANDLE_ICON_TOP_PAD: f32 = 12.0;
 const SIDEBAR_HANDLE_ICON_LEFT_INSET: f32 = 2.0;
 const SIDEBAR_COLLAPSED_RAIL_WIDTH: f32 = 28.0;
+const LOCAL_SIM_RUNTIME_BOOTSTRAP_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_SIMULATION_LANES";
 
 const SETTINGS_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M249.9 176.3C243.4 179.5 237.1 183.1 231.1 187.2C222.9 192.7 212.6 194.1 203.1 191L131.4 167.2L93.5 232.8L150 283.1C157.4 289.7 161.3 299.3 160.7 309.2C160.2 316.4 160.2 323.8 160.7 331C161.4 340.9 157.4 350.5 150 357.1L93.5 407.3L131.4 473L203.1 449.2C212.5 446.1 222.8 447.5 231.1 453C237.1 457 243.4 460.7 249.9 463.9C258.8 468.3 265.1 476.5 267.1 486.2L282.3 560.2L358.1 560.2L373.3 486.2C375.3 476.5 381.7 468.3 390.5 463.9C397 460.7 403.3 457.1 409.3 453C417.5 447.5 427.8 446.1 437.3 449.2L509 473L546.9 407.3L490.4 357.1C483 350.5 479.1 340.9 479.7 331C479.9 327.4 480.1 323.8 480.1 320.1C480.1 316.4 480 312.8 479.7 309.2C479 299.3 483 289.7 490.4 283.1L546.9 232.9L509 167.2L437.3 191C427.9 194.1 417.6 192.7 409.3 187.2C403.3 183.2 397 179.5 390.5 176.3C381.6 171.9 375.3 163.7 373.3 154L358.1 80L282.3 80L267.1 154C265.1 163.7 258.7 171.9 249.9 176.3zM358.2 48C373.4 48 386.5 58.7 389.5 73.5L404.7 147.5C412.5 151.3 420.1 155.7 427.3 160.6L499 136.8C513.4 132 529.2 138 536.8 151.2L574.7 216.9C582.3 230.1 579.6 246.7 568.2 256.8L511.9 307C512.5 315.6 512.5 324.5 511.9 333L568.4 383.2C579.8 393.3 582.4 410 574.9 423.1L537 488.8C529.4 502 513.6 508 499.2 503.2L427.5 479.4C420.3 484.2 412.8 488.6 404.9 492.5L389.7 566.5C386.6 581.4 373.5 592 358.4 592L282.6 592C267.4 592 254.3 581.3 251.3 566.5L236.1 492.5C228.3 488.7 220.7 484.3 213.5 479.4L141.5 503.2C127.1 508 111.3 502 103.7 488.8L65.8 423.2C58.2 410.1 60.9 393.4 72.3 383.3L128.7 333C128.1 324.4 128.1 315.5 128.7 307L72.2 256.8C60.8 246.7 58.2 230 65.7 216.9L103.7 151.2C111.3 138 127.1 132 141.5 136.8L213.2 160.6C220.4 155.8 227.9 151.4 235.8 147.5L251 73.5C254.1 58.7 267.2 48 282.4 48L358.2 48zM264.3 320C264.3 350.8 289.2 375.7 320 375.7C350.8 375.7 375.7 350.8 375.7 320C375.7 289.2 350.8 264.3 320 264.3C289.2 264.3 264.3 289.2 264.3 320zM319.7 408C271.1 407.8 231.8 368.3 232 319.7C232.2 271.1 271.7 231.8 320.3 232C368.9 232.2 408.2 271.7 408 320.3C407.8 368.9 368.3 408.2 319.7 408z"/></svg>"##;
 const SIDEBAR_HANDLE_SVG_RAW: &str = r##"<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 640 640">
@@ -173,6 +175,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             Ok(identity) => (Some(identity), None),
             Err(err) => (None, Some(err.to_string())),
         };
+        let spacetime_presence =
+            crate::spacetime_presence::SpacetimePresenceRuntime::new(nostr_identity.as_ref());
+        let spacetime_presence_snapshot = spacetime_presence.snapshot();
 
         let spark_wallet = crate::spark_wallet::SparkPaneState::default();
         let spark_worker = crate::spark_wallet::SparkWalletWorker::spawn(spark_wallet.network);
@@ -180,7 +185,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             crate::stablesats_blink_worker::StableSatsBlinkWorker::spawn();
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
-        let initial_relay_url = settings.document.relay_url.clone();
+        let initial_relay_urls = settings.document.configured_relay_urls();
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
         let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
@@ -189,12 +194,32 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
-        let provider_nip90_lane_worker =
-            ProviderNip90LaneWorker::spawn(vec![initial_relay_url.clone()]);
+        let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
+        let simulation_panes_enabled = simulation_panes_enabled_from_env();
+        let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
+            Ok(engine) => engine,
+            Err(error) => {
+                tracing::warn!("sync apply checkpoint load failed: {}", error);
+                crate::sync_apply::SyncApplyEngine::load_or_new(
+                    std::env::temp_dir().join("openagents-sync-checkpoints-fallback.json"),
+                    crate::sync_apply::SyncApplyPolicy::default(),
+                )
+                .map_err(|fallback_error| {
+                    anyhow::anyhow!(
+                        "failed to initialize fallback sync apply checkpoint engine: {}",
+                        fallback_error
+                    )
+                })?
+            }
+        };
+        let mut sync_health = crate::app_state::SyncHealthState::default();
+        sync_health.last_applied_event_seq = sync_apply_engine.max_checkpoint_seq();
+        sync_health.cursor_position = sync_health.last_applied_event_seq;
+        sync_health.cursor_target_position = sync_health.last_applied_event_seq;
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
         let mut command_palette = CommandPalette::new()
             .mono(true)
-            .commands(command_registry());
+            .commands(command_registry(simulation_panes_enabled));
         {
             let action_queue = Rc::clone(&command_palette_actions);
             command_palette = command_palette.on_select(move |command| {
@@ -204,6 +229,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 
         let mut event_context = wgpui::EventContext::new();
         configure_event_context_clipboard(&mut event_context);
+
+        let mut relay_connections = crate::app_state::RelayConnectionsState::default();
+        relay_connections.replace_configured_relays(initial_relay_urls.as_slice());
 
         let mut state = RenderState {
             window,
@@ -256,16 +284,28 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sa_lane_worker,
             skl_lane_worker,
             ac_lane_worker,
-            provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(vec![initial_relay_url]),
+            provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(initial_relay_urls),
             provider_nip90_lane_worker,
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
-            relay_connections: crate::app_state::RelayConnectionsState::default(),
-            sync_health: crate::app_state::SyncHealthState::default(),
+            network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
+            relay_connections,
+            sync_health,
+            sync_bootstrap_note: None,
+            sync_bootstrap_error: None,
+            hosted_control_base_url: None,
+            hosted_control_bearer_token: None,
+            sync_apply_engine,
+            sync_lifecycle_worker_id: "desktopw:sync".to_string(),
+            sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager::default(),
+            sync_lifecycle_snapshot: None,
+            spacetime_presence,
+            spacetime_presence_snapshot,
             network_requests: crate::app_state::NetworkRequestsState::default(),
             starter_jobs: crate::app_state::StarterJobsState::default(),
+            reciprocal_loop: crate::app_state::ReciprocalLoopState::default(),
             activity_feed: crate::app_state::ActivityFeedState::default(),
             alerts_recovery: crate::app_state::AlertsRecoveryState::default(),
             settings,
@@ -273,6 +313,11 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_inbox: crate::app_state::JobInboxState::default(),
             active_job: crate::app_state::ActiveJobState::default(),
             job_history: crate::app_state::JobHistoryState::default(),
+            earn_job_lifecycle_projection:
+                crate::app_state::EarnJobLifecycleProjectionState::default(),
+            earn_kernel_receipts:
+                crate::state::earn_kernel_receipts::EarnKernelReceiptState::default(),
+            economy_snapshot: crate::state::economy_snapshot::EconomySnapshotState::default(),
             agent_profile_state: crate::app_state::AgentProfileStatePaneState::default(),
             agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
             trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),
@@ -289,6 +334,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             relay_security_simulation: crate::app_state::RelaySecuritySimulationPaneState::default(
             ),
             stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
+            simulation_panes_enabled,
             autopilot_goals,
             goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState::default(),
             goal_restart_recovery_ran: false,
@@ -303,14 +349,179 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             command_palette,
             command_palette_actions,
         };
+        apply_spacetime_sync_bootstrap(&mut state);
         bootstrap_runtime_lanes(&mut state);
+        let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
         open_startup_panes(&mut state);
         Ok(state)
     })
 }
 
+pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
+    state.sync_bootstrap_note = None;
+    state.sync_bootstrap_error = None;
+    state.hosted_control_base_url = None;
+    state.hosted_control_bearer_token = None;
+    state.spacetime_presence.clear_live_client();
+    let worker_id = state.sync_lifecycle_worker_id.clone();
+    state.sync_lifecycle.mark_idle(worker_id.as_str());
+    state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+
+    let client = match reqwest::blocking::Client::builder().build() {
+        Ok(value) => value,
+        Err(error) => {
+            let message = format!("Sync token client initialization failed: {error}");
+            state.sync_bootstrap_error = Some(message.clone());
+            let reason = crate::sync_lifecycle::classify_disconnect_reason(message.as_str());
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(message.clone()),
+            );
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
+            state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
+            state.sync_health.last_error = Some(message);
+            return;
+        }
+    };
+    let bound_nostr_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str());
+
+    if let Ok(control_base_url) = crate::sync_bootstrap::resolve_control_base_url_from_env() {
+        state.hosted_control_base_url = Some(control_base_url.clone());
+        match crate::sync_bootstrap::resolve_control_bearer_auth_from_env(
+            &client,
+            control_base_url.as_str(),
+            bound_nostr_pubkey,
+        ) {
+            Ok(Some(token)) => {
+                state.hosted_control_bearer_token = Some(token);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                state.sync_bootstrap_error = Some(error.clone());
+            }
+        }
+    }
+
+    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, bound_nostr_pubkey) {
+        Ok(Some(result)) => {
+            let mut note = format!(
+                "Minted sync token via {} and prepared subscribe target {}",
+                result.control_token_endpoint, result.target.subscribe_url
+            );
+            match autopilot_spacetime::live::LiveSpacetimeClient::new(
+                result.target.base_url.as_str(),
+                result.target.database.as_str(),
+                None,
+            ) {
+                Ok(live_client) => {
+                    state
+                        .spacetime_presence
+                        .configure_live_client(live_client.clone());
+                    match hydrate_remote_sync_checkpoints(state, &live_client) {
+                        Ok(adopted) if adopted > 0 => {
+                            note.push_str(
+                                format!(" and hydrated {adopted} remote checkpoints").as_str(),
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            state.sync_bootstrap_error = Some(error.clone());
+                        }
+                    }
+                }
+                Err(error) => {
+                    state.sync_bootstrap_error = Some(error.clone());
+                }
+            }
+            state.sync_bootstrap_note = Some(note.clone());
+            state.sync_lifecycle.mark_connecting(worker_id.as_str());
+            let replay_cursor = state.sync_apply_engine.max_checkpoint_seq();
+            state.sync_lifecycle.mark_replay_bootstrap(
+                worker_id.as_str(),
+                replay_cursor,
+                Some(replay_cursor),
+            );
+            state.sync_lifecycle.mark_live(
+                worker_id.as_str(),
+                result.token_lease.refresh_after_in_seconds,
+            );
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+            state.sync_health.last_error = None;
+            state.sync_health.last_action = Some(note);
+        }
+        Ok(None) => {
+            let note =
+                "Spacetime bootstrap disabled (set OPENAGENTS_ENABLE_SPACETIME_SYNC=1)".to_string();
+            state.sync_bootstrap_note = Some(note.clone());
+            state.sync_lifecycle.mark_idle(worker_id.as_str());
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+            state.sync_health.last_error = None;
+            state.sync_health.last_action = Some(note);
+        }
+        Err(error) => {
+            state.sync_bootstrap_error = Some(error.clone());
+            let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(error.clone()),
+            );
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.sync_health.refresh_from_lifecycle(
+                std::time::Instant::now(),
+                state.sync_lifecycle_snapshot.as_ref(),
+            );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+            state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
+            state.sync_health.last_error = Some(error);
+        }
+    }
+}
+
+fn hydrate_remote_sync_checkpoints(
+    state: &mut RenderState,
+    client: &autopilot_spacetime::live::LiveSpacetimeClient,
+) -> Result<usize, String> {
+    let checkpoints = client.list_checkpoints(state.sync_lifecycle_worker_id.as_str())?;
+    let mut adopted = 0_usize;
+    for checkpoint in checkpoints {
+        if state
+            .sync_apply_engine
+            .adopt_checkpoint_if_newer(checkpoint.stream_id.as_str(), checkpoint.last_applied_seq)?
+        {
+            adopted = adopted.saturating_add(1);
+        }
+    }
+    state.sync_health.last_applied_event_seq = state.sync_apply_engine.max_checkpoint_seq();
+    state.sync_health.cursor_position = state.sync_health.last_applied_event_seq;
+    state.sync_health.cursor_target_position = state.sync_health.last_applied_event_seq;
+    Ok(adopted)
+}
+
 fn bootstrap_runtime_lanes(state: &mut RenderState) {
+    if !local_sim_runtime_bootstrap_enabled() {
+        return;
+    }
+
     let _ = state.queue_sa_command(SaLifecycleCommand::PublishAgentProfile {
         display_name: "Autopilot".to_string(),
         about: "Desktop sovereign agent runtime".to_string(),
@@ -334,11 +545,26 @@ fn bootstrap_runtime_lanes(state: &mut RenderState) {
     });
 }
 
+fn local_sim_runtime_bootstrap_enabled() -> bool {
+    std::env::var(LOCAL_SIM_RUNTIME_BOOTSTRAP_ENV)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn open_startup_panes(state: &mut RenderState) {
     for pane_kind in startup_pane_kinds() {
         match pane_kind {
-            PaneKind::AutopilotChat | PaneKind::GoOnline => {
+            PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
+                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+                    state.spark_wallet.last_error = Some(error);
+                }
             }
             PaneKind::CadDemo => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
@@ -463,29 +689,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             let right = sidebar_x + panel_width - 12.0;
             let mut y = 16.0;
 
-            let providers_online = state
-                .relay_connections
-                .relays
-                .iter()
-                .filter(|relay| relay.status == RelayConnectionStatus::Connected)
-                .count();
-            let jobs_completed = state
-                .job_history
-                .rows
-                .iter()
-                .filter(|row| row.status == JobHistoryStatus::Succeeded)
-                .count();
-            let sats_paid_network = state
-                .job_history
-                .rows
-                .iter()
-                .filter(|row| {
-                    row.status == JobHistoryStatus::Succeeded
-                        && !is_synthetic_payment_pointer(row.payment_pointer.as_str())
-                })
-                .map(|row| row.payout_sats)
-                .sum::<u64>();
-            let global_earnings_today_sats = sats_paid_network;
+            let providers_online = state.network_aggregate_counters.providers_online;
+            let jobs_completed = state.network_aggregate_counters.jobs_completed;
+            let sats_paid_network = state.network_aggregate_counters.sats_paid;
+            let global_earnings_today_sats =
+                state.network_aggregate_counters.global_earnings_today_sats;
 
             paint.scene.draw_text(paint.text.layout(
                 "Autopilot - Mission Control",
@@ -502,7 +710,13 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 ),
                 Point::new(left, y),
                 10.0,
-                theme::status::SUCCESS,
+                if state.network_aggregate_counters.load_state
+                    == crate::app_state::PaneLoadState::Ready
+                {
+                    theme::status::SUCCESS
+                } else {
+                    theme::text::MUTED
+                },
             ));
             y += 18.0;
 
@@ -570,6 +784,16 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             ));
             y += 14.0;
             paint.scene.draw_text(paint.text.layout_mono(
+                &format!(
+                    "Providers Source: {}",
+                    state.network_aggregate_counters.providers_online_source_tag
+                ),
+                Point::new(left, y),
+                9.0,
+                theme::text::MUTED,
+            ));
+            y += 14.0;
+            paint.scene.draw_text(paint.text.layout_mono(
                 &format!("Jobs Completed: {jobs_completed}"),
                 Point::new(left, y),
                 10.0,
@@ -582,6 +806,35 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 10.0,
                 theme::text::PRIMARY,
             ));
+            y += 14.0;
+            if let Some(snapshot) = state.economy_snapshot.latest_snapshot.as_ref() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!("sv: {:.2}% | N: {}", snapshot.sv * 100.0, snapshot.n),
+                    Point::new(left, y),
+                    10.0,
+                    theme::text::PRIMARY,
+                ));
+                y += 14.0;
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!(
+                        "Snapshot: {}",
+                        snapshot
+                            .snapshot_id
+                            .strip_prefix("snapshot.economy:")
+                            .unwrap_or(snapshot.snapshot_id.as_str())
+                    ),
+                    Point::new(left, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+            } else {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "Snapshot: pending",
+                    Point::new(left, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+            }
 
             y += 20.0;
             paint.scene.draw_text(paint.text.layout(
@@ -708,6 +961,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.sync_health,
             &state.network_requests,
             &state.starter_jobs,
+            &state.reciprocal_loop,
             &state.activity_feed,
             &state.alerts_recovery,
             &state.settings,
@@ -715,6 +969,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.job_inbox,
             &state.active_job,
             &state.job_history,
+            &state.earn_job_lifecycle_projection,
             &state.agent_profile_state,
             &state.agent_schedule_tick,
             &state.trajectory_audit,
@@ -752,7 +1007,9 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         let wallet_chip_label = format!("{total_sats} sats");
         let wallet_label_font_size = 11.0;
         let icon_text_gap = 8.0;
-        let label_width = paint.text.measure(&wallet_chip_label, wallet_label_font_size);
+        let label_width = paint
+            .text
+            .measure(&wallet_chip_label, wallet_label_font_size);
         let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
         let group_x = wallet_chip_bounds.origin.x + 6.0;
         let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
@@ -762,18 +1019,13 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             OPENAGENTS_BRAND_ICON_SIZE,
             OPENAGENTS_BRAND_ICON_SIZE,
         );
-        paint.scene.draw_svg(
-            SvgQuad::new(
-                wallet_icon_bounds,
-                std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
-            ),
-        );
+        paint.scene.draw_svg(SvgQuad::new(
+            wallet_icon_bounds,
+            std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
+        ));
         paint.scene.draw_text(paint.text.layout_mono(
             &wallet_chip_label,
-            Point::new(
-                wallet_icon_bounds.max_x() + icon_text_gap,
-                center_y - 7.0,
-            ),
+            Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
             wallet_label_font_size,
             theme::text::PRIMARY,
         ));
@@ -1009,17 +1261,10 @@ fn format_btc_from_sats(sats: u64) -> String {
     format!("{:.8}", sats as f64 / 100_000_000.0)
 }
 
-fn is_synthetic_payment_pointer(pointer: &str) -> bool {
-    let normalized = pointer.trim().to_ascii_lowercase();
-    normalized.starts_with("pending:")
-        || normalized.starts_with("pay:")
-        || normalized.starts_with("pay-req-")
-        || normalized.starts_with("inv-")
-}
-
-fn command_registry() -> Vec<Command> {
+fn command_registry(simulation_panes_enabled: bool) -> Vec<Command> {
     let mut commands: Vec<Command> = pane_specs()
         .iter()
+        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
         .filter_map(|spec| {
             let command = spec.command?;
             let mut entry = Command::new(command.id, command.label)
@@ -1049,14 +1294,16 @@ fn command_registry() -> Vec<Command> {
 mod tests {
     use super::{command_registry, wallet_balance_chip_bounds_for_logical};
     use crate::app_state::PaneKind;
-    use crate::pane_registry::{pane_spec_by_command_id, pane_specs, startup_pane_kinds};
+    use crate::pane_registry::{
+        pane_enabled_in_runtime, pane_spec_by_command_id, pane_specs, startup_pane_kinds,
+    };
     use crate::pane_system::cad_palette_command_specs;
     use std::collections::BTreeSet;
     use wgpui::Size;
 
     #[test]
     fn command_registry_matches_pane_specs() {
-        let commands = command_registry();
+        let commands = command_registry(true);
         let command_ids: BTreeSet<&str> =
             commands.iter().map(|command| command.id.as_str()).collect();
 
@@ -1088,7 +1335,7 @@ mod tests {
 
     #[test]
     fn command_registry_includes_job_inbox_command() {
-        let commands = command_registry();
+        let commands = command_registry(false);
         assert!(
             commands
                 .iter()
@@ -1115,6 +1362,9 @@ mod tests {
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.starter_jobs" && command.label == "Starter Jobs"
+        }));
+        assert!(commands.iter().any(|command| {
+            command.id == "pane.reciprocal_loop" && command.label == "Reciprocal Loop"
         }));
         assert!(commands.iter().any(|command| {
             command.id == "pane.activity_feed" && command.label == "Activity Feed"
@@ -1176,30 +1426,53 @@ mod tests {
             command.id == "pane.credit_settlement_ledger"
                 && command.label == "Credit Settlement Ledger"
         }));
-        assert!(commands.iter().any(|command| {
+    }
+
+    #[test]
+    fn command_registry_hides_simulation_commands_when_disabled() {
+        let commands = command_registry(false);
+        assert!(!commands.iter().any(|command| {
             command.id == "pane.agent_network_simulation"
-                && command.label == "Sovereign Agent Simulation"
+                || command.id == "pane.treasury_exchange_simulation"
+                || command.id == "pane.relay_security_simulation"
+                || command.id == "pane.stablesats_simulation"
         }));
-        assert!(commands.iter().any(|command| {
-            command.id == "pane.treasury_exchange_simulation"
-                && command.label == "Treasury Exchange Simulation"
-        }));
-        assert!(commands.iter().any(|command| {
-            command.id == "pane.relay_security_simulation"
-                && command.label == "Relay Security Simulation"
-        }));
-        assert!(commands.iter().any(|command| {
-            command.id == "pane.stablesats_simulation"
-                && command.label == "StableSats Wallet Simulation"
-        }));
+    }
+
+    #[test]
+    fn command_registry_includes_simulation_commands_when_enabled() {
+        let commands = command_registry(true);
+        let command_ids: BTreeSet<&str> =
+            commands.iter().map(|command| command.id.as_str()).collect();
+
+        let expected_simulation_ids: BTreeSet<&str> = pane_specs()
+            .iter()
+            .filter(|spec| {
+                pane_enabled_in_runtime(spec.kind, true)
+                    && !pane_enabled_in_runtime(spec.kind, false)
+            })
+            .filter_map(|spec| spec.command.map(|command| command.id))
+            .collect();
+        assert_eq!(
+            expected_simulation_ids,
+            BTreeSet::from([
+                "pane.agent_network_simulation",
+                "pane.treasury_exchange_simulation",
+                "pane.relay_security_simulation",
+                "pane.stablesats_simulation",
+            ])
+        );
+        for command_id in expected_simulation_ids {
+            assert!(command_ids.contains(command_id));
+        }
     }
 
     #[test]
     fn startup_pane_set_matches_mvp_core_surfaces() {
         let startup = startup_pane_kinds();
-        assert!(startup.contains(&PaneKind::AutopilotChat));
-        assert!(startup.contains(&PaneKind::CadDemo));
-        assert!(!startup.contains(&PaneKind::GoOnline));
+        assert_eq!(startup, vec![PaneKind::GoOnline]);
+        assert!(!startup.contains(&PaneKind::AutopilotChat));
+        assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
     }

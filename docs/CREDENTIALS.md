@@ -245,4 +245,3 @@ If adding a new first-class integration:
 2. Assign minimal scope defaults.
 3. Ensure runtime lane consumes env from scope resolver.
 4. Update this document and `.env.example` if there is a user-facing key.
-

@@ -14,5 +14,8 @@ pub mod subscription;
 pub use dvm::DvmClient;
 pub use error::{ClientError, Result};
 pub use pool::{PoolConfig, RelayPool};
-pub use relay::{ConnectionState, PublishConfirmation, RelayConfig, RelayConnection, RelayMessage};
+pub use relay::{
+    ConnectionState, PublishConfirmation, RelayAuthIdentity, RelayConfig, RelayConnection,
+    RelayMessage,
+};
 pub use subscription::{EventCallback, Subscription};
