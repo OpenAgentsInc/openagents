@@ -142,6 +142,30 @@ impl Default for ProviderRuntimeState {
 }
 
 impl ProviderRuntimeState {
+    pub const fn execution_lane_label(&self) -> &'static str {
+        "compute"
+    }
+
+    pub const fn execution_backend_label(&self) -> &'static str {
+        "local Ollama runtime"
+    }
+
+    pub const fn control_authority_label(&self, backend_authoritative: bool) -> &'static str {
+        if backend_authoritative {
+            "backend-authoritative"
+        } else {
+            "local only"
+        }
+    }
+
+    pub const fn projection_authority_label(&self) -> &'static str {
+        "projected / non-authoritative"
+    }
+
+    pub const fn settlement_truth_label(&self) -> &'static str {
+        "wallet-authoritative"
+    }
+
     pub fn uptime_seconds(&self, now: Instant) -> u64 {
         self.online_since
             .and_then(|started| now.checked_duration_since(started))
@@ -152,5 +176,28 @@ impl ProviderRuntimeState {
         self.last_heartbeat_at
             .and_then(|last| now.checked_duration_since(last))
             .map(|duration| duration.as_secs())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ProviderRuntimeState;
+
+    #[test]
+    fn provider_runtime_truth_labels_distinguish_control_and_projection() {
+        let runtime = ProviderRuntimeState::default();
+
+        assert_eq!(runtime.execution_lane_label(), "compute");
+        assert_eq!(runtime.execution_backend_label(), "local Ollama runtime");
+        assert_eq!(runtime.control_authority_label(false), "local only");
+        assert_eq!(
+            runtime.control_authority_label(true),
+            "backend-authoritative"
+        );
+        assert_eq!(
+            runtime.projection_authority_label(),
+            "projected / non-authoritative"
+        );
+        assert_eq!(runtime.settlement_truth_label(), "wallet-authoritative");
     }
 }

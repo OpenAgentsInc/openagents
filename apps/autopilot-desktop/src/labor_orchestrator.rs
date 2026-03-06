@@ -65,6 +65,30 @@ impl CodexRunClassification {
         }
     }
 
+    pub(crate) fn ui_mode_label(&self) -> &'static str {
+        match self {
+            Self::PersonalAgent => "personal agent",
+            Self::AutonomousGoal { .. } => "labor / autonomous goal",
+            Self::LaborMarket { .. } => "labor / contract",
+        }
+    }
+
+    pub(crate) fn ui_execution_lane_label(&self) -> &'static str {
+        match self {
+            Self::PersonalAgent => "personal agent / Codex",
+            Self::AutonomousGoal { .. } | Self::LaborMarket { .. } => "labor / Codex",
+        }
+    }
+
+    pub(crate) fn ui_authority_label(&self) -> &'static str {
+        match self {
+            Self::PersonalAgent => "local only",
+            Self::AutonomousGoal { .. } | Self::LaborMarket { .. } => {
+                "projected / non-authoritative"
+            }
+        }
+    }
+
     pub(crate) fn is_economically_meaningful(&self) -> bool {
         !matches!(self, Self::PersonalAgent)
     }
@@ -538,6 +562,37 @@ impl CodexLaborBinding {
             return Some("disputed");
         }
         None
+    }
+
+    pub(crate) fn submission_runtime_state_label(&self) -> &'static str {
+        self.submission
+            .as_ref()
+            .map(|submission| match submission.submission.status {
+                SubmissionStatus::Received => "received",
+                SubmissionStatus::Accepted => "accepted",
+                SubmissionStatus::Rejected => "rejected",
+            })
+            .unwrap_or("not submitted")
+    }
+
+    pub(crate) fn verdict_runtime_state_label(&self) -> &'static str {
+        self.verdict
+            .as_ref()
+            .map(CodexLaborVerdictState::outcome_label)
+            .unwrap_or("pending")
+    }
+
+    pub(crate) fn ui_settlement_state_label(&self) -> &'static str {
+        if self.verdict.is_none() {
+            return "local execution only";
+        }
+        if self.claim.is_some() || self.claim_runtime_state_label().is_some() {
+            return "claim / dispute path";
+        }
+        if self.is_settlement_ready() {
+            return "verification complete; backend settlement not issued";
+        }
+        "verification pending / settlement withheld"
     }
 
     pub(crate) fn claim_payload(&self) -> serde_json::Value {

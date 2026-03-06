@@ -69,6 +69,7 @@ impl PaneRenderer {
         panes: &mut [DesktopPane],
         canvas_bounds: Bounds,
         active_id: Option<u64>,
+        backend_kernel_authority: bool,
         nostr_identity: Option<&nostr::NostrIdentity>,
         nostr_identity_error: Option<&str>,
         nostr_secret_state: &NostrSecretState,
@@ -185,6 +186,8 @@ impl PaneRenderer {
                     paint_go_online_pane(
                         content_bounds,
                         provider_runtime,
+                        earn_job_lifecycle_projection,
+                        backend_kernel_authority,
                         sa_lane,
                         skl_lane,
                         ac_lane,
@@ -200,6 +203,8 @@ impl PaneRenderer {
                     paint_provider_status_pane(
                         content_bounds,
                         provider_runtime,
+                        earn_job_lifecycle_projection,
+                        backend_kernel_authority,
                         provider_blockers,
                         paint,
                     );
@@ -493,6 +498,8 @@ fn paint_autopilot_chat_pane(
 fn paint_go_online_pane(
     content_bounds: Bounds,
     provider_runtime: &ProviderRuntimeState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    backend_kernel_authority: bool,
     sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
     skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
     ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
@@ -536,8 +543,8 @@ fn paint_go_online_pane(
     let card_y = toggle_bounds.max_y() + 16.0;
     let card_gap = 12.0;
     let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(240.0);
-    let left_card = Bounds::new(content_bounds.origin.x + 12.0, card_y, card_width, 170.0);
-    let right_card = Bounds::new(left_card.max_x() + card_gap, card_y, card_width, 170.0);
+    let left_card = Bounds::new(content_bounds.origin.x + 12.0, card_y, card_width, 220.0);
+    let right_card = Bounds::new(left_card.max_x() + card_gap, card_y, card_width, 220.0);
     let bottom_card = Bounds::new(
         content_bounds.origin.x + 12.0,
         left_card.max_y() + card_gap,
@@ -556,6 +563,45 @@ fn paint_go_online_pane(
 
     let now = std::time::Instant::now();
     let mut left_y = left_card.origin.y + 32.0;
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Lane",
+        provider_runtime.execution_lane_label(),
+    );
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Execution backend",
+        provider_runtime.execution_backend_label(),
+    );
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Control authority",
+        provider_runtime.control_authority_label(backend_kernel_authority),
+    );
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Projection stream",
+        if earn_job_lifecycle_projection.authority == "non-authoritative" {
+            provider_runtime.projection_authority_label()
+        } else {
+            earn_job_lifecycle_projection.authority.as_str()
+        },
+    );
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Settlement truth",
+        provider_runtime.settlement_truth_label(),
+    );
     left_y = paint_label_line(
         paint,
         left_card.origin.x + 12.0,
@@ -878,6 +924,8 @@ fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut Pai
 fn paint_provider_status_pane(
     content_bounds: Bounds,
     provider_runtime: &ProviderRuntimeState,
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    backend_kernel_authority: bool,
     provider_blockers: &[ProviderBlocker],
     paint: &mut PaintContext,
 ) {
@@ -888,6 +936,45 @@ fn paint_provider_status_pane(
         .heartbeat_age_seconds(now)
         .map_or_else(|| "n/a".to_string(), |age| age.to_string());
     let mut y = content_bounds.origin.y + 12.0;
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Lane",
+        provider_runtime.execution_lane_label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Execution backend",
+        provider_runtime.execution_backend_label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Control authority",
+        provider_runtime.control_authority_label(backend_kernel_authority),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Projection stream",
+        if earn_job_lifecycle_projection.authority == "non-authoritative" {
+            provider_runtime.projection_authority_label()
+        } else {
+            earn_job_lifecycle_projection.authority.as_str()
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Settlement truth",
+        provider_runtime.settlement_truth_label(),
+    );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,

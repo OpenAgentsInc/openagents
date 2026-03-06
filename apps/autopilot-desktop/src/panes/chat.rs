@@ -6,6 +6,7 @@ use crate::app_state::{
     AutopilotProgressRow, AutopilotRole, ChatPaneInputs, ChatTranscriptSelectionState, PaneKind,
     RenderState,
 };
+use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
     chat_composer_height_for_value, chat_composer_input_bounds_with_height,
     chat_send_button_bounds, chat_transcript_bounds, chat_transcript_bounds_with_height,
@@ -205,35 +206,87 @@ fn is_tool_activity_event(event: &str) -> bool {
         || normalized.contains("type=commandexecution")
 }
 
+fn local_turn_status_summary(status: Option<&str>) -> Option<&'static str> {
+    match status {
+        Some("completed") => Some("completed locally; not a labor verdict or settlement"),
+        Some("failed") => Some("local execution failed"),
+        Some("inProgress") => Some("local execution in progress"),
+        _ => None,
+    }
+}
+
+fn labor_binding_status_lines(binding: &CodexLaborBinding) -> Vec<String> {
+    let mut lines = vec![
+        format!("work unit: {}", binding.work_unit_id),
+        format!("contract: {}", binding.contract_id),
+        format!("submission: {}", binding.submission_runtime_state_label()),
+        format!("verdict: {}", binding.verdict_runtime_state_label()),
+        format!("settlement: {}", binding.ui_settlement_state_label()),
+    ];
+    if let Some(claim_state) = binding.claim_runtime_state_label() {
+        lines.push(format!("claim: {claim_state}"));
+    }
+    lines
+}
+
+fn chat_turn_status_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> {
+    let Some(metadata) = autopilot_chat.active_turn_metadata() else {
+        return Vec::new();
+    };
+
+    let mut lines = vec![
+        format!("mode: {}", metadata.run_classification.ui_mode_label()),
+        format!(
+            "execution lane: {}",
+            metadata.run_classification.ui_execution_lane_label()
+        ),
+        format!(
+            "authority: {}",
+            metadata.run_classification.ui_authority_label()
+        ),
+    ];
+
+    if let Some(binding) = metadata.labor_binding.as_ref() {
+        lines.extend(labor_binding_status_lines(binding));
+    } else if let Some(summary) =
+        local_turn_status_summary(autopilot_chat.last_turn_status.as_deref())
+    {
+        lines.push(format!("turn status: {summary}"));
+    }
+
+    lines
+}
+
 fn chat_tool_activity_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> {
-    let mut lines = Vec::new();
+    let status_lines = chat_turn_status_lines(autopilot_chat);
+    let mut pending_lines = Vec::new();
 
     if !autopilot_chat.pending_tool_calls.is_empty() {
-        lines.push(format!(
+        pending_lines.push(format!(
             "pending tool calls: {}",
             autopilot_chat.pending_tool_calls.len()
         ));
         for call in autopilot_chat.pending_tool_calls.iter().rev().take(3) {
-            lines.push(format!(
+            pending_lines.push(format!(
                 "tool call queued: {} ({})",
                 call.tool, call.call_id
             ));
         }
     }
     if !autopilot_chat.pending_command_approvals.is_empty() {
-        lines.push(format!(
+        pending_lines.push(format!(
             "pending command approvals: {}",
             autopilot_chat.pending_command_approvals.len()
         ));
     }
     if !autopilot_chat.pending_file_change_approvals.is_empty() {
-        lines.push(format!(
+        pending_lines.push(format!(
             "pending file-change approvals: {}",
             autopilot_chat.pending_file_change_approvals.len()
         ));
     }
     if !autopilot_chat.pending_tool_user_input.is_empty() {
-        lines.push(format!(
+        pending_lines.push(format!(
             "pending tool prompts: {}",
             autopilot_chat.pending_tool_user_input.len()
         ));
@@ -248,12 +301,18 @@ fn chat_tool_activity_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> 
         .cloned()
         .collect::<Vec<_>>();
     timeline.reverse();
-    lines.extend(timeline);
 
-    if lines.len() > CHAT_ACTIVITY_MAX_ROWS {
-        let overflow = lines.len().saturating_sub(CHAT_ACTIVITY_MAX_ROWS);
-        lines.drain(0..overflow);
+    let reserved = status_lines.len().saturating_add(pending_lines.len());
+    let timeline_budget = CHAT_ACTIVITY_MAX_ROWS.saturating_sub(reserved);
+    if timeline.len() > timeline_budget {
+        let overflow = timeline.len().saturating_sub(timeline_budget);
+        timeline.drain(0..overflow);
     }
+
+    let mut lines = status_lines;
+    lines.extend(pending_lines);
+    lines.extend(timeline);
+    lines.truncate(CHAT_ACTIVITY_MAX_ROWS);
 
     lines
 }
@@ -846,8 +905,20 @@ mod tests {
     use crate::app_state::{
         AutopilotChatState, AutopilotMessage, AutopilotMessageStatus, AutopilotProgressBlock,
         AutopilotProgressRow, AutopilotRole, AutopilotStructuredMessage, AutopilotToolCallRequest,
+        AutopilotTurnMetadata,
+    };
+    use crate::labor_orchestrator::{
+        CodexLaborBinding, CodexLaborClaimState, CodexLaborProvenanceBundle,
+        CodexLaborSubmissionState, CodexLaborVerdictState, CodexLaborVerifierPath,
+        CodexRunClassification,
     };
     use codex_client::AppServerRequestId;
+    use openagents_kernel_core::labor::{
+        ClaimHook, ClaimHookStatus, SettlementStatus, Submission, SubmissionStatus, Verdict,
+        VerdictOutcome,
+    };
+    use openagents_kernel_core::receipts::TraceContext;
+    use serde_json::json;
     use wgpui::theme;
 
     fn fixture_progress_message(status: &str) -> AutopilotMessage {
@@ -872,6 +943,103 @@ mod tests {
                     }],
                 }],
             }),
+        }
+    }
+
+    fn fixture_turn_metadata(
+        run_classification: CodexRunClassification,
+        labor_binding: Option<CodexLaborBinding>,
+    ) -> AutopilotTurnMetadata {
+        AutopilotTurnMetadata {
+            submission_seq: 1,
+            thread_id: "thread-1".to_string(),
+            run_classification,
+            labor_binding,
+            is_cad_turn: false,
+            classifier_reason: "test fixture".to_string(),
+            submitted_at_epoch_ms: 1_730_000_000_000,
+            selected_skill_names: vec!["skill.alpha".to_string()],
+        }
+    }
+
+    fn fixture_labor_binding() -> CodexLaborBinding {
+        CodexLaborBinding {
+            work_unit_id: "work-unit-1".to_string(),
+            contract_id: "contract-1".to_string(),
+            idempotency_key: "idem-1".to_string(),
+            trace: TraceContext::default(),
+            provenance: CodexLaborProvenanceBundle {
+                bundle_id: "bundle-1".to_string(),
+                thread_id: "thread-1".to_string(),
+                turn_id: Some("turn-1".to_string()),
+                prompt_digest: "sha256:prompt".to_string(),
+                selected_model_id: Some("gpt-test".to_string()),
+                selected_skill_names: vec!["skill.alpha".to_string()],
+                cwd: Some("/tmp/openagents".to_string()),
+                sandbox_policy: Some("workspace-write".to_string()),
+                approval_policy: Some("on-failure".to_string()),
+                approval_events: Vec::new(),
+                tool_invocations: Vec::new(),
+                produced_artifacts: Vec::new(),
+                final_output_digest: Some("sha256:output".to_string()),
+                transcript_digest: Some("sha256:transcript".to_string()),
+            },
+            required_artifact_kinds: vec!["final_output".to_string(), "transcript".to_string()],
+            attached_evidence_refs: Vec::new(),
+            incident_evidence_refs: Vec::new(),
+            submission: Some(CodexLaborSubmissionState {
+                submission: Submission {
+                    submission_id: "submission-1".to_string(),
+                    contract_id: "contract-1".to_string(),
+                    work_unit_id: "work-unit-1".to_string(),
+                    created_at_ms: 1_730_000_000_100,
+                    status: SubmissionStatus::Accepted,
+                    output_ref: Some("oa://autopilot/codex/work-unit-1/output".to_string()),
+                    provenance_digest: Some("sha256:bundle".to_string()),
+                    metadata: json!({}),
+                },
+                evidence_refs: Vec::new(),
+                verifier_path: CodexLaborVerifierPath::DeterministicOutputGate,
+                verifier_id: "verifier-1".to_string(),
+                settlement_ready: true,
+            }),
+            verdict: Some(CodexLaborVerdictState {
+                verdict: Verdict {
+                    verdict_id: "verdict-1".to_string(),
+                    contract_id: "contract-1".to_string(),
+                    work_unit_id: "work-unit-1".to_string(),
+                    created_at_ms: 1_730_000_000_200,
+                    outcome: VerdictOutcome::Fail,
+                    verification_tier: None,
+                    settlement_status: SettlementStatus::Disputed,
+                    reason_code: Some("deterministic_output_mismatch".to_string()),
+                    metadata: json!({}),
+                },
+                evidence_refs: Vec::new(),
+                verifier_path: CodexLaborVerifierPath::DeterministicOutputGate,
+                verifier_id: "verifier-1".to_string(),
+                independence_note: Some("heterogeneous checker pending".to_string()),
+                correlation_note: None,
+                settlement_ready: false,
+                settlement_withheld_reason: Some("claim pending".to_string()),
+            }),
+            claim: Some(CodexLaborClaimState {
+                claim: ClaimHook {
+                    claim_id: "claim-1".to_string(),
+                    contract_id: "contract-1".to_string(),
+                    work_unit_id: "work-unit-1".to_string(),
+                    created_at_ms: 1_730_000_000_300,
+                    status: ClaimHookStatus::UnderReview,
+                    reason_code: Some("deterministic_output_mismatch".to_string()),
+                    metadata: json!({}),
+                },
+                evidence_refs: Vec::new(),
+                status_note: Some("review in progress".to_string()),
+                reviewed_at_epoch_ms: Some(1_730_000_000_350),
+                resolved_at_epoch_ms: None,
+                remedy: None,
+            }),
+            verifier_failure: None,
         }
     }
 
@@ -968,5 +1136,59 @@ mod tests {
                 .any(|line| line.contains("type=commandExecution"))
         );
         assert!(!lines.iter().any(|line| line.contains("reasoning delta")));
+    }
+
+    #[test]
+    fn tool_activity_lines_make_personal_agent_turns_explicitly_local() {
+        let mut chat = AutopilotChatState::default();
+        chat.last_submitted_turn_metadata = Some(fixture_turn_metadata(
+            CodexRunClassification::PersonalAgent,
+            None,
+        ));
+        chat.last_turn_status = Some("completed".to_string());
+
+        let lines = chat_tool_activity_lines(&chat);
+
+        assert!(lines.iter().any(|line| line == "mode: personal agent"));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "execution lane: personal agent / Codex")
+        );
+        assert!(lines.iter().any(|line| line == "authority: local only"));
+        assert!(lines.iter().any(|line| {
+            line == "turn status: completed locally; not a labor verdict or settlement"
+        }));
+    }
+
+    #[test]
+    fn tool_activity_lines_show_labor_contract_state_and_claims() {
+        let mut chat = AutopilotChatState::default();
+        chat.last_submitted_turn_metadata = Some(fixture_turn_metadata(
+            CodexRunClassification::LaborMarket {
+                work_unit_id: "work-unit-1".to_string(),
+                contract_id: Some("contract-1".to_string()),
+            },
+            Some(fixture_labor_binding()),
+        ));
+
+        let lines = chat_tool_activity_lines(&chat);
+
+        assert!(lines.iter().any(|line| line == "mode: labor / contract"));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "authority: projected / non-authoritative")
+        );
+        assert!(lines.iter().any(|line| line == "work unit: work-unit-1"));
+        assert!(lines.iter().any(|line| line == "contract: contract-1"));
+        assert!(lines.iter().any(|line| line == "submission: accepted"));
+        assert!(lines.iter().any(|line| line == "verdict: fail"));
+        assert!(
+            lines
+                .iter()
+                .any(|line| line == "settlement: claim / dispute path")
+        );
+        assert!(lines.iter().any(|line| line == "claim: under_review"));
     }
 }
