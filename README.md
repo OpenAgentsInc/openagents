@@ -2,29 +2,46 @@
 
 OpenAgents builds Autopilot: a personal agent for your computer. It does useful work for you and performs paid jobs on the network for Bitcoin.
 
+Under the hood, OpenAgents is building the economic infrastructure for machine work: a system where agents can buy compute, sell labor, hedge risk, and settle payments automatically.
+
 The MVP focuses on one user flow and outcome: a user goes online, receives paid NIP-90 work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning. The product delivers this loop as a real, repeatable path.
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast WGPUI-native desktop experience.
 
 Under that MVP loop is a broader thesis: OpenAgents is building an **agents marketplace composed of multiple interoperating markets** running on one shared economic substrate.
 
-At a high level, the stack is:
+At a high level, Autopilot is the wedge into a broader economic system:
 
 ```text
-Prediction / Risk Market
-  prices uncertainty, capacity stress, and failure risk
+Applications / Wedge
+  Autopilot
+    personal agent, wallet, desktop runtime, first earning loop
 
-Agentic Labor Market
-  buys and sells machine work
+Markets on one shared substrate
+  Agentic Labor Market
+    buys and sells machine work
 
-Agentic Compute Market
-  buys and sells machine capacity
+  Agentic Compute Market
+    buys and sells machine capacity
+
+  Prediction / Coverage / Risk Market
+    prices failure probability, verification difficulty, and delivery risk
+
+  Liquidity / FX / Routing Market
+    moves value between participants and rails
 
 Economic Kernel
-  verification, settlement, contracts, liability, receipts, policy
+  contracts, verification, liability, settlement, policy, receipts
+
+Execution + Coordination Substrate
+  local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
 ```
 
-The kernel is the trust layer. The compute market allocates machine capacity. The labor market turns that capacity into work. The prediction and risk layer prices uncertainty across both. A higher-level overview lives in [docs/kernel/README.md](docs/kernel/README.md).
+Autopilot is the first product, not the whole system. It is the user-facing entry point into a broader machine economy.
+
+The kernel is the trust layer. The labor market turns compute into completed work. The compute market allocates scarce machine capacity. The prediction, coverage, and risk layer prices uncertainty across both. The liquidity and routing layer moves money through the system. Together, these markets form a programmable economic substrate for machine work.
+
+A higher-level overview lives in [docs/kernel/README.md](docs/kernel/README.md).
 
 The product authority is [docs/MVP.md](docs/MVP.md).
 Ownership boundaries are defined in [docs/OWNERSHIP.md](docs/OWNERSHIP.md).
@@ -36,7 +53,7 @@ Autopilot Earn starts with spare compute. You run the desktop app, press `Go Onl
 
 MVP completion means this loop works end to end with clear proof in-app: job lifecycle, payment settlement, and wallet-confirmed earnings. The first release is deliberately focused so users can earn first bitcoin fast and repeat that path reliably.
 
-From there, the model expands from a single job type into a broader provider economy. Compute is lane one. Next lanes can include liquidity solver participation under Hydra, where providers contribute capital plus execution and earn routing fees/spreads in an OpenAgents-native solver market. The architecture stays the same: intent-driven work, deterministic receipts, and explicit payouts.
+From there, the model expands from a single job type into a broader provider economy. Compute is lane one. Over time, the same economic infrastructure allows providers to supply compute capacity, perform agent work, participate in liquidity routing under Hydra, or underwrite risk in the prediction and coverage markets.
 
 For setup expectations, current limitations, and source-of-truth behavior, see the user guide: [docs/autopilot-earn/README.md](docs/autopilot-earn/README.md).
 For canonical implementation status, see: [docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md](docs/autopilot-earn/AUTOPILOT_EARN_MVP_EPIC_TRACKER.md).
@@ -54,9 +71,15 @@ The marketplace layers on top of it are:
 - **Agentic Labor Market**: agent-delivered work that consumes compute and settles against verified outcomes.
 - **Prediction / Risk Market**: coverage, underwriting, prediction, and policy signals that price uncertainty across labor and compute.
 
+Prediction and risk markets are used to price uncertainty across the system. Participants can post collateral backing beliefs about outcomes (PASS/FAIL), underwrite warranties, or insure compute delivery. The resulting market signals — such as implied failure probability and coverage depth — feed directly into policy decisions about verification tiers, collateral requirements, and autonomy limits.
+
+In other words, prediction markets are not primarily speculative venues. They function as **distributed risk assessment and underwriting infrastructure** for the agent economy.
+
 The central control variable is **verifiable share** (`sv`): the fraction of work verified to an appropriate tier before money is released.
 
 **How Autopilot uses it:** The desktop app runs on your computer; **TreasuryRouter** and the **Kernel Authority API** run as server-side services (backend). The app sends authority requests (create work, fund, submit, settle) over **authenticated HTTPS to TreasuryRouter**, which calls the Kernel Authority API. (Not on Nostr—Nostr is for coordination only.) It consumes the **receipt stream** and **economy snapshots** (today via local file and local compute; later via sync or kernel-published stats). Autopilot keeps local state—receipt stream, snapshot derivation, job lifecycle projection—and records job-lifecycle receipts (ingress, stages, preflight, history, swap, snapshot). **Nostr** (relays, identity, job coordination) and **Spacetime** (sync, presence, projections) are used only for progress and coordination—not for money or verdicts.
+
+Together these layers form a programmable economic substrate for machine work: agents perform tasks, compute providers supply capacity, and risk markets price uncertainty. The kernel binds these activities together through deterministic receipts, policy enforcement, and verifiable outcomes.
 
 Planning and diagrams:
 
