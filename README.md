@@ -1,6 +1,10 @@
-# OpenAgents: Autopilot
+# OpenAgents
 
-OpenAgents builds **Autopilot**: your personal agent.
+OpenAgents is building the economic infrastructure for machine work.
+
+## Autopilot
+
+Autopilot is your personal agent.
 
 Today Autopilot runs on your computer, where it can do useful work for you and perform paid jobs on the network for Bitcoin. Soon it will also be accessible through a mobile app and openagents.com.
 
