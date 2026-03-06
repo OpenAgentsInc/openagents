@@ -3698,6 +3698,7 @@ dependencies = [
  "anyhow",
  "axum 0.8.8",
  "futures-util",
+ "hex",
  "nostr 0.1.0",
  "serde",
  "serde_json",
