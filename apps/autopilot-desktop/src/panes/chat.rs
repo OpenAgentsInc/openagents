@@ -96,20 +96,10 @@ fn notification_badge_label(count: usize) -> String {
     }
 }
 
-fn paint_notification_badge(
-    bounds: Bounds,
-    count: usize,
-    urgent: bool,
-    paint: &mut PaintContext,
-) {
+fn paint_notification_badge(bounds: Bounds, count: usize, urgent: bool, paint: &mut PaintContext) {
     let label = notification_badge_label(count);
     let width = if label.len() >= 3 { 26.0 } else { 18.0 };
-    let badge_bounds = Bounds::new(
-        bounds.max_x() - width,
-        bounds.origin.y,
-        width,
-        16.0,
-    );
+    let badge_bounds = Bounds::new(bounds.max_x() - width, bounds.origin.y, width, 16.0);
     let background = if urgent {
         theme::status::ERROR
     } else {
@@ -457,7 +447,7 @@ fn describe_payment_object_attachment(content: &str) -> Option<RichMessageAttach
         detail_parts.push(amount);
     }
     if let Some(status) = status {
-        detail_parts.push(status);
+        detail_parts.push(format!("chat-reported {status}"));
     }
     if let Some(payment_id) = payment_id {
         detail_parts.push(compact_display_token(payment_id.as_str(), 32));
@@ -1411,7 +1401,8 @@ fn managed_group_role_summary(group: &ManagedChatGroupProjection) -> String {
     if group.roles.is_empty() {
         return "relay did not advertise group roles".to_string();
     }
-    group.roles
+    group
+        .roles
         .iter()
         .take(4)
         .map(|role| match role.description.as_deref() {
@@ -1447,7 +1438,11 @@ fn managed_group_member_preview(autopilot_chat: &AutopilotChatState) -> String {
             if labels.is_empty() {
                 compact_hex_label(&member.pubkey, 8)
             } else {
-                format!("{} [{}]", compact_hex_label(&member.pubkey, 8), labels.join(", "))
+                format!(
+                    "{} [{}]",
+                    compact_hex_label(&member.pubkey, 8),
+                    labels.join(", ")
+                )
             }
         })
         .collect::<Vec<_>>();
@@ -1481,7 +1476,11 @@ fn managed_group_overview_lines(autopilot_chat: &AutopilotChatState) -> Vec<Stri
         format!(
             "[roles] {} role(s)  •  {} admin(s)  •  {}",
             group.roles.len(),
-            group.members.iter().filter(|member| member.is_admin).count(),
+            group
+                .members
+                .iter()
+                .filter(|member| member.is_admin)
+                .count(),
             managed_group_role_summary(group)
         ),
         format!(
@@ -1489,7 +1488,10 @@ fn managed_group_overview_lines(autopilot_chat: &AutopilotChatState) -> Vec<Stri
             group.members.len(),
             managed_group_member_preview(autopilot_chat)
         ),
-        format!("[controls] {}", managed_group_controls_summary(autopilot_chat)),
+        format!(
+            "[controls] {}",
+            managed_group_controls_summary(autopilot_chat)
+        ),
     ]
 }
 
@@ -1543,13 +1545,11 @@ fn direct_local_delivery_summary(autopilot_chat: &AutopilotChatState) -> Option<
     (!parts.is_empty()).then(|| parts.join("  •  "))
 }
 
-fn managed_chat_composer_hint(
-    autopilot_chat: &AutopilotChatState,
-    composer_value: &str,
-) -> String {
+fn managed_chat_composer_hint(autopilot_chat: &AutopilotChatState, composer_value: &str) -> String {
     let Some(channel) = autopilot_chat.active_managed_chat_channel() else {
         return "No managed channel selected.".to_string();
     };
+    let wallet_hint = "Wallet: `wallet pay <#|id>`, `wallet request <#|id>`, `wallet copy-address <#|id>`, `wallet status <#|id>`.";
     let command_hint = if autopilot_chat.active_managed_chat_local_is_admin() {
         "Admin controls: `delete <#|id>`, `remove <pubkey>`, `invite <code>`, `meta key=value | ...`."
     } else if autopilot_chat.active_managed_chat_local_member().is_some() {
@@ -1559,7 +1559,7 @@ fn managed_chat_composer_hint(
     };
     if channel.relay_url.is_none() {
         return format!(
-            "Channel relay target is unknown; publish waits for metadata or synced history. {command_hint}"
+            "Channel relay target is unknown; publish waits for metadata or synced history. {wallet_hint} {command_hint}"
         );
     }
     if composer_value.trim().is_empty()
@@ -1568,11 +1568,11 @@ fn managed_chat_composer_hint(
             .is_some()
     {
         return format!(
-            "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. Empty composer retries the latest failed publish. {command_hint}"
+            "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. Empty composer retries the latest failed publish. {wallet_hint} {command_hint}"
         );
     }
     format!(
-        "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. `@hexprefix` adds mention tags. Shift+Enter inserts a newline. {command_hint}"
+        "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. `@hexprefix` adds mention tags. Shift+Enter inserts a newline. {wallet_hint} {command_hint}"
     )
 }
 
@@ -1580,16 +1580,19 @@ fn direct_message_composer_hint(
     autopilot_chat: &AutopilotChatState,
     composer_value: &str,
 ) -> String {
+    let wallet_hint = "Wallet: `wallet pay <#|id>`, `wallet request <#|id>`, `wallet copy-address <#|id>`, `wallet status <#|id>`.";
     if composer_value.trim().is_empty()
         && autopilot_chat
             .active_direct_message_retryable_message()
             .is_some()
     {
-        return "Use `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`. Empty composer retries the latest failed DM publish."
-            .to_string();
+        return format!(
+            "Use `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`. Empty composer retries the latest failed DM publish. {wallet_hint}"
+        );
     }
-    "Use plain text in the selected room, `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`."
-        .to_string()
+    format!(
+        "Use plain text in the selected room, `reply <#|id> <text>`, `dm <pubkey> <text>`, or `room <pubkey[,pubkey...]> | <subject> | <text>`. {wallet_hint}"
+    )
 }
 
 fn active_thread_title(autopilot_chat: &AutopilotChatState) -> String {
@@ -1806,11 +1809,9 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                             .channels
                             .iter()
                             .find(|channel| channel.channel_id == channel_id)?;
-                        let (badge_count, badge_urgent) = notification_badge(
-                            channel.unread_count,
-                            channel.mention_count,
-                        )
-                        .unwrap_or((0, false));
+                        let (badge_count, badge_urgent) =
+                            notification_badge(channel.unread_count, channel.mention_count)
+                                .unwrap_or((0, false));
                         Some(ChatShellChannelEntry {
                             title: format!("# {}", managed_channel_label(channel)),
                             subtitle: managed_channel_subtitle(channel),
@@ -2966,6 +2967,12 @@ mod tests {
                 .iter()
                 .any(|attachment| attachment.label == "payment")
         );
+        assert!(payment_attachments.iter().any(|attachment| {
+            attachment
+                .detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("chat-reported pending"))
+        }));
 
         let attachments = rich_message_attachments(
             "https://cdn.example.com/cat.jpg https://youtu.be/demo note1deadbeef lnbc1invoiceexample bitcoin:bc1qexample?amount=0.001",
