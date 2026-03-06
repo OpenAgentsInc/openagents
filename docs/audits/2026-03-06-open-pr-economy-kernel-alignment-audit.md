@@ -1,8 +1,8 @@
 # 2026-03-06 Open PR Economy-Kernel Alignment Audit
 
-Author: Codex
-Status: complete
-Scope: review of open PRs `#2978`, `#2932`, and `#2933` against the active SA/SKL/AC NIP surface already written to power app features, with the broader economy-kernel docs treated as downstream integration targets rather than override authority for the NIPs
+- Author: Codex
+- Status: complete
+- Scope: review of open PRs `#2978`, `#2932`, and `#2933` against the active SA/SKL/AC NIP surface already written to power app features, with the broader economy-kernel docs treated as downstream integration targets rather than override authority for the NIPs
 
 ## Objective
 
