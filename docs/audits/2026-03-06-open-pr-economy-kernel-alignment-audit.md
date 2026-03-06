@@ -1,14 +1,14 @@
-# 2026-03-06 Open PR Economy-Kernel Alignment Audit
+# 2026-03-06 PR NIP Content Audit
 
 - Author: Codex
 - Status: complete
-- Scope: review of open PRs `#2978`, `#2932`, and `#2933` against the active SA/SKL/AC NIP surface and established NIP conventions from `/Users/christopherdavid/code/nips/`
+- Scope: review of PRs `#2978`, `#2932`, and `#2933` against the active SA/SKL/AC NIP surface and established NIP conventions from `/Users/christopherdavid/code/nips/`
 
 ## Objective
 
 Answer three questions:
 
-1. Which of the three currently open PRs can merge cleanly now?
+1. Which substantive changes in these PRs belong in the NIPs?
 2. What should change in each PR before merge?
 3. Which substantive parts of `#2932` and `#2933` belong in the NIPs, which should be changed, and which do not fit current NIP conventions?
 
@@ -43,11 +43,17 @@ Broader vision reference:
 - `docs/plans/economy-kernel.md`
 - `docs/plans/economy-kernel-proto.md`
 
-Current open PRs:
+Reviewed PRs:
 
 - `#2978` `docs(nist): add NIST RFI NIST-2025-0035 supporting materials`
 - `#2932` `Add SA-Cashu, SA-Fedimint, and SA-Guardian optional profiles`
 - `#2933` `[NIP-AC] Add Cashu spending rail, SKL safety label revocation trigger, and Guardian gate integration`
+
+Current status:
+
+- `#2978` merged at `5388cdb786f53ea73d70feef2efecc3b98976438`
+- `#2932` merged at `674bfa363ba7376332399008c166a4700679691c`
+- `#2933` remains open
 
 Current in-repo protocol docs:
 
@@ -67,8 +73,8 @@ This audit has been updated to reflect the intended hierarchy more accurately:
 
 | PR | Standalone? | Merge now? | Recommendation |
 | --- | --- | --- | --- |
-| `#2978` | Yes | Yes | Merge first. The recommended cleanup has already been applied on the PR branch. |
-| `#2932` | Yes | Not as-is | Mostly belongs, but it should be revised in-place before merge: fix approval-proof storage semantics, fix budget/unit ambiguity, and tighten federation / payment-rail semantics. |
+| `#2978` | Yes | Merged | Merged after doc cleanup. |
+| `#2932` | Yes | Merged | Merged after SA revisions: durable approval proof, aligned guardian naming, explicit sat-denominated budget semantics, federation-as-hint wording, and removal of duplicated rail-proof hash definitions. |
 | `#2933` | Partly | Not as-is | Some content clearly belongs, especially AC spend-rail and SKL-revocation linkage. Other pieces should be revised or removed from core NIP text because they do not fit current NIP scope or duplicate existing mechanisms. |
 
 ## Substantive NIP Findings
@@ -150,9 +156,9 @@ The following cleanup has already been applied:
 2. `docs/nist/README.md` was added to frame the bundle as archival submission material.
 3. Each document now carries a short archival/non-normative note.
 
-### Merge recommendation
+### Result
 
-Merge this one first.
+Merged after the filename/disclaimer cleanup.
 
 ## PR `#2932` `Add SA-Cashu, SA-Fedimint, and SA-Guardian optional profiles`
 
@@ -171,7 +177,7 @@ These parts fit current NIP conventions reasonably well:
 - explicit guardian-related tags and events as an optional SA profile,
 - back-references from tick results to AC settlement receipts and NIP-90 results.
 
-### Why it should not merge as-is
+### Issues identified before merge
 
 1. `kind:39213` is defined as ephemeral even though later events are expected to reference it as proof of approval.
 
@@ -216,9 +222,19 @@ If we want to preserve the work, the cleanest path is:
 4. Keep the guardian semantics in one naming scheme that can also coexist with AC.
 5. Choose one place for rail-proof hash definitions and make the other spec reference it.
 
-### Recommendation
+### Applied revisions before merge
 
-This PR is mergeable in spirit, but I would revise the content above before merging.
+The merged SA text now:
+
+1. makes `39213` regular rather than ephemeral,
+2. uses `guardian` + `approval_threshold` naming,
+3. makes `budget` explicitly sats-denominated across all forms,
+4. reframes `federation` as a hint rather than canonical federation discovery,
+5. removes duplicated rail-proof hash construction from SA core and leaves that to rail/profile-specific specs.
+
+### Result
+
+Merged after the revisions above.
 
 ## PR `#2933` `[NIP-AC] Add Cashu spending rail, SKL safety label revocation trigger, and Guardian gate integration`
 
@@ -331,20 +347,18 @@ need one coherent final form across SA and AC. That is required by the standard 
 - Replace `39250` with richer `39231` trajectory semantics.
 - Keep `TRUE_NAME` non-normative only.
 
-## Recommended Merge Order
+## Current Outcome
 
-1. `#2978`, with the already-applied cleanup.
-2. Revise `#2932` in-place using the substantive NIP fixes above, then merge if you still want the SA profile expansion.
-3. Revise `#2933` in-place using the substantive NIP fixes above, then merge the parts that clearly belong in AC / SA / optional profile form.
-4. After the accepted NIP surface is settled, adapt the economy-kernel docs downstream.
+1. `#2978` merged with the doc cleanup.
+2. `#2932` merged after the substantive SA revisions listed above.
+3. `#2933` remains the unresolved protocol PR and should be judged against the substantive NIP points in this audit.
 
 ## Bottom Line
 
-The NIST PR is the only one that is truly standalone, and I would merge it first.
-
 For the substantive NIP content:
 
-- `#2932` is mostly compatible with NIP conventions, but it needs concrete semantic fixes before merge.
+- `#2978` is done.
+- `#2932` was substantially sound and is now merged after targeted SA fixes.
 - `#2933` contains both good additions and some content that does not currently belong in core SKL/SA form.
 
 The main rule I used is the canonical NIP one from `/Users/christopherdavid/code/nips/README.md`: there should not be more than one way of doing the same thing. The merge path should therefore keep the good ideas, remove the misplaced ones, and converge SA/SKL/AC on one vocabulary for guardian approvals, rails, auditability, and proof semantics.
