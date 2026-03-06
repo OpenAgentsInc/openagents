@@ -11,6 +11,7 @@
 )]
 
 mod identity;
+pub mod managed_chat;
 pub mod nip01;
 mod nip06;
 pub mod nip09;
@@ -52,6 +53,7 @@ pub use identity::{
     ENV_IDENTITY_MNEMONIC_PATH, NostrIdentity, identity_mnemonic_path, load_identity_from_path,
     load_or_create_identity, regenerate_identity,
 };
+pub use managed_chat::*;
 pub use nip_ac::*;
 pub use nip_sa::*;
 pub use nip_skl::*;
