@@ -936,6 +936,9 @@ fn apply_ollama_execution_completed(
     state.active_job.execution_backend_request_id = None;
     state.active_job.execution_turn_completed = true;
     store_execution_output(state, completed.output.as_str());
+    if let Some(job) = state.active_job.job.as_mut() {
+        job.execution_provenance = Some(completed.provenance.clone());
+    }
     state.provider_runtime.last_result = Some(format!(
         "local Ollama execution completed request={} model={}",
         completed.request_id, completed.model

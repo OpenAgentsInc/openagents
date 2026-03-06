@@ -1,8 +1,10 @@
 use crate::state::job_inbox::JobExecutionParam;
+use openagents_kernel_core::ids::sha256_prefixed_text;
 use reqwest::Url;
 use reqwest::blocking::Client;
 use serde::Deserialize;
 use serde_json::{Map, Value, json};
+use std::collections::BTreeMap;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
@@ -69,6 +71,47 @@ pub struct OllamaExecutionMetrics {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OllamaExecutionProvenance {
+    pub requested_model: Option<String>,
+    pub served_model: String,
+    pub normalized_prompt_digest: String,
+    pub normalized_options_json: String,
+    pub normalized_options_digest: String,
+    pub base_url: String,
+    pub total_duration_ns: Option<u64>,
+    pub load_duration_ns: Option<u64>,
+    pub prompt_token_count: Option<u64>,
+    pub generated_token_count: Option<u64>,
+    pub warm_start: Option<bool>,
+}
+
+impl OllamaExecutionProvenance {
+    pub fn receipt_payload(&self) -> Value {
+        json!({
+            "backend": "ollama",
+            "requested_model": self.requested_model,
+            "served_model": self.served_model,
+            "normalized_prompt_digest": self.normalized_prompt_digest,
+            "normalized_options": self.normalized_options_value(),
+            "normalized_options_digest": self.normalized_options_digest,
+            "base_url": self.base_url,
+            "metrics": {
+                "total_duration_ns": self.total_duration_ns,
+                "load_duration_ns": self.load_duration_ns,
+                "prompt_token_count": self.prompt_token_count,
+                "generated_token_count": self.generated_token_count,
+            },
+            "warm_start": self.warm_start,
+        })
+    }
+
+    fn normalized_options_value(&self) -> Value {
+        serde_json::from_str(self.normalized_options_json.as_str())
+            .unwrap_or_else(|_| Value::String(self.normalized_options_json.clone()))
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OllamaGenerateJob {
     pub request_id: String,
     pub prompt: String,
@@ -96,6 +139,7 @@ pub struct OllamaExecutionCompleted {
     pub model: String,
     pub output: String,
     pub metrics: OllamaExecutionMetrics,
+    pub provenance: OllamaExecutionProvenance,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -343,17 +387,30 @@ impl OllamaExecutionState {
             return;
         }
 
-        let body = match build_generate_body(
-            model.as_str(),
-            normalized_prompt.as_str(),
-            job.params.as_slice(),
-        ) {
+        let options = match build_generate_options(job.params.as_slice()) {
             Ok(value) => value,
             Err(error) => {
                 self.fail_job(update_tx, job.request_id.as_str(), error);
                 return;
             }
         };
+        let normalized_options_json = match canonical_options_json(&options) {
+            Ok(value) => value,
+            Err(error) => {
+                self.fail_job(update_tx, job.request_id.as_str(), error);
+                return;
+            }
+        };
+        let body = build_generate_body_from_options(
+            model.as_str(),
+            normalized_prompt.as_str(),
+            &options,
+        );
+        let loaded_before_execute = self
+            .snapshot
+            .loaded_models
+            .iter()
+            .any(|candidate| candidate == &model);
 
         let _ = update_tx.send(OllamaExecutionUpdate::Started(OllamaExecutionStarted {
             request_id: job.request_id.clone(),
@@ -362,7 +419,31 @@ impl OllamaExecutionState {
 
         match execute_generate(&client, &base_url, body) {
             Ok(result) => {
+                let warm_start = if loaded_before_execute {
+                    Some(true)
+                } else {
+                    result
+                        .metrics
+                        .load_duration_ns
+                        .map(|duration_ns| duration_ns == 0)
+                };
+                let provenance = OllamaExecutionProvenance {
+                    requested_model: job.requested_model.clone(),
+                    served_model: model.clone(),
+                    normalized_prompt_digest: sha256_prefixed_text(normalized_prompt.as_str()),
+                    normalized_options_json: normalized_options_json.clone(),
+                    normalized_options_digest: sha256_prefixed_text(
+                        normalized_options_json.as_str(),
+                    ),
+                    base_url: base_url.as_str().trim_end_matches('/').to_string(),
+                    total_duration_ns: result.metrics.total_duration_ns,
+                    load_duration_ns: result.metrics.load_duration_ns,
+                    prompt_token_count: result.metrics.prompt_eval_count,
+                    generated_token_count: result.metrics.eval_count,
+                    warm_start,
+                };
                 self.snapshot.reachable = true;
+                self.snapshot.ready_model = Some(model.clone());
                 self.snapshot.last_error = None;
                 self.snapshot.last_request_id = Some(job.request_id.clone());
                 self.snapshot.last_metrics = Some(result.metrics.clone());
@@ -370,6 +451,7 @@ impl OllamaExecutionState {
                     "Completed local Ollama generation for {}",
                     job.request_id
                 ));
+                self.refresh_loaded_models(&client, &base_url);
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
                 let _ =
@@ -378,6 +460,7 @@ impl OllamaExecutionState {
                         model,
                         output: result.output,
                         metrics: result.metrics,
+                        provenance,
                     }));
             }
             Err(error) => {
@@ -600,13 +683,26 @@ fn build_generate_body(
     params: &[JobExecutionParam],
 ) -> Result<Value, String> {
     let options = build_generate_options(params)?;
-    Ok(json!({
+    Ok(build_generate_body_from_options(model, prompt, &options))
+}
+
+fn build_generate_body_from_options(model: &str, prompt: &str, options: &Map<String, Value>) -> Value {
+    json!({
         "model": model,
         "prompt": prompt,
         "stream": false,
         "keep_alive": DEFAULT_KEEP_ALIVE,
-        "options": Value::Object(options),
-    }))
+        "options": Value::Object(options.clone()),
+    })
+}
+
+fn canonical_options_json(options: &Map<String, Value>) -> Result<String, String> {
+    let canonical = options
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<BTreeMap<_, _>>();
+    serde_json::to_string(&canonical)
+        .map_err(|error| format!("failed to encode normalized Ollama options: {error}"))
 }
 
 fn build_generate_options(params: &[JobExecutionParam]) -> Result<Map<String, Value>, String> {
@@ -837,9 +933,123 @@ struct OllamaGenerateResult {
 
 #[cfg(test)]
 mod tests {
-    use super::{build_generate_body, build_generate_options, validate_local_base_url};
+    use super::{
+        OllamaExecutionCommand, OllamaExecutionConfig, OllamaExecutionUpdate,
+        OllamaExecutionWorker, build_generate_body, build_generate_options, normalize_prompt,
+        validate_local_base_url,
+    };
     use crate::state::job_inbox::JobExecutionParam;
+    use openagents_kernel_core::ids::sha256_prefixed_text;
     use serde_json::Value;
+    use std::io::{Read, Write};
+    use std::net::{TcpListener, TcpStream};
+    use std::sync::{Arc, Mutex};
+    use std::thread::JoinHandle;
+    use std::time::{Duration, Instant};
+
+    fn spawn_mock_ollama_server(
+        loaded_models: &[&str],
+    ) -> (String, Arc<Mutex<Vec<Value>>>, JoinHandle<()>) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock ollama server");
+        let address = listener.local_addr().expect("listener addr");
+        let loaded_models = loaded_models
+            .iter()
+            .map(|model| serde_json::json!({ "name": model }))
+            .collect::<Vec<_>>();
+        let generate_requests = Arc::new(Mutex::new(Vec::<Value>::new()));
+        let captured_requests = Arc::clone(&generate_requests);
+
+        let handle = std::thread::spawn(move || {
+            // Worker startup and a single generation issue multiple refresh/validation calls
+            // before and after the generate request, so the mock server must outlive one
+            // full execution cycle.
+            for _ in 0..9 {
+                let (mut stream, _) = listener.accept().expect("accept mock ollama request");
+                let (method, path, body) = read_http_request(&mut stream);
+                let response_body = match (method.as_str(), path.as_str()) {
+                    ("GET", "/api/tags") => serde_json::json!({
+                        "models": [{ "name": "llama3.2:latest" }],
+                    })
+                    .to_string(),
+                    ("GET", "/api/ps") => serde_json::json!({
+                        "models": loaded_models,
+                    })
+                    .to_string(),
+                    ("POST", "/api/show") => "{}".to_string(),
+                    ("POST", "/api/generate") => {
+                        let parsed = serde_json::from_str::<Value>(body.as_str())
+                            .expect("parse captured generate body");
+                        captured_requests
+                            .lock()
+                            .expect("capture mutex")
+                            .push(parsed);
+                        serde_json::json!({
+                            "response": "hello from ollama",
+                            "total_duration": 1_200_000,
+                            "load_duration": 0,
+                            "prompt_eval_count": 11,
+                            "prompt_eval_duration": 200_000,
+                            "eval_count": 7,
+                            "eval_duration": 900_000,
+                        })
+                        .to_string()
+                    }
+                    other => panic!("unexpected mock ollama request {other:?} body={body}"),
+                };
+                write_http_response(&mut stream, 200, response_body.as_str());
+            }
+        });
+
+        (format!("http://{}", address), generate_requests, handle)
+    }
+
+    fn read_http_request(stream: &mut TcpStream) -> (String, String, String) {
+        let mut buffer = Vec::<u8>::new();
+        let mut chunk = [0u8; 1024];
+        let header_end = loop {
+            let read = stream.read(&mut chunk).expect("read request bytes");
+            assert!(read > 0, "request stream closed before headers completed");
+            buffer.extend_from_slice(&chunk[..read]);
+            if let Some(position) = buffer.windows(4).position(|window| window == b"\r\n\r\n") {
+                break position;
+            }
+        };
+
+        let headers = String::from_utf8(buffer[..header_end].to_vec()).expect("request headers");
+        let content_length = headers
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.eq_ignore_ascii_case("content-length")
+                    .then(|| value.trim().parse::<usize>().expect("content-length"))
+            })
+            .unwrap_or(0);
+        let mut body = buffer[(header_end + 4)..].to_vec();
+        while body.len() < content_length {
+            let read = stream.read(&mut chunk).expect("read request body");
+            assert!(read > 0, "request stream closed before body completed");
+            body.extend_from_slice(&chunk[..read]);
+        }
+
+        let request_line = headers.lines().next().expect("request line");
+        let mut parts = request_line.split_whitespace();
+        let method = parts.next().expect("request method").to_string();
+        let path = parts.next().expect("request path").to_string();
+        let body = String::from_utf8(body[..content_length].to_vec()).expect("request body utf8");
+        (method, path, body)
+    }
+
+    fn write_http_response(stream: &mut TcpStream, status_code: u16, body: &str) {
+        let response = format!(
+            "HTTP/1.1 {status_code} OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+            body.len(),
+            body
+        );
+        stream
+            .write_all(response.as_bytes())
+            .expect("write mock response");
+        stream.flush().expect("flush mock response");
+    }
 
     #[test]
     fn generate_options_map_supported_dvm_params() {
@@ -899,6 +1109,14 @@ mod tests {
     }
 
     #[test]
+    fn normalize_prompt_trims_and_normalizes_crlf() {
+        assert_eq!(
+            normalize_prompt(" \r\nWrite a haiku\r\nabout rust\r "),
+            "Write a haiku\nabout rust"
+        );
+    }
+
+    #[test]
     fn generate_body_sets_local_execution_defaults() {
         let body = build_generate_body(
             "llama3.2:latest",
@@ -925,5 +1143,113 @@ mod tests {
         assert_eq!(body.get("keep_alive"), Some(&Value::from("5m")));
         assert_eq!(body.pointer("/options/top_k"), Some(&Value::from(16)));
         assert_eq!(body.pointer("/options/top_p"), Some(&Value::from(0.95)));
+    }
+
+    #[test]
+    fn worker_generate_emits_provenance_and_normalized_ollama_request() {
+        let (base_url, captured_generate_requests, server_handle) =
+            spawn_mock_ollama_server(&["llama3.2:latest"]);
+        let mut worker = OllamaExecutionWorker::spawn_with_config(OllamaExecutionConfig {
+            base_url: base_url.clone(),
+            configured_model: Some("llama3.2:latest".to_string()),
+            refresh_interval: Duration::from_secs(60),
+        });
+        worker
+            .enqueue(OllamaExecutionCommand::Generate(super::OllamaGenerateJob {
+                request_id: "req-ollama-test".to_string(),
+                prompt: " \r\nWrite a haiku about rust\r\n".to_string(),
+                requested_model: Some("llama3.2:latest".to_string()),
+                params: vec![
+                    JobExecutionParam {
+                        key: "max_tokens".to_string(),
+                        value: "64".to_string(),
+                    },
+                    JobExecutionParam {
+                        key: "top_k".to_string(),
+                        value: "16".to_string(),
+                    },
+                    JobExecutionParam {
+                        key: "top_p".to_string(),
+                        value: "0.95".to_string(),
+                    },
+                ],
+            }))
+            .expect("queue ollama generation");
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut completed = None;
+        let mut failure = None;
+        let mut last_snapshot = None;
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                match update {
+                    OllamaExecutionUpdate::Completed(value) => {
+                        completed = Some(value);
+                        break;
+                    }
+                    OllamaExecutionUpdate::Failed(value) => {
+                        failure = Some(value.error);
+                    }
+                    OllamaExecutionUpdate::Snapshot(snapshot) => {
+                        last_snapshot = Some(format!(
+                            "reachable={} ready_model={:?} last_error={:?} last_action={:?}",
+                            snapshot.reachable,
+                            snapshot.ready_model,
+                            snapshot.last_error,
+                            snapshot.last_action
+                        ));
+                    }
+                    OllamaExecutionUpdate::Started(_) => {}
+                }
+            }
+            if completed.is_some() {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        let completed = completed.unwrap_or_else(|| {
+            panic!(
+                "worker should complete mocked ollama generation failure={failure:?} snapshot={last_snapshot:?}"
+            )
+        });
+        assert_eq!(completed.output, "hello from ollama");
+        assert_eq!(completed.provenance.requested_model.as_deref(), Some("llama3.2:latest"));
+        assert_eq!(completed.provenance.served_model, "llama3.2:latest");
+        assert_eq!(completed.provenance.base_url, base_url);
+        assert_eq!(
+            completed.provenance.normalized_prompt_digest,
+            sha256_prefixed_text("Write a haiku about rust")
+        );
+        assert_eq!(completed.provenance.prompt_token_count, Some(11));
+        assert_eq!(completed.provenance.generated_token_count, Some(7));
+        assert_eq!(completed.provenance.total_duration_ns, Some(1_200_000));
+        assert_eq!(completed.provenance.load_duration_ns, Some(0));
+        assert_eq!(completed.provenance.warm_start, Some(true));
+
+        let normalized_options = serde_json::from_str::<Value>(
+            completed.provenance.normalized_options_json.as_str(),
+        )
+        .expect("normalized options json");
+        assert_eq!(normalized_options["num_predict"], 64);
+        assert_eq!(normalized_options["top_k"], 16);
+        assert_eq!(normalized_options["top_p"], 0.95);
+        assert_eq!(
+            completed.provenance.normalized_options_digest,
+            sha256_prefixed_text(completed.provenance.normalized_options_json.as_str())
+        );
+
+        let captured_generate_requests = captured_generate_requests
+            .lock()
+            .expect("captured request lock");
+        assert_eq!(captured_generate_requests.len(), 1);
+        let generate_body = &captured_generate_requests[0];
+        assert_eq!(generate_body["model"], "llama3.2:latest");
+        assert_eq!(generate_body["prompt"], "Write a haiku about rust");
+        assert_eq!(generate_body["options"]["num_predict"], 64);
+        assert_eq!(generate_body["options"]["top_k"], 16);
+        assert_eq!(generate_body["options"]["top_p"], 0.95);
+
+        server_handle.join().expect("mock ollama thread");
     }
 }

@@ -2390,6 +2390,7 @@ mod tests {
                 result_hash: "hash-1".to_string(),
                 payment_pointer: "pay:starter-job-1".to_string(),
                 failure_reason: None,
+                execution_provenance: None,
             }],
             status_filter: JobHistoryStatusFilter::All,
             time_range: JobHistoryTimeRange::All,

@@ -190,6 +190,7 @@ mod tests {
                 result_hash: "hash".to_string(),
                 payment_pointer: pointer.to_string(),
                 failure_reason: None,
+                execution_provenance: None,
             }],
             status_filter: JobHistoryStatusFilter::All,
             time_range: JobHistoryTimeRange::All,
