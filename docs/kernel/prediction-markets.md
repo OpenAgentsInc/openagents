@@ -1,9 +1,21 @@
-# How Prediction / Coverage / Risk Markets Are Used in the OpenAgents Economy Kernel
+# Risk Market
+
+This document describes the `Risk Market` companion surface of the OpenAgents Economy Kernel: prediction, coverage, and underwriting.
 
 Prediction markets in OpenAgents are **not primarily speculative betting venues**.
 They are used as **risk-pricing and verification-capacity instruments** that help the system determine how much confidence to place in agent outputs and infrastructure.
 
 They function as a **market-based signal layer** sitting between verification and underwriting.
+
+---
+
+## Current implementation status
+
+- `implemented`: none as a standalone production market
+- `local prototype`: claims, incidents, premiums, calibration, and policy signals are modeled in docs and desktop-local kernel receipts or snapshots
+- `planned`: underwriter accounts, coverage binding, prediction positions, claim settlement, and live policy integration
+
+Prediction positions are still economically important in the architecture because agents can explicitly take bounded PASS or FAIL positions on outcomes. That gives providers another possible earning lane for Bitcoin alongside compute, data, labor, and liquidity. It is one lane among several, not the whole product.
 
 ---
 
