@@ -57,6 +57,9 @@ use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
 
+const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.2;
+const ACTIVE_PANE_FOCUS_CLEARANCE: f32 = 8.0;
+
 impl PaneRenderer {
     #[expect(
         clippy::too_many_arguments,
@@ -64,6 +67,7 @@ impl PaneRenderer {
     )]
     pub fn paint(
         panes: &mut [DesktopPane],
+        canvas_bounds: Bounds,
         active_id: Option<u64>,
         nostr_identity: Option<&nostr::NostrIdentity>,
         nostr_identity_error: Option<&str>,
@@ -123,6 +127,7 @@ impl PaneRenderer {
     ) -> u32 {
         let mut indices: Vec<usize> = (0..panes.len()).collect();
         indices.sort_by_key(|idx| panes[*idx].z_index);
+        let dim_inactive_panes = panes.len() > 1 && active_id.is_some();
 
         let mut next_layer: u32 = 1;
         for idx in indices {
@@ -144,7 +149,7 @@ impl PaneRenderer {
             paint.scene.draw_quad(
                 Quad::new(content_bounds)
                     .with_background(theme::bg::SURFACE)
-                    .with_corner_radius(0.0),
+                    .with_corner_radius(6.0),
             );
 
             match pane.kind {
@@ -368,6 +373,94 @@ impl PaneRenderer {
                 PaneKind::SparkPayInvoice => {
                     paint_pay_invoice_pane(content_bounds, spark_wallet, pay_invoice_inputs, paint);
                 }
+            }
+        }
+
+        if dim_inactive_panes {
+            let Some(active_bounds) = panes
+                .iter()
+                .find(|pane| Some(pane.id) == active_id)
+                .map(|pane| pane.bounds)
+            else {
+                return next_layer;
+            };
+
+            paint.scene.set_layer(next_layer);
+            next_layer = next_layer.saturating_add(1);
+
+            let overlay = theme::bg::APP.with_alpha(INACTIVE_PANE_OVERLAY_ALPHA);
+            let cutout = Bounds::new(
+                active_bounds.origin.x - ACTIVE_PANE_FOCUS_CLEARANCE,
+                active_bounds.origin.y - ACTIVE_PANE_FOCUS_CLEARANCE,
+                active_bounds.size.width + ACTIVE_PANE_FOCUS_CLEARANCE * 2.0,
+                active_bounds.size.height + ACTIVE_PANE_FOCUS_CLEARANCE * 2.0,
+            );
+
+            let x0 = cutout
+                .origin
+                .x
+                .clamp(canvas_bounds.origin.x, canvas_bounds.max_x());
+            let x1 = cutout
+                .max_x()
+                .clamp(canvas_bounds.origin.x, canvas_bounds.max_x());
+            let y0 = cutout
+                .origin
+                .y
+                .clamp(canvas_bounds.origin.y, canvas_bounds.max_y());
+            let y1 = cutout
+                .max_y()
+                .clamp(canvas_bounds.origin.y, canvas_bounds.max_y());
+
+            if x1 <= x0 || y1 <= y0 {
+                paint
+                    .scene
+                    .draw_quad(Quad::new(canvas_bounds).with_background(overlay));
+                return next_layer;
+            }
+
+            if y0 > canvas_bounds.origin.y {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        canvas_bounds.origin.x,
+                        canvas_bounds.origin.y,
+                        canvas_bounds.size.width,
+                        y0 - canvas_bounds.origin.y,
+                    ))
+                    .with_background(overlay),
+                );
+            }
+            if x0 > canvas_bounds.origin.x {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        canvas_bounds.origin.x,
+                        y0,
+                        x0 - canvas_bounds.origin.x,
+                        (y1 - y0).max(0.0),
+                    ))
+                    .with_background(overlay),
+                );
+            }
+            if x1 < canvas_bounds.max_x() {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        x1,
+                        y0,
+                        canvas_bounds.max_x() - x1,
+                        (y1 - y0).max(0.0),
+                    ))
+                    .with_background(overlay),
+                );
+            }
+            if y1 < canvas_bounds.max_y() {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        canvas_bounds.origin.x,
+                        y1,
+                        canvas_bounds.size.width,
+                        canvas_bounds.max_y() - y1,
+                    ))
+                    .with_background(overlay),
+                );
             }
         }
 
@@ -1311,7 +1404,7 @@ fn paint_network_requests_pane(
     network_requests_inputs
         .timeout_seconds
         .paint(timeout_bounds, paint);
-    paint_action_button(submit_bounds, "Submit request", paint);
+    paint_primary_button(submit_bounds, "Submit request", paint);
 
     paint.scene.draw_text(paint.text.layout(
         "Request type",
@@ -1387,7 +1480,7 @@ fn paint_network_requests_pane(
             Quad::new(row_bounds)
                 .with_background(theme::bg::APP.with_alpha(0.78))
                 .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
         let status_color = match request.status {
             NetworkRequestStatus::Submitted => theme::accent::PRIMARY,
@@ -2112,7 +2205,7 @@ fn paint_settings_pane(
         .provider_max_queue_depth
         .paint(provider_input_bounds, paint);
 
-    paint_action_button(save_bounds, "Save settings", paint);
+    paint_primary_button(save_bounds, "Save settings", paint);
     paint_action_button(reset_bounds, "Reset defaults", paint);
 
     let state_color = match settings.load_state {
@@ -2574,7 +2667,7 @@ fn paint_job_inbox_pane(
     let accept_bounds = job_inbox_accept_button_bounds(content_bounds);
     let reject_bounds = job_inbox_reject_button_bounds(content_bounds);
     let preview_only = provider_runtime.mode == crate::app_state::ProviderMode::Offline;
-    paint_action_button(
+    paint_primary_button(
         accept_bounds,
         if preview_only {
             "Go Online to claim"
@@ -2998,18 +3091,18 @@ fn paint_job_history_pane(
         .search_job_id
         .set_max_width(search_bounds.size.width);
     job_history_inputs.search_job_id.paint(search_bounds, paint);
-    paint_action_button(
+    paint_tertiary_button(
         status_bounds,
         &format!("Status: {}", job_history.status_filter.label()),
         paint,
     );
-    paint_action_button(
+    paint_tertiary_button(
         time_bounds,
         &format!("Range: {}", job_history.time_range.label()),
         paint,
     );
-    paint_action_button(prev_bounds, "Prev", paint);
-    paint_action_button(next_bounds, "Next", paint);
+    paint_tertiary_button(prev_bounds, "Prev", paint);
+    paint_tertiary_button(next_bounds, "Next", paint);
 
     paint.scene.draw_text(paint.text.layout(
         "Search job id",
@@ -3107,7 +3200,7 @@ fn paint_job_history_pane(
             Quad::new(row_bounds)
                 .with_background(theme::bg::APP.with_alpha(0.78))
                 .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
         let row_line = format!(
             "{} {} src:{} ts:{} scope:{} tick:{} set:{} def:{} {} {}",
@@ -3252,7 +3345,7 @@ pub(crate) fn paint_selectable_row_background(
                 },
                 1.0,
             )
-            .with_corner_radius(4.0),
+            .with_corner_radius(6.0),
     );
 }
 
@@ -3282,39 +3375,57 @@ pub(crate) fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &m
 }
 
 pub(crate) fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint_secondary_button(bounds, label, paint);
+}
+
+pub(crate) fn paint_primary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::accent::PRIMARY)
+            .with_border(theme::accent::PRIMARY, 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint_button_label(bounds, label, theme::font_size::SM, theme::bg::APP, paint);
+}
+
+pub(crate) fn paint_secondary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(theme::bg::HOVER)
-            .with_border(theme::accent::PRIMARY, 1.0)
-            .with_corner_radius(4.0),
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(6.0),
     );
-    paint_button_label(bounds, label, 10.0, 11.0, theme::text::PRIMARY, paint);
+    paint_button_label(
+        bounds,
+        label,
+        theme::font_size::SM,
+        theme::text::PRIMARY,
+        paint,
+    );
+}
+
+pub(crate) fn paint_tertiary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::APP.with_alpha(0.0))
+            .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint_button_label(
+        bounds,
+        label,
+        theme::font_size::SM,
+        theme::text::SECONDARY,
+        paint,
+    );
 }
 
 fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut PaintContext) {
-    let background = if active {
-        theme::bg::HOVER
-    } else {
-        theme::bg::APP.with_alpha(0.68)
-    };
-    let border = if active {
-        theme::accent::PRIMARY
-    } else {
-        theme::border::DEFAULT
-    };
-    let text = if active {
-        theme::text::PRIMARY
-    } else {
-        theme::text::MUTED
-    };
-
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(background)
-            .with_border(border, 1.0)
-            .with_corner_radius(4.0),
-    );
-    paint_button_label(bounds, label, 10.0, 10.0, text, paint);
+    if active {
+        paint_secondary_button(bounds, label, paint);
+        return;
+    }
+    paint_tertiary_button(bounds, label, paint);
 }
 
 fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
@@ -3322,15 +3433,20 @@ fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) 
         Quad::new(bounds)
             .with_background(theme::bg::SURFACE.with_alpha(0.72))
             .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(4.0),
+            .with_corner_radius(6.0),
     );
-    paint_button_label(bounds, label, 10.0, 11.0, theme::text::MUTED, paint);
+    paint_button_label(
+        bounds,
+        label,
+        theme::font_size::SM,
+        theme::text::MUTED,
+        paint,
+    );
 }
 
 fn paint_button_label(
     bounds: Bounds,
     label: &str,
-    left_padding: f32,
     font_size: f32,
     color: Hsla,
     paint: &mut PaintContext,
@@ -3338,7 +3454,8 @@ fn paint_button_label(
     let mut run = paint.text.layout(label, Point::ZERO, font_size, color);
     let run_bounds = run.bounds();
     let origin = Point::new(
-        bounds.origin.x + left_padding - run_bounds.origin.x,
+        bounds.origin.x + ((bounds.size.width - run_bounds.size.width).max(0.0) * 0.5)
+            - run_bounds.origin.x,
         bounds.origin.y + ((bounds.size.height - run_bounds.size.height).max(0.0) * 0.5)
             - run_bounds.origin.y,
     );
@@ -3356,16 +3473,16 @@ pub(crate) fn paint_label_line(
     paint.scene.draw_text(paint.text.layout(
         &format!("{label}:"),
         Point::new(x, y),
-        11.0,
+        theme::font_size::SM,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         value,
         Point::new(x + 122.0, y),
-        11.0,
+        theme::font_size::SM,
         theme::text::PRIMARY,
     ));
-    y + 16.0
+    y + 18.0
 }
 
 pub(crate) fn paint_multiline_phrase(
@@ -3378,7 +3495,7 @@ pub(crate) fn paint_multiline_phrase(
     paint.scene.draw_text(paint.text.layout(
         &format!("{label}:"),
         Point::new(x, y),
-        11.0,
+        theme::font_size::SM,
         theme::text::MUTED,
     ));
 
@@ -3387,10 +3504,10 @@ pub(crate) fn paint_multiline_phrase(
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
             Point::new(x + 122.0, line_y),
-            11.0,
+            theme::font_size::SM,
             theme::text::PRIMARY,
         ));
-        line_y += 16.0;
+        line_y += 18.0;
     }
     line_y
 }

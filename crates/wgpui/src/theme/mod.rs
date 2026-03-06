@@ -124,6 +124,14 @@ pub fn set_theme(theme: &'static Theme) {
 // ============================================================================
 
 /// Font sizes in logical pixels.
+pub mod font {
+    /// Primary UI font family.
+    pub const UI: &str = "Inter";
+    /// Monospace font family for code/log/path text.
+    pub const MONO: &str = "JetBrains Mono";
+}
+
+/// Font sizes in logical pixels.
 pub mod font_size {
     /// Extra small (text-xs) - 12px
     pub const XS: f32 = 12.0;
@@ -131,8 +139,8 @@ pub mod font_size {
     pub const SM: f32 = 14.0;
     /// Base/default (text-base) - 16px
     pub const BASE: f32 = 16.0;
-    /// Large (text-lg) - 18px
-    pub const LG: f32 = 18.0;
+    /// Large (text-lg) - 20px
+    pub const LG: f32 = 20.0;
     /// Extra large (text-xl) - 20px
     pub const XL: f32 = 20.0;
     /// 2X large (text-2xl) - 24px
@@ -227,6 +235,12 @@ pub mod duration {
     pub const SLOWER: u32 = 500;
 }
 
+/// Border width tokens in logical pixels.
+pub mod border_width {
+    /// Default border width for UI controls and surfaces.
+    pub const DEFAULT: f32 = 2.0;
+}
+
 // ============================================================================
 // Backwards-compatible color modules
 // ============================================================================
@@ -235,51 +249,51 @@ pub mod duration {
 pub mod bg {
     use crate::color::Hsla;
 
-    /// Main app background (#0A0A0A)
-    pub const APP: Hsla = Hsla::new(0.0, 0.0, 0.039, 1.0);
+    /// Main app background (#0B0F14)
+    pub const APP: Hsla = Hsla::new(0.593, 0.290, 0.061, 1.0);
 
-    /// Surface/card background - black with 95% opacity
-    pub const SURFACE: Hsla = Hsla::new(0.0, 0.0, 0.0, 0.95);
+    /// Surface/card background (#10161D)
+    pub const SURFACE: Hsla = Hsla::new(0.590, 0.289, 0.088, 1.0);
 
-    /// Muted background - dark neutral (#1A1A1A)
-    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
+    /// Muted background aligns with hover surface (#1A222C)
+    pub const MUTED: Hsla = Hsla::new(0.593, 0.257, 0.137, 1.0);
 
     /// Code block background (#101010)
     pub const CODE: Hsla = Hsla::new(0.0, 0.0, 0.063, 1.0);
 
-    /// Elevated surface (#0A0A0A)
-    pub const ELEVATED: Hsla = Hsla::new(0.0, 0.0, 0.039, 1.0);
+    /// Elevated surface (#1C1C1D)
+    pub const ELEVATED: Hsla = Hsla::new(0.667, 0.018, 0.112, 1.0);
 
-    /// Hover state background (#1A1A1A)
-    pub const HOVER: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
+    /// Hover state background (#1A222C)
+    pub const HOVER: Hsla = Hsla::new(0.593, 0.257, 0.137, 1.0);
 
-    /// Selected/active state (#1A1A1A)
-    pub const SELECTED: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
+    /// Selected/active state (#1A222C)
+    pub const SELECTED: Hsla = Hsla::new(0.593, 0.257, 0.137, 1.0);
 }
 
 /// Text colors aligned with Tailwind's dark theme.
 pub mod text {
     use crate::color::Hsla;
 
-    /// Primary text - matches `text-foreground` (#CCCCCC)
-    pub const PRIMARY: Hsla = Hsla::new(0.0, 0.0, 0.800, 1.0);
+    /// Primary text (#E6EDF3)
+    pub const PRIMARY: Hsla = Hsla::new(0.577, 0.351, 0.927, 1.0);
 
-    /// Secondary text (#CCCCCC)
-    pub const SECONDARY: Hsla = Hsla::new(0.0, 0.0, 0.800, 1.0);
+    /// Secondary text (#9FB0C3)
+    pub const SECONDARY: Hsla = Hsla::new(0.588, 0.231, 0.694, 1.0);
 
-    /// Muted text - matches `text-muted-foreground` (#888888)
-    pub const MUTED: Hsla = Hsla::new(0.0, 0.0, 0.533, 1.0);
+    /// Muted text (#6B7C8F)
+    pub const MUTED: Hsla = Hsla::new(0.588, 0.144, 0.490, 1.0);
 
-    /// Disabled text (#666666)
-    pub const DISABLED: Hsla = Hsla::new(0.0, 0.0, 0.400, 1.0);
+    /// Disabled text (#4B5A6B)
+    pub const DISABLED: Hsla = Hsla::new(0.589, 0.176, 0.357, 1.0);
 }
 
 /// Accent colors for highlights and emphasis.
 pub mod accent {
     use crate::color::Hsla;
 
-    /// Primary accent - matches `--primary` (#CCCCCC)
-    pub const PRIMARY: Hsla = Hsla::new(0.0, 0.0, 0.800, 1.0);
+    /// Primary accent (#4FD1C5)
+    pub const PRIMARY: Hsla = Hsla::new(0.485, 0.586, 0.565, 1.0);
 
     /// Secondary accent - blue (#4A9EFF)
     pub const SECONDARY: Hsla = Hsla::new(0.592, 1.0, 0.65, 1.0);
@@ -301,37 +315,43 @@ pub mod accent {
 pub mod border {
     use crate::color::Hsla;
 
-    /// Default border - matches `border` (#ffffff1a)
-    pub const DEFAULT: Hsla = Hsla::new(0.0, 0.0, 1.0, 0.1);
+    /// Default border (#1F2933)
+    pub const DEFAULT: Hsla = Hsla::new(0.583, 0.244, 0.161, 1.0);
 
-    /// Subtle border (#1A1A1A)
-    pub const SUBTLE: Hsla = Hsla::new(0.0, 0.0, 0.102, 1.0);
+    /// Strong border (#3D494F)
+    pub const STRONG: Hsla = Hsla::new(0.556, 0.129, 0.275, 1.0);
 
-    /// Focus border - matches `--ring` (#888888)
-    pub const FOCUS: Hsla = Hsla::new(0.0, 0.0, 0.533, 1.0);
+    /// Subtle border alias (kept for compatibility)
+    pub const SUBTLE: Hsla = STRONG;
 
-    /// Error border - semi-transparent red
-    pub const ERROR: Hsla = Hsla::new(0.0, 0.76, 0.5, 0.5);
+    /// Focus border (#3C464A)
+    pub const FOCUS: Hsla = Hsla::new(0.548, 0.104, 0.263, 1.0);
+
+    /// Active pane border (#3D494F)
+    pub const ACTIVE: Hsla = Hsla::new(0.556, 0.129, 0.275, 1.0);
+
+    /// Error border (#E06C75)
+    pub const ERROR: Hsla = Hsla::new(0.987, 0.652, 0.651, 1.0);
 }
 
 /// Status colors for states and feedback.
 pub mod status {
     use crate::color::Hsla;
 
-    /// Success/completed (#00C853)
-    pub const SUCCESS: Hsla = Hsla::new(0.403, 1.0, 0.39, 1.0);
+    /// Success/completed (#5EDC9A)
+    pub const SUCCESS: Hsla = Hsla::new(0.413, 0.643, 0.616, 1.0);
 
-    /// Error/failed (#D32F2F)
-    pub const ERROR: Hsla = Hsla::new(0.0, 0.76, 0.5, 1.0);
+    /// Error/failed (#E06C75)
+    pub const ERROR: Hsla = Hsla::new(0.987, 0.652, 0.651, 1.0);
 
-    /// Warning (#FFB400)
-    pub const WARNING: Hsla = Hsla::new(0.117, 1.0, 0.5, 1.0);
+    /// Warning (#E3B341)
+    pub const WARNING: Hsla = Hsla::new(0.117, 0.743, 0.573, 1.0);
 
     /// Running/in-progress (#FFB400)
     pub const RUNNING: Hsla = Hsla::new(0.117, 1.0, 0.5, 1.0);
 
-    /// Info (#4A9EFF)
-    pub const INFO: Hsla = Hsla::new(0.592, 1.0, 0.65, 1.0);
+    /// Info (#61AFEF)
+    pub const INFO: Hsla = Hsla::new(0.575, 0.816, 0.659, 1.0);
 }
 
 #[cfg(test)]
@@ -370,6 +390,6 @@ mod tests {
         assert_eq!(font_size::XS, 12.0);
         assert_eq!(font_size::SM, 14.0);
         assert_eq!(font_size::BASE, 16.0);
-        assert_eq!(font_size::LG, 18.0);
+        assert_eq!(font_size::LG, 20.0);
     }
 }

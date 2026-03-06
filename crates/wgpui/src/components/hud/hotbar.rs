@@ -252,13 +252,13 @@ impl Component for Hotbar {
                 Quad::new(item_bounds)
                     .with_background(bg)
                     .with_border(border, 1.0)
-                    .with_corner_radius(4.0),
+                    .with_corner_radius(6.0),
             );
             if flash_active {
                 cx.scene.draw_quad(
                     Quad::new(item_bounds)
                         .with_background(theme::accent::PRIMARY.with_alpha(0.08))
-                        .with_corner_radius(4.0),
+                        .with_corner_radius(6.0),
                 );
             }
 

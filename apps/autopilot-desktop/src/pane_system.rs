@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use wgpui::components::hud::{PaneFrame, ResizeEdge};
-use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
+use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
 use winit::window::CursorIcon;
 
 use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, RenderState};
@@ -13,11 +13,11 @@ use crate::panes::{
 };
 use crate::render::{
     logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
-    wallet_balance_chip_bounds,
+    wallet_balance_sats_label_bounds,
 };
 use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 
-pub const PANE_TITLE_HEIGHT: f32 = 28.0;
+pub const PANE_TITLE_HEIGHT: f32 = 36.0;
 pub const PANE_MIN_WIDTH: f32 = 220.0;
 pub const PANE_MIN_HEIGHT: f32 = 140.0;
 /// Default target width for the global sidebar when open.
@@ -28,8 +28,9 @@ const PANE_CASCADE_Y: f32 = 22.0;
 const PANE_BOTTOM_RESERVED: f32 = HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN;
 const CHAT_PAD: f32 = 12.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 170.0;
-const CHAT_COMPOSER_HEIGHT: f32 = 30.0;
-const CHAT_SEND_WIDTH: f32 = 92.0;
+const CHAT_COMPOSER_MIN_HEIGHT: f32 = 30.0;
+const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
+const CHAT_SEND_WIDTH: f32 = 30.0;
 const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
 const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
 const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
@@ -1053,8 +1054,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         return CursorIcon::Pointer;
     }
 
-    let wallet_bounds = wallet_balance_chip_bounds(state);
-    if wallet_bounds.size.width > 0.0 && wallet_bounds.contains(point) {
+    let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
+    if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
         return CursorIcon::Pointer;
     }
 
@@ -1083,7 +1084,13 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 
         match pane.kind {
             PaneKind::AutopilotChat => {
-                if chat_composer_input_bounds(content_bounds).contains(point) {
+                let composer_height = chat_composer_height_for_value(
+                    content_bounds,
+                    state.chat_inputs.composer.get_value(),
+                );
+                if chat_composer_input_bounds_with_height(content_bounds, composer_height)
+                    .contains(point)
+                {
                     return CursorIcon::Text;
                 }
             }
@@ -1196,11 +1203,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 }
 
 pub fn pane_content_bounds(bounds: Bounds) -> Bounds {
+    let border = 1.0;
     Bounds::new(
-        bounds.origin.x,
+        bounds.origin.x + border,
         bounds.origin.y + PANE_TITLE_HEIGHT,
-        bounds.size.width,
-        (bounds.size.height - PANE_TITLE_HEIGHT).max(0.0),
+        (bounds.size.width - border * 2.0).max(0.0),
+        (bounds.size.height - PANE_TITLE_HEIGHT - border).max(0.0),
     )
 }
 
@@ -1353,9 +1361,9 @@ pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> B
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.max_x() - CHAT_PAD - CHAT_SEND_WIDTH,
-        content_bounds.max_y() - CHAT_PAD - CHAT_COMPOSER_HEIGHT,
+        content_bounds.max_y() - CHAT_PAD - CHAT_SEND_WIDTH,
         CHAT_SEND_WIDTH,
-        CHAT_COMPOSER_HEIGHT,
+        CHAT_SEND_WIDTH,
     )
 }
 
@@ -1399,19 +1407,48 @@ pub fn chat_server_auth_refresh_button_bounds(content_bounds: Bounds) -> Bounds 
     Bounds::new(user_input.max_x() + 6.0, user_input.origin.y, 140.0, 24.0)
 }
 
-pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
+fn chat_composer_visual_line_count(value: &str, composer_width: f32) -> usize {
+    let char_width = theme::font_size::SM * 0.6;
+    let text_width = (composer_width - theme::spacing::SM * 2.0).max(char_width);
+    let chars_per_line = (text_width / char_width).floor().max(1.0) as usize;
+    let normalized = if value.is_empty() { " " } else { value };
+    normalized
+        .split('\n')
+        .map(|line| {
+            let chars = line.chars().count();
+            chars.max(1).div_ceil(chars_per_line)
+        })
+        .sum::<usize>()
+        .max(1)
+}
+
+pub fn chat_composer_height_for_value(content_bounds: Bounds, value: &str) -> f32 {
+    let send_bounds = chat_send_button_bounds(content_bounds);
+    let left = content_bounds.origin.x + CHAT_PAD;
+    let composer_width = (send_bounds.origin.x - left - CHAT_PAD).max(120.0);
+    let line_height = theme::font_size::SM * 1.4;
+    let line_count = chat_composer_visual_line_count(value, composer_width);
+    (line_height * line_count as f32 + theme::spacing::XS * 2.0)
+        .clamp(CHAT_COMPOSER_MIN_HEIGHT, CHAT_COMPOSER_MAX_HEIGHT)
+}
+
+pub fn chat_composer_input_bounds_with_height(content_bounds: Bounds, composer_height: f32) -> Bounds {
     let send_bounds = chat_send_button_bounds(content_bounds);
     let left = content_bounds.origin.x + CHAT_PAD;
     Bounds::new(
         left,
-        send_bounds.origin.y,
+        send_bounds.max_y() - composer_height,
         (send_bounds.origin.x - left - CHAT_PAD).max(120.0),
-        CHAT_COMPOSER_HEIGHT,
+        composer_height,
     )
 }
 
-pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
-    let composer_bounds = chat_composer_input_bounds(content_bounds);
+pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
+    chat_composer_input_bounds_with_height(content_bounds, CHAT_COMPOSER_MIN_HEIGHT)
+}
+
+pub fn chat_transcript_bounds_with_height(content_bounds: Bounds, composer_height: f32) -> Bounds {
+    let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
     let left = content_bounds.origin.x + CHAT_PAD;
     Bounds::new(
         left,
@@ -1428,6 +1465,10 @@ pub fn calculator_expression_input_bounds(content_bounds: Bounds) -> Bounds {
         (content_bounds.size.width - CHAT_PAD * 2.0).max(120.0),
         CALCULATOR_INPUT_HEIGHT,
     )
+}
+
+pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
+    chat_transcript_bounds_with_height(content_bounds, CHAT_COMPOSER_MIN_HEIGHT)
 }
 
 pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -3250,7 +3291,8 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::AutopilotChat => {
-            if chat_send_button_bounds(content_bounds).contains(point) {
+            let can_send = !state.chat_inputs.composer.get_value().trim().is_empty();
+            if can_send && chat_send_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatSend);
             }
             None

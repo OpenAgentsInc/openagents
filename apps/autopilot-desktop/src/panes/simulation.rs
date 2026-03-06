@@ -971,7 +971,7 @@ fn paint_stable_sats_graph(
     paint.scene.draw_quad(
         Quad::new(graph_bounds)
             .with_background(theme::bg::ELEVATED)
-            .with_corner_radius(4.0),
+            .with_corner_radius(6.0),
     );
 
     if price_history.is_empty() || converted_sats_history.is_empty() {
