@@ -24,7 +24,7 @@ At a high level, Autopilot is the wedge into a broader economic system:
 - **Execution + Coordination Substrate**
   local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
 
-Autopilot is the first product, not the whole system. It is the user-facing entry point into a broader machine economy.
+Autopilot is the first product. It is the user-facing entry point into a broader machine economy.
 
 These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
 

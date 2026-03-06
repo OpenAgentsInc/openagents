@@ -6,7 +6,7 @@ The short version:
 
 > OpenAgents is building an agents marketplace composed of multiple interoperating markets running on one shared economic substrate.
 
-Autopilot is the first product, not the whole system. It is the user-facing wedge into a broader machine economy.
+Autopilot is the first product. It is the user-facing wedge into a broader machine economy.
 
 This is not a single marketplace with one matching engine.
 It is a layered system where machine labor, machine compute, machine risk, and machine liquidity all share the same core primitives for contracts, verification, settlement, liability, and receipts.
