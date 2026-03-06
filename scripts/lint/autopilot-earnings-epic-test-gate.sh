@@ -118,6 +118,11 @@ run_test \
     provider_nip90_lane::tests::desktop_earn_harness_relay_execute_publish_wallet_confirm_end_to_end \
     -- --nocapture
 run_test \
+    "Reciprocal loop two-identity relay/payment harness" \
+    cargo test -p autopilot-desktop \
+    app_state::tests::reciprocal_loop_two_identity_relay_harness_runs_bidirectional_paid_cycles \
+    -- --nocapture
+run_test \
     "Starter-demand generator budget/kill-switch controls" \
     cargo test -p autopilot-desktop \
     app_state::tests::starter_demand_ \

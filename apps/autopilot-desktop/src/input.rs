@@ -49,11 +49,12 @@ use crate::pane_system::{
     CadDemoPaneAction, CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
     CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction,
     CodexModelsPaneAction, CredentialsPaneAction, EarningsScoreboardPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput,
+    NetworkRequestsPaneAction, PaneController, PaneHitAction, PaneInput, ReciprocalLoopPaneAction,
     RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SIDEBAR_DEFAULT_WIDTH,
     SettingsPaneAction, StableSatsSimulationPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, TreasuryExchangeSimulationPaneAction, cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window, dispatch_calculator_input_event,
+    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
     dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
@@ -65,11 +66,11 @@ use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
 use crate::render::{
     logical_size, render_frame, sidebar_go_online_button_bounds, sidebar_handle_bounds,
-    wallet_balance_chip_bounds,
+    wallet_balance_sats_label_bounds,
 };
 use crate::runtime_lanes::{
-    AcCreditCommand, RuntimeCommandErrorClass, RuntimeCommandResponse, RuntimeCommandStatus,
-    RuntimeLane, SaLifecycleCommand, SklDiscoveryTrustCommand,
+    AcCreditCommand, RuntimeCommandResponse, RuntimeCommandStatus, RuntimeLane, SaLifecycleCommand,
+    SklDiscoveryTrustCommand,
 };
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 use crate::spark_wallet::SparkWalletCommand;
@@ -417,7 +418,8 @@ pub fn handle_about_to_wait(app: &mut App, event_loop: &ActiveEventLoop) {
     let should_redraw = changed
         || state.hotbar.is_flashing()
         || provider_animating
-        || state.autopilot_chat.has_pending_messages();
+        || state.autopilot_chat.has_pending_messages()
+        || any_text_input_focused(state);
     if should_redraw {
         state.window.request_redraw();
     }
@@ -488,6 +490,21 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         }
     }
     if run_auto_starter_demand_generator(state, now) {
+        changed = true;
+    }
+    if reducers::run_job_inbox_auto_admission_tick(state) {
+        changed = true;
+    }
+    if reducers::run_active_job_execution_tick(state) {
+        changed = true;
+    }
+    if run_hosted_starter_lease_heartbeat(state, now) {
+        changed = true;
+    }
+    if run_reciprocal_loop_engine_tick(state) {
+        changed = true;
+    }
+    if run_open_network_paid_transition_reconciliation(state, now) {
         changed = true;
     }
     if state.spacetime_presence.tick(state.provider_runtime.mode) {
@@ -1488,8 +1505,8 @@ fn dispatch_mouse_down(
     }
 
     if button == MouseButton::Left {
-        let wallet_bounds = wallet_balance_chip_bounds(state);
-        if wallet_bounds.size.width > 0.0 && wallet_bounds.contains(point) {
+        let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
+        if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
             PaneController::create_for_kind(state, crate::app_state::PaneKind::SparkWallet);
             queue_spark_command(state, SparkWalletCommand::Refresh);
             return true;
@@ -1863,7 +1880,10 @@ fn dispatch_mouse_scroll(
         if apply_cad_camera_zoom(state, point, *dy) {
             handled = true;
         } else {
-            handled |= dispatch_chat_scroll_event(state, point, *dy);
+            handled |= dispatch_activity_feed_detail_scroll_event(state, point, *dy);
+            if !handled {
+                handled |= dispatch_chat_scroll_event(state, point, *dy);
+            }
         }
     }
     handled |= dispatch_text_inputs(state, event);
@@ -2219,7 +2239,10 @@ fn handle_sidebar_mouse_down(
     state.sidebar.is_pressed = true;
     state.sidebar.is_dragging = false;
     state.sidebar.drag_start_x = point.x;
-    state.sidebar.drag_start_width = state.sidebar.width;
+    let logical = logical_size(&state.config, state.scale_factor);
+    let min_sidebar_width = 220.0;
+    let max_sidebar_width = (logical.width * 0.5).max(min_sidebar_width);
+    state.sidebar.drag_start_width = state.sidebar.width.max(min_sidebar_width).min(max_sidebar_width);
     true
 }
 
@@ -2232,28 +2255,7 @@ fn handle_sidebar_mouse_move(state: &mut crate::app_state::RenderState, point: P
         handled = true;
     }
 
-    if !state.sidebar.is_pressed {
-        return handled;
-    }
-
-    let dx = point.x - state.sidebar.drag_start_x;
-    let logical = logical_size(&state.config, state.scale_factor);
-
-    // Start a drag only after a small horizontal threshold, and only when open.
-    if !state.sidebar.is_dragging {
-        if dx.abs() < 3.0 || !state.sidebar.is_open {
-            return handled;
-        }
-        state.sidebar.is_dragging = true;
-    }
-
-    let min_sidebar_width = 220.0;
-    let max_sidebar_width = (logical.width * 0.5).max(min_sidebar_width);
-    let mut new_width = state.sidebar.drag_start_width - dx;
-    new_width = new_width.max(min_sidebar_width).min(max_sidebar_width);
-    state.sidebar.width = new_width;
-    clamp_all_panes_to_window(state);
-    true
+    handled
 }
 
 fn handle_sidebar_mouse_up(
@@ -2315,6 +2317,8 @@ pub(super) fn run_pane_hit_action(
                         "Identity regenerated. Secrets are hidden by default.".to_string(),
                     );
                     queue_spark_command(state, SparkWalletCommand::Refresh);
+                    let _ = state.sync_provider_nip90_lane_identity();
+                    crate::render::apply_spacetime_sync_bootstrap(state);
                 }
                 Err(err) => {
                     state.nostr_identity_error = Some(err.to_string());
@@ -2417,6 +2421,7 @@ pub(super) fn run_pane_hit_action(
 
             if wants_online {
                 queue_spark_command(state, SparkWalletCommand::Refresh);
+                let _ = state.sync_provider_nip90_lane_identity();
                 let _ = state.sync_provider_nip90_lane_relays();
             }
             if let Err(error) =
@@ -2495,6 +2500,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
+        PaneHitAction::ReciprocalLoop(action) => run_reciprocal_loop_action(state, action),
         PaneHitAction::ActivityFeed(action) => run_activity_feed_action(state, action),
         PaneHitAction::AlertsRecovery(action) => run_alerts_recovery_action(state, action),
         PaneHitAction::Settings(action) => run_settings_action(state, action),

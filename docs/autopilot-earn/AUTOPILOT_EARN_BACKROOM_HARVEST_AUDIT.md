@@ -30,10 +30,10 @@ Scope note: this harvest targeted compute-provider MVP assets only, not future l
 
 ## Decisions
 
-1. Preserve app-layer ownership for provider/wallet orchestration (`apps/autopilot-desktop`) per `docs/OWNERSHIP.md`.
+1. Preserve app-layer ownership for provider/wallet orchestration (`apps/autopilot-desktop`) per `../OWNERSHIP.md`.
 2. Restore only portable logic patterns, not archived crate topology.
 3. Prefer extending `crates/nostr/client` for reusable NIP-90 request/result helper behavior.
-4. Track exact restored provenance in `docs/AUTOPILOT_EARN_BACKROOM_PROVENANCE.md`.
+4. Track exact restored provenance in `AUTOPILOT_EARN_BACKROOM_PROVENANCE.md`.
 
 ## Verification
 

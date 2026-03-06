@@ -9,15 +9,17 @@ use crate::app_state::{
     EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
     JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, RelayConnectionsPaneInputs,
-    RelayConnectionsState, RelaySecuritySimulationPaneState, SettingsPaneInputs, SettingsState,
-    SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
-    StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState, SyncHealthState,
-    TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
+    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
+    RelayConnectionsPaneInputs, RelayConnectionsState, RelaySecuritySimulationPaneState,
+    SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
+    SparkPaneInputs, StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState,
+    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
-    activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
+    activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
+    activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
+    activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
     activity_feed_row_bounds, activity_feed_visible_row_count, alerts_recovery_ack_button_bounds,
     alerts_recovery_recover_button_bounds, alerts_recovery_resolve_button_bounds,
     alerts_recovery_row_bounds, alerts_recovery_visible_row_count,
@@ -37,8 +39,9 @@ use crate::pane_system::{
     network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
     nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds, settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds,
+    pane_content_bounds, reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -54,6 +57,9 @@ use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
 
 pub struct PaneRenderer;
 
+const INACTIVE_PANE_OVERLAY_ALPHA: f32 = 0.2;
+const ACTIVE_PANE_FOCUS_CLEARANCE: f32 = 8.0;
+
 impl PaneRenderer {
     #[expect(
         clippy::too_many_arguments,
@@ -61,6 +67,7 @@ impl PaneRenderer {
     )]
     pub fn paint(
         panes: &mut [DesktopPane],
+        canvas_bounds: Bounds,
         active_id: Option<u64>,
         nostr_identity: Option<&nostr::NostrIdentity>,
         nostr_identity_error: Option<&str>,
@@ -83,6 +90,7 @@ impl PaneRenderer {
         sync_health: &SyncHealthState,
         network_requests: &NetworkRequestsState,
         starter_jobs: &StarterJobsState,
+        reciprocal_loop: &ReciprocalLoopState,
         activity_feed: &ActivityFeedState,
         alerts_recovery: &AlertsRecoveryState,
         settings: &SettingsState,
@@ -119,6 +127,7 @@ impl PaneRenderer {
     ) -> u32 {
         let mut indices: Vec<usize> = (0..panes.len()).collect();
         indices.sort_by_key(|idx| panes[*idx].z_index);
+        let dim_inactive_panes = panes.len() > 1 && active_id.is_some();
 
         let mut next_layer: u32 = 1;
         for idx in indices {
@@ -140,7 +149,7 @@ impl PaneRenderer {
             paint.scene.draw_quad(
                 Quad::new(content_bounds)
                     .with_background(theme::bg::SURFACE)
-                    .with_corner_radius(0.0),
+                    .with_corner_radius(6.0),
             );
 
             match pane.kind {
@@ -180,6 +189,10 @@ impl PaneRenderer {
                         skl_lane,
                         ac_lane,
                         provider_blockers,
+                        earnings_scoreboard,
+                        spark_wallet,
+                        job_inbox,
+                        active_job,
                         paint,
                     );
                 }
@@ -221,6 +234,15 @@ impl PaneRenderer {
                 PaneKind::StarterJobs => {
                     paint_starter_jobs_pane(content_bounds, starter_jobs, paint);
                 }
+                PaneKind::ReciprocalLoop => {
+                    paint_reciprocal_loop_pane(
+                        content_bounds,
+                        reciprocal_loop,
+                        provider_runtime,
+                        spark_wallet,
+                        paint,
+                    );
+                }
                 PaneKind::ActivityFeed => {
                     paint_activity_feed_pane(content_bounds, activity_feed, paint);
                 }
@@ -234,7 +256,7 @@ impl PaneRenderer {
                     paint_credentials_pane(content_bounds, credentials, credentials_inputs, paint);
                 }
                 PaneKind::JobInbox => {
-                    paint_job_inbox_pane(content_bounds, job_inbox, paint);
+                    paint_job_inbox_pane(content_bounds, job_inbox, provider_runtime, paint);
                 }
                 PaneKind::ActiveJob => {
                     paint_active_job_pane(
@@ -354,6 +376,94 @@ impl PaneRenderer {
             }
         }
 
+        if dim_inactive_panes {
+            let Some(active_bounds) = panes
+                .iter()
+                .find(|pane| Some(pane.id) == active_id)
+                .map(|pane| pane.bounds)
+            else {
+                return next_layer;
+            };
+
+            paint.scene.set_layer(next_layer);
+            next_layer = next_layer.saturating_add(1);
+
+            let overlay = theme::bg::APP.with_alpha(INACTIVE_PANE_OVERLAY_ALPHA);
+            let cutout = Bounds::new(
+                active_bounds.origin.x - ACTIVE_PANE_FOCUS_CLEARANCE,
+                active_bounds.origin.y - ACTIVE_PANE_FOCUS_CLEARANCE,
+                active_bounds.size.width + ACTIVE_PANE_FOCUS_CLEARANCE * 2.0,
+                active_bounds.size.height + ACTIVE_PANE_FOCUS_CLEARANCE * 2.0,
+            );
+
+            let x0 = cutout
+                .origin
+                .x
+                .clamp(canvas_bounds.origin.x, canvas_bounds.max_x());
+            let x1 = cutout
+                .max_x()
+                .clamp(canvas_bounds.origin.x, canvas_bounds.max_x());
+            let y0 = cutout
+                .origin
+                .y
+                .clamp(canvas_bounds.origin.y, canvas_bounds.max_y());
+            let y1 = cutout
+                .max_y()
+                .clamp(canvas_bounds.origin.y, canvas_bounds.max_y());
+
+            if x1 <= x0 || y1 <= y0 {
+                paint
+                    .scene
+                    .draw_quad(Quad::new(canvas_bounds).with_background(overlay));
+                return next_layer;
+            }
+
+            if y0 > canvas_bounds.origin.y {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        canvas_bounds.origin.x,
+                        canvas_bounds.origin.y,
+                        canvas_bounds.size.width,
+                        y0 - canvas_bounds.origin.y,
+                    ))
+                    .with_background(overlay),
+                );
+            }
+            if x0 > canvas_bounds.origin.x {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        canvas_bounds.origin.x,
+                        y0,
+                        x0 - canvas_bounds.origin.x,
+                        (y1 - y0).max(0.0),
+                    ))
+                    .with_background(overlay),
+                );
+            }
+            if x1 < canvas_bounds.max_x() {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        x1,
+                        y0,
+                        canvas_bounds.max_x() - x1,
+                        (y1 - y0).max(0.0),
+                    ))
+                    .with_background(overlay),
+                );
+            }
+            if y1 < canvas_bounds.max_y() {
+                paint.scene.draw_quad(
+                    Quad::new(Bounds::new(
+                        canvas_bounds.origin.x,
+                        y1,
+                        canvas_bounds.size.width,
+                        canvas_bounds.max_y() - y1,
+                    ))
+                    .with_background(overlay),
+                );
+            }
+        }
+
         next_layer
     }
 }
@@ -387,9 +497,13 @@ fn paint_go_online_pane(
     skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
     ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
     provider_blockers: &[ProviderBlocker],
+    earnings_scoreboard: &EarningsScoreboardState,
+    spark_wallet: &SparkPaneState,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
+    paint_source_badge(content_bounds, "mission-control", paint);
 
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
     let toggle_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
@@ -399,103 +513,341 @@ fn paint_go_online_pane(
     };
     paint_action_button(toggle_bounds, toggle_label, paint);
 
-    let now = std::time::Instant::now();
-    let mut y = toggle_bounds.max_y() + 14.0;
-    y = paint_label_line(
-        paint,
+    let title_x = toggle_bounds.max_x() + 18.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Mission Control",
+        Point::new(title_x, content_bounds.origin.y + 16.0),
+        16.0,
+        theme::text::PRIMARY,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        "Earn-first shell for provider state, wallet truth, and job flow.",
+        Point::new(title_x, content_bounds.origin.y + 36.0),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        "Hotbar: 1 chat, 2 keys, 3 wallet",
+        Point::new(title_x, content_bounds.origin.y + 54.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let card_y = toggle_bounds.max_y() + 16.0;
+    let card_gap = 12.0;
+    let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(240.0);
+    let left_card = Bounds::new(content_bounds.origin.x + 12.0, card_y, card_width, 170.0);
+    let right_card = Bounds::new(left_card.max_x() + card_gap, card_y, card_width, 170.0);
+    let bottom_card = Bounds::new(
         content_bounds.origin.x + 12.0,
-        y,
-        "Provider mode",
+        left_card.max_y() + card_gap,
+        content_bounds.size.width - 24.0,
+        (content_bounds.max_y() - left_card.max_y() - card_gap - 12.0).max(180.0),
+    );
+
+    paint_mission_control_card(left_card, "Provider Rig", theme::accent::PRIMARY, paint);
+    paint_mission_control_card(
+        right_card,
+        "Wallet + First Sats",
+        theme::status::SUCCESS,
+        paint,
+    );
+    paint_mission_control_card(bottom_card, "Job Flow", theme::border::DEFAULT, paint);
+
+    let now = std::time::Instant::now();
+    let mut left_y = left_card.origin.y + 32.0;
+    left_y = paint_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Mode",
         provider_runtime.mode.label(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
+        left_card.origin.x + 12.0,
+        left_y,
         "Uptime (s)",
         &provider_runtime.uptime_seconds(now).to_string(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SA runner mode",
+        left_card.origin.x + 12.0,
+        left_y,
+        "SA runner",
         sa_lane.mode.label(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SA profile event",
-        sa_lane.profile_event_id.as_deref().unwrap_or("n/a"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SKL trust tier",
+        left_card.origin.x + 12.0,
+        left_y,
+        "SKL trust",
         skl_lane.trust_tier.label(),
     );
-    y = paint_label_line(
+    left_y = paint_label_line(
         paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "SKL manifest",
-        skl_lane.manifest_a.as_deref().unwrap_or("n/a"),
-    );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "AC credit lane",
+        left_card.origin.x + 12.0,
+        left_y,
+        "Credit lane",
         if ac_lane.credit_available {
             "available"
         } else {
             "unavailable"
         },
     );
-    y = paint_label_line(
-        paint,
-        content_bounds.origin.x + 12.0,
-        y,
-        "AC envelope",
-        ac_lane.envelope_event_id.as_deref().unwrap_or("n/a"),
-    );
-
     if provider_blockers.is_empty() {
         paint.scene.draw_text(paint.text.layout(
-            "Preflight: clear",
-            Point::new(content_bounds.origin.x + 12.0, y),
+            "Preflight clear",
+            Point::new(left_card.origin.x + 12.0, left_y + 2.0),
             11.0,
             theme::status::SUCCESS,
         ));
     } else {
         paint.scene.draw_text(paint.text.layout(
-            "Preflight blockers:",
-            Point::new(content_bounds.origin.x + 12.0, y),
+            "Preflight blockers",
+            Point::new(left_card.origin.x + 12.0, left_y + 2.0),
             11.0,
             theme::status::ERROR,
         ));
-        y += 16.0;
-        for blocker in provider_blockers {
+        let mut blocker_y = left_y + 18.0;
+        for blocker in provider_blockers.iter().take(3) {
             paint.scene.draw_text(paint.text.layout_mono(
                 &format!("{} - {}", blocker.code(), blocker.detail()),
-                Point::new(content_bounds.origin.x + 12.0, y),
+                Point::new(left_card.origin.x + 12.0, blocker_y),
                 10.0,
                 theme::status::ERROR,
             ));
-            y += 14.0;
+            blocker_y += 14.0;
+        }
+    }
+
+    let mut right_y = right_card.origin.y + 32.0;
+    let wallet_balance = spark_wallet
+        .balance
+        .as_ref()
+        .map(|balance| balance.total_sats().to_string())
+        .unwrap_or_else(|| "loading".to_string());
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Wallet sats",
+        &wallet_balance,
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Wallet status",
+        spark_wallet.network_status_label(),
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Sats today",
+        &earnings_scoreboard.sats_today.to_string(),
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Lifetime sats",
+        &earnings_scoreboard.lifetime_sats.to_string(),
+    );
+    right_y = paint_label_line(
+        paint,
+        right_card.origin.x + 12.0,
+        right_y,
+        "Jobs today",
+        &earnings_scoreboard.jobs_today.to_string(),
+    );
+    paint_first_sats_progress(
+        Bounds::new(
+            right_card.origin.x + 12.0,
+            right_y + 4.0,
+            right_card.size.width - 24.0,
+            48.0,
+        ),
+        earnings_scoreboard.lifetime_sats,
+        paint,
+    );
+
+    let active_summary = active_job.job.as_ref().map_or_else(
+        || "No active job yet".to_string(),
+        |job| {
+            format!(
+                "{} [{}] {} sats",
+                job.capability,
+                job.stage.label(),
+                job.quoted_price_sats
+            )
+        },
+    );
+    let jobs_title_y = bottom_card.origin.y + 32.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Active job",
+        Point::new(bottom_card.origin.x + 12.0, jobs_title_y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &active_summary,
+        Point::new(bottom_card.origin.x + 126.0, jobs_title_y),
+        11.0,
+        theme::text::PRIMARY,
+    ));
+
+    let list_origin_y = jobs_title_y + 24.0;
+    let recent_requests = job_inbox.requests.iter().rev().take(5).collect::<Vec<_>>();
+    if recent_requests.is_empty() {
+        let empty_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+            "No jobs visible yet. Relay preview is warming up; observed market activity will appear here before you go online."
+        } else {
+            "No jobs visible yet. Stay online and Mission Control will fill as demand arrives."
+        };
+        paint.scene.draw_text(paint.text.layout(
+            empty_label,
+            Point::new(bottom_card.origin.x + 12.0, list_origin_y + 4.0),
+            11.0,
+            theme::text::MUTED,
+        ));
+    } else {
+        let row_height = 28.0;
+        for (index, request) in recent_requests.iter().enumerate() {
+            let row_bounds = Bounds::new(
+                bottom_card.origin.x + 12.0,
+                list_origin_y + index as f32 * row_height,
+                bottom_card.size.width - 24.0,
+                22.0,
+            );
+            let accent = match request.demand_source {
+                crate::app_state::JobDemandSource::StarterDemand => theme::status::SUCCESS,
+                crate::app_state::JobDemandSource::OpenNetwork => theme::accent::PRIMARY,
+            };
+            paint.scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_background(theme::bg::APP.with_alpha(0.55))
+                    .with_border(theme::border::DEFAULT, 1.0)
+                    .with_corner_radius(4.0),
+            );
+            let source_label = match request.demand_source {
+                crate::app_state::JobDemandSource::StarterDemand => "STARTER",
+                crate::app_state::JobDemandSource::OpenNetwork => "OPEN",
+            };
+            paint.scene.draw_text(paint.text.layout_mono(
+                source_label,
+                Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 6.0),
+                9.0,
+                accent,
+            ));
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!("{} sats", request.price_sats),
+                Point::new(row_bounds.origin.x + 74.0, row_bounds.origin.y + 6.0),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+            let preview_suffix = if provider_runtime.mode == crate::app_state::ProviderMode::Offline
+            {
+                "preview".to_string()
+            } else {
+                request.decision.label()
+            };
+            paint.scene.draw_text(paint.text.layout(
+                &format!(
+                    "{}  {}  {}",
+                    request.capability, request.requester, preview_suffix
+                ),
+                Point::new(row_bounds.origin.x + 146.0, row_bounds.origin.y + 5.0),
+                10.0,
+                theme::text::PRIMARY,
+            ));
         }
     }
 
     if let Some(code) = provider_runtime.degraded_reason_code.as_deref() {
         paint.scene.draw_text(paint.text.layout_mono(
             &format!("Last reason code: {code}"),
-            Point::new(content_bounds.origin.x + 12.0, y + 12.0),
+            Point::new(bottom_card.origin.x + 12.0, bottom_card.max_y() - 18.0),
             10.0,
             theme::text::MUTED,
         ));
     }
+}
+
+fn paint_mission_control_card(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::APP.with_alpha(0.52))
+            .with_border(accent.with_alpha(0.72), 1.0)
+            .with_corner_radius(8.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        title,
+        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
+        12.0,
+        theme::text::PRIMARY,
+    ));
+}
+
+fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut PaintContext) {
+    const FIRST_SATS_MILESTONES: [u64; 4] = [10, 25, 50, 100];
+    let next_target = FIRST_SATS_MILESTONES
+        .into_iter()
+        .find(|target| lifetime_sats < *target);
+    let progress_label = match next_target {
+        Some(target) => format!(
+            "Next milestone: {} / {} sats ({} to go)",
+            lifetime_sats,
+            target,
+            target.saturating_sub(lifetime_sats)
+        ),
+        None => format!("{lifetime_sats} sats earned. First-sats ladder cleared."),
+    };
+    let progress_ratio = next_target.map_or(1.0, |target| {
+        if target == 0 {
+            1.0
+        } else {
+            (lifetime_sats as f32 / target as f32).clamp(0.0, 1.0)
+        }
+    });
+
+    paint.scene.draw_text(paint.text.layout(
+        "First sats progression",
+        Point::new(bounds.origin.x, bounds.origin.y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &progress_label,
+        Point::new(bounds.origin.x, bounds.origin.y + 16.0),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+
+    let track_bounds = Bounds::new(
+        bounds.origin.x,
+        bounds.origin.y + 30.0,
+        bounds.size.width,
+        10.0,
+    );
+    let fill_bounds = Bounds::new(
+        track_bounds.origin.x,
+        track_bounds.origin.y,
+        track_bounds.size.width * progress_ratio,
+        track_bounds.size.height,
+    );
+    paint.scene.draw_quad(
+        Quad::new(track_bounds)
+            .with_background(theme::bg::SURFACE)
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(5.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(fill_bounds)
+            .with_background(theme::status::SUCCESS.with_alpha(0.72))
+            .with_corner_radius(5.0),
+    );
 }
 
 fn paint_provider_status_pane(
@@ -1052,7 +1404,7 @@ fn paint_network_requests_pane(
     network_requests_inputs
         .timeout_seconds
         .paint(timeout_bounds, paint);
-    paint_action_button(submit_bounds, "Submit request", paint);
+    paint_primary_button(submit_bounds, "Submit request", paint);
 
     paint.scene.draw_text(paint.text.layout(
         "Request type",
@@ -1128,23 +1480,58 @@ fn paint_network_requests_pane(
             Quad::new(row_bounds)
                 .with_background(theme::bg::APP.with_alpha(0.78))
                 .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
         let status_color = match request.status {
             NetworkRequestStatus::Submitted => theme::accent::PRIMARY,
             NetworkRequestStatus::Streaming => theme::status::SUCCESS,
+            NetworkRequestStatus::Processing => theme::accent::SECONDARY,
+            NetworkRequestStatus::PaymentRequired => theme::status::WARNING,
+            NetworkRequestStatus::ResultReceived => theme::status::SUCCESS,
+            NetworkRequestStatus::Paid => theme::status::SUCCESS,
             NetworkRequestStatus::Completed => theme::status::SUCCESS,
             NetworkRequestStatus::Failed => theme::status::ERROR,
         };
         let summary = format!(
-            "{} {} scope:{} env:{} budget:{} timeout:{}s stream:{} [{}|{}|{}|{}]",
+            "{} {} resolution:{} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} feedback:{} result:{} provider:{} winner:{} winner_event:{} duplicates:{} loser_feedback:{} payment:{} required_at:{} sent_at:{} failed_at:{} pay_error:{} [{}|{}|{}|{}]",
             request.request_id,
             request.request_type,
+            request.resolution_mode.label(),
+            if request.target_provider_pubkeys.is_empty() {
+                "any".to_string()
+            } else {
+                request.target_provider_pubkeys.join(",")
+            },
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.credit_envelope_ref.as_deref().unwrap_or("none"),
             request.budget_sats,
             request.timeout_seconds,
             request.response_stream_id,
+            request
+                .published_request_event_id
+                .as_deref()
+                .unwrap_or("n/a"),
+            request.last_feedback_status.as_deref().unwrap_or("none"),
+            request.last_result_event_id.as_deref().unwrap_or("none"),
+            request.last_provider_pubkey.as_deref().unwrap_or("none"),
+            request.winning_provider_pubkey.as_deref().unwrap_or("none"),
+            request.winning_result_event_id.as_deref().unwrap_or("none"),
+            request.duplicate_outcomes.len(),
+            request.resolution_feedbacks.len(),
+            request.last_payment_pointer.as_deref().unwrap_or("none"),
+            request
+                .payment_required_at_epoch_seconds
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            request
+                .payment_sent_at_epoch_seconds
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            request
+                .payment_failed_at_epoch_seconds
+                .map(|value| value.to_string())
+                .unwrap_or_else(|| "none".to_string()),
+            request.payment_error.as_deref().unwrap_or("none"),
             request.status.label(),
             request.authority_status.as_deref().unwrap_or("pending"),
             request.authority_event_id.as_deref().unwrap_or("event:n/a"),
@@ -1277,6 +1664,229 @@ fn paint_starter_jobs_pane(
     }
 }
 
+fn paint_reciprocal_loop_pane(
+    content_bounds: Bounds,
+    reciprocal_loop: &ReciprocalLoopState,
+    provider_runtime: &ProviderRuntimeState,
+    spark_wallet: &SparkPaneState,
+    paint: &mut PaintContext,
+) {
+    paint_source_badge(content_bounds, "runtime", paint);
+
+    let start_bounds = reciprocal_loop_start_button_bounds(content_bounds);
+    let stop_bounds = reciprocal_loop_stop_button_bounds(content_bounds);
+    let reset_bounds = reciprocal_loop_reset_button_bounds(content_bounds);
+    if reciprocal_loop.running {
+        paint_disabled_button(start_bounds, "Start", paint);
+        paint_action_button(stop_bounds, "Stop", paint);
+    } else {
+        paint_action_button(start_bounds, "Start", paint);
+        paint_disabled_button(stop_bounds, "Stop", paint);
+    }
+    paint_action_button(reset_bounds, "Reset", paint);
+
+    let relay_health = match provider_runtime.mode {
+        crate::app_state::ProviderMode::Online => "online",
+        crate::app_state::ProviderMode::Connecting => "connecting",
+        crate::app_state::ProviderMode::Degraded => "degraded",
+        crate::app_state::ProviderMode::Offline => "offline",
+    };
+    let wallet_health = if spark_wallet.last_error.is_some() {
+        "degraded"
+    } else {
+        spark_wallet.network_status_label()
+    };
+    let loop_mode = if reciprocal_loop.running {
+        "running"
+    } else {
+        "stopped"
+    };
+    let y = paint_state_summary(
+        paint,
+        content_bounds.origin.x + 12.0,
+        start_bounds.max_y() + 12.0,
+        reciprocal_loop.load_state,
+        &format!(
+            "Loop: {} | Next: {}",
+            loop_mode,
+            reciprocal_loop.next_direction.label()
+        ),
+        reciprocal_loop.last_action.as_deref(),
+        reciprocal_loop.last_error.as_deref(),
+    );
+
+    let health_color = if relay_health == "degraded" || wallet_health == "degraded" {
+        theme::status::ERROR
+    } else if relay_health == "online" && wallet_health == "connected" {
+        theme::status::SUCCESS
+    } else {
+        theme::text::MUTED
+    };
+    let compact_value = |raw: Option<&str>| -> String {
+        let value = raw.unwrap_or("missing");
+        if value.len() > 24 {
+            format!("{}..{}", &value[..12], &value[value.len() - 8..])
+        } else {
+            value.to_string()
+        }
+    };
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("Health relay={} wallet={}", relay_health, wallet_health),
+        Point::new(content_bounds.origin.x + 12.0, y + 10.0),
+        10.0,
+        health_color,
+    ));
+
+    let mut line_y = y + 28.0;
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Local pubkey",
+        &compact_value(reciprocal_loop.local_pubkey.as_deref()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Peer pubkey",
+        &compact_value(reciprocal_loop.peer_pubkey.as_deref()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "In-flight",
+        reciprocal_loop
+            .in_flight_request_id
+            .as_deref()
+            .unwrap_or("none"),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Kill switch",
+        if reciprocal_loop.kill_switch_active {
+            "engaged"
+        } else {
+            "open"
+        },
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Retry attempts",
+        &format!(
+            "{}/{}",
+            reciprocal_loop.retry_attempts, reciprocal_loop.max_retry_attempts
+        ),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Backoff until",
+        &reciprocal_loop
+            .retry_backoff_until_epoch_seconds
+            .map(|value| value.to_string())
+            .unwrap_or_else(|| "none".to_string()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "In-flight limits",
+        &format!(
+            "local {}/{} peer {}/{}",
+            reciprocal_loop.in_flight_local_to_peer(),
+            reciprocal_loop.max_in_flight_local_to_peer,
+            reciprocal_loop.in_flight_peer_to_local(),
+            reciprocal_loop.max_in_flight_peer_to_local
+        ),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "A->B dispatched",
+        &reciprocal_loop.local_to_peer_dispatched.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "A->B paid",
+        &reciprocal_loop.local_to_peer_paid.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "B->A paid",
+        &reciprocal_loop.peer_to_local_paid.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "A->B failed",
+        &reciprocal_loop.local_to_peer_failed.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "B->A failed",
+        &reciprocal_loop.peer_to_local_failed.to_string(),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Sats sent/received",
+        &format!(
+            "{}/{}",
+            reciprocal_loop.sats_sent, reciprocal_loop.sats_received
+        ),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Last payment",
+        &compact_value(reciprocal_loop.last_payment_pointer.as_deref()),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Failure class",
+        &format!(
+            "{} / {}",
+            reciprocal_loop
+                .last_failure_class
+                .map(|value| value.label())
+                .unwrap_or("none"),
+            reciprocal_loop
+                .last_failure_disposition
+                .map(|value| value.label())
+                .unwrap_or("none")
+        ),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Failure detail",
+        reciprocal_loop
+            .last_failure_detail
+            .as_deref()
+            .unwrap_or("none"),
+    );
+}
+
 fn paint_activity_feed_pane(
     content_bounds: Bounds,
     activity_feed: &ActivityFeedState,
@@ -1285,7 +1895,11 @@ fn paint_activity_feed_pane(
     paint_source_badge(content_bounds, &activity_feed.projection_stream_id, paint);
 
     let refresh_bounds = activity_feed_refresh_button_bounds(content_bounds);
+    let prev_bounds = activity_feed_prev_page_button_bounds(content_bounds);
+    let next_bounds = activity_feed_next_page_button_bounds(content_bounds);
     paint_action_button(refresh_bounds, "Reload stream", paint);
+    paint_action_button(prev_bounds, "Prev", paint);
+    paint_action_button(next_bounds, "Next", paint);
 
     let filters = ActivityFeedFilter::all();
     for (index, filter) in filters.into_iter().enumerate() {
@@ -1297,18 +1911,34 @@ fn paint_activity_feed_pane(
         );
     }
 
+    let page = activity_feed
+        .page
+        .min(activity_feed.total_pages().saturating_sub(1))
+        + 1;
+    let filtered_rows = activity_feed.filtered_row_count();
     let y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
         activity_feed_filter_button_bounds(content_bounds, 0).max_y() + 10.0,
         activity_feed.load_state,
         &format!(
-            "State: {} | Filter: {}",
+            "State: {} | Filter: {} | Page {page}/{}",
             activity_feed.load_state.label(),
-            activity_feed.active_filter.label()
+            activity_feed.active_filter.label(),
+            activity_feed.total_pages()
         ),
         activity_feed.last_action.as_deref(),
         activity_feed.last_error.as_deref(),
+    );
+    let y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Rows",
+        &match activity_feed.active_filter {
+            ActivityFeedFilter::Nip90 => format!("{filtered_rows} (latest 50)"),
+            _ => filtered_rows.to_string(),
+        },
     );
 
     let visible = activity_feed.visible_rows();
@@ -1353,32 +1983,63 @@ fn paint_activity_feed_pane(
     }
 
     if let Some(selected) = activity_feed.selected()
-        && activity_feed.active_filter.matches(selected.domain)
+        && activity_feed.active_filter.matches_row(selected)
     {
-        let details_top =
-            activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1)).max_y() + 10.0;
-        let mut details_y = details_top;
-        details_y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            details_y,
-            "Event ID",
-            &selected.event_id,
-        );
-        details_y = paint_label_line(
-            paint,
-            content_bounds.origin.x + 12.0,
-            details_y,
-            "Source",
-            &selected.source_tag,
-        );
-        let _ = paint_multiline_phrase(
-            paint,
-            content_bounds.origin.x + 12.0,
-            details_y,
-            "Detail",
-            &selected.detail,
-        );
+        let Some(details_bounds) = activity_feed_details_bounds(content_bounds, visible_rows)
+        else {
+            return;
+        };
+        let details_x = details_bounds.origin.x + 12.0;
+        let mut details_y = details_bounds.origin.y;
+        details_y = paint_label_line(paint, details_x, details_y, "Event ID", &selected.event_id);
+        details_y = paint_label_line(paint, details_x, details_y, "Source", &selected.source_tag);
+        paint.scene.draw_text(paint.text.layout(
+            "Detail:",
+            Point::new(details_x, details_y),
+            11.0,
+            theme::text::MUTED,
+        ));
+        let Some(detail_viewport) =
+            activity_feed_detail_viewport_bounds(content_bounds, visible_rows)
+        else {
+            return;
+        };
+        let detail_lines = split_text_for_display(&selected.detail, 72);
+        let visible_line_capacity = ((detail_viewport.size.height / 16.0).floor() as usize).max(1);
+        let start_line =
+            activity_feed.detail_scroll_offset_for(detail_lines.len(), visible_line_capacity);
+        let end_line = (start_line + visible_line_capacity).min(detail_lines.len());
+
+        paint.scene.push_clip(detail_viewport);
+        let mut line_y = detail_viewport.origin.y;
+        for line in detail_lines
+            .iter()
+            .skip(start_line)
+            .take(end_line - start_line)
+        {
+            paint.scene.draw_text(paint.text.layout_mono(
+                line,
+                Point::new(detail_viewport.origin.x, line_y),
+                11.0,
+                theme::text::PRIMARY,
+            ));
+            line_y += 16.0;
+        }
+        paint.scene.pop_clip();
+
+        if detail_lines.len() > visible_line_capacity {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!(
+                    "Detail lines {}-{} / {} (scroll)",
+                    start_line.saturating_add(1),
+                    end_line,
+                    detail_lines.len()
+                ),
+                Point::new(details_x, details_bounds.max_y() - 8.0),
+                10.0,
+                theme::text::MUTED,
+            ));
+        }
     }
 }
 
@@ -1544,7 +2205,7 @@ fn paint_settings_pane(
         .provider_max_queue_depth
         .paint(provider_input_bounds, paint);
 
-    paint_action_button(save_bounds, "Save settings", paint);
+    paint_primary_button(save_bounds, "Save settings", paint);
     paint_action_button(reset_bounds, "Reset defaults", paint);
 
     let state_color = match settings.load_state {
@@ -1998,16 +2659,34 @@ fn nostr_identity_view_state(
 fn paint_job_inbox_pane(
     content_bounds: Bounds,
     job_inbox: &JobInboxState,
+    provider_runtime: &ProviderRuntimeState,
     paint: &mut PaintContext,
 ) {
     paint_source_badge(content_bounds, "runtime", paint);
 
     let accept_bounds = job_inbox_accept_button_bounds(content_bounds);
     let reject_bounds = job_inbox_reject_button_bounds(content_bounds);
-    paint_action_button(accept_bounds, "Accept selected", paint);
-    paint_action_button(reject_bounds, "Reject selected", paint);
+    let preview_only = provider_runtime.mode == crate::app_state::ProviderMode::Offline;
+    paint_primary_button(
+        accept_bounds,
+        if preview_only {
+            "Go Online to claim"
+        } else {
+            "Accept selected"
+        },
+        paint,
+    );
+    paint_action_button(
+        reject_bounds,
+        if preview_only {
+            "Preview only"
+        } else {
+            "Reject selected"
+        },
+        paint,
+    );
 
-    let y = paint_state_summary(
+    let mut y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
         accept_bounds.max_y() + 12.0,
@@ -2016,6 +2695,16 @@ fn paint_job_inbox_pane(
         job_inbox.last_action.as_deref(),
         job_inbox.last_error.as_deref(),
     );
+
+    if let Some(reason) = job_inbox.preview_block_reason(provider_runtime.mode) {
+        paint.scene.draw_text(paint.text.layout(
+            reason,
+            Point::new(content_bounds.origin.x + 12.0, y),
+            11.0,
+            theme::accent::PRIMARY,
+        ));
+        y += 16.0;
+    }
 
     match job_inbox.load_state {
         PaneLoadState::Loading => {
@@ -2054,7 +2743,7 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} src:{} scope:{} env:{} {} sats ttl:{}s {} {}",
+            "#{} {} {} src:{} scope:{} env:{} {} sats ttl:{}s {} {} eligibility:{}",
             request.arrival_seq,
             request.request_id,
             request.capability,
@@ -2064,7 +2753,8 @@ fn paint_job_inbox_pane(
             request.price_sats,
             request.ttl_seconds,
             request.validation.label(),
-            request.decision.label()
+            request.decision.label(),
+            request.eligibility_label(provider_runtime.mode)
         );
         paint.scene.draw_text(paint.text.layout_mono(
             &summary,
@@ -2092,6 +2782,13 @@ fn paint_job_inbox_pane(
             &selected.request_id,
         );
         line_y = paint_label_line(paint, x, line_y, "Decision", &selected.decision.label());
+        line_y = paint_label_line(
+            paint,
+            x,
+            line_y,
+            "Eligibility",
+            selected.eligibility_label(provider_runtime.mode),
+        );
         line_y = paint_label_line(
             paint,
             x,
@@ -2147,7 +2844,7 @@ fn paint_active_job_pane(
 
     let advance_bounds = active_job_advance_button_bounds(content_bounds);
     let abort_bounds = active_job_abort_button_bounds(content_bounds);
-    paint_action_button(advance_bounds, "Advance stage", paint);
+    paint_disabled_button(advance_bounds, "Execution auto", paint);
     if active_job.runtime_supports_abort {
         paint_action_button(abort_bounds, "Abort job", paint);
     } else {
@@ -2394,18 +3091,18 @@ fn paint_job_history_pane(
         .search_job_id
         .set_max_width(search_bounds.size.width);
     job_history_inputs.search_job_id.paint(search_bounds, paint);
-    paint_action_button(
+    paint_tertiary_button(
         status_bounds,
         &format!("Status: {}", job_history.status_filter.label()),
         paint,
     );
-    paint_action_button(
+    paint_tertiary_button(
         time_bounds,
         &format!("Range: {}", job_history.time_range.label()),
         paint,
     );
-    paint_action_button(prev_bounds, "Prev", paint);
-    paint_action_button(next_bounds, "Next", paint);
+    paint_tertiary_button(prev_bounds, "Prev", paint);
+    paint_tertiary_button(next_bounds, "Next", paint);
 
     paint.scene.draw_text(paint.text.layout(
         "Search job id",
@@ -2503,7 +3200,7 @@ fn paint_job_history_pane(
             Quad::new(row_bounds)
                 .with_background(theme::bg::APP.with_alpha(0.78))
                 .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
         let row_line = format!(
             "{} {} src:{} ts:{} scope:{} tick:{} set:{} def:{} {} {}",
@@ -2648,7 +3345,7 @@ pub(crate) fn paint_selectable_row_background(
                 },
                 1.0,
             )
-            .with_corner_radius(4.0),
+            .with_corner_radius(6.0),
     );
 }
 
@@ -2678,39 +3375,57 @@ pub(crate) fn paint_source_badge(content_bounds: Bounds, source: &str, paint: &m
 }
 
 pub(crate) fn paint_action_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint_secondary_button(bounds, label, paint);
+}
+
+pub(crate) fn paint_primary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::accent::PRIMARY)
+            .with_border(theme::accent::PRIMARY, 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint_button_label(bounds, label, theme::font_size::SM, theme::bg::APP, paint);
+}
+
+pub(crate) fn paint_secondary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(theme::bg::HOVER)
-            .with_border(theme::accent::PRIMARY, 1.0)
-            .with_corner_radius(4.0),
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(6.0),
     );
-    paint_button_label(bounds, label, 10.0, 11.0, theme::text::PRIMARY, paint);
+    paint_button_label(
+        bounds,
+        label,
+        theme::font_size::SM,
+        theme::text::PRIMARY,
+        paint,
+    );
+}
+
+pub(crate) fn paint_tertiary_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(theme::bg::APP.with_alpha(0.0))
+            .with_border(theme::border::DEFAULT.with_alpha(0.0), 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint_button_label(
+        bounds,
+        label,
+        theme::font_size::SM,
+        theme::text::SECONDARY,
+        paint,
+    );
 }
 
 fn paint_filter_button(bounds: Bounds, label: &str, active: bool, paint: &mut PaintContext) {
-    let background = if active {
-        theme::bg::HOVER
-    } else {
-        theme::bg::APP.with_alpha(0.68)
-    };
-    let border = if active {
-        theme::accent::PRIMARY
-    } else {
-        theme::border::DEFAULT
-    };
-    let text = if active {
-        theme::text::PRIMARY
-    } else {
-        theme::text::MUTED
-    };
-
-    paint.scene.draw_quad(
-        Quad::new(bounds)
-            .with_background(background)
-            .with_border(border, 1.0)
-            .with_corner_radius(4.0),
-    );
-    paint_button_label(bounds, label, 10.0, 10.0, text, paint);
+    if active {
+        paint_secondary_button(bounds, label, paint);
+        return;
+    }
+    paint_tertiary_button(bounds, label, paint);
 }
 
 fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) {
@@ -2718,15 +3433,20 @@ fn paint_disabled_button(bounds: Bounds, label: &str, paint: &mut PaintContext) 
         Quad::new(bounds)
             .with_background(theme::bg::SURFACE.with_alpha(0.72))
             .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(4.0),
+            .with_corner_radius(6.0),
     );
-    paint_button_label(bounds, label, 10.0, 11.0, theme::text::MUTED, paint);
+    paint_button_label(
+        bounds,
+        label,
+        theme::font_size::SM,
+        theme::text::MUTED,
+        paint,
+    );
 }
 
 fn paint_button_label(
     bounds: Bounds,
     label: &str,
-    left_padding: f32,
     font_size: f32,
     color: Hsla,
     paint: &mut PaintContext,
@@ -2734,7 +3454,8 @@ fn paint_button_label(
     let mut run = paint.text.layout(label, Point::ZERO, font_size, color);
     let run_bounds = run.bounds();
     let origin = Point::new(
-        bounds.origin.x + left_padding - run_bounds.origin.x,
+        bounds.origin.x + ((bounds.size.width - run_bounds.size.width).max(0.0) * 0.5)
+            - run_bounds.origin.x,
         bounds.origin.y + ((bounds.size.height - run_bounds.size.height).max(0.0) * 0.5)
             - run_bounds.origin.y,
     );
@@ -2752,16 +3473,16 @@ pub(crate) fn paint_label_line(
     paint.scene.draw_text(paint.text.layout(
         &format!("{label}:"),
         Point::new(x, y),
-        11.0,
+        theme::font_size::SM,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout_mono(
         value,
         Point::new(x + 122.0, y),
-        11.0,
+        theme::font_size::SM,
         theme::text::PRIMARY,
     ));
-    y + 16.0
+    y + 18.0
 }
 
 pub(crate) fn paint_multiline_phrase(
@@ -2774,7 +3495,7 @@ pub(crate) fn paint_multiline_phrase(
     paint.scene.draw_text(paint.text.layout(
         &format!("{label}:"),
         Point::new(x, y),
-        11.0,
+        theme::font_size::SM,
         theme::text::MUTED,
     ));
 
@@ -2783,10 +3504,10 @@ pub(crate) fn paint_multiline_phrase(
         paint.scene.draw_text(paint.text.layout_mono(
             &chunk,
             Point::new(x + 122.0, line_y),
-            11.0,
+            theme::font_size::SM,
             theme::text::PRIMARY,
         ));
-        line_y += 16.0;
+        line_y += 18.0;
     }
     line_y
 }
@@ -2816,18 +3537,31 @@ pub(crate) fn split_text_for_display(text: &str, chunk_len: usize) -> Vec<String
         return vec![String::new()];
     }
 
-    let chars: Vec<char> = text.chars().collect();
-    chars
-        .chunks(chunk_len.max(1))
-        .map(|chunk| chunk.iter().collect())
-        .collect()
+    let mut chunks = Vec::new();
+    let chunk_len = chunk_len.max(1);
+    for line in text.lines() {
+        let line_chars = line.chars().collect::<Vec<_>>();
+        if line_chars.is_empty() {
+            chunks.push(String::new());
+            continue;
+        }
+        chunks.extend(
+            line_chars
+                .chunks(chunk_len)
+                .map(|chunk| chunk.iter().collect::<String>()),
+        );
+    }
+    if text.ends_with('\n') {
+        chunks.push(String::new());
+    }
+    chunks
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
         create_invoice_view_state, nostr_identity_view_state, pay_invoice_view_state,
-        payment_terminal_status, spark_wallet_view_state,
+        payment_terminal_status, spark_wallet_view_state, split_text_for_display,
     };
     use crate::app_state::PaneLoadState;
     use crate::spark_wallet::SparkPaneState;
@@ -2901,6 +3635,20 @@ mod tests {
         assert_eq!(
             nostr_identity_view_state(Some(&identity), Some("corrupt mnemonic")),
             PaneLoadState::Error
+        );
+    }
+
+    #[test]
+    fn split_text_for_display_preserves_newline_boundaries() {
+        let chunks = split_text_for_display("shape:\nline-1\n\nraw:{\"x\":1}", 12);
+        assert_eq!(
+            chunks,
+            vec![
+                "shape:".to_string(),
+                "line-1".to_string(),
+                "".to_string(),
+                "raw:{\"x\":1}".to_string(),
+            ]
         );
     }
 }

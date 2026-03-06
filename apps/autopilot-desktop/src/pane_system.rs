@@ -1,7 +1,7 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
 use wgpui::components::hud::{PaneFrame, ResizeEdge};
-use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size};
+use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
 use winit::window::CursorIcon;
 
 use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, RenderState};
@@ -13,11 +13,11 @@ use crate::panes::{
 };
 use crate::render::{
     logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
-    wallet_balance_chip_bounds,
+    wallet_balance_sats_label_bounds,
 };
 use crate::spark_pane::{self, CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
 
-pub const PANE_TITLE_HEIGHT: f32 = 28.0;
+pub const PANE_TITLE_HEIGHT: f32 = 36.0;
 pub const PANE_MIN_WIDTH: f32 = 220.0;
 pub const PANE_MIN_HEIGHT: f32 = 140.0;
 /// Default target width for the global sidebar when open.
@@ -28,8 +28,9 @@ const PANE_CASCADE_Y: f32 = 22.0;
 const PANE_BOTTOM_RESERVED: f32 = HOTBAR_HEIGHT + HOTBAR_FLOAT_GAP + PANE_MARGIN;
 const CHAT_PAD: f32 = 12.0;
 const CHAT_THREAD_RAIL_WIDTH: f32 = 170.0;
-const CHAT_COMPOSER_HEIGHT: f32 = 30.0;
-const CHAT_SEND_WIDTH: f32 = 92.0;
+const CHAT_COMPOSER_MIN_HEIGHT: f32 = 30.0;
+const CHAT_COMPOSER_MAX_HEIGHT: f32 = 120.0;
+const CHAT_SEND_WIDTH: f32 = 30.0;
 const CHAT_HEADER_BUTTON_HEIGHT: f32 = 26.0;
 const CHAT_HEADER_BUTTON_WIDTH: f32 = 110.0;
 const CHAT_THREAD_FILTER_BUTTON_HEIGHT: f32 = 22.0;
@@ -64,6 +65,13 @@ const ACTIVITY_FEED_FILTER_GAP: f32 = 8.0;
 const ACTIVITY_FEED_ROW_HEIGHT: f32 = 30.0;
 const ACTIVITY_FEED_ROW_GAP: f32 = 6.0;
 const ACTIVITY_FEED_MAX_ROWS: usize = 8;
+const ACTIVITY_FEED_DETAILS_TOP_GAP: f32 = 10.0;
+const ACTIVITY_FEED_DETAILS_LINE_HEIGHT: f32 = 16.0;
+const ACTIVITY_FEED_DETAILS_HEADER_LINES: usize = 2;
+const ACTIVITY_FEED_DETAILS_LABEL_INSET_X: f32 = 12.0;
+const ACTIVITY_FEED_DETAILS_VALUE_OFFSET_X: f32 = 122.0;
+const ACTIVITY_FEED_DETAILS_RIGHT_PADDING: f32 = 8.0;
+const ACTIVITY_FEED_DETAILS_WRAP_CHARS: usize = 72;
 const ALERTS_RECOVERY_ROW_HEIGHT: f32 = 30.0;
 const ALERTS_RECOVERY_ROW_GAP: f32 = 6.0;
 const ALERTS_RECOVERY_MAX_ROWS: usize = 8;
@@ -223,8 +231,17 @@ pub enum StarterJobsPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopPaneAction {
+    Start,
+    Stop,
+    Reset,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ActivityFeedPaneAction {
     Refresh,
+    PreviousPage,
+    NextPage,
     SetFilter(ActivityFeedFilter),
     SelectRow(usize),
 }
@@ -695,6 +712,7 @@ pub enum PaneHitAction {
     SyncHealth(SyncHealthPaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
+    ReciprocalLoop(ReciprocalLoopPaneAction),
     ActivityFeed(ActivityFeedPaneAction),
     AlertsRecovery(AlertsRecoveryPaneAction),
     Settings(SettingsPaneAction),
@@ -1036,8 +1054,8 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
         return CursorIcon::Pointer;
     }
 
-    let wallet_bounds = wallet_balance_chip_bounds(state);
-    if wallet_bounds.size.width > 0.0 && wallet_bounds.contains(point) {
+    let wallet_label_bounds = wallet_balance_sats_label_bounds(state);
+    if wallet_label_bounds.size.width > 0.0 && wallet_label_bounds.contains(point) {
         return CursorIcon::Pointer;
     }
 
@@ -1066,7 +1084,13 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 
         match pane.kind {
             PaneKind::AutopilotChat => {
-                if chat_composer_input_bounds(content_bounds).contains(point) {
+                let composer_height = chat_composer_height_for_value(
+                    content_bounds,
+                    state.chat_inputs.composer.get_value(),
+                );
+                if chat_composer_input_bounds_with_height(content_bounds, composer_height)
+                    .contains(point)
+                {
                     return CursorIcon::Text;
                 }
             }
@@ -1142,6 +1166,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
             | PaneKind::EarningsScoreboard
             | PaneKind::SyncHealth
             | PaneKind::StarterJobs
+            | PaneKind::ReciprocalLoop
             | PaneKind::ActivityFeed
             | PaneKind::AlertsRecovery
             | PaneKind::NostrIdentity
@@ -1178,11 +1203,12 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
 }
 
 pub fn pane_content_bounds(bounds: Bounds) -> Bounds {
+    let border = 1.0;
     Bounds::new(
-        bounds.origin.x,
+        bounds.origin.x + border,
         bounds.origin.y + PANE_TITLE_HEIGHT,
-        bounds.size.width,
-        (bounds.size.height - PANE_TITLE_HEIGHT).max(0.0),
+        (bounds.size.width - border * 2.0).max(0.0),
+        (bounds.size.height - PANE_TITLE_HEIGHT - border).max(0.0),
     )
 }
 
@@ -1335,9 +1361,9 @@ pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> B
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
     Bounds::new(
         content_bounds.max_x() - CHAT_PAD - CHAT_SEND_WIDTH,
-        content_bounds.max_y() - CHAT_PAD - CHAT_COMPOSER_HEIGHT,
+        content_bounds.max_y() - CHAT_PAD - CHAT_SEND_WIDTH,
         CHAT_SEND_WIDTH,
-        CHAT_COMPOSER_HEIGHT,
+        CHAT_SEND_WIDTH,
     )
 }
 
@@ -1381,19 +1407,48 @@ pub fn chat_server_auth_refresh_button_bounds(content_bounds: Bounds) -> Bounds 
     Bounds::new(user_input.max_x() + 6.0, user_input.origin.y, 140.0, 24.0)
 }
 
-pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
+fn chat_composer_visual_line_count(value: &str, composer_width: f32) -> usize {
+    let char_width = theme::font_size::SM * 0.6;
+    let text_width = (composer_width - theme::spacing::SM * 2.0).max(char_width);
+    let chars_per_line = (text_width / char_width).floor().max(1.0) as usize;
+    let normalized = if value.is_empty() { " " } else { value };
+    normalized
+        .split('\n')
+        .map(|line| {
+            let chars = line.chars().count();
+            chars.max(1).div_ceil(chars_per_line)
+        })
+        .sum::<usize>()
+        .max(1)
+}
+
+pub fn chat_composer_height_for_value(content_bounds: Bounds, value: &str) -> f32 {
+    let send_bounds = chat_send_button_bounds(content_bounds);
+    let left = content_bounds.origin.x + CHAT_PAD;
+    let composer_width = (send_bounds.origin.x - left - CHAT_PAD).max(120.0);
+    let line_height = theme::font_size::SM * 1.4;
+    let line_count = chat_composer_visual_line_count(value, composer_width);
+    (line_height * line_count as f32 + theme::spacing::XS * 2.0)
+        .clamp(CHAT_COMPOSER_MIN_HEIGHT, CHAT_COMPOSER_MAX_HEIGHT)
+}
+
+pub fn chat_composer_input_bounds_with_height(content_bounds: Bounds, composer_height: f32) -> Bounds {
     let send_bounds = chat_send_button_bounds(content_bounds);
     let left = content_bounds.origin.x + CHAT_PAD;
     Bounds::new(
         left,
-        send_bounds.origin.y,
+        send_bounds.max_y() - composer_height,
         (send_bounds.origin.x - left - CHAT_PAD).max(120.0),
-        CHAT_COMPOSER_HEIGHT,
+        composer_height,
     )
 }
 
-pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
-    let composer_bounds = chat_composer_input_bounds(content_bounds);
+pub fn chat_composer_input_bounds(content_bounds: Bounds) -> Bounds {
+    chat_composer_input_bounds_with_height(content_bounds, CHAT_COMPOSER_MIN_HEIGHT)
+}
+
+pub fn chat_transcript_bounds_with_height(content_bounds: Bounds, composer_height: f32) -> Bounds {
+    let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
     let left = content_bounds.origin.x + CHAT_PAD;
     Bounds::new(
         left,
@@ -1410,6 +1465,10 @@ pub fn calculator_expression_input_bounds(content_bounds: Bounds) -> Bounds {
         (content_bounds.size.width - CHAT_PAD * 2.0).max(120.0),
         CALCULATOR_INPUT_HEIGHT,
     )
+}
+
+pub fn chat_transcript_bounds(content_bounds: Bounds) -> Bounds {
+    chat_transcript_bounds_with_height(content_bounds, CHAT_COMPOSER_MIN_HEIGHT)
 }
 
 pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -1745,6 +1804,35 @@ pub fn starter_jobs_kill_switch_button_bounds(content_bounds: Bounds) -> Bounds 
     )
 }
 
+pub fn reciprocal_loop_start_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        (content_bounds.size.width * 0.24).clamp(140.0, 210.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn reciprocal_loop_stop_button_bounds(content_bounds: Bounds) -> Bounds {
+    let start = reciprocal_loop_start_button_bounds(content_bounds);
+    Bounds::new(
+        start.max_x() + JOB_INBOX_BUTTON_GAP,
+        start.origin.y,
+        start.size.width,
+        start.size.height,
+    )
+}
+
+pub fn reciprocal_loop_reset_button_bounds(content_bounds: Bounds) -> Bounds {
+    let stop = reciprocal_loop_stop_button_bounds(content_bounds);
+    Bounds::new(
+        stop.max_x() + JOB_INBOX_BUTTON_GAP,
+        stop.origin.y,
+        stop.size.width,
+        stop.size.height,
+    )
+}
+
 pub fn starter_jobs_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
     let safe_index = row_index.min(JOB_INBOX_MAX_ROWS.saturating_sub(1));
     let top = content_bounds.origin.y + CHAT_PAD + JOB_INBOX_BUTTON_HEIGHT + 12.0;
@@ -1766,6 +1854,26 @@ pub fn activity_feed_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.size.width * 0.24).clamp(148.0, 220.0),
         JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn activity_feed_prev_page_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = activity_feed_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + JOB_INBOX_BUTTON_GAP,
+        refresh.origin.y,
+        (content_bounds.size.width * 0.12).clamp(84.0, 120.0),
+        refresh.size.height,
+    )
+}
+
+pub fn activity_feed_next_page_button_bounds(content_bounds: Bounds) -> Bounds {
+    let prev = activity_feed_prev_page_button_bounds(content_bounds);
+    Bounds::new(
+        prev.max_x() + JOB_INBOX_BUTTON_GAP,
+        prev.origin.y,
+        prev.size.width,
+        prev.size.height,
     )
 }
 
@@ -1801,6 +1909,78 @@ pub fn activity_feed_row_bounds(content_bounds: Bounds, row_index: usize) -> Bou
 
 pub fn activity_feed_visible_row_count(row_count: usize) -> usize {
     row_count.min(ACTIVITY_FEED_MAX_ROWS)
+}
+
+pub fn activity_feed_details_bounds(content_bounds: Bounds, visible_rows: usize) -> Option<Bounds> {
+    if visible_rows == 0 {
+        return None;
+    }
+    let details_top = activity_feed_row_bounds(content_bounds, visible_rows.saturating_sub(1))
+        .max_y()
+        + ACTIVITY_FEED_DETAILS_TOP_GAP;
+    let details_height = content_bounds.max_y() - CHAT_PAD - details_top;
+    if details_height <= 0.0 {
+        return None;
+    }
+    Some(Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        details_top,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(220.0),
+        details_height,
+    ))
+}
+
+pub fn activity_feed_detail_viewport_bounds(
+    content_bounds: Bounds,
+    visible_rows: usize,
+) -> Option<Bounds> {
+    let details_bounds = activity_feed_details_bounds(content_bounds, visible_rows)?;
+    let value_x = details_bounds.origin.x
+        + ACTIVITY_FEED_DETAILS_LABEL_INSET_X
+        + ACTIVITY_FEED_DETAILS_VALUE_OFFSET_X;
+    let value_y = details_bounds.origin.y
+        + ACTIVITY_FEED_DETAILS_LINE_HEIGHT * ACTIVITY_FEED_DETAILS_HEADER_LINES as f32;
+    let value_width =
+        (details_bounds.max_x() - value_x - ACTIVITY_FEED_DETAILS_RIGHT_PADDING).max(40.0);
+    let value_height = details_bounds.max_y() - value_y;
+    if value_height <= 0.0 {
+        return None;
+    }
+    Some(Bounds::new(value_x, value_y, value_width, value_height))
+}
+
+pub fn activity_feed_detail_visible_line_capacity(
+    content_bounds: Bounds,
+    visible_rows: usize,
+) -> usize {
+    let Some(viewport) = activity_feed_detail_viewport_bounds(content_bounds, visible_rows) else {
+        return 0;
+    };
+    ((viewport.size.height / ACTIVITY_FEED_DETAILS_LINE_HEIGHT).floor() as usize).max(1)
+}
+
+pub fn activity_feed_detail_wrapped_line_count(detail: &str) -> usize {
+    wrapped_line_count_for_display(detail, ACTIVITY_FEED_DETAILS_WRAP_CHARS)
+}
+
+fn wrapped_line_count_for_display(text: &str, chunk_len: usize) -> usize {
+    if text.trim().is_empty() {
+        return 1;
+    }
+    let chunk_len = chunk_len.max(1);
+    let mut lines = 0usize;
+    for line in text.lines() {
+        let line_chars = line.chars().count();
+        lines += if line_chars == 0 {
+            1
+        } else {
+            line_chars.div_ceil(chunk_len)
+        };
+    }
+    if text.ends_with('\n') {
+        lines += 1;
+    }
+    lines.max(1)
 }
 
 pub fn alerts_recovery_recover_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -3111,7 +3291,8 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::AutopilotChat => {
-            if chat_send_button_bounds(content_bounds).contains(point) {
+            let can_send = !state.chat_inputs.composer.get_value().trim().is_empty();
+            if can_send && chat_send_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ChatSend);
             }
             None
@@ -3371,9 +3552,37 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::ReciprocalLoop => {
+            if reciprocal_loop_start_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ReciprocalLoop(
+                    ReciprocalLoopPaneAction::Start,
+                ));
+            }
+            if reciprocal_loop_stop_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ReciprocalLoop(
+                    ReciprocalLoopPaneAction::Stop,
+                ));
+            }
+            if reciprocal_loop_reset_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ReciprocalLoop(
+                    ReciprocalLoopPaneAction::Reset,
+                ));
+            }
+            None
+        }
         PaneKind::ActivityFeed => {
             if activity_feed_refresh_button_bounds(content_bounds).contains(point) {
                 return Some(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::Refresh));
+            }
+            if activity_feed_prev_page_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ActivityFeed(
+                    ActivityFeedPaneAction::PreviousPage,
+                ));
+            }
+            if activity_feed_next_page_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::ActivityFeed(
+                    ActivityFeedPaneAction::NextPage,
+                ));
             }
 
             let filters = ActivityFeedFilter::all();
@@ -3509,9 +3718,6 @@ fn pane_hit_action_for_pane(
             None
         }
         PaneKind::ActiveJob => {
-            if active_job_advance_button_bounds(content_bounds).contains(point) {
-                return Some(PaneHitAction::ActiveJob(ActiveJobPaneAction::AdvanceStage));
-            }
             if state.active_job.runtime_supports_abort
                 && active_job_abort_button_bounds(content_bounds).contains(point)
             {
@@ -4032,6 +4238,58 @@ pub fn dispatch_chat_scroll_event(
     chat_pane::dispatch_transcript_scroll_event(state, cursor_position, scroll_dy)
 }
 
+pub fn dispatch_activity_feed_detail_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    scroll_dy: f32,
+) -> bool {
+    if scroll_dy.abs() <= f32::EPSILON {
+        return false;
+    }
+
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::ActivityFeed {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds(pane.bounds);
+    if !content_bounds.contains(cursor_position) {
+        return false;
+    }
+    let visible_rows = activity_feed_visible_row_count(state.activity_feed.visible_rows().len());
+    let Some(detail_viewport) = activity_feed_detail_viewport_bounds(content_bounds, visible_rows)
+    else {
+        return false;
+    };
+    if !detail_viewport.contains(cursor_position) {
+        return false;
+    }
+
+    let total_lines = {
+        let feed = &state.activity_feed;
+        let Some(selected) = feed.selected() else {
+            return false;
+        };
+        if !feed.active_filter.matches_row(selected) {
+            return false;
+        }
+        activity_feed_detail_wrapped_line_count(selected.detail.as_str())
+    };
+    let visible_lines = activity_feed_detail_visible_line_capacity(content_bounds, visible_rows);
+    if visible_lines == 0 {
+        return false;
+    }
+    state
+        .activity_feed
+        .scroll_detail_lines_by(scroll_dy, total_lines, visible_lines)
+}
+
 pub fn dispatch_job_history_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     let top_history = state
         .panes
@@ -4258,7 +4516,9 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
 mod tests {
     use super::{
         PaneDescriptor, active_job_abort_button_bounds, active_job_advance_button_bounds,
-        activity_feed_filter_button_bounds, activity_feed_refresh_button_bounds,
+        activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
+        activity_feed_filter_button_bounds, activity_feed_next_page_button_bounds,
+        activity_feed_prev_page_button_bounds, activity_feed_refresh_button_bounds,
         activity_feed_row_bounds, agent_profile_abort_goal_button_bounds,
         agent_profile_create_goal_button_bounds, agent_profile_publish_profile_button_bounds,
         agent_profile_publish_state_button_bounds, agent_profile_receipt_button_bounds,
@@ -4315,11 +4575,12 @@ mod tests {
         network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
         network_requests_timeout_input_bounds, network_requests_type_input_bounds,
         nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-        nostr_reveal_button_bounds, pane_content_bounds, relay_connections_add_button_bounds,
-        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
-        relay_connections_row_bounds, relay_connections_url_input_bounds,
-        settings_provider_queue_input_bounds, settings_relay_input_bounds,
-        settings_reset_button_bounds, settings_save_button_bounds,
+        nostr_reveal_button_bounds, pane_content_bounds, reciprocal_loop_reset_button_bounds,
+        reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
+        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
+        relay_connections_retry_button_bounds, relay_connections_row_bounds,
+        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
+        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -4552,16 +4813,39 @@ mod tests {
     }
 
     #[test]
+    fn reciprocal_loop_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 860.0, 440.0);
+        let start = reciprocal_loop_start_button_bounds(content);
+        let stop = reciprocal_loop_stop_button_bounds(content);
+        let reset = reciprocal_loop_reset_button_bounds(content);
+
+        assert!(start.max_x() < stop.min_x());
+        assert!(stop.max_x() < reset.min_x());
+        assert!(start.origin.y == stop.origin.y && stop.origin.y == reset.origin.y);
+    }
+
+    #[test]
     fn activity_feed_controls_and_rows_are_ordered() {
         let content = Bounds::new(0.0, 0.0, 940.0, 460.0);
         let refresh = activity_feed_refresh_button_bounds(content);
+        let prev = activity_feed_prev_page_button_bounds(content);
+        let next = activity_feed_next_page_button_bounds(content);
         let filter0 = activity_feed_filter_button_bounds(content, 0);
         let filter1 = activity_feed_filter_button_bounds(content, 1);
         let row0 = activity_feed_row_bounds(content, 0);
+        let details =
+            activity_feed_details_bounds(content, 8).expect("details bounds should exist");
+        let detail_viewport =
+            activity_feed_detail_viewport_bounds(content, 8).expect("detail viewport should exist");
 
+        assert!(refresh.max_x() < prev.min_x());
+        assert!(prev.max_x() < next.min_x());
         assert!(refresh.max_y() < filter0.min_y());
         assert!(filter0.max_x() < filter1.max_x());
         assert!(filter0.max_y() < row0.min_y());
+        assert!(row0.max_y() < details.max_y());
+        assert!(details.contains(detail_viewport.origin));
+        assert!(detail_viewport.max_y() <= details.max_y());
     }
 
     #[test]

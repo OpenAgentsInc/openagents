@@ -471,7 +471,7 @@ impl LiveEditor {
                     thumb_height,
                 ))
                 .with_background(Hsla::new(0.0, 0.0, 0.5, 0.5))
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
             );
         }
 

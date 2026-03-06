@@ -42,7 +42,7 @@ impl EntryActions {
             .variant(ButtonVariant::Ghost)
             .font_size(theme::font_size::XS)
             .padding(6.0, 2.0)
-            .corner_radius(4.0)
+            .corner_radius(6.0)
             .on_click(move || {
                 *copy_pending.borrow_mut() = Some(EntryAction::Copy);
             });
@@ -50,7 +50,7 @@ impl EntryActions {
             .variant(ButtonVariant::Ghost)
             .font_size(theme::font_size::XS)
             .padding(6.0, 2.0)
-            .corner_radius(4.0)
+            .corner_radius(6.0)
             .on_click(move || {
                 *retry_pending.borrow_mut() = Some(EntryAction::Retry);
             });
@@ -58,7 +58,7 @@ impl EntryActions {
             .variant(ButtonVariant::Ghost)
             .font_size(theme::font_size::XS)
             .padding(6.0, 2.0)
-            .corner_radius(4.0)
+            .corner_radius(6.0)
             .on_click(move || {
                 *edit_pending.borrow_mut() = Some(EntryAction::Edit);
             });
@@ -66,7 +66,7 @@ impl EntryActions {
             .variant(ButtonVariant::Ghost)
             .font_size(theme::font_size::XS)
             .padding(6.0, 2.0)
-            .corner_radius(4.0)
+            .corner_radius(6.0)
             .on_click(move || {
                 *delete_pending.borrow_mut() = Some(EntryAction::Delete);
             });

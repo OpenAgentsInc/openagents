@@ -28,6 +28,11 @@ pub enum SparkWalletCommand {
         description: Option<String>,
         expiry_seconds: Option<u64>,
     },
+    CreateBolt11Invoice {
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    },
     SendPayment {
         payment_request: String,
         amount_sats: Option<u64>,
@@ -192,6 +197,14 @@ impl SparkPaneState {
             } => {
                 let _ = self.create_invoice(runtime, amount_sats, description, expiry_seconds);
             }
+            SparkWalletCommand::CreateBolt11Invoice {
+                amount_sats,
+                description,
+                expiry_seconds,
+            } => {
+                let _ =
+                    self.create_bolt11_invoice(runtime, amount_sats, description, expiry_seconds);
+            }
             SparkWalletCommand::SendPayment {
                 payment_request,
                 amount_sats,
@@ -353,6 +366,43 @@ impl SparkPaneState {
 
         self.last_invoice = Some(invoice.clone());
         self.last_action = Some(format!("Created invoice for {amount_sats} sats"));
+        self.refresh_balance_and_payments(runtime);
+        Some(invoice)
+    }
+
+    fn create_bolt11_invoice(
+        &mut self,
+        runtime: &Runtime,
+        amount_sats: u64,
+        description: Option<String>,
+        expiry_seconds: Option<u32>,
+    ) -> Option<String> {
+        self.last_error = None;
+        if let Err(error) = self.ensure_wallet(runtime) {
+            self.last_error = Some(error);
+            return None;
+        }
+
+        let Some(wallet) = self.wallet.as_ref() else {
+            self.last_error = Some("Spark wallet missing after initialization".to_string());
+            return None;
+        };
+
+        let invoice = match run_with_timeout(
+            runtime,
+            "Create Spark bolt11 invoice",
+            SPARK_ACTION_TIMEOUT,
+            wallet.create_bolt11_invoice(amount_sats, description, expiry_seconds),
+        ) {
+            Ok(value) => value,
+            Err(error) => {
+                self.last_error = Some(format!("Failed to create bolt11 invoice: {error}"));
+                return None;
+            }
+        };
+
+        self.last_invoice = Some(invoice.clone());
+        self.last_action = Some(format!("Created bolt11 invoice for {amount_sats} sats"));
         self.refresh_balance_and_payments(runtime);
         Some(invoice)
     }

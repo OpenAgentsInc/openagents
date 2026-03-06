@@ -108,7 +108,7 @@ pub fn pane_enabled_in_runtime(kind: PaneKind, simulation_panes_enabled: bool) -
     simulation_panes_enabled || !is_simulation_pane(kind)
 }
 
-const PANE_SPECS: [PaneSpec; 41] = [
+const PANE_SPECS: [PaneSpec; 42] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -125,7 +125,7 @@ const PANE_SPECS: [PaneSpec; 41] = [
         default_width: 940.0,
         default_height: 540.0,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.codex",
             label: "Autopilot Chat",
@@ -246,15 +246,15 @@ const PANE_SPECS: [PaneSpec; 41] = [
     },
     PaneSpec {
         kind: PaneKind::GoOnline,
-        title: "Go Online",
-        default_width: 560.0,
-        default_height: 300.0,
+        title: "Mission Control",
+        default_width: 1040.0,
+        default_height: 620.0,
         singleton: true,
-        startup: false,
+        startup: true,
         command: Some(PaneCommandSpec {
-            id: "pane.go_online",
-            label: "Go Online",
-            description: "Open SA runner toggle with SKL trust gate and AC lane status",
+            id: "pane.mission_control",
+            label: "Mission Control",
+            description: "Open the earn-first control panel for wallet, jobs, and provider state",
             keybinding: None,
         }),
         hotbar: None,
@@ -345,6 +345,21 @@ const PANE_SPECS: [PaneSpec; 41] = [
             id: "pane.starter_jobs",
             label: "Starter Jobs",
             description: "Open starter-demand queue and completion payouts pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::ReciprocalLoop,
+        title: "Reciprocal Loop",
+        default_width: 860.0,
+        default_height: 440.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.reciprocal_loop",
+            label: "Reciprocal Loop",
+            description: "Open two-key 10-sat ping-pong loop controls and metrics",
             keybinding: None,
         }),
         hotbar: None,
@@ -725,7 +740,7 @@ const PANE_SPECS: [PaneSpec; 41] = [
         default_width: 1020.0,
         default_height: 620.0,
         singleton: true,
-        startup: true,
+        startup: false,
         command: Some(PaneCommandSpec {
             id: "pane.cad_demo",
             label: "CAD Demo",
@@ -830,14 +845,26 @@ mod tests {
     }
 
     #[test]
-    fn cad_demo_command_maps_to_singleton_startup_pane() {
+    fn cad_demo_command_maps_to_singleton_non_startup_pane() {
         let spec = pane_spec_by_command_id("pane.cad_demo")
             .expect("cad demo command should resolve to a pane spec");
         assert_eq!(spec.kind, PaneKind::CadDemo);
         assert!(spec.singleton, "cad demo pane must be singleton");
         assert!(
+            !spec.startup,
+            "cad demo pane should not auto-open during startup"
+        );
+    }
+
+    #[test]
+    fn mission_control_command_maps_to_singleton_startup_pane() {
+        let spec = pane_spec_by_command_id("pane.mission_control")
+            .expect("mission control command should resolve to a pane spec");
+        assert_eq!(spec.kind, PaneKind::GoOnline);
+        assert!(spec.singleton, "mission control pane must be singleton");
+        assert!(
             spec.startup,
-            "cad demo pane should auto-open during startup"
+            "mission control pane should auto-open during startup"
         );
     }
 

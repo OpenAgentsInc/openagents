@@ -36,11 +36,29 @@ use crate::spark_wallet::SparkWalletCommand;
 
 const GRID_DOT_DISTANCE: f32 = 32.0;
 const WALLET_BALANCE_CHIP_MARGIN: f32 = 12.0;
-const WALLET_BALANCE_CHIP_HEIGHT: f32 = 28.0;
+const WALLET_BALANCE_CHIP_HEIGHT: f32 = 48.0;
 const WALLET_BALANCE_CHIP_MIN_WIDTH: f32 = 140.0;
 const WALLET_BALANCE_CHIP_MAX_WIDTH: f32 = 220.0;
+const OPENAGENTS_BRAND_ICON_SIZE: f32 = 32.0;
+const SIDEBAR_HANDLE_ICON_SIZE: f32 = 16.0;
+const SIDEBAR_HANDLE_ICON_TOP_PAD: f32 = 12.0;
+const SIDEBAR_HANDLE_ICON_LEFT_INSET: f32 = 2.0;
+const SIDEBAR_COLLAPSED_RAIL_WIDTH: f32 = 28.0;
+const LOCAL_SIM_RUNTIME_BOOTSTRAP_ENV: &str = "OPENAGENTS_ENABLE_LOCAL_SIMULATION_LANES";
 
 const SETTINGS_SVG_RAW: &str = r##"<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640"><path fill="#FFFFFF" d="M249.9 176.3C243.4 179.5 237.1 183.1 231.1 187.2C222.9 192.7 212.6 194.1 203.1 191L131.4 167.2L93.5 232.8L150 283.1C157.4 289.7 161.3 299.3 160.7 309.2C160.2 316.4 160.2 323.8 160.7 331C161.4 340.9 157.4 350.5 150 357.1L93.5 407.3L131.4 473L203.1 449.2C212.5 446.1 222.8 447.5 231.1 453C237.1 457 243.4 460.7 249.9 463.9C258.8 468.3 265.1 476.5 267.1 486.2L282.3 560.2L358.1 560.2L373.3 486.2C375.3 476.5 381.7 468.3 390.5 463.9C397 460.7 403.3 457.1 409.3 453C417.5 447.5 427.8 446.1 437.3 449.2L509 473L546.9 407.3L490.4 357.1C483 350.5 479.1 340.9 479.7 331C479.9 327.4 480.1 323.8 480.1 320.1C480.1 316.4 480 312.8 479.7 309.2C479 299.3 483 289.7 490.4 283.1L546.9 232.9L509 167.2L437.3 191C427.9 194.1 417.6 192.7 409.3 187.2C403.3 183.2 397 179.5 390.5 176.3C381.6 171.9 375.3 163.7 373.3 154L358.1 80L282.3 80L267.1 154C265.1 163.7 258.7 171.9 249.9 176.3zM358.2 48C373.4 48 386.5 58.7 389.5 73.5L404.7 147.5C412.5 151.3 420.1 155.7 427.3 160.6L499 136.8C513.4 132 529.2 138 536.8 151.2L574.7 216.9C582.3 230.1 579.6 246.7 568.2 256.8L511.9 307C512.5 315.6 512.5 324.5 511.9 333L568.4 383.2C579.8 393.3 582.4 410 574.9 423.1L537 488.8C529.4 502 513.6 508 499.2 503.2L427.5 479.4C420.3 484.2 412.8 488.6 404.9 492.5L389.7 566.5C386.6 581.4 373.5 592 358.4 592L282.6 592C267.4 592 254.3 581.3 251.3 566.5L236.1 492.5C228.3 488.7 220.7 484.3 213.5 479.4L141.5 503.2C127.1 508 111.3 502 103.7 488.8L65.8 423.2C58.2 410.1 60.9 393.4 72.3 383.3L128.7 333C128.1 324.4 128.1 315.5 128.7 307L72.2 256.8C60.8 246.7 58.2 230 65.7 216.9L103.7 151.2C111.3 138 127.1 132 141.5 136.8L213.2 160.6C220.4 155.8 227.9 151.4 235.8 147.5L251 73.5C254.1 58.7 267.2 48 282.4 48L358.2 48zM264.3 320C264.3 350.8 289.2 375.7 320 375.7C350.8 375.7 375.7 350.8 375.7 320C375.7 289.2 350.8 264.3 320 264.3C289.2 264.3 264.3 289.2 264.3 320zM319.7 408C271.1 407.8 231.8 368.3 232 319.7C232.2 271.1 271.7 231.8 320.3 232C368.9 232.2 408.2 271.7 408 320.3C407.8 368.9 368.3 408.2 319.7 408z"/></svg>"##;
+const SIDEBAR_HANDLE_SVG_RAW: &str = r##"<svg id="Layer_1" xmlns="http://www.w3.org/2000/svg" version="1.1" viewBox="0 0 640 640">
+  <path fill="#3A4A5E" d="M509.2,22H119.2c-55.5,0-100.7,45.1-100.7,100.7v402.7c0,55.5,45.1,100.7,100.7,100.7h390.1c55.5,0,100.7-45.1,100.7-100.7V122.7c0-55.5-45.1-100.7-100.7-100.7ZM383.4,575.7H119.2c-27.8,0-50.3-22.5-50.3-50.3V122.7c0-27.8,22.5-50.3,50.3-50.3h264.3v503.3ZM559.6,525.3c0,27.8-22.5,50.3-50.3,50.3h-75.5V72.3h75.5c27.8,0,50.3,22.5,50.3,50.3v402.7Z"/>
+</svg>"##;
+const OPENAGENTS_LOGO_SVG_RAW: &str = r##"<svg version="1.0" id="Layer_1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" x="0px" y="0px"
+	 viewBox="0 0 612 792" enable-background="new 0 0 612 792" xml:space="preserve">
+<path fill="#3A4A5E" d="M229.4,469.1c-64.6,31.7-124,77.5-174.7,134.9c35.2-78.3,87.9-142.9,146.7-192.5c31-26.1,64-47.7,97.7-68.2l58.8-35.9
+	c16.1-9.8,30.8-21.3,45.2-34.2c10.7-9.5,20.2-19.6,28.8-31.6c0.7-1,1.4-1.9,1.8-2.3c0.6-0.7,2.9,0.3,3.3,1.3L569,561.5
+	c1,4.2-4.2,7.2-6.8,7.2l-107-0.3c-9.7,0-21.3-7.6-25.8-18.6L377.1,422c-3-2-6.2-2-10.1-1.2C320,430.9,274.1,447.1,229.4,469.1z"/>
+<path fill="#3A4A5E" d="M246.4,319.7C182.2,365.3,129,414,81.6,485c-19.5,29.4-36.3,60.7-51.1,94c-6.4,9.4-15.7,14.6-25.9,13.4l48.9-105.3
+	l38.2-82.9L148,279.6l83.6-193.7c5.1-12,16.1-21.8,27.3-21.8l88-0.1c12.7,0,22,10.8,28,23.5l42.4,91.3c3.3,7.1-1.7,15.6-4,21.6
+	c-17.6,26.7-47.8,47.6-72.6,62.9l-26.5-81.9c-1.7-5-6.4-7.5-10-7.5c-4,0-8.2,2.5-10,7.5L246.4,319.7z"/>
+</svg>"##;
 
 fn read_system_clipboard() -> Option<String> {
     #[cfg(target_os = "macos")]
@@ -167,7 +185,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             crate::stablesats_blink_worker::StableSatsBlinkWorker::spawn();
         let settings = crate::app_state::SettingsState::load_from_disk();
         let settings_inputs = crate::app_state::SettingsPaneInputs::from_state(&settings);
-        let initial_relay_url = settings.document.relay_url.clone();
+        let initial_relay_urls = settings.document.configured_relay_urls();
         let credentials = crate::app_state::CredentialsState::load_from_disk();
         let credentials_inputs = crate::app_state::CredentialsPaneInputs::from_state(&credentials);
         let autopilot_goals = crate::state::autopilot_goals::AutopilotGoalsState::load_from_disk();
@@ -176,8 +194,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let sa_lane_worker = SaLaneWorker::spawn();
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
-        let provider_nip90_lane_worker =
-            ProviderNip90LaneWorker::spawn(vec![initial_relay_url.clone()]);
+        let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let simulation_panes_enabled = simulation_panes_enabled_from_env();
         let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
             Ok(engine) => engine,
@@ -212,6 +229,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
 
         let mut event_context = wgpui::EventContext::new();
         configure_event_context_clipboard(&mut event_context);
+
+        let mut relay_connections = crate::app_state::RelayConnectionsState::default();
+        relay_connections.replace_configured_relays(initial_relay_urls.as_slice());
 
         let mut state = RenderState {
             window,
@@ -264,17 +284,19 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sa_lane_worker,
             skl_lane_worker,
             ac_lane_worker,
-            provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(vec![initial_relay_url]),
+            provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(initial_relay_urls),
             provider_nip90_lane_worker,
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
-            relay_connections: crate::app_state::RelayConnectionsState::default(),
+            relay_connections,
             sync_health,
             sync_bootstrap_note: None,
             sync_bootstrap_error: None,
+            hosted_control_base_url: None,
+            hosted_control_bearer_token: None,
             sync_apply_engine,
             sync_lifecycle_worker_id: "desktopw:sync".to_string(),
             sync_lifecycle: crate::sync_lifecycle::RuntimeSyncLifecycleManager::default(),
@@ -283,6 +305,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             spacetime_presence_snapshot,
             network_requests: crate::app_state::NetworkRequestsState::default(),
             starter_jobs: crate::app_state::StarterJobsState::default(),
+            reciprocal_loop: crate::app_state::ReciprocalLoopState::default(),
             activity_feed: crate::app_state::ActivityFeedState::default(),
             alerts_recovery: crate::app_state::AlertsRecoveryState::default(),
             settings,
@@ -292,6 +315,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_history: crate::app_state::JobHistoryState::default(),
             earn_job_lifecycle_projection:
                 crate::app_state::EarnJobLifecycleProjectionState::default(),
+            earn_kernel_receipts:
+                crate::state::earn_kernel_receipts::EarnKernelReceiptState::default(),
+            economy_snapshot: crate::state::economy_snapshot::EconomySnapshotState::default(),
             agent_profile_state: crate::app_state::AgentProfileStatePaneState::default(),
             agent_schedule_tick: crate::app_state::AgentScheduleTickPaneState::default(),
             trajectory_audit: crate::app_state::TrajectoryAuditPaneState::default(),
@@ -325,15 +351,19 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         };
         apply_spacetime_sync_bootstrap(&mut state);
         bootstrap_runtime_lanes(&mut state);
+        let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
         open_startup_panes(&mut state);
         Ok(state)
     })
 }
 
-fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
+pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
     state.sync_bootstrap_note = None;
     state.sync_bootstrap_error = None;
+    state.hosted_control_base_url = None;
+    state.hosted_control_bearer_token = None;
+    state.spacetime_presence.clear_live_client();
     let worker_id = state.sync_lifecycle_worker_id.clone();
     state.sync_lifecycle.mark_idle(worker_id.as_str());
     state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
@@ -359,13 +389,59 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             return;
         }
     };
+    let bound_nostr_pubkey = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str());
 
-    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, None) {
+    if let Ok(control_base_url) = crate::sync_bootstrap::resolve_control_base_url_from_env() {
+        state.hosted_control_base_url = Some(control_base_url.clone());
+        match crate::sync_bootstrap::resolve_control_bearer_auth_from_env(
+            &client,
+            control_base_url.as_str(),
+            bound_nostr_pubkey,
+        ) {
+            Ok(Some(token)) => {
+                state.hosted_control_bearer_token = Some(token);
+            }
+            Ok(None) => {}
+            Err(error) => {
+                state.sync_bootstrap_error = Some(error.clone());
+            }
+        }
+    }
+
+    match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, bound_nostr_pubkey) {
         Ok(Some(result)) => {
-            let note = format!(
+            let mut note = format!(
                 "Minted sync token via {} and prepared subscribe target {}",
                 result.control_token_endpoint, result.target.subscribe_url
             );
+            match autopilot_spacetime::live::LiveSpacetimeClient::new(
+                result.target.base_url.as_str(),
+                result.target.database.as_str(),
+                None,
+            ) {
+                Ok(live_client) => {
+                    state
+                        .spacetime_presence
+                        .configure_live_client(live_client.clone());
+                    match hydrate_remote_sync_checkpoints(state, &live_client) {
+                        Ok(adopted) if adopted > 0 => {
+                            note.push_str(
+                                format!(" and hydrated {adopted} remote checkpoints").as_str(),
+                            );
+                        }
+                        Ok(_) => {}
+                        Err(error) => {
+                            state.sync_bootstrap_error = Some(error.clone());
+                        }
+                    }
+                }
+                Err(error) => {
+                    state.sync_bootstrap_error = Some(error.clone());
+                }
+            }
             state.sync_bootstrap_note = Some(note.clone());
             state.sync_lifecycle.mark_connecting(worker_id.as_str());
             let replay_cursor = state.sync_apply_engine.max_checkpoint_seq();
@@ -383,6 +459,7 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
                 std::time::Instant::now(),
                 state.sync_lifecycle_snapshot.as_ref(),
             );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
         }
@@ -396,6 +473,7 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
                 std::time::Instant::now(),
                 state.sync_lifecycle_snapshot.as_ref(),
             );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
         }
@@ -412,13 +490,38 @@ fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
                 std::time::Instant::now(),
                 state.sync_lifecycle_snapshot.as_ref(),
             );
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
             state.sync_health.last_error = Some(error);
         }
     }
 }
 
+fn hydrate_remote_sync_checkpoints(
+    state: &mut RenderState,
+    client: &autopilot_spacetime::live::LiveSpacetimeClient,
+) -> Result<usize, String> {
+    let checkpoints = client.list_checkpoints(state.sync_lifecycle_worker_id.as_str())?;
+    let mut adopted = 0_usize;
+    for checkpoint in checkpoints {
+        if state
+            .sync_apply_engine
+            .adopt_checkpoint_if_newer(checkpoint.stream_id.as_str(), checkpoint.last_applied_seq)?
+        {
+            adopted = adopted.saturating_add(1);
+        }
+    }
+    state.sync_health.last_applied_event_seq = state.sync_apply_engine.max_checkpoint_seq();
+    state.sync_health.cursor_position = state.sync_health.last_applied_event_seq;
+    state.sync_health.cursor_target_position = state.sync_health.last_applied_event_seq;
+    Ok(adopted)
+}
+
 fn bootstrap_runtime_lanes(state: &mut RenderState) {
+    if !local_sim_runtime_bootstrap_enabled() {
+        return;
+    }
+
     let _ = state.queue_sa_command(SaLifecycleCommand::PublishAgentProfile {
         display_name: "Autopilot".to_string(),
         about: "Desktop sovereign agent runtime".to_string(),
@@ -442,11 +545,26 @@ fn bootstrap_runtime_lanes(state: &mut RenderState) {
     });
 }
 
+fn local_sim_runtime_bootstrap_enabled() -> bool {
+    std::env::var(LOCAL_SIM_RUNTIME_BOOTSTRAP_ENV)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.trim().to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(false)
+}
+
 fn open_startup_panes(state: &mut RenderState) {
     for pane_kind in startup_pane_kinds() {
         match pane_kind {
-            PaneKind::AutopilotChat | PaneKind::GoOnline => {
+            PaneKind::GoOnline => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
+                if let Err(error) = state.spark_worker.enqueue(SparkWalletCommand::Refresh) {
+                    state.spark_wallet.last_error = Some(error);
+                }
             }
             PaneKind::CadDemo => {
                 let _ = PaneController::create_for_kind(state, pane_kind);
@@ -489,7 +607,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     let sidebar_x = (width - panel_width).max(0.0);
 
     if panel_width > 0.0 {
-        let sidebar_color = Hsla::from_hex(0x171718).with_alpha(0.9);
+        let sidebar_color = theme::bg::ELEVATED;
         scene.draw_quad(
             Quad::new(Bounds::new(sidebar_x, 0.0, panel_width, height))
                 .with_background(sidebar_color),
@@ -501,42 +619,42 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         let icon_x = sidebar_x + panel_width - icon_size - padding;
         let icon_y = height - icon_size - padding;
         let icon_bounds = Bounds::new(icon_x, icon_y, icon_size, icon_size);
-        let icon_tint = Hsla::from_hex(0x525256);
+        let icon_tint = theme::text::MUTED;
         let svg = SvgQuad::new(
             icon_bounds,
             std::sync::Arc::<[u8]>::from(SETTINGS_SVG_RAW.as_bytes()),
         )
         .with_tint(icon_tint);
         scene.draw_svg(svg);
-    }
-
-    // Minimal vertical handle for resize/collapse/expand affordance.
-    let handle_height = 40.0;
-    let handle_width = 4.0;
-    let handle_offset_from_panel = 8.0;
-    let handle_x = if state.sidebar.is_open {
-        (sidebar_x + handle_offset_from_panel).min(width.max(0.0))
     } else {
-        (width - handle_offset_from_panel - handle_width).max(0.0)
-    };
-    let handle_y = (height - handle_height) * 0.5;
-    let handle_bounds = Bounds::new(handle_x, handle_y, handle_width, handle_height);
-    let handle_color = theme::border::DEFAULT.with_alpha(0.6);
-    // Draw three small bars to suggest a draggable handle.
-    let bar_gap = 6.0;
-    for i in 0..3 {
-        let y =
-            handle_bounds.origin.y + i as f32 * (handle_bounds.size.height - 2.0 * bar_gap) / 2.0;
+        // Keep a visible collapsed rail so users can discover the sidebar.
         scene.draw_quad(
             Quad::new(Bounds::new(
-                handle_bounds.origin.x,
-                y,
-                handle_bounds.size.width,
-                4.0,
+                (width - SIDEBAR_COLLAPSED_RAIL_WIDTH).max(0.0),
+                0.0,
+                SIDEBAR_COLLAPSED_RAIL_WIDTH.min(width.max(0.0)),
+                height,
             ))
-            .with_background(handle_color),
+            .with_background(theme::bg::ELEVATED),
         );
     }
+
+    // Top-right panel handle icon for resize/collapse/expand affordance.
+    let panel_left_x = if state.sidebar.is_open {
+        sidebar_x
+    } else {
+        (width - SIDEBAR_COLLAPSED_RAIL_WIDTH).max(0.0)
+    };
+    let handle_bounds = Bounds::new(
+        (panel_left_x + SIDEBAR_HANDLE_ICON_LEFT_INSET).max(0.0),
+        SIDEBAR_HANDLE_ICON_TOP_PAD,
+        SIDEBAR_HANDLE_ICON_SIZE,
+        SIDEBAR_HANDLE_ICON_SIZE,
+    );
+    scene.draw_svg(SvgQuad::new(
+        handle_bounds,
+        std::sync::Arc::<[u8]>::from(SIDEBAR_HANDLE_SVG_RAW.as_bytes()),
+    ));
 
     // Animate tooltip: quick fade-in, immediate disappear on mouse-out.
     if state.sidebar.settings_hover {
@@ -688,6 +806,35 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
                 10.0,
                 theme::text::PRIMARY,
             ));
+            y += 14.0;
+            if let Some(snapshot) = state.economy_snapshot.latest_snapshot.as_ref() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!("sv: {:.2}% | N: {}", snapshot.sv * 100.0, snapshot.n),
+                    Point::new(left, y),
+                    10.0,
+                    theme::text::PRIMARY,
+                ));
+                y += 14.0;
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!(
+                        "Snapshot: {}",
+                        snapshot
+                            .snapshot_id
+                            .strip_prefix("snapshot.economy:")
+                            .unwrap_or(snapshot.snapshot_id.as_str())
+                    ),
+                    Point::new(left, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+            } else {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "Snapshot: pending",
+                    Point::new(left, y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+            }
 
             y += 20.0;
             paint.scene.draw_text(paint.text.layout(
@@ -791,6 +938,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
         let hotbar_layer = PaneRenderer::paint(
             &mut state.panes,
+            Bounds::new(0.0, 0.0, width, height),
             active_pane,
             state.nostr_identity.as_ref(),
             state.nostr_identity_error.as_deref(),
@@ -813,6 +961,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.sync_health,
             &state.network_requests,
             &state.starter_jobs,
+            &state.reciprocal_loop,
             &state.activity_feed,
             &state.alerts_recovery,
             &state.settings,
@@ -856,19 +1005,28 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             .as_ref()
             .map_or(0, spark_total_balance_sats);
         let wallet_chip_label = format!("{total_sats} sats");
-        paint.scene.draw_quad(
-            Quad::new(wallet_chip_bounds)
-                .with_background(theme::bg::SURFACE.with_alpha(0.88))
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(6.0),
+        let wallet_label_font_size = 11.0;
+        let icon_text_gap = 8.0;
+        let label_width = paint
+            .text
+            .measure(&wallet_chip_label, wallet_label_font_size);
+        let _group_width = OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap + label_width;
+        let group_x = wallet_chip_bounds.origin.x + 6.0;
+        let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
+        let wallet_icon_bounds = Bounds::new(
+            group_x,
+            center_y - OPENAGENTS_BRAND_ICON_SIZE * 0.5,
+            OPENAGENTS_BRAND_ICON_SIZE,
+            OPENAGENTS_BRAND_ICON_SIZE,
         );
+        paint.scene.draw_svg(SvgQuad::new(
+            wallet_icon_bounds,
+            std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
+        ));
         paint.scene.draw_text(paint.text.layout_mono(
             &wallet_chip_label,
-            Point::new(
-                wallet_chip_bounds.origin.x + 10.0,
-                wallet_chip_bounds.origin.y + 17.0,
-            ),
-            11.0,
+            Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
+            wallet_label_font_size,
             theme::text::PRIMARY,
         ));
 
@@ -1021,11 +1179,34 @@ pub fn wallet_balance_chip_bounds(state: &RenderState) -> Bounds {
     wallet_balance_chip_bounds_for_logical(logical_size(&state.config, state.scale_factor))
 }
 
+pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
+    let logical = logical_size(&state.config, state.scale_factor);
+    let wallet_chip_bounds = wallet_balance_chip_bounds_for_logical(logical);
+    let total_sats = state
+        .spark_wallet
+        .balance
+        .as_ref()
+        .map_or(0, spark_total_balance_sats);
+    let wallet_chip_label = format!("{total_sats} sats");
+    let wallet_label_font_size = 11.0;
+    let icon_text_gap = 8.0;
+    let group_x = wallet_chip_bounds.origin.x + 6.0;
+    let center_y = wallet_chip_bounds.origin.y + wallet_chip_bounds.size.height * 0.5;
+    let label_x = group_x + OPENAGENTS_BRAND_ICON_SIZE + icon_text_gap;
+    let label_y = center_y - wallet_label_font_size * 0.5;
+    let label_width = wallet_chip_label.len() as f32 * wallet_label_font_size * 0.6;
+    Bounds::new(
+        label_x,
+        label_y,
+        label_width.max(1.0) + 4.0,
+        wallet_label_font_size + 8.0,
+    )
+}
+
 /// Bounds of the sidebar resize handle in logical coordinates. Used for hit-testing and cursor.
 pub fn sidebar_handle_bounds(state: &RenderState) -> Bounds {
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
-    let height = logical.height;
     let min_sidebar_width = 220.0;
     let max_sidebar_width = (width * 0.5).max(min_sidebar_width);
     let configured_width = state
@@ -1039,16 +1220,17 @@ pub fn sidebar_handle_bounds(state: &RenderState) -> Bounds {
         0.0
     };
     let sidebar_x = (width - panel_width).max(0.0);
-    let handle_height = 40.0;
-    let handle_width = 4.0;
-    let handle_offset_from_panel = 8.0;
-    let handle_x = if state.sidebar.is_open {
-        (sidebar_x + handle_offset_from_panel).min(width.max(0.0))
+    let panel_left_x = if state.sidebar.is_open {
+        sidebar_x
     } else {
-        (width - handle_offset_from_panel - handle_width).max(0.0)
+        (width - SIDEBAR_COLLAPSED_RAIL_WIDTH).max(0.0)
     };
-    let handle_y = (height - handle_height) * 0.5;
-    Bounds::new(handle_x, handle_y, handle_width, handle_height)
+    Bounds::new(
+        (panel_left_x + SIDEBAR_HANDLE_ICON_LEFT_INSET).max(0.0),
+        SIDEBAR_HANDLE_ICON_TOP_PAD,
+        SIDEBAR_HANDLE_ICON_SIZE,
+        SIDEBAR_HANDLE_ICON_SIZE,
+    )
 }
 
 /// Bounds of the "Go Online" mission-control button in the sidebar (when panel is open).
@@ -1182,6 +1364,9 @@ mod tests {
             command.id == "pane.starter_jobs" && command.label == "Starter Jobs"
         }));
         assert!(commands.iter().any(|command| {
+            command.id == "pane.reciprocal_loop" && command.label == "Reciprocal Loop"
+        }));
+        assert!(commands.iter().any(|command| {
             command.id == "pane.activity_feed" && command.label == "Activity Feed"
         }));
         assert!(commands.iter().any(|command| {
@@ -1285,9 +1470,9 @@ mod tests {
     #[test]
     fn startup_pane_set_matches_mvp_core_surfaces() {
         let startup = startup_pane_kinds();
-        assert!(startup.contains(&PaneKind::AutopilotChat));
-        assert!(startup.contains(&PaneKind::CadDemo));
-        assert!(!startup.contains(&PaneKind::GoOnline));
+        assert_eq!(startup, vec![PaneKind::GoOnline]);
+        assert!(!startup.contains(&PaneKind::AutopilotChat));
+        assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));
     }

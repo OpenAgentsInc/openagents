@@ -132,7 +132,7 @@ pub fn paint_skill_registry_pane(
                     wgpui::theme::bg::APP.with_alpha(0.64)
                 })
                 .with_border(wgpui::theme::border::DEFAULT, 1.0)
-                .with_corner_radius(4.0),
+                .with_corner_radius(6.0),
         );
         let row_label = format!(
             "{} [{}] {} deps:{}",
