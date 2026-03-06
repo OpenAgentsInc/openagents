@@ -58,7 +58,7 @@ This NIP reserves the following event kinds:
 | 39210 | Agent Tick Request | Ephemeral |
 | 39211 | Agent Tick Result | Ephemeral |
 | 39212 | Guardian Approval Request | Regular |
-| 39213 | Guardian Approval | Ephemeral |
+| 39213 | Guardian Approval | Regular |
 | 39220 | Skill License | Addressable |
 | 39221 | Skill Delivery | Ephemeral |
 | 39230 | Agent Trajectory Session | Addressable |
@@ -116,12 +116,12 @@ Agents publish a profile event similar to `kind:0` user metadata, but with addit
     ["signer", "<guardian-pubkey>"],
     ["operator", "<operator-pubkey>"],
     ["lud16", "<agent-lightning-address>"],
-    ["federation", "<federation-id>@<domain>"]  // optional Fedimint federation
+    ["federation", "<federation-id>@<domain>"]  // optional Fedimint federation hint
   ]
 }
 ```
 
-Agents MAY declare membership in one or more Fedimint federations using the `federation` tag. The value SHOULD use the form `<federation-id>@<domain>` for interoperability with NIP-05-style resolution. Federation membership implies the agent's spending authority for Fedimint ecash is scoped to that federation's keysets. Verifiers MAY use this tag to confirm ecash redemption proofs against the declared federation.
+Agents MAY declare one or more `federation` tags to hint Fedimint affiliation or preferred federation rail. The value SHOULD use the form `<federation-id>@<domain>` as a human-friendly identifier. This tag is informational and SHOULD NOT be treated as a replacement for federation discovery metadata such as NIP-87 mint/federation announcements. Verifiers MAY use it as a hint when resolving or checking ecash redemption proofs against federation metadata.
 
 The `content` field contains JSON metadata:
 
@@ -290,9 +290,9 @@ When a runner executes a tick, it publishes a tick request:
     ["trigger", "heartbeat"],  // or "mention", "dm", etc.
     ["e", "<trigger-event-id>", "<relay>"],  // if event-triggered
     ["max_steps", "10"],
-    ["budget", "1000"],  // max sats to spend (Lightning sats by default)
-    ["guardian_threshold", "5000"],              // sats above which guardian co-sig required
-    ["approval_required", "<guardian-pubkey>"]   // who must approve
+    ["budget", "1000"],                // max sats to spend
+    ["approval_threshold", "5000"],    // sats above which guardian co-sig required
+    ["guardian", "<guardian-pubkey>"]  // who must approve
   ]
 }
 ```
@@ -300,13 +300,13 @@ When a runner executes a tick, it publishes a tick request:
 Extended budget forms:
 
 ```jsonc
-["budget", "1000", "lightning"],                        // explicit LN sats
-["budget", "1000", "cashu", "<mint-url>"],              // Cashu msats from mint
-["budget", "1000", "fedimint", "<federation-id>@<domain>"], // Fedimint ecash
-["budget", "1000", "envelope", "<envelope-id>"]         // spend under NIP-AC envelope
+["budget", "1000", "lightning"],                             // explicit Lightning rail, amount still in sats
+["budget", "1000", "cashu", "<mint-url>"],                   // Cashu rail, amount still in sats
+["budget", "1000", "fedimint", "<federation-id>@<domain>"], // Fedimint rail, amount still in sats
+["budget", "1000", "envelope", "<envelope-id>"]             // NIP-AC envelope rail, amount still in sats
 ```
 
-The two-element `["budget", "<sats>"]` form remains valid and implies Lightning sats for backwards compatibility. Implementations SHOULD use the three- or four-element form to declare the spending rail. When the `envelope` rail is used, the fourth element MUST be a valid `kind:39242` envelope `d` identifier, and the runner MUST NOT exceed the envelope's `max` tag. This connects tick budget enforcement directly to NIP-AC credit envelopes.
+The two-element `["budget", "<sats>"]` form remains valid and implies Lightning for backwards compatibility. In all forms, the numeric `budget` amount is denominated in sats. Implementations SHOULD use the three- or four-element form to declare the spending rail. Rail-specific mint or federation metadata does not change the budget unit. If a rail internally uses other units, conversion is implementation-specific and out of SA core scope. When the `envelope` rail is used, the fourth element MUST be a valid `kind:39242` envelope `d` identifier, and the runner MUST NOT exceed the envelope's `max` tag.
 
 ### Tick Result Event (`kind:39211`)
 
@@ -346,8 +346,8 @@ When a tick's projected spend exceeds a configured approval threshold, the runne
   "tags": [
     ["p", "<guardian-pubkey>"],
     ["e", "<tick-request-event-id>"],
-    ["budget_requested", "7500", "cashu", "<mint-url>"],
-    ["guardian_threshold", "5000"],
+    ["budget_requested", "7500", "cashu", "<mint-url>"],  // amount remains in sats
+    ["approval_threshold", "5000"],
     ["scope", "nip90", "<job-hash>"],           // or skill scope
     ["credit", "<envelope-id>"],                // if under NIP-AC envelope
     ["reason", "Skill purchase above operator threshold"],
@@ -356,9 +356,9 @@ When a tick's projected spend exceeds a configured approval threshold, the runne
 }
 ```
 
-Operators MAY configure a guardian threshold by adding `guardian_threshold` and `approval_required` tags to tick requests. When a tick's projected spend exceeds `guardian_threshold`, the runner MUST publish a `kind:39212` approval request before executing and MUST NOT proceed until a valid `kind:39213` approval is received from the declared guardian pubkey.
+Operators MAY configure guardian-gated execution by adding `approval_threshold` and `guardian` tags to tick requests. When a tick's projected spend exceeds `approval_threshold`, the runner MUST publish a `kind:39212` approval request before executing and MUST NOT proceed until a valid `kind:39213` approval is received from the declared guardian pubkey.
 
-> **Naming note**: The `guardian_threshold` tag is the SA-layer control set by the operator for tick-level guardian approval. NIP-AC envelopes use a separate `approval_threshold` tag for credit-issuer spend gating. Both gates are independent and may have different sats values.
+> **Naming note**: SA uses `guardian` and `approval_threshold` for tick-level guardian approval. If an implementation also uses NIP-AC guardian-gated envelopes, the same tag names can be reused there while still applying at a different layer.
 
 ### Guardian Approval Event (`kind:39213`)
 
@@ -379,7 +379,7 @@ Guardians approve or deny specific tick requests in response to `kind:39212` eve
 }
 ```
 
-Runners MUST verify that `kind:39213` events are signed by the guardian pubkey declared in the corresponding `kind:39210` `approval_required` tag, and MUST enforce the `decision` value before executing high-spend ticks. If spend is below threshold, runners SHOULD include `["guardian_approved", "auto"]` on the tick result for auditability. Implementations that do not support guardian approval semantics MUST ignore these tags per NIP-01 semantics.
+Runners MUST verify that `kind:39213` events are signed by the guardian pubkey declared in the corresponding `kind:39210` `guardian` tag, and MUST enforce the `decision` value before executing high-spend ticks. If spend is below threshold, runners SHOULD include `["guardian_approved", "auto"]` on the tick result for auditability. Implementations that do not support guardian approval semantics MUST ignore these tags per NIP-01 semantics.
 
 ### Inference via NIP-90
 
@@ -603,13 +603,7 @@ When an agent purchases a skill, a license event is created:
 }
 ```
 
-The existing `payment` tag assumes Lightning and remains valid. Implementations supporting alternative rails MAY instead include `payment_rail` and `payment_proof` tags. When `payment_rail` is present, verifiers SHOULD use it in preference to `payment` for determining settlement. Only one `payment_rail` SHOULD be present per license event.
-
-`payment_proof` computation by rail:
-
-- **cashu**: SHA-256 of `(mint_url, keyset_id, proof_secret, amount_msat)` in deterministic JSON (stable key ordering, no whitespace).
-- **fedimint**: SHA-256 of `(federation_id, ecash_note_id, amount_msats, spend_timestamp)` in deterministic JSON (computed per AC Appendix C).
-- **bolt12**: SHA-256 of the canonical offer bytes as defined in BOLT 12 (computed per AC Appendix C).
+The existing `payment` tag assumes Lightning and remains valid. Implementations supporting alternative rails MAY instead include `payment_rail` and `payment_proof` tags. When `payment_rail` is present, verifiers SHOULD use it in preference to `payment` for determining settlement. Only one `payment_rail` SHOULD be present per license event. The concrete `payment_proof` value is rail-specific and SHOULD be a stable canonical proof or hash appropriate to the declared rail. Detailed proof construction is out of SA core scope and SHOULD be defined by the corresponding rail or profile specification rather than duplicated here.
 
 ### Skill Delivery Event (`kind:39221`)
 
@@ -1053,7 +1047,7 @@ An agent operating under the SA-Guardian Profile SHOULD declare the following in
   "kind": 39200,
   "tags": [
     // ... standard tags ...
-    ["federation", "<federation-id>@<domain>"],  // Fedimint federation membership
+    ["federation", "<federation-id>@<domain>"],  // Fedimint federation hint
     ["signer", "<guardian-pubkey>"],              // Guardian co-signer for high-spend ops
     ["t", "sa-guardian-profile"]                  // profile advertisement
   ]
@@ -1062,14 +1056,14 @@ An agent operating under the SA-Guardian Profile SHOULD declare the following in
 
 ### Guardian Threshold Semantics
 
-- The `guardian_threshold` tag in `kind:39210` tick requests declares the sats amount above which guardian approval is required for that tick.
-- The guardian is identified by the `approval_required` tag in the tick request.
+- The `approval_threshold` tag in `kind:39210` tick requests declares the sats amount above which guardian approval is required for that tick.
+- The guardian is identified by the `guardian` tag in the tick request.
 - Guardians respond via `kind:39213` Guardian Approval events (see above).
 - If the agent also holds a NIP-AC envelope with an `approval_threshold`, that is a separate credit-issuer gate. Both thresholds are enforced independently.
 
 ### Fedimint Federation Integration
 
-When the agent's `federation` tag is declared, payers and issuers SHOULD treat Fedimint ecash at the declared federation as a valid spending rail. The guardian MAY also be a Fedimint federation guardian node, in which case federation-level multi-sig serves as the guardian approval mechanism.
+When the agent's `federation` tag is declared, payers and issuers MAY treat it as a Fedimint rail preference hint. The guardian MAY also be a Fedimint federation guardian node, in which case federation-level multi-sig serves as the guardian approval mechanism.
 
 ### Out-of-Band Approval
 
@@ -1086,6 +1080,7 @@ Implementations MAY fulfill the `kind:39212` guardian approval request via NFC h
 - [NIP-57](https://github.com/nostr-protocol/nips/blob/master/57.md): Lightning zaps
 - [NIP-59](https://github.com/nostr-protocol/nips/blob/master/59.md): Gift wrap
 - [NIP-78](https://github.com/nostr-protocol/nips/blob/master/78.md): Application-specific data
+- [NIP-87](https://github.com/nostr-protocol/nips/blob/master/87.md): Ecash Mint Discoverability
 - [NIP-90](https://github.com/nostr-protocol/nips/blob/master/90.md): Data vending machines
 - NIP-SKL (this repo): Agent Skill Registry
 - NIP-EE: MLS encryption (private trajectory groups) (draft / external)
