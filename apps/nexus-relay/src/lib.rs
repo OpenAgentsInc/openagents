@@ -16,11 +16,12 @@ use std::sync::Arc;
 
 use axum::extract::State;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
+use axum::http::{HeaderMap, header::HOST};
 use axum::response::IntoResponse;
 use axum::routing::get;
 use axum::{Json, Router};
 use futures_util::{SinkExt, StreamExt};
-use nostr::{Event, nip01::classify_kind};
+use nostr::{Event, nip01::classify_kind, nip42::validate_auth_event};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::{RwLock, mpsc};
@@ -98,6 +99,9 @@ struct RelayStore {
 struct ConnectedClient {
     sender: mpsc::UnboundedSender<String>,
     subscriptions: HashMap<String, Vec<Value>>,
+    auth_challenge: String,
+    authenticated_pubkey: Option<String>,
+    relay_url: String,
 }
 
 #[derive(Debug, Clone)]
@@ -136,13 +140,19 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
     })
 }
 
-async fn relay_websocket(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
-    ws.on_upgrade(move |socket| handle_socket(state, socket))
+async fn relay_websocket(
+    ws: WebSocketUpgrade,
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> impl IntoResponse {
+    let relay_url = relay_url_from_headers(&headers);
+    ws.on_upgrade(move |socket| handle_socket(state, socket, relay_url))
 }
 
-async fn handle_socket(state: AppState, socket: WebSocket) {
+async fn handle_socket(state: AppState, socket: WebSocket, relay_url: String) {
     let (mut sink, mut stream) = socket.split();
     let (outgoing_tx, mut outgoing_rx) = mpsc::unbounded_channel::<String>();
+    let auth_challenge = generate_auth_challenge();
     let client_id = {
         let mut store = state.store.write().await;
         store.next_client_id = store.next_client_id.saturating_add(1);
@@ -152,6 +162,9 @@ async fn handle_socket(state: AppState, socket: WebSocket) {
             ConnectedClient {
                 sender: outgoing_tx,
                 subscriptions: HashMap::new(),
+                auth_challenge: auth_challenge.clone(),
+                authenticated_pubkey: None,
+                relay_url: relay_url.clone(),
             },
         );
         client_id
@@ -164,6 +177,7 @@ async fn handle_socket(state: AppState, socket: WebSocket) {
             }
         }
     });
+    let _ = send_auth_challenge(&state, client_id).await;
 
     while let Some(frame) = stream.next().await {
         let Ok(frame) = frame else {
@@ -201,7 +215,7 @@ async fn handle_text_frame(state: &AppState, client_id: u64, raw: &str) -> Resul
         "REQ" => handle_req_frame(state, client_id, array.as_slice()).await,
         "EVENT" => handle_event_frame(state, client_id, array.as_slice()).await,
         "CLOSE" => handle_close_frame(state, client_id, array.as_slice()).await,
-        "AUTH" => send_notice(state, client_id, "unsupported:auth_not_enabled".to_string()).await,
+        "AUTH" => handle_auth_frame(state, client_id, array.as_slice()).await,
         _ => send_notice(state, client_id, format!("unsupported:{kind}")).await,
     }
 }
@@ -217,6 +231,22 @@ async fn handle_req_frame(state: &AppState, client_id: u64, frame: &[Value]) -> 
         .ok_or_else(|| "invalid_req:missing_subscription_id".to_string())?
         .to_string();
     let filters = frame.iter().skip(2).cloned().collect::<Vec<_>>();
+    let access_message = {
+        let store = state.store.read().await;
+        let client = store
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| "client_not_found".to_string())?;
+        store
+            .managed_groups
+            .subscription_auth_message(filters.as_slice(), client.authenticated_pubkey.as_deref())
+    };
+    if let Some(message) = access_message {
+        if nostr::nip42::is_auth_required_error(message.as_str()) {
+            send_auth_challenge(state, client_id).await?;
+        }
+        return send_notice(state, client_id, message).await;
+    }
     {
         let mut store = state.store.write().await;
         let Some(client) = store.clients.get_mut(&client_id) else {
@@ -229,7 +259,16 @@ async fn handle_req_frame(state: &AppState, client_id: u64, frame: &[Value]) -> 
 
     let matching_events = {
         let store = state.store.read().await;
-        snapshot_events(store.events.as_slice(), filters.as_slice())
+        let client = store
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| "client_not_found".to_string())?;
+        snapshot_events(
+            store.events.as_slice(),
+            filters.as_slice(),
+            &store.managed_groups,
+            client.authenticated_pubkey.as_deref(),
+        )
     };
     for event in matching_events {
         let payload = json!(["EVENT", subscription_id, event]).to_string();
@@ -259,6 +298,27 @@ async fn handle_event_frame(
         if store.events.iter().any(|existing| existing.id == event.id) {
             (false, "duplicate".to_string(), Vec::new())
         } else {
+            let authenticated_pubkey = store
+                .clients
+                .get(&client_id)
+                .and_then(|client| client.authenticated_pubkey.clone());
+            if let Some(message) = store
+                .managed_groups
+                .publish_auth_message(&event, authenticated_pubkey.as_deref())
+            {
+                let needs_auth = nostr::nip42::is_auth_required_error(message.as_str());
+                drop(store);
+                if needs_auth {
+                    send_auth_challenge(state, client_id).await?;
+                }
+                send_text(
+                    state,
+                    client_id,
+                    json!(["OK", event.id, false, message]).to_string(),
+                )
+                .await?;
+                return Ok(());
+            }
             let accepted_events = match store
                 .managed_groups
                 .apply_event(&state.relay_identity, &event)
@@ -269,11 +329,21 @@ async fn handle_event_frame(
                 }
                 Ok(None) => vec![event.clone()],
                 Err(error) => {
+                    let message = if matches!(
+                        error.as_str(),
+                        "managed_group:membership_required" | "managed_group:admin_required"
+                    ) {
+                        nostr::nip42::create_restricted_message(
+                            error.trim_start_matches("managed_group:"),
+                        )
+                    } else {
+                        error
+                    };
                     drop(store);
                     send_text(
                         state,
                         client_id,
-                        json!(["OK", event.id, false, error]).to_string(),
+                        json!(["OK", event.id, false, message]).to_string(),
                     )
                     .await?;
                     return Ok(());
@@ -288,27 +358,26 @@ async fn handle_event_frame(
                 );
             }
 
-            let deliveries = store
-                .clients
-                .iter()
-                .flat_map(|(target_client_id, client)| {
-                    accepted_events.iter().flat_map(move |accepted_event| {
-                        client
-                            .subscriptions
-                            .iter()
-                            .filter(move |(_, filters)| {
-                                event_matches_filters(accepted_event, filters.as_slice())
-                            })
-                            .map(move |(subscription_id, _)| {
-                                (
-                                    *target_client_id,
-                                    subscription_id.clone(),
-                                    accepted_event.clone(),
-                                )
-                            })
-                    })
-                })
-                .collect::<Vec<_>>();
+            let mut deliveries = Vec::new();
+            for (target_client_id, client) in &store.clients {
+                for accepted_event in &accepted_events {
+                    if !store
+                        .managed_groups
+                        .can_read_event(accepted_event, client.authenticated_pubkey.as_deref())
+                    {
+                        continue;
+                    }
+                    for (subscription_id, filters) in &client.subscriptions {
+                        if event_matches_filters(accepted_event, filters.as_slice()) {
+                            deliveries.push((
+                                *target_client_id,
+                                subscription_id.clone(),
+                                accepted_event.clone(),
+                            ));
+                        }
+                    }
+                }
+            }
             (true, "accepted".to_string(), deliveries)
         }
     };
@@ -324,6 +393,55 @@ async fn handle_event_frame(
         json!(["OK", event.id, accepted, message]).to_string(),
     )
     .await
+}
+
+async fn handle_auth_frame(
+    state: &AppState,
+    client_id: u64,
+    frame: &[Value],
+) -> Result<(), String> {
+    if frame.len() < 2 {
+        return Err("invalid_auth:missing_event".to_string());
+    }
+    let auth_event: Event = serde_json::from_value(frame[1].clone())
+        .map_err(|error| format!("invalid_auth:{error}"))?;
+
+    let (challenge, relay_url) = {
+        let store = state.store.read().await;
+        let client = store
+            .clients
+            .get(&client_id)
+            .ok_or_else(|| "client_not_found".to_string())?;
+        (client.auth_challenge.clone(), client.relay_url.clone())
+    };
+    let is_valid = nostr::verify_event(&auth_event)
+        .map_err(|error| format!("invalid_auth_signature:{error}"))?;
+    if !is_valid {
+        return send_notice(
+            state,
+            client_id,
+            nostr::nip42::create_restricted_message("invalid auth signature"),
+        )
+        .await;
+    }
+    if let Err(error) =
+        validate_auth_event(&auth_event, relay_url.as_str(), challenge.as_str(), None)
+    {
+        return send_notice(
+            state,
+            client_id,
+            nostr::nip42::create_restricted_message(&error.to_string()),
+        )
+        .await;
+    }
+
+    let mut store = state.store.write().await;
+    let client = store
+        .clients
+        .get_mut(&client_id)
+        .ok_or_else(|| "client_not_found".to_string())?;
+    client.authenticated_pubkey = Some(auth_event.pubkey);
+    Ok(())
 }
 
 async fn handle_close_frame(
@@ -366,7 +484,25 @@ async fn send_notice(state: &AppState, client_id: u64, message: String) -> Resul
     send_text(state, client_id, json!(["NOTICE", message]).to_string()).await
 }
 
-fn snapshot_events(events: &[Event], filters: &[Value]) -> Vec<Event> {
+async fn send_auth_challenge(state: &AppState, client_id: u64) -> Result<(), String> {
+    let challenge = {
+        let store = state.store.read().await;
+        store
+            .clients
+            .get(&client_id)
+            .map(|client| client.auth_challenge.clone())
+    }
+    .ok_or_else(|| "client_not_found".to_string())?;
+
+    send_text(state, client_id, json!(["AUTH", challenge]).to_string()).await
+}
+
+fn snapshot_events(
+    events: &[Event],
+    filters: &[Value],
+    managed_groups: &ManagedGroupsState,
+    authenticated_pubkey: Option<&str>,
+) -> Vec<Event> {
     let mut delivered_ids = HashSet::<String>::new();
     let mut matched = Vec::<Event>::new();
 
@@ -374,7 +510,10 @@ fn snapshot_events(events: &[Event], filters: &[Value]) -> Vec<Event> {
         let limit = filter_limit(filter).unwrap_or(events.len());
         let filter_matches = events
             .iter()
-            .filter(|event| event_matches_filter(event, filter))
+            .filter(|event| {
+                event_matches_filter(event, filter)
+                    && managed_groups.can_read_event(event, authenticated_pubkey)
+            })
             .cloned()
             .collect::<Vec<_>>();
         let start = filter_matches.len().saturating_sub(limit);
@@ -517,6 +656,30 @@ fn tag_value<'a>(tags: &'a [Vec<String>], name: &str) -> Option<&'a str> {
         .map(String::as_str)
 }
 
+fn relay_url_from_headers(headers: &HeaderMap) -> String {
+    let host = headers
+        .get(HOST)
+        .and_then(|value| value.to_str().ok())
+        .unwrap_or("127.0.0.1");
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|value| value.to_str().ok())
+        .map(|value| {
+            if value.eq_ignore_ascii_case("https") {
+                "wss"
+            } else {
+                "ws"
+            }
+        })
+        .unwrap_or("ws");
+
+    format!("{scheme}://{host}/")
+}
+
+fn generate_auth_challenge() -> String {
+    hex::encode(nostr::generate_secret_key())
+}
+
 fn load_relay_identity() -> Result<RelayIdentity, String> {
     let identity = nostr::load_or_create_identity()
         .map_err(|error| format!("failed to load relay identity: {error}"))?;
@@ -540,6 +703,7 @@ mod tests {
     use nostr::{
         Event, EventTemplate, ModerationAction, ModerationEvent, finalize_event, get_public_key_hex,
     };
+    use nostr_client::{RelayAuthIdentity, RelayConfig, RelayConnection, RelayMessage};
     use serde_json::json;
     use tokio::time::{Duration, timeout};
     use tokio_tungstenite::{connect_async, tungstenite::Message as WsMessage};
@@ -575,6 +739,28 @@ mod tests {
             },
             secret_key,
         )
+    }
+
+    async fn drain_initial_auth(
+        socket: &mut tokio_tungstenite::WebSocketStream<
+            tokio_tungstenite::MaybeTlsStream<tokio::net::TcpStream>,
+        >,
+    ) -> Result<()> {
+        let frame = timeout(Duration::from_secs(2), socket.next()).await;
+        let frame = frame
+            .ok()
+            .and_then(|value| value)
+            .ok_or_else(|| anyhow::anyhow!("expected initial auth challenge"))??;
+        let text = match frame {
+            WsMessage::Text(text) => text.to_string(),
+            other => {
+                return Err(anyhow::anyhow!(
+                    "unexpected auth challenge frame: {other:?}"
+                ));
+            }
+        };
+        assert!(text.contains("\"AUTH\""));
+        Ok(())
     }
 
     fn sample_event() -> Event {
@@ -619,6 +805,7 @@ mod tests {
 
         let relay_url = format!("ws://{addr}/");
         let (mut publisher, _) = connect_async(relay_url.as_str()).await?;
+        drain_initial_auth(&mut publisher).await?;
         let event = sample_event();
         publisher
             .send(WsMessage::Text(json!(["EVENT", event]).to_string().into()))
@@ -635,6 +822,7 @@ mod tests {
         assert!(ok_text.contains("\"OK\""));
 
         let (mut subscriber, _) = connect_async(relay_url.as_str()).await?;
+        drain_initial_auth(&mut subscriber).await?;
         subscriber
             .send(WsMessage::Text(
                 json!(["REQ", "sub-1", {"kinds":[5050], "limit": 10}])
@@ -724,6 +912,8 @@ mod tests {
         let member_secret = [2u8; 32];
         let mut admin = connect_async(relay_url.as_str()).await?.0;
         let mut observer = connect_async(relay_url.as_str()).await?.0;
+        drain_initial_auth(&mut admin).await?;
+        drain_initial_auth(&mut observer).await?;
 
         observer
             .send(WsMessage::Text(
@@ -813,6 +1003,149 @@ mod tests {
         };
         assert!(blocked_text.contains("membership_required"));
 
+        server.abort();
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn relay_requires_auth_for_restricted_group_reads_and_writes() -> Result<()> {
+        let config = relay_config();
+        let listener = tokio::net::TcpListener::bind(config.listen_addr).await?;
+        let addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, build_router(config))
+                .await
+                .map_err(anyhow::Error::from)
+        });
+
+        let relay_url = format!("ws://{addr}/");
+        let admin_secret = [9u8; 32];
+        let admin_pubkey = get_public_key_hex(&admin_secret)?;
+
+        let mut admin_socket = connect_async(relay_url.as_str()).await?.0;
+        drain_initial_auth(&mut admin_socket).await?;
+
+        let create_group = sign_moderation(
+            ModerationEvent::new("oa-main", ModerationAction::CreateGroup, 10)?,
+            &admin_secret,
+            admin_pubkey.as_str(),
+        );
+        admin_socket
+            .send(WsMessage::Text(
+                json!(["EVENT", create_group]).to_string().into(),
+            ))
+            .await?;
+        let _ = timeout(Duration::from_secs(2), admin_socket.next()).await;
+
+        let restrict_group = sign_moderation(
+            ModerationEvent::new(
+                "oa-main",
+                ModerationAction::EditMetadata {
+                    changes: vec![vec!["restricted".to_string()]],
+                },
+                11,
+            )?,
+            &admin_secret,
+            admin_pubkey.as_str(),
+        );
+        admin_socket
+            .send(WsMessage::Text(
+                json!(["EVENT", restrict_group]).to_string().into(),
+            ))
+            .await?;
+        let _ = timeout(Duration::from_secs(2), admin_socket.next()).await;
+
+        let mut raw_client = connect_async(relay_url.as_str()).await?.0;
+        drain_initial_auth(&mut raw_client).await?;
+        raw_client
+            .send(WsMessage::Text(
+                json!(["REQ", "restricted-meta", {"kinds":[39000], "#d":["oa-main"]}])
+                    .to_string()
+                    .into(),
+            ))
+            .await?;
+        let mut restricted_notice = String::new();
+        for _ in 0..2 {
+            let frame = timeout(Duration::from_secs(2), raw_client.next()).await;
+            let frame = frame
+                .ok()
+                .and_then(|value| value)
+                .ok_or_else(|| anyhow::anyhow!("expected auth-required flow"))??;
+            let text = match frame {
+                WsMessage::Text(text) => text.to_string(),
+                other => return Err(anyhow::anyhow!("unexpected auth-required frame: {other:?}")),
+            };
+            if text.contains(nostr::nip42::AUTH_REQUIRED_PREFIX) {
+                restricted_notice = text;
+                break;
+            }
+        }
+        assert!(restricted_notice.contains(nostr::nip42::AUTH_REQUIRED_PREFIX));
+
+        let relay_connection = RelayConnection::with_config(
+            relay_url.as_str(),
+            RelayConfig {
+                nip42_identity: Some(RelayAuthIdentity {
+                    private_key_hex: hex::encode(admin_secret),
+                }),
+                ..RelayConfig::default()
+            },
+        )?;
+        relay_connection.connect().await?;
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        relay_connection
+            .subscribe_filters(
+                "restricted-meta-auth",
+                vec![json!({"kinds":[39000], "#d":["oa-main"]})],
+            )
+            .await?;
+        let mut saw_group_metadata = false;
+        for _ in 0..6 {
+            let Some(message) = timeout(Duration::from_secs(2), relay_connection.recv()).await??
+            else {
+                continue;
+            };
+            if let RelayMessage::Event(_, event) = message
+                && event.kind == 39000
+            {
+                saw_group_metadata = true;
+                break;
+            }
+        }
+        assert!(saw_group_metadata);
+
+        let channel_create = sign_template(
+            EventTemplate {
+                created_at: 12,
+                kind: 40,
+                tags: vec![
+                    vec!["h".to_string(), "oa-main".to_string()],
+                    vec!["oa-room-mode".to_string(), "managed-channel".to_string()],
+                ],
+                content: "{\"name\":\"ops\",\"about\":\"\",\"picture\":\"\"}".to_string(),
+            },
+            &admin_secret,
+        );
+        let publish = relay_connection.publish(&channel_create).await?;
+        assert!(publish.accepted);
+        let mut saw_publish_ok = false;
+        for _ in 0..4 {
+            let Some(message) = timeout(Duration::from_secs(2), relay_connection.recv()).await??
+            else {
+                continue;
+            };
+            if let RelayMessage::Ok(event_id, accepted, message_text) = message
+                && event_id == channel_create.id
+            {
+                assert!(accepted, "{message_text}");
+                saw_publish_ok = true;
+                break;
+            }
+        }
+        assert!(saw_publish_ok);
+
+        relay_connection.disconnect().await?;
         server.abort();
         Ok(())
     }
