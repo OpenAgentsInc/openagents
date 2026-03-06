@@ -43,8 +43,10 @@ use crate::{
 
 #[path = "app_state_domains.rs"]
 mod app_state_domains;
+mod chat_projection;
 mod credentials_state;
 pub use app_state_domains::*;
+pub use chat_projection::*;
 pub use credentials_state::CredentialsState;
 
 pub const WINDOW_TITLE: &str = "Autopilot";
@@ -503,6 +505,7 @@ pub struct AutopilotChatState {
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub active_thread_id: Option<String>,
+    pub managed_chat_projection: ManagedChatProjectionState,
     pub startup_new_thread_bootstrap_pending: bool,
     pub startup_new_thread_bootstrap_sent: bool,
     pub messages: Vec<AutopilotMessage>,
@@ -558,6 +561,7 @@ impl Default for AutopilotChatState {
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
             active_thread_id: None,
+            managed_chat_projection: ManagedChatProjectionState::default(),
             startup_new_thread_bootstrap_pending: true,
             startup_new_thread_bootstrap_sent: false,
             messages: Vec::new(),
