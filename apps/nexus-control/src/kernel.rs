@@ -3,6 +3,10 @@ use openagents_kernel_core::authority::{
     FinalizeVerdictRequest, FinalizeVerdictResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::ids::{sha256_prefixed_bytes, sha256_prefixed_text};
+use openagents_kernel_core::labor::{
+    ClaimHook, Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, Verdict,
+    WorkUnit, WorkUnitStatus,
+};
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, Receipt, ReceiptBuilder, ReceiptHints,
     TraceContext,
@@ -166,12 +170,32 @@ impl ReceiptStore for InMemoryReceiptStore {
 #[derive(Debug, Default)]
 pub struct KernelState {
     receipt_store: InMemoryReceiptStore,
-    work_units: HashMap<String, Value>,
-    contracts: HashMap<String, Value>,
-    submissions: HashMap<String, Value>,
-    verdicts: HashMap<String, Value>,
+    work_units: HashMap<String, WorkUnitRecord>,
+    contracts: HashMap<String, ContractRecord>,
+    submissions: HashMap<String, SubmissionRecord>,
+    verdicts: HashMap<String, Verdict>,
+    settlements: HashMap<String, SettlementLink>,
+    claim_hooks: HashMap<String, ClaimHook>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
+}
+
+#[derive(Debug, Clone)]
+struct WorkUnitRecord {
+    work_unit: WorkUnit,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct ContractRecord {
+    contract: Contract,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct SubmissionRecord {
+    submission: Submission,
+    receipt_id: String,
 }
 
 struct KernelReceiptSpec {
@@ -199,26 +223,30 @@ impl KernelState {
         context: &KernelMutationContext,
         mut req: CreateWorkUnitRequest,
     ) -> Result<MutationResult<CreateWorkUnitResponse>, String> {
-        let work_unit_id = normalize_required(&req.work_unit_id, "work_unit_id_missing")?;
-        req.work_unit_id.clone_from(&work_unit_id);
-        req.created_at_ms = normalize_created_at_ms(req.created_at_ms, context.now_unix_ms);
+        let work_unit_id =
+            normalize_required(req.work_unit.work_unit_id.as_str(), "work_unit_id_missing")?;
+        req.work_unit.work_unit_id.clone_from(&work_unit_id);
+        req.work_unit.created_at_ms =
+            normalize_created_at_ms(req.work_unit.created_at_ms, context.now_unix_ms);
         req.trace = normalized_trace(req.trace, context, Some(work_unit_id.as_str()), None);
         req.policy = normalized_policy(req.policy, context);
 
         let request_hash = request_hash(&req)?;
+        let work_unit_payload = serde_json::to_value(&req.work_unit)
+            .map_err(|error| format!("kernel_work_unit_encode_failed: {error}"))?;
         let receipt = build_receipt(
             context,
             &req.idempotency_key,
             KernelReceiptSpec {
                 action: "kernel.work_unit.create".to_string(),
-                created_at_ms: req.created_at_ms,
+                created_at_ms: req.work_unit.created_at_ms,
                 trace: req.trace.clone(),
                 policy: req.policy.clone(),
-                inputs_payload: req.payload.clone(),
+                inputs_payload: work_unit_payload,
                 outputs_payload: json!({
-                "work_unit_id": work_unit_id,
-                "status": "created",
-            }),
+                    "work_unit_id": work_unit_id.clone(),
+                    "status": req.work_unit.status,
+                }),
                 evidence: req.evidence.clone(),
                 hints: req.hints.clone(),
             },
@@ -231,7 +259,7 @@ impl KernelState {
             receipt,
         );
         let response = CreateWorkUnitResponse {
-            work_unit_id: work_unit_id.clone(),
+            work_unit: req.work_unit.clone(),
             receipt: match put_result {
                 Ok(ref result) => result.receipt.clone(),
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
@@ -247,9 +275,15 @@ impl KernelState {
             });
         }
 
-        self.work_units.insert(work_unit_id, req.payload);
+        self.work_units.insert(
+            work_unit_id,
+            WorkUnitRecord {
+                work_unit: req.work_unit.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
-        let snapshot_event = self.refresh_snapshot_for(req.created_at_ms)?;
+        let snapshot_event = self.refresh_snapshot_for(req.work_unit.created_at_ms)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -262,32 +296,50 @@ impl KernelState {
         context: &KernelMutationContext,
         mut req: CreateContractRequest,
     ) -> Result<MutationResult<CreateContractResponse>, String> {
-        let contract_id = normalize_required(&req.contract_id, "contract_id_missing")?;
-        req.contract_id.clone_from(&contract_id);
-        req.created_at_ms = normalize_created_at_ms(req.created_at_ms, context.now_unix_ms);
-        let work_unit_id = req.trace.work_unit_id.clone();
+        let contract_id =
+            normalize_required(req.contract.contract_id.as_str(), "contract_id_missing")?;
+        let work_unit_id =
+            normalize_required(req.contract.work_unit_id.as_str(), "work_unit_id_missing")?;
+        let Some(work_unit_record) = self.work_units.get(work_unit_id.as_str()).cloned() else {
+            return Err("kernel_work_unit_not_found".to_string());
+        };
+        req.contract.contract_id.clone_from(&contract_id);
+        req.contract.work_unit_id.clone_from(&work_unit_id);
+        req.contract.created_at_ms =
+            normalize_created_at_ms(req.contract.created_at_ms, context.now_unix_ms);
         req.trace = normalized_trace(
             req.trace,
             context,
-            work_unit_id.as_deref(),
+            Some(work_unit_id.as_str()),
             Some(contract_id.as_str()),
         );
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(work_unit_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let contract_payload = serde_json::to_value(&req.contract)
+            .map_err(|error| format!("kernel_contract_encode_failed: {error}"))?;
         let receipt = build_receipt(
             context,
             &req.idempotency_key,
             KernelReceiptSpec {
                 action: "kernel.contract.create".to_string(),
-                created_at_ms: req.created_at_ms,
+                created_at_ms: req.contract.created_at_ms,
                 trace: req.trace.clone(),
                 policy: req.policy.clone(),
-                inputs_payload: req.payload.clone(),
+                inputs_payload: contract_payload,
                 outputs_payload: json!({
-                "contract_id": contract_id,
-                "status": "created",
-            }),
-                evidence: req.evidence.clone(),
+                    "contract_id": contract_id.clone(),
+                    "work_unit_id": work_unit_id.clone(),
+                    "status": req.contract.status,
+                    "work_unit_receipt_id": work_unit_record.receipt_id.clone(),
+                }),
+                evidence,
                 hints: req.hints.clone(),
             },
         )?;
@@ -299,7 +351,7 @@ impl KernelState {
             receipt,
         );
         let response = CreateContractResponse {
-            contract_id: contract_id.clone(),
+            contract: req.contract.clone(),
             receipt: match put_result {
                 Ok(ref result) => result.receipt.clone(),
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
@@ -315,9 +367,18 @@ impl KernelState {
             });
         }
 
-        self.contracts.insert(contract_id, req.payload);
+        self.contracts.insert(
+            contract_id,
+            ContractRecord {
+                contract: req.contract.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        if let Some(work_unit_record) = self.work_units.get_mut(work_unit_id.as_str()) {
+            work_unit_record.work_unit.status = WorkUnitStatus::Contracted;
+        }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
-        let snapshot_event = self.refresh_snapshot_for(req.created_at_ms)?;
+        let snapshot_event = self.refresh_snapshot_for(req.contract.created_at_ms)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -330,35 +391,64 @@ impl KernelState {
         context: &KernelMutationContext,
         mut req: SubmitOutputRequest,
     ) -> Result<MutationResult<SubmitOutputResponse>, String> {
-        let contract_id = normalize_required(&req.contract_id, "contract_id_missing")?;
-        if !self.contracts.contains_key(contract_id.as_str()) {
+        let contract_id =
+            normalize_required(req.submission.contract_id.as_str(), "contract_id_missing")?;
+        let Some(contract_record) = self.contracts.get(contract_id.as_str()).cloned() else {
             return Err("kernel_contract_not_found".to_string());
-        }
-        req.contract_id.clone_from(&contract_id);
-        req.created_at_ms = normalize_created_at_ms(req.created_at_ms, context.now_unix_ms);
-        let work_unit_id = req.trace.work_unit_id.clone();
+        };
+        let work_unit_id =
+            normalize_required(contract_record.contract.work_unit_id.as_str(), "work_unit_id_missing")?;
+        let submission_id =
+            normalize_required(req.submission.submission_id.as_str(), "submission_id_missing")?;
+        let Some(work_unit_record) = self.work_units.get(work_unit_id.as_str()).cloned() else {
+            return Err("kernel_work_unit_not_found".to_string());
+        };
+        req.submission.contract_id.clone_from(&contract_id);
+        req.submission.work_unit_id.clone_from(&work_unit_id);
+        req.submission.submission_id.clone_from(&submission_id);
+        req.submission.created_at_ms =
+            normalize_created_at_ms(req.submission.created_at_ms, context.now_unix_ms);
         req.trace = normalized_trace(
             req.trace,
             context,
-            work_unit_id.as_deref(),
+            Some(work_unit_id.as_str()),
             Some(contract_id.as_str()),
         );
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(work_unit_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(contract_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let submission_payload = serde_json::to_value(&req.submission)
+            .map_err(|error| format!("kernel_submission_encode_failed: {error}"))?;
         let receipt = build_receipt(
             context,
             &req.idempotency_key,
             KernelReceiptSpec {
                 action: "kernel.output.submit".to_string(),
-                created_at_ms: req.created_at_ms,
+                created_at_ms: req.submission.created_at_ms,
                 trace: req.trace.clone(),
                 policy: req.policy.clone(),
-                inputs_payload: req.payload.clone(),
+                inputs_payload: submission_payload,
                 outputs_payload: json!({
-                "contract_id": contract_id,
-                "status": "submitted",
-            }),
-                evidence: req.evidence.clone(),
+                    "contract_id": contract_id.clone(),
+                    "work_unit_id": work_unit_id.clone(),
+                    "submission_id": submission_id.clone(),
+                    "status": req.submission.status,
+                    "contract_receipt_id": contract_record.receipt_id.clone(),
+                    "work_unit_receipt_id": work_unit_record.receipt_id.clone(),
+                }),
+                evidence,
                 hints: req.hints.clone(),
             },
         )?;
@@ -370,7 +460,7 @@ impl KernelState {
             receipt,
         );
         let response = SubmitOutputResponse {
-            contract_id: contract_id.clone(),
+            submission: req.submission.clone(),
             receipt: match put_result {
                 Ok(ref result) => result.receipt.clone(),
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
@@ -386,9 +476,21 @@ impl KernelState {
             });
         }
 
-        self.submissions.insert(contract_id, req.payload);
+        self.submissions.insert(
+            submission_id,
+            SubmissionRecord {
+                submission: req.submission.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        if let Some(contract_record) = self.contracts.get_mut(contract_id.as_str()) {
+            contract_record.contract.status = ContractStatus::Submitted;
+        }
+        if let Some(work_unit_record) = self.work_units.get_mut(work_unit_id.as_str()) {
+            work_unit_record.work_unit.status = WorkUnitStatus::Submitted;
+        }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
-        let snapshot_event = self.refresh_snapshot_for(req.created_at_ms)?;
+        let snapshot_event = self.refresh_snapshot_for(req.submission.created_at_ms)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -401,35 +503,101 @@ impl KernelState {
         context: &KernelMutationContext,
         mut req: FinalizeVerdictRequest,
     ) -> Result<MutationResult<FinalizeVerdictResponse>, String> {
-        let contract_id = normalize_required(&req.contract_id, "contract_id_missing")?;
-        if !self.contracts.contains_key(contract_id.as_str()) {
+        let contract_id =
+            normalize_required(req.verdict.contract_id.as_str(), "contract_id_missing")?;
+        let Some(contract_record) = self.contracts.get(contract_id.as_str()).cloned() else {
             return Err("kernel_contract_not_found".to_string());
-        }
-        req.contract_id.clone_from(&contract_id);
-        req.created_at_ms = normalize_created_at_ms(req.created_at_ms, context.now_unix_ms);
-        let work_unit_id = req.trace.work_unit_id.clone();
+        };
+        let work_unit_id =
+            normalize_required(contract_record.contract.work_unit_id.as_str(), "work_unit_id_missing")?;
+        let verdict_id =
+            normalize_required(req.verdict.verdict_id.as_str(), "verdict_id_missing")?;
+        let Some(work_unit_record) = self.work_units.get(work_unit_id.as_str()).cloned() else {
+            return Err("kernel_work_unit_not_found".to_string());
+        };
+        let latest_submission = self
+            .latest_submission_for_contract(contract_id.as_str())
+            .cloned();
+        req.verdict.contract_id.clone_from(&contract_id);
+        req.verdict.work_unit_id.clone_from(&work_unit_id);
+        req.verdict.verdict_id.clone_from(&verdict_id);
+        req.verdict.created_at_ms =
+            normalize_created_at_ms(req.verdict.created_at_ms, context.now_unix_ms);
         req.trace = normalized_trace(
             req.trace,
             context,
-            work_unit_id.as_deref(),
+            Some(work_unit_id.as_str()),
             Some(contract_id.as_str()),
         );
         req.policy = normalized_policy(req.policy, context);
+        let settlement_link = req.settlement_link.take().map(|mut link| {
+            link.contract_id.clone_from(&contract_id);
+            link.work_unit_id.clone_from(&work_unit_id);
+            link.verdict_id.clone_from(&verdict_id);
+            if link.created_at_ms <= 0 {
+                link.created_at_ms = req.verdict.created_at_ms;
+            }
+            link
+        });
+        let claim_hook = req.claim_hook.take().map(|mut hook| {
+            hook.contract_id.clone_from(&contract_id);
+            hook.work_unit_id.clone_from(&work_unit_id);
+            if hook.created_at_ms <= 0 {
+                hook.created_at_ms = req.verdict.created_at_ms;
+            }
+            hook
+        });
+        req.settlement_link = settlement_link.clone();
+        req.claim_hook = claim_hook.clone();
         let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(work_unit_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(contract_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some(submission_record) = latest_submission.as_ref() {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(submission_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let verdict_payload = json!({
+            "verdict": req.verdict.clone(),
+            "settlement_link": settlement_link.clone(),
+            "claim_hook": claim_hook.clone(),
+        });
         let receipt = build_receipt(
             context,
             &req.idempotency_key,
             KernelReceiptSpec {
                 action: "kernel.verdict.finalize".to_string(),
-                created_at_ms: req.created_at_ms,
+                created_at_ms: req.verdict.created_at_ms,
                 trace: req.trace.clone(),
                 policy: req.policy.clone(),
-                inputs_payload: req.verdict.clone(),
+                inputs_payload: verdict_payload,
                 outputs_payload: json!({
-                "contract_id": contract_id,
-                "status": "finalized",
-            }),
-                evidence: req.evidence.clone(),
+                    "contract_id": contract_id.clone(),
+                    "work_unit_id": work_unit_id.clone(),
+                    "verdict_id": verdict_id.clone(),
+                    "submission_id": latest_submission.as_ref().map(|record| record.submission.submission_id.clone()),
+                    "status": req.verdict.outcome,
+                    "settlement_status": req.verdict.settlement_status,
+                    "settlement_link_id": settlement_link.as_ref().map(|link| link.settlement_id.clone()),
+                    "claim_hook_id": claim_hook.as_ref().map(|hook| hook.claim_id.clone()),
+                    "contract_receipt_id": contract_record.receipt_id.clone(),
+                    "work_unit_receipt_id": work_unit_record.receipt_id.clone(),
+                }),
+                evidence,
                 hints: req.hints.clone(),
             },
         )?;
@@ -441,7 +609,9 @@ impl KernelState {
             receipt,
         );
         let response = FinalizeVerdictResponse {
-            contract_id: contract_id.clone(),
+            verdict: req.verdict.clone(),
+            settlement_link: settlement_link.clone(),
+            claim_hook: claim_hook.clone(),
             receipt: match put_result {
                 Ok(ref result) => result.receipt.clone(),
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
@@ -457,9 +627,25 @@ impl KernelState {
             });
         }
 
-        self.verdicts.insert(contract_id, req.verdict);
+        self.verdicts.insert(verdict_id, req.verdict.clone());
+        if let Some(settlement_link) = settlement_link.as_ref() {
+            self.settlements
+                .insert(settlement_link.settlement_id.clone(), settlement_link.clone());
+        }
+        if let Some(claim_hook) = claim_hook.as_ref() {
+            self.claim_hooks
+                .insert(claim_hook.claim_id.clone(), claim_hook.clone());
+        }
+        let contract_status = contract_status_for_verdict(req.verdict.settlement_status);
+        let work_unit_status = work_unit_status_for_verdict(req.verdict.settlement_status);
+        if let Some(contract_record) = self.contracts.get_mut(contract_id.as_str()) {
+            contract_record.contract.status = contract_status;
+        }
+        if let Some(work_unit_record) = self.work_units.get_mut(work_unit_id.as_str()) {
+            work_unit_record.work_unit.status = work_unit_status;
+        }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
-        let snapshot_event = self.refresh_snapshot_for(req.created_at_ms)?;
+        let snapshot_event = self.refresh_snapshot_for(req.verdict.created_at_ms)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -495,6 +681,18 @@ impl KernelState {
 
     fn next_receipt_event(&mut self, seq: u64, receipt: Receipt) -> ReceiptProjectionEvent {
         ReceiptProjectionEvent { seq, receipt }
+    }
+
+    fn latest_submission_for_contract(&self, contract_id: &str) -> Option<&SubmissionRecord> {
+        self.submissions
+            .values()
+            .filter(|record| record.submission.contract_id == contract_id)
+            .max_by(|lhs, rhs| {
+                lhs.submission
+                    .created_at_ms
+                    .cmp(&rhs.submission.created_at_ms)
+                    .then_with(|| lhs.submission.submission_id.cmp(&rhs.submission.submission_id))
+            })
     }
 }
 
@@ -543,6 +741,33 @@ fn normalized_policy(mut policy: PolicyContext, context: &KernelMutationContext)
         policy.approved_by.clone_from(&context.caller_id);
     }
     policy
+}
+
+fn contract_status_for_verdict(settlement_status: SettlementStatus) -> ContractStatus {
+    match settlement_status {
+        SettlementStatus::Pending => ContractStatus::Finalized,
+        SettlementStatus::Settled => ContractStatus::Settled,
+        SettlementStatus::Disputed => ContractStatus::Disputed,
+    }
+}
+
+fn work_unit_status_for_verdict(settlement_status: SettlementStatus) -> WorkUnitStatus {
+    match settlement_status {
+        SettlementStatus::Pending => WorkUnitStatus::Finalized,
+        SettlementStatus::Settled => WorkUnitStatus::Settled,
+        SettlementStatus::Disputed => WorkUnitStatus::Disputed,
+    }
+}
+
+fn push_receipt_evidence(evidence: &mut Vec<EvidenceRef>, receipt: Option<&Receipt>) {
+    let Some(receipt) = receipt else {
+        return;
+    };
+    evidence.push(EvidenceRef::new(
+        "receipt_ref",
+        format!("oa://kernel/receipts/{}", receipt.receipt_id),
+        receipt.canonical_hash.clone(),
+    ));
 }
 
 fn request_hash<T: Serialize>(value: &T) -> Result<String, String> {

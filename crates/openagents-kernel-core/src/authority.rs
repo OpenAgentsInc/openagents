@@ -1,3 +1,7 @@
+use crate::labor::{
+    ClaimHook, Contract, ContractStatus, SettlementLink, SettlementStatus, Submission, Verdict,
+    WorkUnit, WorkUnitStatus,
+};
 use crate::receipts::{
     EvidenceRef, PolicyContext, Receipt, ReceiptBuilder, ReceiptHints, TraceContext,
 };
@@ -23,13 +27,10 @@ pub trait KernelAuthority: Send + Sync {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateWorkUnitRequest {
-    pub work_unit_id: String,
-    pub created_at_ms: i64,
     pub idempotency_key: String,
     pub trace: TraceContext,
     pub policy: PolicyContext,
-    #[serde(default)]
-    pub payload: Value,
+    pub work_unit: WorkUnit,
     #[serde(default)]
     pub evidence: Vec<EvidenceRef>,
     #[serde(default)]
@@ -38,19 +39,16 @@ pub struct CreateWorkUnitRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateWorkUnitResponse {
-    pub work_unit_id: String,
+    pub work_unit: WorkUnit,
     pub receipt: Receipt,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateContractRequest {
-    pub contract_id: String,
-    pub created_at_ms: i64,
     pub idempotency_key: String,
     pub trace: TraceContext,
     pub policy: PolicyContext,
-    #[serde(default)]
-    pub payload: Value,
+    pub contract: Contract,
     #[serde(default)]
     pub evidence: Vec<EvidenceRef>,
     #[serde(default)]
@@ -59,19 +57,16 @@ pub struct CreateContractRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateContractResponse {
-    pub contract_id: String,
+    pub contract: Contract,
     pub receipt: Receipt,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubmitOutputRequest {
-    pub contract_id: String,
-    pub created_at_ms: i64,
     pub idempotency_key: String,
     pub trace: TraceContext,
     pub policy: PolicyContext,
-    #[serde(default)]
-    pub payload: Value,
+    pub submission: Submission,
     #[serde(default)]
     pub evidence: Vec<EvidenceRef>,
     #[serde(default)]
@@ -80,19 +75,20 @@ pub struct SubmitOutputRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct SubmitOutputResponse {
-    pub contract_id: String,
+    pub submission: Submission,
     pub receipt: Receipt,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeVerdictRequest {
-    pub contract_id: String,
-    pub created_at_ms: i64,
     pub idempotency_key: String,
     pub trace: TraceContext,
     pub policy: PolicyContext,
+    pub verdict: Verdict,
     #[serde(default)]
-    pub verdict: Value,
+    pub settlement_link: Option<SettlementLink>,
+    #[serde(default)]
+    pub claim_hook: Option<ClaimHook>,
     #[serde(default)]
     pub evidence: Vec<EvidenceRef>,
     #[serde(default)]
@@ -101,7 +97,11 @@ pub struct FinalizeVerdictRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FinalizeVerdictResponse {
-    pub contract_id: String,
+    pub verdict: Verdict,
+    #[serde(default)]
+    pub settlement_link: Option<SettlementLink>,
+    #[serde(default)]
+    pub claim_hook: Option<ClaimHook>,
     pub receipt: Receipt,
 }
 
@@ -182,10 +182,12 @@ impl HttpKernelAuthorityClient {
 
 #[derive(Default)]
 struct LocalKernelAuthorityState {
-    work_units: BTreeMap<String, Value>,
-    contracts: BTreeMap<String, Value>,
-    submissions: BTreeMap<String, Value>,
-    verdicts: BTreeMap<String, Value>,
+    work_units: BTreeMap<String, WorkUnit>,
+    contracts: BTreeMap<String, Contract>,
+    submissions: BTreeMap<String, Submission>,
+    verdicts: BTreeMap<String, Verdict>,
+    settlements: BTreeMap<String, SettlementLink>,
+    claim_hooks: BTreeMap<String, ClaimHook>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     receipts: Vec<Receipt>,
 }
@@ -264,18 +266,23 @@ impl LocalKernelAuthority {
 
 impl KernelAuthority for LocalKernelAuthority {
     async fn create_work_unit(&self, req: CreateWorkUnitRequest) -> Result<CreateWorkUnitResponse> {
-        let trace = Self::normalize_work_trace(req.trace, req.work_unit_id.as_str());
+        let trace =
+            Self::normalize_work_trace(req.trace, req.work_unit.work_unit_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
-            receipt_id: format!("receipt.kernel.work_unit:{}", req.work_unit_id),
-            receipt_type: "kernel.work_unit.created.v1".to_string(),
-            created_at_ms: req.created_at_ms,
+            receipt_id: format!(
+                "receipt.kernel.work_unit:{}",
+                req.work_unit.work_unit_id
+            ),
+            receipt_type: "kernel.work_unit.create.v1".to_string(),
+            created_at_ms: req.work_unit.created_at_ms,
             idempotency_key: req.idempotency_key,
             trace: trace.clone(),
             policy: req.policy,
-            inputs_payload: req.payload.clone(),
+            inputs_payload: serde_json::to_value(&req.work_unit)
+                .map_err(|error| anyhow!("failed to encode work unit: {error}"))?,
             outputs_payload: json!({
-                "work_unit_id": req.work_unit_id,
-                "status": "created",
+                "work_unit_id": req.work_unit.work_unit_id,
+                "status": req.work_unit.status,
             }),
             evidence: req.evidence,
             hints: req.hints,
@@ -288,27 +295,31 @@ impl KernelAuthority for LocalKernelAuthority {
             .work_unit_id
             .clone()
             .unwrap_or_else(|| "work_unit.unknown".to_string());
-        state.work_units.insert(work_unit_id.clone(), req.payload);
+        let mut work_unit = req.work_unit;
+        work_unit.work_unit_id.clone_from(&work_unit_id);
+        state.work_units.insert(work_unit_id, work_unit.clone());
         state.receipts.push(receipt.clone());
         Ok(CreateWorkUnitResponse {
-            work_unit_id,
+            work_unit,
             receipt,
         })
     }
 
     async fn create_contract(&self, req: CreateContractRequest) -> Result<CreateContractResponse> {
-        let trace = Self::normalize_contract_trace(req.trace, req.contract_id.as_str());
+        let trace =
+            Self::normalize_contract_trace(req.trace, req.contract.contract_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
-            receipt_id: format!("receipt.kernel.contract:{}", req.contract_id),
-            receipt_type: "kernel.contract.created.v1".to_string(),
-            created_at_ms: req.created_at_ms,
+            receipt_id: format!("receipt.kernel.contract:{}", req.contract.contract_id),
+            receipt_type: "kernel.contract.create.v1".to_string(),
+            created_at_ms: req.contract.created_at_ms,
             idempotency_key: req.idempotency_key,
             trace: trace.clone(),
             policy: req.policy,
-            inputs_payload: req.payload.clone(),
+            inputs_payload: serde_json::to_value(&req.contract)
+                .map_err(|error| anyhow!("failed to encode contract: {error}"))?,
             outputs_payload: json!({
-                "contract_id": req.contract_id,
-                "status": "created",
+                "contract_id": req.contract.contract_id,
+                "status": req.contract.status,
             }),
             evidence: req.evidence,
             hints: req.hints,
@@ -317,31 +328,48 @@ impl KernelAuthority for LocalKernelAuthority {
             .state
             .write()
             .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        if !state
+            .work_units
+            .contains_key(req.contract.work_unit_id.as_str())
+        {
+            return Err(anyhow!("kernel_work_unit_not_found"));
+        }
         let contract_id = trace
             .contract_id
             .clone()
             .unwrap_or_else(|| "contract.unknown".to_string());
-        state.contracts.insert(contract_id.clone(), req.payload);
+        let mut contract = req.contract;
+        contract.contract_id.clone_from(&contract_id);
+        state.contracts.insert(contract_id, contract.clone());
+        if let Some(work_unit) = state.work_units.get_mut(contract.work_unit_id.as_str()) {
+            work_unit.status = WorkUnitStatus::Contracted;
+        }
         state.receipts.push(receipt.clone());
         Ok(CreateContractResponse {
-            contract_id,
+            contract,
             receipt,
         })
     }
 
     async fn submit_output(&self, req: SubmitOutputRequest) -> Result<SubmitOutputResponse> {
-        let trace = Self::normalize_contract_trace(req.trace, req.contract_id.as_str());
+        let trace =
+            Self::normalize_contract_trace(req.trace, req.submission.contract_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
-            receipt_id: format!("receipt.kernel.submission:{}", req.contract_id),
-            receipt_type: "kernel.submission.received.v1".to_string(),
-            created_at_ms: req.created_at_ms,
+            receipt_id: format!(
+                "receipt.kernel.submission:{}",
+                req.submission.submission_id
+            ),
+            receipt_type: "kernel.output.submit.v1".to_string(),
+            created_at_ms: req.submission.created_at_ms,
             idempotency_key: req.idempotency_key,
             trace: trace.clone(),
             policy: req.policy,
-            inputs_payload: req.payload.clone(),
+            inputs_payload: serde_json::to_value(&req.submission)
+                .map_err(|error| anyhow!("failed to encode submission: {error}"))?,
             outputs_payload: json!({
-                "contract_id": req.contract_id,
-                "status": "submitted",
+                "contract_id": req.submission.contract_id,
+                "submission_id": req.submission.submission_id,
+                "status": req.submission.status,
             }),
             evidence: req.evidence,
             hints: req.hints,
@@ -354,10 +382,23 @@ impl KernelAuthority for LocalKernelAuthority {
             .contract_id
             .clone()
             .unwrap_or_else(|| "contract.unknown".to_string());
-        state.submissions.insert(contract_id.clone(), req.payload);
+        if !state.contracts.contains_key(contract_id.as_str()) {
+            return Err(anyhow!("kernel_contract_not_found"));
+        }
+        let mut submission = req.submission;
+        submission.contract_id.clone_from(&contract_id);
+        if let Some(contract) = state.contracts.get_mut(contract_id.as_str()) {
+            contract.status = ContractStatus::Submitted;
+        }
+        if let Some(work_unit) = state.work_units.get_mut(submission.work_unit_id.as_str()) {
+            work_unit.status = WorkUnitStatus::Submitted;
+        }
+        state
+            .submissions
+            .insert(submission.submission_id.clone(), submission.clone());
         state.receipts.push(receipt.clone());
         Ok(SubmitOutputResponse {
-            contract_id,
+            submission,
             receipt,
         })
     }
@@ -366,18 +407,27 @@ impl KernelAuthority for LocalKernelAuthority {
         &self,
         req: FinalizeVerdictRequest,
     ) -> Result<FinalizeVerdictResponse> {
-        let trace = Self::normalize_contract_trace(req.trace, req.contract_id.as_str());
+        let trace =
+            Self::normalize_contract_trace(req.trace, req.verdict.contract_id.as_str());
         let receipt = Self::build_receipt(LocalReceiptSpec {
-            receipt_id: format!("receipt.kernel.verdict:{}", req.contract_id),
-            receipt_type: "kernel.verdict.finalized.v1".to_string(),
-            created_at_ms: req.created_at_ms,
+            receipt_id: format!("receipt.kernel.verdict:{}", req.verdict.verdict_id),
+            receipt_type: "kernel.verdict.finalize.v1".to_string(),
+            created_at_ms: req.verdict.created_at_ms,
             idempotency_key: req.idempotency_key,
             trace: trace.clone(),
             policy: req.policy,
-            inputs_payload: req.verdict.clone(),
+            inputs_payload: serde_json::to_value(json!({
+                "verdict": req.verdict.clone(),
+                "settlement_link": req.settlement_link.clone(),
+                "claim_hook": req.claim_hook.clone(),
+            }))
+                .map_err(|error| anyhow!("failed to encode verdict: {error}"))?,
             outputs_payload: json!({
-                "contract_id": req.contract_id,
-                "status": "finalized",
+                "contract_id": req.verdict.contract_id,
+                "verdict_id": req.verdict.verdict_id,
+                "settlement_link_id": req.settlement_link.as_ref().map(|link| link.settlement_id.clone()),
+                "claim_hook_id": req.claim_hook.as_ref().map(|hook| hook.claim_id.clone()),
+                "status": req.verdict.settlement_status,
             }),
             evidence: req.evidence,
             hints: req.hints,
@@ -390,10 +440,53 @@ impl KernelAuthority for LocalKernelAuthority {
             .contract_id
             .clone()
             .unwrap_or_else(|| "contract.unknown".to_string());
-        state.verdicts.insert(contract_id.clone(), req.verdict);
+        if !state.contracts.contains_key(contract_id.as_str()) {
+            return Err(anyhow!("kernel_contract_not_found"));
+        }
+        let mut verdict = req.verdict;
+        verdict.contract_id.clone_from(&contract_id);
+        let settlement_link = req.settlement_link.map(|mut link| {
+            link.contract_id.clone_from(&contract_id);
+            link
+        });
+        let claim_hook = req.claim_hook.map(|mut hook| {
+            hook.contract_id.clone_from(&contract_id);
+            hook
+        });
+        state
+            .verdicts
+            .insert(verdict.verdict_id.clone(), verdict.clone());
+        if let Some(settlement_link) = settlement_link.as_ref() {
+            state
+                .settlements
+                .insert(settlement_link.settlement_id.clone(), settlement_link.clone());
+        }
+        if let Some(claim_hook) = claim_hook.as_ref() {
+            state
+                .claim_hooks
+                .insert(claim_hook.claim_id.clone(), claim_hook.clone());
+        }
+        let contract_status = match verdict.settlement_status {
+            SettlementStatus::Pending => ContractStatus::Finalized,
+            SettlementStatus::Settled => ContractStatus::Settled,
+            SettlementStatus::Disputed => ContractStatus::Disputed,
+        };
+        let work_unit_status = match verdict.settlement_status {
+            SettlementStatus::Pending => WorkUnitStatus::Finalized,
+            SettlementStatus::Settled => WorkUnitStatus::Settled,
+            SettlementStatus::Disputed => WorkUnitStatus::Disputed,
+        };
+        if let Some(contract) = state.contracts.get_mut(contract_id.as_str()) {
+            contract.status = contract_status;
+        }
+        if let Some(work_unit) = state.work_units.get_mut(verdict.work_unit_id.as_str()) {
+            work_unit.status = work_unit_status;
+        }
         state.receipts.push(receipt.clone());
         Ok(FinalizeVerdictResponse {
-            contract_id,
+            verdict,
+            settlement_link,
+            claim_hook,
             receipt,
         })
     }
@@ -421,7 +514,10 @@ impl KernelAuthority for HttpKernelAuthorityClient {
     }
 
     async fn submit_output(&self, req: SubmitOutputRequest) -> Result<SubmitOutputResponse> {
-        let path = format!("/v1/kernel/contracts/{}/submit", req.contract_id.trim());
+        let path = format!(
+            "/v1/kernel/contracts/{}/submit",
+            req.submission.contract_id.trim()
+        );
         self.post_json(path.as_str(), &req).await
     }
 
@@ -431,7 +527,7 @@ impl KernelAuthority for HttpKernelAuthorityClient {
     ) -> Result<FinalizeVerdictResponse> {
         let path = format!(
             "/v1/kernel/contracts/{}/verdict/finalize",
-            req.contract_id.trim()
+            req.verdict.contract_id.trim()
         );
         self.post_json(path.as_str(), &req).await
     }
