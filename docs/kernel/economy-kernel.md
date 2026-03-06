@@ -120,6 +120,38 @@ This kernel is built around a key principle:
 
 That means every important action has explicit state, explicit constraints, and a deterministic receipt.
 
+## The five-market taxonomy
+
+The OpenAgents Marketplace consists of five interlocking markets built on this kernel:
+
+- `Compute`
+- `Data`
+- `Labor`
+- `Liquidity`
+- `Risk`
+
+This normative spec defines the shared kernel semantics that all five markets must terminate in: contracts, verification, liability, settlement, policy, and receipts.
+
+### Status legend
+
+- `implemented`: shipped in the current MVP or repo entry points
+- `local prototype`: modeled in desktop-local kernel receipts, snapshots, or protocol notes, but not yet backed by authoritative backend services
+- `planned`: target architecture, not yet shipped as a production market
+
+### Market-to-object map
+
+| Market | Purpose | Kernel-facing objects | Current repo status |
+| --- | --- | --- | --- |
+| `Compute` | Allocate machine capacity. | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` for the compute-provider earn slice; `local prototype` for richer compute-market semantics; `planned` for full commodity instruments |
+| `Data` | Price access to useful context under permission. | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `planned` |
+| `Labor` | Buy and sell machine work. | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `local prototype` with a narrow MVP earn loop; `planned` as a generalized authoritative market |
+| `Liquidity` | Move value between participants and rails. | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `local prototype`; `planned` as a production market |
+| `Risk` | Price failure probability, verification difficulty, and liability. | `CoverageOffer`, `CoverageBinding`, `Claim`, `RiskSignal`, `CalibrationMetric` | `local prototype`; `planned` as a production market |
+
+In current MVP terms, the visible product wedge is still compute-provider-first. Data, Liquidity, and Risk remain architectural markets rather than shipped product surfaces. Labor exists today as a narrow paid machine-work loop plus desktop-local kernel modeling, not yet as a generalized authoritative market.
+
+Section 8 goes deepest on Compute because that is the first detailed market extension in this spec set. Companion docs describe the Data, Labor, Liquidity, and Risk surfaces. Their thinner treatment here reflects current maturity, not exclusion from the five-market architecture.
+
 ## The control variable: verifiable share
 
 The kernel tracks a central quantity: **verifiable share**, written `sv`.
@@ -216,11 +248,13 @@ This is how verification scales without relying on a collapsing human pipeline.
 
 ---
 
-Sections **1–7** below define the **core normative kernel**.
+Sections **1–7** below define the **core normative kernel** shared by all five markets.
 
-Section **8** introduces a **compute-market extension** that allows the same infrastructure to power spot compute markets, forward capacity contracts, and hedging instruments.
+Section **8** introduces the first detailed **compute-market extension** that allows the same infrastructure to power spot compute markets, forward capacity contracts, and hedging instruments.
 
-These extensions do not replace the kernel—they extend it.
+Companion docs in `docs/kernel/` describe the Data, Labor, Liquidity, and Risk market surfaces and make their current implementation status explicit.
+
+These extensions do not replace the kernel. They extend it.
 
 Together they form a system capable of coordinating **software labor, compute capacity, and economic risk** in a unified, machine-readable economy.
 

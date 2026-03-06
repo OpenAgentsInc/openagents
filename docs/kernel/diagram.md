@@ -22,6 +22,35 @@ Where a lane is *optional*, it is labeled as such; the diagrams still show how i
 
 ---
 
+## 0) Five Markets on One Kernel
+
+```text
+Five Markets on One Kernel
+
+  Compute Market   -> capacity, delivery, pricing
+  Data Market      -> context, permissions, access
+  Labor Market     -> work, contracts, verdicts
+  Liquidity Market -> routes, FX, settlement, reserves
+  Risk Market      -> coverage, prediction, underwriting
+
+                    \   |   |   |   /
+                     \  |   |   |  /
+                      \ |   |   | /
+                     Economy Kernel
+        contracts • verification • liability • settlement • policy • receipts
+
+                authority: authenticated HTTP only
+          projection: realtime subscriptions / sync, never authority
+```
+
+Current repo status:
+
+- `implemented`: compute-provider earn loop
+- `local prototype`: richer labor, liquidity, and risk semantics in desktop-local receipts and snapshots
+- `planned`: data market, broader multi-market authority surfaces, and shared proto/backend layers
+
+---
+
 ## 1) System Architecture and Trust Boundaries
 
 ```mermaid

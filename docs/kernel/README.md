@@ -11,6 +11,23 @@ Autopilot is the first product. It is the user-facing wedge into a broader machi
 This is not a single marketplace with one matching engine.
 It is a layered system where machine compute, machine data, machine labor, machine liquidity, and machine risk all share the same core primitives for contracts, verification, settlement, liability, and receipts.
 
+## Status legend
+
+- `implemented`: shipped in the current MVP or repo entry points
+- `local prototype`: modeled in desktop-local receipts, snapshots, or protocol notes, but not yet backed by authoritative backend services
+- `planned`: target architecture, not yet shipped as a production market
+
+## Current implementation status
+
+| Surface | Status | Notes |
+| --- | --- | --- |
+| Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop. Broader compute market instruments remain prototyped in docs only. |
+| Data Market | `planned` | The market is part of the architecture, but the repo does not yet implement authority flows or settlement for data access. |
+| Labor Market | `local prototype` | The repo has job lifecycle handling and kernel-shaped local models, but not a generalized authoritative labor market. |
+| Liquidity Market | `local prototype` | Wallet and payment-routing primitives exist, but there is no standalone liquidity market authority yet. |
+| Risk Market | `local prototype` | Prediction, coverage, and underwriting are modeled in docs and local kernel signals, not as a production authority surface. |
+| Kernel authority | `local prototype` | `apps/nexus-control` has thin hosted endpoints, while the richer kernel receipts and snapshots still live primarily in desktop-local modeling. |
+
 ## The agents marketplace
 
 The cleanest way to think about OpenAgents is:
@@ -82,6 +99,12 @@ It allocates the compute that agents and workloads need in order to run:
 This layer exists because compute is becoming a scarce industrial input.
 If machine labor is going to scale, the capacity that powers that labor must also become tradable, measurable, and settleable.
 
+Current status:
+
+- `implemented`: compute-provider earn loop
+- `local prototype`: richer kernel receipts, snapshots, and compute commodity framing
+- `planned`: full spot, forward, and hedging instruments
+
 ### 3. Data Market
 
 This is the context market.
@@ -98,6 +121,10 @@ This layer matters because machine work does not run on compute alone.
 It also runs on context.
 
 In many cases the valuable thing is not raw model capability, but access to a user's past conversations, code history, research notes, or other locally held data. The data market is where that access becomes explicit, permissioned, priced, and receipted.
+
+Current status:
+
+- `planned`: no standalone data market authority or settlement path yet
 
 ### 4. Labor Market
 
@@ -119,6 +146,11 @@ In other words:
 * labor produces outcomes
 * the kernel turns outcomes into verified economic events
 
+Current status:
+
+- `local prototype`: job lifecycle, local receipts, and local snapshot modeling exist
+- `planned`: generalized authoritative WorkUnit, Contract, Submission, and Verdict services
+
 ### 5. Liquidity Market
 
 This is the value-movement layer.
@@ -133,6 +165,11 @@ It handles how money moves between participants and rails:
 
 This layer matters because machine economies need more than contracts and risk pricing.
 They also need a deterministic way to move value across payment systems and market participants without hidden authority or opaque state transitions.
+
+Current status:
+
+- `local prototype`: wallet and payment-routing primitives exist
+- `planned`: quotes, route selection, envelope issuance, and authoritative liquidity settlement
 
 ### 6. Risk Market
 
@@ -156,6 +193,11 @@ In practice this can appear as:
 
 This layer does not replace verification.
 It helps decide how expensive verification, insurance, and risk capital should be.
+
+Current status:
+
+- `local prototype`: incidents, premiums, claims, and policy signals are modeled locally and in docs
+- `planned`: production coverage binding, prediction positions, and claims settlement
 
 ## How the layers fit together
 
@@ -223,5 +265,8 @@ All tied together by receipts, policy, and verification.
 
 * [economy-kernel.md](./economy-kernel.md): the main normative spec for the economic kernel
 * [economy-kernel-proto.md](./economy-kernel-proto.md): proto and policy schema plan
-* [prediction-markets.md](./prediction-markets.md): how prediction, coverage, and risk markets plug into the kernel
+* [data-market.md](./data-market.md): the planned data market surface and authority flows
+* [labor-market.md](./labor-market.md): the planned labor market surface and settlement model
+* [liquidity-market.md](./liquidity-market.md): the planned liquidity market surface and value-movement model
+* [prediction-markets.md](./prediction-markets.md): the risk market companion doc for prediction, coverage, and underwriting
 * [diagram.md](./diagram.md): supporting diagrams and visual framing

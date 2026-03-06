@@ -12,6 +12,29 @@ Everything below stays aligned with your existing `openagents/*/v1` naming and w
 
 ---
 
+## Status legend
+
+- `implemented`: shipped in the current MVP or repo entry points
+- `local prototype`: modeled in desktop-local kernel receipts, snapshots, or protocol notes, but not yet backed by authoritative backend services
+- `planned`: target architecture, not yet shipped as a production market
+
+## Current repo status
+
+There is still no checked-in `proto/` tree or generated kernel proto crate in this repo.
+
+This document is therefore a **proto plan**, not a description of a shipped wire contract.
+
+Today the repo ships:
+
+- an `implemented` compute-provider earn loop,
+- `local prototype` kernel receipts and snapshots in the desktop runtime,
+- thin hosted control endpoints in `apps/nexus-control`,
+- and `planned` multi-market proto boundaries for the broader marketplace.
+
+The asymmetry in this file is intentional but temporary: Compute and Risk are more detailed than Data and Liquidity because that is where the current spec work went deepest. The five-market architecture still includes all of them.
+
+---
+
 ## 1. Proto plan rewrite
 
 ### 1.1 Goals of the proto reshape
@@ -56,6 +79,31 @@ proto/
     policy/v1/
       policy_bundle.proto          # auth, monitoring, risk pricing, certification, rollback knobs
 ```
+
+### 1.2.1 Five-market package map
+
+The OpenAgents Marketplace consists of five interlocking markets: `Compute`, `Data`, `Labor`, `Liquidity`, and `Risk`.
+
+This proto plan should make all five explicit even when some packages remain thin or deferred.
+
+| Market | Current or planned package roots | Core objects | Current repo status |
+| --- | --- | --- | --- |
+| `Compute` | `openagents.compute.v1`, `openagents.economy.v1`, `openagents.common.v1` | `ComputeProduct`, `CapacityLot`, `DeliveryProof`, `ComputeIndex`, `CapacityInstrument` | `implemented` MVP slice; `planned` broader proto surface |
+| `Data` | `openagents.data.v1`, `openagents.common.v1`, `openagents.economy.v1` | `DataAsset`, `AccessGrant`, `PermissionPolicy`, `DeliveryBundle`, `RevocationReceipt` | `planned` |
+| `Labor` | `openagents.aegis.outcomes.v1` today; later `openagents.labor.v1` if a public market alias is useful | `WorkUnit`, `Contract`, `Submission`, `Verdict`, `Claim` | `local prototype`; `planned` authoritative proto surface |
+| `Liquidity` | `openagents.hydra.v1`, `openagents.liquidity.v1`, `openagents.common.v1`, `openagents.economy.v1` | `Quote`, `RoutePlan`, `Envelope`, `SettlementIntent`, `ReservePartition` | `local prototype`; `planned` authoritative proto surface |
+| `Risk` | `openagents.aegis.markets.v1`, `openagents.policy.v1`, `openagents.economy.v1` | `CoverageOffer`, `CoverageBinding`, `ClaimResolution`, `RiskSignal`, `CalibrationMetric` | `local prototype`; `planned` authoritative proto surface |
+
+### 1.2.2 Missing package boundaries that still need to be added
+
+To make the five-market architecture canonical at the wire level, the proto tree still needs explicit homes for:
+
+- `openagents.data.v1`
+- `openagents.liquidity.v1`
+- a thin `openagents.compute.v1` starter slice in the repo itself
+- either `openagents.labor.v1` or a documented public mapping from the labor market to `openagents.aegis.outcomes.v1`
+
+Until that lands, this document should be read as a plan for the desired package boundaries rather than a claim that the repo already ships them.
 
 ### 1.3 Updated `proto/openagents/common/v1/common.proto`
 
