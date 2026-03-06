@@ -1,0 +1,44 @@
+syntax = "proto3";
+
+package openagents.labor.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/compute/v1/compute.proto";
+import "openagents/economy/v1/receipt.proto";
+
+message WorkUnit {
+  string work_unit_id = 1;
+  string category = 2;
+  string title = 3;
+  string acceptance_spec = 4;
+  openagents.common.v1.TraceContext trace = 5;
+  openagents.common.v1.PolicyContext policy = 6;
+  openagents.compute.v1.ComputeRequirement compute_requirement = 7;
+}
+
+message Contract {
+  string contract_id = 1;
+  string work_unit_id = 2;
+  openagents.common.v1.Money notional = 3;
+  openagents.common.v1.TraceContext trace = 4;
+  openagents.common.v1.PolicyContext policy = 5;
+  openagents.economy.v1.ReceiptHints receipt_hints = 6;
+}
+
+message Submission {
+  string submission_id = 1;
+  string contract_id = 2;
+  repeated openagents.common.v1.EvidenceRef evidence = 3;
+  openagents.common.v1.TraceContext trace = 4;
+  openagents.common.v1.PolicyContext policy = 5;
+}
+
+message Verdict {
+  string verdict_id = 1;
+  string contract_id = 2;
+  string outcome = 3;
+  openagents.common.v1.VerificationTier verification_tier = 4;
+  openagents.common.v1.ProvenanceGrade provenance_grade = 5;
+  openagents.common.v1.TraceContext trace = 6;
+  openagents.common.v1.PolicyContext policy = 7;
+}

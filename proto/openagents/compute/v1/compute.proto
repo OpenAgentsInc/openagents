@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+
+enum ComputeCategory {
+  COMPUTE_CATEGORY_UNSPECIFIED = 0;
+  COMPUTE_CATEGORY_CPU = 1;
+  COMPUTE_CATEGORY_GPU = 2;
+  COMPUTE_CATEGORY_INFERENCE = 3;
+  COMPUTE_CATEGORY_TRAINING = 4;
+}
+
+message ComputeRequirement {
+  ComputeCategory category = 1;
+  string provider_capability_ref = 2;
+  openagents.common.v1.EvidenceRef delivery_proof_ref = 3;
+}

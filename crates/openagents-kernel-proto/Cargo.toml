@@ -1,0 +1,18 @@
+[package]
+name = "openagents-kernel-proto"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Generated proto types for the thin OpenAgents kernel authority slice"
+
+[lints]
+workspace = true
+
+[dependencies]
+prost = "0.13"
+
+[build-dependencies]
+prost-build = "0.13"
+protoc-bin-vendored = "3"

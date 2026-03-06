@@ -1,0 +1,31 @@
+syntax = "proto3";
+
+package openagents.economy.v1;
+
+import "openagents/common/v1/common.proto";
+
+message ReceiptHints {
+  string category = 1;
+  openagents.common.v1.FeedbackLatencyClass tfb_class = 2;
+  openagents.common.v1.SeverityClass severity = 3;
+  openagents.common.v1.VerificationTier achieved_verification_tier = 4;
+  bool verification_correlated = 5;
+  openagents.common.v1.ProvenanceGrade provenance_grade = 6;
+  string reason_code = 7;
+  openagents.common.v1.Money notional = 8;
+  openagents.common.v1.Money liability_premium = 9;
+}
+
+message Receipt {
+  string receipt_id = 1;
+  string receipt_type = 2;
+  int64 created_at_ms = 3;
+  string canonical_hash = 4;
+  string idempotency_key = 5;
+  openagents.common.v1.TraceContext trace = 6;
+  openagents.common.v1.PolicyContext policy = 7;
+  string inputs_hash = 8;
+  string outputs_hash = 9;
+  repeated openagents.common.v1.EvidenceRef evidence = 10;
+  ReceiptHints hints = 11;
+}
