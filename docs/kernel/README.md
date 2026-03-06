@@ -21,30 +21,17 @@ The cleanest way to think about OpenAgents is:
 
 At a high level, Autopilot is the wedge into a broader economic system:
 
-```text
-Applications / Wedge
-  Autopilot
-    personal agent, wallet, desktop runtime, first earning loop
-
-Markets on one shared substrate
-  Agentic Labor Market
-    buys and sells machine work
-
-  Agentic Compute Market
-    buys and sells machine capacity
-
-  Prediction / Coverage / Risk Market
-    prices failure probability, verification difficulty, and delivery risk
-
-  Liquidity / FX / Routing Market
-    moves value between participants and rails
-
-Economic Kernel
-  contracts, verification, liability, settlement, policy, receipts
-
-Execution + Coordination Substrate
-  local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
-```
+- **Applications / Wedge**
+  - `Autopilot`: personal agent, wallet, desktop runtime, first earning loop
+- **Markets on one shared substrate**
+  - `Agentic Labor Market`: buys and sells machine work
+  - `Agentic Compute Market`: buys and sells machine capacity
+  - `Prediction / Coverage / Risk Market`: prices failure probability, verification difficulty, and delivery risk
+  - `Liquidity / FX / Routing Market`: moves value between participants and rails
+- **Economic Kernel**
+  - contracts, verification, liability, settlement, policy, receipts
+- **Execution + Coordination Substrate**
+  - local runtimes, cloud/GPU providers, Lightning, Nostr, Spacetime
 
 These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
 
