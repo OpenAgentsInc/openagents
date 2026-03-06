@@ -948,6 +948,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.panes,
             Bounds::new(0.0, 0.0, width, height),
             active_pane,
+            state.kernel_projection_worker.uses_remote_authority(),
             state.nostr_identity.as_ref(),
             state.nostr_identity_error.as_deref(),
             &state.nostr_secret_state,
