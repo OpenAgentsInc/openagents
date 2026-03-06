@@ -1,14 +1,15 @@
 use crate::color::Hsla;
 use crate::geometry::{Point, Size};
 use crate::scene::{GlyphInstance, TextRun};
+use crate::theme;
 use cosmic_text::{
     Attrs, Buffer, CacheKey, Family, FontSystem, Metrics, Shaping, Style, SwashCache, SwashContent,
     Weight,
 };
 use std::collections::HashMap;
 
-const DEFAULT_FONT_FAMILY: Family<'static> = Family::Name("Square 721");
-const MONO_FONT_FAMILY: Family<'static> = Family::Name("Bitstream Vera Sans Mono");
+const DEFAULT_FONT_FAMILY: Family<'static> = Family::Name(theme::font::UI);
+const MONO_FONT_FAMILY: Family<'static> = Family::Name(theme::font::MONO);
 
 #[cfg(target_arch = "wasm32")]
 const DEFAULT_SHAPING: Shaping = Shaping::Basic;
@@ -82,17 +83,19 @@ impl TextSystem {
     pub fn new(scale_factor: f32) -> Self {
         let mut font_system = FontSystem::new();
 
-        let square721 = include_bytes!("../assets/fonts/Square721StdRoman.ttf");
-        let regular = include_bytes!("../assets/fonts/VeraMono.ttf");
-        let bold = include_bytes!("../assets/fonts/VeraMono-Bold.ttf");
-        let italic = include_bytes!("../assets/fonts/VeraMono-Italic.ttf");
-        let bold_italic = include_bytes!("../assets/fonts/VeraMono-Bold-Italic.ttf");
+        // UI family: Inter
+        let inter_regular = include_bytes!("../assets/fonts/Inter-Regular.ttf");
+        let inter_medium = include_bytes!("../assets/fonts/Inter-Medium.ttf");
+        let inter_semibold = include_bytes!("../assets/fonts/Inter-SemiBold.ttf");
+        // Monospace family: JetBrains Mono
+        let jbmono_regular = include_bytes!("../assets/fonts/JetBrainsMono-Regular.ttf");
+        let jbmono_medium = include_bytes!("../assets/fonts/JetBrainsMono-Medium.ttf");
 
-        font_system.db_mut().load_font_data(square721.to_vec());
-        font_system.db_mut().load_font_data(regular.to_vec());
-        font_system.db_mut().load_font_data(bold.to_vec());
-        font_system.db_mut().load_font_data(italic.to_vec());
-        font_system.db_mut().load_font_data(bold_italic.to_vec());
+        font_system.db_mut().load_font_data(inter_regular.to_vec());
+        font_system.db_mut().load_font_data(inter_medium.to_vec());
+        font_system.db_mut().load_font_data(inter_semibold.to_vec());
+        font_system.db_mut().load_font_data(jbmono_regular.to_vec());
+        font_system.db_mut().load_font_data(jbmono_medium.to_vec());
 
         Self {
             font_system,

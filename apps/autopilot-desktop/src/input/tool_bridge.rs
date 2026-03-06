@@ -31,10 +31,10 @@ use crate::pane_system::{
     CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
     CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
     JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction, SettingsPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StableSatsSimulationPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, TrajectoryAuditPaneAction,
-    TreasuryExchangeSimulationPaneAction,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, RelaySecuritySimulationPaneAction,
+    SettingsPaneAction, SkillRegistryPaneAction, SkillTrustRevocationPaneAction,
+    StableSatsSimulationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TrajectoryAuditPaneAction, TreasuryExchangeSimulationPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1141,8 +1141,26 @@ fn pane_action_to_hit_action(
             )),
             _ => unsupported(),
         },
+        PaneKind::ReciprocalLoop => match action {
+            "start" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Start,
+            )),
+            "stop" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Stop,
+            )),
+            "reset" => Ok(PaneHitAction::ReciprocalLoop(
+                ReciprocalLoopPaneAction::Reset,
+            )),
+            _ => unsupported(),
+        },
         PaneKind::ActivityFeed => match action {
             "refresh" => Ok(PaneHitAction::ActivityFeed(ActivityFeedPaneAction::Refresh)),
+            "previous_page" | "prev_page" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::PreviousPage,
+            )),
+            "next_page" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::NextPage,
+            )),
             "select_row" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SelectRow(require_index(action)?),
             )),
@@ -1151,6 +1169,9 @@ fn pane_action_to_hit_action(
             )),
             "filter_chat" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Chat),
+            )),
+            "filter_cad" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Cad),
             )),
             "filter_job" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Job),
@@ -1163,6 +1184,18 @@ fn pane_action_to_hit_action(
             )),
             "filter_sync" => Ok(PaneHitAction::ActivityFeed(
                 ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sync),
+            )),
+            "filter_sa" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Sa),
+            )),
+            "filter_skl" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Skl),
+            )),
+            "filter_ac" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Ac),
+            )),
+            "filter_nip90" => Ok(PaneHitAction::ActivityFeed(
+                ActivityFeedPaneAction::SetFilter(ActivityFeedFilter::Nip90),
             )),
             _ => unsupported(),
         },
@@ -2716,6 +2749,31 @@ fn execute_swap_execute(
         parse_version: BLINK_SWAP_PARSE_VERSION.to_string(),
     };
     let worker_request_id = state.stable_sats_simulation.reserve_worker_request_id();
+    let caller_identity = state
+        .nostr_identity
+        .as_ref()
+        .map(|identity| identity.npub.as_str())
+        .unwrap_or("autopilot-desktop");
+    let now_epoch_ms = now_epoch_seconds.saturating_mul(1_000) as i64;
+    if let Err(error) = state.earn_kernel_receipts.record_swap_execute_attempt(
+        caller_identity,
+        goal_id,
+        quote_id,
+        worker_request_id,
+        now_epoch_ms,
+        "tool_bridge.swap_execute",
+    ) {
+        return ToolBridgeResultEnvelope::error(
+            "OA-SWAP-EXECUTE-IDEMPOTENCY-CONFLICT",
+            format!("Swap execute rejected by idempotency policy: {error}"),
+            json!({
+                "goal_id": goal_id,
+                "quote_id": quote_id,
+                "worker_request_id": worker_request_id,
+                "reason_code": "IDEMPOTENCY_CONFLICT",
+            }),
+        );
+    }
     state
         .stable_sats_simulation
         .record_treasury_operation_queued(
@@ -4517,6 +4575,7 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
         PaneKind::NostrIdentity => &["identity", "identity_keys", "nostr"],
+        PaneKind::ReciprocalLoop => &["reciprocal_loop", "earn_loop", "pingpong_loop"],
         PaneKind::CadDemo => &["cad", "cad_demo"],
         PaneKind::CastControl => &["cast", "cast_control"],
         _ => &[],
@@ -4541,6 +4600,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::SyncHealth => "sync_health",
         PaneKind::NetworkRequests => "network_requests",
         PaneKind::StarterJobs => "starter_jobs",
+        PaneKind::ReciprocalLoop => "reciprocal_loop",
         PaneKind::ActivityFeed => "activity_feed",
         PaneKind::AlertsRecovery => "alerts_recovery",
         PaneKind::Settings => "settings",
@@ -4602,8 +4662,7 @@ mod tests {
         PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, CredentialsPaneAction, PaneHitAction, RelayConnectionsPaneAction,
-        SettingsPaneAction,
+        CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;

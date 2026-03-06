@@ -153,6 +153,25 @@ impl SyncApplyEngine {
         self.persist()
     }
 
+    pub fn adopt_checkpoint_if_newer(&mut self, stream_id: &str, seq: u64) -> Result<bool, String> {
+        if seq == 0 {
+            return Ok(false);
+        }
+        let stream_id = stream_id.trim();
+        if stream_id.is_empty() {
+            return Err("sync checkpoint stream_id must not be empty".to_string());
+        }
+
+        let existing = self.checkpoints.get(stream_id).copied().unwrap_or(0);
+        if seq <= existing {
+            return Ok(false);
+        }
+
+        self.checkpoints.insert(stream_id.to_string(), seq);
+        self.persist()?;
+        Ok(true)
+    }
+
     fn persist(&self) -> Result<(), String> {
         let parent = self
             .checkpoint_path
@@ -339,5 +358,24 @@ mod tests {
         let restored = SyncApplyEngine::load_or_new(path.clone(), SyncApplyPolicy::default())
             .expect("restored engine should initialize");
         assert_eq!(restored.checkpoint_for("runtime.command"), Some(1));
+    }
+
+    #[test]
+    fn adopt_checkpoint_if_newer_persists_remote_checkpoint() {
+        let path = unique_temp_checkpoint_path("adopt");
+        let mut engine = SyncApplyEngine::load_or_new(path.clone(), SyncApplyPolicy::default())
+            .expect("engine should initialize");
+
+        assert!(
+            engine
+                .adopt_checkpoint_if_newer("runtime.command", 4)
+                .expect("remote checkpoint should persist")
+        );
+        assert_eq!(engine.checkpoint_for("runtime.command"), Some(4));
+        assert!(
+            !engine
+                .adopt_checkpoint_if_newer("runtime.command", 3)
+                .expect("older checkpoint should be ignored")
+        );
     }
 }

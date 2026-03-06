@@ -2,7 +2,7 @@
 
 Date: 2026-03-04
 Epic issue: [#2814](https://github.com/OpenAgentsInc/openagents/issues/2814)
-Spec source: `docs/AUTOPILOT_EARN_MVP.md`
+Spec source: `AUTOPILOT_EARN_MVP.md`
 
 ## Purpose
 
@@ -15,8 +15,8 @@ Scope note: this tracker covers the compute-provider MVP lane. Future liquidity-
 This file is the single canonical current implementation status document for Autopilot Earn MVP.
 
 Historical evidence lives in appendices and must not be treated as live status authority:
-- `docs/AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` (historical evidence appendix)
-- `docs/audits/2026-03-04-autopilot-earn-integration-audit-gap-analysis.md` (audit snapshot)
+- `AUTOPILOT_EARN_MVP_IMPLEMENTATION_LOG.md` (historical evidence appendix)
+- `../audits/2026-03-04-autopilot-earn-integration-audit-gap-analysis.md` (audit snapshot)
 
 ## Acceptance Gates
 

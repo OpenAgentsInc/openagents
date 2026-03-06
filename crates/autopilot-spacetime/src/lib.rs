@@ -2,6 +2,7 @@
 
 pub mod auth;
 pub mod client;
+pub mod live;
 pub mod mapping;
 pub mod presence;
 pub mod reducers;

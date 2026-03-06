@@ -162,3 +162,9 @@ Keep a retained copy of:
 - run audit receipts,
 - incident timeline notes,
 - rollback/restore actions.
+
+## Reciprocal Loop Verification
+
+For two-key/two-wallet bilateral 10-sat loop setup, pane operation flow, and pass/fail troubleshooting:
+
+- `AUTOPILOT_EARN_RECIPROCAL_LOOP_RUNBOOK.md`

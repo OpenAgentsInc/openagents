@@ -1,5 +1,6 @@
 //! Relay/sync/network/starter-job pane state extracted from `app_state.rs`.
 
+use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::app_state::{PaneLoadState, PaneStatusAccess};
@@ -55,6 +56,29 @@ impl Default for RelayConnectionsState {
 }
 
 impl RelayConnectionsState {
+    pub fn replace_configured_relays(&mut self, relay_urls: &[String]) {
+        let previous_selected = self.selected_url.clone();
+        self.relays = relay_urls
+            .iter()
+            .map(|relay_url| RelayConnectionRow {
+                url: relay_url.clone(),
+                status: RelayConnectionStatus::Disconnected,
+                latency_ms: None,
+                last_seen_seconds_ago: None,
+                last_error: None,
+            })
+            .collect();
+        self.selected_url = previous_selected.filter(|selected| {
+            self.relays
+                .iter()
+                .any(|relay| relay.url.as_str() == selected.as_str())
+        });
+        if self.selected_url.is_none() {
+            self.selected_url = self.relays.first().map(|relay| relay.url.clone());
+        }
+        self.pane_set_ready("Loaded configured relay bundle");
+    }
+
     pub fn select_by_index(&mut self, index: usize) -> bool {
         let Some(url) = self.relays.get(index).map(|row| row.url.clone()) else {
             return false;
@@ -352,6 +376,10 @@ impl SyncHealthState {
 pub enum NetworkRequestStatus {
     Submitted,
     Streaming,
+    Processing,
+    PaymentRequired,
+    ResultReceived,
+    Paid,
     Completed,
     Failed,
 }
@@ -361,17 +389,105 @@ impl NetworkRequestStatus {
         match self {
             Self::Submitted => "submitted",
             Self::Streaming => "streaming",
+            Self::Processing => "processing",
+            Self::PaymentRequired => "payment-required",
+            Self::ResultReceived => "result-received",
+            Self::Paid => "paid",
             Self::Completed => "completed",
             Self::Failed => "failed",
         }
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuyerResolutionMode {
+    Race,
+    Windowed,
+}
+
+impl BuyerResolutionMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Race => "race",
+            Self::Windowed => "windowed",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum BuyerResolutionReason {
+    FirstValidResult,
+    LostRace,
+    LateResultUnpaid,
+}
+
+impl BuyerResolutionReason {
+    pub const fn code(self) -> &'static str {
+        match self {
+            Self::FirstValidResult => "first-valid-result",
+            Self::LostRace => "lost-race",
+            Self::LateResultUnpaid => "late-result-unpaid",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum NetworkRequestDuplicateKind {
+    Feedback,
+    Result,
+}
+
+impl NetworkRequestDuplicateKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Feedback => "feedback",
+            Self::Result => "result",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NetworkRequestDuplicateOutcome {
+    pub provider_pubkey: String,
+    pub event_id: String,
+    pub kind: NetworkRequestDuplicateKind,
+    pub status: Option<String>,
+    pub status_extra: Option<String>,
+    pub reason_code: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct NetworkRequestResolutionFeedback {
+    pub provider_pubkey: String,
+    pub feedback_event_id: String,
+    pub reason_code: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct BuyerResolutionAction {
+    pub request_id: String,
+    pub provider_pubkey: String,
+    pub reason: BuyerResolutionReason,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SubmittedNetworkRequest {
     pub request_id: String,
+    pub published_request_event_id: Option<String>,
     pub request_type: String,
     pub payload: String,
+    pub resolution_mode: BuyerResolutionMode,
+    pub target_provider_pubkeys: Vec<String>,
+    pub last_provider_pubkey: Option<String>,
+    pub last_feedback_status: Option<String>,
+    pub last_feedback_event_id: Option<String>,
+    pub last_result_event_id: Option<String>,
+    pub last_payment_pointer: Option<String>,
+    pub payment_required_at_epoch_seconds: Option<u64>,
+    pub payment_sent_at_epoch_seconds: Option<u64>,
+    pub payment_failed_at_epoch_seconds: Option<u64>,
+    pub payment_error: Option<String>,
+    pub pending_bolt11: Option<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
     pub budget_sats: u64,
@@ -382,12 +498,21 @@ pub struct SubmittedNetworkRequest {
     pub authority_status: Option<String>,
     pub authority_event_id: Option<String>,
     pub authority_error_class: Option<String>,
+    pub winning_provider_pubkey: Option<String>,
+    pub winning_result_event_id: Option<String>,
+    pub resolution_reason_code: Option<String>,
+    pub duplicate_outcomes: Vec<NetworkRequestDuplicateOutcome>,
+    pub resolution_feedbacks: Vec<NetworkRequestResolutionFeedback>,
+    pub observed_buyer_event_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct NetworkRequestSubmission {
+    pub request_id: Option<String>,
     pub request_type: String,
     pub payload: String,
+    pub resolution_mode: BuyerResolutionMode,
+    pub target_provider_pubkeys: Vec<String>,
     pub skill_scope_id: Option<String>,
     pub credit_envelope_ref: Option<String>,
     pub budget_sats: u64,
@@ -400,6 +525,7 @@ pub struct NetworkRequestsState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub submitted: Vec<SubmittedNetworkRequest>,
+    pub pending_auto_payment_request_id: Option<String>,
     next_request_seq: u64,
 }
 
@@ -410,6 +536,7 @@ impl Default for NetworkRequestsState {
             last_error: None,
             last_action: Some("Waiting for request lane snapshot".to_string()),
             submitted: Vec::new(),
+            pending_auto_payment_request_id: None,
             next_request_seq: 0,
         }
     }
@@ -421,8 +548,11 @@ impl NetworkRequestsState {
         submission: NetworkRequestSubmission,
     ) -> Result<String, String> {
         let NetworkRequestSubmission {
+            request_id,
             request_type,
             payload,
+            resolution_mode,
+            target_provider_pubkeys,
             skill_scope_id,
             credit_envelope_ref,
             budget_sats,
@@ -448,15 +578,41 @@ impl NetworkRequestsState {
             return Err(self.pane_set_error("Timeout seconds must be greater than 0"));
         }
 
-        let request_id = format!("req-buy-{:04}", self.next_request_seq);
-        self.next_request_seq = self.next_request_seq.saturating_add(1);
+        let request_id = request_id
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| {
+                let generated = format!("req-buy-{:04}", self.next_request_seq);
+                self.next_request_seq = self.next_request_seq.saturating_add(1);
+                generated
+            });
         let stream_id = format!("stream:{request_id}");
+        let mut target_provider_pubkeys = target_provider_pubkeys
+            .into_iter()
+            .map(|pubkey| pubkey.trim().to_string())
+            .filter(|pubkey| !pubkey.is_empty())
+            .collect::<Vec<_>>();
+        target_provider_pubkeys.sort();
+        target_provider_pubkeys.dedup();
         self.submitted.insert(
             0,
             SubmittedNetworkRequest {
                 request_id: request_id.clone(),
+                published_request_event_id: None,
                 request_type: request_type.to_string(),
                 payload: payload.to_string(),
+                resolution_mode,
+                target_provider_pubkeys,
+                last_provider_pubkey: None,
+                last_feedback_status: None,
+                last_feedback_event_id: None,
+                last_result_event_id: None,
+                last_payment_pointer: None,
+                payment_required_at_epoch_seconds: None,
+                payment_sent_at_epoch_seconds: None,
+                payment_failed_at_epoch_seconds: None,
+                payment_error: None,
+                pending_bolt11: None,
                 skill_scope_id,
                 credit_envelope_ref,
                 budget_sats,
@@ -467,12 +623,326 @@ impl NetworkRequestsState {
                 authority_status: None,
                 authority_event_id: None,
                 authority_error_class: None,
+                winning_provider_pubkey: None,
+                winning_result_event_id: None,
+                resolution_reason_code: None,
+                duplicate_outcomes: Vec::new(),
+                resolution_feedbacks: Vec::new(),
+                observed_buyer_event_ids: Vec::new(),
             },
         );
         self.pane_set_ready(format!(
             "Queued buyer request {request_id} -> cmd#{authority_command_seq}"
         ));
         Ok(request_id)
+    }
+
+    pub fn apply_nip90_request_publish_outcome(
+        &mut self,
+        request_id: &str,
+        event_id: &str,
+        accepted_relays: usize,
+        rejected_relays: usize,
+        first_error: Option<&str>,
+    ) {
+        let request_id = {
+            let Some(request) = self
+                .submitted
+                .iter_mut()
+                .find(|request| request.request_id == request_id)
+            else {
+                return;
+            };
+            request.published_request_event_id = Some(event_id.to_string());
+            if accepted_relays > 0 {
+                request.status = NetworkRequestStatus::Streaming;
+            } else {
+                request.status = NetworkRequestStatus::Failed;
+            }
+            request.request_id.clone()
+        };
+
+        if accepted_relays > 0 {
+            self.pane_set_ready(format!(
+                "Published request {} (accepted={}, rejected={})",
+                request_id, accepted_relays, rejected_relays
+            ));
+        } else {
+            let error = first_error.unwrap_or("All relays rejected request publish");
+            let _ = self.pane_set_error(format!(
+                "Failed publishing request {}: {}",
+                request_id, error
+            ));
+        }
+    }
+
+    pub fn apply_nip90_buyer_feedback_event(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+        status: Option<&str>,
+        status_extra: Option<&str>,
+    ) -> Option<BuyerResolutionAction> {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return None;
+        };
+        if request
+            .observed_buyer_event_ids
+            .iter()
+            .any(|observed| observed == event_id)
+        {
+            return None;
+        };
+        request.observed_buyer_event_ids.push(event_id.to_string());
+
+        request.last_provider_pubkey = Some(provider_pubkey.to_string());
+        request.last_feedback_event_id = Some(event_id.to_string());
+        request.last_feedback_status = status.map(ToString::to_string);
+        request.status = match status
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("processing") => NetworkRequestStatus::Processing,
+            Some("payment-required") => NetworkRequestStatus::PaymentRequired,
+            Some("success") | Some("partial") => NetworkRequestStatus::Streaming,
+            Some("error") => NetworkRequestStatus::Failed,
+            _ => NetworkRequestStatus::Streaming,
+        };
+        let resolution_action = maybe_race_resolution_action_for_feedback(
+            request,
+            provider_pubkey,
+            event_id,
+            status,
+            status_extra,
+        );
+
+        let status_label = status.unwrap_or("unknown");
+        let status_extra = status_extra.unwrap_or("none");
+        self.pane_set_ready(format!(
+            "Request {} feedback={} provider={} detail={}",
+            request_id, status_label, provider_pubkey, status_extra
+        ));
+        resolution_action
+    }
+
+    pub fn apply_nip90_buyer_result_event(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        event_id: &str,
+        status: Option<&str>,
+    ) -> Option<BuyerResolutionAction> {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return None;
+        };
+        if request
+            .observed_buyer_event_ids
+            .iter()
+            .any(|observed| observed == event_id)
+        {
+            return None;
+        };
+        request.observed_buyer_event_ids.push(event_id.to_string());
+
+        request.last_provider_pubkey = Some(provider_pubkey.to_string());
+        request.last_result_event_id = Some(event_id.to_string());
+        request.status = match status
+            .map(str::trim)
+            .map(str::to_ascii_lowercase)
+            .as_deref()
+        {
+            Some("error") => NetworkRequestStatus::Failed,
+            _ => NetworkRequestStatus::ResultReceived,
+        };
+        let resolution_action =
+            maybe_race_resolution_action_for_result(request, provider_pubkey, event_id, status);
+        self.pane_set_ready(format!(
+            "Request {} result event {} from provider {}",
+            request_id, event_id, provider_pubkey
+        ));
+        resolution_action
+    }
+
+    pub fn record_resolution_feedback(
+        &mut self,
+        request_id: &str,
+        provider_pubkey: &str,
+        feedback_event_id: &str,
+        reason: BuyerResolutionReason,
+    ) {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+        if request.resolution_feedbacks.iter().any(|feedback| {
+            feedback.provider_pubkey == provider_pubkey && feedback.reason_code == reason.code()
+        }) {
+            return;
+        }
+        request
+            .resolution_feedbacks
+            .push(NetworkRequestResolutionFeedback {
+                provider_pubkey: provider_pubkey.to_string(),
+                feedback_event_id: feedback_event_id.to_string(),
+                reason_code: reason.code().to_string(),
+            });
+    }
+
+    pub fn mark_direct_authority_ready(
+        &mut self,
+        request_id: &str,
+        authority_status: &str,
+        authority_event_id: Option<&str>,
+    ) {
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return;
+        };
+        request.authority_status = Some(authority_status.to_string());
+        request.authority_event_id = authority_event_id.map(ToString::to_string);
+        request.authority_error_class = None;
+        self.pane_set_ready(format!(
+            "Request {} attached to direct authority path {}",
+            request_id, authority_status
+        ));
+    }
+
+    pub fn prepare_auto_payment_attempt(
+        &mut self,
+        request_id: &str,
+        bolt11: &str,
+        amount_msats: Option<u64>,
+        now_epoch_seconds: u64,
+    ) -> Option<(String, Option<u64>)> {
+        let bolt11 = bolt11.trim();
+        if bolt11.is_empty() {
+            self.mark_auto_payment_failed(
+                request_id,
+                "provider feedback is missing bolt11 invoice",
+                now_epoch_seconds,
+            );
+            return None;
+        }
+
+        if let Some(active_request_id) = self.pending_auto_payment_request_id.as_deref() {
+            if active_request_id != request_id {
+                self.pane_set_ready(format!(
+                    "Deferred auto-payment for {} while {} is still in-flight",
+                    request_id, active_request_id
+                ));
+                return None;
+            }
+            return None;
+        }
+
+        let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        else {
+            return None;
+        };
+
+        if request.last_payment_pointer.is_some() {
+            return None;
+        }
+
+        request.pending_bolt11 = Some(bolt11.to_string());
+        request
+            .payment_required_at_epoch_seconds
+            .get_or_insert(now_epoch_seconds);
+        request.payment_error = None;
+        request.payment_failed_at_epoch_seconds = None;
+        request.status = NetworkRequestStatus::PaymentRequired;
+        self.pending_auto_payment_request_id = Some(request_id.to_string());
+
+        let amount_sats = amount_msats
+            .map(msats_to_sats_ceil)
+            .filter(|amount| *amount > 0);
+        self.pane_set_ready(format!(
+            "Request {} received payment-required invoice; queueing Spark payment",
+            request_id
+        ));
+        Some((bolt11.to_string(), amount_sats))
+    }
+
+    pub fn mark_auto_payment_sent(
+        &mut self,
+        request_id: &str,
+        payment_pointer: &str,
+        now_epoch_seconds: u64,
+    ) {
+        let payment_pointer = payment_pointer.trim();
+        if payment_pointer.is_empty() {
+            self.mark_auto_payment_failed(
+                request_id,
+                "Spark payment succeeded but payment pointer is empty",
+                now_epoch_seconds,
+            );
+            return;
+        }
+
+        if let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        {
+            request.last_payment_pointer = Some(payment_pointer.to_string());
+            request.payment_sent_at_epoch_seconds = Some(now_epoch_seconds);
+            request.payment_error = None;
+            request.pending_bolt11 = None;
+            request.status = NetworkRequestStatus::Paid;
+        }
+        self.pending_auto_payment_request_id = None;
+        self.pane_set_ready(format!(
+            "Request {} settled buyer payment pointer {}",
+            request_id, payment_pointer
+        ));
+    }
+
+    pub fn mark_auto_payment_failed(
+        &mut self,
+        request_id: &str,
+        error: &str,
+        now_epoch_seconds: u64,
+    ) {
+        let error = error.trim();
+        let error = if error.is_empty() {
+            "Spark payment flow failed without explicit detail"
+        } else {
+            error
+        };
+
+        if let Some(request) = self
+            .submitted
+            .iter_mut()
+            .find(|request| request.request_id == request_id)
+        {
+            request.status = NetworkRequestStatus::Failed;
+            request.payment_error = Some(error.to_string());
+            request.payment_failed_at_epoch_seconds = Some(now_epoch_seconds);
+            request.pending_bolt11 = None;
+        }
+        if self.pending_auto_payment_request_id.as_deref() == Some(request_id) {
+            self.pending_auto_payment_request_id = None;
+        }
+        let _ = self.pane_set_error(format!("Request {} payment failed: {}", request_id, error));
     }
 
     pub fn apply_authority_response(&mut self, response: &RuntimeCommandResponse) {
@@ -539,6 +1009,120 @@ impl NetworkRequestsState {
     }
 }
 
+fn maybe_race_resolution_action_for_feedback(
+    request: &mut SubmittedNetworkRequest,
+    provider_pubkey: &str,
+    event_id: &str,
+    status: Option<&str>,
+    status_extra: Option<&str>,
+) -> Option<BuyerResolutionAction> {
+    if request.resolution_mode != BuyerResolutionMode::Race {
+        return None;
+    }
+    let Some(winner) = request.winning_provider_pubkey.as_deref() else {
+        return None;
+    };
+    if normalize_pubkey(provider_pubkey) == normalize_pubkey(winner) {
+        return None;
+    }
+    let status = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string);
+    let normalized_status = status.as_deref().map(str::to_ascii_lowercase);
+    if matches!(normalized_status.as_deref(), Some("error")) {
+        return None;
+    }
+    let reason = BuyerResolutionReason::LostRace;
+    if request.duplicate_outcomes.iter().any(|outcome| {
+        normalize_pubkey(outcome.provider_pubkey.as_str()) == normalize_pubkey(provider_pubkey)
+            && outcome.reason_code == reason.code()
+    }) {
+        return None;
+    }
+    request
+        .duplicate_outcomes
+        .push(NetworkRequestDuplicateOutcome {
+            provider_pubkey: provider_pubkey.to_string(),
+            event_id: event_id.to_string(),
+            kind: NetworkRequestDuplicateKind::Feedback,
+            status,
+            status_extra: status_extra.map(ToString::to_string),
+            reason_code: reason.code().to_string(),
+        });
+    Some(BuyerResolutionAction {
+        request_id: request.request_id.clone(),
+        provider_pubkey: provider_pubkey.to_string(),
+        reason,
+    })
+}
+
+fn maybe_race_resolution_action_for_result(
+    request: &mut SubmittedNetworkRequest,
+    provider_pubkey: &str,
+    event_id: &str,
+    status: Option<&str>,
+) -> Option<BuyerResolutionAction> {
+    if request.resolution_mode != BuyerResolutionMode::Race {
+        return None;
+    }
+    let normalized_status = status
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_ascii_lowercase);
+    if request.winning_result_event_id.is_none() {
+        if normalized_status.as_deref() != Some("error") {
+            request.winning_provider_pubkey = Some(provider_pubkey.to_string());
+            request.winning_result_event_id = Some(event_id.to_string());
+            request.resolution_reason_code =
+                Some(BuyerResolutionReason::FirstValidResult.code().to_string());
+        }
+        return None;
+    }
+    let Some(winner) = request.winning_provider_pubkey.as_deref() else {
+        return None;
+    };
+    if normalized_status.as_deref() == Some("error") {
+        return None;
+    }
+    if normalize_pubkey(provider_pubkey) == normalize_pubkey(winner) {
+        return None;
+    }
+    let reason = BuyerResolutionReason::LateResultUnpaid;
+    if request.duplicate_outcomes.iter().any(|outcome| {
+        normalize_pubkey(outcome.provider_pubkey.as_str()) == normalize_pubkey(provider_pubkey)
+            && outcome.reason_code == reason.code()
+    }) {
+        return None;
+    }
+    request
+        .duplicate_outcomes
+        .push(NetworkRequestDuplicateOutcome {
+            provider_pubkey: provider_pubkey.to_string(),
+            event_id: event_id.to_string(),
+            kind: NetworkRequestDuplicateKind::Result,
+            status: status.map(ToString::to_string),
+            status_extra: None,
+            reason_code: reason.code().to_string(),
+        });
+    Some(BuyerResolutionAction {
+        request_id: request.request_id.clone(),
+        provider_pubkey: provider_pubkey.to_string(),
+        reason,
+    })
+}
+
+fn normalize_pubkey(value: &str) -> String {
+    value.trim().to_ascii_lowercase()
+}
+
+fn msats_to_sats_ceil(msats: u64) -> u64 {
+    if msats == 0 {
+        return 0;
+    }
+    msats.saturating_add(999) / 1000
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum StarterJobStatus {
     Queued,
@@ -564,6 +1148,11 @@ pub struct StarterJobRow {
     pub eligible: bool,
     pub status: StarterJobStatus,
     pub payout_pointer: Option<String>,
+    pub start_confirm_by_unix_ms: Option<u64>,
+    pub execution_started_at_unix_ms: Option<u64>,
+    pub execution_expires_at_unix_ms: Option<u64>,
+    pub last_heartbeat_at_unix_ms: Option<u64>,
+    pub next_heartbeat_due_at_unix_ms: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -593,7 +1182,7 @@ const STARTER_DEMAND_TEMPLATES: [StarterDemandTemplate; 4] = [
 
 const STARTER_DEMAND_DEFAULT_BUDGET_SATS: u64 = 5_000;
 const STARTER_DEMAND_DEFAULT_DISPATCH_INTERVAL_SECONDS: u64 = 12;
-const STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS: usize = 3;
+const STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS: usize = 1;
 
 pub struct StarterJobsState {
     pub load_state: PaneLoadState,
@@ -607,6 +1196,9 @@ pub struct StarterJobsState {
     pub dispatch_interval_seconds: u64,
     pub max_inflight_jobs: usize,
     pub last_dispatched_at: Option<Instant>,
+    pub next_hosted_sync_due_at: Option<Instant>,
+    pub active_hosted_request_id: Option<String>,
+    pub next_hosted_heartbeat_due_at: Option<Instant>,
     next_dispatch_due_at: Option<Instant>,
     next_dispatch_seq: u64,
 }
@@ -625,6 +1217,9 @@ impl Default for StarterJobsState {
             dispatch_interval_seconds: STARTER_DEMAND_DEFAULT_DISPATCH_INTERVAL_SECONDS,
             max_inflight_jobs: STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS,
             last_dispatched_at: None,
+            next_hosted_sync_due_at: None,
+            active_hosted_request_id: None,
+            next_hosted_heartbeat_due_at: None,
             next_dispatch_due_at: None,
             next_dispatch_seq: 0,
         }
@@ -657,6 +1252,181 @@ impl StarterJobsState {
         self.kill_switch_enabled
     }
 
+    pub fn sync_hosted_offers(
+        &mut self,
+        jobs: Vec<StarterJobRow>,
+        budget_cap_sats: u64,
+        budget_allocated_sats: u64,
+        dispatch_interval_seconds: u64,
+        max_inflight_jobs: usize,
+        next_sync_due_at: Option<Instant>,
+        reason: &str,
+    ) {
+        let existing_by_job_id = self
+            .jobs
+            .iter()
+            .map(|job| (job.job_id.clone(), job.clone()))
+            .collect::<std::collections::HashMap<_, _>>();
+        self.jobs = jobs
+            .into_iter()
+            .map(|mut job| {
+                if let Some(existing) = existing_by_job_id.get(job.job_id.as_str()) {
+                    if existing.status != StarterJobStatus::Queued
+                        && job.status == StarterJobStatus::Queued
+                    {
+                        job.status = existing.status;
+                    }
+                    if job.payout_pointer.is_none() {
+                        job.payout_pointer = existing.payout_pointer.clone();
+                    }
+                    if job.execution_started_at_unix_ms.is_none() {
+                        job.execution_started_at_unix_ms = existing.execution_started_at_unix_ms;
+                    }
+                    if job.execution_expires_at_unix_ms.is_none() {
+                        job.execution_expires_at_unix_ms = existing.execution_expires_at_unix_ms;
+                    }
+                    if job.last_heartbeat_at_unix_ms.is_none() {
+                        job.last_heartbeat_at_unix_ms = existing.last_heartbeat_at_unix_ms;
+                    }
+                    if job.next_heartbeat_due_at_unix_ms.is_none() {
+                        job.next_heartbeat_due_at_unix_ms = existing.next_heartbeat_due_at_unix_ms;
+                    }
+                    if job.start_confirm_by_unix_ms.is_none() {
+                        job.start_confirm_by_unix_ms = existing.start_confirm_by_unix_ms;
+                    }
+                }
+                job
+            })
+            .collect();
+        self.budget_cap_sats = budget_cap_sats.max(1);
+        self.budget_allocated_sats = budget_allocated_sats.min(self.budget_cap_sats);
+        self.dispatch_interval_seconds = dispatch_interval_seconds.clamp(1, 3600);
+        self.max_inflight_jobs = max_inflight_jobs.clamp(1, 1);
+        self.next_hosted_sync_due_at = next_sync_due_at;
+        if let Some(selected_id) = self.selected_job_id.as_deref()
+            && !self.jobs.iter().any(|job| job.job_id == selected_id)
+        {
+            self.selected_job_id = self.jobs.first().map(|job| job.job_id.clone());
+        } else if self.selected_job_id.is_none() {
+            self.selected_job_id = self.jobs.first().map(|job| job.job_id.clone());
+        }
+        self.pane_set_ready(reason.to_string());
+    }
+
+    pub fn clear_hosted_offers(&mut self, reason: &str) -> bool {
+        self.clear_hosted_offers_except(reason, None)
+    }
+
+    pub fn clear_hosted_offers_except(&mut self, reason: &str, keep_job_id: Option<&str>) -> bool {
+        let changed = !self.jobs.is_empty()
+            || self.selected_job_id.is_some()
+            || self.load_state != PaneLoadState::Ready
+            || self.last_action.as_deref() != Some(reason);
+        self.jobs
+            .retain(|job| keep_job_id == Some(job.job_id.as_str()));
+        self.selected_job_id = keep_job_id
+            .and_then(|job_id| self.jobs.iter().find(|job| job.job_id == job_id))
+            .map(|job| job.job_id.clone());
+        if self
+            .active_hosted_request_id
+            .as_deref()
+            .is_some_and(|request_id| keep_job_id != Some(request_id))
+        {
+            self.active_hosted_request_id = None;
+            self.next_hosted_heartbeat_due_at = None;
+        }
+        self.next_hosted_sync_due_at = None;
+        self.pane_set_ready(reason.to_string());
+        changed
+    }
+
+    pub fn hosted_offer(&self, job_id: &str) -> Option<&StarterJobRow> {
+        self.jobs.iter().find(|job| job.job_id == job_id)
+    }
+
+    pub fn mark_running(
+        &mut self,
+        job_id: &str,
+        execution_started_at_unix_ms: Option<u64>,
+        execution_expires_at_unix_ms: Option<u64>,
+        last_heartbeat_at_unix_ms: Option<u64>,
+        next_heartbeat_due_at_unix_ms: Option<u64>,
+        next_heartbeat_due_at: Option<Instant>,
+    ) {
+        let updated_job_id = self
+            .jobs
+            .iter_mut()
+            .find(|job| job.job_id == job_id)
+            .map(|job| {
+                job.status = StarterJobStatus::Running;
+                job.execution_started_at_unix_ms = execution_started_at_unix_ms;
+                job.execution_expires_at_unix_ms = execution_expires_at_unix_ms;
+                job.last_heartbeat_at_unix_ms = last_heartbeat_at_unix_ms;
+                job.next_heartbeat_due_at_unix_ms = next_heartbeat_due_at_unix_ms;
+                job.job_id.clone()
+            });
+        if let Some(updated_job_id) = updated_job_id {
+            self.active_hosted_request_id = Some(updated_job_id.clone());
+            self.next_hosted_heartbeat_due_at = next_heartbeat_due_at;
+            self.selected_job_id = Some(updated_job_id.clone());
+            self.pane_set_ready(format!("Hosted starter offer running {}", updated_job_id));
+        }
+    }
+
+    pub fn mark_heartbeat(
+        &mut self,
+        job_id: &str,
+        last_heartbeat_at_unix_ms: u64,
+        next_heartbeat_due_at_unix_ms: u64,
+        execution_expires_at_unix_ms: u64,
+        next_heartbeat_due_at: Option<Instant>,
+    ) {
+        if let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == job_id) {
+            job.status = StarterJobStatus::Running;
+            job.last_heartbeat_at_unix_ms = Some(last_heartbeat_at_unix_ms);
+            job.next_heartbeat_due_at_unix_ms = Some(next_heartbeat_due_at_unix_ms);
+            job.execution_expires_at_unix_ms = Some(execution_expires_at_unix_ms);
+            self.active_hosted_request_id = Some(job_id.to_string());
+            self.next_hosted_heartbeat_due_at = next_heartbeat_due_at;
+            self.pane_set_ready(format!("Hosted starter lease heartbeat {}", job_id));
+        }
+    }
+
+    pub fn mark_released(&mut self, job_id: &str, reason: &str) {
+        self.jobs.retain(|job| job.job_id != job_id);
+        if self.selected_job_id.as_deref() == Some(job_id) {
+            self.selected_job_id = self.jobs.first().map(|job| job.job_id.clone());
+        }
+        if self.active_hosted_request_id.as_deref() == Some(job_id) {
+            self.active_hosted_request_id = None;
+            self.next_hosted_heartbeat_due_at = None;
+        }
+        self.pane_set_ready(format!(
+            "Hosted starter lease released {} ({})",
+            job_id, reason
+        ));
+    }
+
+    pub fn mark_completed(&mut self, job_id: &str, payment_pointer: &str) {
+        let updated_job_id = self
+            .jobs
+            .iter_mut()
+            .find(|job| job.job_id == job_id)
+            .map(|job| {
+                job.status = StarterJobStatus::Completed;
+                job.payout_pointer = Some(payment_pointer.to_string());
+                job.next_heartbeat_due_at_unix_ms = None;
+                job.job_id.clone()
+            });
+        if let Some(updated_job_id) = updated_job_id {
+            if self.active_hosted_request_id.as_deref() == Some(updated_job_id.as_str()) {
+                self.active_hosted_request_id = None;
+                self.next_hosted_heartbeat_due_at = None;
+            }
+            self.pane_set_ready(format!("Hosted starter offer completed {}", updated_job_id));
+        }
+    }
+
     pub fn apply_dispatch_controls(
         &mut self,
         budget_cap_sats: u64,
@@ -665,7 +1435,7 @@ impl StarterJobsState {
     ) {
         let budget_cap_sats = budget_cap_sats.max(1);
         let dispatch_interval_seconds = dispatch_interval_seconds.clamp(1, 3600);
-        let max_inflight_jobs = max_inflight_jobs.clamp(1, 12);
+        let max_inflight_jobs = max_inflight_jobs.clamp(1, 1);
         if self.budget_cap_sats == budget_cap_sats
             && self.dispatch_interval_seconds == dispatch_interval_seconds
             && self.max_inflight_jobs == max_inflight_jobs
@@ -737,6 +1507,11 @@ impl StarterJobsState {
             eligible: true,
             status: StarterJobStatus::Queued,
             payout_pointer: None,
+            start_confirm_by_unix_ms: None,
+            execution_started_at_unix_ms: None,
+            execution_expires_at_unix_ms: None,
+            last_heartbeat_at_unix_ms: None,
+            next_heartbeat_due_at_unix_ms: None,
         };
         self.jobs.insert(0, job.clone());
         if self.selected_job_id.is_none() {
@@ -860,5 +1635,591 @@ impl StarterJobsState {
             }
         }
         None
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopDirection {
+    LocalToPeer,
+    PeerToLocal,
+}
+
+impl ReciprocalLoopDirection {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::LocalToPeer => "local->peer",
+            Self::PeerToLocal => "peer->local",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopFailureClass {
+    Dispatch,
+    Payment,
+    Job,
+}
+
+impl ReciprocalLoopFailureClass {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Dispatch => "dispatch",
+            Self::Payment => "payment",
+            Self::Job => "job",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ReciprocalLoopFailureDisposition {
+    Recoverable,
+    Terminal,
+}
+
+impl ReciprocalLoopFailureDisposition {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Recoverable => "recoverable",
+            Self::Terminal => "terminal",
+        }
+    }
+}
+
+const RECIPROCAL_LOOP_DEFAULT_AMOUNT_SATS: u64 = 10;
+const RECIPROCAL_LOOP_DEFAULT_TIMEOUT_SECONDS: u64 = 90;
+const RECIPROCAL_LOOP_DEFAULT_STALE_TIMEOUT_SECONDS: u64 = 120;
+const RECIPROCAL_LOOP_DEFAULT_MAX_RETRY_ATTEMPTS: u32 = 6;
+const RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_SECONDS: u64 = 2;
+const RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_MAX_SECONDS: u64 = 60;
+const RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_LOCAL_TO_PEER: u8 = 1;
+const RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_PEER_TO_LOCAL: u8 = 1;
+const RECIPROCAL_LOOP_SCOPE_ID: &str = "earn.loop.pingpong.v1";
+
+pub struct ReciprocalLoopState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub running: bool,
+    pub kill_switch_active: bool,
+    pub amount_sats: u64,
+    pub timeout_seconds: u64,
+    pub stale_timeout_seconds: u64,
+    pub skill_scope_id: String,
+    pub local_pubkey: Option<String>,
+    pub peer_pubkey: Option<String>,
+    pub next_direction: ReciprocalLoopDirection,
+    pub max_in_flight_local_to_peer: u8,
+    pub max_in_flight_peer_to_local: u8,
+    pub in_flight_request_id: Option<String>,
+    pub in_flight_since_epoch_seconds: Option<u64>,
+    pub peer_wait_since_epoch_seconds: Option<u64>,
+    pub retry_attempts: u32,
+    pub max_retry_attempts: u32,
+    pub retry_backoff_seconds: u64,
+    pub retry_backoff_max_seconds: u64,
+    pub retry_backoff_until_epoch_seconds: Option<u64>,
+    pub local_to_peer_dispatched: u64,
+    pub local_to_peer_paid: u64,
+    pub local_to_peer_failed: u64,
+    pub peer_to_local_paid: u64,
+    pub peer_to_local_failed: u64,
+    pub sats_sent: u64,
+    pub sats_received: u64,
+    pub last_payment_pointer: Option<String>,
+    pub last_failure_class: Option<ReciprocalLoopFailureClass>,
+    pub last_failure_disposition: Option<ReciprocalLoopFailureDisposition>,
+    pub last_failure_detail: Option<String>,
+    seen_terminal_outbound_request_ids: HashSet<String>,
+    seen_terminal_inbound_job_ids: HashSet<String>,
+}
+
+impl Default for ReciprocalLoopState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Reciprocal loop is idle".to_string()),
+            running: false,
+            kill_switch_active: false,
+            amount_sats: RECIPROCAL_LOOP_DEFAULT_AMOUNT_SATS,
+            timeout_seconds: RECIPROCAL_LOOP_DEFAULT_TIMEOUT_SECONDS,
+            stale_timeout_seconds: RECIPROCAL_LOOP_DEFAULT_STALE_TIMEOUT_SECONDS,
+            skill_scope_id: RECIPROCAL_LOOP_SCOPE_ID.to_string(),
+            local_pubkey: None,
+            peer_pubkey: None,
+            next_direction: ReciprocalLoopDirection::LocalToPeer,
+            max_in_flight_local_to_peer: RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_LOCAL_TO_PEER,
+            max_in_flight_peer_to_local: RECIPROCAL_LOOP_DEFAULT_MAX_IN_FLIGHT_PEER_TO_LOCAL,
+            in_flight_request_id: None,
+            in_flight_since_epoch_seconds: None,
+            peer_wait_since_epoch_seconds: None,
+            retry_attempts: 0,
+            max_retry_attempts: RECIPROCAL_LOOP_DEFAULT_MAX_RETRY_ATTEMPTS,
+            retry_backoff_seconds: RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_SECONDS,
+            retry_backoff_max_seconds: RECIPROCAL_LOOP_DEFAULT_RETRY_BACKOFF_MAX_SECONDS,
+            retry_backoff_until_epoch_seconds: None,
+            local_to_peer_dispatched: 0,
+            local_to_peer_paid: 0,
+            local_to_peer_failed: 0,
+            peer_to_local_paid: 0,
+            peer_to_local_failed: 0,
+            sats_sent: 0,
+            sats_received: 0,
+            last_payment_pointer: None,
+            last_failure_class: None,
+            last_failure_disposition: None,
+            last_failure_detail: None,
+            seen_terminal_outbound_request_ids: HashSet::new(),
+            seen_terminal_inbound_job_ids: HashSet::new(),
+        }
+    }
+}
+
+impl ReciprocalLoopState {
+    pub fn normalized_pubkey(value: &str) -> String {
+        value.trim().to_ascii_lowercase()
+    }
+
+    pub fn set_local_pubkey(&mut self, pubkey: Option<&str>) {
+        self.local_pubkey = pubkey
+            .map(Self::normalized_pubkey)
+            .filter(|value| !value.is_empty());
+    }
+
+    pub fn set_peer_pubkey(&mut self, pubkey: Option<&str>) {
+        self.peer_pubkey = pubkey
+            .map(Self::normalized_pubkey)
+            .filter(|value| !value.is_empty());
+    }
+
+    pub fn start(&mut self) -> Result<(), String> {
+        let Some(local) = self.local_pubkey.as_deref() else {
+            return Err(self.pane_set_error("Reciprocal loop start requires local identity pubkey"));
+        };
+        let Some(peer) = self.peer_pubkey.as_deref() else {
+            return Err(self.pane_set_error("Reciprocal loop start requires peer pubkey"));
+        };
+        if local == peer {
+            return Err(
+                self.pane_set_error("Reciprocal loop peer pubkey must differ from local pubkey")
+            );
+        }
+
+        self.running = true;
+        self.kill_switch_active = false;
+        self.next_direction = if local <= peer {
+            ReciprocalLoopDirection::LocalToPeer
+        } else {
+            ReciprocalLoopDirection::PeerToLocal
+        };
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        self.retry_attempts = 0;
+        self.retry_backoff_until_epoch_seconds = None;
+        self.last_failure_class = None;
+        self.last_failure_disposition = None;
+        self.last_failure_detail = None;
+        self.pane_set_ready(format!(
+            "Reciprocal loop started (peer={} next={})",
+            peer,
+            self.next_direction.label()
+        ));
+        Ok(())
+    }
+
+    pub fn stop(&mut self, reason: &str) {
+        self.running = false;
+        self.kill_switch_active = true;
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        self.retry_backoff_until_epoch_seconds = None;
+        self.pane_set_ready(format!(
+            "Reciprocal loop stopped ({})",
+            reason.trim().to_string()
+        ));
+    }
+
+    pub fn reset_counters(&mut self) {
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        self.local_to_peer_dispatched = 0;
+        self.local_to_peer_paid = 0;
+        self.local_to_peer_failed = 0;
+        self.peer_to_local_paid = 0;
+        self.peer_to_local_failed = 0;
+        self.sats_sent = 0;
+        self.sats_received = 0;
+        self.retry_attempts = 0;
+        self.retry_backoff_until_epoch_seconds = None;
+        self.last_payment_pointer = None;
+        self.last_failure_class = None;
+        self.last_failure_disposition = None;
+        self.last_failure_detail = None;
+        self.seen_terminal_outbound_request_ids.clear();
+        self.seen_terminal_inbound_job_ids.clear();
+        self.pane_set_ready("Reciprocal loop counters reset");
+    }
+
+    pub fn in_flight_local_to_peer(&self) -> u8 {
+        if self.in_flight_request_id.is_some() {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub fn in_flight_peer_to_local(&self) -> u8 {
+        if self.running
+            && self.in_flight_request_id.is_none()
+            && self.next_direction == ReciprocalLoopDirection::PeerToLocal
+        {
+            1
+        } else {
+            0
+        }
+    }
+
+    pub fn ready_to_dispatch(&self) -> bool {
+        self.running
+            && !self.kill_switch_active
+            && self.next_direction == ReciprocalLoopDirection::LocalToPeer
+            && self.in_flight_local_to_peer() < self.max_in_flight_local_to_peer.max(1)
+            && self.in_flight_peer_to_local() < self.max_in_flight_peer_to_local.max(1)
+            && self.in_flight_request_id.is_none()
+            && self.retry_backoff_until_epoch_seconds.is_none()
+    }
+
+    pub fn clear_retry_backoff_if_elapsed(&mut self, now_epoch_seconds: u64) -> bool {
+        let Some(until) = self.retry_backoff_until_epoch_seconds else {
+            return false;
+        };
+        if now_epoch_seconds < until {
+            return false;
+        }
+        self.retry_backoff_until_epoch_seconds = None;
+        self.pane_set_ready("Reciprocal loop backoff elapsed; dispatch may resume");
+        true
+    }
+
+    pub fn in_backoff_window(&self, now_epoch_seconds: u64) -> bool {
+        self.retry_backoff_until_epoch_seconds
+            .is_some_and(|until| now_epoch_seconds < until)
+    }
+
+    pub fn mark_peer_wait_started(&mut self, now_epoch_seconds: u64) {
+        if self.running
+            && self.next_direction == ReciprocalLoopDirection::PeerToLocal
+            && self.in_flight_request_id.is_none()
+            && self.peer_wait_since_epoch_seconds.is_none()
+        {
+            self.peer_wait_since_epoch_seconds = Some(now_epoch_seconds);
+        }
+    }
+
+    pub fn outbound_stale_timed_out(&self, now_epoch_seconds: u64) -> bool {
+        let Some(since) = self.in_flight_since_epoch_seconds else {
+            return false;
+        };
+        now_epoch_seconds.saturating_sub(since) >= self.stale_timeout_seconds
+    }
+
+    pub fn inbound_wait_timed_out(&self, now_epoch_seconds: u64) -> bool {
+        if !self.running
+            || self.next_direction != ReciprocalLoopDirection::PeerToLocal
+            || self.in_flight_request_id.is_some()
+        {
+            return false;
+        }
+        let Some(since) = self.peer_wait_since_epoch_seconds else {
+            return false;
+        };
+        now_epoch_seconds.saturating_sub(since) >= self.stale_timeout_seconds
+    }
+
+    pub fn mark_outbound_stale_timeout(&mut self) -> Option<String> {
+        let request_id = self.in_flight_request_id.take();
+        let Some(request_id) = request_id else {
+            return None;
+        };
+        self.seen_terminal_outbound_request_ids
+            .insert(request_id.clone());
+        self.local_to_peer_failed = self.local_to_peer_failed.saturating_add(1);
+        self.in_flight_since_epoch_seconds = None;
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.peer_wait_since_epoch_seconds = None;
+        Some(request_id)
+    }
+
+    pub fn mark_inbound_stale_timeout(&mut self) {
+        self.peer_to_local_failed = self.peer_to_local_failed.saturating_add(1);
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.peer_wait_since_epoch_seconds = None;
+    }
+
+    pub fn in_flight_limit_violation(&self) -> Option<String> {
+        let local_in_flight = self.in_flight_local_to_peer();
+        if local_in_flight > self.max_in_flight_local_to_peer.max(1) {
+            return Some(format!(
+                "local->peer in-flight {} exceeds max {}",
+                local_in_flight, self.max_in_flight_local_to_peer
+            ));
+        }
+        let peer_in_flight = self.in_flight_peer_to_local();
+        if peer_in_flight > self.max_in_flight_peer_to_local.max(1) {
+            return Some(format!(
+                "peer->local in-flight {} exceeds max {}",
+                peer_in_flight, self.max_in_flight_peer_to_local
+            ));
+        }
+        None
+    }
+
+    pub fn clear_retry_state_after_success(&mut self) {
+        self.retry_attempts = 0;
+        self.retry_backoff_until_epoch_seconds = None;
+        self.last_failure_class = None;
+        self.last_failure_disposition = None;
+        self.last_failure_detail = None;
+    }
+
+    pub fn record_recoverable_failure(
+        &mut self,
+        class: ReciprocalLoopFailureClass,
+        detail: &str,
+        now_epoch_seconds: u64,
+    ) -> bool {
+        let detail = detail.trim();
+        let detail = if detail.is_empty() {
+            "recoverable loop runtime error"
+        } else {
+            detail
+        };
+        self.last_failure_class = Some(class);
+        self.last_failure_disposition = Some(ReciprocalLoopFailureDisposition::Recoverable);
+        self.last_failure_detail = Some(detail.to_string());
+
+        self.retry_attempts = self.retry_attempts.saturating_add(1);
+        if self.retry_attempts > self.max_retry_attempts {
+            self.record_terminal_failure(
+                class,
+                format!(
+                    "{} (retry budget exceeded {}/{})",
+                    detail, self.retry_attempts, self.max_retry_attempts
+                )
+                .as_str(),
+            );
+            return true;
+        }
+
+        let retry_index = self.retry_attempts.saturating_sub(1).min(20);
+        let backoff_multiplier = 1u64.checked_shl(retry_index).unwrap_or(u64::MAX);
+        let backoff_seconds = self
+            .retry_backoff_seconds
+            .saturating_mul(backoff_multiplier)
+            .clamp(1, self.retry_backoff_max_seconds.max(1));
+        self.retry_backoff_until_epoch_seconds =
+            Some(now_epoch_seconds.saturating_add(backoff_seconds));
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        let _ = self.pane_set_error(format!(
+            "Reciprocal loop recoverable failure class={} retry={}/{} backoff={}s detail={}",
+            class.label(),
+            self.retry_attempts,
+            self.max_retry_attempts,
+            backoff_seconds,
+            detail
+        ));
+        false
+    }
+
+    pub fn record_terminal_failure(&mut self, class: ReciprocalLoopFailureClass, detail: &str) {
+        let detail = detail.trim();
+        let detail = if detail.is_empty() {
+            "terminal loop runtime error"
+        } else {
+            detail
+        };
+        self.running = false;
+        self.kill_switch_active = true;
+        self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+        self.in_flight_request_id = None;
+        self.in_flight_since_epoch_seconds = None;
+        self.peer_wait_since_epoch_seconds = None;
+        self.retry_backoff_until_epoch_seconds = None;
+        self.last_failure_class = Some(class);
+        self.last_failure_disposition = Some(ReciprocalLoopFailureDisposition::Terminal);
+        self.last_failure_detail = Some(detail.to_string());
+        let _ = self.pane_set_error(format!(
+            "Reciprocal loop terminal failure class={} detail={}",
+            class.label(),
+            detail
+        ));
+    }
+
+    pub fn register_outbound_dispatch(&mut self, request_id: &str, now_epoch_seconds: u64) {
+        let request_id = request_id.trim();
+        if request_id.is_empty() {
+            return;
+        }
+
+        self.local_to_peer_dispatched = self.local_to_peer_dispatched.saturating_add(1);
+        self.in_flight_request_id = Some(request_id.to_string());
+        self.in_flight_since_epoch_seconds = Some(now_epoch_seconds);
+        self.peer_wait_since_epoch_seconds = None;
+        self.next_direction = ReciprocalLoopDirection::PeerToLocal;
+        self.clear_retry_state_after_success();
+        self.pane_set_ready(format!(
+            "Reciprocal loop dispatched request {} ({} sats)",
+            request_id, self.amount_sats
+        ));
+    }
+
+    pub fn match_outbound_request(&self, request: &SubmittedNetworkRequest) -> bool {
+        if request.budget_sats != self.amount_sats
+            || request.skill_scope_id.as_deref() != Some(self.skill_scope_id.as_str())
+        {
+            return false;
+        }
+        let Some(peer) = self.peer_pubkey.as_deref() else {
+            return false;
+        };
+        request
+            .target_provider_pubkeys
+            .iter()
+            .map(|provider| Self::normalized_pubkey(provider.as_str()))
+            .any(|provider| provider == peer)
+    }
+
+    pub fn reconcile_outbound_terminal_statuses(
+        &mut self,
+        submitted_requests: &[SubmittedNetworkRequest],
+    ) -> bool {
+        let mut changed = false;
+        for request in submitted_requests {
+            if !self.match_outbound_request(request) {
+                continue;
+            }
+            if self
+                .seen_terminal_outbound_request_ids
+                .contains(request.request_id.as_str())
+            {
+                continue;
+            }
+
+            match request.status {
+                NetworkRequestStatus::Paid | NetworkRequestStatus::Completed => {
+                    self.seen_terminal_outbound_request_ids
+                        .insert(request.request_id.clone());
+                    self.local_to_peer_paid = self.local_to_peer_paid.saturating_add(1);
+                    self.sats_sent = self.sats_sent.saturating_add(self.amount_sats);
+                    if let Some(pointer) = request.last_payment_pointer.as_deref() {
+                        self.last_payment_pointer = Some(pointer.to_string());
+                    }
+                    if self.in_flight_request_id.as_deref() == Some(request.request_id.as_str()) {
+                        self.in_flight_request_id = None;
+                        self.in_flight_since_epoch_seconds = None;
+                    }
+                    self.next_direction = ReciprocalLoopDirection::PeerToLocal;
+                    self.peer_wait_since_epoch_seconds = None;
+                    self.clear_retry_state_after_success();
+                    self.pane_set_ready(format!(
+                        "Reciprocal loop outbound settled request {} pointer={}",
+                        request.request_id,
+                        request.last_payment_pointer.as_deref().unwrap_or("none")
+                    ));
+                    changed = true;
+                }
+                NetworkRequestStatus::Failed => {
+                    self.seen_terminal_outbound_request_ids
+                        .insert(request.request_id.clone());
+                    self.local_to_peer_failed = self.local_to_peer_failed.saturating_add(1);
+                    if self.in_flight_request_id.as_deref() == Some(request.request_id.as_str()) {
+                        self.in_flight_request_id = None;
+                        self.in_flight_since_epoch_seconds = None;
+                    }
+                    self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.peer_wait_since_epoch_seconds = None;
+                    self.last_failure_class = Some(ReciprocalLoopFailureClass::Payment);
+                    self.last_failure_disposition =
+                        Some(ReciprocalLoopFailureDisposition::Recoverable);
+                    self.last_failure_detail = request.payment_error.clone().or_else(|| {
+                        Some("loop outbound request reached failed status".to_string())
+                    });
+                    let _ = self.pane_set_error(format!(
+                        "Reciprocal loop outbound failed request {}",
+                        request.request_id
+                    ));
+                    changed = true;
+                }
+                _ => {}
+            }
+        }
+        changed
+    }
+
+    pub fn match_inbound_history_row(&self, row: &crate::app_state::JobHistoryReceiptRow) -> bool {
+        row.demand_source == crate::app_state::JobDemandSource::OpenNetwork
+            && row.payout_sats == self.amount_sats
+            && row.skill_scope_id.as_deref() == Some(self.skill_scope_id.as_str())
+    }
+
+    pub fn reconcile_inbound_history(
+        &mut self,
+        history_rows: &[crate::app_state::JobHistoryReceiptRow],
+    ) -> bool {
+        let mut changed = false;
+        for row in history_rows {
+            if !self.match_inbound_history_row(row) {
+                continue;
+            }
+            if self
+                .seen_terminal_inbound_job_ids
+                .contains(row.job_id.as_str())
+            {
+                continue;
+            }
+
+            self.seen_terminal_inbound_job_ids
+                .insert(row.job_id.clone());
+            match row.status {
+                crate::app_state::JobHistoryStatus::Succeeded => {
+                    self.peer_to_local_paid = self.peer_to_local_paid.saturating_add(1);
+                    self.sats_received = self.sats_received.saturating_add(row.payout_sats);
+                    if !row.payment_pointer.trim().is_empty() {
+                        self.last_payment_pointer = Some(row.payment_pointer.clone());
+                    }
+                    self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.peer_wait_since_epoch_seconds = None;
+                    self.clear_retry_state_after_success();
+                    self.pane_set_ready(format!(
+                        "Reciprocal loop inbound settled job {} pointer={}",
+                        row.job_id, row.payment_pointer
+                    ));
+                    changed = true;
+                }
+                crate::app_state::JobHistoryStatus::Failed => {
+                    self.peer_to_local_failed = self.peer_to_local_failed.saturating_add(1);
+                    self.next_direction = ReciprocalLoopDirection::LocalToPeer;
+                    self.peer_wait_since_epoch_seconds = None;
+                    self.last_failure_class = Some(ReciprocalLoopFailureClass::Job);
+                    self.last_failure_disposition =
+                        Some(ReciprocalLoopFailureDisposition::Recoverable);
+                    self.last_failure_detail = row.failure_reason.clone().or_else(|| {
+                        Some("loop inbound job finished with failed history receipt".to_string())
+                    });
+                    let _ = self.pane_set_error(format!(
+                        "Reciprocal loop inbound failed job {}",
+                        row.job_id
+                    ));
+                    changed = true;
+                }
+            }
+        }
+        changed
     }
 }
