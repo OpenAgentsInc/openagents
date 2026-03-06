@@ -15,6 +15,67 @@ fn current_epoch_millis() -> u64 {
         .unwrap_or(0)
 }
 
+fn advance_completed_turn_labor_pipeline(state: &mut RenderState, turn_id: &str) {
+    let is_labor_bound = state
+        .autopilot_chat
+        .turn_metadata_for(turn_id)
+        .and_then(|metadata| metadata.labor_binding.as_ref())
+        .is_some();
+    if !is_labor_bound {
+        return;
+    }
+
+    let had_submission = state
+        .autopilot_chat
+        .turn_labor_submission_for(turn_id)
+        .is_some();
+    match state
+        .autopilot_chat
+        .assemble_turn_labor_submission(turn_id, current_epoch_millis())
+    {
+        Ok(Some(submission)) if !had_submission => {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "labor submission assembled: submission_id={} verifier={} settlement_ready={}",
+                submission.submission.submission_id,
+                submission.verifier_id,
+                submission.settlement_ready
+            ));
+        }
+        Ok(Some(_)) | Ok(None) => {}
+        Err(error) => {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("labor submission failed: {error}"));
+            return;
+        }
+    }
+
+    let had_verdict = state
+        .autopilot_chat
+        .turn_labor_verdict_for(turn_id)
+        .is_some();
+    match state
+        .autopilot_chat
+        .finalize_turn_labor_verdict(turn_id, current_epoch_millis())
+    {
+        Ok(Some(verdict)) if !had_verdict => {
+            state.autopilot_chat.record_turn_timeline_event(format!(
+                "labor verdict finalized: verdict_id={} outcome={} settlement_ready={} verifier={}",
+                verdict.verdict.verdict_id,
+                verdict.outcome_label(),
+                verdict.settlement_ready,
+                verdict.verifier_id
+            ));
+        }
+        Ok(Some(_)) | Ok(None) => {}
+        Err(error) => {
+            state
+                .autopilot_chat
+                .record_turn_timeline_event(format!("labor verifier blocked settlement: {error}"));
+        }
+    }
+}
+
 fn cad_failure_class_from_tool_response(
     envelope: &super::super::tool_bridge::ToolBridgeResultEnvelope,
 ) -> CadBuildFailureClass {
@@ -1371,6 +1432,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         }
                         _ => {
                             state.autopilot_chat.mark_turn_completed_for(&turn_id);
+                            advance_completed_turn_labor_pipeline(state, &turn_id);
                         }
                     }
                     // Do not immediately clobber a valid streamed message with a stale/partial
