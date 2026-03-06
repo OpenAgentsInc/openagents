@@ -9,7 +9,7 @@ The short version:
 Autopilot is the first product. It is the user-facing wedge into a broader machine economy.
 
 This is not a single marketplace with one matching engine.
-It is a layered system where machine labor, machine compute, machine data, machine risk, and machine liquidity all share the same core primitives for contracts, verification, settlement, liability, and receipts.
+It is a layered system where machine compute, machine data, machine labor, machine liquidity, and machine risk all share the same core primitives for contracts, verification, settlement, liability, and receipts.
 
 ## The agents marketplace
 
@@ -31,10 +31,10 @@ At a high level, Autopilot is the wedge into a broader economic system:
     - buys and sells access to datasets, artifacts, stored conversations, and local context
   - `Labor Market`
     - buys and sells machine work
-  - `Risk Market`
-    - prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
   - `Liquidity Market`
     - routing, FX, and value movement between participants and rails
+  - `Risk Market`
+    - prediction, coverage, and underwriting for failure probability, verification difficulty, and delivery risk
 - **Economic Kernel**
   - contracts, verification, liability, settlement, policy, receipts
 - **Execution + Coordination Substrate**
@@ -119,7 +119,22 @@ In other words:
 * labor produces outcomes
 * the kernel turns outcomes into verified economic events
 
-### 5. Risk Market
+### 5. Liquidity Market
+
+This is the value-movement layer.
+
+It handles how money moves between participants and rails:
+
+* settlement routing
+* liquidity provision
+* FX and exchange paths
+* solver participation
+* refund and unwind paths
+
+This layer matters because machine economies need more than contracts and risk pricing.
+They also need a deterministic way to move value across payment systems and market participants without hidden authority or opaque state transitions.
+
+### 6. Risk Market
 
 This is the information and underwriting layer.
 
@@ -142,21 +157,6 @@ In practice this can appear as:
 This layer does not replace verification.
 It helps decide how expensive verification, insurance, and risk capital should be.
 
-### 6. Liquidity Market
-
-This is the value-movement layer.
-
-It handles how money moves between participants and rails:
-
-* settlement routing
-* liquidity provision
-* FX and exchange paths
-* solver participation
-* refund and unwind paths
-
-This layer matters because machine economies need more than contracts and risk pricing.
-They also need a deterministic way to move value across payment systems and market participants without hidden authority or opaque state transitions.
-
 ## How the layers fit together
 
 The dependency order is:
@@ -164,8 +164,8 @@ The dependency order is:
 ```text
 Economic Kernel -> Compute Market
                -> Data Market
-               -> Labor Market -> Risk overlays
-               -> Liquidity overlays
+               -> Labor Market -> Liquidity overlays
+               -> Risk overlays
 ```
 
 That does not mean value only flows upward.
@@ -176,8 +176,8 @@ More concretely:
 * the **compute market** supplies capacity
 * the **data market** supplies context
 * the **labor market** consumes compute and data to produce work
-* the **risk market** prices uncertainty in both compute and labor
 * the **liquidity market** moves value between participants and rails
+* the **risk market** prices uncertainty in both compute and labor
 * the **kernel** makes all of it replayable, auditable, and settleable
 
 ## The operating loop
@@ -189,8 +189,8 @@ compute powers labor
 data informs labor
 labor creates outcomes
 verification converts outcomes into trusted settlement
-risk markets price uncertainty around all of it
 liquidity and routing move value through the system
+risk markets price uncertainty around all of it
 ```
 
 That is why these markets belong in one system rather than three unrelated products.

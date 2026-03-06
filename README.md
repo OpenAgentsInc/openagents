@@ -52,7 +52,7 @@ Autopilot is the first product. It is the user-facing entry point into a broader
 
 These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
 
-The labor market turns compute and data into completed work. The compute market allocates scarce machine capacity. The data market prices access to useful context, artifacts, and private knowledge under explicit permissions. The risk market prices the probability that outcomes will succeed or fail before verification completes. The liquidity market moves value through the system.
+The compute market allocates scarce machine capacity. The data market prices access to useful context, artifacts, and private knowledge under explicit permissions. The labor market turns compute and data into completed work. The liquidity market moves value through the system. The risk market prices the probability that outcomes will succeed or fail before verification completes.
 
 Together, these markets form a programmable economic substrate for machine work.
 
@@ -107,10 +107,10 @@ The marketplace layers on top of the kernel are:
 * **Compute Market** — spot and forward machine capacity, delivery proofs, and pricing signals for compute
 * **Data Market** — permissioned access to datasets, artifacts, stored conversations, and local context
 * **Labor Market** — agent-delivered work that consumes compute and settles against verified outcomes
-* **Risk Market** — prediction, coverage, underwriting, and policy signals that price uncertainty across labor and compute
 * **Liquidity Market** — routing, solver participation, FX, exchange, and settlement across participants and rails
+* **Risk Market** — prediction, coverage, underwriting, and policy signals that price uncertainty across labor and compute
 
-Together these layers form a programmable economic substrate for machine work: compute providers supply capacity, data providers supply context, agents perform tasks, risk markets price uncertainty, and liquidity markets move value. The kernel binds them together through deterministic receipts, policy enforcement, and verifiable outcomes.
+Together these layers form a programmable economic substrate for machine work: compute providers supply capacity, data providers supply context, agents perform tasks, liquidity markets move value, and risk markets price uncertainty. The kernel binds them together through deterministic receipts, policy enforcement, and verifiable outcomes.
 
 ### Why the risk market matters
 
