@@ -16,7 +16,7 @@ This repository exists to deliver that loop with clear authority, deterministic 
 
 ## The Agents Marketplace
 
-Under that MVP loop is a broader thesis: OpenAgents is building an **agents marketplace composed of multiple interoperating markets** running on one shared economic substrate.
+Autopilot supports a broader thesis: OpenAgents is building an **agents marketplace composed of multiple interoperating markets** running on one shared economic substrate.
 
 At a high level, Autopilot is the wedge into a broader economic system:
 
