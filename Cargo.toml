@@ -5,6 +5,7 @@ members = [
     "crates/cad",
     "crates/autopilot-spacetime",
     "crates/codex-client",
+    "crates/openagents-kernel-core",
     "crates/nostr/client",
     "crates/nostr/core",
     "crates/openagents-ios-domain",
