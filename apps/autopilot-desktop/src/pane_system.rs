@@ -679,6 +679,7 @@ pub enum PaneHitAction {
     ChatRespondToolUserInput,
     ChatRespondAuthRefresh,
     ChatSelectWorkspace(usize),
+    ChatToggleCategory(usize),
     ChatSelectThread(usize),
     GoOnlineToggle,
     CodexAccount(CodexAccountPaneAction),
@@ -3249,14 +3250,31 @@ fn pane_hit_action_for_pane(
                     }
                 }
             }
-            let channel_count = if state.autopilot_chat.managed_chat_has_browseable_content() {
-                state.autopilot_chat.active_managed_chat_channels().len()
+            let managed_channel_rows = if state.autopilot_chat.managed_chat_has_browseable_content()
+            {
+                Some(state.autopilot_chat.active_managed_chat_channel_rail_rows())
+            } else {
+                None
+            };
+            let channel_count = if let Some(rows) = managed_channel_rows.as_ref() {
+                rows.len()
             } else {
                 state.autopilot_chat.threads.len()
             };
             let visible_rows = chat_visible_thread_row_count(content_bounds, channel_count);
             for index in 0..visible_rows {
                 if chat_thread_row_bounds(content_bounds, index).contains(point) {
+                    if let Some(rows) = managed_channel_rows.as_ref() {
+                        return match rows.get(index) {
+                            Some(crate::app_state::ManagedChatChannelRailRow::Category {
+                                ..
+                            }) => Some(PaneHitAction::ChatToggleCategory(index)),
+                            Some(crate::app_state::ManagedChatChannelRailRow::Channel {
+                                ..
+                            }) => Some(PaneHitAction::ChatSelectThread(index)),
+                            None => None,
+                        };
+                    }
                     return Some(PaneHitAction::ChatSelectThread(index));
                 }
             }
