@@ -72,6 +72,7 @@ impl PaneRenderer {
         nostr_identity_error: Option<&str>,
         nostr_secret_state: &NostrSecretState,
         autopilot_chat: &AutopilotChatState,
+        spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
         codex_account: &CodexAccountPaneState,
         codex_models: &CodexModelsPaneState,
         codex_config: &CodexConfigPaneState,
@@ -150,7 +151,13 @@ impl PaneRenderer {
             match pane.kind {
                 PaneKind::Empty => paint_empty_pane(content_bounds, paint),
                 PaneKind::AutopilotChat => {
-                    paint_autopilot_chat_pane(content_bounds, autopilot_chat, chat_inputs, paint);
+                    paint_autopilot_chat_pane(
+                        content_bounds,
+                        autopilot_chat,
+                        spacetime_presence,
+                        chat_inputs,
+                        paint,
+                    );
                 }
                 PaneKind::Calculator => {
                     calculator_pane::paint(content_bounds, calculator_inputs, paint);
@@ -455,10 +462,17 @@ fn paint_empty_pane(content_bounds: Bounds, paint: &mut PaintContext) {
 fn paint_autopilot_chat_pane(
     content_bounds: Bounds,
     autopilot_chat: &AutopilotChatState,
+    spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
     chat_inputs: &mut ChatPaneInputs,
     paint: &mut PaintContext,
 ) {
-    chat_pane::paint(content_bounds, autopilot_chat, chat_inputs, paint);
+    chat_pane::paint(
+        content_bounds,
+        autopilot_chat,
+        spacetime_presence,
+        chat_inputs,
+        paint,
+    );
 }
 
 fn paint_go_online_pane(

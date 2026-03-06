@@ -955,6 +955,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             state.nostr_identity_error.as_deref(),
             &state.nostr_secret_state,
             &state.autopilot_chat,
+            &state.spacetime_presence_snapshot,
             &state.codex_account,
             &state.codex_models,
             &state.codex_config,

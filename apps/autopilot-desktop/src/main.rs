@@ -10,6 +10,7 @@
 mod app_state;
 mod bitcoin_display;
 mod cad_rebuild_worker;
+mod chat_spacetime;
 mod codex_lane;
 mod credentials;
 mod economy_kernel_receipts;
