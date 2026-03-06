@@ -102,6 +102,14 @@ pub struct PublicStatsSnapshot {
     pub liquidity_settlements_24h: u64,
     pub liquidity_reserve_partitions_active: u64,
     pub liquidity_value_moved_24h: u64,
+    pub risk_coverage_offers_open: u64,
+    pub risk_coverage_bindings_active: u64,
+    pub risk_prediction_positions_open: u64,
+    pub risk_claims_open: u64,
+    pub risk_signals_active: u64,
+    pub risk_implied_fail_probability_bps: u32,
+    pub risk_calibration_score: f64,
+    pub risk_coverage_concentration_hhi: f64,
     pub recent_receipts: Vec<PublicRecentReceipt>,
 }
 
@@ -127,6 +135,14 @@ pub struct PublicRuntimeSnapshot {
     pub liquidity_settlements_24h: u64,
     pub liquidity_reserve_partitions_active: u64,
     pub liquidity_value_moved_24h: u64,
+    pub risk_coverage_offers_open: u64,
+    pub risk_coverage_bindings_active: u64,
+    pub risk_prediction_positions_open: u64,
+    pub risk_claims_open: u64,
+    pub risk_signals_active: u64,
+    pub risk_implied_fail_probability_bps: u32,
+    pub risk_calibration_score: f64,
+    pub risk_coverage_concentration_hhi: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -283,6 +299,14 @@ impl ReceiptLedger {
             liquidity_settlements_24h: runtime.liquidity_settlements_24h,
             liquidity_reserve_partitions_active: runtime.liquidity_reserve_partitions_active,
             liquidity_value_moved_24h: runtime.liquidity_value_moved_24h,
+            risk_coverage_offers_open: runtime.risk_coverage_offers_open,
+            risk_coverage_bindings_active: runtime.risk_coverage_bindings_active,
+            risk_prediction_positions_open: runtime.risk_prediction_positions_open,
+            risk_claims_open: runtime.risk_claims_open,
+            risk_signals_active: runtime.risk_signals_active,
+            risk_implied_fail_probability_bps: runtime.risk_implied_fail_probability_bps,
+            risk_calibration_score: runtime.risk_calibration_score,
+            risk_coverage_concentration_hhi: runtime.risk_coverage_concentration_hhi,
             recent_receipts: self.recent_receipts(),
         }
     }
@@ -477,6 +501,14 @@ mod tests {
                 liquidity_settlements_24h: 0,
                 liquidity_reserve_partitions_active: 0,
                 liquidity_value_moved_24h: 0,
+                risk_coverage_offers_open: 0,
+                risk_coverage_bindings_active: 0,
+                risk_prediction_positions_open: 0,
+                risk_claims_open: 0,
+                risk_signals_active: 0,
+                risk_implied_fail_probability_bps: 0,
+                risk_calibration_score: 0.0,
+                risk_coverage_concentration_hhi: 0.0,
             },
             6_000,
         );

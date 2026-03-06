@@ -1,16 +1,20 @@
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
-    AdjustReservePartitionResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
-    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
-    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
-    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
-    CreateLiquidityQuoteResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+    AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
+    CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
+    CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
+    CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
+    CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
+    CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
+    CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
     ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
     FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
-    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PublishComputeIndexRequest,
-    PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
-    RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
-    RegisterReservePartitionResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
+    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
+    PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
+    PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
+    RecordDeliveryProofResponse, RegisterDataAssetRequest, RegisterDataAssetResponse,
+    RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
+    ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
     SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
@@ -33,6 +37,10 @@ use openagents_kernel_core::liquidity::{
 use openagents_kernel_core::receipts::{
     Asset, EvidenceRef, Money, MoneyAmount, PolicyContext, Receipt, ReceiptBuilder, ReceiptHints,
     ReceiptRef, TraceContext,
+};
+use openagents_kernel_core::risk::{
+    CoverageBinding, CoverageBindingStatus, CoverageOffer, CoverageOfferStatus, PredictionPosition,
+    PredictionPositionStatus, RiskClaim, RiskClaimStatus, RiskSignal, RiskSignalStatus,
 };
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
@@ -216,6 +224,11 @@ pub struct KernelState {
     liquidity_envelopes: HashMap<String, LiquidityEnvelopeRecord>,
     settlement_intents: HashMap<String, SettlementIntentRecord>,
     reserve_partitions: HashMap<String, ReservePartitionRecord>,
+    coverage_offers: HashMap<String, CoverageOfferRecord>,
+    coverage_bindings: HashMap<String, CoverageBindingRecord>,
+    prediction_positions: HashMap<String, PredictionPositionRecord>,
+    risk_claims: HashMap<String, RiskClaimRecord>,
+    risk_signals: HashMap<String, RiskSignalRecord>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
 }
@@ -314,6 +327,35 @@ struct ReservePartitionRecord {
     receipt_id: String,
 }
 
+#[derive(Debug, Clone)]
+struct CoverageOfferRecord {
+    coverage_offer: CoverageOffer,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct CoverageBindingRecord {
+    coverage_binding: CoverageBinding,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct PredictionPositionRecord {
+    prediction_position: PredictionPosition,
+}
+
+#[derive(Debug, Clone)]
+struct RiskClaimRecord {
+    risk_claim: RiskClaim,
+    receipt_id: String,
+    resolved_at_ms: Option<i64>,
+}
+
+#[derive(Debug, Clone)]
+struct RiskSignalRecord {
+    risk_signal: RiskSignal,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct ComputeMarketMetrics {
     pub compute_products_active: u64,
@@ -333,6 +375,45 @@ pub struct LiquidityMarketMetrics {
     pub liquidity_settlements_24h: u64,
     pub liquidity_reserve_partitions_active: u64,
     pub liquidity_value_moved_24h: u64,
+}
+
+#[derive(Debug, Clone)]
+pub struct RiskMarketMetrics {
+    pub risk_coverage_offers_open: u64,
+    pub risk_coverage_bindings_active: u64,
+    pub risk_prediction_positions_open: u64,
+    pub risk_claims_open: u64,
+    pub risk_signals_active: u64,
+    pub risk_implied_fail_probability_bps: u32,
+    pub risk_calibration_score: f64,
+    pub risk_coverage_concentration_hhi: f64,
+    pub liability_premiums_collected_24h: Money,
+    pub claims_paid_24h: Money,
+    pub bonded_exposure_24h: Money,
+    pub capital_reserves_24h: Money,
+    pub loss_ratio: f64,
+    pub capital_coverage_ratio: f64,
+}
+
+impl Default for RiskMarketMetrics {
+    fn default() -> Self {
+        Self {
+            risk_coverage_offers_open: 0,
+            risk_coverage_bindings_active: 0,
+            risk_prediction_positions_open: 0,
+            risk_claims_open: 0,
+            risk_signals_active: 0,
+            risk_implied_fail_probability_bps: 0,
+            risk_calibration_score: 0.0,
+            risk_coverage_concentration_hhi: 0.0,
+            liability_premiums_collected_24h: zero_money(),
+            claims_paid_24h: zero_money(),
+            bonded_exposure_24h: zero_money(),
+            capital_reserves_24h: zero_money(),
+            loss_ratio: 0.0,
+            capital_coverage_ratio: 0.0,
+        }
+    }
 }
 
 struct KernelReceiptSpec {
@@ -1533,6 +1614,163 @@ impl KernelState {
                             .unwrap_or(&record.settlement_intent.source_amount),
                     ))
                 }),
+        }
+    }
+
+    pub fn risk_market_metrics(&self, as_of_ms: i64) -> RiskMarketMetrics {
+        let window_start_ms = as_of_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
+        let active_offers = self
+            .coverage_offers
+            .values()
+            .filter(|record| {
+                matches!(
+                    record.coverage_offer.status,
+                    CoverageOfferStatus::Open | CoverageOfferStatus::Bound
+                ) && record.coverage_offer.expires_at_ms >= as_of_ms
+            })
+            .collect::<Vec<_>>();
+        let active_bindings = self
+            .coverage_bindings
+            .values()
+            .filter(|record| {
+                matches!(
+                    record.coverage_binding.status,
+                    CoverageBindingStatus::Active | CoverageBindingStatus::Triggered
+                )
+            })
+            .collect::<Vec<_>>();
+        let active_signals = self
+            .risk_signals
+            .values()
+            .filter(|record| record.risk_signal.status == RiskSignalStatus::Active)
+            .collect::<Vec<_>>();
+
+        let mut capital_reserves = zero_money();
+        let mut underwriter_totals = HashMap::<String, u64>::new();
+        for record in &active_offers {
+            let offer_value = money_amount_value(&record.coverage_offer.coverage_cap);
+            let total = money_amount_value(&capital_reserves).saturating_add(offer_value);
+            set_money_amount(&mut capital_reserves, total);
+            underwriter_totals
+                .entry(record.coverage_offer.underwriter_id.clone())
+                .and_modify(|value| *value = value.saturating_add(offer_value))
+                .or_insert(offer_value);
+        }
+        let total_reserves = money_amount_value(&capital_reserves);
+        let risk_coverage_concentration_hhi = if total_reserves == 0 {
+            0.0
+        } else {
+            underwriter_totals
+                .values()
+                .map(|value| {
+                    let share = (*value as f64) / (total_reserves as f64);
+                    share * share
+                })
+                .sum()
+        };
+
+        let mut bonded_exposure = zero_money();
+        for record in &active_bindings {
+            let exposure = money_amount_value(&record.coverage_binding.total_coverage);
+            let total = money_amount_value(&bonded_exposure).saturating_add(exposure);
+            set_money_amount(&mut bonded_exposure, total);
+        }
+
+        let mut liability_premiums_collected = zero_money();
+        for record in self.coverage_bindings.values().filter(|record| {
+            record.coverage_binding.created_at_ms >= window_start_ms
+                && record.coverage_binding.created_at_ms <= as_of_ms
+        }) {
+            let premium = money_amount_value(&record.coverage_binding.premium_total);
+            let total = money_amount_value(&liability_premiums_collected).saturating_add(premium);
+            set_money_amount(&mut liability_premiums_collected, total);
+        }
+
+        let mut claims_paid = zero_money();
+        for record in self.risk_claims.values().filter(|record| {
+            matches!(
+                record.risk_claim.status,
+                RiskClaimStatus::Approved | RiskClaimStatus::Paid
+            ) && record.resolved_at_ms.is_some_and(|resolved_at_ms| {
+                resolved_at_ms >= window_start_ms && resolved_at_ms <= as_of_ms
+            })
+        }) {
+            let paid = record
+                .risk_claim
+                .approved_payout
+                .as_ref()
+                .map(money_amount_value)
+                .unwrap_or(0);
+            let total = money_amount_value(&claims_paid).saturating_add(paid);
+            set_money_amount(&mut claims_paid, total);
+        }
+
+        let signal_count = active_signals.len() as u64;
+        let implied_fail_probability_total = active_signals.iter().fold(0u64, |total, record| {
+            total.saturating_add(record.risk_signal.implied_fail_probability_bps as u64)
+        });
+        let risk_implied_fail_probability_bps = if signal_count == 0 {
+            0
+        } else {
+            (implied_fail_probability_total / signal_count) as u32
+        };
+        let risk_calibration_score = if signal_count == 0 {
+            0.0
+        } else {
+            active_signals
+                .iter()
+                .map(|record| record.risk_signal.calibration_score)
+                .sum::<f64>()
+                / signal_count as f64
+        };
+
+        let premiums_value = money_amount_value(&liability_premiums_collected);
+        let claims_value = money_amount_value(&claims_paid);
+        let exposure_value = money_amount_value(&bonded_exposure);
+        let loss_ratio = if premiums_value == 0 {
+            0.0
+        } else {
+            (claims_value as f64) / (premiums_value as f64)
+        };
+        let capital_coverage_ratio = if exposure_value == 0 {
+            0.0
+        } else {
+            (total_reserves as f64) / (exposure_value as f64)
+        };
+
+        RiskMarketMetrics {
+            risk_coverage_offers_open: self
+                .coverage_offers
+                .values()
+                .filter(|record| {
+                    record.coverage_offer.status == CoverageOfferStatus::Open
+                        && record.coverage_offer.expires_at_ms >= as_of_ms
+                })
+                .count() as u64,
+            risk_coverage_bindings_active: active_bindings.len() as u64,
+            risk_prediction_positions_open: self
+                .prediction_positions
+                .values()
+                .filter(|record| {
+                    record.prediction_position.status == PredictionPositionStatus::Open
+                        && record.prediction_position.expires_at_ms >= as_of_ms
+                })
+                .count() as u64,
+            risk_claims_open: self
+                .risk_claims
+                .values()
+                .filter(|record| record.risk_claim.status == RiskClaimStatus::Open)
+                .count() as u64,
+            risk_signals_active: signal_count,
+            risk_implied_fail_probability_bps,
+            risk_calibration_score,
+            risk_coverage_concentration_hhi,
+            liability_premiums_collected_24h: liability_premiums_collected,
+            claims_paid_24h: claims_paid,
+            bonded_exposure_24h: bonded_exposure,
+            capital_reserves_24h: capital_reserves,
+            loss_ratio,
+            capital_coverage_ratio,
         }
     }
 
@@ -3047,6 +3285,687 @@ impl KernelState {
         })
     }
 
+    pub fn place_coverage_offer(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: PlaceCoverageOfferRequest,
+    ) -> Result<MutationResult<PlaceCoverageOfferResponse>, String> {
+        let offer_id = normalize_required(
+            req.coverage_offer.offer_id.as_str(),
+            "coverage_offer_id_missing",
+        )?;
+        let outcome_ref = normalize_required(
+            req.coverage_offer.outcome_ref.as_str(),
+            "risk_outcome_ref_missing",
+        )?;
+        let underwriter_id = normalize_required(
+            req.coverage_offer.underwriter_id.as_str(),
+            "coverage_underwriter_id_missing",
+        )?;
+        if money_amount_value(&req.coverage_offer.coverage_cap) == 0 {
+            return Err("coverage_cap_missing".to_string());
+        }
+        if money_amount_value(&req.coverage_offer.premium) == 0 {
+            return Err("coverage_premium_missing".to_string());
+        }
+        if req.coverage_offer.expires_at_ms <= req.coverage_offer.created_at_ms {
+            return Err("coverage_offer_window_invalid".to_string());
+        }
+        req.coverage_offer.offer_id.clone_from(&offer_id);
+        req.coverage_offer.outcome_ref.clone_from(&outcome_ref);
+        req.coverage_offer
+            .underwriter_id
+            .clone_from(&underwriter_id);
+        req.coverage_offer.created_at_ms =
+            normalize_created_at_ms(req.coverage_offer.created_at_ms, context.now_unix_ms);
+        req.coverage_offer.status = CoverageOfferStatus::Open;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let offer_payload = serde_json::to_value(&req.coverage_offer)
+            .map_err(|error| format!("kernel_risk_coverage_offer_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.risk.coverage_offer.place".to_string(),
+                created_at_ms: req.coverage_offer.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: offer_payload,
+                outputs_payload: json!({
+                    "offer_id": offer_id.clone(),
+                    "outcome_ref": outcome_ref,
+                    "underwriter_id": underwriter_id,
+                    "status": req.coverage_offer.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.risk.coverage_offer.place",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = PlaceCoverageOfferResponse {
+            coverage_offer: req.coverage_offer.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.coverage_offers.insert(
+            offer_id,
+            CoverageOfferRecord {
+                coverage_offer: req.coverage_offer.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.coverage_offer.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn bind_coverage(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: BindCoverageRequest,
+    ) -> Result<MutationResult<BindCoverageResponse>, String> {
+        let binding_id = normalize_required(
+            req.coverage_binding.binding_id.as_str(),
+            "coverage_binding_id_missing",
+        )?;
+        let outcome_ref = normalize_required(
+            req.coverage_binding.outcome_ref.as_str(),
+            "risk_outcome_ref_missing",
+        )?;
+        if req.coverage_binding.offer_ids.is_empty() {
+            return Err("coverage_binding_offer_missing".to_string());
+        }
+        let offer_records = req
+            .coverage_binding
+            .offer_ids
+            .iter()
+            .map(|offer_id| {
+                let Some(record) = self.coverage_offers.get(offer_id.as_str()).cloned() else {
+                    return Err("coverage_offer_not_found".to_string());
+                };
+                if record.coverage_offer.outcome_ref != outcome_ref {
+                    return Err("risk_outcome_ref_mismatch".to_string());
+                }
+                Ok(record)
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let first_offer = offer_records
+            .first()
+            .ok_or_else(|| "coverage_binding_offer_missing".to_string())?;
+        let mut total_coverage = first_offer.coverage_offer.coverage_cap.clone();
+        let mut premium_total = first_offer.coverage_offer.premium.clone();
+        for record in offer_records.iter().skip(1) {
+            if !money_assets_match(&total_coverage, &record.coverage_offer.coverage_cap)
+                || !money_assets_match(&premium_total, &record.coverage_offer.premium)
+            {
+                return Err("risk_market_asset_mismatch".to_string());
+            }
+            let coverage_sum = money_amount_value(&total_coverage)
+                .saturating_add(money_amount_value(&record.coverage_offer.coverage_cap));
+            let premium_sum = money_amount_value(&premium_total)
+                .saturating_add(money_amount_value(&record.coverage_offer.premium));
+            set_money_amount(&mut total_coverage, coverage_sum);
+            set_money_amount(&mut premium_total, premium_sum);
+        }
+        req.coverage_binding.binding_id.clone_from(&binding_id);
+        req.coverage_binding.outcome_ref.clone_from(&outcome_ref);
+        req.coverage_binding.created_at_ms =
+            normalize_created_at_ms(req.coverage_binding.created_at_ms, context.now_unix_ms);
+        req.coverage_binding.total_coverage = total_coverage;
+        req.coverage_binding.premium_total = premium_total;
+        req.coverage_binding.status = CoverageBindingStatus::Active;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        for record in &offer_records {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let binding_payload = serde_json::to_value(&req.coverage_binding)
+            .map_err(|error| format!("kernel_risk_coverage_binding_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.risk.coverage_binding.bind".to_string(),
+                created_at_ms: req.coverage_binding.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: binding_payload,
+                outputs_payload: json!({
+                    "binding_id": binding_id.clone(),
+                    "outcome_ref": outcome_ref,
+                    "offer_ids": req.coverage_binding.offer_ids.clone(),
+                    "status": req.coverage_binding.status,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.risk.coverage_binding.bind",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = BindCoverageResponse {
+            coverage_binding: req.coverage_binding.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        for record in &offer_records {
+            if let Some(existing_offer) = self
+                .coverage_offers
+                .get_mut(record.coverage_offer.offer_id.as_str())
+            {
+                existing_offer.coverage_offer.status = CoverageOfferStatus::Bound;
+            }
+        }
+        self.coverage_bindings.insert(
+            binding_id,
+            CoverageBindingRecord {
+                coverage_binding: req.coverage_binding.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.coverage_binding.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_prediction_position(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreatePredictionPositionRequest,
+    ) -> Result<MutationResult<CreatePredictionPositionResponse>, String> {
+        let position_id = normalize_required(
+            req.prediction_position.position_id.as_str(),
+            "prediction_position_id_missing",
+        )?;
+        let outcome_ref = normalize_required(
+            req.prediction_position.outcome_ref.as_str(),
+            "risk_outcome_ref_missing",
+        )?;
+        let participant_id = normalize_required(
+            req.prediction_position.participant_id.as_str(),
+            "prediction_participant_id_missing",
+        )?;
+        if !money_assets_match(
+            &req.prediction_position.collateral,
+            &req.prediction_position.max_payout,
+        ) {
+            return Err("risk_market_asset_mismatch".to_string());
+        }
+        if money_amount_value(&req.prediction_position.max_payout)
+            > money_amount_value(&req.prediction_position.collateral)
+        {
+            return Err("prediction_position_not_bounded".to_string());
+        }
+        if req.prediction_position.expires_at_ms <= req.prediction_position.created_at_ms {
+            return Err("prediction_position_window_invalid".to_string());
+        }
+        req.prediction_position.position_id.clone_from(&position_id);
+        req.prediction_position.outcome_ref.clone_from(&outcome_ref);
+        req.prediction_position
+            .participant_id
+            .clone_from(&participant_id);
+        req.prediction_position.created_at_ms =
+            normalize_created_at_ms(req.prediction_position.created_at_ms, context.now_unix_ms);
+        req.prediction_position.status = PredictionPositionStatus::Open;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let position_payload = serde_json::to_value(&req.prediction_position)
+            .map_err(|error| format!("kernel_risk_prediction_position_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.risk.position.create".to_string(),
+                created_at_ms: req.prediction_position.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: position_payload,
+                outputs_payload: json!({
+                    "position_id": position_id.clone(),
+                    "outcome_ref": outcome_ref,
+                    "participant_id": participant_id,
+                    "status": req.prediction_position.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.risk.position.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreatePredictionPositionResponse {
+            prediction_position: req.prediction_position.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.prediction_positions.insert(
+            position_id,
+            PredictionPositionRecord {
+                prediction_position: req.prediction_position.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.prediction_position.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_risk_claim(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateRiskClaimRequest,
+    ) -> Result<MutationResult<CreateRiskClaimResponse>, String> {
+        let claim_id =
+            normalize_required(req.risk_claim.claim_id.as_str(), "risk_claim_id_missing")?;
+        let binding_id = normalize_required(
+            req.risk_claim.binding_id.as_str(),
+            "coverage_binding_id_missing",
+        )?;
+        let outcome_ref = normalize_required(
+            req.risk_claim.outcome_ref.as_str(),
+            "risk_outcome_ref_missing",
+        )?;
+        let claimant_id = normalize_required(
+            req.risk_claim.claimant_id.as_str(),
+            "risk_claimant_id_missing",
+        )?;
+        normalize_required(
+            req.risk_claim.reason_code.as_str(),
+            "risk_claim_reason_missing",
+        )?;
+        let Some(binding_record) = self.coverage_bindings.get(binding_id.as_str()).cloned() else {
+            return Err("coverage_binding_not_found".to_string());
+        };
+        if binding_record.coverage_binding.outcome_ref != outcome_ref {
+            return Err("risk_outcome_ref_mismatch".to_string());
+        }
+        if !money_assets_match(
+            &binding_record.coverage_binding.total_coverage,
+            &req.risk_claim.requested_payout,
+        ) {
+            return Err("risk_market_asset_mismatch".to_string());
+        }
+        if money_amount_value(&req.risk_claim.requested_payout)
+            > money_amount_value(&binding_record.coverage_binding.total_coverage)
+        {
+            return Err("risk_claim_payout_exceeds_coverage".to_string());
+        }
+        req.risk_claim.claim_id.clone_from(&claim_id);
+        req.risk_claim.binding_id.clone_from(&binding_id);
+        req.risk_claim.outcome_ref.clone_from(&outcome_ref);
+        req.risk_claim.claimant_id.clone_from(&claimant_id);
+        req.risk_claim.created_at_ms =
+            normalize_created_at_ms(req.risk_claim.created_at_ms, context.now_unix_ms);
+        req.risk_claim.status = RiskClaimStatus::Open;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(binding_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let claim_payload = serde_json::to_value(&req.risk_claim)
+            .map_err(|error| format!("kernel_risk_claim_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.risk.claim.create".to_string(),
+                created_at_ms: req.risk_claim.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: claim_payload,
+                outputs_payload: json!({
+                    "claim_id": claim_id.clone(),
+                    "binding_id": binding_id,
+                    "outcome_ref": outcome_ref,
+                    "status": req.risk_claim.status,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.risk.claim.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateRiskClaimResponse {
+            risk_claim: req.risk_claim.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.risk_claims.insert(
+            claim_id,
+            RiskClaimRecord {
+                risk_claim: req.risk_claim.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+                resolved_at_ms: None,
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.risk_claim.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn resolve_risk_claim(
+        &mut self,
+        context: &KernelMutationContext,
+        req: ResolveRiskClaimRequest,
+    ) -> Result<MutationResult<ResolveRiskClaimResponse>, String> {
+        let claim_id = normalize_required(req.claim_id.as_str(), "risk_claim_id_missing")?;
+        let resolution_ref =
+            normalize_required(req.resolution_ref.as_str(), "risk_resolution_ref_missing")?;
+        let Some(existing_record) = self.risk_claims.get(claim_id.as_str()).cloned() else {
+            return Err("risk_claim_not_found".to_string());
+        };
+        let mut risk_claim = existing_record.risk_claim.clone();
+        if matches!(
+            req.status,
+            RiskClaimStatus::Approved | RiskClaimStatus::Paid
+        ) {
+            let Some(approved_payout) = req.approved_payout.as_ref() else {
+                return Err("risk_claim_approved_payout_missing".to_string());
+            };
+            if !money_assets_match(&risk_claim.requested_payout, approved_payout) {
+                return Err("risk_market_asset_mismatch".to_string());
+            }
+            if money_amount_value(approved_payout)
+                > money_amount_value(&risk_claim.requested_payout)
+            {
+                return Err("risk_claim_payout_exceeds_request".to_string());
+            }
+            risk_claim.approved_payout = Some(approved_payout.clone());
+        } else {
+            risk_claim.approved_payout = None;
+        }
+        let resolved_at_ms = normalize_created_at_ms(req.resolved_at_ms, context.now_unix_ms);
+        risk_claim.resolution_ref = Some(resolution_ref.clone());
+        risk_claim.status = req.status;
+        if !req.metadata.is_null() {
+            risk_claim.metadata = req.metadata.clone();
+        }
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(existing_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some(binding_record) = self.coverage_bindings.get(risk_claim.binding_id.as_str()) {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(binding_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.risk.claim.resolve".to_string(),
+                created_at_ms: resolved_at_ms,
+                trace: req.trace.clone(),
+                policy: normalized_policy(req.policy.clone(), context),
+                inputs_payload: serde_json::to_value(json!({
+                    "claim_id": claim_id.clone(),
+                    "status": req.status,
+                    "approved_payout": req.approved_payout.clone(),
+                    "resolution_ref": resolution_ref.clone(),
+                    "metadata": req.metadata.clone(),
+                }))
+                .map_err(|error| format!("kernel_risk_claim_resolution_encode_failed: {error}"))?,
+                outputs_payload: json!({
+                    "claim_id": risk_claim.claim_id.clone(),
+                    "binding_id": risk_claim.binding_id.clone(),
+                    "status": risk_claim.status,
+                    "resolution_ref": risk_claim.resolution_ref.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.risk.claim.resolve",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = ResolveRiskClaimResponse {
+            risk_claim: risk_claim.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if let Some(binding_record) = self
+            .coverage_bindings
+            .get_mut(risk_claim.binding_id.as_str())
+        {
+            binding_record.coverage_binding.status = match risk_claim.status {
+                RiskClaimStatus::Approved => CoverageBindingStatus::Triggered,
+                RiskClaimStatus::Paid => CoverageBindingStatus::Settled,
+                RiskClaimStatus::Denied => CoverageBindingStatus::Active,
+                RiskClaimStatus::Open => binding_record.coverage_binding.status,
+            };
+        }
+        self.risk_claims.insert(
+            claim_id,
+            RiskClaimRecord {
+                risk_claim: risk_claim.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+                resolved_at_ms: Some(resolved_at_ms),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(resolved_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn publish_risk_signal(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: PublishRiskSignalRequest,
+    ) -> Result<MutationResult<PublishRiskSignalResponse>, String> {
+        let signal_id =
+            normalize_required(req.risk_signal.signal_id.as_str(), "risk_signal_id_missing")?;
+        let outcome_ref = normalize_required(
+            req.risk_signal.outcome_ref.as_str(),
+            "risk_outcome_ref_missing",
+        )?;
+        if req.risk_signal.implied_fail_probability_bps > 10_000 {
+            return Err("risk_implied_fail_probability_invalid".to_string());
+        }
+        if !(0.0..=1.0).contains(&req.risk_signal.calibration_score) {
+            return Err("risk_calibration_score_invalid".to_string());
+        }
+        if !(0.0..=1.0).contains(&req.risk_signal.coverage_concentration_hhi) {
+            return Err("risk_concentration_invalid".to_string());
+        }
+        let (verification_tier_floor, collateral_multiplier_bps, autonomy_mode) =
+            risk_policy_outputs(
+                req.risk_signal.implied_fail_probability_bps,
+                req.risk_signal.calibration_score,
+                req.risk_signal.coverage_concentration_hhi,
+            );
+        req.risk_signal.signal_id.clone_from(&signal_id);
+        req.risk_signal.outcome_ref.clone_from(&outcome_ref);
+        req.risk_signal.created_at_ms =
+            normalize_created_at_ms(req.risk_signal.created_at_ms, context.now_unix_ms);
+        req.risk_signal.verification_tier_floor = verification_tier_floor;
+        req.risk_signal.collateral_multiplier_bps = collateral_multiplier_bps;
+        req.risk_signal.autonomy_mode = autonomy_mode;
+        req.risk_signal.status = RiskSignalStatus::Active;
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let signal_payload = serde_json::to_value(&req.risk_signal)
+            .map_err(|error| format!("kernel_risk_signal_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.risk.signal.publish".to_string(),
+                created_at_ms: req.risk_signal.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: signal_payload,
+                outputs_payload: json!({
+                    "signal_id": signal_id.clone(),
+                    "outcome_ref": outcome_ref,
+                    "verification_tier_floor": req.risk_signal.verification_tier_floor,
+                    "collateral_multiplier_bps": req.risk_signal.collateral_multiplier_bps,
+                    "autonomy_mode": req.risk_signal.autonomy_mode,
+                    "status": req.risk_signal.status,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.risk.signal.publish",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = PublishRiskSignalResponse {
+            risk_signal: req.risk_signal.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        for record in self.risk_signals.values_mut().filter(|record| {
+            record.risk_signal.outcome_ref == req.risk_signal.outcome_ref
+                && record.risk_signal.signal_id != signal_id
+                && record.risk_signal.status == RiskSignalStatus::Active
+        }) {
+            record.risk_signal.status = RiskSignalStatus::Superseded;
+        }
+        self.risk_signals.insert(
+            signal_id,
+            RiskSignalRecord {
+                risk_signal: req.risk_signal.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.risk_signal.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     pub fn get_receipt(&self, receipt_id: &str) -> Option<Receipt> {
         self.receipt_store.get_receipt(receipt_id)
     }
@@ -3074,11 +3993,13 @@ impl KernelState {
         let compute_metrics = self.compute_market_metrics(minute_start_ms.saturating_add(60_000));
         let liquidity_metrics =
             self.liquidity_market_metrics(minute_start_ms.saturating_add(60_000));
+        let risk_metrics = self.risk_market_metrics(minute_start_ms.saturating_add(60_000));
         let snapshot = build_snapshot(
             minute_start_ms,
             receipts.as_slice(),
             &compute_metrics,
             &liquidity_metrics,
+            &risk_metrics,
         );
         self.snapshots.insert(minute_start_ms, snapshot.clone());
         snapshot
@@ -3154,6 +4075,42 @@ fn normalized_policy(mut policy: PolicyContext, context: &KernelMutationContext)
         policy.approved_by.clone_from(&context.caller_id);
     }
     policy
+}
+
+fn risk_policy_outputs(
+    implied_fail_probability_bps: u32,
+    calibration_score: f64,
+    coverage_concentration_hhi: f64,
+) -> (
+    Option<openagents_kernel_core::receipts::VerificationTier>,
+    u32,
+    String,
+) {
+    if implied_fail_probability_bps >= 7_500
+        || calibration_score < 0.40
+        || coverage_concentration_hhi >= 0.60
+    {
+        (
+            Some(openagents_kernel_core::receipts::VerificationTier::Tier3Adjudication),
+            20_000,
+            "degraded".to_string(),
+        )
+    } else if implied_fail_probability_bps >= 3_500
+        || calibration_score < 0.70
+        || coverage_concentration_hhi >= 0.35
+    {
+        (
+            Some(openagents_kernel_core::receipts::VerificationTier::Tier2Heterogeneous),
+            15_000,
+            "guarded".to_string(),
+        )
+    } else {
+        (
+            Some(openagents_kernel_core::receipts::VerificationTier::Tier1Correlated),
+            10_000,
+            "normal".to_string(),
+        )
+    }
 }
 
 fn normalize_permission_policy(
@@ -3278,6 +4235,7 @@ fn build_snapshot(
     receipts: &[Receipt],
     compute_metrics: &ComputeMarketMetrics,
     liquidity_metrics: &LiquidityMarketMetrics,
+    risk_metrics: &RiskMarketMetrics,
 ) -> EconomySnapshot {
     let window_end_ms = minute_start_ms.saturating_add(60_000);
     let window_start_ms = window_end_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
@@ -3358,12 +4316,12 @@ fn build_snapshot(
         provenance_p3_share: 0.0,
         auth_assurance_distribution: Vec::new(),
         personhood_verified_share: 0.0,
-        liability_premiums_collected_24h: zero_money(),
-        claims_paid_24h: zero_money(),
-        bonded_exposure_24h: zero_money(),
-        capital_reserves_24h: zero_money(),
-        loss_ratio: 0.0,
-        capital_coverage_ratio: 0.0,
+        liability_premiums_collected_24h: risk_metrics.liability_premiums_collected_24h.clone(),
+        claims_paid_24h: risk_metrics.claims_paid_24h.clone(),
+        bonded_exposure_24h: risk_metrics.bonded_exposure_24h.clone(),
+        capital_reserves_24h: risk_metrics.capital_reserves_24h.clone(),
+        loss_ratio: risk_metrics.loss_ratio,
+        capital_coverage_ratio: risk_metrics.capital_coverage_ratio,
         drift_alerts_24h: 0,
         drift_signals: Vec::new(),
         top_drift_signals: Vec::new(),
@@ -3396,6 +4354,14 @@ fn build_snapshot(
         liquidity_settlements_24h: liquidity_metrics.liquidity_settlements_24h,
         liquidity_reserve_partitions_active: liquidity_metrics.liquidity_reserve_partitions_active,
         liquidity_value_moved_24h: liquidity_metrics.liquidity_value_moved_24h,
+        risk_coverage_offers_open: risk_metrics.risk_coverage_offers_open,
+        risk_coverage_bindings_active: risk_metrics.risk_coverage_bindings_active,
+        risk_prediction_positions_open: risk_metrics.risk_prediction_positions_open,
+        risk_claims_open: risk_metrics.risk_claims_open,
+        risk_signals_active: risk_metrics.risk_signals_active,
+        risk_implied_fail_probability_bps: risk_metrics.risk_implied_fail_probability_bps,
+        risk_calibration_score: risk_metrics.risk_calibration_score,
+        risk_coverage_concentration_hhi: risk_metrics.risk_coverage_concentration_hhi,
         audit_package_public_digest: String::new(),
         audit_package_restricted_digest: String::new(),
         sv_breakdown: Vec::new(),

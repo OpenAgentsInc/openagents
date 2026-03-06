@@ -191,6 +191,22 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub liquidity_value_moved_24h: u64,
     #[serde(default)]
+    pub risk_coverage_offers_open: u64,
+    #[serde(default)]
+    pub risk_coverage_bindings_active: u64,
+    #[serde(default)]
+    pub risk_prediction_positions_open: u64,
+    #[serde(default)]
+    pub risk_claims_open: u64,
+    #[serde(default)]
+    pub risk_signals_active: u64,
+    #[serde(default)]
+    pub risk_implied_fail_probability_bps: u32,
+    #[serde(default)]
+    pub risk_calibration_score: f64,
+    #[serde(default)]
+    pub risk_coverage_concentration_hhi: f64,
+    #[serde(default)]
     pub audit_package_public_digest: String,
     #[serde(default)]
     pub audit_package_restricted_digest: String,

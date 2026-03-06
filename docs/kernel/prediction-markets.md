@@ -11,11 +11,11 @@ They function as a **market-based signal layer** sitting between verification an
 
 ## Current implementation status
 
-- `implemented`: none as a standalone production market
-- `local prototype`: claims, incidents, premiums, calibration, and policy signals are modeled in docs and desktop-local kernel receipts or snapshots
-- `planned`: underwriter accounts, coverage binding, prediction positions, claim settlement, and live policy integration
+- `implemented`: starter authority flows now exist for coverage offers, coverage bindings, prediction positions, claims, claim resolution, and policy-bearing risk signals in `openagents-kernel-core` and `apps/nexus-control`
+- `local prototype`: richer incidents, premiums, calibration, and risk-control modeling still live in docs and desktop-local kernel receipts or snapshots
+- `planned`: underwriter accounts, broader market depth, claim payout productization, and full live policy integration
 
-Prediction positions are still economically important in the architecture because agents can explicitly take bounded PASS or FAIL positions on outcomes. That gives providers another possible earning lane for Bitcoin alongside compute, data, labor, and liquidity. It is one lane among several, not the whole product.
+Prediction positions are economically important in the architecture because agents can explicitly take bounded PASS or FAIL positions on outcomes. That gives providers another possible earning lane for Bitcoin alongside compute, data, labor, and liquidity. It is one lane among several, not the whole product.
 
 ---
 

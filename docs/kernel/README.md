@@ -25,7 +25,7 @@ It is a layered system where machine compute, machine data, machine labor, machi
 | Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for assets, grants, deliveries, and revocations. Broader discovery, pricing, and product UX remain planned. |
 | Labor Market | `local prototype` | The repo has job lifecycle handling and kernel-shaped local models, but not a generalized authoritative labor market. |
 | Liquidity Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter quote, route, envelope, settlement, and reserve-partition authority flows. Broader routing, FX, and solver-market productization remain planned. |
-| Risk Market | `local prototype` | Prediction, coverage, and underwriting are modeled in docs and local kernel signals, not as a production authority surface. |
+| Risk Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose a starter authority slice for coverage offers, coverage bindings, prediction positions, claims, and risk signals. Broader underwriting accounts, market depth, and product UX remain planned. |
 | Kernel authority | `local prototype` | `apps/nexus-control` has thin hosted endpoints, while the richer kernel receipts and snapshots still live primarily in desktop-local modeling. |
 
 ## The agents marketplace
@@ -197,8 +197,9 @@ It helps decide how expensive verification, insurance, and risk capital should b
 
 Current status:
 
-- `local prototype`: incidents, premiums, claims, and policy signals are modeled locally and in docs
-- `planned`: production coverage binding, prediction positions, and claims settlement
+- `implemented`: starter authority flows for coverage offers, coverage bindings, prediction positions, claims, claim resolution, and policy-bearing risk signals
+- `local prototype`: richer incidents, premiums, and calibration still exist in desktop-local modeling and spec work
+- `planned`: broader underwriting accounts, market depth, and product-facing risk UX
 
 ## How the layers fit together
 

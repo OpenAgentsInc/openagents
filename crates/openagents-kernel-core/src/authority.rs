@@ -17,6 +17,10 @@ use crate::receipts::{
     EvidenceRef, MoneyAmount, PolicyContext, Receipt, ReceiptBuilder, ReceiptHints, ReceiptRef,
     TraceContext,
 };
+use crate::risk::{
+    CoverageBinding, CoverageBindingStatus, CoverageOffer, CoverageOfferStatus, PredictionPosition,
+    PredictionPositionStatus, RiskClaim, RiskClaimStatus, RiskSignal, RiskSignalStatus,
+};
 use crate::snapshots::EconomySnapshot;
 use anyhow::{Result, anyhow};
 use reqwest::Url;
@@ -98,6 +102,27 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: AdjustReservePartitionRequest,
     ) -> Result<AdjustReservePartitionResponse>;
+    async fn place_coverage_offer(
+        &self,
+        req: PlaceCoverageOfferRequest,
+    ) -> Result<PlaceCoverageOfferResponse>;
+    async fn bind_coverage(&self, req: BindCoverageRequest) -> Result<BindCoverageResponse>;
+    async fn create_prediction_position(
+        &self,
+        req: CreatePredictionPositionRequest,
+    ) -> Result<CreatePredictionPositionResponse>;
+    async fn create_risk_claim(
+        &self,
+        req: CreateRiskClaimRequest,
+    ) -> Result<CreateRiskClaimResponse>;
+    async fn resolve_risk_claim(
+        &self,
+        req: ResolveRiskClaimRequest,
+    ) -> Result<ResolveRiskClaimResponse>;
+    async fn publish_risk_signal(
+        &self,
+        req: PublishRiskSignalRequest,
+    ) -> Result<PublishRiskSignalResponse>;
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot>;
 }
 
@@ -482,6 +507,121 @@ pub struct AdjustReservePartitionResponse {
     pub receipt: Receipt,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PlaceCoverageOfferRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub coverage_offer: CoverageOffer,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PlaceCoverageOfferResponse {
+    pub coverage_offer: CoverageOffer,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BindCoverageRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub coverage_binding: CoverageBinding,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct BindCoverageResponse {
+    pub coverage_binding: CoverageBinding,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreatePredictionPositionRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub prediction_position: PredictionPosition,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreatePredictionPositionResponse {
+    pub prediction_position: PredictionPosition,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateRiskClaimRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub risk_claim: RiskClaim,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct CreateRiskClaimResponse {
+    pub risk_claim: RiskClaim,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ResolveRiskClaimRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub claim_id: String,
+    pub resolved_at_ms: i64,
+    pub status: RiskClaimStatus,
+    #[serde(default)]
+    pub approved_payout: Option<crate::receipts::Money>,
+    pub resolution_ref: String,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct ResolveRiskClaimResponse {
+    pub risk_claim: RiskClaim,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublishRiskSignalRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub risk_signal: RiskSignal,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PublishRiskSignalResponse {
+    pub risk_signal: RiskSignal,
+    pub receipt: Receipt,
+}
+
 #[derive(Clone)]
 pub struct HttpKernelAuthorityClient {
     client: reqwest::Client,
@@ -579,6 +719,11 @@ struct LocalKernelAuthorityState {
     liquidity_envelopes: BTreeMap<String, Envelope>,
     settlement_intents: BTreeMap<String, SettlementIntent>,
     reserve_partitions: BTreeMap<String, ReservePartition>,
+    coverage_offers: BTreeMap<String, CoverageOffer>,
+    coverage_bindings: BTreeMap<String, CoverageBinding>,
+    prediction_positions: BTreeMap<String, PredictionPosition>,
+    risk_claims: BTreeMap<String, RiskClaim>,
+    risk_signals: BTreeMap<String, RiskSignal>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     receipts: Vec<Receipt>,
 }
@@ -697,6 +842,38 @@ impl LocalKernelAuthority {
             receipt_id: receipt.receipt_id.clone(),
             receipt_type: receipt.receipt_type.clone(),
             canonical_hash: receipt.canonical_hash.clone(),
+        }
+    }
+
+    fn risk_policy_outputs(
+        implied_fail_probability_bps: u32,
+        calibration_score: f64,
+        coverage_concentration_hhi: f64,
+    ) -> (Option<crate::receipts::VerificationTier>, u32, String) {
+        if implied_fail_probability_bps >= 3_000
+            || calibration_score < 0.60
+            || coverage_concentration_hhi > 0.35
+        {
+            (
+                Some(crate::receipts::VerificationTier::Tier3Adjudication),
+                20_000,
+                "degraded".to_string(),
+            )
+        } else if implied_fail_probability_bps >= 1_500
+            || calibration_score < 0.80
+            || coverage_concentration_hhi > 0.20
+        {
+            (
+                Some(crate::receipts::VerificationTier::Tier2Heterogeneous),
+                15_000,
+                "guarded".to_string(),
+            )
+        } else {
+            (
+                Some(crate::receipts::VerificationTier::Tier1Correlated),
+                10_000,
+                "normal".to_string(),
+            )
         }
     }
 }
@@ -2123,6 +2300,424 @@ impl KernelAuthority for LocalKernelAuthority {
         })
     }
 
+    async fn place_coverage_offer(
+        &self,
+        mut req: PlaceCoverageOfferRequest,
+    ) -> Result<PlaceCoverageOfferResponse> {
+        if req.coverage_offer.offer_id.trim().is_empty() {
+            return Err(anyhow!("coverage_offer_id_missing"));
+        }
+        if req.coverage_offer.outcome_ref.trim().is_empty() {
+            return Err(anyhow!("risk_outcome_ref_missing"));
+        }
+        if req.coverage_offer.underwriter_id.trim().is_empty() {
+            return Err(anyhow!("coverage_underwriter_id_missing"));
+        }
+        if Self::money_amount_value(&req.coverage_offer.coverage_cap) == 0 {
+            return Err(anyhow!("coverage_cap_missing"));
+        }
+        if Self::money_amount_value(&req.coverage_offer.premium) == 0 {
+            return Err(anyhow!("coverage_premium_missing"));
+        }
+        if req.coverage_offer.expires_at_ms <= req.coverage_offer.created_at_ms {
+            return Err(anyhow!("coverage_offer_window_invalid"));
+        }
+        req.coverage_offer.status = CoverageOfferStatus::Open;
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!(
+                "receipt.kernel.risk.coverage_offer:{}",
+                req.coverage_offer.offer_id
+            ),
+            receipt_type: "kernel.risk.coverage_offer.place.v1".to_string(),
+            created_at_ms: req.coverage_offer.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.coverage_offer)
+                .map_err(|error| anyhow!("failed to encode coverage offer: {error}"))?,
+            outputs_payload: json!({
+                "offer_id": req.coverage_offer.offer_id,
+                "outcome_ref": req.coverage_offer.outcome_ref,
+                "underwriter_id": req.coverage_offer.underwriter_id,
+                "status": req.coverage_offer.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        state.coverage_offers.insert(
+            req.coverage_offer.offer_id.clone(),
+            req.coverage_offer.clone(),
+        );
+        state.receipts.push(receipt.clone());
+        Ok(PlaceCoverageOfferResponse {
+            coverage_offer: req.coverage_offer,
+            receipt,
+        })
+    }
+
+    async fn bind_coverage(&self, mut req: BindCoverageRequest) -> Result<BindCoverageResponse> {
+        if req.coverage_binding.binding_id.trim().is_empty() {
+            return Err(anyhow!("coverage_binding_id_missing"));
+        }
+        if req.coverage_binding.outcome_ref.trim().is_empty() {
+            return Err(anyhow!("risk_outcome_ref_missing"));
+        }
+        if req.coverage_binding.offer_ids.is_empty() {
+            return Err(anyhow!("coverage_binding_offer_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let offer_records = req
+            .coverage_binding
+            .offer_ids
+            .iter()
+            .map(|offer_id| {
+                let Some(offer) = state.coverage_offers.get(offer_id.as_str()).cloned() else {
+                    return Err(anyhow!("coverage_offer_not_found"));
+                };
+                if offer.outcome_ref != req.coverage_binding.outcome_ref {
+                    return Err(anyhow!("risk_outcome_ref_mismatch"));
+                }
+                Ok(offer)
+            })
+            .collect::<Result<Vec<_>>>()?;
+        let first_offer = offer_records
+            .first()
+            .ok_or_else(|| anyhow!("coverage_binding_offer_missing"))?;
+        let mut total_coverage = first_offer.coverage_cap.clone();
+        let mut total_premium = first_offer.premium.clone();
+        for offer in offer_records.iter().skip(1) {
+            if !Self::money_assets_match(&total_coverage, &offer.coverage_cap)
+                || !Self::money_assets_match(&total_premium, &offer.premium)
+            {
+                return Err(anyhow!("risk_market_asset_mismatch"));
+            }
+            let coverage_sum = Self::money_amount_value(&total_coverage)
+                .saturating_add(Self::money_amount_value(&offer.coverage_cap));
+            let premium_sum = Self::money_amount_value(&total_premium)
+                .saturating_add(Self::money_amount_value(&offer.premium));
+            total_coverage.amount = MoneyAmount::AmountSats(coverage_sum);
+            total_premium.amount = MoneyAmount::AmountSats(premium_sum);
+        }
+        req.coverage_binding.total_coverage = total_coverage;
+        req.coverage_binding.premium_total = total_premium;
+        req.coverage_binding.status = CoverageBindingStatus::Active;
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!(
+                "receipt.kernel.risk.coverage_binding:{}",
+                req.coverage_binding.binding_id
+            ),
+            receipt_type: "kernel.risk.coverage_binding.bind.v1".to_string(),
+            created_at_ms: req.coverage_binding.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.coverage_binding)
+                .map_err(|error| anyhow!("failed to encode coverage binding: {error}"))?,
+            outputs_payload: json!({
+                "binding_id": req.coverage_binding.binding_id,
+                "outcome_ref": req.coverage_binding.outcome_ref,
+                "offer_ids": req.coverage_binding.offer_ids,
+                "status": req.coverage_binding.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        for offer in &offer_records {
+            if let Some(offer_record) = state.coverage_offers.get_mut(offer.offer_id.as_str()) {
+                offer_record.status = CoverageOfferStatus::Bound;
+            }
+        }
+        state.coverage_bindings.insert(
+            req.coverage_binding.binding_id.clone(),
+            req.coverage_binding.clone(),
+        );
+        state.receipts.push(receipt.clone());
+        Ok(BindCoverageResponse {
+            coverage_binding: req.coverage_binding,
+            receipt,
+        })
+    }
+
+    async fn create_prediction_position(
+        &self,
+        mut req: CreatePredictionPositionRequest,
+    ) -> Result<CreatePredictionPositionResponse> {
+        if req.prediction_position.position_id.trim().is_empty() {
+            return Err(anyhow!("prediction_position_id_missing"));
+        }
+        if req.prediction_position.outcome_ref.trim().is_empty() {
+            return Err(anyhow!("risk_outcome_ref_missing"));
+        }
+        if req.prediction_position.participant_id.trim().is_empty() {
+            return Err(anyhow!("prediction_participant_id_missing"));
+        }
+        if !Self::money_assets_match(
+            &req.prediction_position.collateral,
+            &req.prediction_position.max_payout,
+        ) {
+            return Err(anyhow!("risk_market_asset_mismatch"));
+        }
+        if Self::money_amount_value(&req.prediction_position.max_payout)
+            > Self::money_amount_value(&req.prediction_position.collateral)
+        {
+            return Err(anyhow!("prediction_position_not_bounded"));
+        }
+        if req.prediction_position.expires_at_ms <= req.prediction_position.created_at_ms {
+            return Err(anyhow!("prediction_position_window_invalid"));
+        }
+        req.prediction_position.status = PredictionPositionStatus::Open;
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!(
+                "receipt.kernel.risk.prediction_position:{}",
+                req.prediction_position.position_id
+            ),
+            receipt_type: "kernel.risk.prediction_position.create.v1".to_string(),
+            created_at_ms: req.prediction_position.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.prediction_position)
+                .map_err(|error| anyhow!("failed to encode prediction position: {error}"))?,
+            outputs_payload: json!({
+                "position_id": req.prediction_position.position_id,
+                "outcome_ref": req.prediction_position.outcome_ref,
+                "side": req.prediction_position.side,
+                "status": req.prediction_position.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        state.prediction_positions.insert(
+            req.prediction_position.position_id.clone(),
+            req.prediction_position.clone(),
+        );
+        state.receipts.push(receipt.clone());
+        Ok(CreatePredictionPositionResponse {
+            prediction_position: req.prediction_position,
+            receipt,
+        })
+    }
+
+    async fn create_risk_claim(
+        &self,
+        mut req: CreateRiskClaimRequest,
+    ) -> Result<CreateRiskClaimResponse> {
+        if req.risk_claim.claim_id.trim().is_empty() {
+            return Err(anyhow!("risk_claim_id_missing"));
+        }
+        if req.risk_claim.binding_id.trim().is_empty() {
+            return Err(anyhow!("coverage_binding_id_missing"));
+        }
+        if req.risk_claim.outcome_ref.trim().is_empty() {
+            return Err(anyhow!("risk_outcome_ref_missing"));
+        }
+        if req.risk_claim.claimant_id.trim().is_empty() {
+            return Err(anyhow!("risk_claimant_id_missing"));
+        }
+        if req.risk_claim.reason_code.trim().is_empty() {
+            return Err(anyhow!("risk_claim_reason_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let Some(binding) = state
+            .coverage_bindings
+            .get(req.risk_claim.binding_id.as_str())
+            .cloned()
+        else {
+            return Err(anyhow!("coverage_binding_not_found"));
+        };
+        if binding.outcome_ref != req.risk_claim.outcome_ref {
+            return Err(anyhow!("risk_outcome_ref_mismatch"));
+        }
+        if !Self::money_assets_match(&binding.total_coverage, &req.risk_claim.requested_payout) {
+            return Err(anyhow!("risk_market_asset_mismatch"));
+        }
+        if Self::money_amount_value(&req.risk_claim.requested_payout)
+            > Self::money_amount_value(&binding.total_coverage)
+        {
+            return Err(anyhow!("risk_claim_payout_exceeds_coverage"));
+        }
+        req.risk_claim.status = RiskClaimStatus::Open;
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.risk.claim:{}", req.risk_claim.claim_id),
+            receipt_type: "kernel.risk.claim.create.v1".to_string(),
+            created_at_ms: req.risk_claim.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.risk_claim)
+                .map_err(|error| anyhow!("failed to encode risk claim: {error}"))?,
+            outputs_payload: json!({
+                "claim_id": req.risk_claim.claim_id,
+                "binding_id": req.risk_claim.binding_id,
+                "outcome_ref": req.risk_claim.outcome_ref,
+                "status": req.risk_claim.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .risk_claims
+            .insert(req.risk_claim.claim_id.clone(), req.risk_claim.clone());
+        state.receipts.push(receipt.clone());
+        Ok(CreateRiskClaimResponse {
+            risk_claim: req.risk_claim,
+            receipt,
+        })
+    }
+
+    async fn resolve_risk_claim(
+        &self,
+        req: ResolveRiskClaimRequest,
+    ) -> Result<ResolveRiskClaimResponse> {
+        if req.claim_id.trim().is_empty() {
+            return Err(anyhow!("risk_claim_id_missing"));
+        }
+        if req.resolution_ref.trim().is_empty() {
+            return Err(anyhow!("risk_resolution_ref_missing"));
+        }
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        let Some(existing_claim) = state.risk_claims.get(req.claim_id.as_str()).cloned() else {
+            return Err(anyhow!("risk_claim_not_found"));
+        };
+        let mut risk_claim = existing_claim;
+        if matches!(
+            req.status,
+            RiskClaimStatus::Approved | RiskClaimStatus::Paid
+        ) {
+            let Some(approved_payout) = req.approved_payout.as_ref() else {
+                return Err(anyhow!("risk_claim_approved_payout_missing"));
+            };
+            if !Self::money_assets_match(&risk_claim.requested_payout, approved_payout) {
+                return Err(anyhow!("risk_market_asset_mismatch"));
+            }
+            if Self::money_amount_value(approved_payout)
+                > Self::money_amount_value(&risk_claim.requested_payout)
+            {
+                return Err(anyhow!("risk_claim_payout_exceeds_request"));
+            }
+            risk_claim.approved_payout = Some(approved_payout.clone());
+        } else {
+            risk_claim.approved_payout = None;
+        }
+        risk_claim.resolution_ref = Some(req.resolution_ref.clone());
+        risk_claim.status = req.status;
+        if !req.metadata.is_null() {
+            risk_claim.metadata = req.metadata.clone();
+        }
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.risk.claim.resolve:{}", req.claim_id),
+            receipt_type: "kernel.risk.claim.resolve.v1".to_string(),
+            created_at_ms: req.resolved_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(json!({
+                "claim_id": req.claim_id,
+                "status": req.status,
+                "approved_payout": req.approved_payout,
+                "resolution_ref": req.resolution_ref,
+                "metadata": req.metadata,
+            }))
+            .map_err(|error| anyhow!("failed to encode risk claim resolution: {error}"))?,
+            outputs_payload: json!({
+                "claim_id": risk_claim.claim_id,
+                "binding_id": risk_claim.binding_id,
+                "status": risk_claim.status,
+                "resolution_ref": risk_claim.resolution_ref,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        state
+            .risk_claims
+            .insert(req.claim_id.clone(), risk_claim.clone());
+        state.receipts.push(receipt.clone());
+        Ok(ResolveRiskClaimResponse {
+            risk_claim,
+            receipt,
+        })
+    }
+
+    async fn publish_risk_signal(
+        &self,
+        mut req: PublishRiskSignalRequest,
+    ) -> Result<PublishRiskSignalResponse> {
+        if req.risk_signal.signal_id.trim().is_empty() {
+            return Err(anyhow!("risk_signal_id_missing"));
+        }
+        if req.risk_signal.outcome_ref.trim().is_empty() {
+            return Err(anyhow!("risk_outcome_ref_missing"));
+        }
+        if req.risk_signal.implied_fail_probability_bps > 10_000 {
+            return Err(anyhow!("risk_implied_fail_probability_invalid"));
+        }
+        if !(0.0..=1.0).contains(&req.risk_signal.calibration_score) {
+            return Err(anyhow!("risk_calibration_score_invalid"));
+        }
+        if !(0.0..=1.0).contains(&req.risk_signal.coverage_concentration_hhi) {
+            return Err(anyhow!("risk_concentration_invalid"));
+        }
+        let (verification_tier_floor, collateral_multiplier_bps, autonomy_mode) =
+            Self::risk_policy_outputs(
+                req.risk_signal.implied_fail_probability_bps,
+                req.risk_signal.calibration_score,
+                req.risk_signal.coverage_concentration_hhi,
+            );
+        req.risk_signal.verification_tier_floor = verification_tier_floor;
+        req.risk_signal.collateral_multiplier_bps = collateral_multiplier_bps;
+        req.risk_signal.autonomy_mode = autonomy_mode;
+        req.risk_signal.status = RiskSignalStatus::Active;
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.risk.signal:{}", req.risk_signal.signal_id),
+            receipt_type: "kernel.risk.signal.publish.v1".to_string(),
+            created_at_ms: req.risk_signal.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: req.trace,
+            policy: req.policy,
+            inputs_payload: serde_json::to_value(&req.risk_signal)
+                .map_err(|error| anyhow!("failed to encode risk signal: {error}"))?,
+            outputs_payload: json!({
+                "signal_id": req.risk_signal.signal_id,
+                "outcome_ref": req.risk_signal.outcome_ref,
+                "verification_tier_floor": req.risk_signal.verification_tier_floor,
+                "collateral_multiplier_bps": req.risk_signal.collateral_multiplier_bps,
+                "autonomy_mode": req.risk_signal.autonomy_mode,
+                "status": req.risk_signal.status,
+            }),
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
+        let mut state = self
+            .state
+            .write()
+            .map_err(|_| anyhow!("local kernel authority state lock poisoned"))?;
+        state
+            .risk_signals
+            .insert(req.risk_signal.signal_id.clone(), req.risk_signal.clone());
+        state.receipts.push(receipt.clone());
+        Ok(PublishRiskSignalResponse {
+            risk_signal: req.risk_signal,
+            receipt,
+        })
+    }
+
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot> {
         let state = self
             .state
@@ -2293,6 +2888,48 @@ impl KernelAuthority for HttpKernelAuthorityClient {
             req.partition_id.trim()
         );
         self.post_json(path.as_str(), &req).await
+    }
+
+    async fn place_coverage_offer(
+        &self,
+        req: PlaceCoverageOfferRequest,
+    ) -> Result<PlaceCoverageOfferResponse> {
+        self.post_json("/v1/kernel/risk/coverage_offers", &req)
+            .await
+    }
+
+    async fn bind_coverage(&self, req: BindCoverageRequest) -> Result<BindCoverageResponse> {
+        self.post_json("/v1/kernel/risk/coverage_bindings", &req)
+            .await
+    }
+
+    async fn create_prediction_position(
+        &self,
+        req: CreatePredictionPositionRequest,
+    ) -> Result<CreatePredictionPositionResponse> {
+        self.post_json("/v1/kernel/risk/positions", &req).await
+    }
+
+    async fn create_risk_claim(
+        &self,
+        req: CreateRiskClaimRequest,
+    ) -> Result<CreateRiskClaimResponse> {
+        self.post_json("/v1/kernel/risk/claims", &req).await
+    }
+
+    async fn resolve_risk_claim(
+        &self,
+        req: ResolveRiskClaimRequest,
+    ) -> Result<ResolveRiskClaimResponse> {
+        let path = format!("/v1/kernel/risk/claims/{}/resolve", req.claim_id.trim());
+        self.post_json(path.as_str(), &req).await
+    }
+
+    async fn publish_risk_signal(
+        &self,
+        req: PublishRiskSignalRequest,
+    ) -> Result<PublishRiskSignalResponse> {
+        self.post_json("/v1/kernel/risk/signals", &req).await
     }
 
     async fn get_snapshot(&self, minute_start_ms: i64) -> Result<EconomySnapshot> {
