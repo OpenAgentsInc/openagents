@@ -1,19 +1,35 @@
 mod economy;
+mod kernel;
 
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::convert::Infallible;
 use std::net::SocketAddr;
 use std::path::PathBuf;
+use std::time::Duration;
 use std::sync::{Arc, RwLock};
 
 use axum::extract::{Path, State};
 use axum::http::{HeaderMap, StatusCode};
+use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
+use openagents_kernel_core::authority::{
+    CreateContractRequest, CreateContractResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
+    FinalizeVerdictRequest, FinalizeVerdictResponse, SubmitOutputRequest, SubmitOutputResponse,
+};
+use openagents_kernel_core::receipts::Receipt;
+use openagents_kernel_core::snapshots::EconomySnapshot;
 use serde::{Deserialize, Serialize};
+use tokio::sync::broadcast;
+use tokio_stream::StreamExt;
+use tokio_stream::wrappers::BroadcastStream;
 
 use crate::economy::{
     AuthorityReceiptContext, PublicRuntimeSnapshot, PublicStatsSnapshot, ReceiptLedger,
+};
+use crate::kernel::{
+    KernelMutationContext, KernelState, ReceiptProjectionEvent, SnapshotProjectionEvent,
 };
 
 const ENV_LISTEN_ADDR: &str = "NEXUS_CONTROL_LISTEN_ADDR";
@@ -383,6 +399,8 @@ struct ErrorResponse {
 struct AppState {
     config: ServiceConfig,
     store: Arc<RwLock<ControlStore>>,
+    kernel_receipt_tx: broadcast::Sender<ReceiptProjectionEvent>,
+    kernel_snapshot_tx: broadcast::Sender<SnapshotProjectionEvent>,
 }
 
 #[derive(Debug)]
@@ -391,6 +409,7 @@ struct ControlStore {
     sync_tokens: HashMap<String, SyncTokenRecord>,
     starter_demand: StarterDemandState,
     economy: ReceiptLedger,
+    kernel: KernelState,
 }
 
 impl ControlStore {
@@ -400,6 +419,7 @@ impl ControlStore {
             sync_tokens: HashMap::new(),
             starter_demand: StarterDemandState::default(),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
+            kernel: KernelState::new(),
         }
     }
 }
@@ -539,9 +559,13 @@ impl IntoResponse for ApiError {
 }
 
 pub fn build_router(config: ServiceConfig) -> Router {
+    let (kernel_receipt_tx, _) = broadcast::channel(256);
+    let (kernel_snapshot_tx, _) = broadcast::channel(256);
     let state = AppState {
         store: Arc::new(RwLock::new(ControlStore::new(&config))),
         config,
+        kernel_receipt_tx,
+        kernel_snapshot_tx,
     };
     Router::new()
         .route("/healthz", get(healthz))
@@ -566,6 +590,17 @@ pub fn build_router(config: ServiceConfig) -> Router {
             "/api/starter-demand/offers/{request_id}/complete",
             post(complete_starter_demand_offer),
         )
+        .route("/v1/kernel/work_units", post(create_kernel_work_unit))
+        .route("/v1/kernel/contracts", post(create_kernel_contract))
+        .route("/v1/kernel/contracts/{contract_id}/submit", post(submit_kernel_output))
+        .route(
+            "/v1/kernel/contracts/{contract_id}/verdict/finalize",
+            post(finalize_kernel_verdict),
+        )
+        .route("/v1/kernel/snapshots/{minute_start_ms}", get(get_kernel_snapshot))
+        .route("/v1/kernel/receipts/{receipt_id}", get(get_kernel_receipt))
+        .route("/v1/kernel/stream/receipts", get(stream_kernel_receipts))
+        .route("/v1/kernel/stream/snapshots", get(stream_kernel_snapshots))
         .with_state(state)
 }
 
@@ -1368,6 +1403,298 @@ async fn complete_starter_demand_offer(
     }))
 }
 
+async fn create_kernel_work_unit(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateWorkUnitRequest>,
+) -> Result<Json<CreateWorkUnitResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_work_unit(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.work_unit.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn create_kernel_contract(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<CreateContractRequest>,
+) -> Result<Json<CreateContractResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_contract(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.contract.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn submit_kernel_output(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contract_id): Path<String>,
+    Json(mut request): Json<SubmitOutputRequest>,
+) -> Result<Json<SubmitOutputResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let contract_id = normalize_required_field(contract_id.as_str(), "contract_id_missing")?;
+    if !request.contract_id.trim().is_empty() && request.contract_id != contract_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_contract_id_mismatch".to_string(),
+        });
+    }
+    request.contract_id = contract_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .submit_output(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.submission.received",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn finalize_kernel_verdict(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(contract_id): Path<String>,
+    Json(mut request): Json<FinalizeVerdictRequest>,
+) -> Result<Json<FinalizeVerdictResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let contract_id = normalize_required_field(contract_id.as_str(), "contract_id_missing")?;
+    if !request.contract_id.trim().is_empty() && request.contract_id != contract_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_contract_id_mismatch".to_string(),
+        });
+    }
+    request.contract_id = contract_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .finalize_verdict(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.verdict.finalized",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    Ok(Json(result.response))
+}
+
+async fn get_kernel_snapshot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(minute_start_ms): Path<i64>,
+) -> Result<Json<EconomySnapshot>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let snapshot = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .get_snapshot(minute_start_ms)
+            .map_err(kernel_api_error)?
+    };
+    Ok(Json(snapshot))
+}
+
+async fn get_kernel_receipt(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(receipt_id): Path<String>,
+) -> Result<Json<Receipt>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let receipt_id = normalize_required_field(receipt_id.as_str(), "receipt_id_missing")?;
+    let receipt = {
+        let store = state.store.read().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store.kernel.get_receipt(receipt_id.as_str())
+    }
+    .ok_or_else(|| ApiError {
+        status: StatusCode::NOT_FOUND,
+        error: "not_found",
+        reason: "kernel_receipt_not_found".to_string(),
+    })?;
+    Ok(Json(receipt))
+}
+
+async fn stream_kernel_receipts(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let stream = BroadcastStream::new(state.kernel_receipt_tx.subscribe()).filter_map(|message| {
+        match message {
+            Ok(event) => {
+                let data = serde_json::to_string(&event).ok()?;
+                Some(Ok(Event::default().event("receipt").data(data)))
+            }
+            Err(_) => None,
+        }
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+async fn stream_kernel_snapshots(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+) -> Result<Sse<impl tokio_stream::Stream<Item = Result<Event, Infallible>>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let stream = BroadcastStream::new(state.kernel_snapshot_tx.subscribe()).filter_map(|message| {
+        match message {
+            Ok(event) => {
+                let data = serde_json::to_string(&event).ok()?;
+                Some(Ok(Event::default().event("snapshot").data(data)))
+            }
+            Err(_) => None,
+        }
+    });
+    Ok(Sse::new(stream).keep_alive(KeepAlive::new().interval(Duration::from_secs(15))))
+}
+
+fn kernel_mutation_context(
+    session: &DesktopSessionRecord,
+    now_unix_ms: u64,
+) -> KernelMutationContext {
+    KernelMutationContext {
+        caller_id: session.account_id.clone(),
+        session_id: session.session_id.clone(),
+        now_unix_ms,
+    }
+}
+
+fn kernel_api_error(reason: String) -> ApiError {
+    let status = match reason.as_str() {
+        "kernel_contract_not_found" => StatusCode::NOT_FOUND,
+        "kernel_idempotency_conflict" | "kernel_contract_id_mismatch" => StatusCode::CONFLICT,
+        "work_unit_id_missing" | "contract_id_missing" | "receipt_id_missing" => {
+            StatusCode::BAD_REQUEST
+        }
+        _ => StatusCode::BAD_REQUEST,
+    };
+    ApiError {
+        status,
+        error: "kernel_error",
+        reason,
+    }
+}
+
+fn record_kernel_mutation_observability(
+    state: &AppState,
+    session: &DesktopSessionRecord,
+    now_unix_ms: u64,
+    receipt_type: &str,
+    receipt_event: Option<ReceiptProjectionEvent>,
+    snapshot_event: Option<SnapshotProjectionEvent>,
+) {
+    if let Some(receipt_event) = receipt_event {
+        if let Ok(mut store) = state.store.write() {
+            let mut attributes = BTreeMap::new();
+            if let Some(work_unit_id) = receipt_event.receipt.trace.work_unit_id.clone() {
+                attributes.insert("work_unit_id".to_string(), work_unit_id);
+            }
+            if let Some(contract_id) = receipt_event.receipt.trace.contract_id.clone() {
+                attributes.insert("contract_id".to_string(), contract_id);
+            }
+            attributes.insert(
+                "canonical_receipt_id".to_string(),
+                receipt_event.receipt.receipt_id.clone(),
+            );
+            attributes.insert(
+                "canonical_receipt_type".to_string(),
+                receipt_event.receipt.receipt_type.clone(),
+            );
+            store.economy.record(
+                receipt_type,
+                now_unix_ms,
+                AuthorityReceiptContext {
+                    session_id: Some(session.session_id.clone()),
+                    account_id: Some(session.account_id.clone()),
+                    request_id: Some(receipt_event.receipt.receipt_id.clone()),
+                    status: Some(if receipt_event.seq > 0 {
+                        "recorded".to_string()
+                    } else {
+                        "replayed".to_string()
+                    }),
+                    reason: None,
+                    relay_url: None,
+                    amount_sats: None,
+                    payment_pointer: None,
+                    attributes,
+                },
+            );
+        }
+        let _ = state.kernel_receipt_tx.send(receipt_event);
+    }
+    if let Some(snapshot_event) = snapshot_event {
+        let _ = state.kernel_snapshot_tx.send(snapshot_event);
+    }
+}
+
 fn authenticate_session(
     state: &AppState,
     headers: &HeaderMap,
@@ -1538,9 +1865,7 @@ fn maybe_dispatch_starter_offer(
     let remaining_budget_sats = config
         .starter_demand_budget_cap_sats
         .saturating_sub(state.budget_allocated_sats);
-    let Some(template) = next_template_for_remaining_budget(state, remaining_budget_sats) else {
-        return None;
-    };
+    let template = next_template_for_remaining_budget(state, remaining_budget_sats)?;
 
     let request_id = format!("starter-hosted-{:06}", state.next_offer_seq);
     state.next_offer_seq = state.next_offer_seq.saturating_add(1);
@@ -1923,6 +2248,14 @@ mod tests {
     use axum::body::{Body, to_bytes};
     use axum::http::{Request, StatusCode};
     use axum::response::Response;
+    use openagents_kernel_core::authority::{
+        CreateContractRequest, CreateContractResponse, CreateWorkUnitRequest,
+        CreateWorkUnitResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
+        SubmitOutputRequest, SubmitOutputResponse,
+    };
+    use openagents_kernel_core::receipts::{PolicyContext, Receipt, ReceiptHints, TraceContext};
+    use openagents_kernel_core::time::floor_to_minute_utc;
+    use serde_json::json;
     use tower::ServiceExt;
 
     use super::{
@@ -1999,6 +2332,108 @@ mod tests {
             .await?;
         assert_eq!(response.status(), StatusCode::OK);
         response_json(response).await
+    }
+
+    fn authorization(session: &DesktopSessionResponse) -> String {
+        format!("Bearer {}", session.access_token)
+    }
+
+    fn kernel_policy() -> PolicyContext {
+        PolicyContext::default()
+    }
+
+    fn kernel_trace(work_unit_id: Option<&str>, contract_id: Option<&str>) -> TraceContext {
+        TraceContext {
+            work_unit_id: work_unit_id.map(str::to_string),
+            contract_id: contract_id.map(str::to_string),
+            ..TraceContext::default()
+        }
+    }
+
+    fn work_unit_request(
+        work_unit_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateWorkUnitRequest {
+        CreateWorkUnitRequest {
+            work_unit_id: work_unit_id.to_string(),
+            created_at_ms,
+            idempotency_key: idempotency_key.to_string(),
+            trace: kernel_trace(Some(work_unit_id), None),
+            policy: kernel_policy(),
+            payload: json!({
+                "kind": "starter.compute.job",
+                "summary": "Run the provider earn loop job."
+            }),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn contract_request(
+        contract_id: &str,
+        work_unit_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateContractRequest {
+        CreateContractRequest {
+            contract_id: contract_id.to_string(),
+            created_at_ms,
+            idempotency_key: idempotency_key.to_string(),
+            trace: kernel_trace(Some(work_unit_id), Some(contract_id)),
+            policy: kernel_policy(),
+            payload: json!({
+                "provider": "desktop",
+                "settlement_asset": "btc"
+            }),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn submission_request(
+        contract_id: &str,
+        work_unit_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> SubmitOutputRequest {
+        SubmitOutputRequest {
+            contract_id: contract_id.to_string(),
+            created_at_ms,
+            idempotency_key: idempotency_key.to_string(),
+            trace: kernel_trace(Some(work_unit_id), Some(contract_id)),
+            policy: kernel_policy(),
+            payload: json!({
+                "artifact_uri": "file://result.json",
+                "status": "completed"
+            }),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn verdict_request(
+        contract_id: &str,
+        work_unit_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> FinalizeVerdictRequest {
+        FinalizeVerdictRequest {
+            contract_id: contract_id.to_string(),
+            created_at_ms,
+            idempotency_key: idempotency_key.to_string(),
+            trace: kernel_trace(Some(work_unit_id), Some(contract_id)),
+            policy: kernel_policy(),
+            verdict: json!({
+                "outcome": "pass",
+                "settlement": "approved"
+            }),
+            evidence: Vec::new(),
+            hints: ReceiptHints {
+                verification_correlated: Some(false),
+                ..ReceiptHints::default()
+            },
+        }
     }
 
     #[tokio::test]
@@ -2540,6 +2975,253 @@ mod tests {
         assert_eq!(stats.receipt_count, 1);
 
         let _ = std::fs::remove_file(receipt_log_path.as_path());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_authority_flow_persists_receipts_and_snapshot() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = 1_762_000_101_234i64;
+        let minute_start_ms = floor_to_minute_utc(created_at_ms);
+
+        let work_unit = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/work_units")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&work_unit_request(
+                        "work_unit.alpha",
+                        "idemp.work.alpha",
+                        created_at_ms,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(work_unit.status(), StatusCode::OK);
+        let work_unit_payload: CreateWorkUnitResponse = response_json(work_unit).await?;
+        assert_eq!(work_unit_payload.receipt.receipt_type, "kernel.work_unit.create.v1");
+
+        let contract = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/contracts")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&contract_request(
+                        "contract.alpha",
+                        "work_unit.alpha",
+                        "idemp.contract.alpha",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(contract.status(), StatusCode::OK);
+        let contract_payload: CreateContractResponse = response_json(contract).await?;
+        assert_eq!(contract_payload.receipt.receipt_type, "kernel.contract.create.v1");
+
+        let submission = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/contracts/contract.alpha/submit")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&submission_request(
+                        "contract.alpha",
+                        "work_unit.alpha",
+                        "idemp.submit.alpha",
+                        created_at_ms + 2_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(submission.status(), StatusCode::OK);
+        let submission_payload: SubmitOutputResponse = response_json(submission).await?;
+        assert_eq!(submission_payload.receipt.receipt_type, "kernel.output.submit.v1");
+
+        let verdict = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/contracts/contract.alpha/verdict/finalize")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&verdict_request(
+                        "contract.alpha",
+                        "work_unit.alpha",
+                        "idemp.verdict.alpha",
+                        created_at_ms + 3_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(verdict.status(), StatusCode::OK);
+        let verdict_payload: FinalizeVerdictResponse = response_json(verdict).await?;
+        assert_eq!(
+            verdict_payload.receipt.receipt_type,
+            "kernel.verdict.finalize.v1"
+        );
+
+        let receipt_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!(
+                        "/v1/kernel/receipts/{}",
+                        verdict_payload.receipt.receipt_id
+                    ))
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(receipt_response.status(), StatusCode::OK);
+        let canonical_receipt: Receipt = response_json(receipt_response).await?;
+        assert_eq!(
+            canonical_receipt.canonical_hash,
+            verdict_payload.receipt.canonical_hash
+        );
+
+        let snapshot_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri(format!("/v1/kernel/snapshots/{minute_start_ms}"))
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(snapshot_response.status(), StatusCode::OK);
+        let snapshot: super::EconomySnapshot = response_json(snapshot_response).await?;
+        assert_eq!(snapshot.as_of_ms, minute_start_ms);
+        assert_eq!(snapshot.n, 1);
+        assert_eq!(snapshot.nv, 1.0);
+        assert_eq!(snapshot.sv, 1.0);
+        assert_eq!(snapshot.sv_effective, 1.0);
+        assert_eq!(snapshot.inputs.len(), 4);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_authority_enforces_idempotency_per_caller() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let request = work_unit_request("work_unit.idempotent", "idemp.shared", 1_762_000_200_123);
+
+        let first_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/work_units")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request)?))?,
+            )
+            .await?;
+        assert_eq!(first_response.status(), StatusCode::OK);
+        let first: CreateWorkUnitResponse = response_json(first_response).await?;
+
+        let replay_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/work_units")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request)?))?,
+            )
+            .await?;
+        assert_eq!(replay_response.status(), StatusCode::OK);
+        let replay: CreateWorkUnitResponse = response_json(replay_response).await?;
+        assert_eq!(replay.receipt.receipt_id, first.receipt.receipt_id);
+        assert_eq!(replay.receipt.canonical_hash, first.receipt.canonical_hash);
+
+        let mut conflicting = request.clone();
+        conflicting.payload = json!({
+            "kind": "starter.compute.job",
+            "summary": "Changed payload with same idempotency key."
+        });
+        let conflict_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/work_units")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&conflicting)?))?,
+            )
+            .await?;
+        assert_eq!(conflict_response.status(), StatusCode::CONFLICT);
+        let conflict: serde_json::Value = response_json(conflict_response).await?;
+        assert_eq!(conflict["reason"], "kernel_idempotency_conflict");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn kernel_stream_routes_require_auth_and_return_sse() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+
+        let unauthorized_receipts = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/stream/receipts")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(unauthorized_receipts.status(), StatusCode::UNAUTHORIZED);
+
+        let receipts_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/stream/receipts")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(receipts_response.status(), StatusCode::OK);
+        assert!(
+            receipts_response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with("text/event-stream"))
+        );
+
+        let snapshots_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/stream/snapshots")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(snapshots_response.status(), StatusCode::OK);
+        assert!(
+            snapshots_response
+                .headers()
+                .get("content-type")
+                .and_then(|value| value.to_str().ok())
+                .is_some_and(|value| value.starts_with("text/event-stream"))
+        );
+
         Ok(())
     }
 }

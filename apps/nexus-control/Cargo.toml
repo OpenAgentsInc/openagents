@@ -12,10 +12,12 @@ anyhow.workspace = true
 axum = "0.8"
 hex.workspace = true
 http = "1"
+openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
 rand.workspace = true
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 tokio.workspace = true
+tokio-stream = { version = "0.1", features = ["sync"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
 
