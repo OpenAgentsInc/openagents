@@ -220,7 +220,10 @@ pub(crate) fn register_accepted_request_with_kernel(
     let work_unit_request = build_work_unit_request(state, request);
     let work_unit_receipt = match current_authority_mode(state) {
         KernelAuthorityMode::Unavailable => {
-            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
+            return Err(
+                "kernel authority unavailable: hosted control endpoint is not configured"
+                    .to_string(),
+            );
         }
         KernelAuthorityMode::Remote {
             ref base_url,
@@ -237,7 +240,10 @@ pub(crate) fn register_accepted_request_with_kernel(
     let contract_request = build_contract_request(state, request);
     let contract_receipt = match current_authority_mode(state) {
         KernelAuthorityMode::Unavailable => {
-            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
+            return Err(
+                "kernel authority unavailable: hosted control endpoint is not configured"
+                    .to_string(),
+            );
         }
         KernelAuthorityMode::Remote {
             ref base_url,
@@ -260,7 +266,10 @@ pub(crate) fn submit_active_job_output(state: &mut RenderState) -> Result<String
     let submit_request = build_submit_output_request(state, &job);
     let receipt = match current_authority_mode(state) {
         KernelAuthorityMode::Unavailable => {
-            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
+            return Err(
+                "kernel authority unavailable: hosted control endpoint is not configured"
+                    .to_string(),
+            );
         }
         KernelAuthorityMode::Remote {
             ref base_url,
@@ -284,7 +293,10 @@ pub(crate) fn finalize_paid_active_job(state: &mut RenderState) -> Result<String
     let verdict_request = build_finalize_verdict_request(state, &job);
     let receipt = match current_authority_mode(state) {
         KernelAuthorityMode::Unavailable => {
-            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
+            return Err(
+                "kernel authority unavailable: hosted control endpoint is not configured"
+                    .to_string(),
+            );
         }
         KernelAuthorityMode::Remote {
             ref base_url,

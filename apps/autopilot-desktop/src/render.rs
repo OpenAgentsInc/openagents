@@ -16,6 +16,7 @@ use winit::window::Window;
 use crate::app_state::{
     PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
 };
+use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
@@ -216,7 +217,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         sync_health.cursor_position = sync_health.last_applied_event_seq;
         sync_health.cursor_target_position = sync_health.last_applied_event_seq;
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
-        let mut command_palette = CommandPalette::new().mono(true).commands(command_registry());
+        let mut command_palette = CommandPalette::new()
+            .mono(true)
+            .commands(command_registry());
         {
             let action_queue = Rc::clone(&command_palette_actions);
             command_palette = command_palette.on_select(move |command| {
@@ -701,8 +704,8 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
             paint.scene.draw_text(paint.text.layout_mono(
                 &format!(
-                    "Global Network Earnings Today: {} BTC",
-                    format_btc_from_sats(global_earnings_today_sats)
+                    "Global Network Earnings Today: {}",
+                    format_btc_amount_from_sats(global_earnings_today_sats)
                 ),
                 Point::new(left, y),
                 10.0,
@@ -797,7 +800,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             ));
             y += 14.0;
             paint.scene.draw_text(paint.text.layout_mono(
-                &format!("Sats Paid: {} BTC", format_btc_from_sats(sats_paid_network)),
+                &format!("Paid: {}", format_btc_amount_from_sats(sats_paid_network)),
                 Point::new(left, y),
                 10.0,
                 theme::text::PRIMARY,
@@ -841,14 +844,20 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             ));
             y += 16.0;
             paint.scene.draw_text(paint.text.layout_mono(
-                &format!("Today: {} sats", state.earnings_scoreboard.sats_today),
+                &format!(
+                    "Today: {}",
+                    format_sats_amount(state.earnings_scoreboard.sats_today)
+                ),
                 Point::new(left, y),
                 10.0,
                 theme::text::PRIMARY,
             ));
             y += 14.0;
             paint.scene.draw_text(paint.text.layout_mono(
-                &format!("Total: {} sats", state.earnings_scoreboard.lifetime_sats),
+                &format!(
+                    "Total: {}",
+                    format_sats_amount(state.earnings_scoreboard.lifetime_sats)
+                ),
                 Point::new(left, y),
                 10.0,
                 theme::text::PRIMARY,
@@ -866,10 +875,10 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             if let Some(active) = state.active_job.job.as_ref() {
                 paint.scene.draw_text(paint.text.layout_mono(
                     &format!(
-                        "{} | {} | {} sats | {}",
+                        "{} | {} | {} | {}",
                         active.job_id,
                         active.capability,
-                        active.quoted_price_sats,
+                        format_sats_amount(active.quoted_price_sats),
                         active.stage.label()
                     ),
                     Point::new(left, y),
@@ -899,7 +908,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             } else {
                 for row in recent_rows.into_iter().take(2) {
                     paint.scene.draw_text(paint.text.layout_mono(
-                        &format!("{} | settled | {} sats", row.job_id, row.payout_sats),
+                        &format!(
+                            "{} | settled | {}",
+                            row.job_id,
+                            format_sats_amount(row.payout_sats)
+                        ),
                         Point::new(left, y),
                         10.0,
                         theme::text::PRIMARY,
@@ -997,7 +1010,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             .balance
             .as_ref()
             .map_or(0, spark_total_balance_sats);
-        let wallet_chip_label = format!("{total_sats} sats");
+        let wallet_chip_label = format_sats_amount(total_sats);
         let wallet_label_font_size = 11.0;
         let icon_text_gap = 8.0;
         let label_width = paint
@@ -1180,7 +1193,7 @@ pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
         .balance
         .as_ref()
         .map_or(0, spark_total_balance_sats);
-    let wallet_chip_label = format!("{total_sats} sats");
+    let wallet_chip_label = format_sats_amount(total_sats);
     let wallet_label_font_size = 11.0;
     let icon_text_gap = 8.0;
     let group_x = wallet_chip_bounds.origin.x + 6.0;
@@ -1248,10 +1261,6 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
     }
     let width = (panel_width - 24.0).max(120.0);
     Bounds::new(sidebar_x + 12.0, 72.0, width, 34.0)
-}
-
-fn format_btc_from_sats(sats: u64) -> String {
-    format!("{:.8}", sats as f64 / 100_000_000.0)
 }
 
 fn command_registry() -> Vec<Command> {

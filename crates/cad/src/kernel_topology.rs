@@ -174,12 +174,12 @@ impl Topology {
             .and_then(|vertex| vertex.half_edge)
             .is_none()
         {
-            let vertex = self
-                .vertices
-                .get_mut(&origin)
-                .ok_or_else(|| CadError::InvalidFeatureGraph {
-                    reason: format!("half-edge origin vertex not found: {}", origin.0),
-                })?;
+            let vertex =
+                self.vertices
+                    .get_mut(&origin)
+                    .ok_or_else(|| CadError::InvalidFeatureGraph {
+                        reason: format!("half-edge origin vertex not found: {}", origin.0),
+                    })?;
             vertex.half_edge = Some(id);
         }
         Ok(id)
@@ -203,12 +203,12 @@ impl Topology {
         first.twin = Some(he2);
         first.edge = Some(edge_id);
 
-        let second = self
-            .half_edges
-            .get_mut(&he2)
-            .ok_or_else(|| CadError::InvalidFeatureGraph {
-                reason: format!("edge half-edge not found: {}", he2.0),
-            })?;
+        let second =
+            self.half_edges
+                .get_mut(&he2)
+                .ok_or_else(|| CadError::InvalidFeatureGraph {
+                    reason: format!("edge half-edge not found: {}", he2.0),
+                })?;
         second.twin = Some(he1);
         second.edge = Some(edge_id);
         Ok(edge_id)
@@ -241,12 +241,12 @@ impl Topology {
             let current = half_edges[i];
             let next = half_edges[(i + 1) % n];
             let prev = half_edges[(i + n - 1) % n];
-            let he = self
-                .half_edges
-                .get_mut(&current)
-                .ok_or_else(|| CadError::InvalidFeatureGraph {
-                    reason: format!("loop contains missing half-edge: {}", current.0),
-                })?;
+            let he =
+                self.half_edges
+                    .get_mut(&current)
+                    .ok_or_else(|| CadError::InvalidFeatureGraph {
+                        reason: format!("loop contains missing half-edge: {}", current.0),
+                    })?;
             he.next = Some(next);
             he.prev = Some(prev);
             he.loop_id = Some(loop_id);
@@ -277,12 +277,12 @@ impl Topology {
                 shell: None,
             },
         );
-        let outer = self
-            .loops
-            .get_mut(&outer_loop)
-            .ok_or_else(|| CadError::InvalidFeatureGraph {
-                reason: format!("face outer loop not found: {}", outer_loop.0),
-            })?;
+        let outer =
+            self.loops
+                .get_mut(&outer_loop)
+                .ok_or_else(|| CadError::InvalidFeatureGraph {
+                    reason: format!("face outer loop not found: {}", outer_loop.0),
+                })?;
         outer.face = Some(face_id);
         Ok(face_id)
     }
@@ -300,12 +300,12 @@ impl Topology {
                 reason: format!("inner loop face not found: {}", face_id.0),
             })?;
         face.inner_loops.push(inner_loop);
-        let inner = self
-            .loops
-            .get_mut(&inner_loop)
-            .ok_or_else(|| CadError::InvalidFeatureGraph {
-                reason: format!("inner loop not found: {}", inner_loop.0),
-            })?;
+        let inner =
+            self.loops
+                .get_mut(&inner_loop)
+                .ok_or_else(|| CadError::InvalidFeatureGraph {
+                    reason: format!("inner loop not found: {}", inner_loop.0),
+                })?;
         inner.face = Some(face_id);
         Ok(())
     }
@@ -321,12 +321,12 @@ impl Topology {
         let shell_id = ShellId(self.next_shell);
         self.next_shell += 1;
         for face_id in &faces {
-            let face = self
-                .faces
-                .get_mut(face_id)
-                .ok_or_else(|| CadError::InvalidFeatureGraph {
-                    reason: format!("shell face not found: {}", face_id.0),
-                })?;
+            let face =
+                self.faces
+                    .get_mut(face_id)
+                    .ok_or_else(|| CadError::InvalidFeatureGraph {
+                        reason: format!("shell face not found: {}", face_id.0),
+                    })?;
             face.shell = Some(shell_id);
         }
         self.shells.insert(
@@ -355,12 +355,12 @@ impl Topology {
                 void_shells: Vec::new(),
             },
         );
-        let shell = self
-            .shells
-            .get_mut(&outer_shell)
-            .ok_or_else(|| CadError::InvalidFeatureGraph {
-                reason: format!("solid outer shell not found: {}", outer_shell.0),
-            })?;
+        let shell =
+            self.shells
+                .get_mut(&outer_shell)
+                .ok_or_else(|| CadError::InvalidFeatureGraph {
+                    reason: format!("solid outer shell not found: {}", outer_shell.0),
+                })?;
         shell.solid = Some(solid_id);
         Ok(solid_id)
     }

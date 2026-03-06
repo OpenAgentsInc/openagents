@@ -11,6 +11,8 @@ use openagents_spark::{
 };
 use tokio::runtime::Runtime;
 
+use crate::bitcoin_display::format_sats_amount;
+
 pub const ENV_SPARK_NETWORK: &str = "OPENAGENTS_SPARK_NETWORK";
 pub const ENV_SPARK_API_KEY: &str = "OPENAGENTS_SPARK_API_KEY";
 const SPARK_ACTION_TIMEOUT: Duration = Duration::from_secs(15);
@@ -365,7 +367,10 @@ impl SparkPaneState {
         };
 
         self.last_invoice = Some(invoice.clone());
-        self.last_action = Some(format!("Created invoice for {amount_sats} sats"));
+        self.last_action = Some(format!(
+            "Created invoice for {}",
+            format_sats_amount(amount_sats)
+        ));
         self.refresh_balance_and_payments(runtime);
         Some(invoice)
     }
@@ -402,7 +407,10 @@ impl SparkPaneState {
         };
 
         self.last_invoice = Some(invoice.clone());
-        self.last_action = Some(format!("Created bolt11 invoice for {amount_sats} sats"));
+        self.last_action = Some(format!(
+            "Created bolt11 invoice for {}",
+            format_sats_amount(amount_sats)
+        ));
         self.refresh_balance_and_payments(runtime);
         Some(invoice)
     }

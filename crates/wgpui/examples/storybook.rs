@@ -1,5 +1,4 @@
 #![allow(clippy::all, clippy::pedantic, unfulfilled_lint_expectations)]
-
 #![expect(
     clippy::expect_used,
     reason = "Example/demo lane accepts explicit fail-fast setup paths."

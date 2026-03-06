@@ -33,14 +33,14 @@ use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AgentProfileStatePaneAction,
     AgentScheduleTickPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction,
-    CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction,
-    CodexConfigPaneAction, CodexDiagnosticsPaneAction, CodexLabsPaneAction,
-    CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction, CreditDeskPaneAction,
-    CreditSettlementLedgerPaneAction, EarningsScoreboardPaneAction, JobHistoryPaneAction,
-    JobInboxPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
-    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StarterJobsPaneAction,
-    SyncHealthPaneAction, TrajectoryAuditPaneAction,
+    CastControlPaneAction, CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction,
+    CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
+    CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
+    EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
+    NetworkRequestsPaneAction, PaneController, PaneHitAction, ReciprocalLoopPaneAction,
+    RelayConnectionsPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
+    SkillTrustRevocationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -5440,10 +5440,7 @@ fn cad_action_from_key(
     Ok(value)
 }
 
-fn pane_resolution_error(
-    code: &str,
-    pane_ref: &str,
-) -> ToolBridgeResultEnvelope {
+fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope {
     ToolBridgeResultEnvelope::error(
         code,
         format!("Could not resolve pane reference '{}'", pane_ref),
@@ -5824,10 +5821,7 @@ mod tests {
 
     #[test]
     fn resolve_pane_kind_rejects_unknown_reference() {
-        assert_eq!(
-            resolve_pane_kind_for_runtime("not-a-real-pane"),
-            None
-        );
+        assert_eq!(resolve_pane_kind_for_runtime("not-a-real-pane"), None);
     }
 
     #[test]

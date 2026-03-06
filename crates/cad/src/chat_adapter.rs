@@ -615,7 +615,9 @@ fn extract_percent_value(input: &str) -> Option<f64> {
 
 fn extract_compliant_joint_count(lower: &str) -> Option<u8> {
     for token in lower.split_whitespace() {
-        if let Ok(value) = token.parse::<u8>() && value > 0 {
+        if let Ok(value) = token.parse::<u8>()
+            && value > 0
+        {
             return Some(value);
         }
     }

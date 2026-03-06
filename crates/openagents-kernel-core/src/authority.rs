@@ -1,18 +1,10 @@
 use crate::compute::{
     CapacityInstrument, CapacityLot, ComputeIndex, ComputeProduct, DeliveryProof,
 };
-use crate::data::{
-    AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt,
-};
-use crate::labor::{
-    ClaimHook, Contract, SettlementLink, Submission, Verdict, WorkUnit,
-};
-use crate::liquidity::{
-    Envelope, Quote, ReservePartition, RoutePlan, SettlementIntent,
-};
-use crate::receipts::{
-    EvidenceRef, PolicyContext, Receipt, ReceiptHints, TraceContext,
-};
+use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
+use crate::labor::{ClaimHook, Contract, SettlementLink, Submission, Verdict, WorkUnit};
+use crate::liquidity::{Envelope, Quote, ReservePartition, RoutePlan, SettlementIntent};
+use crate::receipts::{EvidenceRef, PolicyContext, Receipt, ReceiptHints, TraceContext};
 use crate::risk::{
     CoverageBinding, CoverageOffer, PredictionPosition, RiskClaim, RiskClaimStatus, RiskSignal,
 };

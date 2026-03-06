@@ -4,6 +4,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use crate::app_state::{PaneLoadState, PaneStatusAccess};
+use crate::bitcoin_display::format_sats_amount;
 use crate::runtime_lanes::RuntimeCommandResponse;
 use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
 
@@ -1447,8 +1448,10 @@ impl StarterJobsState {
         self.dispatch_interval_seconds = dispatch_interval_seconds;
         self.max_inflight_jobs = max_inflight_jobs;
         self.last_action = Some(format!(
-            "Starter demand controls updated (budget={} sats interval={}s max_inflight={})",
-            self.budget_cap_sats, self.dispatch_interval_seconds, self.max_inflight_jobs
+            "Starter demand controls updated (budget={} interval={}s max_inflight={})",
+            format_sats_amount(self.budget_cap_sats),
+            self.dispatch_interval_seconds,
+            self.max_inflight_jobs
         ));
     }
 
@@ -1492,8 +1495,9 @@ impl StarterJobsState {
             self.next_dispatch_due_at =
                 Some(now + std::time::Duration::from_secs(self.dispatch_interval_seconds.max(1)));
             self.last_action = Some(format!(
-                "Starter demand budget exhausted (allocated {} / cap {} sats)",
-                self.budget_allocated_sats, self.budget_cap_sats
+                "Starter demand budget exhausted (allocated {} / cap {})",
+                format_sats_amount(self.budget_allocated_sats),
+                format_sats_amount(self.budget_cap_sats)
             ));
             return Ok(None);
         };
@@ -1522,10 +1526,10 @@ impl StarterJobsState {
         self.next_dispatch_due_at =
             Some(now + std::time::Duration::from_secs(self.dispatch_interval_seconds.max(1)));
         self.pane_set_ready(format!(
-            "Starter demand dispatched {} ({} sats, remaining {} sats)",
+            "Starter demand dispatched {} ({}, remaining {})",
             job_id,
-            job.payout_sats,
-            self.budget_remaining_sats()
+            format_sats_amount(job.payout_sats),
+            format_sats_amount(self.budget_remaining_sats())
         ));
         Ok(Some(job))
     }
@@ -1616,8 +1620,9 @@ impl StarterJobsState {
             )
         };
         self.pane_set_ready(format!(
-            "Completed starter quest {} with wallet-confirmed payout ({} sats)",
-            job_id, payout_sats
+            "Completed starter quest {} with wallet-confirmed payout ({})",
+            job_id,
+            format_sats_amount(payout_sats)
         ));
         Ok((job_id, payout_sats, payout_pointer))
     }
@@ -2074,8 +2079,9 @@ impl ReciprocalLoopState {
         self.next_direction = ReciprocalLoopDirection::PeerToLocal;
         self.clear_retry_state_after_success();
         self.pane_set_ready(format!(
-            "Reciprocal loop dispatched request {} ({} sats)",
-            request_id, self.amount_sats
+            "Reciprocal loop dispatched request {} ({})",
+            request_id,
+            format_sats_amount(self.amount_sats)
         ));
     }
 
