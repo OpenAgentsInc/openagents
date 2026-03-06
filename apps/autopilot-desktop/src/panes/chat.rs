@@ -792,6 +792,12 @@ fn transcript_content_height(
 
     match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Managed => {
+            let overview_lines = managed_group_overview_lines(autopilot_chat);
+            if !overview_lines.is_empty() {
+                height += CHAT_ACTIVITY_HEADER_LINE_HEIGHT;
+                height += CHAT_ACTIVITY_ROW_LINE_HEIGHT * overview_lines.len() as f32;
+                height += 8.0;
+            }
             for message in autopilot_chat.active_managed_chat_messages() {
                 height += CHAT_TRANSCRIPT_LINE_HEIGHT;
                 if managed_message_reply_label(message).is_some() {
@@ -1359,6 +1365,134 @@ fn direct_message_markdown_source(message: &DirectMessageMessageProjection) -> S
     sanitize_chat_text(&message.content)
 }
 
+fn managed_group_membership_label(autopilot_chat: &AutopilotChatState) -> String {
+    match autopilot_chat.active_managed_chat_local_member() {
+        Some(member) if member.is_admin => "you are admin".to_string(),
+        Some(member) if !member.labels.is_empty() => {
+            format!("you are member ({})", member.labels.join(", "))
+        }
+        Some(_) => "you are member".to_string(),
+        None => "you are outside the roster".to_string(),
+    }
+}
+
+fn managed_group_policy_summary(group: &ManagedChatGroupProjection) -> String {
+    let mut parts = vec![
+        if group.metadata.private {
+            "read: members-only".to_string()
+        } else {
+            "read: public".to_string()
+        },
+        if group.metadata.restricted {
+            "write: restricted".to_string()
+        } else {
+            "write: open".to_string()
+        },
+        if group.metadata.hidden {
+            "metadata: hidden".to_string()
+        } else {
+            "metadata: visible".to_string()
+        },
+        if group.metadata.closed {
+            "join: closed".to_string()
+        } else {
+            "join: open".to_string()
+        },
+    ];
+    if group.mention_count > 0 {
+        parts.push(format!("{} mention(s)", group.mention_count));
+    } else if group.unread_count > 0 {
+        parts.push(format!("{} unread", group.unread_count));
+    }
+    parts.join("  •  ")
+}
+
+fn managed_group_role_summary(group: &ManagedChatGroupProjection) -> String {
+    if group.roles.is_empty() {
+        return "relay did not advertise group roles".to_string();
+    }
+    group.roles
+        .iter()
+        .take(4)
+        .map(|role| match role.description.as_deref() {
+            Some(description) if !description.trim().is_empty() => {
+                format!("{} ({})", role.name, compact_shell_label(description))
+            }
+            _ => role.name.clone(),
+        })
+        .collect::<Vec<_>>()
+        .join("  •  ")
+}
+
+fn managed_group_member_preview(autopilot_chat: &AutopilotChatState) -> String {
+    let Some(group) = autopilot_chat.active_managed_chat_group() else {
+        return String::new();
+    };
+    if group.members.is_empty() {
+        return "relay has not exposed a member roster yet".to_string();
+    }
+    let mut preview = group
+        .members
+        .iter()
+        .take(4)
+        .map(|member| {
+            let mut labels = Vec::new();
+            if member.is_admin {
+                labels.push("admin".to_string());
+            }
+            labels.extend(member.labels.iter().cloned());
+            if autopilot_chat.managed_chat_member_is_locally_muted(&member.pubkey) {
+                labels.push("muted-local".to_string());
+            }
+            if labels.is_empty() {
+                compact_hex_label(&member.pubkey, 8)
+            } else {
+                format!("{} [{}]", compact_hex_label(&member.pubkey, 8), labels.join(", "))
+            }
+        })
+        .collect::<Vec<_>>();
+    if group.members.len() > preview.len() {
+        preview.push(format!("+{}", group.members.len() - preview.len()));
+    }
+    preview.join("  •  ")
+}
+
+fn managed_group_controls_summary(autopilot_chat: &AutopilotChatState) -> String {
+    let membership = if autopilot_chat.active_managed_chat_local_is_admin() {
+        "delete <#|id>, remove <pubkey>, invite <code>, meta key=value"
+    } else if autopilot_chat.active_managed_chat_local_member().is_some() {
+        "leave [reason]"
+    } else {
+        "join [invite] | [reason]"
+    };
+    format!("{membership}  •  mute/unmute <pubkey> stays local-only")
+}
+
+fn managed_group_overview_lines(autopilot_chat: &AutopilotChatState) -> Vec<String> {
+    let Some(group) = autopilot_chat.active_managed_chat_group() else {
+        return Vec::new();
+    };
+    vec![
+        format!(
+            "[server] {}  •  {}",
+            managed_group_membership_label(autopilot_chat),
+            managed_group_policy_summary(group)
+        ),
+        format!(
+            "[roles] {} role(s)  •  {} admin(s)  •  {}",
+            group.roles.len(),
+            group.members.iter().filter(|member| member.is_admin).count(),
+            managed_group_role_summary(group)
+        ),
+        format!(
+            "[members] {} known  •  {}",
+            group.members.len(),
+            managed_group_member_preview(autopilot_chat)
+        ),
+        format!("[controls] {}", managed_group_controls_summary(autopilot_chat)),
+    ]
+}
+
 fn managed_local_delivery_summary(autopilot_chat: &AutopilotChatState) -> Option<String> {
     let mut publishing = 0usize;
     let mut acked = 0usize;
@@ -1409,24 +1543,37 @@ fn direct_local_delivery_summary(autopilot_chat: &AutopilotChatState) -> Option<
     (!parts.is_empty()).then(|| parts.join("  •  "))
 }
 
-fn managed_chat_composer_hint(autopilot_chat: &AutopilotChatState, composer_value: &str) -> String {
+fn managed_chat_composer_hint(
+    autopilot_chat: &AutopilotChatState,
+    composer_value: &str,
+) -> String {
     let Some(channel) = autopilot_chat.active_managed_chat_channel() else {
         return "No managed channel selected.".to_string();
     };
+    let command_hint = if autopilot_chat.active_managed_chat_local_is_admin() {
+        "Admin controls: `delete <#|id>`, `remove <pubkey>`, `invite <code>`, `meta key=value | ...`."
+    } else if autopilot_chat.active_managed_chat_local_member().is_some() {
+        "Member controls: `leave [reason]`. `mute/unmute <pubkey>` stays local-only."
+    } else {
+        "Access controls: `join [invite] | [reason]`. `mute/unmute <pubkey>` stays local-only."
+    };
     if channel.relay_url.is_none() {
-        return "Channel relay target is unknown; publish waits for metadata or synced history."
-            .to_string();
+        return format!(
+            "Channel relay target is unknown; publish waits for metadata or synced history. {command_hint}"
+        );
     }
     if composer_value.trim().is_empty()
         && autopilot_chat
             .active_managed_chat_retryable_message()
             .is_some()
     {
-        return "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. Empty composer retries the latest failed publish."
-            .to_string();
+        return format!(
+            "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. Empty composer retries the latest failed publish. {command_hint}"
+        );
     }
-    "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. `@hexprefix` adds mention tags. Shift+Enter inserts a newline."
-        .to_string()
+    format!(
+        "Use `reply <#|id> <text>` or `react <#|id> <emoji>`. `@hexprefix` adds mention tags. Shift+Enter inserts a newline. {command_hint}"
+    )
 }
 
 fn direct_message_composer_hint(
@@ -1487,6 +1634,7 @@ fn active_thread_subtitle(autopilot_chat: &AutopilotChatState) -> String {
                     managed_group_label(group),
                     format!("{} message(s)", channel.message_ids.len()),
                     channel.room_mode.to_string(),
+                    managed_group_membership_label(autopilot_chat),
                 ];
                 if let Some(local_delivery) = managed_local_delivery_summary(autopilot_chat) {
                     parts.push(local_delivery);
@@ -2151,6 +2299,26 @@ pub fn paint(
 
     match browse_mode {
         ChatBrowseMode::Managed => {
+            let overview_lines = managed_group_overview_lines(autopilot_chat);
+            if !overview_lines.is_empty() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    "[server state]",
+                    Point::new(transcript_scroll_clip.origin.x, y),
+                    10.0,
+                    theme::accent::PRIMARY,
+                ));
+                y += CHAT_ACTIVITY_HEADER_LINE_HEIGHT;
+                for line in overview_lines {
+                    paint.scene.draw_text(paint.text.layout(
+                        &line,
+                        Point::new(transcript_scroll_clip.origin.x + 6.0, y),
+                        10.0,
+                        theme::text::MUTED,
+                    ));
+                    y += CHAT_ACTIVITY_ROW_LINE_HEIGHT;
+                }
+                y += 8.0;
+            }
             let managed_messages = autopilot_chat.active_managed_chat_messages();
             if managed_messages.is_empty() {
                 let empty_state = "No managed channel history backfilled yet.";

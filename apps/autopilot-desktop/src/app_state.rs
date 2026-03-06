@@ -949,6 +949,27 @@ impl AutopilotChatState {
         self.managed_chat_projection.snapshot.groups.first()
     }
 
+    pub fn managed_chat_local_pubkey(&self) -> Option<&str> {
+        self.managed_chat_projection.local_pubkey()
+    }
+
+    pub fn active_managed_chat_local_member(&self) -> Option<&ManagedChatMemberProjection> {
+        let group = self.active_managed_chat_group()?;
+        let local_pubkey = self.managed_chat_local_pubkey()?;
+        group.members
+            .iter()
+            .find(|member| member.pubkey == local_pubkey)
+    }
+
+    pub fn active_managed_chat_local_is_admin(&self) -> bool {
+        self.active_managed_chat_local_member()
+            .is_some_and(|member| member.is_admin)
+    }
+
+    pub fn managed_chat_member_is_locally_muted(&self, pubkey: &str) -> bool {
+        self.managed_chat_projection.is_pubkey_muted(pubkey)
+    }
+
     pub fn active_managed_chat_channel(&self) -> Option<&ManagedChatChannelProjection> {
         if self.chat_browse_mode() != ChatBrowseMode::Managed {
             return None;
