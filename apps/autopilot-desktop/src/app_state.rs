@@ -4300,6 +4300,11 @@ mod tests {
             eligible,
             status,
             payout_pointer: None,
+            start_confirm_by_unix_ms: None,
+            execution_started_at_unix_ms: None,
+            execution_expires_at_unix_ms: None,
+            last_heartbeat_at_unix_ms: None,
+            next_heartbeat_due_at_unix_ms: None,
         }
     }
 

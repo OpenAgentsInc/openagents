@@ -877,6 +877,11 @@ pub struct StarterJobRow {
     pub eligible: bool,
     pub status: StarterJobStatus,
     pub payout_pointer: Option<String>,
+    pub start_confirm_by_unix_ms: Option<u64>,
+    pub execution_started_at_unix_ms: Option<u64>,
+    pub execution_expires_at_unix_ms: Option<u64>,
+    pub last_heartbeat_at_unix_ms: Option<u64>,
+    pub next_heartbeat_due_at_unix_ms: Option<u64>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -921,6 +926,8 @@ pub struct StarterJobsState {
     pub max_inflight_jobs: usize,
     pub last_dispatched_at: Option<Instant>,
     pub next_hosted_sync_due_at: Option<Instant>,
+    pub active_hosted_request_id: Option<String>,
+    pub next_hosted_heartbeat_due_at: Option<Instant>,
     next_dispatch_due_at: Option<Instant>,
     next_dispatch_seq: u64,
 }
@@ -940,6 +947,8 @@ impl Default for StarterJobsState {
             max_inflight_jobs: STARTER_DEMAND_DEFAULT_MAX_INFLIGHT_JOBS,
             last_dispatched_at: None,
             next_hosted_sync_due_at: None,
+            active_hosted_request_id: None,
+            next_hosted_heartbeat_due_at: None,
             next_dispatch_due_at: None,
             next_dispatch_seq: 0,
         }
@@ -985,16 +994,35 @@ impl StarterJobsState {
         let existing_by_job_id = self
             .jobs
             .iter()
-            .map(|job| (job.job_id.clone(), (job.status, job.payout_pointer.clone())))
+            .map(|job| (job.job_id.clone(), job.clone()))
             .collect::<std::collections::HashMap<_, _>>();
         self.jobs = jobs
             .into_iter()
             .map(|mut job| {
-                if let Some((status, payout_pointer)) = existing_by_job_id.get(job.job_id.as_str())
-                    && *status != StarterJobStatus::Queued
-                {
-                    job.status = *status;
-                    job.payout_pointer = payout_pointer.clone();
+                if let Some(existing) = existing_by_job_id.get(job.job_id.as_str()) {
+                    if existing.status != StarterJobStatus::Queued
+                        && job.status == StarterJobStatus::Queued
+                    {
+                        job.status = existing.status;
+                    }
+                    if job.payout_pointer.is_none() {
+                        job.payout_pointer = existing.payout_pointer.clone();
+                    }
+                    if job.execution_started_at_unix_ms.is_none() {
+                        job.execution_started_at_unix_ms = existing.execution_started_at_unix_ms;
+                    }
+                    if job.execution_expires_at_unix_ms.is_none() {
+                        job.execution_expires_at_unix_ms = existing.execution_expires_at_unix_ms;
+                    }
+                    if job.last_heartbeat_at_unix_ms.is_none() {
+                        job.last_heartbeat_at_unix_ms = existing.last_heartbeat_at_unix_ms;
+                    }
+                    if job.next_heartbeat_due_at_unix_ms.is_none() {
+                        job.next_heartbeat_due_at_unix_ms = existing.next_heartbeat_due_at_unix_ms;
+                    }
+                    if job.start_confirm_by_unix_ms.is_none() {
+                        job.start_confirm_by_unix_ms = existing.start_confirm_by_unix_ms;
+                    }
                 }
                 job
             })
@@ -1015,30 +1043,97 @@ impl StarterJobsState {
     }
 
     pub fn clear_hosted_offers(&mut self, reason: &str) -> bool {
+        self.clear_hosted_offers_except(reason, None)
+    }
+
+    pub fn clear_hosted_offers_except(&mut self, reason: &str, keep_job_id: Option<&str>) -> bool {
         let changed = !self.jobs.is_empty()
             || self.selected_job_id.is_some()
             || self.load_state != PaneLoadState::Ready
             || self.last_action.as_deref() != Some(reason);
-        self.jobs.clear();
-        self.selected_job_id = None;
+        self.jobs
+            .retain(|job| keep_job_id == Some(job.job_id.as_str()));
+        self.selected_job_id = keep_job_id
+            .and_then(|job_id| self.jobs.iter().find(|job| job.job_id == job_id))
+            .map(|job| job.job_id.clone());
+        if self
+            .active_hosted_request_id
+            .as_deref()
+            .is_some_and(|request_id| keep_job_id != Some(request_id))
+        {
+            self.active_hosted_request_id = None;
+            self.next_hosted_heartbeat_due_at = None;
+        }
         self.next_hosted_sync_due_at = None;
         self.pane_set_ready(reason.to_string());
         changed
     }
 
-    pub fn mark_running(&mut self, job_id: &str) {
+    pub fn hosted_offer(&self, job_id: &str) -> Option<&StarterJobRow> {
+        self.jobs.iter().find(|job| job.job_id == job_id)
+    }
+
+    pub fn mark_running(
+        &mut self,
+        job_id: &str,
+        execution_started_at_unix_ms: Option<u64>,
+        execution_expires_at_unix_ms: Option<u64>,
+        last_heartbeat_at_unix_ms: Option<u64>,
+        next_heartbeat_due_at_unix_ms: Option<u64>,
+        next_heartbeat_due_at: Option<Instant>,
+    ) {
         let updated_job_id = self
             .jobs
             .iter_mut()
             .find(|job| job.job_id == job_id)
             .map(|job| {
                 job.status = StarterJobStatus::Running;
+                job.execution_started_at_unix_ms = execution_started_at_unix_ms;
+                job.execution_expires_at_unix_ms = execution_expires_at_unix_ms;
+                job.last_heartbeat_at_unix_ms = last_heartbeat_at_unix_ms;
+                job.next_heartbeat_due_at_unix_ms = next_heartbeat_due_at_unix_ms;
                 job.job_id.clone()
             });
         if let Some(updated_job_id) = updated_job_id {
+            self.active_hosted_request_id = Some(updated_job_id.clone());
+            self.next_hosted_heartbeat_due_at = next_heartbeat_due_at;
             self.selected_job_id = Some(updated_job_id.clone());
             self.pane_set_ready(format!("Hosted starter offer running {}", updated_job_id));
         }
+    }
+
+    pub fn mark_heartbeat(
+        &mut self,
+        job_id: &str,
+        last_heartbeat_at_unix_ms: u64,
+        next_heartbeat_due_at_unix_ms: u64,
+        execution_expires_at_unix_ms: u64,
+        next_heartbeat_due_at: Option<Instant>,
+    ) {
+        if let Some(job) = self.jobs.iter_mut().find(|job| job.job_id == job_id) {
+            job.status = StarterJobStatus::Running;
+            job.last_heartbeat_at_unix_ms = Some(last_heartbeat_at_unix_ms);
+            job.next_heartbeat_due_at_unix_ms = Some(next_heartbeat_due_at_unix_ms);
+            job.execution_expires_at_unix_ms = Some(execution_expires_at_unix_ms);
+            self.active_hosted_request_id = Some(job_id.to_string());
+            self.next_hosted_heartbeat_due_at = next_heartbeat_due_at;
+            self.pane_set_ready(format!("Hosted starter lease heartbeat {}", job_id));
+        }
+    }
+
+    pub fn mark_released(&mut self, job_id: &str, reason: &str) {
+        self.jobs.retain(|job| job.job_id != job_id);
+        if self.selected_job_id.as_deref() == Some(job_id) {
+            self.selected_job_id = self.jobs.first().map(|job| job.job_id.clone());
+        }
+        if self.active_hosted_request_id.as_deref() == Some(job_id) {
+            self.active_hosted_request_id = None;
+            self.next_hosted_heartbeat_due_at = None;
+        }
+        self.pane_set_ready(format!(
+            "Hosted starter lease released {} ({})",
+            job_id, reason
+        ));
     }
 
     pub fn mark_completed(&mut self, job_id: &str, payment_pointer: &str) {
@@ -1049,9 +1144,14 @@ impl StarterJobsState {
             .map(|job| {
                 job.status = StarterJobStatus::Completed;
                 job.payout_pointer = Some(payment_pointer.to_string());
+                job.next_heartbeat_due_at_unix_ms = None;
                 job.job_id.clone()
             });
         if let Some(updated_job_id) = updated_job_id {
+            if self.active_hosted_request_id.as_deref() == Some(updated_job_id.as_str()) {
+                self.active_hosted_request_id = None;
+                self.next_hosted_heartbeat_due_at = None;
+            }
             self.pane_set_ready(format!("Hosted starter offer completed {}", updated_job_id));
         }
     }
@@ -1136,6 +1236,11 @@ impl StarterJobsState {
             eligible: true,
             status: StarterJobStatus::Queued,
             payout_pointer: None,
+            start_confirm_by_unix_ms: None,
+            execution_started_at_unix_ms: None,
+            execution_expires_at_unix_ms: None,
+            last_heartbeat_at_unix_ms: None,
+            next_heartbeat_due_at_unix_ms: None,
         };
         self.jobs.insert(0, job.clone());
         if self.selected_job_id.is_none() {
