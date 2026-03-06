@@ -1,19 +1,18 @@
 use crate::app_state::{
     ActiveJobState, ActivityEventDomain, ActivityFeedFilter, ActivityFeedState,
-    AgentNetworkSimulationPaneState, AgentProfileStatePaneState, AgentScheduleTickPaneState,
-    AlertSeverity, AlertsRecoveryState, AutopilotChatState, CadDemoPaneState, CalculatorPaneInputs,
-    CastControlPaneState, ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState,
-    CodexConfigPaneState, CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState,
-    CodexModelsPaneState, CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState,
-    CreditDeskPaneState, CreditSettlementLedgerPaneState, DesktopPane,
-    EarnJobLifecycleProjectionState, EarningsScoreboardState, JobHistoryPaneInputs,
-    JobHistoryState, JobInboxState, JobLifecycleStage, NetworkRequestStatus,
-    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
-    PayInvoicePaneInputs, ProviderBlocker, ProviderRuntimeState, ReciprocalLoopState,
-    RelayConnectionsPaneInputs, RelayConnectionsState, RelaySecuritySimulationPaneState,
+    AgentProfileStatePaneState, AgentScheduleTickPaneState, AlertSeverity, AlertsRecoveryState,
+    AutopilotChatState, CadDemoPaneState, CalculatorPaneInputs, CastControlPaneState,
+    ChatPaneInputs, CodexAccountPaneState, CodexAppsPaneState, CodexConfigPaneState,
+    CodexDiagnosticsPaneState, CodexLabsPaneState, CodexMcpPaneState, CodexModelsPaneState,
+    CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
+    CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
+    EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
+    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
+    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
+    ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
     SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
-    SparkPaneInputs, StableSatsSimulationPaneState, StarterJobStatus, StarterJobsState,
-    SyncHealthState, TrajectoryAuditPaneState, TreasuryExchangeSimulationPaneState,
+    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState,
+    TrajectoryAuditPaneState,
 };
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -49,8 +48,7 @@ use crate::pane_system::{
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
     chat as chat_pane, codex as codex_pane, credit as credit_pane,
-    relay_connections as relay_connections_pane, simulation as simulation_pane,
-    skill as skill_pane, wallet as wallet_pane,
+    relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
 use wgpui::{Bounds, Component, Hsla, PaintContext, Point, Quad, theme};
@@ -109,10 +107,6 @@ impl PaneRenderer {
         credit_desk: &CreditDeskPaneState,
         credit_settlement_ledger: &CreditSettlementLedgerPaneState,
         cad_demo: &CadDemoPaneState,
-        agent_network_simulation: &AgentNetworkSimulationPaneState,
-        treasury_exchange_simulation: &TreasuryExchangeSimulationPaneState,
-        relay_security_simulation: &RelaySecuritySimulationPaneState,
-        stable_sats_simulation: &StableSatsSimulationPaneState,
         spark_wallet: &SparkPaneState,
         spark_inputs: &mut SparkPaneInputs,
         pay_invoice_inputs: &mut PayInvoicePaneInputs,
@@ -321,34 +315,6 @@ impl PaneRenderer {
                     credit_pane::paint_credit_settlement_ledger_pane(
                         content_bounds,
                         credit_settlement_ledger,
-                        paint,
-                    );
-                }
-                PaneKind::AgentNetworkSimulation => {
-                    simulation_pane::paint_agent_network_simulation_pane(
-                        content_bounds,
-                        agent_network_simulation,
-                        paint,
-                    );
-                }
-                PaneKind::TreasuryExchangeSimulation => {
-                    simulation_pane::paint_treasury_exchange_simulation_pane(
-                        content_bounds,
-                        treasury_exchange_simulation,
-                        paint,
-                    );
-                }
-                PaneKind::RelaySecuritySimulation => {
-                    simulation_pane::paint_relay_security_simulation_pane(
-                        content_bounds,
-                        relay_security_simulation,
-                        paint,
-                    );
-                }
-                PaneKind::StableSatsSimulation => {
-                    simulation_pane::paint_stable_sats_simulation_pane(
-                        content_bounds,
-                        stable_sats_simulation,
                         paint,
                     );
                 }

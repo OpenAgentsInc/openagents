@@ -2162,256 +2162,6 @@ pub(super) fn run_auto_cast_control_loop(
     changed
 }
 
-pub(super) fn run_agent_network_simulation_action(
-    state: &mut crate::app_state::RenderState,
-    action: AgentNetworkSimulationPaneAction,
-) -> bool {
-    match action {
-        AgentNetworkSimulationPaneAction::RunRound => {
-            if state.agent_network_simulation.auto_run_enabled {
-                state.agent_network_simulation.stop_auto_run();
-                state.provider_runtime.last_result =
-                    state.agent_network_simulation.last_action.clone();
-                return true;
-            }
-            let now = std::time::Instant::now();
-            state.agent_network_simulation.start_auto_run(now);
-            let now_epoch_seconds = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_secs());
-            let ran_round = run_agent_network_simulation_round(state, now_epoch_seconds);
-            state.agent_network_simulation.mark_auto_round(now);
-            ran_round
-        }
-        AgentNetworkSimulationPaneAction::Reset => {
-            state.agent_network_simulation.reset();
-            state.provider_runtime.last_result = state.agent_network_simulation.last_action.clone();
-            true
-        }
-    }
-}
-
-pub(super) fn run_agent_network_simulation_round(
-    state: &mut crate::app_state::RenderState,
-    now_epoch_seconds: u64,
-) -> bool {
-    match state.agent_network_simulation.run_round(now_epoch_seconds) {
-        Ok(()) => {
-            state.provider_runtime.last_result = state.agent_network_simulation.last_action.clone();
-            let event_id = format!("sim:round:{}", state.agent_network_simulation.rounds_run);
-            state
-                .activity_feed
-                .upsert_event(crate::app_state::ActivityEventRow {
-                    event_id,
-                    domain: crate::app_state::ActivityEventDomain::Sa,
-                    source_tag: "simulation.nip28".to_string(),
-                    summary: "Sovereign agents ran SA/SKL/AC simulation round".to_string(),
-                    detail: format!(
-                        "round={} transferred_sats={} learned_skills={}",
-                        state.agent_network_simulation.rounds_run,
-                        state.agent_network_simulation.total_transferred_sats,
-                        state.agent_network_simulation.learned_skills.join(", ")
-                    ),
-                    occurred_at_epoch_seconds: now_epoch_seconds,
-                });
-            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
-        }
-        Err(error) => {
-            state.agent_network_simulation.last_error = Some(error);
-            state.agent_network_simulation.load_state = crate::app_state::PaneLoadState::Error;
-        }
-    }
-    true
-}
-
-pub(super) fn run_auto_agent_network_simulation(
-    state: &mut crate::app_state::RenderState,
-    now: std::time::Instant,
-) -> bool {
-    if !state.agent_network_simulation.should_run_auto_round(now) {
-        return false;
-    }
-    let now_epoch_seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-    let changed = run_agent_network_simulation_round(state, now_epoch_seconds);
-    state.agent_network_simulation.mark_auto_round(now);
-    changed
-}
-
-pub(super) fn run_treasury_exchange_simulation_action(
-    state: &mut crate::app_state::RenderState,
-    action: TreasuryExchangeSimulationPaneAction,
-) -> bool {
-    match action {
-        TreasuryExchangeSimulationPaneAction::RunRound => {
-            if state.treasury_exchange_simulation.auto_run_enabled {
-                state.treasury_exchange_simulation.stop_auto_run();
-                state.provider_runtime.last_result =
-                    state.treasury_exchange_simulation.last_action.clone();
-                return true;
-            }
-            let now = std::time::Instant::now();
-            state.treasury_exchange_simulation.start_auto_run(now);
-            let now_epoch_seconds = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_secs());
-            let ran_round = run_treasury_exchange_simulation_round(state, now_epoch_seconds);
-            state.treasury_exchange_simulation.mark_auto_round(now);
-            ran_round
-        }
-        TreasuryExchangeSimulationPaneAction::Reset => {
-            state.treasury_exchange_simulation.reset();
-            state.provider_runtime.last_result =
-                state.treasury_exchange_simulation.last_action.clone();
-            true
-        }
-    }
-}
-
-pub(super) fn run_treasury_exchange_simulation_round(
-    state: &mut crate::app_state::RenderState,
-    now_epoch_seconds: u64,
-) -> bool {
-    match state
-        .treasury_exchange_simulation
-        .run_round(now_epoch_seconds)
-    {
-        Ok(()) => {
-            state.provider_runtime.last_result =
-                state.treasury_exchange_simulation.last_action.clone();
-            let event_id = format!(
-                "sim:treasury:round:{}",
-                state.treasury_exchange_simulation.rounds_run
-            );
-            state
-                .activity_feed
-                .upsert_event(crate::app_state::ActivityEventRow {
-                    event_id,
-                    domain: crate::app_state::ActivityEventDomain::Network,
-                    source_tag: "simulation.nip69".to_string(),
-                    summary: "Treasury + exchange simulation round executed".to_string(),
-                    detail: format!(
-                        "round={} volume_sats={} liquidity_sats={}",
-                        state.treasury_exchange_simulation.rounds_run,
-                        state.treasury_exchange_simulation.trade_volume_sats,
-                        state.treasury_exchange_simulation.total_liquidity_sats
-                    ),
-                    occurred_at_epoch_seconds: now_epoch_seconds,
-                });
-            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
-        }
-        Err(error) => {
-            state.treasury_exchange_simulation.last_error = Some(error);
-            state.treasury_exchange_simulation.load_state = crate::app_state::PaneLoadState::Error;
-        }
-    }
-    true
-}
-
-pub(super) fn run_auto_treasury_exchange_simulation(
-    state: &mut crate::app_state::RenderState,
-    now: std::time::Instant,
-) -> bool {
-    if !state
-        .treasury_exchange_simulation
-        .should_run_auto_round(now)
-    {
-        return false;
-    }
-    let now_epoch_seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-    let changed = run_treasury_exchange_simulation_round(state, now_epoch_seconds);
-    state.treasury_exchange_simulation.mark_auto_round(now);
-    changed
-}
-
-pub(super) fn run_relay_security_simulation_action(
-    state: &mut crate::app_state::RenderState,
-    action: RelaySecuritySimulationPaneAction,
-) -> bool {
-    match action {
-        RelaySecuritySimulationPaneAction::RunRound => {
-            if state.relay_security_simulation.auto_run_enabled {
-                state.relay_security_simulation.stop_auto_run();
-                state.provider_runtime.last_result =
-                    state.relay_security_simulation.last_action.clone();
-                return true;
-            }
-            let now = std::time::Instant::now();
-            state.relay_security_simulation.start_auto_run(now);
-            let now_epoch_seconds = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_secs());
-            let ran_round = run_relay_security_simulation_round(state, now_epoch_seconds);
-            state.relay_security_simulation.mark_auto_round(now);
-            ran_round
-        }
-        RelaySecuritySimulationPaneAction::Reset => {
-            state.relay_security_simulation.reset();
-            state.provider_runtime.last_result =
-                state.relay_security_simulation.last_action.clone();
-            true
-        }
-    }
-}
-
-pub(super) fn run_relay_security_simulation_round(
-    state: &mut crate::app_state::RenderState,
-    now_epoch_seconds: u64,
-) -> bool {
-    match state.relay_security_simulation.run_round(now_epoch_seconds) {
-        Ok(()) => {
-            state.provider_runtime.last_result =
-                state.relay_security_simulation.last_action.clone();
-            let event_id = format!(
-                "sim:relay-security:round:{}",
-                state.relay_security_simulation.rounds_run
-            );
-            state
-                .activity_feed
-                .upsert_event(crate::app_state::ActivityEventRow {
-                    event_id,
-                    domain: crate::app_state::ActivityEventDomain::Sync,
-                    source_tag: "simulation.nip42".to_string(),
-                    summary: "Relay security simulation round executed".to_string(),
-                    detail: format!(
-                        "round={} auth={} sync_ranges={}",
-                        state.relay_security_simulation.rounds_run,
-                        state
-                            .relay_security_simulation
-                            .auth_event_id
-                            .as_deref()
-                            .unwrap_or("n/a"),
-                        state.relay_security_simulation.sync_ranges
-                    ),
-                    occurred_at_epoch_seconds: now_epoch_seconds,
-                });
-            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
-        }
-        Err(error) => {
-            state.relay_security_simulation.last_error = Some(error);
-            state.relay_security_simulation.load_state = crate::app_state::PaneLoadState::Error;
-        }
-    }
-    true
-}
-
-pub(super) fn run_auto_relay_security_simulation(
-    state: &mut crate::app_state::RenderState,
-    now: std::time::Instant,
-) -> bool {
-    if !state.relay_security_simulation.should_run_auto_round(now) {
-        return false;
-    }
-    let now_epoch_seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-    let changed = run_relay_security_simulation_round(state, now_epoch_seconds);
-    state.relay_security_simulation.mark_auto_round(now);
-    changed
-}
 
 const STABLE_SATS_REAL_ROUND_MIN_INTERVAL_SECONDS: u64 = 5;
 const STABLE_SATS_REAL_ROUND_MAX_STEPS: usize = 1;
@@ -2454,120 +2204,6 @@ impl StableSatsRealRoundStep {
             Self::ConvertUsdToBtc { .. } => "convert_usd_to_btc",
         }
     }
-}
-
-pub(super) fn run_stable_sats_simulation_action(
-    state: &mut crate::app_state::RenderState,
-    action: StableSatsSimulationPaneAction,
-) -> bool {
-    match action {
-        StableSatsSimulationPaneAction::RunRound => {
-            if state.stable_sats_simulation.mode
-                == crate::app_state::StableSatsSimulationMode::RealBlink
-            {
-                return queue_stable_sats_real_mode_round(state);
-            }
-            if state.stable_sats_simulation.auto_run_enabled {
-                state.stable_sats_simulation.stop_auto_run();
-                state.provider_runtime.last_result =
-                    state.stable_sats_simulation.last_action.clone();
-                return true;
-            }
-            let now = std::time::Instant::now();
-            state.stable_sats_simulation.start_auto_run(now);
-            let now_epoch_seconds = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_or(0, |duration| duration.as_secs());
-            let ran_round = run_stable_sats_simulation_round(state, now_epoch_seconds);
-            state.stable_sats_simulation.mark_auto_round(now);
-            ran_round
-        }
-        StableSatsSimulationPaneAction::Reset => {
-            let _ = state.stable_sats_blink_worker.cancel_pending();
-            state.stable_sats_simulation.reset();
-            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
-            true
-        }
-        StableSatsSimulationPaneAction::SetModeDemo => {
-            let _ = state.stable_sats_blink_worker.cancel_pending();
-            state
-                .stable_sats_simulation
-                .set_mode(crate::app_state::StableSatsSimulationMode::Demo);
-            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
-            true
-        }
-        StableSatsSimulationPaneAction::SetModeReal => {
-            let _ = state.stable_sats_blink_worker.cancel_pending();
-            state
-                .stable_sats_simulation
-                .set_mode(crate::app_state::StableSatsSimulationMode::RealBlink);
-            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
-            true
-        }
-    }
-}
-
-pub(super) fn run_stable_sats_simulation_round(
-    state: &mut crate::app_state::RenderState,
-    now_epoch_seconds: u64,
-) -> bool {
-    let mode = state.stable_sats_simulation.mode;
-    let run_result = match mode {
-        crate::app_state::StableSatsSimulationMode::Demo => {
-            state.stable_sats_simulation.run_round(now_epoch_seconds)
-        }
-        crate::app_state::StableSatsSimulationMode::RealBlink => Err(
-            "Real mode rounds run off-thread; use the StableSats run control in real mode"
-                .to_string(),
-        ),
-    };
-
-    match run_result {
-        Ok(()) => {
-            state.provider_runtime.last_result = state.stable_sats_simulation.last_action.clone();
-            let event_id = format!(
-                "sim:stablesats:round:{}",
-                state.stable_sats_simulation.rounds_run
-            );
-            state
-                .activity_feed
-                .upsert_event(crate::app_state::ActivityEventRow {
-                    event_id,
-                    domain: crate::app_state::ActivityEventDomain::Wallet,
-                    source_tag: match mode {
-                        crate::app_state::StableSatsSimulationMode::Demo => {
-                            "simulation.blink".to_string()
-                        }
-                        crate::app_state::StableSatsSimulationMode::RealBlink => {
-                            "blink.live".to_string()
-                        }
-                    },
-                    summary: match mode {
-                        crate::app_state::StableSatsSimulationMode::Demo => {
-                            "StableSats BTC/USD switching round executed".to_string()
-                        }
-                        crate::app_state::StableSatsSimulationMode::RealBlink => {
-                            "StableSats live Blink balances refreshed".to_string()
-                        }
-                    },
-                    detail: format!(
-                        "mode={} round={} quote={} converted_sats={} converted_usd_cents={}",
-                        mode.label(),
-                        state.stable_sats_simulation.rounds_run,
-                        state.stable_sats_simulation.price_usd_cents_per_btc,
-                        state.stable_sats_simulation.total_converted_sats,
-                        state.stable_sats_simulation.total_converted_usd_cents
-                    ),
-                    occurred_at_epoch_seconds: now_epoch_seconds,
-                });
-            state.activity_feed.load_state = crate::app_state::PaneLoadState::Ready;
-        }
-        Err(error) => {
-            state.stable_sats_simulation.last_error = Some(error);
-            state.stable_sats_simulation.load_state = crate::app_state::PaneLoadState::Error;
-        }
-    }
-    true
 }
 
 fn queue_stable_sats_real_mode_round(state: &mut crate::app_state::RenderState) -> bool {
@@ -3085,13 +2721,13 @@ fn enqueue_stable_sats_transfer_worker(
         .clone();
     let source_env_overrides = resolve_wallet_blink_env(state, &from_wallet)?;
     let destination_env_overrides = resolve_wallet_blink_env(state, &to_wallet)?;
-    let balance_script_path = resolve_blink_simulation_script_path(state, "balance.js")?;
+    let balance_script_path = resolve_blink_script_path(state, "balance.js")?;
     let create_invoice_script_path =
-        resolve_blink_simulation_script_path(state, "create_invoice.js")?;
+        resolve_blink_script_path(state, "create_invoice.js")?;
     let create_invoice_usd_script_path =
-        resolve_blink_simulation_script_path(state, "create_invoice_usd.js")?;
-    let fee_probe_script_path = resolve_blink_simulation_script_path(state, "fee_probe.js")?;
-    let pay_invoice_script_path = resolve_blink_simulation_script_path(state, "pay_invoice.js")?;
+        resolve_blink_script_path(state, "create_invoice_usd.js")?;
+    let fee_probe_script_path = resolve_blink_script_path(state, "fee_probe.js")?;
+    let pay_invoice_script_path = resolve_blink_script_path(state, "pay_invoice.js")?;
 
     let request_id = state.stable_sats_simulation.reserve_worker_request_id();
     state
@@ -3161,8 +2797,8 @@ fn enqueue_stable_sats_convert_worker(
         .ok_or_else(|| format!("wallet index {} out of bounds", owner_index))?
         .clone();
     let env_overrides = resolve_wallet_blink_env(state, &wallet)?;
-    let swap_quote_script_path = resolve_blink_simulation_script_path(state, "swap_quote.js")?;
-    let swap_execute_script_path = resolve_blink_simulation_script_path(state, "swap_execute.js")?;
+    let swap_quote_script_path = resolve_blink_script_path(state, "swap_quote.js")?;
+    let swap_execute_script_path = resolve_blink_script_path(state, "swap_execute.js")?;
 
     let request_id = state.stable_sats_simulation.reserve_worker_request_id();
     state
@@ -3283,7 +2919,7 @@ fn queue_stable_sats_live_refresh(state: &mut crate::app_state::RenderState) -> 
         }
     };
 
-    let balance_script = match resolve_blink_simulation_script_path(state, "balance.js") {
+    let balance_script = match resolve_blink_script_path(state, "balance.js") {
         Ok(path) => path,
         Err(error) => {
             let _ = state
@@ -3293,7 +2929,7 @@ fn queue_stable_sats_live_refresh(state: &mut crate::app_state::RenderState) -> 
             return true;
         }
     };
-    let price_script = match resolve_blink_simulation_script_path(state, "price.js") {
+    let price_script = match resolve_blink_script_path(state, "price.js") {
         Ok(path) => path,
         Err(error) => {
             let _ = state
@@ -3504,7 +3140,7 @@ fn apply_scoped_wallet_refresh_errors(
     }
 }
 
-fn resolve_blink_simulation_script_path(
+fn resolve_blink_script_path(
     state: &crate::app_state::RenderState,
     script_name: &str,
 ) -> Result<std::path::PathBuf, String> {
@@ -3559,21 +3195,6 @@ fn normalize_skill_root_path(raw_skill_path: &str) -> Option<std::path::PathBuf>
         return Some(path);
     }
     path.parent().map(std::path::Path::to_path_buf)
-}
-
-pub(super) fn run_auto_stable_sats_simulation(
-    state: &mut crate::app_state::RenderState,
-    now: std::time::Instant,
-) -> bool {
-    if !state.stable_sats_simulation.should_run_auto_round(now) {
-        return false;
-    }
-    let now_epoch_seconds = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map_or(0, |duration| duration.as_secs());
-    let changed = run_stable_sats_simulation_round(state, now_epoch_seconds);
-    state.stable_sats_simulation.mark_auto_round(now);
-    changed
 }
 
 pub(super) fn run_relay_connections_action(

@@ -80,35 +80,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-pub const SIMULATION_PANES_ENV: &str = "OPENAGENTS_ENABLE_SIMULATION_PANES";
-
-pub fn simulation_panes_enabled_from_env() -> bool {
-    std::env::var(SIMULATION_PANES_ENV)
-        .ok()
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
-}
-
-pub fn is_simulation_pane(kind: PaneKind) -> bool {
-    matches!(
-        kind,
-        PaneKind::AgentNetworkSimulation
-            | PaneKind::TreasuryExchangeSimulation
-            | PaneKind::RelaySecuritySimulation
-            | PaneKind::StableSatsSimulation
-    )
-}
-
-pub fn pane_enabled_in_runtime(kind: PaneKind, simulation_panes_enabled: bool) -> bool {
-    simulation_panes_enabled || !is_simulation_pane(kind)
-}
-
-const PANE_SPECS: [PaneSpec; 42] = [
+const PANE_SPECS: [PaneSpec; 38] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -660,66 +632,6 @@ const PANE_SPECS: [PaneSpec; 42] = [
         hotbar: None,
     },
     PaneSpec {
-        kind: PaneKind::AgentNetworkSimulation,
-        title: "Sovereign Agent Simulation",
-        default_width: 980.0,
-        default_height: 460.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.agent_network_simulation",
-            label: "Sovereign Agent Simulation",
-            description: "Open multi-agent simulation using NIP-28 chat with SA/SKL/AC flow",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::TreasuryExchangeSimulation,
-        title: "Treasury Exchange Simulation",
-        default_width: 980.0,
-        default_height: 460.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.treasury_exchange_simulation",
-            label: "Treasury Exchange Simulation",
-            description: "Open NIP-69/60/61/87/89/47 market and liquidity simulation",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::RelaySecuritySimulation,
-        title: "Relay Security Simulation",
-        default_width: 980.0,
-        default_height: 460.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.relay_security_simulation",
-            label: "Relay Security Simulation",
-            description: "Open NIP-11/42/65/46/17/59/98/77 secure relay simulation",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
-        kind: PaneKind::StableSatsSimulation,
-        title: "StableSats Wallet Simulation",
-        default_width: 980.0,
-        default_height: 460.0,
-        singleton: true,
-        startup: false,
-        command: Some(PaneCommandSpec {
-            id: "pane.stablesats_simulation",
-            label: "StableSats Wallet Simulation",
-            description: "Open Blink-style BTC/USD balance switching simulation for multiple agents",
-            keybinding: None,
-        }),
-        hotbar: None,
-    },
-    PaneSpec {
         kind: PaneKind::Calculator,
         title: "Calculator",
         default_width: 440.0,
@@ -754,8 +666,8 @@ const PANE_SPECS: [PaneSpec; 42] = [
 #[cfg(test)]
 mod tests {
     use super::{
-        is_simulation_pane, pane_enabled_in_runtime, pane_kind_for_hotbar_slot, pane_spec,
-        pane_spec_by_command_id, pane_specs, startup_pane_kinds,
+        pane_kind_for_hotbar_slot, pane_spec, pane_spec_by_command_id, pane_specs,
+        startup_pane_kinds,
     };
     use crate::app_state::PaneKind;
     use std::collections::BTreeSet;
@@ -881,22 +793,5 @@ mod tests {
             !spec.startup,
             "calculator pane should not auto-open during startup"
         );
-    }
-
-    #[test]
-    fn simulation_panes_respect_runtime_gate() {
-        let simulation_kinds = [
-            PaneKind::AgentNetworkSimulation,
-            PaneKind::TreasuryExchangeSimulation,
-            PaneKind::RelaySecuritySimulation,
-            PaneKind::StableSatsSimulation,
-        ];
-        for kind in simulation_kinds {
-            assert!(is_simulation_pane(kind));
-            assert!(!pane_enabled_in_runtime(kind, false));
-            assert!(pane_enabled_in_runtime(kind, true));
-        }
-        assert!(!is_simulation_pane(PaneKind::EarningsScoreboard));
-        assert!(pane_enabled_in_runtime(PaneKind::EarningsScoreboard, false));
     }
 }

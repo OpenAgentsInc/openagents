@@ -208,14 +208,6 @@ pub(super) fn dispatch_command_palette_actions(state: &mut crate::app_state::Ren
         let Some(spec) = pane_spec_by_command_id(&action) else {
             continue;
         };
-        if !pane_enabled_in_runtime(spec.kind, state.simulation_panes_enabled) {
-            state.provider_runtime.last_result = Some(format!(
-                "Simulation pane '{}' is disabled. Set OPENAGENTS_ENABLE_SIMULATION_PANES=1 for dev/test sessions.",
-                spec.command.map_or(spec.title, |command| command.id)
-            ));
-            continue;
-        }
-
         match spec.kind {
             crate::app_state::PaneKind::EarningsScoreboard => {
                 let _ = PaneController::create_for_kind(state, spec.kind);

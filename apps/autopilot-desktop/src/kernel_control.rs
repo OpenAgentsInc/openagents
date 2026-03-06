@@ -26,14 +26,13 @@ use std::thread::JoinHandle;
 use std::time::Duration;
 use tokio::sync::watch;
 
-const ENV_FORCE_LOCAL_KERNEL_AUTHORITY: &str = "OA_DESKTOP_FORCE_LOCAL_KERNEL_AUTHORITY";
 const KERNEL_MUTATION_TIMEOUT: Duration = Duration::from_secs(5);
 const KERNEL_STREAM_CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const KERNEL_STREAM_RETRY_DELAY: Duration = Duration::from_secs(2);
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum KernelAuthorityMode {
-    Local,
+    Unavailable,
     Remote {
         base_url: String,
         bearer_auth: String,
@@ -76,7 +75,7 @@ struct SnapshotProjectionEnvelope {
 impl Default for KernelProjectionWorker {
     fn default() -> Self {
         Self {
-            mode: KernelAuthorityMode::Local,
+            mode: KernelAuthorityMode::Unavailable,
             update_rx: None,
             shutdown_tx: None,
             join_handle: None,
@@ -142,22 +141,19 @@ pub(crate) fn resolve_kernel_authority_mode(
     control_base_url: Option<&str>,
     bearer_auth: Option<&str>,
 ) -> KernelAuthorityMode {
-    if force_local_kernel_authority() {
-        return KernelAuthorityMode::Local;
-    }
     let Some(base_url) = control_base_url
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
     else {
-        return KernelAuthorityMode::Local;
+        return KernelAuthorityMode::Unavailable;
     };
     let Some(bearer_auth) = bearer_auth
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .map(str::to_string)
     else {
-        return KernelAuthorityMode::Local;
+        return KernelAuthorityMode::Unavailable;
     };
     KernelAuthorityMode::Remote {
         base_url,
@@ -213,7 +209,8 @@ pub(crate) fn drain_kernel_projection_updates(state: &mut RenderState) -> bool {
 }
 
 pub(crate) fn should_compute_local_snapshots(state: &RenderState) -> bool {
-    !state.kernel_projection_worker.uses_remote_authority()
+    let _ = state;
+    false
 }
 
 pub(crate) fn register_accepted_request_with_kernel(
@@ -222,9 +219,8 @@ pub(crate) fn register_accepted_request_with_kernel(
 ) -> Result<(), String> {
     let work_unit_request = build_work_unit_request(state, request);
     let work_unit_receipt = match current_authority_mode(state) {
-        KernelAuthorityMode::Local => {
-            let authority = state.kernel_local_authority.clone();
-            run_kernel_call(authority.create_work_unit(work_unit_request))?.receipt
+        KernelAuthorityMode::Unavailable => {
+            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
         }
         KernelAuthorityMode::Remote {
             ref base_url,
@@ -240,9 +236,8 @@ pub(crate) fn register_accepted_request_with_kernel(
 
     let contract_request = build_contract_request(state, request);
     let contract_receipt = match current_authority_mode(state) {
-        KernelAuthorityMode::Local => {
-            let authority = state.kernel_local_authority.clone();
-            run_kernel_call(authority.create_contract(contract_request))?.receipt
+        KernelAuthorityMode::Unavailable => {
+            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
         }
         KernelAuthorityMode::Remote {
             ref base_url,
@@ -264,9 +259,8 @@ pub(crate) fn submit_active_job_output(state: &mut RenderState) -> Result<String
     };
     let submit_request = build_submit_output_request(state, &job);
     let receipt = match current_authority_mode(state) {
-        KernelAuthorityMode::Local => {
-            let authority = state.kernel_local_authority.clone();
-            run_kernel_call(authority.submit_output(submit_request))?.receipt
+        KernelAuthorityMode::Unavailable => {
+            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
         }
         KernelAuthorityMode::Remote {
             ref base_url,
@@ -289,9 +283,8 @@ pub(crate) fn finalize_paid_active_job(state: &mut RenderState) -> Result<String
     };
     let verdict_request = build_finalize_verdict_request(state, &job);
     let receipt = match current_authority_mode(state) {
-        KernelAuthorityMode::Local => {
-            let authority = state.kernel_local_authority.clone();
-            run_kernel_call(authority.finalize_verdict(verdict_request))?.receipt
+        KernelAuthorityMode::Unavailable => {
+            return Err("kernel authority unavailable: hosted control endpoint is not configured".to_string())
         }
         KernelAuthorityMode::Remote {
             ref base_url,
@@ -1049,18 +1042,6 @@ fn current_epoch_ms() -> i64 {
         .map_or(0, |duration| {
             duration.as_millis().min(i64::MAX as u128) as i64
         })
-}
-
-fn force_local_kernel_authority() -> bool {
-    std::env::var(ENV_FORCE_LOCAL_KERNEL_AUTHORITY)
-        .ok()
-        .map(|value| {
-            matches!(
-                value.trim().to_ascii_lowercase().as_str(),
-                "1" | "true" | "yes" | "on"
-            )
-        })
-        .unwrap_or(false)
 }
 
 pub(crate) fn reset_request_decision_after_kernel_error(

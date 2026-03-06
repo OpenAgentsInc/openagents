@@ -21,9 +21,7 @@ use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::ollama_execution::{OllamaExecutionSnapshot, OllamaExecutionWorker};
-use crate::pane_registry::{
-    pane_enabled_in_runtime, pane_specs, simulation_panes_enabled_from_env, startup_pane_kinds,
-};
+use crate::pane_registry::{pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
@@ -197,7 +195,6 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let ollama_execution_worker = OllamaExecutionWorker::spawn();
-        let simulation_panes_enabled = simulation_panes_enabled_from_env();
         let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
             Ok(engine) => engine,
             Err(error) => {
@@ -219,9 +216,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         sync_health.cursor_position = sync_health.last_applied_event_seq;
         sync_health.cursor_target_position = sync_health.last_applied_event_seq;
         let command_palette_actions = Rc::new(RefCell::new(Vec::<String>::new()));
-        let mut command_palette = CommandPalette::new()
-            .mono(true)
-            .commands(command_registry(simulation_panes_enabled));
+        let mut command_palette = CommandPalette::new().mono(true).commands(command_registry());
         {
             let action_queue = Rc::clone(&command_palette_actions);
             command_palette = command_palette.on_select(move |command| {
@@ -301,7 +296,6 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sync_bootstrap_error: None,
             hosted_control_base_url: None,
             hosted_control_bearer_token: None,
-            kernel_local_authority: openagents_kernel_core::authority::LocalKernelAuthority::new(),
             kernel_projection_worker: crate::kernel_control::KernelProjectionWorker::default(),
             sync_apply_engine,
             sync_lifecycle_worker_id: "desktopw:sync".to_string(),
@@ -334,13 +328,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             credit_desk: crate::app_state::CreditDeskPaneState::default(),
             credit_settlement_ledger: crate::app_state::CreditSettlementLedgerPaneState::default(),
             cad_demo: crate::app_state::CadDemoPaneState::default(),
-            agent_network_simulation: crate::app_state::AgentNetworkSimulationPaneState::default(),
-            treasury_exchange_simulation:
-                crate::app_state::TreasuryExchangeSimulationPaneState::default(),
-            relay_security_simulation: crate::app_state::RelaySecuritySimulationPaneState::default(
-            ),
             stable_sats_simulation: crate::app_state::StableSatsSimulationPaneState::default(),
-            simulation_panes_enabled,
             autopilot_goals,
             goal_loop_executor: crate::state::goal_loop_executor::GoalLoopExecutorState::default(),
             goal_restart_recovery_ran: false,
@@ -988,10 +976,6 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &state.credit_desk,
             &state.credit_settlement_ledger,
             &state.cad_demo,
-            &state.agent_network_simulation,
-            &state.treasury_exchange_simulation,
-            &state.relay_security_simulation,
-            &state.stable_sats_simulation,
             &state.spark_wallet,
             &mut state.spark_inputs,
             &mut state.pay_invoice_inputs,
@@ -1270,10 +1254,9 @@ fn format_btc_from_sats(sats: u64) -> String {
     format!("{:.8}", sats as f64 / 100_000_000.0)
 }
 
-fn command_registry(simulation_panes_enabled: bool) -> Vec<Command> {
+fn command_registry() -> Vec<Command> {
     let mut commands: Vec<Command> = pane_specs()
         .iter()
-        .filter(|spec| pane_enabled_in_runtime(spec.kind, simulation_panes_enabled))
         .filter_map(|spec| {
             let command = spec.command?;
             let mut entry = Command::new(command.id, command.label)
@@ -1303,16 +1286,14 @@ fn command_registry(simulation_panes_enabled: bool) -> Vec<Command> {
 mod tests {
     use super::{command_registry, wallet_balance_chip_bounds_for_logical};
     use crate::app_state::PaneKind;
-    use crate::pane_registry::{
-        pane_enabled_in_runtime, pane_spec_by_command_id, pane_specs, startup_pane_kinds,
-    };
+    use crate::pane_registry::{pane_spec_by_command_id, pane_specs, startup_pane_kinds};
     use crate::pane_system::cad_palette_command_specs;
     use std::collections::BTreeSet;
     use wgpui::Size;
 
     #[test]
     fn command_registry_matches_pane_specs() {
-        let commands = command_registry(true);
+        let commands = command_registry();
         let command_ids: BTreeSet<&str> =
             commands.iter().map(|command| command.id.as_str()).collect();
 
@@ -1344,7 +1325,7 @@ mod tests {
 
     #[test]
     fn command_registry_includes_job_inbox_command() {
-        let commands = command_registry(false);
+        let commands = command_registry();
         assert!(
             commands
                 .iter()
@@ -1435,45 +1416,6 @@ mod tests {
             command.id == "pane.credit_settlement_ledger"
                 && command.label == "Credit Settlement Ledger"
         }));
-    }
-
-    #[test]
-    fn command_registry_hides_simulation_commands_when_disabled() {
-        let commands = command_registry(false);
-        assert!(!commands.iter().any(|command| {
-            command.id == "pane.agent_network_simulation"
-                || command.id == "pane.treasury_exchange_simulation"
-                || command.id == "pane.relay_security_simulation"
-                || command.id == "pane.stablesats_simulation"
-        }));
-    }
-
-    #[test]
-    fn command_registry_includes_simulation_commands_when_enabled() {
-        let commands = command_registry(true);
-        let command_ids: BTreeSet<&str> =
-            commands.iter().map(|command| command.id.as_str()).collect();
-
-        let expected_simulation_ids: BTreeSet<&str> = pane_specs()
-            .iter()
-            .filter(|spec| {
-                pane_enabled_in_runtime(spec.kind, true)
-                    && !pane_enabled_in_runtime(spec.kind, false)
-            })
-            .filter_map(|spec| spec.command.map(|command| command.id))
-            .collect();
-        assert_eq!(
-            expected_simulation_ids,
-            BTreeSet::from([
-                "pane.agent_network_simulation",
-                "pane.treasury_exchange_simulation",
-                "pane.relay_security_simulation",
-                "pane.stablesats_simulation",
-            ])
-        );
-        for command_id in expected_simulation_ids {
-            assert!(command_ids.contains(command_id));
-        }
     }
 
     #[test]
