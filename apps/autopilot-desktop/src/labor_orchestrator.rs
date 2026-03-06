@@ -113,6 +113,10 @@ impl CodexLaborArtifactRef {
     }
 }
 
+fn default_required_artifact_kinds() -> Vec<String> {
+    vec!["final_output".to_string(), "transcript".to_string()]
+}
+
 #[derive(Clone, Debug, Serialize, Deserialize, Eq, PartialEq)]
 pub(crate) struct CodexLaborApprovalEvent {
     pub kind: String,
@@ -393,6 +397,12 @@ pub(crate) struct CodexLaborBinding {
     pub idempotency_key: String,
     pub trace: TraceContext,
     pub provenance: CodexLaborProvenanceBundle,
+    #[serde(default = "default_required_artifact_kinds")]
+    pub required_artifact_kinds: Vec<String>,
+    #[serde(default)]
+    pub attached_evidence_refs: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub incident_evidence_refs: Vec<EvidenceRef>,
     #[serde(default)]
     pub submission: Option<CodexLaborSubmissionState>,
     #[serde(default)]
@@ -402,6 +412,10 @@ pub(crate) struct CodexLaborBinding {
 }
 
 impl CodexLaborBinding {
+    pub(crate) fn artifact_scope_root(&self) -> String {
+        format!("oa://autopilot/codex/{}/", self.work_unit_id)
+    }
+
     pub(crate) fn record_turn_started(&mut self, turn_id: &str) {
         self.provenance.set_turn_id(turn_id);
     }
@@ -456,6 +470,117 @@ impl CodexLaborBinding {
     pub(crate) fn record_output_snapshot(&mut self, output: &str) {
         self.provenance
             .record_output_snapshot(self.work_unit_id.as_str(), output);
+    }
+
+    pub(crate) fn scope_payload(&self) -> serde_json::Value {
+        json!({
+            "work_unit_id": self.work_unit_id,
+            "contract_id": self.contract_id,
+            "trace": self.trace,
+            "artifact_scope_root": self.artifact_scope_root(),
+            "allowed_evidence_uri_prefixes": [self.artifact_scope_root()],
+            "required_artifact_kinds": self.required_artifact_kinds,
+            "expected_output_refs": {
+                "final_output": format!("{}output", self.artifact_scope_root()),
+                "transcript": format!("{}transcript", self.artifact_scope_root()),
+            },
+            "verifier_path": CodexLaborVerifierPath::DeterministicOutputGate.label(),
+        })
+    }
+
+    pub(crate) fn requirements_payload(&self) -> serde_json::Value {
+        json!({
+            "work_unit_id": self.work_unit_id,
+            "contract_id": self.contract_id,
+            "required_artifact_kinds": self.required_artifact_kinds,
+            "acceptance_criteria": [
+                {
+                    "code": "final_output_present",
+                    "description": "a final output artifact must be present before verification can complete",
+                },
+                {
+                    "code": "transcript_present",
+                    "description": "a transcript artifact must be present before verification can complete",
+                },
+                {
+                    "code": "no_denied_approvals",
+                    "description": "approval history must not contain denied command or file-change decisions",
+                },
+                {
+                    "code": "no_failed_tool_invocations",
+                    "description": "recorded tool invocations must not include unsuccessful executions",
+                }
+            ],
+            "evidence_gaps": self.required_evidence_gap_objects(),
+        })
+    }
+
+    pub(crate) fn evidence_payload(&self) -> serde_json::Value {
+        json!({
+            "work_unit_id": self.work_unit_id,
+            "contract_id": self.contract_id,
+            "produced": self.provenance.produced_artifacts,
+            "attached": self.attached_evidence_refs,
+            "incident": self.incident_evidence_refs,
+            "evidence_gaps": self.required_evidence_gap_objects(),
+            "submission": self.submission,
+            "verdict": self.verdict,
+            "verifier_failure": self.verifier_failure,
+        })
+    }
+
+    pub(crate) fn required_evidence_gaps(&self) -> Vec<String> {
+        self.required_evidence_gap_objects()
+            .into_iter()
+            .filter_map(|gap| {
+                gap.get("kind")
+                    .and_then(serde_json::Value::as_str)
+                    .map(str::to_string)
+            })
+            .collect()
+    }
+
+    pub(crate) fn attach_evidence_ref(
+        &mut self,
+        evidence: EvidenceRef,
+        incident: bool,
+    ) -> Result<(), String> {
+        let kind = evidence.kind.trim();
+        if kind.is_empty() {
+            return Err("evidence kind must not be empty".to_string());
+        }
+        let uri = evidence.uri.trim();
+        if uri.is_empty() {
+            return Err("evidence uri must not be empty".to_string());
+        }
+        let digest = evidence.digest.trim();
+        if digest.is_empty() {
+            return Err("evidence digest must not be empty".to_string());
+        }
+        let scope_root = self.artifact_scope_root();
+        if !uri.starts_with(scope_root.as_str()) {
+            return Err(format!(
+                "evidence uri must stay within contract artifact scope {}",
+                scope_root
+            ));
+        }
+
+        let store = if incident {
+            &mut self.incident_evidence_refs
+        } else {
+            &mut self.attached_evidence_refs
+        };
+        if store.iter().any(|existing| existing == &evidence) {
+            return Ok(());
+        }
+        store.push(evidence);
+        store.sort_by(|left, right| {
+            left.kind
+                .cmp(&right.kind)
+                .then_with(|| left.uri.cmp(&right.uri))
+                .then_with(|| left.digest.cmp(&right.digest))
+        });
+        Ok(())
     }
 
     pub(crate) fn assemble_submission(
@@ -727,7 +852,33 @@ impl CodexLaborBinding {
         for artifact in &self.provenance.produced_artifacts {
             evidence_refs.push(artifact.as_evidence_ref());
         }
+        evidence_refs.extend(self.attached_evidence_refs.iter().cloned());
         evidence_refs
+    }
+
+    fn required_evidence_gap_objects(&self) -> Vec<serde_json::Value> {
+        self.required_artifact_kinds
+            .iter()
+            .filter(|kind| !self.has_evidence_kind(kind.as_str()))
+            .map(|kind| {
+                json!({
+                    "kind": kind,
+                    "message": format!("required evidence kind '{}' is missing", kind),
+                    "uri_prefix": self.artifact_scope_root(),
+                })
+            })
+            .collect()
+    }
+
+    fn has_evidence_kind(&self, kind: &str) -> bool {
+        self.provenance
+            .produced_artifacts
+            .iter()
+            .any(|artifact| artifact.kind == kind)
+            || self
+                .attached_evidence_refs
+                .iter()
+                .any(|evidence| evidence.kind == kind)
     }
 
     fn record_verifier_failure(
@@ -868,6 +1019,9 @@ fn local_labor_binding(
             final_output_digest: None,
             transcript_digest: None,
         },
+        required_artifact_kinds: default_required_artifact_kinds(),
+        attached_evidence_refs: Vec::new(),
+        incident_evidence_refs: Vec::new(),
         submission: None,
         verdict: None,
         verifier_failure: None,

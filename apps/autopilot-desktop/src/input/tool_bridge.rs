@@ -1,8 +1,10 @@
 use std::collections::BTreeSet;
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 use codex_client::{DynamicToolCallOutputContentItem, DynamicToolCallResponse};
+use openagents_kernel_core::receipts::EvidenceRef;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -14,10 +16,14 @@ use crate::app_state::{
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::openagents_dynamic_tools::{
     OPENAGENTS_DYNAMIC_TOOL_NAMES, OPENAGENTS_TOOL_CAD_ACTION, OPENAGENTS_TOOL_CAD_INTENT,
-    OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE,
-    OPENAGENTS_TOOL_PANE_FOCUS, OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN,
-    OPENAGENTS_TOOL_PANE_SET_INPUT, OPENAGENTS_TOOL_PROVIDER_CONTROL, OPENAGENTS_TOOL_SWAP_EXECUTE,
-    OPENAGENTS_TOOL_SWAP_QUOTE, OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
+    OPENAGENTS_TOOL_GOAL_SCHEDULER, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+    OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST, OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH,
+    OPENAGENTS_TOOL_LABOR_REQUIREMENTS, OPENAGENTS_TOOL_LABOR_SCOPE,
+    OPENAGENTS_TOOL_LABOR_SUBMISSION_READY, OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST,
+    OPENAGENTS_TOOL_PANE_ACTION, OPENAGENTS_TOOL_PANE_CLOSE, OPENAGENTS_TOOL_PANE_FOCUS,
+    OPENAGENTS_TOOL_PANE_LIST, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_SET_INPUT,
+    OPENAGENTS_TOOL_PROVIDER_CONTROL, OPENAGENTS_TOOL_SWAP_EXECUTE, OPENAGENTS_TOOL_SWAP_QUOTE,
+    OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
     OPENAGENTS_TOOL_TREASURY_TRANSFER, OPENAGENTS_TOOL_WALLET_CHECK,
 };
 use crate::pane_registry::{
@@ -66,6 +72,13 @@ const LEGACY_OPENAGENTS_TOOL_TREASURY_RECEIPT: &str = "openagents.treasury.recei
 const LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER: &str = "openagents.goal.scheduler";
 const LEGACY_OPENAGENTS_TOOL_WALLET_CHECK: &str = "openagents.wallet.check";
 const LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL: &str = "openagents.provider.control";
+const LEGACY_OPENAGENTS_TOOL_LABOR_SCOPE: &str = "openagents.labor.scope";
+const LEGACY_OPENAGENTS_TOOL_LABOR_REQUIREMENTS: &str = "openagents.labor.requirements";
+const LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST: &str = "openagents.labor.evidence_list";
+const LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH: &str = "openagents.labor.evidence.attach";
+const LEGACY_OPENAGENTS_TOOL_LABOR_SUBMISSION_READY: &str = "openagents.labor.submission.ready";
+const LEGACY_OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST: &str = "openagents.labor.verifier.request";
+const LEGACY_OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH: &str = "openagents.labor.incident.attach";
 const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_PANE_LIST,
     LEGACY_OPENAGENTS_TOOL_PANE_OPEN,
@@ -83,6 +96,13 @@ const LEGACY_OPENAGENTS_TOOL_NAMES: &[&str] = &[
     LEGACY_OPENAGENTS_TOOL_GOAL_SCHEDULER,
     LEGACY_OPENAGENTS_TOOL_WALLET_CHECK,
     LEGACY_OPENAGENTS_TOOL_PROVIDER_CONTROL,
+    LEGACY_OPENAGENTS_TOOL_LABOR_SCOPE,
+    LEGACY_OPENAGENTS_TOOL_LABOR_REQUIREMENTS,
+    LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST,
+    LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+    LEGACY_OPENAGENTS_TOOL_LABOR_SUBMISSION_READY,
+    LEGACY_OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST,
+    LEGACY_OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH,
 ];
 pub(super) const OPENAGENTS_TOOL_PREFIXES: &[&str] = &["openagents_", "openagents."];
 pub(super) const OPENAGENTS_TOOL_NAMES: &[&str] = OPENAGENTS_DYNAMIC_TOOL_NAMES;
@@ -405,6 +425,25 @@ struct ProviderControlArgs {
     action: String,
 }
 
+#[derive(Clone, Debug, Deserialize)]
+struct LaborScopeArgs {
+    #[serde(default)]
+    work_unit_id: Option<String>,
+    #[serde(default)]
+    contract_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+struct LaborEvidenceAttachArgs {
+    #[serde(default)]
+    work_unit_id: Option<String>,
+    #[serde(default)]
+    contract_id: Option<String>,
+    kind: String,
+    uri: String,
+    digest: String,
+}
+
 const BLINK_SKILL_NAME: &str = "blink";
 const BLINK_SWAP_QUOTE_SCRIPT: &str = "swap_quote.js";
 const BLINK_SWAP_EXECUTE_SCRIPT: &str = "swap_execute.js";
@@ -426,6 +465,73 @@ pub(super) fn execute_openagents_tool_request(
 
     if let Some(policy_error) = enforce_active_goal_command_scope(state, decoded.tool.as_str()) {
         return policy_error;
+    }
+
+    if let Some(scope_error) = enforce_labor_tool_scope(state, request, &decoded) {
+        return scope_error;
+    }
+
+    match decoded.tool.as_str() {
+        OPENAGENTS_TOOL_LABOR_SCOPE | LEGACY_OPENAGENTS_TOOL_LABOR_SCOPE => {
+            let args = match decoded.decode_arguments::<LaborScopeArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_scope_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_REQUIREMENTS | LEGACY_OPENAGENTS_TOOL_LABOR_REQUIREMENTS => {
+            let args = match decoded.decode_arguments::<LaborScopeArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_requirements_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST | LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST => {
+            let args = match decoded.decode_arguments::<LaborScopeArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_evidence_list_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH | LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH => {
+            let args = match decoded.decode_arguments::<LaborEvidenceAttachArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_evidence_attach_tool(
+                state,
+                request.turn_id.as_str(),
+                &args,
+                false,
+            );
+        }
+        OPENAGENTS_TOOL_LABOR_SUBMISSION_READY | LEGACY_OPENAGENTS_TOOL_LABOR_SUBMISSION_READY => {
+            let args = match decoded.decode_arguments::<LaborScopeArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_submission_ready_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST | LEGACY_OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST => {
+            let args = match decoded.decode_arguments::<LaborScopeArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_verifier_request_tool(state, request.turn_id.as_str(), &args);
+        }
+        OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH | LEGACY_OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH => {
+            let args = match decoded.decode_arguments::<LaborEvidenceAttachArgs>() {
+                Ok(value) => value,
+                Err(error) => return error,
+            };
+            return execute_labor_evidence_attach_tool(
+                state,
+                request.turn_id.as_str(),
+                &args,
+                true,
+            );
+        }
+        _ => {}
     }
 
     match decoded.tool.as_str() {
@@ -617,6 +723,486 @@ fn enforce_active_goal_command_scope(
             }),
         ))
     }
+}
+
+fn enforce_labor_tool_scope(
+    state: &RenderState,
+    request: &AutopilotToolCallRequest,
+    decoded: &ToolBridgeRequest,
+) -> Option<ToolBridgeResultEnvelope> {
+    if !is_labor_tool(decoded.tool.as_str()) {
+        return None;
+    }
+
+    let Some(binding) = state
+        .autopilot_chat
+        .turn_labor_binding_for(request.turn_id.as_str())
+    else {
+        return Some(ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-NOT-ACTIVE",
+            "Labor tool requested outside an active labor-bound turn",
+            json!({
+                "tool": decoded.tool,
+                "turn_id": request.turn_id,
+            }),
+        ));
+    };
+
+    if let Some(error) = enforce_matching_labor_contract_scope(binding, decoded) {
+        return Some(error);
+    }
+
+    if is_labor_evidence_attach_tool(decoded.tool.as_str())
+        && let Some(error) = enforce_labor_evidence_uri_scope(binding, decoded)
+    {
+        let mut details = match error.details {
+            Value::Object(map) => map,
+            value => {
+                let mut map = serde_json::Map::new();
+                map.insert("error".to_string(), value);
+                map
+            }
+        };
+        details.insert("tool".to_string(), json!(decoded.tool));
+        details.insert("turn_id".to_string(), json!(request.turn_id));
+        return Some(ToolBridgeResultEnvelope::error(
+            error.code.as_str(),
+            error.message,
+            Value::Object(details),
+        ));
+    }
+
+    None
+}
+
+fn is_labor_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        OPENAGENTS_TOOL_LABOR_SCOPE
+            | LEGACY_OPENAGENTS_TOOL_LABOR_SCOPE
+            | OPENAGENTS_TOOL_LABOR_REQUIREMENTS
+            | LEGACY_OPENAGENTS_TOOL_LABOR_REQUIREMENTS
+            | OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST
+            | LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_LIST
+            | OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH
+            | LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH
+            | OPENAGENTS_TOOL_LABOR_SUBMISSION_READY
+            | LEGACY_OPENAGENTS_TOOL_LABOR_SUBMISSION_READY
+            | OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST
+            | LEGACY_OPENAGENTS_TOOL_LABOR_VERIFIER_REQUEST
+            | OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH
+            | LEGACY_OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH
+    )
+}
+
+fn is_labor_evidence_attach_tool(tool: &str) -> bool {
+    matches!(
+        tool,
+        OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH
+            | LEGACY_OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH
+            | OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH
+            | LEGACY_OPENAGENTS_TOOL_LABOR_INCIDENT_ATTACH
+    )
+}
+
+fn enforce_matching_labor_contract_scope(
+    binding: &crate::labor_orchestrator::CodexLaborBinding,
+    decoded: &ToolBridgeRequest,
+) -> Option<ToolBridgeResultEnvelope> {
+    let provided_work_unit_id = string_argument(decoded.arguments.as_object(), "work_unit_id");
+    if let Some(provided_work_unit_id) = provided_work_unit_id
+        && provided_work_unit_id != binding.work_unit_id
+    {
+        return Some(ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-MISMATCH",
+            "Provided work_unit_id does not match the active labor binding",
+            json!({
+                "tool": decoded.tool,
+                "expected_work_unit_id": binding.work_unit_id,
+                "provided_work_unit_id": provided_work_unit_id,
+            }),
+        ));
+    }
+
+    let provided_contract_id = string_argument(decoded.arguments.as_object(), "contract_id");
+    if let Some(provided_contract_id) = provided_contract_id
+        && provided_contract_id != binding.contract_id
+    {
+        return Some(ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-MISMATCH",
+            "Provided contract_id does not match the active labor binding",
+            json!({
+                "tool": decoded.tool,
+                "expected_contract_id": binding.contract_id,
+                "provided_contract_id": provided_contract_id,
+            }),
+        ));
+    }
+
+    None
+}
+
+fn enforce_labor_evidence_uri_scope(
+    binding: &crate::labor_orchestrator::CodexLaborBinding,
+    decoded: &ToolBridgeRequest,
+) -> Option<ToolBridgeResultEnvelope> {
+    let uri = string_argument(decoded.arguments.as_object(), "uri")?;
+    let scope_root = binding.artifact_scope_root();
+    if uri.starts_with(scope_root.as_str()) {
+        return None;
+    }
+    Some(ToolBridgeResultEnvelope::error(
+        "OA-LABOR-EVIDENCE-OUT-OF-SCOPE",
+        "Evidence URI is outside the contract artifact scope",
+        json!({
+            "uri": uri,
+            "artifact_scope_root": scope_root,
+        }),
+    ))
+}
+
+fn string_argument<'a>(
+    arguments: Option<&'a serde_json::Map<String, Value>>,
+    key: &str,
+) -> Option<&'a str> {
+    arguments?
+        .get(key)?
+        .as_str()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
+fn current_epoch_ms() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|duration| duration.as_millis() as u64)
+        .unwrap_or_default()
+}
+
+fn execute_labor_scope_tool(
+    state: &RenderState,
+    turn_id: &str,
+    args: &LaborScopeArgs,
+) -> ToolBridgeResultEnvelope {
+    match labor_scope_details(state, turn_id) {
+        Ok(scope) => ToolBridgeResultEnvelope::ok(
+            "OA-LABOR-SCOPE-OK",
+            "Fetched active labor scope",
+            json!({
+                "turn_id": turn_id,
+                "requested_work_unit_id": args.work_unit_id,
+                "requested_contract_id": args.contract_id,
+                "scope": scope,
+            }),
+        ),
+        Err(error) => error,
+    }
+}
+
+fn execute_labor_requirements_tool(
+    state: &RenderState,
+    turn_id: &str,
+    args: &LaborScopeArgs,
+) -> ToolBridgeResultEnvelope {
+    let Some(requirements) = state
+        .autopilot_chat
+        .turn_labor_requirements_payload(turn_id)
+    else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-NOT-ACTIVE",
+            "Labor requirements requested outside an active labor-bound turn",
+            json!({
+                "turn_id": turn_id,
+            }),
+        );
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-REQUIREMENTS-OK",
+        "Fetched labor acceptance criteria and evidence requirements",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "requirements": requirements,
+        }),
+    )
+}
+
+fn execute_labor_evidence_list_tool(
+    state: &RenderState,
+    turn_id: &str,
+    args: &LaborScopeArgs,
+) -> ToolBridgeResultEnvelope {
+    let Some(evidence) = state.autopilot_chat.turn_labor_evidence_payload(turn_id) else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-NOT-ACTIVE",
+            "Labor evidence requested outside an active labor-bound turn",
+            json!({
+                "turn_id": turn_id,
+            }),
+        );
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-EVIDENCE-LIST-OK",
+        "Fetched labor evidence and unresolved gaps",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "evidence": evidence,
+        }),
+    )
+}
+
+fn execute_labor_evidence_attach_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborEvidenceAttachArgs,
+    incident: bool,
+) -> ToolBridgeResultEnvelope {
+    let payload = match state.autopilot_chat.attach_turn_labor_evidence(
+        turn_id,
+        EvidenceRef::new(
+            args.kind.trim().to_string(),
+            args.uri.trim().to_string(),
+            args.digest.trim().to_string(),
+        ),
+        incident,
+    ) {
+        Ok(Some(payload)) => payload,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Labor evidence attach requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-EVIDENCE-ATTACH-FAILED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "incident": incident,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "kind": args.kind,
+                    "uri": args.uri,
+                }),
+            );
+        }
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        if incident {
+            "OA-LABOR-INCIDENT-ATTACH-OK"
+        } else {
+            "OA-LABOR-EVIDENCE-ATTACH-OK"
+        },
+        if incident {
+            "Attached incident evidence to the active labor contract"
+        } else {
+            "Attached evidence to the active labor contract"
+        },
+        json!({
+            "turn_id": turn_id,
+            "incident": incident,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "evidence": payload,
+        }),
+    )
+}
+
+fn execute_labor_submission_ready_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborScopeArgs,
+) -> ToolBridgeResultEnvelope {
+    let Some(binding) = state.autopilot_chat.turn_labor_binding_for(turn_id) else {
+        return ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-NOT-ACTIVE",
+            "Labor submission requested outside an active labor-bound turn",
+            json!({
+                "turn_id": turn_id,
+            }),
+        );
+    };
+    let evidence_gaps = binding.required_evidence_gaps();
+    if !evidence_gaps.is_empty() {
+        return ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SUBMISSION-NOT-READY",
+            "Labor submission cannot be marked ready until required evidence is present",
+            json!({
+                "turn_id": turn_id,
+                "requested_work_unit_id": args.work_unit_id,
+                "requested_contract_id": args.contract_id,
+                "evidence_gaps": evidence_gaps,
+                "requirements": state.autopilot_chat.turn_labor_requirements_payload(turn_id),
+                "evidence": state.autopilot_chat.turn_labor_evidence_payload(turn_id),
+            }),
+        );
+    }
+
+    let created_at_epoch_ms = current_epoch_ms();
+    let submission = match state
+        .autopilot_chat
+        .assemble_turn_labor_submission(turn_id, created_at_epoch_ms)
+    {
+        Ok(Some(submission)) => submission,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Labor submission requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SUBMISSION-ASSEMBLY-FAILED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "requirements": state.autopilot_chat.turn_labor_requirements_payload(turn_id),
+                    "evidence": state.autopilot_chat.turn_labor_evidence_payload(turn_id),
+                }),
+            );
+        }
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-SUBMISSION-READY-OK",
+        "Labor submission assembled and ready for verification",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "submission": submission,
+            "requirements": state.autopilot_chat.turn_labor_requirements_payload(turn_id),
+            "evidence": state.autopilot_chat.turn_labor_evidence_payload(turn_id),
+        }),
+    )
+}
+
+fn execute_labor_verifier_request_tool(
+    state: &mut RenderState,
+    turn_id: &str,
+    args: &LaborScopeArgs,
+) -> ToolBridgeResultEnvelope {
+    let readiness = execute_labor_submission_ready_tool(state, turn_id, args);
+    if !readiness.success {
+        return readiness;
+    }
+
+    let verified_at_epoch_ms = current_epoch_ms();
+    let verdict = match state
+        .autopilot_chat
+        .finalize_turn_labor_verdict(turn_id, verified_at_epoch_ms)
+    {
+        Ok(Some(verdict)) => verdict,
+        Ok(None) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-SCOPE-NOT-ACTIVE",
+                "Verifier requested outside an active labor-bound turn",
+                json!({
+                    "turn_id": turn_id,
+                }),
+            );
+        }
+        Err(error) => {
+            return ToolBridgeResultEnvelope::error(
+                "OA-LABOR-VERIFIER-BLOCKED",
+                error,
+                json!({
+                    "turn_id": turn_id,
+                    "requested_work_unit_id": args.work_unit_id,
+                    "requested_contract_id": args.contract_id,
+                    "submission": state.autopilot_chat.turn_labor_submission_for(turn_id),
+                    "evidence": state.autopilot_chat.turn_labor_evidence_payload(turn_id),
+                }),
+            );
+        }
+    };
+
+    ToolBridgeResultEnvelope::ok(
+        "OA-LABOR-VERIFIER-OK",
+        "Verifier completed for the active labor submission",
+        json!({
+            "turn_id": turn_id,
+            "requested_work_unit_id": args.work_unit_id,
+            "requested_contract_id": args.contract_id,
+            "submission": state.autopilot_chat.turn_labor_submission_for(turn_id),
+            "verdict": verdict,
+            "evidence": state.autopilot_chat.turn_labor_evidence_payload(turn_id),
+            "settlement_ready": state.autopilot_chat.turn_labor_settlement_ready(turn_id),
+        }),
+    )
+}
+
+fn labor_scope_details(
+    state: &RenderState,
+    turn_id: &str,
+) -> Result<Value, ToolBridgeResultEnvelope> {
+    let Some(mut scope) = state.autopilot_chat.turn_labor_scope_payload(turn_id) else {
+        return Err(ToolBridgeResultEnvelope::error(
+            "OA-LABOR-SCOPE-NOT-ACTIVE",
+            "Labor scope requested outside an active labor-bound turn",
+            json!({
+                "turn_id": turn_id,
+            }),
+        ));
+    };
+
+    let command_scope = if let Some(policy) = goal_policy_for_turn(state, turn_id) {
+        json!({
+            "source": "goal_policy",
+            "allowed_command_prefixes": policy.allowed_command_prefixes,
+            "allowed_file_roots": policy.allowed_file_roots,
+            "kill_switch_active": policy.kill_switch_active,
+            "kill_switch_reason": policy.kill_switch_reason,
+        })
+    } else {
+        json!({
+            "source": "default_openagents_namespace",
+            "allowed_command_prefixes": OPENAGENTS_TOOL_PREFIXES,
+            "allowed_file_roots": Vec::<String>::new(),
+            "kill_switch_active": false,
+            "kill_switch_reason": Option::<String>::None,
+        })
+    };
+
+    if let Some(object) = scope.as_object_mut() {
+        object.insert("turn_id".to_string(), json!(turn_id));
+        object.insert("command_scope".to_string(), command_scope);
+    }
+    Ok(scope)
+}
+
+fn goal_policy_for_turn<'a>(
+    state: &'a RenderState,
+    turn_id: &str,
+) -> Option<&'a crate::state::autopilot_goals::GoalAutonomyPolicy> {
+    let metadata = state.autopilot_chat.turn_metadata_for(turn_id)?;
+    let crate::labor_orchestrator::CodexRunClassification::AutonomousGoal { goal_id, .. } =
+        &metadata.run_classification
+    else {
+        return None;
+    };
+    state
+        .autopilot_goals
+        .document
+        .active_goals
+        .iter()
+        .find(|goal| goal.goal_id == *goal_id)
+        .map(|goal| &goal.constraints.autonomy_policy)
 }
 
 fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
@@ -4647,10 +5233,12 @@ fn normalize_key(value: &str) -> String {
 mod tests {
     use super::{
         CAD_CHECKPOINT_SCHEMA_VERSION, CAD_TOOL_RESPONSE_SCHEMA_VERSION,
-        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
+        LEGACY_OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+        OPENAGENTS_TOOL_LABOR_SCOPE, OPENAGENTS_TOOL_PANE_OPEN, OPENAGENTS_TOOL_SWAP_QUOTE,
         OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
         OPENAGENTS_TOOL_TREASURY_TRANSFER, ToolBridgeResultEnvelope, cad_action_from_key,
-        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request, normalize_key,
+        cad_checkpoint_payload, cad_parse_retry_prompt, decode_tool_call_request,
+        enforce_labor_evidence_uri_scope, enforce_matching_labor_contract_scope, normalize_key,
         pane_action_to_hit_action, pane_kind_key, parse_blink_execution_payload_from_json,
         parse_blink_quote_terms_from_json, parse_bool_env_override, parse_goal_rollout_stage,
         parse_swap_direction, parse_swap_unit, parse_treasury_transfer_asset,
@@ -4699,6 +5287,29 @@ mod tests {
             .expect("epoch time available")
             .as_nanos();
         std::env::temp_dir().join(format!("openagents-tool-bridge-{test_name}-{now_nanos}.js"))
+    }
+
+    fn fixture_labor_binding() -> crate::labor_orchestrator::CodexLaborBinding {
+        crate::labor_orchestrator::orchestrate_codex_turn(
+            crate::labor_orchestrator::CodexTurnExecutionRequest {
+                trigger: crate::labor_orchestrator::CodexRunTrigger::AutonomousGoal {
+                    goal_id: "goal-earn".to_string(),
+                    goal_title: "Earn bitcoin".to_string(),
+                },
+                submitted_at_epoch_ms: 1_000,
+                thread_id: "thread".to_string(),
+                input: vec![codex_client::UserInput::Text {
+                    text: "earn bitcoin".to_string(),
+                    text_elements: Vec::new(),
+                }],
+                cwd: Some(PathBuf::from("/repo")),
+                approval_policy: Some(codex_client::AskForApproval::Never),
+                sandbox_policy: Some(codex_client::SandboxPolicy::DangerFullAccess),
+                model: Some("gpt-5.2-codex".to_string()),
+            },
+        )
+        .labor_binding
+        .expect("economically meaningful turns should create labor bindings")
     }
 
     #[test]
@@ -4760,6 +5371,82 @@ mod tests {
             .decode_arguments::<PaneArgs>()
             .expect_err("missing required field should fail");
         assert_eq!(error.code, "OA-TOOL-ARGS-INVALID-SHAPE");
+    }
+
+    #[test]
+    fn decode_accepts_labor_tools_and_contract_identifiers() {
+        let binding = fixture_labor_binding();
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_LABOR_SCOPE,
+            format!(
+                "{{\"work_unit_id\":\"{}\",\"contract_id\":\"{}\"}}",
+                binding.work_unit_id, binding.contract_id
+            )
+            .as_str(),
+        ))
+        .expect("labor scope tool should decode");
+        assert_eq!(decoded.tool, OPENAGENTS_TOOL_LABOR_SCOPE);
+    }
+
+    #[test]
+    fn labor_scope_enforcement_rejects_mismatched_contract_identifiers() {
+        let binding = fixture_labor_binding();
+        let decoded = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_LABOR_SCOPE,
+            r#"{"work_unit_id":"work_unit.wrong","contract_id":"contract.wrong"}"#,
+        ))
+        .expect("labor scope decode should succeed");
+
+        let error = enforce_matching_labor_contract_scope(&binding, &decoded)
+            .expect("mismatched ids should be rejected");
+        assert_eq!(error.code, "OA-LABOR-SCOPE-MISMATCH");
+    }
+
+    #[test]
+    fn labor_evidence_attach_flow_enforces_uri_scope_and_accepts_in_scope_artifacts() {
+        let mut binding = fixture_labor_binding();
+        let scope_root = binding.artifact_scope_root();
+        let in_scope_uri = format!("{scope_root}artifacts/tool-log");
+        let out_of_scope_uri = "oa://autopilot/codex/other-work-unit/artifacts/tool-log";
+
+        let in_scope = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+            format!(
+                "{{\"work_unit_id\":\"{}\",\"contract_id\":\"{}\",\"kind\":\"tool_log\",\"uri\":\"{}\",\"digest\":\"sha256:tool-log\"}}",
+                binding.work_unit_id, binding.contract_id, in_scope_uri
+            )
+            .as_str(),
+        ))
+        .expect("in-scope attach decode should succeed");
+        assert!(enforce_matching_labor_contract_scope(&binding, &in_scope).is_none());
+        assert!(enforce_labor_evidence_uri_scope(&binding, &in_scope).is_none());
+        let args: super::LaborEvidenceAttachArgs = in_scope
+            .decode_arguments()
+            .expect("attach args should decode");
+        binding
+            .attach_evidence_ref(
+                openagents_kernel_core::receipts::EvidenceRef::new(
+                    args.kind,
+                    args.uri,
+                    args.digest,
+                ),
+                false,
+            )
+            .expect("in-scope evidence should attach");
+        assert_eq!(binding.attached_evidence_refs.len(), 1);
+
+        let out_of_scope = decode_tool_call_request(&request(
+            OPENAGENTS_TOOL_LABOR_EVIDENCE_ATTACH,
+            format!(
+                "{{\"work_unit_id\":\"{}\",\"contract_id\":\"{}\",\"kind\":\"tool_log\",\"uri\":\"{}\",\"digest\":\"sha256:tool-log\"}}",
+                binding.work_unit_id, binding.contract_id, out_of_scope_uri
+            )
+            .as_str(),
+        ))
+        .expect("out-of-scope attach decode should succeed");
+        let error = enforce_labor_evidence_uri_scope(&binding, &out_of_scope)
+            .expect("out-of-scope URI should be rejected");
+        assert_eq!(error.code, "OA-LABOR-EVIDENCE-OUT-OF-SCOPE");
     }
 
     #[test]
