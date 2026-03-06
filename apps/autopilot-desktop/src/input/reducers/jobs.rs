@@ -1251,18 +1251,6 @@ fn hydrate_request_runtime_context(state: &mut RenderState, request_id: &str) {
                 .first()
                 .and_then(|submitted| submitted.skill_scope_id.clone())
         });
-        request.skl_manifest_a = request
-            .skl_manifest_a
-            .clone()
-            .or_else(|| state.skl_lane.manifest_a.clone());
-        request.skl_manifest_event_id = request
-            .skl_manifest_event_id
-            .clone()
-            .or_else(|| state.skl_lane.manifest_event_id.clone());
-        request.ac_envelope_event_id = request
-            .ac_envelope_event_id
-            .clone()
-            .or_else(|| state.ac_lane.envelope_event_id.clone());
     }
 }
 

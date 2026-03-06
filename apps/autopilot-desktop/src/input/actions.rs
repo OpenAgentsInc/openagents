@@ -3688,20 +3688,7 @@ fn submit_signed_network_request(
         target_provider_pubkeys.as_slice(),
     )?;
     let published_request_id = request_event.id.clone();
-    let scope = if let Some(skill_scope) = skill_scope_id.as_deref() {
-        format!("skill:{skill_scope}:constraints")
-    } else {
-        format!("network:{request_type}:{budget_sats}")
-    };
-    let command_seq = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
-        scope,
-        request_type: request_type.clone(),
-        payload: payload.clone(),
-        skill_scope_id: skill_scope_id.clone(),
-        credit_envelope_ref: credit_envelope_ref.clone(),
-        requested_sats: budget_sats,
-        timeout_seconds,
-    })?;
+    let command_seq = state.reserve_runtime_command_seq();
     let request_id = state
         .network_requests
         .queue_request_submission(NetworkRequestSubmission {
@@ -3716,6 +3703,11 @@ fn submit_signed_network_request(
             timeout_seconds,
             authority_command_seq: command_seq,
         })?;
+    state.network_requests.mark_direct_authority_ready(
+        request_id.as_str(),
+        "relay-direct",
+        Some(published_request_id.as_str()),
+    );
     state.provider_runtime.last_result = Some(format!("Queued network request {request_id}"));
 
     let tracked_request_ids = state
@@ -4393,19 +4385,7 @@ fn queue_starter_demand_request(
     })
     .to_string();
     let timeout_seconds = STARTER_DEMAND_REQUEST_TIMEOUT_SECONDS;
-    let scope = format!(
-        "starter.quest:{}:{}",
-        starter_job.job_id, starter_job.payout_sats
-    );
-    let command_seq = state.queue_ac_command(AcCreditCommand::PublishCreditIntent {
-        scope,
-        request_type: request_type.clone(),
-        payload: payload.clone(),
-        skill_scope_id: None,
-        credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
-        requested_sats: starter_job.payout_sats,
-        timeout_seconds,
-    })?;
+    let command_seq = state.reserve_runtime_command_seq();
     let request_id = state
         .network_requests
         .queue_request_submission(NetworkRequestSubmission {
@@ -4415,11 +4395,16 @@ fn queue_starter_demand_request(
             resolution_mode: crate::app_state::BuyerResolutionMode::Race,
             target_provider_pubkeys: Vec::new(),
             skill_scope_id: None,
-            credit_envelope_ref: state.ac_lane.envelope_event_id.clone(),
+            credit_envelope_ref: None,
             budget_sats: starter_job.payout_sats,
             timeout_seconds,
             authority_command_seq: command_seq,
         })?;
+    state.network_requests.mark_direct_authority_ready(
+        request_id.as_str(),
+        "starter-hosted",
+        Some(request_id.as_str()),
+    );
 
     let starter_request = JobInboxNetworkRequest {
         request_id: request_id.clone(),
@@ -4441,7 +4426,7 @@ fn queue_starter_demand_request(
         skl_manifest_event_id: None,
         sa_tick_request_event_id: Some(request_id.clone()),
         sa_tick_result_event_id: None,
-        ac_envelope_event_id: state.ac_lane.envelope_event_id.clone(),
+        ac_envelope_event_id: None,
         price_sats: starter_job.payout_sats,
         ttl_seconds: timeout_seconds,
         validation: JobInboxValidation::Valid,
