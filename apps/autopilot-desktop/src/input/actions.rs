@@ -3518,10 +3518,12 @@ pub(super) fn run_relay_connections_action(
         }
         RelayConnectionsPaneAction::AddRelay => {
             let relay_url = state.relay_connections_inputs.relay_url.get_value();
-            match state.relay_connections.add_relay(relay_url) {
+            match state.settings.add_backup_relay(relay_url, true) {
                 Ok(()) => {
-                    state.provider_runtime.last_result =
-                        state.relay_connections.last_action.clone();
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
+                    state.provider_runtime.last_result = state.settings.last_action.clone();
                     let _ = state.sync_provider_nip90_lane_relays();
                 }
                 Err(error) => {
@@ -3530,9 +3532,17 @@ pub(super) fn run_relay_connections_action(
             }
         }
         RelayConnectionsPaneAction::RemoveSelected => {
-            match state.relay_connections.remove_selected() {
-                Ok(url) => {
-                    state.provider_runtime.last_result = Some(format!("removed relay {url}"));
+            let selected = state.relay_connections.selected_url.clone();
+            match selected
+                .as_deref()
+                .ok_or_else(|| "Select a relay first".to_string())
+                .and_then(|relay_url| state.settings.remove_configured_relay(relay_url, true))
+            {
+                Ok(message) => {
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
+                    state.provider_runtime.last_result = Some(message);
                     let _ = state.sync_provider_nip90_lane_relays();
                 }
                 Err(error) => {
@@ -5011,7 +5021,10 @@ pub(super) fn run_settings_action(
                     state
                         .relay_connections_inputs
                         .relay_url
-                        .set_value(state.settings.document.relay_url.clone());
+                        .set_value(state.settings.document.primary_relay_url.clone());
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
                     let _ = state.sync_provider_nip90_lane_relays();
                     state
                         .spark_inputs
@@ -5052,7 +5065,10 @@ pub(super) fn run_settings_action(
                     state
                         .relay_connections_inputs
                         .relay_url
-                        .set_value(state.settings.document.relay_url.clone());
+                        .set_value(state.settings.document.primary_relay_url.clone());
+                    state.relay_connections.replace_configured_relays(
+                        state.settings.document.configured_relay_urls().as_slice(),
+                    );
                     let _ = state.sync_provider_nip90_lane_relays();
                     state
                         .spark_inputs
