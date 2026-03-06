@@ -14,7 +14,7 @@ The MVP is intentionally narrow. One user goes online, offers spare compute to t
 
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
 
-## The Agents Marketplace
+## The OpenAgents Marketplace
 
 The OpenAgents Marketplace consists of five interlocking markets: compute, data, labor, liquidity, and risk.
 
