@@ -8996,30 +8996,6 @@ fn severity_for_notional_sats(amount_sats: u64) -> SeverityClass {
     }
 }
 
-impl FeedbackLatencyClass {
-    fn label(self) -> &'static str {
-        match self {
-            FeedbackLatencyClass::FeedbackLatencyClassUnspecified => "unspecified",
-            FeedbackLatencyClass::Instant => "instant",
-            FeedbackLatencyClass::Short => "short",
-            FeedbackLatencyClass::Medium => "medium",
-            FeedbackLatencyClass::Long => "long",
-        }
-    }
-}
-
-impl SeverityClass {
-    fn label(self) -> &'static str {
-        match self {
-            SeverityClass::SeverityClassUnspecified => "unspecified",
-            SeverityClass::Low => "low",
-            SeverityClass::Medium => "medium",
-            SeverityClass::High => "high",
-            SeverityClass::Critical => "critical",
-        }
-    }
-}
-
 impl CertificationState {
     fn label(self) -> &'static str {
         match self {

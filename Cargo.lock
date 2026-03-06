@@ -347,6 +347,7 @@ dependencies = [
  "nostr 0.1.0",
  "nostr-client",
  "openagents-cad",
+ "openagents-kernel-core",
  "openagents-spark",
  "pollster",
  "reqwest",
@@ -4154,6 +4155,16 @@ dependencies = [
 [[package]]
 name = "openagents-ios-domain"
 version = "0.1.0"
+
+[[package]]
+name = "openagents-kernel-core"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bitcoin",
+ "serde",
+ "serde_json",
+]
 
 [[package]]
 name = "openagents-spark"
