@@ -4,6 +4,18 @@ use crate::bitcoin_display::format_sats_amount;
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Managed chat relay publish transport is not wired yet; local echo saved for retry.";
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ManagedChatComposerIntent {
+    ChannelMessage {
+        content: String,
+        reply_reference: Option<String>,
+    },
+    Reaction {
+        message_reference: String,
+        reaction: String,
+    },
+}
+
 pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     run_chat_submit_action_with_trigger(
         state,
@@ -231,11 +243,7 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
             Some("No Nostr identity is loaded for managed chat publishing.".to_string());
         return true;
     };
-    let Some(group_id) = state
-        .autopilot_chat
-        .active_managed_chat_group()
-        .map(|group| group.group_id.clone())
-    else {
+    let Some(group) = state.autopilot_chat.active_managed_chat_group().cloned() else {
         state.autopilot_chat.last_error = Some("No managed chat group is selected.".to_string());
         return true;
     };
@@ -243,37 +251,254 @@ fn run_managed_chat_submit_action(state: &mut crate::app_state::RenderState) -> 
         state.autopilot_chat.last_error = Some("No managed chat channel is selected.".to_string());
         return true;
     };
+    let intent = match parse_managed_chat_composer_intent(&prompt) {
+        Ok(intent) => intent,
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    };
 
-    let outbound_message =
-        match build_managed_chat_outbound_message(identity, &group_id, &channel, &prompt) {
-            Ok(outbound_message) => outbound_message,
-            Err(error) => {
+    match intent {
+        ManagedChatComposerIntent::Reaction {
+            message_reference,
+            reaction,
+        } => {
+            let Some(target_message) =
+                resolve_managed_chat_message_reference(&state.autopilot_chat, &message_reference)
+            else {
+                state.autopilot_chat.last_error = Some(format!(
+                    "Unknown managed chat message reference for reaction: {message_reference}"
+                ));
+                return true;
+            };
+            if let Err(error) = build_managed_chat_reaction_event(
+                identity,
+                &group.group_id,
+                &channel,
+                target_message,
+                &reaction,
+            ) {
                 state.autopilot_chat.last_error = Some(error);
                 return true;
             }
-        };
-    let event_id = outbound_message.event.id.clone();
+            state.chat_inputs.composer.set_value(String::new());
+            state.autopilot_chat.last_error = Some(format!(
+                "{MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED} Reaction {reaction} for {} was not published.",
+                target_message.event_id
+            ));
+            true
+        }
+        ManagedChatComposerIntent::ChannelMessage {
+            content,
+            reply_reference,
+        } => {
+            let reply_target = match reply_reference.as_deref() {
+                Some(reference) => {
+                    let Some(target_message) =
+                        resolve_managed_chat_message_reference(&state.autopilot_chat, reference)
+                    else {
+                        state.autopilot_chat.last_error = Some(format!(
+                            "Unknown managed chat message reference for reply: {reference}"
+                        ));
+                        return true;
+                    };
+                    Some(target_message)
+                }
+                None => None,
+            };
+            let mentions = resolve_managed_chat_mentions(&group, &content);
+            let outbound_message = match build_managed_chat_outbound_message(
+                identity,
+                &group.group_id,
+                &channel,
+                &content,
+                reply_target,
+                mentions,
+            ) {
+                Ok(outbound_message) => outbound_message,
+                Err(error) => {
+                    state.autopilot_chat.last_error = Some(error);
+                    return true;
+                }
+            };
+            let event_id = outbound_message.event.id.clone();
 
-    state.chat_inputs.composer.set_value(String::new());
-    if let Err(error) = state
-        .autopilot_chat
-        .managed_chat_projection
-        .queue_outbound_message(outbound_message)
-    {
-        state.autopilot_chat.last_error = Some(error);
-        return true;
+            state.chat_inputs.composer.set_value(String::new());
+            if let Err(error) = state
+                .autopilot_chat
+                .managed_chat_projection
+                .queue_outbound_message(outbound_message)
+            {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.autopilot_chat.reset_transcript_scroll();
+            if let Err(error) = state
+                .autopilot_chat
+                .managed_chat_projection
+                .fail_outbound_message(&event_id, MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED)
+            {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+            state.autopilot_chat.last_error =
+                Some(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED.to_string());
+            true
+        }
     }
-    state.autopilot_chat.reset_transcript_scroll();
-    if let Err(error) = state
-        .autopilot_chat
-        .managed_chat_projection
-        .fail_outbound_message(&event_id, MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED)
-    {
-        state.autopilot_chat.last_error = Some(error);
-        return true;
+}
+
+fn parse_managed_chat_composer_intent(prompt: &str) -> Result<ManagedChatComposerIntent, String> {
+    let trimmed = prompt.trim();
+    if let Some(rest) = trimmed.strip_prefix("reply ") {
+        let mut parts = rest.trim().splitn(2, char::is_whitespace);
+        let reference = parts
+            .next()
+            .map(str::trim)
+            .filter(|reference| !reference.is_empty())
+            .ok_or_else(|| {
+                "Reply syntax is `reply <message-number|id-prefix> <text>`".to_string()
+            })?;
+        let content = parts
+            .next()
+            .map(str::trim)
+            .filter(|content| !content.is_empty())
+            .ok_or_else(|| {
+                "Reply syntax is `reply <message-number|id-prefix> <text>`".to_string()
+            })?;
+        return Ok(ManagedChatComposerIntent::ChannelMessage {
+            content: content.to_string(),
+            reply_reference: Some(reference.to_string()),
+        });
     }
-    state.autopilot_chat.last_error = Some(MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED.to_string());
-    true
+    if let Some(rest) = trimmed.strip_prefix("react ") {
+        let mut parts = rest.trim().splitn(2, char::is_whitespace);
+        let reference = parts
+            .next()
+            .map(str::trim)
+            .filter(|reference| !reference.is_empty())
+            .ok_or_else(|| {
+                "Reaction syntax is `react <message-number|id-prefix> <emoji>`".to_string()
+            })?;
+        let reaction = parts
+            .next()
+            .map(str::trim)
+            .filter(|reaction| !reaction.is_empty())
+            .unwrap_or("+");
+        return Ok(ManagedChatComposerIntent::Reaction {
+            message_reference: reference.to_string(),
+            reaction: reaction.to_string(),
+        });
+    }
+    Ok(ManagedChatComposerIntent::ChannelMessage {
+        content: trimmed.to_string(),
+        reply_reference: None,
+    })
+}
+
+fn resolve_managed_chat_message_reference<'a>(
+    autopilot_chat: &'a crate::app_state::AutopilotChatState,
+    reference: &str,
+) -> Option<&'a crate::app_state::ManagedChatMessageProjection> {
+    let reference = reference.trim();
+    if reference.is_empty() {
+        return None;
+    }
+
+    let active_messages = autopilot_chat.active_managed_chat_messages();
+    if let Some(index_ref) = reference.strip_prefix('#').or(Some(reference))
+        && let Ok(index) = index_ref.parse::<usize>()
+        && index > 0
+    {
+        return active_messages.get(index - 1).copied();
+    }
+
+    let normalized = reference.trim_start_matches('#').to_ascii_lowercase();
+    active_messages
+        .into_iter()
+        .find(|message| message.event_id.starts_with(&normalized))
+}
+
+fn resolve_managed_chat_mentions(
+    group: &crate::app_state::ManagedChatGroupProjection,
+    content: &str,
+) -> Vec<nostr::ManagedChatMention> {
+    let mut matched_pubkeys = Vec::new();
+    for token in content.split_whitespace() {
+        let Some(prefix) = parse_managed_chat_mention_prefix(token) else {
+            continue;
+        };
+        let matches = group
+            .members
+            .iter()
+            .map(|member| member.pubkey.as_str())
+            .filter(|pubkey| pubkey.starts_with(&prefix))
+            .collect::<Vec<_>>();
+        if matches.len() == 1 {
+            matched_pubkeys.push(matches[0].to_string());
+        }
+    }
+    matched_pubkeys.sort();
+    matched_pubkeys.dedup();
+    matched_pubkeys
+        .into_iter()
+        .filter_map(|pubkey| nostr::ManagedChatMention::new(pubkey).ok())
+        .collect()
+}
+
+fn parse_managed_chat_mention_prefix(token: &str) -> Option<String> {
+    let mention = token.strip_prefix('@')?;
+    let normalized = mention
+        .trim_matches(|ch: char| !ch.is_ascii_hexdigit())
+        .to_ascii_lowercase();
+    (normalized.len() >= 4).then_some(normalized)
+}
+
+fn build_managed_chat_reaction_event(
+    identity: &nostr::NostrIdentity,
+    group_id: &str,
+    channel: &crate::app_state::ManagedChatChannelProjection,
+    target_message: &crate::app_state::ManagedChatMessageProjection,
+    reaction: &str,
+) -> Result<nostr::Event, String> {
+    let relay_url = channel.relay_url.as_deref().ok_or_else(|| {
+        format!(
+            "Managed chat channel {} does not advertise a relay target yet.",
+            channel.channel_id
+        )
+    })?;
+    let now_ms = current_epoch_millis();
+    let created_at = (now_ms / 1_000).max(1);
+    let secret_key_bytes = hex::decode(&identity.private_key_hex)
+        .map_err(|error| format!("Invalid Nostr private key hex: {error}"))?;
+    let secret_key = secret_key_bytes
+        .try_into()
+        .map_err(|_| "Invalid Nostr private key length".to_string())?;
+    nostr::finalize_event(
+        &nostr::EventTemplate {
+            created_at,
+            kind: 7,
+            tags: vec![
+                vec!["h".to_string(), group_id.to_string()],
+                vec![
+                    "e".to_string(),
+                    target_message.event_id.clone(),
+                    relay_url.to_string(),
+                ],
+                vec![
+                    "p".to_string(),
+                    target_message.author_pubkey.clone(),
+                    relay_url.to_string(),
+                ],
+                vec!["k".to_string(), "42".to_string()],
+                vec!["nonce".to_string(), now_ms.to_string()],
+            ],
+            content: reaction.trim().to_string(),
+        },
+        &secret_key,
+    )
+    .map_err(|error| format!("Failed to sign managed chat reaction: {error}"))
 }
 
 fn build_managed_chat_outbound_message(
@@ -281,6 +506,8 @@ fn build_managed_chat_outbound_message(
     group_id: &str,
     channel: &crate::app_state::ManagedChatChannelProjection,
     content: &str,
+    reply_target: Option<&crate::app_state::ManagedChatMessageProjection>,
+    mentions: Vec<nostr::ManagedChatMention>,
 ) -> Result<crate::app_state::ManagedChatOutboundMessage, String> {
     let relay_url = channel.relay_url.as_deref().ok_or_else(|| {
         format!(
@@ -290,16 +517,30 @@ fn build_managed_chat_outbound_message(
     })?;
     let now_ms = current_epoch_millis();
     let created_at = (now_ms / 1_000).max(1);
-    let mut tags = nostr::ManagedChannelMessageEvent::new(
+    let mut message_event = nostr::ManagedChannelMessageEvent::new(
         group_id,
         &channel.channel_id,
         relay_url,
         content,
         created_at,
     )
-    .map_err(|error| format!("Failed to build managed chat message: {error}"))?
-    .to_tags()
-    .map_err(|error| format!("Failed to encode managed chat message tags: {error}"))?;
+    .map_err(|error| format!("Failed to build managed chat message: {error}"))?;
+    if let Some(reply_target) = reply_target {
+        let reply = nostr::ManagedMessageReply::new(
+            &reply_target.event_id,
+            relay_url,
+            &reply_target.author_pubkey,
+        )
+        .map_err(|error| format!("Failed to build managed chat reply target: {error}"))?;
+        message_event = message_event.with_reply(reply);
+    }
+    if !mentions.is_empty() {
+        message_event = message_event.with_mentions(mentions);
+    }
+
+    let mut tags = message_event
+        .to_tags()
+        .map_err(|error| format!("Failed to encode managed chat message tags: {error}"))?;
     tags.push(vec!["nonce".to_string(), now_ms.to_string()]);
 
     let secret_key_bytes = hex::decode(&identity.private_key_hex)
@@ -6406,9 +6647,12 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
 #[cfg(test)]
 mod tests {
     use super::{
-        build_nip90_request_event_for_network_submission, classify_provider_failure,
-        extract_target_provider_pubkeys, is_taxonomy_failure_detail, loop_integrity_alert_specs,
-        nip90_request_kind_for_request_type, resolve_wallet_blink_env_from_secure_values,
+        ManagedChatComposerIntent, build_managed_chat_outbound_message,
+        build_managed_chat_reaction_event, build_nip90_request_event_for_network_submission,
+        classify_provider_failure, extract_target_provider_pubkeys, is_taxonomy_failure_detail,
+        loop_integrity_alert_specs, nip90_request_kind_for_request_type,
+        parse_managed_chat_composer_intent, parse_managed_chat_mention_prefix,
+        resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
         stable_sats_period_convert_totals_from_receipts,
         stable_sats_real_round_phase_from_operation_count, taxonomy_failure_detail,
@@ -6855,5 +7099,111 @@ mod tests {
             loop_integrity_alert_specs(Some(45), Some(9_500), Some(10_000), Some(90));
         assert_eq!(healthy_specs.len(), 4);
         assert!(healthy_specs.iter().all(|spec| !spec.active));
+    }
+
+    #[test]
+    fn managed_chat_composer_intent_parses_reply_and_reaction_syntax() {
+        assert_eq!(
+            parse_managed_chat_composer_intent("reply 3 acknowledged").unwrap(),
+            ManagedChatComposerIntent::ChannelMessage {
+                content: "acknowledged".to_string(),
+                reply_reference: Some("3".to_string()),
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("react #2 :wave:").unwrap(),
+            ManagedChatComposerIntent::Reaction {
+                message_reference: "#2".to_string(),
+                reaction: ":wave:".to_string(),
+            }
+        );
+        assert_eq!(
+            parse_managed_chat_composer_intent("plain message").unwrap(),
+            ManagedChatComposerIntent::ChannelMessage {
+                content: "plain message".to_string(),
+                reply_reference: None,
+            }
+        );
+        assert!(parse_managed_chat_composer_intent("reply 2").is_err());
+    }
+
+    #[test]
+    fn managed_chat_mention_prefix_parser_requires_hex_prefixes() {
+        assert_eq!(
+            parse_managed_chat_mention_prefix("@abcd1234,"),
+            Some("abcd1234".to_string())
+        );
+        assert_eq!(parse_managed_chat_mention_prefix("@ops"), None);
+        assert_eq!(parse_managed_chat_mention_prefix("plain"), None);
+    }
+
+    #[test]
+    fn managed_chat_event_builders_include_reply_mentions_and_reaction_tags() {
+        let channel = crate::app_state::ManagedChatChannelProjection {
+            channel_id: "aa".repeat(32),
+            group_id: "oa-main".to_string(),
+            room_mode: nostr::ManagedRoomMode::ManagedChannel,
+            metadata: nostr::ChannelMetadata::new("ops", "", ""),
+            hints: nostr::ManagedChannelHints::default(),
+            relay_url: Some("wss://relay.openagents.test".to_string()),
+            message_ids: Vec::new(),
+            root_message_ids: Vec::new(),
+            unread_count: 0,
+            latest_message_id: None,
+        };
+        let target_message = crate::app_state::ManagedChatMessageProjection {
+            event_id: "bb".repeat(32),
+            group_id: "oa-main".to_string(),
+            channel_id: channel.channel_id.clone(),
+            author_pubkey: "11".repeat(32),
+            content: "root".to_string(),
+            created_at: 20,
+            reply_to_event_id: None,
+            mention_pubkeys: Vec::new(),
+            reaction_summaries: Vec::new(),
+            reply_child_ids: Vec::new(),
+            delivery_state: crate::app_state::ManagedChatDeliveryState::Confirmed,
+            delivery_error: None,
+            attempt_count: 0,
+        };
+
+        let outbound = build_managed_chat_outbound_message(
+            &fixture_identity(),
+            "oa-main",
+            &channel,
+            "ack @2222",
+            Some(&target_message),
+            vec![nostr::ManagedChatMention::new("22".repeat(32)).unwrap()],
+        )
+        .unwrap();
+        let parsed_message =
+            nostr::ManagedChannelMessageEvent::from_event(&outbound.event).unwrap();
+        assert_eq!(
+            parsed_message
+                .reply_to
+                .as_ref()
+                .map(|reply| reply.event_id.as_str()),
+            Some(target_message.event_id.as_str())
+        );
+        assert_eq!(parsed_message.mentions.len(), 1);
+        assert_eq!(parsed_message.mentions[0].pubkey, "22".repeat(32));
+
+        let reaction = build_managed_chat_reaction_event(
+            &fixture_identity(),
+            "oa-main",
+            &channel,
+            &target_message,
+            "+",
+        )
+        .unwrap();
+        assert_eq!(reaction.kind, 7);
+        assert!(reaction.tags.iter().any(|tag| {
+            tag.first().map(String::as_str) == Some("e")
+                && tag.get(1).map(String::as_str) == Some(target_message.event_id.as_str())
+        }));
+        assert!(reaction.tags.iter().any(|tag| {
+            tag.first().map(String::as_str) == Some("p")
+                && tag.get(1).map(String::as_str) == Some(target_message.author_pubkey.as_str())
+        }));
     }
 }
