@@ -1,3 +1,11 @@
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+
 //! Integration tests for NIP-90 DVM job types and workflows
 
 use nostr::nip90::{

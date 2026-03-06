@@ -627,9 +627,7 @@ pub fn validate_cad_intent(intent: &CadIntent) -> Result<(), CadIntentValidation
                 PARALLEL_JAW_GRIPPER_MIN_PRINT_CLEARANCE_MM,
                 PARALLEL_JAW_GRIPPER_MAX_PRINT_CLEARANCE_MM,
             )?;
-            if payload.compliant_joint_count < PARALLEL_JAW_GRIPPER_MIN_COMPLIANT_JOINT_COUNT
-                || payload.compliant_joint_count > PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT
-            {
+            if payload.compliant_joint_count > PARALLEL_JAW_GRIPPER_MAX_COMPLIANT_JOINT_COUNT {
                 return Err(CadIntentValidationError::new(
                     "CAD-INTENT-INVALID-RANGE",
                     Some("CreateParallelJawGripperSpec".to_string()),

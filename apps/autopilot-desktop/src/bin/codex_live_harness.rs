@@ -1,4 +1,11 @@
 #![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::unwrap_used
+)]
+#![allow(
     clippy::print_stdout,
     reason = "This binary is a CLI diagnostic harness with intentional console output."
 )]

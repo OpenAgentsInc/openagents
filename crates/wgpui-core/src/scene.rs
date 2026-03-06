@@ -258,7 +258,7 @@ impl MeshPrimitive {
         if self.indices.is_empty() {
             return Err(MeshPrimitiveError::EmptyIndices);
         }
-        if self.indices.len() % 3 != 0 {
+        if !self.indices.len().is_multiple_of(3) {
             return Err(MeshPrimitiveError::InvalidTriangleIndexCount {
                 count: self.indices.len(),
             });

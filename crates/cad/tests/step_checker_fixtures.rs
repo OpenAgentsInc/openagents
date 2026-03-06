@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::expect_used, clippy::panic, clippy::pedantic, clippy::print_stderr, clippy::print_stdout, clippy::unwrap_used)]
+
 use std::path::{Path, PathBuf};
 
 use openagents_cad::export::export_step_from_mesh;

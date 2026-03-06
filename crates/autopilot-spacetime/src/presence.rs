@@ -364,7 +364,6 @@ impl ProviderPresenceRegistry {
     }
 }
 
-#[must_use]
 pub fn sign_nostr_presence_challenge(
     private_key_hex: &str,
     node_id: &str,

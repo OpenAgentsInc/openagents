@@ -8,19 +8,14 @@ use crate::intent::{
 };
 use crate::{CadError, CadResult};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum CadDesignProfile {
+    #[default]
     Rack,
     ParallelJawGripper,
     ParallelJawGripperUnderactuated,
     ThreeFingerThumb,
     HumanoidHandV1,
-}
-
-impl Default for CadDesignProfile {
-    fn default() -> Self {
-        Self::Rack
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]

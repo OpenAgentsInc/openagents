@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::expect_used, clippy::panic, clippy::pedantic, clippy::print_stderr, clippy::print_stdout, clippy::unwrap_used)]
+
 use std::collections::{BTreeMap, BTreeSet};
 
 use openagents_cad::eval::evaluate_feature_graph_deterministic;

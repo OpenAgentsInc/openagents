@@ -511,12 +511,10 @@ impl CadSketchModel {
 
     pub fn constraint_status(&self) -> CadResult<CadSketchConstraintStatus> {
         let dof = self.degrees_of_freedom()?;
-        Ok(if dof < 0 {
-            CadSketchConstraintStatus::OverConstrained
-        } else if dof == 0 {
-            CadSketchConstraintStatus::FullyConstrained
-        } else {
-            CadSketchConstraintStatus::UnderConstrained
+        Ok(match dof.cmp(&0) {
+            std::cmp::Ordering::Less => CadSketchConstraintStatus::OverConstrained,
+            std::cmp::Ordering::Equal => CadSketchConstraintStatus::FullyConstrained,
+            std::cmp::Ordering::Greater => CadSketchConstraintStatus::UnderConstrained,
         })
     }
 
@@ -738,7 +736,7 @@ impl CadSketchModel {
                     remediation_hint:
                         "verify constraint references and geometric validity before solving"
                             .to_string(),
-                })
+                });
             }
         }
 
@@ -2025,8 +2023,8 @@ fn estimate_matrix_rank(matrix: &[Vec<f64>], tolerance: f64) -> usize {
     while rank < row_count && pivot_column < column_count {
         let mut pivot_row = rank;
         let mut pivot_abs = work[pivot_row][pivot_column].abs();
-        for row in (rank + 1)..row_count {
-            let candidate_abs = work[row][pivot_column].abs();
+        for (row, candidate_row) in work.iter().enumerate().skip(rank + 1) {
+            let candidate_abs = candidate_row[pivot_column].abs();
             if candidate_abs > pivot_abs {
                 pivot_abs = candidate_abs;
                 pivot_row = row;
@@ -2040,13 +2038,20 @@ fn estimate_matrix_rank(matrix: &[Vec<f64>], tolerance: f64) -> usize {
 
         work.swap(rank, pivot_row);
         let pivot = work[rank][pivot_column];
-        for row in (rank + 1)..row_count {
-            let factor = work[row][pivot_column] / pivot;
+        let (processed_rows, remaining_rows) = work.split_at_mut(rank + 1);
+        let pivot_row_values = processed_rows[rank].clone();
+        for row_values in remaining_rows.iter_mut() {
+            let factor = row_values[pivot_column] / pivot;
             if factor.abs() <= tolerance {
                 continue;
             }
-            for column in pivot_column..column_count {
-                work[row][column] -= factor * work[rank][column];
+            for (column, value) in row_values
+                .iter_mut()
+                .enumerate()
+                .take(column_count)
+                .skip(pivot_column)
+            {
+                *value -= factor * pivot_row_values[column];
             }
         }
         rank += 1;

@@ -142,24 +142,6 @@ impl TextInput {
         }
     }
 
-    /// Vertical scroll offset for overflowed multiline content.
-    /// Keeps the latest/cursor line visible when text exceeds input height.
-    fn vertical_scroll_offset(&self, bounds: Bounds, line_height: f32, line_count: usize) -> f32 {
-        let inner_height = (bounds.size.height - self.padding.1 * 2.0).max(line_height);
-        let content_height = line_height * line_count.max(1) as f32;
-        let max_scroll = (content_height - inner_height).max(0.0);
-        if max_scroll <= 0.0 {
-            return 0.0;
-        }
-
-        if self.focused {
-            let cursor_bottom = (self.cursor_line() + 1) as f32 * line_height;
-            (cursor_bottom - inner_height).clamp(0.0, max_scroll)
-        } else {
-            max_scroll
-        }
-    }
-
     pub fn with_id(mut self, id: ComponentId) -> Self {
         self.id = Some(id);
         self

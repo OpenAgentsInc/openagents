@@ -9,17 +9,12 @@ use crate::mcp_tools::{
     cad_document_from_compact, cad_document_to_compact,
 };
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TextToCadModelProfile {
+    #[default]
     Cad0,
     Cad0Mini,
-}
-
-impl Default for TextToCadModelProfile {
-    fn default() -> Self {
-        Self::Cad0
-    }
 }
 
 impl TextToCadModelProfile {
@@ -557,10 +552,8 @@ fn extract_numeric_tokens(prompt: &str) -> Vec<f64> {
         }
     }
 
-    if !current.is_empty() {
-        if let Ok(value) = current.parse::<f64>() {
-            numbers.push(value);
-        }
+    if !current.is_empty() && let Ok(value) = current.parse::<f64>() {
+        numbers.push(value);
     }
 
     numbers

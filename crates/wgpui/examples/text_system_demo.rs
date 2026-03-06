@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic, unfulfilled_lint_expectations)]
+
 //! Text System Demo - Standalone Binary
 //!
 //! Demonstrates the upgraded text system including:

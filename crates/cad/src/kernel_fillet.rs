@@ -305,7 +305,7 @@ fn build_edge_modified_solid(
         .saturating_mul(3)
         .max(counts.edge_count)
         .max(3);
-    let minimum_edges_for_loops = (face_count + 1) / 2;
+    let minimum_edges_for_loops = face_count.div_ceil(2);
     if edge_count < minimum_edges_for_loops {
         edge_count = minimum_edges_for_loops;
     }
@@ -365,8 +365,7 @@ fn build_edge_modified_solid(
     }
 
     let mut face_ids = Vec::with_capacity(face_count);
-    for idx in 0..face_count {
-        let half_edge = loop_half_edges[idx];
+    for (idx, half_edge) in loop_half_edges.iter().copied().enumerate().take(face_count) {
         let loop_id = topo.add_loop(&[half_edge])?;
         let face_id = topo.add_face(
             loop_id,

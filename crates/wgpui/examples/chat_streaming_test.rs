@@ -1,3 +1,5 @@
+#![allow(clippy::all, clippy::pedantic, unfulfilled_lint_expectations)]
+
 //! E2E Test: Autopilot Chat Streaming
 //!
 //! This example demonstrates testing the autopilot chat flow with simulated

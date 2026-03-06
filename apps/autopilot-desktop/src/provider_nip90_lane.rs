@@ -4,8 +4,8 @@ use nostr::nip90::{
     JOB_RESULT_KIND_MIN, JobRequest, JobResult, KIND_JOB_CODE_REVIEW, KIND_JOB_FEEDBACK,
     KIND_JOB_IMAGE_GENERATION, KIND_JOB_PATCH_GEN, KIND_JOB_REPO_INDEX, KIND_JOB_RLM_SUBQUERY,
     KIND_JOB_SANDBOX_RUN, KIND_JOB_SPEECH_TO_TEXT, KIND_JOB_SUMMARIZATION,
-    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION,
-    is_job_feedback_kind, is_job_request_kind, is_job_result_kind,
+    KIND_JOB_TEXT_EXTRACTION, KIND_JOB_TEXT_GENERATION, KIND_JOB_TRANSLATION, is_job_feedback_kind,
+    is_job_request_kind, is_job_result_kind,
 };
 use nostr::{Event, EventTemplate};
 use nostr_client::{
@@ -2035,9 +2035,8 @@ mod tests {
     use super::{
         ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand,
         ProviderNip90LaneUpdate, ProviderNip90LaneWorker, ProviderNip90OllamaCapability,
-        ProviderNip90PublishRole,
-        ProviderNip90RelayStatus, event_to_buyer_response_event, event_to_inbox_request,
-        execution_input_from_request,
+        ProviderNip90PublishRole, ProviderNip90RelayStatus, event_to_buyer_response_event,
+        event_to_inbox_request, execution_input_from_request,
     };
     use crate::app_state::{
         ActiveJobState, EarningsScoreboardState, JobHistoryState, JobHistoryStatus, JobInboxState,

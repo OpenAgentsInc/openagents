@@ -356,7 +356,7 @@ impl FileMessage {
         if let Some(reply_id) = &self.reply_to {
             let mut e_tag = vec!["e".to_string(), reply_id.clone()];
             // Add reply marker
-            e_tag.push("".to_string());
+            e_tag.push(String::new());
             e_tag.push("reply".to_string());
             tags.push(e_tag);
         }

@@ -511,9 +511,11 @@ pub(super) fn apply_active_job_ollama_update(
 
 fn sync_provider_runtime_ollama_state(state: &mut RenderState) {
     state.provider_runtime.ollama.reachable = state.ollama_execution.reachable;
-    state.provider_runtime.ollama.configured_model = state.ollama_execution.configured_model.clone();
+    state.provider_runtime.ollama.configured_model =
+        state.ollama_execution.configured_model.clone();
     state.provider_runtime.ollama.ready_model = state.ollama_execution.ready_model.clone();
-    state.provider_runtime.ollama.available_models = state.ollama_execution.available_models.clone();
+    state.provider_runtime.ollama.available_models =
+        state.ollama_execution.available_models.clone();
     state.provider_runtime.ollama.loaded_models = state.ollama_execution.loaded_models.clone();
     state.provider_runtime.ollama.last_error = state.ollama_execution.last_error.clone();
     state.provider_runtime.ollama.last_action = state.ollama_execution.last_action.clone();
@@ -1402,10 +1404,9 @@ fn accept_request_by_id(
             "Accepted request no longer exists".to_string()
         })?;
 
-    if let Err(error) = crate::kernel_control::register_accepted_request_with_kernel(
-        state,
-        &selected_request,
-    ) {
+    if let Err(error) =
+        crate::kernel_control::register_accepted_request_with_kernel(state, &selected_request)
+    {
         crate::kernel_control::reset_request_decision_after_kernel_error(
             state,
             selected_request.request_id.as_str(),
@@ -1557,7 +1558,8 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
             request.ttl_seconds, MIN_PROVIDER_TTL_SECONDS
         ));
     }
-    if let Some(reason) = ollama_request_accept_block_reason(&state.provider_runtime.ollama, request)
+    if let Some(reason) =
+        ollama_request_accept_block_reason(&state.provider_runtime.ollama, request)
     {
         return Some(reason);
     }
@@ -1734,9 +1736,9 @@ fn next_auto_accept_request_id_for(
 mod tests {
     use super::{
         ProviderExecutionBackend, next_auto_accept_request_id_for,
-        next_invalid_request_rejection_for, provider_execution_backend_for_kind,
-        turn_completed_failed, visible_result_content_for_job_kind,
-        ollama_request_accept_block_reason,
+        next_invalid_request_rejection_for, ollama_request_accept_block_reason,
+        provider_execution_backend_for_kind, turn_completed_failed,
+        visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
@@ -1780,10 +1782,7 @@ mod tests {
             reachable: true,
             configured_model: Some("llama3.2:latest".to_string()),
             ready_model: Some("llama3.2:latest".to_string()),
-            available_models: vec![
-                "llama3.2:latest".to_string(),
-                "mistral:latest".to_string(),
-            ],
+            available_models: vec!["llama3.2:latest".to_string(), "mistral:latest".to_string()],
             loaded_models: vec!["llama3.2:latest".to_string()],
             last_error: None,
             last_action: Some("Ollama ready".to_string()),

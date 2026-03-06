@@ -245,7 +245,10 @@ impl LiveSpacetimeClient {
     }
 
     fn query_sql(&self, query: &str) -> Result<Value, String> {
-        let endpoint = format!("{}/v1/database/{}/sql", self.target.base_url, self.target.database);
+        let endpoint = format!(
+            "{}/v1/database/{}/sql",
+            self.target.base_url, self.target.database
+        );
         let mut request = self
             .client
             .post(endpoint.as_str())
@@ -375,7 +378,10 @@ fn decode_statement_rows(statement: &Value) -> Result<Vec<BTreeMap<String, Value
         .collect::<Result<Vec<_>, _>>()
 }
 
-fn decode_row(row: &Value, field_names: &[Option<String>]) -> Result<BTreeMap<String, Value>, String> {
+fn decode_row(
+    row: &Value,
+    field_names: &[Option<String>],
+) -> Result<BTreeMap<String, Value>, String> {
     if let Some(object) = row.as_object() {
         return Ok(object_to_sorted_map(object));
     }

@@ -401,11 +401,8 @@ impl OllamaExecutionState {
                 return;
             }
         };
-        let body = build_generate_body_from_options(
-            model.as_str(),
-            normalized_prompt.as_str(),
-            &options,
-        );
+        let body =
+            build_generate_body_from_options(model.as_str(), normalized_prompt.as_str(), &options);
         let loaded_before_execute = self
             .snapshot
             .loaded_models
@@ -510,8 +507,7 @@ impl OllamaExecutionState {
             &base_url,
             model.as_str(),
             DEFAULT_KEEP_ALIVE,
-        )
-        {
+        ) {
             Ok(()) => {
                 self.snapshot.reachable = true;
                 self.snapshot.ready_model = Some(model.clone());
@@ -558,12 +554,7 @@ impl OllamaExecutionState {
             self.publish_snapshot(update_tx);
             return;
         };
-        match execute_model_lifecycle_request(
-            &client,
-            &base_url,
-            model.as_str(),
-            UNLOAD_KEEP_ALIVE,
-        )
+        match execute_model_lifecycle_request(&client, &base_url, model.as_str(), UNLOAD_KEEP_ALIVE)
         {
             Ok(()) => {
                 self.snapshot.reachable = true;
@@ -686,7 +677,11 @@ fn build_generate_body(
     Ok(build_generate_body_from_options(model, prompt, &options))
 }
 
-fn build_generate_body_from_options(model: &str, prompt: &str, options: &Map<String, Value>) -> Value {
+fn build_generate_body_from_options(
+    model: &str,
+    prompt: &str,
+    options: &Map<String, Value>,
+) -> Value {
     json!({
         "model": model,
         "prompt": prompt,
@@ -1214,7 +1209,10 @@ mod tests {
             )
         });
         assert_eq!(completed.output, "hello from ollama");
-        assert_eq!(completed.provenance.requested_model.as_deref(), Some("llama3.2:latest"));
+        assert_eq!(
+            completed.provenance.requested_model.as_deref(),
+            Some("llama3.2:latest")
+        );
         assert_eq!(completed.provenance.served_model, "llama3.2:latest");
         assert_eq!(completed.provenance.base_url, base_url);
         assert_eq!(
@@ -1227,10 +1225,9 @@ mod tests {
         assert_eq!(completed.provenance.load_duration_ns, Some(0));
         assert_eq!(completed.provenance.warm_start, Some(true));
 
-        let normalized_options = serde_json::from_str::<Value>(
-            completed.provenance.normalized_options_json.as_str(),
-        )
-        .expect("normalized options json");
+        let normalized_options =
+            serde_json::from_str::<Value>(completed.provenance.normalized_options_json.as_str())
+                .expect("normalized options json");
         assert_eq!(normalized_options["num_predict"], 64);
         assert_eq!(normalized_options["top_k"], 16);
         assert_eq!(normalized_options["top_p"], 0.95);

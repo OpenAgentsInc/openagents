@@ -317,11 +317,15 @@ impl KernelAdapterRegistry {
         Ok(())
     }
 
-    pub fn active_descriptor(&self) -> &KernelAdapterV2Descriptor {
-        // Registry invariants guarantee this key exists.
+    pub fn active_descriptor(&self) -> CadResult<&KernelAdapterV2Descriptor> {
         self.descriptors
             .get(&self.active_engine_id)
-            .expect("active kernel engine must exist in registry")
+            .ok_or_else(|| CadError::InvalidPolicy {
+                reason: format!(
+                    "active kernel engine missing from registry: {}",
+                    self.active_engine_id
+                ),
+            })
     }
 
     pub fn active_engine_id(&self) -> &str {

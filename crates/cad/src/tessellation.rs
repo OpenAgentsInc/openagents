@@ -1809,6 +1809,7 @@ impl TessellationBuilder {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn add_plate_with_dual_holes(
         &mut self,
         width_mm: f32,

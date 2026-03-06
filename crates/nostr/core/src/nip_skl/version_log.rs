@@ -51,7 +51,7 @@ impl ChangeType {
         }
     }
 
-    pub fn from_str(value: &str) -> Result<Self, VersionLogError> {
+    pub fn parse(value: &str) -> Result<Self, VersionLogError> {
         match value.to_lowercase().as_str() {
             "added" => Ok(Self::Added),
             "changed" => Ok(Self::Changed),
@@ -184,8 +184,7 @@ impl SkillVersionLog {
         let previous_version = find_first_tag_value(&event.tags, "prev_version");
         let manifest_event_id = find_required_tag_value(&event.tags, "manifest_event")?;
         let manifest_hash = find_required_tag_value(&event.tags, "manifest_hash")?;
-        let change_type =
-            ChangeType::from_str(&find_required_tag_value(&event.tags, "change_type")?)?;
+        let change_type = ChangeType::parse(&find_required_tag_value(&event.tags, "change_type")?)?;
 
         let version_log = SkillVersionLog {
             identifier,
