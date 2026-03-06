@@ -1,4 +1,5 @@
 pub mod authority;
+pub mod compute;
 pub mod ids;
 pub mod labor;
 pub mod receipts;

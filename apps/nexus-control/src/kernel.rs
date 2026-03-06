@@ -1,6 +1,14 @@
 use openagents_kernel_core::authority::{
+    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
+    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
     CreateContractRequest, CreateContractResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
-    FinalizeVerdictRequest, FinalizeVerdictResponse, SubmitOutputRequest, SubmitOutputResponse,
+    FinalizeVerdictRequest, FinalizeVerdictResponse, PublishComputeIndexRequest,
+    PublishComputeIndexResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    SubmitOutputRequest, SubmitOutputResponse,
+};
+use openagents_kernel_core::compute::{
+    CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
+    CapacityReserveState, ComputeIndex, ComputeProduct, ComputeProductStatus, DeliveryProof,
 };
 use openagents_kernel_core::ids::{sha256_prefixed_bytes, sha256_prefixed_text};
 use openagents_kernel_core::labor::{
@@ -131,7 +139,10 @@ impl ReceiptStore for InMemoryReceiptStore {
             }
         }
 
-        if self.receipts_by_id.contains_key(receipt.receipt_id.as_str()) {
+        if self
+            .receipts_by_id
+            .contains_key(receipt.receipt_id.as_str())
+        {
             return Err(ReceiptStoreError::ReceiptCollision);
         }
 
@@ -176,6 +187,11 @@ pub struct KernelState {
     verdicts: HashMap<String, Verdict>,
     settlements: HashMap<String, SettlementLink>,
     claim_hooks: HashMap<String, ClaimHook>,
+    compute_products: HashMap<String, ComputeProductRecord>,
+    capacity_lots: HashMap<String, CapacityLotRecord>,
+    capacity_instruments: HashMap<String, CapacityInstrumentRecord>,
+    delivery_proofs: HashMap<String, DeliveryProofRecord>,
+    compute_indices: HashMap<String, ComputeIndexRecord>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
 }
@@ -196,6 +212,46 @@ struct ContractRecord {
 struct SubmissionRecord {
     submission: Submission,
     receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct ComputeProductRecord {
+    product: ComputeProduct,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct CapacityLotRecord {
+    lot: CapacityLot,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct CapacityInstrumentRecord {
+    instrument: CapacityInstrument,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct DeliveryProofRecord {
+    delivery_proof: DeliveryProof,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct ComputeIndexRecord {
+    index: ComputeIndex,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ComputeMarketMetrics {
+    pub compute_products_active: u64,
+    pub compute_capacity_lots_open: u64,
+    pub compute_capacity_lots_delivering: u64,
+    pub compute_instruments_active: u64,
+    pub compute_delivery_proofs_24h: u64,
+    pub compute_delivery_quantity_24h: u64,
+    pub compute_indices_published_24h: u64,
 }
 
 struct KernelReceiptSpec {
@@ -265,8 +321,7 @@ impl KernelState {
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
             },
         };
-        let put_result =
-            put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
         if put_result.replayed {
             return Ok(MutationResult {
                 response,
@@ -357,8 +412,7 @@ impl KernelState {
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
             },
         };
-        let put_result =
-            put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
         if put_result.replayed {
             return Ok(MutationResult {
                 response,
@@ -396,10 +450,14 @@ impl KernelState {
         let Some(contract_record) = self.contracts.get(contract_id.as_str()).cloned() else {
             return Err("kernel_contract_not_found".to_string());
         };
-        let work_unit_id =
-            normalize_required(contract_record.contract.work_unit_id.as_str(), "work_unit_id_missing")?;
-        let submission_id =
-            normalize_required(req.submission.submission_id.as_str(), "submission_id_missing")?;
+        let work_unit_id = normalize_required(
+            contract_record.contract.work_unit_id.as_str(),
+            "work_unit_id_missing",
+        )?;
+        let submission_id = normalize_required(
+            req.submission.submission_id.as_str(),
+            "submission_id_missing",
+        )?;
         let Some(work_unit_record) = self.work_units.get(work_unit_id.as_str()).cloned() else {
             return Err("kernel_work_unit_not_found".to_string());
         };
@@ -466,8 +524,7 @@ impl KernelState {
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
             },
         };
-        let put_result =
-            put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
         if put_result.replayed {
             return Ok(MutationResult {
                 response,
@@ -508,10 +565,11 @@ impl KernelState {
         let Some(contract_record) = self.contracts.get(contract_id.as_str()).cloned() else {
             return Err("kernel_contract_not_found".to_string());
         };
-        let work_unit_id =
-            normalize_required(contract_record.contract.work_unit_id.as_str(), "work_unit_id_missing")?;
-        let verdict_id =
-            normalize_required(req.verdict.verdict_id.as_str(), "verdict_id_missing")?;
+        let work_unit_id = normalize_required(
+            contract_record.contract.work_unit_id.as_str(),
+            "work_unit_id_missing",
+        )?;
+        let verdict_id = normalize_required(req.verdict.verdict_id.as_str(), "verdict_id_missing")?;
         let Some(work_unit_record) = self.work_units.get(work_unit_id.as_str()).cloned() else {
             return Err("kernel_work_unit_not_found".to_string());
         };
@@ -617,8 +675,7 @@ impl KernelState {
                 Err(ref error) => return Err(receipt_store_reason(error).to_string()),
             },
         };
-        let put_result =
-            put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
         if put_result.replayed {
             return Ok(MutationResult {
                 response,
@@ -629,8 +686,10 @@ impl KernelState {
 
         self.verdicts.insert(verdict_id, req.verdict.clone());
         if let Some(settlement_link) = settlement_link.as_ref() {
-            self.settlements
-                .insert(settlement_link.settlement_id.clone(), settlement_link.clone());
+            self.settlements.insert(
+                settlement_link.settlement_id.clone(),
+                settlement_link.clone(),
+            );
         }
         if let Some(claim_hook) = claim_hook.as_ref() {
             self.claim_hooks
@@ -653,6 +712,658 @@ impl KernelState {
         })
     }
 
+    pub fn create_compute_product(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateComputeProductRequest,
+    ) -> Result<MutationResult<CreateComputeProductResponse>, String> {
+        let product_id = normalize_required(
+            req.product.product_id.as_str(),
+            "compute_product_id_missing",
+        )?;
+        req.product.product_id.clone_from(&product_id);
+        req.product.created_at_ms =
+            normalize_created_at_ms(req.product.created_at_ms, context.now_unix_ms);
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let product_payload = serde_json::to_value(&req.product)
+            .map_err(|error| format!("kernel_compute_product_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.product.create".to_string(),
+                created_at_ms: req.product.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: product_payload,
+                outputs_payload: json!({
+                    "product_id": product_id.clone(),
+                    "resource_class": req.product.resource_class.clone(),
+                    "status": req.product.status,
+                    "index_eligible": req.product.index_eligible,
+                }),
+                evidence: req.evidence.clone(),
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.product.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateComputeProductResponse {
+            product: req.product.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_products.insert(
+            product_id,
+            ComputeProductRecord {
+                product: req.product.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.product.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_capacity_lot(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateCapacityLotRequest,
+    ) -> Result<MutationResult<CreateCapacityLotResponse>, String> {
+        let capacity_lot_id =
+            normalize_required(req.lot.capacity_lot_id.as_str(), "capacity_lot_id_missing")?;
+        let product_id =
+            normalize_required(req.lot.product_id.as_str(), "compute_product_id_missing")?;
+        let Some(product_record) = self.compute_products.get(product_id.as_str()).cloned() else {
+            return Err("compute_product_not_found".to_string());
+        };
+        req.lot.capacity_lot_id.clone_from(&capacity_lot_id);
+        req.lot.product_id.clone_from(&product_id);
+        req.lot.delivery_start_ms =
+            normalize_created_at_ms(req.lot.delivery_start_ms, context.now_unix_ms);
+        if req.lot.delivery_end_ms <= req.lot.delivery_start_ms {
+            return Err("capacity_lot_window_invalid".to_string());
+        }
+        if req.lot.offer_expires_at_ms <= 0 {
+            req.lot.offer_expires_at_ms = req.lot.delivery_start_ms;
+        }
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let lot_payload = serde_json::to_value(&req.lot)
+            .map_err(|error| format!("kernel_capacity_lot_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.lot.create".to_string(),
+                created_at_ms: req.lot.delivery_start_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: lot_payload,
+                outputs_payload: json!({
+                    "capacity_lot_id": capacity_lot_id.clone(),
+                    "product_id": product_id.clone(),
+                    "provider_id": req.lot.provider_id.clone(),
+                    "status": req.lot.status,
+                    "product_receipt_id": product_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.lot.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateCapacityLotResponse {
+            lot: req.lot.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.capacity_lots.insert(
+            capacity_lot_id,
+            CapacityLotRecord {
+                lot: req.lot.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.lot.delivery_start_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_capacity_instrument(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateCapacityInstrumentRequest,
+    ) -> Result<MutationResult<CreateCapacityInstrumentResponse>, String> {
+        let instrument_id = normalize_required(
+            req.instrument.instrument_id.as_str(),
+            "capacity_instrument_id_missing",
+        )?;
+        let product_id = normalize_required(
+            req.instrument.product_id.as_str(),
+            "compute_product_id_missing",
+        )?;
+        let Some(product_record) = self.compute_products.get(product_id.as_str()).cloned() else {
+            return Err("compute_product_not_found".to_string());
+        };
+        let lot_record = req
+            .instrument
+            .capacity_lot_id
+            .as_deref()
+            .map(|capacity_lot_id| {
+                let normalized_capacity_lot_id =
+                    normalize_required(capacity_lot_id, "capacity_lot_id_missing")?;
+                let Some(lot_record) = self
+                    .capacity_lots
+                    .get(normalized_capacity_lot_id.as_str())
+                    .cloned()
+                else {
+                    return Err("capacity_lot_not_found".to_string());
+                };
+                if lot_record.lot.product_id != product_id {
+                    return Err("compute_product_capacity_lot_mismatch".to_string());
+                }
+                Ok((normalized_capacity_lot_id, lot_record))
+            })
+            .transpose()?;
+
+        req.instrument.instrument_id.clone_from(&instrument_id);
+        req.instrument.product_id.clone_from(&product_id);
+        req.instrument.created_at_ms =
+            normalize_created_at_ms(req.instrument.created_at_ms, context.now_unix_ms);
+        if req.instrument.delivery_end_ms <= req.instrument.delivery_start_ms {
+            return Err("capacity_instrument_window_invalid".to_string());
+        }
+        if let Some((capacity_lot_id, _)) = lot_record.as_ref() {
+            req.instrument.capacity_lot_id = Some(capacity_lot_id.clone());
+        }
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some((_, lot_record)) = lot_record.as_ref() {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(lot_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let instrument_payload = serde_json::to_value(&req.instrument)
+            .map_err(|error| format!("kernel_capacity_instrument_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.instrument.create".to_string(),
+                created_at_ms: req.instrument.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: instrument_payload,
+                outputs_payload: json!({
+                    "instrument_id": instrument_id.clone(),
+                    "product_id": product_id.clone(),
+                    "capacity_lot_id": req.instrument.capacity_lot_id.clone(),
+                    "status": req.instrument.status,
+                    "product_receipt_id": product_record.receipt_id.clone(),
+                    "capacity_lot_receipt_id": lot_record.as_ref().map(|(_, record)| record.receipt_id.clone()),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.instrument.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateCapacityInstrumentResponse {
+            instrument: req.instrument.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if let Some((capacity_lot_id, _)) = lot_record.as_ref()
+            && let Some(lot_record) = self.capacity_lots.get_mut(capacity_lot_id.as_str())
+        {
+            lot_record.lot.reserve_state = CapacityReserveState::Reserved;
+            if lot_record.lot.status == CapacityLotStatus::Open {
+                lot_record.lot.status = CapacityLotStatus::Reserved;
+            }
+        }
+        self.capacity_instruments.insert(
+            instrument_id,
+            CapacityInstrumentRecord {
+                instrument: req.instrument.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.instrument.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn record_delivery_proof(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: RecordDeliveryProofRequest,
+    ) -> Result<MutationResult<RecordDeliveryProofResponse>, String> {
+        let delivery_proof_id = normalize_required(
+            req.delivery_proof.delivery_proof_id.as_str(),
+            "delivery_proof_id_missing",
+        )?;
+        let capacity_lot_id = normalize_required(
+            req.delivery_proof.capacity_lot_id.as_str(),
+            "capacity_lot_id_missing",
+        )?;
+        let Some(lot_record) = self.capacity_lots.get(capacity_lot_id.as_str()).cloned() else {
+            return Err("capacity_lot_not_found".to_string());
+        };
+        let product_id = lot_record.lot.product_id.clone();
+        let Some(product_record) = self.compute_products.get(product_id.as_str()).cloned() else {
+            return Err("compute_product_not_found".to_string());
+        };
+        let instrument_record = req
+            .delivery_proof
+            .instrument_id
+            .as_deref()
+            .map(|instrument_id| {
+                let normalized_instrument_id =
+                    normalize_required(instrument_id, "capacity_instrument_id_missing")?;
+                let Some(instrument_record) = self
+                    .capacity_instruments
+                    .get(normalized_instrument_id.as_str())
+                    .cloned()
+                else {
+                    return Err("capacity_instrument_not_found".to_string());
+                };
+                if instrument_record.instrument.product_id != product_id {
+                    return Err("compute_product_capacity_instrument_mismatch".to_string());
+                }
+                if instrument_record
+                    .instrument
+                    .capacity_lot_id
+                    .as_deref()
+                    .is_some_and(|linked_lot_id| linked_lot_id != capacity_lot_id)
+                {
+                    return Err("capacity_lot_instrument_mismatch".to_string());
+                }
+                Ok((normalized_instrument_id, instrument_record))
+            })
+            .transpose()?;
+
+        req.delivery_proof
+            .delivery_proof_id
+            .clone_from(&delivery_proof_id);
+        req.delivery_proof
+            .capacity_lot_id
+            .clone_from(&capacity_lot_id);
+        req.delivery_proof.product_id = product_id.clone();
+        req.delivery_proof.created_at_ms =
+            normalize_created_at_ms(req.delivery_proof.created_at_ms, context.now_unix_ms);
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(lot_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some((_, instrument_record)) = instrument_record.as_ref() {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(instrument_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let delivery_payload = serde_json::to_value(&req.delivery_proof)
+            .map_err(|error| format!("kernel_delivery_proof_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.delivery.record".to_string(),
+                created_at_ms: req.delivery_proof.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: delivery_payload,
+                outputs_payload: json!({
+                    "delivery_proof_id": delivery_proof_id.clone(),
+                    "product_id": product_id.clone(),
+                    "capacity_lot_id": capacity_lot_id.clone(),
+                    "instrument_id": req.delivery_proof.instrument_id.clone(),
+                    "accepted_quantity": req.delivery_proof.accepted_quantity,
+                    "status": req.delivery_proof.status,
+                    "product_receipt_id": product_record.receipt_id.clone(),
+                    "capacity_lot_receipt_id": lot_record.receipt_id.clone(),
+                    "capacity_instrument_receipt_id": instrument_record.as_ref().map(|(_, record)| record.receipt_id.clone()),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.delivery.record",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = RecordDeliveryProofResponse {
+            delivery_proof: req.delivery_proof.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if let Some(lot_record) = self.capacity_lots.get_mut(capacity_lot_id.as_str()) {
+            lot_record.lot.reserve_state =
+                if req.delivery_proof.accepted_quantity >= lot_record.lot.quantity {
+                    CapacityReserveState::Exhausted
+                } else {
+                    CapacityReserveState::Reserved
+                };
+            lot_record.lot.status =
+                if req.delivery_proof.accepted_quantity >= lot_record.lot.quantity {
+                    CapacityLotStatus::Delivered
+                } else {
+                    CapacityLotStatus::Delivering
+                };
+        }
+        if let Some((instrument_id, _)) = instrument_record.as_ref()
+            && let Some(instrument_record) =
+                self.capacity_instruments.get_mut(instrument_id.as_str())
+        {
+            instrument_record.instrument.status =
+                if req.delivery_proof.accepted_quantity >= instrument_record.instrument.quantity {
+                    CapacityInstrumentStatus::Settled
+                } else {
+                    CapacityInstrumentStatus::Delivering
+                };
+        }
+        self.delivery_proofs.insert(
+            delivery_proof_id,
+            DeliveryProofRecord {
+                delivery_proof: req.delivery_proof.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.delivery_proof.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn publish_compute_index(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: PublishComputeIndexRequest,
+    ) -> Result<MutationResult<PublishComputeIndexResponse>, String> {
+        let index_id = normalize_required(req.index.index_id.as_str(), "compute_index_id_missing")?;
+        let product_id =
+            normalize_required(req.index.product_id.as_str(), "compute_product_id_missing")?;
+        let Some(product_record) = self.compute_products.get(product_id.as_str()).cloned() else {
+            return Err("compute_product_not_found".to_string());
+        };
+        if !product_record.product.index_eligible {
+            return Err("compute_product_not_index_eligible".to_string());
+        }
+        req.index.index_id.clone_from(&index_id);
+        req.index.product_id.clone_from(&product_id);
+        req.index.published_at_ms =
+            normalize_created_at_ms(req.index.published_at_ms, context.now_unix_ms);
+        if req.index.observation_window_end_ms <= 0 {
+            req.index.observation_window_end_ms = req.index.published_at_ms;
+        }
+        if req.index.observation_window_start_ms <= 0 {
+            req.index.observation_window_start_ms = req
+                .index
+                .observation_window_end_ms
+                .saturating_sub(SNAPSHOT_WINDOW_MS);
+        }
+        if req.index.observation_window_end_ms <= req.index.observation_window_start_ms {
+            return Err("compute_index_window_invalid".to_string());
+        }
+        let delivery_records = self
+            .delivery_proofs
+            .values()
+            .filter(|record| {
+                record.delivery_proof.product_id == product_id
+                    && record.delivery_proof.created_at_ms >= req.index.observation_window_start_ms
+                    && record.delivery_proof.created_at_ms < req.index.observation_window_end_ms
+            })
+            .cloned()
+            .collect::<Vec<_>>();
+        req.index.observation_count = delivery_records.len() as u64;
+        req.index.total_accepted_quantity = delivery_records.iter().fold(0u64, |total, record| {
+            total.saturating_add(record.delivery_proof.accepted_quantity)
+        });
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        for record in &delivery_records {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let index_payload = serde_json::to_value(&req.index)
+            .map_err(|error| format!("kernel_compute_index_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.index.publish".to_string(),
+                created_at_ms: req.index.published_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: index_payload,
+                outputs_payload: json!({
+                    "index_id": index_id.clone(),
+                    "product_id": product_id.clone(),
+                    "observation_count": req.index.observation_count,
+                    "total_accepted_quantity": req.index.total_accepted_quantity,
+                    "product_receipt_id": product_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.index.publish",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = PublishComputeIndexResponse {
+            index: req.index.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.compute_indices.insert(
+            index_id,
+            ComputeIndexRecord {
+                index: req.index.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.index.published_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn compute_market_metrics(&self, as_of_ms: i64) -> ComputeMarketMetrics {
+        let window_start_ms = as_of_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
+        ComputeMarketMetrics {
+            compute_products_active: self
+                .compute_products
+                .values()
+                .filter(|record| record.product.status == ComputeProductStatus::Active)
+                .count() as u64,
+            compute_capacity_lots_open: self
+                .capacity_lots
+                .values()
+                .filter(|record| record.lot.status == CapacityLotStatus::Open)
+                .count() as u64,
+            compute_capacity_lots_delivering: self
+                .capacity_lots
+                .values()
+                .filter(|record| record.lot.status == CapacityLotStatus::Delivering)
+                .count() as u64,
+            compute_instruments_active: self
+                .capacity_instruments
+                .values()
+                .filter(|record| {
+                    matches!(
+                        record.instrument.status,
+                        CapacityInstrumentStatus::Open
+                            | CapacityInstrumentStatus::Active
+                            | CapacityInstrumentStatus::Delivering
+                            | CapacityInstrumentStatus::CashSettling
+                    )
+                })
+                .count() as u64,
+            compute_delivery_proofs_24h: self
+                .delivery_proofs
+                .values()
+                .filter(|record| {
+                    record.delivery_proof.created_at_ms >= window_start_ms
+                        && record.delivery_proof.created_at_ms <= as_of_ms
+                })
+                .count() as u64,
+            compute_delivery_quantity_24h: self
+                .delivery_proofs
+                .values()
+                .filter(|record| {
+                    record.delivery_proof.created_at_ms >= window_start_ms
+                        && record.delivery_proof.created_at_ms <= as_of_ms
+                })
+                .fold(0u64, |total, record| {
+                    total.saturating_add(record.delivery_proof.accepted_quantity)
+                }),
+            compute_indices_published_24h: self
+                .compute_indices
+                .values()
+                .filter(|record| {
+                    record.index.published_at_ms >= window_start_ms
+                        && record.index.published_at_ms <= as_of_ms
+                })
+                .count() as u64,
+        }
+    }
+
     pub fn get_receipt(&self, receipt_id: &str) -> Option<Receipt> {
         self.receipt_store.get_receipt(receipt_id)
     }
@@ -664,7 +1375,10 @@ impl KernelState {
         Ok(self.compute_snapshot_for(minute_start_ms))
     }
 
-    fn refresh_snapshot_for(&mut self, created_at_ms: i64) -> Result<SnapshotProjectionEvent, String> {
+    fn refresh_snapshot_for(
+        &mut self,
+        created_at_ms: i64,
+    ) -> Result<SnapshotProjectionEvent, String> {
         let minute_start_ms = floor_to_minute_utc(created_at_ms.max(0));
         let snapshot = self.compute_snapshot_for(minute_start_ms);
         let seq = self.next_projection_seq;
@@ -674,7 +1388,8 @@ impl KernelState {
 
     fn compute_snapshot_for(&mut self, minute_start_ms: i64) -> EconomySnapshot {
         let receipts = self.receipt_store.list_receipts();
-        let snapshot = build_snapshot(minute_start_ms, receipts.as_slice());
+        let compute_metrics = self.compute_market_metrics(minute_start_ms.saturating_add(60_000));
+        let snapshot = build_snapshot(minute_start_ms, receipts.as_slice(), &compute_metrics);
         self.snapshots.insert(minute_start_ms, snapshot.clone());
         snapshot
     }
@@ -691,7 +1406,11 @@ impl KernelState {
                 lhs.submission
                     .created_at_ms
                     .cmp(&rhs.submission.created_at_ms)
-                    .then_with(|| lhs.submission.submission_id.cmp(&rhs.submission.submission_id))
+                    .then_with(|| {
+                        lhs.submission
+                            .submission_id
+                            .cmp(&rhs.submission.submission_id)
+                    })
             })
     }
 }
@@ -705,7 +1424,11 @@ fn normalize_required(value: &str, reason: &str) -> Result<String, String> {
 }
 
 fn normalize_created_at_ms(value: i64, now_unix_ms: u64) -> i64 {
-    if value <= 0 { now_unix_ms as i64 } else { value }
+    if value <= 0 {
+        now_unix_ms as i64
+    } else {
+        value
+    }
 }
 
 fn normalized_trace(
@@ -771,8 +1494,8 @@ fn push_receipt_evidence(evidence: &mut Vec<EvidenceRef>, receipt: Option<&Recei
 }
 
 fn request_hash<T: Serialize>(value: &T) -> Result<String, String> {
-    let payload =
-        serde_json::to_vec(value).map_err(|error| format!("kernel_request_hash_failed: {error}"))?;
+    let payload = serde_json::to_vec(value)
+        .map_err(|error| format!("kernel_request_hash_failed: {error}"))?;
     Ok(sha256_prefixed_bytes(payload.as_slice()))
 }
 
@@ -789,9 +1512,8 @@ fn build_receipt(
     spec: KernelReceiptSpec,
 ) -> Result<Receipt, String> {
     let action = spec.action;
-    let scope_hash = sha256_prefixed_text(
-        format!("{action}:{}:{idempotency_key}", context.caller_id).as_str(),
-    );
+    let scope_hash =
+        sha256_prefixed_text(format!("{action}:{}:{idempotency_key}", context.caller_id).as_str());
     let receipt_id = format!("receipt.{action}:{scope_hash}");
     ReceiptBuilder::new(
         receipt_id,
@@ -808,7 +1530,11 @@ fn build_receipt(
     .build()
 }
 
-fn build_snapshot(minute_start_ms: i64, receipts: &[Receipt]) -> EconomySnapshot {
+fn build_snapshot(
+    minute_start_ms: i64,
+    receipts: &[Receipt],
+    compute_metrics: &ComputeMarketMetrics,
+) -> EconomySnapshot {
     let window_end_ms = minute_start_ms.saturating_add(60_000);
     let window_start_ms = window_end_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
     let scoped_receipts = receipts
@@ -913,6 +1639,13 @@ fn build_snapshot(minute_start_ms: i64, receipts: &[Receipt]) -> EconomySnapshot
         rollback_successes_24h: 0,
         rollback_success_rate: 0.0,
         top_rollback_reason_codes: Vec::new(),
+        compute_products_active: compute_metrics.compute_products_active,
+        compute_capacity_lots_open: compute_metrics.compute_capacity_lots_open,
+        compute_capacity_lots_delivering: compute_metrics.compute_capacity_lots_delivering,
+        compute_instruments_active: compute_metrics.compute_instruments_active,
+        compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
+        compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
+        compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
         audit_package_public_digest: String::new(),
         audit_package_restricted_digest: String::new(),
         sv_breakdown: Vec::new(),

@@ -89,6 +89,13 @@ pub struct PublicStatsSnapshot {
     pub starter_offer_loss_rate_24h: f64,
     pub starter_demand_paid_sats_24h: u64,
     pub starter_demand_released_sats_24h: u64,
+    pub compute_products_active: u64,
+    pub compute_capacity_lots_open: u64,
+    pub compute_capacity_lots_delivering: u64,
+    pub compute_instruments_active: u64,
+    pub compute_delivery_proofs_24h: u64,
+    pub compute_delivery_quantity_24h: u64,
+    pub compute_indices_published_24h: u64,
     pub recent_receipts: Vec<PublicRecentReceipt>,
 }
 
@@ -101,6 +108,13 @@ pub struct PublicRuntimeSnapshot {
     pub starter_demand_budget_allocated_sats: u64,
     pub starter_offers_waiting_ack: usize,
     pub starter_offers_running: usize,
+    pub compute_products_active: u64,
+    pub compute_capacity_lots_open: u64,
+    pub compute_capacity_lots_delivering: u64,
+    pub compute_instruments_active: u64,
+    pub compute_delivery_proofs_24h: u64,
+    pub compute_delivery_quantity_24h: u64,
+    pub compute_indices_published_24h: u64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -244,6 +258,13 @@ impl ReceiptLedger {
             starter_offer_loss_rate_24h,
             starter_demand_paid_sats_24h,
             starter_demand_released_sats_24h,
+            compute_products_active: runtime.compute_products_active,
+            compute_capacity_lots_open: runtime.compute_capacity_lots_open,
+            compute_capacity_lots_delivering: runtime.compute_capacity_lots_delivering,
+            compute_instruments_active: runtime.compute_instruments_active,
+            compute_delivery_proofs_24h: runtime.compute_delivery_proofs_24h,
+            compute_delivery_quantity_24h: runtime.compute_delivery_quantity_24h,
+            compute_indices_published_24h: runtime.compute_indices_published_24h,
             recent_receipts: self.recent_receipts(),
         }
     }
@@ -425,6 +446,13 @@ mod tests {
                 starter_demand_budget_allocated_sats: 0,
                 starter_offers_waiting_ack: 0,
                 starter_offers_running: 0,
+                compute_products_active: 0,
+                compute_capacity_lots_open: 0,
+                compute_capacity_lots_delivering: 0,
+                compute_instruments_active: 0,
+                compute_delivery_proofs_24h: 0,
+                compute_delivery_quantity_24h: 0,
+                compute_indices_published_24h: 0,
             },
             6_000,
         );

@@ -165,6 +165,20 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub top_rollback_reason_codes: Vec<RollbackReasonCodeRow>,
     #[serde(default)]
+    pub compute_products_active: u64,
+    #[serde(default)]
+    pub compute_capacity_lots_open: u64,
+    #[serde(default)]
+    pub compute_capacity_lots_delivering: u64,
+    #[serde(default)]
+    pub compute_instruments_active: u64,
+    #[serde(default)]
+    pub compute_delivery_proofs_24h: u64,
+    #[serde(default)]
+    pub compute_delivery_quantity_24h: u64,
+    #[serde(default)]
+    pub compute_indices_published_24h: u64,
+    #[serde(default)]
     pub audit_package_public_digest: String,
     #[serde(default)]
     pub audit_package_restricted_digest: String,

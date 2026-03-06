@@ -3,13 +3,13 @@ use crate::economy_kernel_receipts::{
     Asset, AuthAssuranceLevel, DriftSignalSummary, EvidenceRef, FeedbackLatencyClass, Money,
     MoneyAmount, ProvenanceGrade, Receipt, SeverityClass, VerificationTier,
 };
+use bitcoin::hashes::{Hash, sha256};
 pub use openagents_kernel_core::snapshots::{
     AnchorBackendStatusRow, AuthAssuranceDistributionRow, CertificationDistributionRow,
     EconomySnapshot, IncidentBucketRow, MetricKey, OutcomeDistributionRow, OutcomeKeyRateRow,
     RollbackReasonCodeRow, SafetySignalBucketRow, SnapshotComputeResult, SvBreakdownRow,
 };
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
-use bitcoin::hashes::{Hash, sha256};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::cmp::Ordering;
@@ -825,6 +825,13 @@ fn build_snapshot(
         rollback_successes_24h,
         rollback_success_rate,
         top_rollback_reason_codes,
+        compute_products_active: 0,
+        compute_capacity_lots_open: 0,
+        compute_capacity_lots_delivering: 0,
+        compute_instruments_active: 0,
+        compute_delivery_proofs_24h: 0,
+        compute_delivery_quantity_24h: 0,
+        compute_indices_published_24h: 0,
         audit_package_public_digest,
         audit_package_restricted_digest,
         sv_breakdown,
