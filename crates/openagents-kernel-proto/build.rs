@@ -1,4 +1,4 @@
-fn main() {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
     let proto_root = "../../proto";
     let proto_files = [
         "../../proto/openagents/common/v1/common.proto",
@@ -10,15 +10,10 @@ fn main() {
 
     println!("cargo:rerun-if-changed={proto_root}");
 
-    let protoc = protoc_bin_vendored::protoc_bin_path().expect("vendored protoc");
+    let protoc = protoc_bin_vendored::protoc_bin_path()?;
     let mut config = prost_build::Config::new();
     config.include_file("openagents.rs");
-
-    unsafe {
-        std::env::set_var("PROTOC", protoc);
-    }
-
-    config
-        .compile_protos(&proto_files, &[proto_root])
-        .expect("compile kernel protos");
+    config.protoc_executable(protoc);
+    config.compile_protos(&proto_files, &[proto_root])?;
+    Ok(())
 }

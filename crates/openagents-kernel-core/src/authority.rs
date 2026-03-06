@@ -114,6 +114,19 @@ struct LocalKernelAuthorityState {
     receipts: Vec<Receipt>,
 }
 
+struct LocalReceiptSpec {
+    receipt_id: String,
+    receipt_type: String,
+    created_at_ms: i64,
+    idempotency_key: String,
+    trace: TraceContext,
+    policy: PolicyContext,
+    inputs_payload: Value,
+    outputs_payload: Value,
+    evidence: Vec<EvidenceRef>,
+    hints: ReceiptHints,
+}
+
 #[derive(Clone, Default)]
 pub struct LocalKernelAuthority {
     state: Arc<RwLock<LocalKernelAuthorityState>>,
@@ -141,30 +154,19 @@ impl LocalKernelAuthority {
         Ok(())
     }
 
-    fn build_receipt(
-        receipt_id: String,
-        receipt_type: &str,
-        created_at_ms: i64,
-        idempotency_key: String,
-        trace: TraceContext,
-        policy: PolicyContext,
-        inputs_payload: Value,
-        outputs_payload: Value,
-        evidence: Vec<EvidenceRef>,
-        hints: ReceiptHints,
-    ) -> Result<Receipt> {
+    fn build_receipt(spec: LocalReceiptSpec) -> Result<Receipt> {
         ReceiptBuilder::new(
-            receipt_id,
-            receipt_type.to_string(),
-            created_at_ms,
-            idempotency_key,
-            trace,
-            policy,
+            spec.receipt_id,
+            spec.receipt_type,
+            spec.created_at_ms,
+            spec.idempotency_key,
+            spec.trace,
+            spec.policy,
         )
-        .with_inputs_payload(inputs_payload)
-        .with_outputs_payload(outputs_payload)
-        .with_evidence(evidence)
-        .with_hints(hints)
+        .with_inputs_payload(spec.inputs_payload)
+        .with_outputs_payload(spec.outputs_payload)
+        .with_evidence(spec.evidence)
+        .with_hints(spec.hints)
         .build()
         .map_err(|error| anyhow!(error))
     }
@@ -187,21 +189,21 @@ impl LocalKernelAuthority {
 impl KernelAuthority for LocalKernelAuthority {
     async fn create_work_unit(&self, req: CreateWorkUnitRequest) -> Result<CreateWorkUnitResponse> {
         let trace = Self::normalize_work_trace(req.trace, req.work_unit_id.as_str());
-        let receipt = Self::build_receipt(
-            format!("receipt.kernel.work_unit:{}", req.work_unit_id),
-            "kernel.work_unit.created.v1",
-            req.created_at_ms,
-            req.idempotency_key,
-            trace.clone(),
-            req.policy,
-            req.payload.clone(),
-            json!({
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.work_unit:{}", req.work_unit_id),
+            receipt_type: "kernel.work_unit.created.v1".to_string(),
+            created_at_ms: req.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: trace.clone(),
+            policy: req.policy,
+            inputs_payload: req.payload.clone(),
+            outputs_payload: json!({
                 "work_unit_id": req.work_unit_id,
                 "status": "created",
             }),
-            req.evidence,
-            req.hints,
-        )?;
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
         let mut state = self
             .state
             .write()
@@ -220,21 +222,21 @@ impl KernelAuthority for LocalKernelAuthority {
 
     async fn create_contract(&self, req: CreateContractRequest) -> Result<CreateContractResponse> {
         let trace = Self::normalize_contract_trace(req.trace, req.contract_id.as_str());
-        let receipt = Self::build_receipt(
-            format!("receipt.kernel.contract:{}", req.contract_id),
-            "kernel.contract.created.v1",
-            req.created_at_ms,
-            req.idempotency_key,
-            trace.clone(),
-            req.policy,
-            req.payload.clone(),
-            json!({
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.contract:{}", req.contract_id),
+            receipt_type: "kernel.contract.created.v1".to_string(),
+            created_at_ms: req.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: trace.clone(),
+            policy: req.policy,
+            inputs_payload: req.payload.clone(),
+            outputs_payload: json!({
                 "contract_id": req.contract_id,
                 "status": "created",
             }),
-            req.evidence,
-            req.hints,
-        )?;
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
         let mut state = self
             .state
             .write()
@@ -253,21 +255,21 @@ impl KernelAuthority for LocalKernelAuthority {
 
     async fn submit_output(&self, req: SubmitOutputRequest) -> Result<SubmitOutputResponse> {
         let trace = Self::normalize_contract_trace(req.trace, req.contract_id.as_str());
-        let receipt = Self::build_receipt(
-            format!("receipt.kernel.submission:{}", req.contract_id),
-            "kernel.submission.received.v1",
-            req.created_at_ms,
-            req.idempotency_key,
-            trace.clone(),
-            req.policy,
-            req.payload.clone(),
-            json!({
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.submission:{}", req.contract_id),
+            receipt_type: "kernel.submission.received.v1".to_string(),
+            created_at_ms: req.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: trace.clone(),
+            policy: req.policy,
+            inputs_payload: req.payload.clone(),
+            outputs_payload: json!({
                 "contract_id": req.contract_id,
                 "status": "submitted",
             }),
-            req.evidence,
-            req.hints,
-        )?;
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
         let mut state = self
             .state
             .write()
@@ -289,21 +291,21 @@ impl KernelAuthority for LocalKernelAuthority {
         req: FinalizeVerdictRequest,
     ) -> Result<FinalizeVerdictResponse> {
         let trace = Self::normalize_contract_trace(req.trace, req.contract_id.as_str());
-        let receipt = Self::build_receipt(
-            format!("receipt.kernel.verdict:{}", req.contract_id),
-            "kernel.verdict.finalized.v1",
-            req.created_at_ms,
-            req.idempotency_key,
-            trace.clone(),
-            req.policy,
-            req.verdict.clone(),
-            json!({
+        let receipt = Self::build_receipt(LocalReceiptSpec {
+            receipt_id: format!("receipt.kernel.verdict:{}", req.contract_id),
+            receipt_type: "kernel.verdict.finalized.v1".to_string(),
+            created_at_ms: req.created_at_ms,
+            idempotency_key: req.idempotency_key,
+            trace: trace.clone(),
+            policy: req.policy,
+            inputs_payload: req.verdict.clone(),
+            outputs_payload: json!({
                 "contract_id": req.contract_id,
                 "status": "finalized",
             }),
-            req.evidence,
-            req.hints,
-        )?;
+            evidence: req.evidence,
+            hints: req.hints,
+        })?;
         let mut state = self
             .state
             .write()
