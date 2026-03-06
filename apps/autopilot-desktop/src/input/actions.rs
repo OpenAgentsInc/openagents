@@ -9042,6 +9042,21 @@ mod tests {
     }
 
     #[test]
+    fn chat_wallet_status_summary_requires_payment_id_before_claiming_confirmation() {
+        let summary = chat_wallet_payment_status_summary(
+            &ChatWalletMessagePayload {
+                payment_request: Some("lnbc1invoiceexample".to_string()),
+                chat_reported_status: Some("succeeded".to_string()),
+                ..ChatWalletMessagePayload::default()
+            },
+            &crate::spark_wallet::SparkPaneState::default(),
+        )
+        .expect("status summary");
+        assert!(summary.contains("needs a wallet payment id"));
+        assert!(!summary.contains("Spark confirms"));
+    }
+
+    #[test]
     fn direct_message_builder_wraps_gift_events_and_room_identity() {
         let identity = fixture_identity();
         let reply_target = crate::app_state::DirectMessageMessageProjection {
