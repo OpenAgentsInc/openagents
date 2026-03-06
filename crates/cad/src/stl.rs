@@ -378,10 +378,7 @@ fn compute_vertex_normals(positions: &[[f32; 3]], indices: &[u32]) -> Vec<[f32; 
         }
     }
 
-    normals
-        .into_iter()
-        .map(normalize_or_default)
-        .collect()
+    normals.into_iter().map(normalize_or_default).collect()
 }
 
 fn normalize_or_default(normal: [f32; 3]) -> [f32; 3] {

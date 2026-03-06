@@ -4004,8 +4004,8 @@ impl StableSatsSimulationPaneState {
                 if switched {
                     wallet.switch_count = wallet.switch_count.saturating_add(1);
                     wallet.last_switch_summary = format!(
-                        "delta btc={} sats usd={}",
-                        btc_delta,
+                        "delta btc={} usd={}",
+                        crate::bitcoin_display::format_sats_amount(btc_delta),
                         Self::format_usd_cents(usd_delta)
                     );
                 } else {
@@ -4022,9 +4022,9 @@ impl StableSatsSimulationPaneState {
                 "BLINK-LEDGER",
                 &wallet_ref,
                 format!(
-                    "{} balances btc={} sats usd={} ({})",
+                    "{} balances btc={} usd={} ({})",
                     wallet_name,
-                    btc_balance_sats,
+                    crate::bitcoin_display::format_sats_amount(*btc_balance_sats),
                     Self::format_usd_cents(*usd_balance_cents),
                     source_ref
                 ),
@@ -4056,9 +4056,9 @@ impl StableSatsSimulationPaneState {
                     0,
                     StableSatsTransferStatus::Settled,
                     format!(
-                        "{} live delta btc={} sats usd={}",
+                        "{} live delta btc={} usd={}",
                         wallet_name,
-                        btc_delta,
+                        crate::bitcoin_display::format_sats_amount(btc_delta),
                         Self::format_usd_cents(usd_delta)
                     ),
                 );
@@ -4134,10 +4134,10 @@ impl StableSatsSimulationPaneState {
             "BLINK-LEDGER",
             &ledger_ref,
             format!(
-                "live refresh settled wallets={} failed={} aggregate_btc={} sats aggregate_usd={}",
+                "live refresh settled wallets={} failed={} aggregate_btc={} aggregate_usd={}",
                 refreshed_wallets,
                 failed_wallets,
-                self.total_btc_balance_sats(),
+                crate::bitcoin_display::format_sats_amount(self.total_btc_balance_sats()),
                 Self::format_usd_cents(self.total_usd_balance_cents()),
             ),
         );

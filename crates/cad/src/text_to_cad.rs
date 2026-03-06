@@ -552,7 +552,9 @@ fn extract_numeric_tokens(prompt: &str) -> Vec<f64> {
         }
     }
 
-    if !current.is_empty() && let Ok(value) = current.parse::<f64>() {
+    if !current.is_empty()
+        && let Ok(value) = current.parse::<f64>()
+    {
         numbers.push(value);
     }
 

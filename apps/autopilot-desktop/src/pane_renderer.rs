@@ -13,6 +13,7 @@ use crate::app_state::{
     SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
     SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
 };
+use crate::bitcoin_display::format_sats_amount;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
@@ -531,7 +532,7 @@ fn paint_go_online_pane(
     paint_mission_control_card(left_card, "Provider Rig", theme::accent::PRIMARY, paint);
     paint_mission_control_card(
         right_card,
-        "Wallet + First Sats",
+        "Wallet + First Earnings",
         theme::status::SUCCESS,
         paint,
     );
@@ -721,13 +722,13 @@ fn paint_go_online_pane(
     let wallet_balance = spark_wallet
         .balance
         .as_ref()
-        .map(|balance| balance.total_sats().to_string())
+        .map(|balance| format_sats_amount(balance.total_sats()))
         .unwrap_or_else(|| "loading".to_string());
     right_y = paint_wrapped_label_line(
         paint,
         right_card.origin.x + 12.0,
         right_y,
-        "Wallet sats",
+        "Wallet",
         &wallet_balance,
         right_value_chunk_len,
     );
@@ -743,16 +744,16 @@ fn paint_go_online_pane(
         paint,
         right_card.origin.x + 12.0,
         right_y,
-        "Sats today",
-        &earnings_scoreboard.sats_today.to_string(),
+        "Today",
+        &format_sats_amount(earnings_scoreboard.sats_today),
         right_value_chunk_len,
     );
     right_y = paint_wrapped_label_line(
         paint,
         right_card.origin.x + 12.0,
         right_y,
-        "Lifetime sats",
-        &earnings_scoreboard.lifetime_sats.to_string(),
+        "Lifetime",
+        &format_sats_amount(earnings_scoreboard.lifetime_sats),
         right_value_chunk_len,
     );
     right_y = paint_wrapped_label_line(
@@ -779,10 +780,10 @@ fn paint_go_online_pane(
         || "No active job yet".to_string(),
         |job| {
             format!(
-                "{} [{}] {} sats",
+                "{} [{}] {}",
                 job.capability,
                 job.stage.label(),
-                job.quoted_price_sats
+                format_sats_amount(job.quoted_price_sats)
             )
         },
     );
@@ -844,7 +845,7 @@ fn paint_go_online_pane(
                 accent,
             ));
             paint.scene.draw_text(paint.text.layout_mono(
-                &format!("{} sats", request.price_sats),
+                &format_sats_amount(request.price_sats),
                 Point::new(row_bounds.origin.x + 74.0, row_bounds.origin.y + 6.0),
                 10.0,
                 theme::text::PRIMARY,
@@ -899,12 +900,15 @@ fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut Pai
         .find(|target| lifetime_sats < *target);
     let progress_label = match next_target {
         Some(target) => format!(
-            "Next milestone: {} / {} sats ({} to go)",
-            lifetime_sats,
-            target,
-            target.saturating_sub(lifetime_sats)
+            "Next milestone: {} / {} ({} to go)",
+            format_sats_amount(lifetime_sats),
+            format_sats_amount(target),
+            format_sats_amount(target.saturating_sub(lifetime_sats))
         ),
-        None => format!("{lifetime_sats} sats earned. First-sats ladder cleared."),
+        None => format!(
+            "{} earned. First ladder cleared.",
+            format_sats_amount(lifetime_sats)
+        ),
     };
     let progress_ratio = next_target.map_or(1.0, |target| {
         if target == 0 {
@@ -915,7 +919,7 @@ fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut Pai
     });
 
     paint.scene.draw_text(paint.text.layout(
-        "First sats progression",
+        "First earnings progression",
         Point::new(bounds.origin.x, bounds.origin.y),
         11.0,
         theme::text::MUTED,
@@ -1308,15 +1312,15 @@ fn paint_earnings_scoreboard_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Sats today",
-        &earnings_scoreboard.sats_today.to_string(),
+        "Today",
+        &format_sats_amount(earnings_scoreboard.sats_today),
     );
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Lifetime sats",
-        &earnings_scoreboard.lifetime_sats.to_string(),
+        "Lifetime",
+        &format_sats_amount(earnings_scoreboard.lifetime_sats),
     );
     y = paint_label_line(
         paint,
@@ -1670,7 +1674,7 @@ fn paint_network_requests_pane(
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Budget sats",
+        "Budget (₿)",
         Point::new(budget_bounds.origin.x, budget_bounds.origin.y - 12.0),
         10.0,
         theme::text::MUTED,
@@ -1752,7 +1756,7 @@ fn paint_network_requests_pane(
             },
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.credit_envelope_ref.as_deref().unwrap_or("none"),
-            request.budget_sats,
+            format_sats_amount(request.budget_sats),
             request.timeout_seconds,
             request.response_stream_id,
             request
@@ -1827,9 +1831,9 @@ fn paint_starter_jobs_pane(
         starter_jobs.last_error.as_deref(),
     );
     let controls_summary = format!(
-        "Budget {} / {} sats | Interval {}s | Inflight {}/{}",
-        starter_jobs.budget_allocated_sats,
-        starter_jobs.budget_cap_sats,
+        "Budget {} / {} | Interval {}s | Inflight {}/{}",
+        format_sats_amount(starter_jobs.budget_allocated_sats),
+        format_sats_amount(starter_jobs.budget_cap_sats),
         starter_jobs.dispatch_interval_seconds,
         starter_jobs.inflight_jobs(),
         starter_jobs.max_inflight_jobs
@@ -1869,10 +1873,10 @@ fn paint_starter_jobs_pane(
             "ineligible"
         };
         let summary = format!(
-            "starter-demand {} {} {} sats {} {}",
+            "starter-demand {} {} {} {} {}",
             job.job_id,
             job.status.label(),
-            job.payout_sats,
+            format_sats_amount(job.payout_sats),
             eligibility,
             job.summary
         );
@@ -1899,8 +1903,8 @@ fn paint_starter_jobs_pane(
             paint,
             content_bounds.origin.x + 12.0,
             line_y,
-            "Payout sats",
-            &selected.payout_sats.to_string(),
+            "Payout",
+            &format_sats_amount(selected.payout_sats),
         );
         let _ = paint_label_line(
             paint,
@@ -2093,10 +2097,11 @@ fn paint_reciprocal_loop_pane(
         paint,
         content_bounds.origin.x + 12.0,
         line_y,
-        "Sats sent/received",
+        "Sent/received",
         &format!(
             "{}/{}",
-            reciprocal_loop.sats_sent, reciprocal_loop.sats_received
+            format_sats_amount(reciprocal_loop.sats_sent),
+            format_sats_amount(reciprocal_loop.sats_received)
         ),
     );
     line_y = paint_label_line(
@@ -2418,7 +2423,7 @@ fn paint_settings_pane(
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Wallet Default Send (sats)",
+        "Wallet Default Send (₿)",
         Point::new(
             wallet_input_bounds.origin.x,
             wallet_input_bounds.origin.y - 8.0,
@@ -2991,14 +2996,14 @@ fn paint_job_inbox_pane(
             crate::app_state::JobInboxValidation::Invalid(_) => theme::status::ERROR,
         };
         let summary = format!(
-            "#{} {} {} src:{} scope:{} env:{} {} sats ttl:{}s {} {} eligibility:{}",
+            "#{} {} {} src:{} scope:{} env:{} {} ttl:{}s {} {} eligibility:{}",
             request.arrival_seq,
             request.request_id,
             request.capability,
             request.demand_source.label(),
             request.skill_scope_id.as_deref().unwrap_or("none"),
             request.ac_envelope_event_id.as_deref().unwrap_or("none"),
-            request.price_sats,
+            format_sats_amount(request.price_sats),
             request.ttl_seconds,
             request.validation.label(),
             request.decision.label(),

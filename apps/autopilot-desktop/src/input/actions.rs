@@ -1,4 +1,5 @@
 use super::*;
+use crate::bitcoin_display::format_sats_amount;
 
 pub(super) fn run_chat_submit_action(state: &mut crate::app_state::RenderState) -> bool {
     run_chat_submit_action_with_trigger(
@@ -2162,7 +2163,6 @@ pub(super) fn run_auto_cast_control_loop(
     changed
 }
 
-
 const STABLE_SATS_REAL_ROUND_MIN_INTERVAL_SECONDS: u64 = 5;
 const STABLE_SATS_REAL_ROUND_MAX_STEPS: usize = 1;
 const STABLE_SATS_REAL_ROUND_MAX_TRANSFER_SATS: u64 = 25_000;
@@ -2317,8 +2317,8 @@ fn queue_stable_sats_real_mode_round(state: &mut crate::app_state::RenderState) 
         vec![fallback_step]
     } else {
         let reason = format!(
-            "policy guard convert blocked: {operator_name} available {} sats / {} below minimums (>=300 sats or >=$0.80)",
-            operator_btc_sats,
+            "policy guard convert blocked: {operator_name} available {} / {} below minimums (>=₿300 or >=$0.80)",
+            format_sats_amount(operator_btc_sats),
             format_usd_cents(operator_usd_cents)
         );
         state.stable_sats_simulation.last_error = Some(reason.clone());
@@ -2485,8 +2485,9 @@ fn queue_stable_sats_real_round_step(
             let available = source.btc_balance_sats.saturating_sub(240);
             if available < 200 {
                 return Err(format!(
-                    "policy guard transfer_btc blocked: {} available {} sats below minimum",
-                    source.agent_name, source.btc_balance_sats
+                    "policy guard transfer_btc blocked: {} available {} below minimum",
+                    source.agent_name,
+                    format_sats_amount(source.btc_balance_sats)
                 ));
             }
             let amount = (available / 10)
@@ -2557,8 +2558,9 @@ fn queue_stable_sats_real_round_step(
             let available = owner.btc_balance_sats.saturating_sub(320);
             if available < 300 {
                 return Err(format!(
-                    "policy guard convert_btc_to_usd blocked: {} available {} sats below minimum",
-                    owner.agent_name, owner.btc_balance_sats
+                    "policy guard convert_btc_to_usd blocked: {} available {} below minimum",
+                    owner.agent_name,
+                    format_sats_amount(owner.btc_balance_sats)
                 ));
             }
             let amount = (available / 12)
@@ -2568,8 +2570,10 @@ fn queue_stable_sats_real_round_step(
                 stable_sats_period_convert_totals(state, now_epoch_seconds);
             if window_sats.saturating_add(amount) > STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_SATS {
                 return Err(format!(
-                    "policy guard convert_btc_to_usd blocked: hourly converted sats {} + {} exceeds {}",
-                    window_sats, amount, STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_SATS
+                    "policy guard convert_btc_to_usd blocked: hourly converted {} + {} exceeds {}",
+                    format_sats_amount(window_sats),
+                    format_sats_amount(amount),
+                    format_sats_amount(STABLE_SATS_REAL_ROUND_MAX_PERIOD_CONVERT_SATS)
                 ));
             }
             enqueue_stable_sats_convert_worker(
@@ -2722,10 +2726,8 @@ fn enqueue_stable_sats_transfer_worker(
     let source_env_overrides = resolve_wallet_blink_env(state, &from_wallet)?;
     let destination_env_overrides = resolve_wallet_blink_env(state, &to_wallet)?;
     let balance_script_path = resolve_blink_script_path(state, "balance.js")?;
-    let create_invoice_script_path =
-        resolve_blink_script_path(state, "create_invoice.js")?;
-    let create_invoice_usd_script_path =
-        resolve_blink_script_path(state, "create_invoice_usd.js")?;
+    let create_invoice_script_path = resolve_blink_script_path(state, "create_invoice.js")?;
+    let create_invoice_usd_script_path = resolve_blink_script_path(state, "create_invoice_usd.js")?;
     let fee_probe_script_path = resolve_blink_script_path(state, "fee_probe.js")?;
     let pay_invoice_script_path = resolve_blink_script_path(state, "pay_invoice.js")?;
 
@@ -4411,8 +4413,9 @@ pub(super) fn run_reciprocal_loop_engine_tick(state: &mut crate::app_state::Rend
                 .reciprocal_loop
                 .register_outbound_dispatch(request_id.as_str(), now_epoch_seconds);
             state.provider_runtime.last_result = Some(format!(
-                "reciprocal loop dispatched {} sats request {}",
-                amount_sats, request_id
+                "reciprocal loop dispatched {} request {}",
+                format_sats_amount(amount_sats),
+                request_id
             ));
             if state.provider_runtime.last_authoritative_error_class
                 == Some(EarnFailureClass::Execution)
@@ -4677,7 +4680,8 @@ pub(super) fn run_starter_jobs_action(
                         Ok((job_id, payout_sats, payout_pointer)) => {
                             state.spark_wallet.last_payment_id = Some(payout_pointer.clone());
                             state.spark_wallet.last_action = Some(format!(
-                                "Starter quest payout wallet-confirmed for {job_id} ({payout_sats} sats)"
+                                "Starter quest payout wallet-confirmed for {job_id} ({})",
+                                format_sats_amount(payout_sats)
                             ));
                             state.provider_runtime.last_result =
                                 Some(format!("completed starter quest {}", job_id));

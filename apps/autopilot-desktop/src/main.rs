@@ -8,6 +8,7 @@
 )]
 
 mod app_state;
+mod bitcoin_display;
 mod cad_rebuild_worker;
 mod codex_lane;
 mod credentials;

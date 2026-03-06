@@ -2289,7 +2289,7 @@ mod tests {
     fn sample_goal(id: &str) -> GoalRecord {
         GoalRecord {
             goal_id: id.to_string(),
-            title: "Earn +1000 sats".to_string(),
+            title: "Earn +₿1000".to_string(),
             objective: GoalObjective::EarnBitcoin {
                 min_wallet_delta_sats: 1_000,
                 note: None,
@@ -2797,9 +2797,7 @@ mod tests {
                     error: None,
                     condition_goal_complete: Some(true),
                     condition_should_continue: Some(false),
-                    condition_completion_reasons: vec![
-                        "wallet delta reached 1000 sats".to_string(),
-                    ],
+                    condition_completion_reasons: vec!["wallet delta reached ₿1000".to_string()],
                     condition_stop_reasons: Vec::new(),
                     labor: GoalLaborLinkage {
                         work_unit_id: Some("work-unit-1".to_string()),
@@ -2822,7 +2820,7 @@ mod tests {
                 }],
                 condition_goal_complete: Some(true),
                 condition_should_continue: Some(false),
-                condition_completion_reasons: vec!["wallet delta reached 1000 sats".to_string()],
+                condition_completion_reasons: vec!["wallet delta reached ₿1000".to_string()],
                 condition_stop_reasons: Vec::new(),
                 payout_evidence: vec![GoalPayoutEvidence {
                     event_id: "earn:job-1:wallet:pay:job-1".to_string(),
@@ -3626,16 +3624,14 @@ mod tests {
                     error: None,
                     condition_goal_complete: Some(true),
                     condition_should_continue: Some(false),
-                    condition_completion_reasons: vec![
-                        "wallet delta reached 1000 sats".to_string(),
-                    ],
+                    condition_completion_reasons: vec!["wallet delta reached ₿1000".to_string()],
                     condition_stop_reasons: Vec::new(),
                     labor: GoalLaborLinkage::default(),
                     tool_invocations: Vec::new(),
                 }],
                 condition_goal_complete: Some(true),
                 condition_should_continue: Some(false),
-                condition_completion_reasons: vec!["wallet delta reached 1000 sats".to_string()],
+                condition_completion_reasons: vec!["wallet delta reached ₿1000".to_string()],
                 condition_stop_reasons: Vec::new(),
                 payout_evidence: Vec::new(),
                 swap_quote_evidence: Vec::new(),
@@ -3666,16 +3662,14 @@ mod tests {
                     error: Some("transient quote timeout".to_string()),
                     condition_goal_complete: Some(true),
                     condition_should_continue: Some(false),
-                    condition_completion_reasons: vec![
-                        "wallet delta reached 1000 sats".to_string(),
-                    ],
+                    condition_completion_reasons: vec!["wallet delta reached ₿1000".to_string()],
                     condition_stop_reasons: Vec::new(),
                     labor: GoalLaborLinkage::default(),
                     tool_invocations: Vec::new(),
                 }],
                 condition_goal_complete: Some(true),
                 condition_should_continue: Some(false),
-                condition_completion_reasons: vec!["wallet delta reached 1000 sats".to_string()],
+                condition_completion_reasons: vec!["wallet delta reached ₿1000".to_string()],
                 condition_stop_reasons: Vec::new(),
                 payout_evidence: vec![GoalPayoutEvidence {
                     event_id: "earn:job-2:wallet:pay:job-2".to_string(),

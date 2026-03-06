@@ -1,4 +1,12 @@
-#![allow(clippy::all, clippy::expect_used, clippy::panic, clippy::pedantic, clippy::print_stderr, clippy::print_stdout, clippy::unwrap_used)]
+#![allow(
+    clippy::all,
+    clippy::expect_used,
+    clippy::panic,
+    clippy::pedantic,
+    clippy::print_stderr,
+    clippy::print_stdout,
+    clippy::unwrap_used
+)]
 
 use openagents_cad::cli::{CAD_CLI_SCAFFOLD_COMMANDS, CAD_CLI_STUB_EXIT_CODE, run_cli_tokens};
 
