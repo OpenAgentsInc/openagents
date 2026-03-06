@@ -373,15 +373,15 @@ impl ReceiptLedger {
         let Some(path) = self.receipt_log_path.clone() else {
             return;
         };
-        if let Some(parent) = parent_directory(path.as_path()) {
-            if let Err(error) = fs::create_dir_all(parent) {
-                self.last_persistence_error = Some(format!(
-                    "failed_to_create_receipt_log_parent:{}:{}",
-                    parent.display(),
-                    error
-                ));
-                return;
-            }
+        if let Some(parent) = parent_directory(path.as_path())
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            self.last_persistence_error = Some(format!(
+                "failed_to_create_receipt_log_parent:{}:{}",
+                parent.display(),
+                error
+            ));
+            return;
         }
         let file_result = OpenOptions::new()
             .create(true)
@@ -481,7 +481,7 @@ mod tests {
         );
         let snapshot = ledger.snapshot(
             &PublicRuntimeSnapshot {
-                hosted_nexus_relay_url: "wss://relay.openagents.dev".to_string(),
+                hosted_nexus_relay_url: "wss://nexus.openagents.com/".to_string(),
                 sessions_active: 1,
                 sync_tokens_active: 1,
                 starter_demand_budget_cap_sats: 5_000,

@@ -82,7 +82,7 @@ const DEFAULT_LISTEN_ADDR: &str = "127.0.0.1:42020";
 const DEFAULT_SESSION_TTL_SECONDS: u64 = 86_400;
 const DEFAULT_SYNC_TOKEN_TTL_SECONDS: u64 = 900;
 const DEFAULT_SYNC_TOKEN_REFRESH_AFTER_SECONDS: u64 = 300;
-const DEFAULT_HOSTED_NEXUS_RELAY_URL: &str = "wss://relay.openagents.dev";
+const DEFAULT_HOSTED_NEXUS_RELAY_URL: &str = "wss://nexus.openagents.com/";
 const DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS: u64 = 5_000;
 const DEFAULT_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: u64 = 12;
 const DEFAULT_STARTER_DEMAND_REQUEST_TTL_SECONDS: u64 = 75;
@@ -597,6 +597,7 @@ pub fn build_router(config: ServiceConfig) -> Router {
     Router::new()
         .route("/healthz", get(healthz))
         .route("/stats", get(public_stats))
+        .route("/api/stats", get(public_stats))
         .route("/api/session/desktop", post(create_desktop_session))
         .route("/api/session/me", get(session_me))
         .route("/api/sync/token", post(create_sync_token))
@@ -3257,7 +3258,7 @@ mod tests {
                 "stream.activity_projection.v1".to_string(),
                 "stream.earn_job_lifecycle_projection.v1".to_string(),
             ],
-            hosted_nexus_relay_url: "wss://relay.openagents.dev".to_string(),
+            hosted_nexus_relay_url: "wss://nexus.openagents.com/".to_string(),
             receipt_log_path: None,
             starter_demand_budget_cap_sats: 500,
             starter_demand_dispatch_interval_seconds: 1,
@@ -4326,6 +4327,17 @@ mod tests {
         assert_eq!(empty.sessions_active, 0);
         assert_eq!(empty.sync_tokens_active, 0);
 
+        let empty_api_stats = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(empty_api_stats.status(), StatusCode::OK);
+
         let session = create_session_token(&app).await?;
         let token_response = app
             .clone()
@@ -4350,11 +4362,25 @@ mod tests {
             .await?;
         assert_eq!(stats_response.status(), StatusCode::OK);
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        let api_stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/api/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(api_stats_response.status(), StatusCode::OK);
+        let api_stats: PublicStatsSnapshot = response_json(api_stats_response).await?;
         assert_eq!(stats.sessions_active, 1);
         assert_eq!(stats.sessions_issued_24h, 1);
         assert_eq!(stats.sync_tokens_active, 1);
         assert_eq!(stats.sync_tokens_issued_24h, 1);
         assert!(stats.receipt_count >= 2);
+        assert_eq!(api_stats.receipt_count, stats.receipt_count);
+        assert_eq!(api_stats.sessions_active, stats.sessions_active);
+        assert_eq!(api_stats.sync_tokens_active, stats.sync_tokens_active);
         assert!(
             stats
                 .recent_receipts
@@ -4377,7 +4403,7 @@ mod tests {
 
         let poll_request = StarterDemandPollRequest {
             provider_nostr_pubkey: Some("npub1alpha".to_string()),
-            primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+            primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
         };
         let first_poll = app
             .clone()
@@ -4522,7 +4548,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
                         provider_nostr_pubkey: Some("npub1alpha".to_string()),
-                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                        primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
                     })?))?,
             )
             .await?;
@@ -4545,7 +4571,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
                         provider_nostr_pubkey: Some("npub1beta".to_string()),
-                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                        primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
                     })?))?,
             )
             .await?;
@@ -4578,7 +4604,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
                         provider_nostr_pubkey: Some("npub1alpha".to_string()),
-                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                        primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
                     })?))?,
             )
             .await?;
@@ -4621,7 +4647,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
                         provider_nostr_pubkey: Some("npub1beta".to_string()),
-                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                        primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
                     })?))?,
             )
             .await?;
@@ -4674,7 +4700,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
                         provider_nostr_pubkey: Some("npub1alpha".to_string()),
-                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                        primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
                     })?))?,
             )
             .await?;
@@ -4701,7 +4727,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
                         provider_nostr_pubkey: Some("npub1alpha".to_string()),
-                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                        primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
                     })?))?,
             )
             .await?;
@@ -4730,7 +4756,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&StarterDemandPollRequest {
                         provider_nostr_pubkey: Some("npub1alpha".to_string()),
-                        primary_relay_url: Some("wss://relay.openagents.dev".to_string()),
+                        primary_relay_url: Some("wss://nexus.openagents.com/".to_string()),
                     })?))?,
             )
             .await?;
