@@ -235,6 +235,7 @@ pub struct NetworkRequestsPaneInputs {
     pub preferred_backend: TextInput,
     pub capability_constraints: TextInput,
     pub quantity: TextInput,
+    pub delivery_start_minutes: TextInput,
     pub window_minutes: TextInput,
     pub max_price_sats: TextInput,
 }
@@ -253,6 +254,9 @@ impl Default for NetworkRequestsPaneInputs {
             quantity: TextInput::new()
                 .value("1")
                 .placeholder("Requested quantity"),
+            delivery_start_minutes: TextInput::new()
+                .value("0")
+                .placeholder("Delivery start in minutes"),
             window_minutes: TextInput::new()
                 .value("15")
                 .placeholder("Delivery window minutes"),
@@ -2757,8 +2761,9 @@ macro_rules! impl_pane_status_access {
 
 #[allow(unused_imports)]
 pub use crate::state::operations::{
-    AcceptedSpotComputeOrder, BuyerResolutionMode, BuyerResolutionReason, NetworkRequestStatus,
-    NetworkRequestSubmission, NetworkRequestsState, ReciprocalLoopDirection,
+    AcceptedForwardComputeOrder, AcceptedSpotComputeOrder, BuyerResolutionMode,
+    BuyerResolutionReason, ComputeQuoteMode, ForwardComputeQuoteCandidate, ForwardComputeRfqDraft,
+    NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, ReciprocalLoopDirection,
     ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition, ReciprocalLoopState,
     RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
     SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate, SpotComputeRfqDraft,

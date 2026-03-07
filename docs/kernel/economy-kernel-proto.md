@@ -377,7 +377,7 @@ message ReceiptHints {
 
   // Verification/provenance hints where applicable.
   VerificationTier achieved_verification_tier = 4;
-  bool verification_correlated = 5;
+  optional bool verification_correlated = 5;
   ProvenanceGrade provenance_grade = 6;
   AuthAssuranceLevel auth_assurance_level = 7;
   bool personhood_proved = 8;
@@ -1310,7 +1310,7 @@ message MetricKey {
   openagents.common.v1.FeedbackLatencyClass tfb_class = 2;
   openagents.common.v1.SeverityClass severity = 3;
   openagents.common.v1.VerificationTier verification_tier = 4;
-  bool verification_correlated = 5;
+  optional bool verification_correlated = 5;
   openagents.common.v1.ProvenanceGrade provenance_grade = 6;
 }
 

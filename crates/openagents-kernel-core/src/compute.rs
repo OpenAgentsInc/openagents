@@ -446,6 +446,14 @@ pub struct CapacityInstrument {
     #[serde(default)]
     pub status: CapacityInstrumentStatus,
     #[serde(default)]
+    pub closure_reason: Option<CapacityInstrumentClosureReason>,
+    #[serde(default)]
+    pub non_delivery_reason: Option<CapacityNonDeliveryReason>,
+    #[serde(default)]
+    pub settlement_failure_reason: Option<ComputeSettlementFailureReason>,
+    #[serde(default)]
+    pub lifecycle_reason_detail: Option<String>,
+    #[serde(default)]
     pub metadata: Value,
 }
 

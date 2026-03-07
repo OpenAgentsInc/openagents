@@ -2542,6 +2542,10 @@ fn apply_network_requests_input(state: &mut RenderState, field: &str, value: &st
             .network_requests_inputs
             .quantity
             .set_value(value.to_string()),
+        "delivery_start_minutes" | "delivery_start" => state
+            .network_requests_inputs
+            .delivery_start_minutes
+            .set_value(value.to_string()),
         "window_minutes" | "budget_sats" => state
             .network_requests_inputs
             .window_minutes

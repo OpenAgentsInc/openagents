@@ -5273,67 +5273,151 @@ pub(super) fn run_network_requests_action(
 ) -> bool {
     match action {
         NetworkRequestsPaneAction::RequestQuotes => {
-            let rfq = match build_spot_compute_rfq_from_inputs(state) {
-                Ok(rfq) => rfq,
+            let delivery_start_minutes = match parse_non_negative_amount_str(
+                state
+                    .network_requests_inputs
+                    .delivery_start_minutes
+                    .get_value(),
+                "Delivery start minutes",
+            ) {
+                Ok(value) => value,
                 Err(error) => {
                     state.network_requests.clear_spot_quotes_with_error(error);
                     return true;
                 }
             };
-            match crate::kernel_control::request_spot_compute_quotes(state, &rfq) {
-                Ok(quotes) => {
-                    state
-                        .network_requests
-                        .replace_spot_quotes(rfq.clone(), quotes);
-                    state.provider_runtime.last_result =
-                        Some(format!("loaded compute quotes for {}", rfq.summary()));
+            if delivery_start_minutes > 0 {
+                let rfq = match build_forward_compute_rfq_from_inputs(state, delivery_start_minutes)
+                {
+                    Ok(rfq) => rfq,
+                    Err(error) => {
+                        state
+                            .network_requests
+                            .clear_forward_quotes_with_error(error);
+                        return true;
+                    }
+                };
+                match crate::kernel_control::request_forward_compute_quotes(state, &rfq) {
+                    Ok(quotes) => {
+                        state
+                            .network_requests
+                            .replace_forward_quotes(rfq.clone(), quotes);
+                        state.provider_runtime.last_result =
+                            Some(format!("loaded compute quotes for {}", rfq.summary()));
+                    }
+                    Err(error) => {
+                        state
+                            .network_requests
+                            .clear_forward_quotes_with_error(error.clone());
+                        state.provider_runtime.last_error_detail = Some(error.clone());
+                        state.provider_runtime.last_result =
+                            Some(format!("compute quote request failed: {error}"));
+                    }
                 }
-                Err(error) => {
-                    state
-                        .network_requests
-                        .clear_spot_quotes_with_error(error.clone());
-                    state.provider_runtime.last_error_detail = Some(error.clone());
-                    state.provider_runtime.last_result =
-                        Some(format!("compute quote request failed: {error}"));
+            } else {
+                let rfq = match build_spot_compute_rfq_from_inputs(state) {
+                    Ok(rfq) => rfq,
+                    Err(error) => {
+                        state.network_requests.clear_spot_quotes_with_error(error);
+                        return true;
+                    }
+                };
+                match crate::kernel_control::request_spot_compute_quotes(state, &rfq) {
+                    Ok(quotes) => {
+                        state
+                            .network_requests
+                            .replace_spot_quotes(rfq.clone(), quotes);
+                        state.provider_runtime.last_result =
+                            Some(format!("loaded compute quotes for {}", rfq.summary()));
+                    }
+                    Err(error) => {
+                        state
+                            .network_requests
+                            .clear_spot_quotes_with_error(error.clone());
+                        state.provider_runtime.last_error_detail = Some(error.clone());
+                        state.provider_runtime.last_result =
+                            Some(format!("compute quote request failed: {error}"));
+                    }
                 }
             }
             true
         }
         NetworkRequestsPaneAction::AcceptSelectedQuote => {
-            let Some(rfq) = state.network_requests.last_spot_rfq.clone() else {
-                state
-                    .network_requests
-                    .clear_spot_quotes_with_error("Load quotes before accepting terms");
-                return true;
-            };
-            let Some(quote) = state.network_requests.selected_spot_quote().cloned() else {
-                state
-                    .network_requests
-                    .clear_spot_quotes_with_error("Select a quote before accepting terms");
-                return true;
-            };
-            match crate::kernel_control::accept_spot_compute_quote(state, &rfq, &quote) {
-                Ok(order) => {
-                    let instrument_id = order.instrument_id.clone();
-                    let quote_id = order.quote_id.clone();
-                    state.network_requests.record_spot_order_acceptance(order);
-                    state.provider_runtime.last_result = Some(format!(
-                        "accepted compute quote {} -> {}",
-                        quote_id, instrument_id
-                    ));
+            match state.network_requests.quote_mode {
+                crate::app_state::ComputeQuoteMode::Spot => {
+                    let Some(rfq) = state.network_requests.last_spot_rfq.clone() else {
+                        state
+                            .network_requests
+                            .clear_spot_quotes_with_error("Load quotes before accepting terms");
+                        return true;
+                    };
+                    let Some(quote) = state.network_requests.selected_spot_quote().cloned() else {
+                        state
+                            .network_requests
+                            .clear_spot_quotes_with_error("Select a quote before accepting terms");
+                        return true;
+                    };
+                    match crate::kernel_control::accept_spot_compute_quote(state, &rfq, &quote) {
+                        Ok(order) => {
+                            let instrument_id = order.instrument_id.clone();
+                            let quote_id = order.quote_id.clone();
+                            state.network_requests.record_spot_order_acceptance(order);
+                            state.provider_runtime.last_result = Some(format!(
+                                "accepted compute quote {} -> {}",
+                                quote_id, instrument_id
+                            ));
+                        }
+                        Err(error) => {
+                            state.network_requests.last_error = Some(error.clone());
+                            state.network_requests.load_state =
+                                crate::app_state::PaneLoadState::Error;
+                            state.provider_runtime.last_error_detail = Some(error.clone());
+                            state.provider_runtime.last_result =
+                                Some(format!("compute quote acceptance failed: {error}"));
+                        }
+                    }
                 }
-                Err(error) => {
-                    state.network_requests.last_error = Some(error.clone());
-                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
-                    state.provider_runtime.last_error_detail = Some(error.clone());
-                    state.provider_runtime.last_result =
-                        Some(format!("compute quote acceptance failed: {error}"));
+                crate::app_state::ComputeQuoteMode::ForwardPhysical => {
+                    let Some(rfq) = state.network_requests.last_forward_rfq.clone() else {
+                        state
+                            .network_requests
+                            .clear_forward_quotes_with_error("Load quotes before accepting terms");
+                        return true;
+                    };
+                    let Some(quote) = state.network_requests.selected_forward_quote().cloned()
+                    else {
+                        state.network_requests.clear_forward_quotes_with_error(
+                            "Select a quote before accepting terms",
+                        );
+                        return true;
+                    };
+                    match crate::kernel_control::accept_forward_compute_quote(state, &rfq, &quote) {
+                        Ok(order) => {
+                            let instrument_id = order.instrument_id.clone();
+                            let quote_id = order.quote_id.clone();
+                            state
+                                .network_requests
+                                .record_forward_order_acceptance(order);
+                            state.provider_runtime.last_result = Some(format!(
+                                "accepted compute quote {} -> {}",
+                                quote_id, instrument_id
+                            ));
+                        }
+                        Err(error) => {
+                            state.network_requests.last_error = Some(error.clone());
+                            state.network_requests.load_state =
+                                crate::app_state::PaneLoadState::Error;
+                            state.provider_runtime.last_error_detail = Some(error.clone());
+                            state.provider_runtime.last_result =
+                                Some(format!("compute quote acceptance failed: {error}"));
+                        }
+                    }
                 }
             }
             true
         }
         NetworkRequestsPaneAction::SelectQuote(index) => {
-            if !state.network_requests.select_spot_quote_by_index(index) {
+            if !state.network_requests.select_active_quote_by_index(index) {
                 state.network_requests.last_error =
                     Some("Selected compute quote no longer exists".to_string());
                 state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
@@ -5458,6 +5542,23 @@ fn build_spot_compute_rfq_from_inputs(
         window_minutes,
         max_price_sats,
         capability_constraints,
+    })
+}
+
+fn build_forward_compute_rfq_from_inputs(
+    state: &mut crate::app_state::RenderState,
+    delivery_start_minutes: u64,
+) -> Result<crate::app_state::ForwardComputeRfqDraft, String> {
+    let spot_rfq = build_spot_compute_rfq_from_inputs(state)?;
+    Ok(crate::app_state::ForwardComputeRfqDraft {
+        rfq_id: spot_rfq.rfq_id,
+        compute_family: spot_rfq.compute_family,
+        preferred_backend: spot_rfq.preferred_backend,
+        quantity: spot_rfq.quantity,
+        delivery_start_minutes,
+        window_minutes: spot_rfq.window_minutes,
+        max_price_sats: spot_rfq.max_price_sats,
+        capability_constraints: spot_rfq.capability_constraints,
     })
 }
 
@@ -8435,6 +8536,17 @@ pub(super) fn parse_positive_amount_str(raw: &str, label: &str) -> Result<u64, S
         Ok(_) => Err(format!("{label} must be greater than 0")),
         Err(error) => Err(format!("{label} must be a valid integer: {error}")),
     }
+}
+
+pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u64, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Err(format!("{label} is required"));
+    }
+
+    trimmed
+        .parse::<u64>()
+        .map_err(|error| format!("{label} must be a valid integer: {error}"))
 }
 
 #[cfg(test)]

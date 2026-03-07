@@ -565,6 +565,21 @@ impl SpotComputeCapabilityConstraints {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ComputeQuoteMode {
+    Spot,
+    ForwardPhysical,
+}
+
+impl ComputeQuoteMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Spot => "spot",
+            Self::ForwardPhysical => "forward_physical",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpotComputeRfqDraft {
     pub rfq_id: String,
@@ -607,6 +622,49 @@ impl SpotComputeRfqDraft {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForwardComputeRfqDraft {
+    pub rfq_id: String,
+    pub compute_family: ComputeFamily,
+    pub preferred_backend: Option<ComputeBackendFamily>,
+    pub quantity: u64,
+    pub delivery_start_minutes: u64,
+    pub window_minutes: u64,
+    pub max_price_sats: u64,
+    pub capability_constraints: SpotComputeCapabilityConstraints,
+}
+
+impl ForwardComputeRfqDraft {
+    pub const fn compute_family_label(&self) -> &'static str {
+        match self.compute_family {
+            ComputeFamily::Inference => "inference",
+            ComputeFamily::Embeddings => "embeddings",
+        }
+    }
+
+    pub const fn preferred_backend_label(&self) -> &'static str {
+        match self.preferred_backend {
+            Some(ComputeBackendFamily::Ollama) => "ollama",
+            Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            None => "any",
+        }
+    }
+
+    pub fn summary(&self) -> String {
+        format!(
+            "rfq={} family={} backend={} qty={} start_in={}m window={}m max_price={} constraints={}",
+            self.rfq_id,
+            self.compute_family_label(),
+            self.preferred_backend_label(),
+            self.quantity,
+            self.delivery_start_minutes,
+            self.window_minutes,
+            format_sats_amount(self.max_price_sats),
+            self.capability_constraints.summary()
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct SpotComputeQuoteCandidate {
     pub quote_id: String,
     pub rfq_id: String,
@@ -641,6 +699,44 @@ impl SpotComputeQuoteCandidate {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ForwardComputeQuoteCandidate {
+    pub quote_id: String,
+    pub rfq_id: String,
+    pub product_id: String,
+    pub capacity_lot_id: String,
+    pub provider_id: String,
+    pub backend_family: ComputeBackendFamily,
+    pub compute_family: ComputeFamily,
+    pub available_quantity: u64,
+    pub requested_quantity: u64,
+    pub price_sats: u64,
+    pub delivery_start_ms: i64,
+    pub delivery_end_ms: i64,
+    pub delivery_window_label: String,
+    pub capability_summary: String,
+    pub source_badge: String,
+    pub terms_label: String,
+    pub collateral_summary: String,
+    pub remedy_summary: String,
+}
+
+impl ForwardComputeQuoteCandidate {
+    pub const fn backend_label(&self) -> &'static str {
+        match self.backend_family {
+            ComputeBackendFamily::Ollama => "ollama",
+            ComputeBackendFamily::AppleFoundationModels => "apple_foundation_models",
+        }
+    }
+
+    pub const fn compute_family_label(&self) -> &'static str {
+        match self.compute_family {
+            ComputeFamily::Inference => "inference",
+            ComputeFamily::Embeddings => "embeddings",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct AcceptedSpotComputeOrder {
     pub order_id: String,
     pub rfq_id: String,
@@ -658,14 +754,41 @@ pub struct AcceptedSpotComputeOrder {
     pub accepted_at_epoch_seconds: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AcceptedForwardComputeOrder {
+    pub order_id: String,
+    pub rfq_id: String,
+    pub quote_id: String,
+    pub instrument_id: String,
+    pub product_id: String,
+    pub capacity_lot_id: String,
+    pub provider_id: String,
+    pub backend_family: ComputeBackendFamily,
+    pub compute_family: ComputeFamily,
+    pub quantity: u64,
+    pub price_sats: u64,
+    pub delivery_start_ms: i64,
+    pub delivery_end_ms: i64,
+    pub delivery_window_label: String,
+    pub collateral_summary: String,
+    pub remedy_summary: String,
+    pub authority_status: String,
+    pub accepted_at_epoch_seconds: u64,
+}
+
 pub struct NetworkRequestsState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub quote_mode: ComputeQuoteMode,
     pub last_spot_rfq: Option<SpotComputeRfqDraft>,
     pub spot_quote_candidates: Vec<SpotComputeQuoteCandidate>,
     pub selected_spot_quote_id: Option<String>,
     pub accepted_spot_orders: Vec<AcceptedSpotComputeOrder>,
+    pub last_forward_rfq: Option<ForwardComputeRfqDraft>,
+    pub forward_quote_candidates: Vec<ForwardComputeQuoteCandidate>,
+    pub selected_forward_quote_id: Option<String>,
+    pub accepted_forward_orders: Vec<AcceptedForwardComputeOrder>,
     pub submitted: Vec<SubmittedNetworkRequest>,
     pub pending_auto_payment_request_id: Option<String>,
     next_request_seq: u64,
@@ -677,10 +800,15 @@ impl Default for NetworkRequestsState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for request lane snapshot".to_string()),
+            quote_mode: ComputeQuoteMode::Spot,
             last_spot_rfq: None,
             spot_quote_candidates: Vec::new(),
             selected_spot_quote_id: None,
             accepted_spot_orders: Vec::new(),
+            last_forward_rfq: None,
+            forward_quote_candidates: Vec::new(),
+            selected_forward_quote_id: None,
+            accepted_forward_orders: Vec::new(),
             submitted: Vec::new(),
             pending_auto_payment_request_id: None,
             next_request_seq: 0,
@@ -809,12 +937,14 @@ impl NetworkRequestsState {
             },
             rfq.summary()
         ));
+        self.quote_mode = ComputeQuoteMode::Spot;
     }
 
     pub fn clear_spot_quotes_with_error(&mut self, error: impl Into<String>) -> String {
         self.spot_quote_candidates.clear();
         self.selected_spot_quote_id = None;
         self.last_spot_rfq = None;
+        self.quote_mode = ComputeQuoteMode::Spot;
         self.pane_set_error(error)
     }
 
@@ -864,6 +994,108 @@ impl NetworkRequestsState {
             "Accepted compute quote {} -> instrument {}",
             order.quote_id, order.instrument_id
         ));
+        self.quote_mode = ComputeQuoteMode::Spot;
+    }
+
+    pub fn replace_forward_quotes(
+        &mut self,
+        rfq: ForwardComputeRfqDraft,
+        mut quotes: Vec<ForwardComputeQuoteCandidate>,
+    ) {
+        quotes.sort_by(|left, right| {
+            left.price_sats
+                .cmp(&right.price_sats)
+                .then_with(|| left.delivery_start_ms.cmp(&right.delivery_start_ms))
+                .then_with(|| left.product_id.cmp(&right.product_id))
+                .then_with(|| left.capacity_lot_id.cmp(&right.capacity_lot_id))
+        });
+        self.last_forward_rfq = Some(rfq.clone());
+        self.selected_forward_quote_id = quotes.first().map(|quote| quote.quote_id.clone());
+        self.forward_quote_candidates = quotes;
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Loaded {} forward compute quote{} for {}",
+            self.forward_quote_candidates.len(),
+            if self.forward_quote_candidates.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            rfq.summary()
+        ));
+        self.quote_mode = ComputeQuoteMode::ForwardPhysical;
+    }
+
+    pub fn clear_forward_quotes_with_error(&mut self, error: impl Into<String>) -> String {
+        self.forward_quote_candidates.clear();
+        self.selected_forward_quote_id = None;
+        self.last_forward_rfq = None;
+        self.quote_mode = ComputeQuoteMode::ForwardPhysical;
+        self.pane_set_error(error)
+    }
+
+    pub fn select_forward_quote_by_index(&mut self, index: usize) -> bool {
+        let Some(quote_id) = self
+            .forward_quote_candidates
+            .get(index)
+            .map(|quote| quote.quote_id.clone())
+        else {
+            return false;
+        };
+        self.selected_forward_quote_id = Some(quote_id.clone());
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!("Selected compute quote {quote_id}"));
+        true
+    }
+
+    pub fn selected_forward_quote(&self) -> Option<&ForwardComputeQuoteCandidate> {
+        let selected = self.selected_forward_quote_id.as_deref()?;
+        self.forward_quote_candidates
+            .iter()
+            .find(|quote| quote.quote_id == selected)
+    }
+
+    pub fn record_forward_order_acceptance(&mut self, order: AcceptedForwardComputeOrder) {
+        let selected_quote_id = order.quote_id.clone();
+        let accepted_quantity = order.quantity;
+        self.accepted_forward_orders.insert(0, order.clone());
+        self.accepted_forward_orders.truncate(32);
+
+        for quote in &mut self.forward_quote_candidates {
+            if quote.quote_id != selected_quote_id {
+                continue;
+            }
+            quote.available_quantity = quote.available_quantity.saturating_sub(accepted_quantity);
+        }
+        self.forward_quote_candidates
+            .retain(|quote| quote.available_quantity >= quote.requested_quantity);
+        self.selected_forward_quote_id = self
+            .forward_quote_candidates
+            .first()
+            .map(|quote| quote.quote_id.clone());
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Accepted compute quote {} -> instrument {}",
+            order.quote_id, order.instrument_id
+        ));
+        self.quote_mode = ComputeQuoteMode::ForwardPhysical;
+    }
+
+    pub fn active_quote_count(&self) -> usize {
+        match self.quote_mode {
+            ComputeQuoteMode::Spot => self.spot_quote_candidates.len(),
+            ComputeQuoteMode::ForwardPhysical => self.forward_quote_candidates.len(),
+        }
+    }
+
+    pub fn select_active_quote_by_index(&mut self, index: usize) -> bool {
+        match self.quote_mode {
+            ComputeQuoteMode::Spot => self.select_spot_quote_by_index(index),
+            ComputeQuoteMode::ForwardPhysical => self.select_forward_quote_by_index(index),
+        }
     }
 
     pub fn apply_nip90_request_publish_outcome(
@@ -2461,8 +2693,9 @@ impl ReciprocalLoopState {
 #[cfg(test)]
 mod tests {
     use super::{
-        AcceptedSpotComputeOrder, NetworkRequestsState, SpotComputeCapabilityConstraints,
-        SpotComputeQuoteCandidate, SpotComputeRfqDraft,
+        AcceptedForwardComputeOrder, AcceptedSpotComputeOrder, ComputeQuoteMode,
+        ForwardComputeQuoteCandidate, ForwardComputeRfqDraft, NetworkRequestsState,
+        SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate, SpotComputeRfqDraft,
     };
     use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
 
@@ -2494,6 +2727,45 @@ mod tests {
             capability_summary: "backend=ollama family=inference".to_string(),
             source_badge: "desktop.go_online".to_string(),
             terms_label: "spot session / local best effort".to_string(),
+        }
+    }
+
+    fn sample_forward_rfq() -> ForwardComputeRfqDraft {
+        ForwardComputeRfqDraft {
+            rfq_id: "rfq-forward-1".to_string(),
+            compute_family: ComputeFamily::Inference,
+            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            quantity: 1,
+            delivery_start_minutes: 180,
+            window_minutes: 60,
+            max_price_sats: 144,
+            capability_constraints: SpotComputeCapabilityConstraints::default(),
+        }
+    }
+
+    fn sample_forward_quote(
+        quote_id: &str,
+        available_quantity: u64,
+    ) -> ForwardComputeQuoteCandidate {
+        ForwardComputeQuoteCandidate {
+            quote_id: quote_id.to_string(),
+            rfq_id: "rfq-forward-1".to_string(),
+            product_id: "ollama.text_generation".to_string(),
+            capacity_lot_id: format!("forward-lot-{quote_id}"),
+            provider_id: "npub1provider".to_string(),
+            backend_family: ComputeBackendFamily::Ollama,
+            compute_family: ComputeFamily::Inference,
+            available_quantity,
+            requested_quantity: 1,
+            price_sats: 55,
+            delivery_start_ms: 1_762_000_180_000,
+            delivery_end_ms: 1_762_000_240_000,
+            delivery_window_label: "start+180m for 60m".to_string(),
+            capability_summary: "backend=ollama family=inference".to_string(),
+            source_badge: "desktop.forward_inventory".to_string(),
+            terms_label: "forward physical / committed local window".to_string(),
+            collateral_summary: "bond=performance_bond".to_string(),
+            remedy_summary: "default=>non_delivery remedy".to_string(),
         }
     }
 
@@ -2542,5 +2814,54 @@ mod tests {
             state.last_action.as_deref(),
             Some("Accepted compute quote quote-a -> instrument instrument-1")
         );
+    }
+
+    #[test]
+    fn replacing_forward_quotes_switches_mode_and_selects_first_quote() {
+        let mut state = NetworkRequestsState::default();
+        state.replace_forward_quotes(
+            sample_forward_rfq(),
+            vec![sample_forward_quote("forward-a", 1)],
+        );
+
+        assert_eq!(state.quote_mode, ComputeQuoteMode::ForwardPhysical);
+        assert_eq!(
+            state.selected_forward_quote_id.as_deref(),
+            Some("forward-a")
+        );
+    }
+
+    #[test]
+    fn accepting_forward_order_consumes_selected_quote_capacity() {
+        let mut state = NetworkRequestsState::default();
+        state.replace_forward_quotes(
+            sample_forward_rfq(),
+            vec![sample_forward_quote("forward-a", 1)],
+        );
+
+        state.record_forward_order_acceptance(AcceptedForwardComputeOrder {
+            order_id: "forward-order-1".to_string(),
+            rfq_id: "rfq-forward-1".to_string(),
+            quote_id: "forward-a".to_string(),
+            instrument_id: "instrument-forward-1".to_string(),
+            product_id: "ollama.text_generation".to_string(),
+            capacity_lot_id: "forward-lot-forward-a".to_string(),
+            provider_id: "npub1provider".to_string(),
+            backend_family: ComputeBackendFamily::Ollama,
+            compute_family: ComputeFamily::Inference,
+            quantity: 1,
+            price_sats: 55,
+            delivery_start_ms: 1_762_000_180_000,
+            delivery_end_ms: 1_762_000_240_000,
+            delivery_window_label: "start+180m for 60m".to_string(),
+            collateral_summary: "bond=performance_bond".to_string(),
+            remedy_summary: "default=>non_delivery remedy".to_string(),
+            authority_status: "forward-accepted".to_string(),
+            accepted_at_epoch_seconds: 1_762_000_000,
+        });
+
+        assert!(state.forward_quote_candidates.is_empty());
+        assert_eq!(state.accepted_forward_orders.len(), 1);
+        assert_eq!(state.quote_mode, ComputeQuoteMode::ForwardPhysical);
     }
 }

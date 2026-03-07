@@ -2,7 +2,8 @@ use crate::app_state::{ActiveJobRecord, JobInboxDecision, RenderState};
 use crate::ollama_execution::OllamaExecutionMetrics;
 use crate::state::job_inbox::JobInboxRequest;
 use crate::state::operations::{
-    AcceptedSpotComputeOrder, SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate,
+    AcceptedForwardComputeOrder, AcceptedSpotComputeOrder, ForwardComputeQuoteCandidate,
+    ForwardComputeRfqDraft, SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate,
     SpotComputeRfqDraft,
 };
 use crate::state::provider_runtime::LocalInferenceBackend;
@@ -50,6 +51,9 @@ const KERNEL_STREAM_RETRY_DELAY: Duration = Duration::from_secs(2);
 const LAUNCH_PRODUCT_CREATED_AT_MS: i64 = 1_762_000_000_000;
 const ONLINE_INVENTORY_WINDOW_DURATION_MS: i64 = 86_400_000;
 const ONLINE_INVENTORY_QUANTITY: u64 = 1_024;
+const FORWARD_INVENTORY_START_DELAY_MS: i64 = 21_600_000;
+const FORWARD_INVENTORY_WINDOW_DURATION_MS: i64 = 3_600_000;
+const FORWARD_INVENTORY_QUANTITY: u64 = 256;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(crate) enum KernelAuthorityMode {
@@ -310,6 +314,7 @@ pub(crate) fn register_online_compute_inventory_with_kernel(
     for binding in bindings {
         ensure_launch_compute_product_registered(state, &client, binding)?;
         ensure_online_capacity_lot_registered(state, &client, binding)?;
+        ensure_forward_capacity_lot_registered(state, &client, binding)?;
     }
     Ok(())
 }
@@ -459,6 +464,17 @@ fn build_provider_inventory_row(
                 session_started_at_ms,
             )
         });
+    let forward_capacity_lot_id = state
+        .provider_runtime
+        .inventory_session_started_at_ms
+        .filter(|_| eligible)
+        .map(|session_started_at_ms| {
+            forward_capacity_lot_id_for_binding(
+                provider_id_for_state(state).as_str(),
+                target.product_id(),
+                session_started_at_ms,
+            )
+        });
     ProviderInventoryRow {
         target,
         enabled,
@@ -473,6 +489,48 @@ fn build_provider_inventory_row(
         delivery_state: provider_inventory_delivery_state(state, target).to_string(),
         price_floor_sats: target.default_price_floor_sats(),
         terms_label: target.terms_label().to_string(),
+        forward_capacity_lot_id,
+        forward_delivery_window_label: state
+            .provider_runtime
+            .inventory_session_started_at_ms
+            .filter(|_| eligible)
+            .map(|session_started_at_ms| {
+                format!(
+                    "{}..{}",
+                    session_started_at_ms.saturating_add(FORWARD_INVENTORY_START_DELAY_MS),
+                    session_started_at_ms
+                        .saturating_add(FORWARD_INVENTORY_START_DELAY_MS)
+                        .saturating_add(FORWARD_INVENTORY_WINDOW_DURATION_MS)
+                )
+            }),
+        forward_total_quantity: if eligible
+            && state
+                .provider_runtime
+                .inventory_session_started_at_ms
+                .is_some()
+            && matches!(
+                state.provider_runtime.mode,
+                crate::app_state::ProviderMode::Online | crate::app_state::ProviderMode::Degraded
+            ) {
+            FORWARD_INVENTORY_QUANTITY
+        } else {
+            0
+        },
+        forward_reserved_quantity: 0,
+        forward_available_quantity: if eligible
+            && state
+                .provider_runtime
+                .inventory_session_started_at_ms
+                .is_some()
+            && matches!(
+                state.provider_runtime.mode,
+                crate::app_state::ProviderMode::Online | crate::app_state::ProviderMode::Degraded
+            ) {
+            FORWARD_INVENTORY_QUANTITY
+        } else {
+            0
+        },
+        forward_terms_label: eligible.then(|| target.forward_terms_label().to_string()),
     }
 }
 
@@ -613,6 +671,10 @@ pub(crate) fn accept_spot_compute_quote(
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms,
             status: CapacityInstrumentStatus::Active,
+            closure_reason: None,
+            non_delivery_reason: None,
+            settlement_failure_reason: None,
+            lifecycle_reason_detail: None,
             metadata: json!({
                 "rfq_id": rfq.rfq_id,
                 "quote_id": quote.quote_id,
@@ -659,6 +721,135 @@ pub(crate) fn accept_spot_compute_quote(
         price_sats: quote.price_sats,
         delivery_window_label: quote.delivery_window_label.clone(),
         authority_status: "spot-accepted".to_string(),
+        accepted_at_epoch_seconds,
+    })
+}
+
+pub(crate) fn request_forward_compute_quotes(
+    state: &RenderState,
+    rfq: &ForwardComputeRfqDraft,
+) -> Result<Vec<ForwardComputeQuoteCandidate>, String> {
+    let client = remote_authority_client_for_state(state)?;
+    let products =
+        run_kernel_call(client.list_compute_products(Some(ComputeProductStatus::Active)))?;
+    let lots = run_kernel_call(client.list_capacity_lots(None, None))?;
+    let instruments = run_kernel_call(client.list_capacity_instruments(None, None, None))?;
+    Ok(build_forward_compute_quotes_from_market(
+        rfq,
+        products.as_slice(),
+        lots.as_slice(),
+        instruments.as_slice(),
+    ))
+}
+
+pub(crate) fn accept_forward_compute_quote(
+    state: &mut RenderState,
+    rfq: &ForwardComputeRfqDraft,
+    quote: &ForwardComputeQuoteCandidate,
+) -> Result<AcceptedForwardComputeOrder, String> {
+    let client = remote_authority_client_for_state(state)?;
+    let created_at_ms = current_epoch_ms();
+    let request = CreateCapacityInstrumentRequest {
+        idempotency_key: format!(
+            "desktop.buy.compute_forward:{}:{}",
+            canonical_kernel_id_component(rfq.rfq_id.as_str()),
+            canonical_kernel_id_component(quote.capacity_lot_id.as_str())
+        ),
+        trace: TraceContext {
+            session_id: Some("desktop.compute.forward".to_string()),
+            trajectory_hash: Some(format!(
+                "traj:{}:{}",
+                canonical_kernel_id_component(rfq.rfq_id.as_str()),
+                canonical_kernel_id_component(quote.quote_id.as_str())
+            )),
+            job_hash: Some(rfq.rfq_id.clone()),
+            run_id: Some(format!(
+                "forward:{}",
+                canonical_kernel_id_component(quote.quote_id.as_str())
+            )),
+            work_unit_id: None,
+            contract_id: None,
+            claim_id: None,
+        },
+        policy: kernel_policy_context(state),
+        instrument: CapacityInstrument {
+            instrument_id: format!(
+                "instrument.forward.{}.{}",
+                canonical_kernel_id_component(rfq.rfq_id.as_str()),
+                canonical_kernel_id_component(quote.capacity_lot_id.as_str())
+            ),
+            product_id: quote.product_id.clone(),
+            capacity_lot_id: Some(quote.capacity_lot_id.clone()),
+            buyer_id: Some(provider_id_for_state(state)),
+            provider_id: Some(quote.provider_id.clone()),
+            delivery_start_ms: quote.delivery_start_ms,
+            delivery_end_ms: quote.delivery_end_ms,
+            quantity: quote.requested_quantity,
+            fixed_price: Some(btc_sats_money(quote.price_sats)),
+            reference_index_id: None,
+            kind: CapacityInstrumentKind::ForwardPhysical,
+            settlement_mode: ComputeSettlementMode::Physical,
+            created_at_ms,
+            status: CapacityInstrumentStatus::Active,
+            closure_reason: None,
+            non_delivery_reason: None,
+            settlement_failure_reason: None,
+            lifecycle_reason_detail: None,
+            metadata: json!({
+                "rfq_id": rfq.rfq_id,
+                "quote_id": quote.quote_id,
+                "compute_family": quote.compute_family_label(),
+                "backend_family": quote.backend_label(),
+                "source_badge": quote.source_badge,
+                "terms_label": quote.terms_label,
+                "collateral_summary": quote.collateral_summary,
+                "remedy_summary": quote.remedy_summary,
+                "delivery_start_minutes": rfq.delivery_start_minutes,
+                "market_phase": "forward_physical",
+            }),
+        },
+        evidence: vec![
+            evidence_ref(
+                "forward_rfq_ref",
+                format!("oa://autopilot/compute/forward-rfq/{}", rfq.rfq_id),
+                rfq.summary().as_str(),
+            ),
+            evidence_ref(
+                "capacity_lot_ref",
+                format!("oa://kernel/compute/lots/{}", quote.capacity_lot_id),
+                quote.capacity_lot_id.as_str(),
+            ),
+        ],
+        hints: receipt_hints_for_notional(quote.price_sats),
+    };
+    let response = run_kernel_call(client.create_capacity_instrument(request))?;
+    state.earn_kernel_receipts.apply_authoritative_receipt(
+        response.receipt,
+        "kernel.authority.capacity_instrument.forward",
+    );
+    let instrument_id = response.instrument.instrument_id.clone();
+    let accepted_at_epoch_seconds = (created_at_ms / 1_000).max(0) as u64;
+    Ok(AcceptedForwardComputeOrder {
+        order_id: format!(
+            "forward-order-{}",
+            canonical_kernel_id_component(quote.quote_id.as_str())
+        ),
+        rfq_id: rfq.rfq_id.clone(),
+        quote_id: quote.quote_id.clone(),
+        instrument_id,
+        product_id: quote.product_id.clone(),
+        capacity_lot_id: quote.capacity_lot_id.clone(),
+        provider_id: quote.provider_id.clone(),
+        backend_family: quote.backend_family,
+        compute_family: quote.compute_family,
+        quantity: quote.requested_quantity,
+        price_sats: quote.price_sats,
+        delivery_start_ms: quote.delivery_start_ms,
+        delivery_end_ms: quote.delivery_end_ms,
+        delivery_window_label: quote.delivery_window_label.clone(),
+        collateral_summary: quote.collateral_summary.clone(),
+        remedy_summary: quote.remedy_summary.clone(),
+        authority_status: "forward-accepted".to_string(),
         accepted_at_epoch_seconds,
     })
 }
@@ -739,6 +930,112 @@ fn build_spot_compute_quotes_from_market(
     quotes
 }
 
+fn build_forward_compute_quotes_from_market(
+    rfq: &ForwardComputeRfqDraft,
+    products: &[ComputeProduct],
+    lots: &[CapacityLot],
+    instruments: &[CapacityInstrument],
+) -> Vec<ForwardComputeQuoteCandidate> {
+    let mut quotes = Vec::new();
+    let desired_start_ms = current_epoch_ms()
+        .saturating_add((rfq.delivery_start_minutes as i64).saturating_mul(60_000));
+    let desired_end_ms = desired_start_ms.saturating_add(
+        (rfq.window_minutes as i64)
+            .saturating_mul(60_000)
+            .max(60_000),
+    );
+    for product in products {
+        let Some(spec) = launch_compute_product_spec(product.product_id.as_str()) else {
+            continue;
+        };
+        if spec.compute_family != rfq.compute_family {
+            continue;
+        }
+        let Some(envelope) = product.capability_envelope.as_ref() else {
+            continue;
+        };
+        if !spot_rfq_matches_envelope(
+            &SpotComputeRfqDraft {
+                rfq_id: rfq.rfq_id.clone(),
+                compute_family: rfq.compute_family,
+                preferred_backend: rfq.preferred_backend,
+                quantity: rfq.quantity,
+                window_minutes: rfq.window_minutes,
+                max_price_sats: rfq.max_price_sats,
+                capability_constraints: rfq.capability_constraints.clone(),
+            },
+            envelope,
+        ) {
+            continue;
+        }
+        for lot in lots
+            .iter()
+            .filter(|lot| lot.product_id == product.product_id)
+        {
+            if lot.delivery_start_ms <= current_epoch_ms() {
+                continue;
+            }
+            if lot.delivery_start_ms > desired_start_ms || lot.delivery_end_ms < desired_end_ms {
+                continue;
+            }
+            let reserved_quantity =
+                reserved_quantity_for_lot(instruments, lot.capacity_lot_id.as_str());
+            let available_quantity = lot.quantity.saturating_sub(reserved_quantity);
+            if available_quantity < rfq.quantity {
+                continue;
+            }
+            let price_sats = lot
+                .min_unit_price
+                .as_ref()
+                .and_then(money_as_sats)
+                .unwrap_or_else(|| {
+                    price_floor_sats_for_product_id(product.product_id.as_str()).saturating_mul(2)
+                })
+                .saturating_mul(rfq.quantity);
+            if price_sats > rfq.max_price_sats {
+                continue;
+            }
+            quotes.push(ForwardComputeQuoteCandidate {
+                quote_id: format!(
+                    "forward-quote.{}.{}",
+                    canonical_kernel_id_component(rfq.rfq_id.as_str()),
+                    canonical_kernel_id_component(lot.capacity_lot_id.as_str())
+                ),
+                rfq_id: rfq.rfq_id.clone(),
+                product_id: product.product_id.clone(),
+                capacity_lot_id: lot.capacity_lot_id.clone(),
+                provider_id: lot.provider_id.clone(),
+                backend_family: spec.backend_family,
+                compute_family: spec.compute_family,
+                available_quantity,
+                requested_quantity: rfq.quantity,
+                price_sats,
+                delivery_start_ms: lot.delivery_start_ms,
+                delivery_end_ms: lot.delivery_end_ms,
+                delivery_window_label: format!(
+                    "start+{}m / {}..{}",
+                    rfq.delivery_start_minutes, lot.delivery_start_ms, lot.delivery_end_ms
+                ),
+                capability_summary: capability_summary_for_product(product),
+                source_badge: "desktop.forward_inventory".to_string(),
+                terms_label: forward_terms_label_for_product_id(product.product_id.as_str())
+                    .to_string(),
+                collateral_summary: "bond=performance_bond".to_string(),
+                remedy_summary: forward_remedy_profile_for_product_id(product.product_id.as_str())
+                    .to_string(),
+            });
+        }
+    }
+    quotes.sort_by(|left, right| {
+        left.price_sats
+            .cmp(&right.price_sats)
+            .then_with(|| left.delivery_start_ms.cmp(&right.delivery_start_ms))
+            .then_with(|| left.product_id.cmp(&right.product_id))
+            .then_with(|| left.capacity_lot_id.cmp(&right.capacity_lot_id))
+    });
+    quotes
+}
+
 fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchComputeBinding> {
     let mut bindings = Vec::new();
     if state.provider_runtime.apple_fm.is_ready()
@@ -811,6 +1108,21 @@ fn ensure_online_capacity_lot_registered(
     state
         .earn_kernel_receipts
         .apply_authoritative_receipt(capacity_lot_receipt, "kernel.authority.capacity_lot");
+    Ok(())
+}
+
+fn ensure_forward_capacity_lot_registered(
+    state: &mut RenderState,
+    client: &HttpKernelAuthorityClient,
+    binding: LaunchComputeBinding,
+) -> Result<(), String> {
+    let capacity_lot_request = build_forward_capacity_lot_request(state, binding)?;
+    let capacity_lot_receipt =
+        run_kernel_call(client.create_capacity_lot(capacity_lot_request))?.receipt;
+    state.earn_kernel_receipts.apply_authoritative_receipt(
+        capacity_lot_receipt,
+        "kernel.authority.capacity_lot.forward",
+    );
     Ok(())
 }
 
@@ -1308,6 +1620,85 @@ fn build_online_capacity_lot_request(
     })
 }
 
+fn build_forward_capacity_lot_request(
+    state: &RenderState,
+    binding: LaunchComputeBinding,
+) -> Result<CreateCapacityLotRequest, String> {
+    let session_started_at_ms = state
+        .provider_runtime
+        .inventory_session_started_at_ms
+        .ok_or_else(|| "provider inventory session missing".to_string())?;
+    let provider_id = provider_id_for_state(state);
+    let delivery_start_ms = session_started_at_ms.saturating_add(FORWARD_INVENTORY_START_DELAY_MS);
+    let delivery_end_ms = delivery_start_ms.saturating_add(FORWARD_INVENTORY_WINDOW_DURATION_MS);
+    let floor_sats = price_floor_sats_for_product_id(binding.product_id).saturating_mul(2);
+    Ok(CreateCapacityLotRequest {
+        idempotency_key: format!(
+            "desktop.forward.compute_lot:{}:{}:{}",
+            canonical_kernel_id_component(provider_id.as_str()),
+            canonical_kernel_id_component(binding.product_id),
+            session_started_at_ms
+        ),
+        trace: TraceContext {
+            session_id: Some("desktop.forward_inventory".to_string()),
+            trajectory_hash: Some(format!(
+                "traj:forward:{}:{}",
+                canonical_kernel_id_component(provider_id.as_str()),
+                canonical_kernel_id_component(binding.product_id)
+            )),
+            job_hash: Some(binding.product_id.to_string()),
+            run_id: Some(format!(
+                "forward_inventory:{}:{}",
+                canonical_kernel_id_component(provider_id.as_str()),
+                canonical_kernel_id_component(binding.product_id)
+            )),
+            work_unit_id: None,
+            contract_id: None,
+            claim_id: None,
+        },
+        policy: kernel_policy_context(state),
+        lot: CapacityLot {
+            capacity_lot_id: forward_capacity_lot_id_for_binding(
+                provider_id.as_str(),
+                binding.product_id,
+                session_started_at_ms,
+            ),
+            product_id: binding.product_id.to_string(),
+            provider_id: provider_id.clone(),
+            delivery_start_ms,
+            delivery_end_ms,
+            quantity: FORWARD_INVENTORY_QUANTITY,
+            min_unit_price: Some(btc_sats_money(floor_sats)),
+            region_hint: Some("local".to_string()),
+            attestation_posture: Some("desktop.local.forward_commitment".to_string()),
+            reserve_state: CapacityReserveState::Available,
+            offer_expires_at_ms: delivery_start_ms,
+            status: CapacityLotStatus::Open,
+            metadata: json!({
+                "source": "desktop.forward_inventory",
+                "market_phase": "forward_physical",
+                "compute_family": compute_family_label(binding.compute_family),
+                "provider_id": provider_id,
+                "session_started_at_ms": session_started_at_ms,
+                "delivery_start_ms": delivery_start_ms,
+                "delivery_end_ms": delivery_end_ms,
+                "ready_model": ready_model_for_binding(state, binding),
+                "configured_model": configured_model_for_binding(state, binding),
+                "source_badge": "desktop.forward_inventory",
+                "terms_label": forward_terms_label_for_product_id(binding.product_id),
+                "price_floor_sats": floor_sats,
+                "remedy_profile": forward_remedy_profile_for_product_id(binding.product_id),
+                "bond_posture": {
+                    "provider_bond_required": true,
+                    "bond_mode": "performance_bond"
+                },
+            }),
+        },
+        evidence: provider_inventory_evidence_refs(state),
+        hints: receipt_hints_for_notional(0),
+    })
+}
+
 fn build_capacity_instrument_request(
     state: &RenderState,
     request: &JobInboxRequest,
@@ -1344,6 +1735,10 @@ fn build_capacity_instrument_request(
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms: current_epoch_ms(),
             status: CapacityInstrumentStatus::Active,
+            closure_reason: None,
+            non_delivery_reason: None,
+            settlement_failure_reason: None,
+            lifecycle_reason_detail: None,
             metadata: json!({
                 "request_id": request.request_id.clone(),
                 "provider_job_id": format!("job-{}", request.request_id),
@@ -2922,6 +3317,20 @@ fn terms_label_for_product_id(product_id: &str) -> &'static str {
         .unwrap_or("spot session / local best effort")
 }
 
+fn forward_terms_label_for_product_id(product_id: &str) -> &'static str {
+    ProviderInventoryProductToggleTarget::for_product_id(product_id)
+        .map(ProviderInventoryProductToggleTarget::forward_terms_label)
+        .unwrap_or("forward physical / committed local window")
+}
+
+fn forward_remedy_profile_for_product_id(product_id: &str) -> &'static str {
+    match product_id {
+        "ollama.embeddings" => "forward_physical.embeddings.v1",
+        "apple_foundation_models.text_generation" => "forward_physical.apple_fm.v1",
+        _ => "forward_physical.inference.v1",
+    }
+}
+
 fn ready_model_for_binding(state: &RenderState, binding: LaunchComputeBinding) -> Option<String> {
     match binding.backend_family {
         ComputeBackendFamily::Ollama => state.provider_runtime.ollama.ready_model.clone(),
@@ -2958,6 +3367,19 @@ fn online_capacity_lot_id_for_binding(
 ) -> String {
     format!(
         "lot.online.{}.{}.{}",
+        canonical_kernel_id_component(provider_id),
+        canonical_kernel_id_component(product_id),
+        session_started_at_ms.max(0)
+    )
+}
+
+fn forward_capacity_lot_id_for_binding(
+    provider_id: &str,
+    product_id: &str,
+    session_started_at_ms: i64,
+) -> String {
+    format!(
+        "lot.forward.{}.{}.{}",
         canonical_kernel_id_component(provider_id),
         canonical_kernel_id_component(product_id),
         session_started_at_ms.max(0)
@@ -3022,14 +3444,17 @@ pub(crate) fn reset_request_decision_after_kernel_error(
 mod tests {
     use super::{
         KernelAuthorityMode, LaunchDeliveryContext, PendingSseEvent, ReceiptProjectionEnvelope,
-        build_compute_product_request, build_spot_compute_quotes_from_market,
-        compute_binding_for_backend_and_capability, compute_linkage_for_active_job,
-        consume_sse_buffer, delivery_proof_id_for_request, evaluate_delivery_proof,
-        flush_pending_sse_event, online_capacity_lot_id_for_binding, resolve_kernel_authority_mode,
-        submission_evidence_refs,
+        build_compute_product_request, build_forward_compute_quotes_from_market,
+        build_spot_compute_quotes_from_market, compute_binding_for_backend_and_capability,
+        compute_linkage_for_active_job, consume_sse_buffer, current_epoch_ms,
+        delivery_proof_id_for_request, evaluate_delivery_proof, flush_pending_sse_event,
+        forward_capacity_lot_id_for_binding, online_capacity_lot_id_for_binding,
+        resolve_kernel_authority_mode, submission_evidence_refs,
     };
     use crate::app_state::{ActiveJobRecord, JobDemandSource, JobLifecycleStage};
-    use crate::app_state::{SpotComputeCapabilityConstraints, SpotComputeRfqDraft};
+    use crate::app_state::{
+        ForwardComputeRfqDraft, SpotComputeCapabilityConstraints, SpotComputeRfqDraft,
+    };
     use crate::economy_kernel_receipts::{
         PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
     };
@@ -3418,6 +3843,19 @@ mod tests {
     }
 
     #[test]
+    fn forward_inventory_lot_ids_are_provider_and_session_scoped() {
+        let lot_id = forward_capacity_lot_id_for_binding(
+            "npub1buyer",
+            "ollama.text_generation",
+            1_762_000_000_000,
+        );
+        assert_eq!(
+            lot_id,
+            "lot.forward.npub1buyer.ollama.text_generation.1762000000000"
+        );
+    }
+
+    #[test]
     fn compute_linkage_uses_active_job_inventory_and_request_instrument_ids() {
         let linkage = compute_linkage_for_active_job(&fixture_active_job_with_ollama_provenance())
             .expect("linkage");
@@ -3467,6 +3905,10 @@ mod tests {
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms: 0,
             status: CapacityInstrumentStatus::Active,
+            closure_reason: None,
+            non_delivery_reason: None,
+            settlement_failure_reason: None,
+            lifecycle_reason_detail: None,
             metadata: json!({}),
         }];
 
@@ -3476,6 +3918,41 @@ mod tests {
         assert_eq!(quotes[0].requested_quantity, 2);
         assert_eq!(quotes[0].available_quantity, 3);
         assert_eq!(quotes[0].price_sats, 16);
+    }
+
+    #[test]
+    fn forward_quotes_only_return_future_matching_supply() {
+        let rfq = ForwardComputeRfqDraft {
+            rfq_id: "rfq-forward-1".to_string(),
+            compute_family: ComputeFamily::Inference,
+            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            quantity: 1,
+            delivery_start_minutes: 180,
+            window_minutes: 60,
+            max_price_sats: 60,
+            capability_constraints: SpotComputeCapabilityConstraints::default(),
+        };
+        let products = vec![fixture_compute_product(
+            "ollama.text_generation",
+            ComputeFamily::Inference,
+        )];
+        let mut forward_lot = fixture_capacity_lot("ollama.text_generation", 4, 21);
+        let now_ms = current_epoch_ms();
+        forward_lot.capacity_lot_id = "lot.forward.provider.ollama.text_generation".to_string();
+        forward_lot.delivery_start_ms = now_ms + 180 * 60_000;
+        forward_lot.delivery_end_ms = forward_lot.delivery_start_ms + 60 * 60_000;
+        forward_lot.metadata = json!({
+            "source_badge": "desktop.forward_inventory",
+            "terms_label": "forward physical / committed local window"
+        });
+        let lots = vec![forward_lot];
+        let instruments = Vec::<CapacityInstrument>::new();
+
+        let quotes = build_forward_compute_quotes_from_market(&rfq, &products, &lots, &instruments);
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].product_id, "ollama.text_generation");
+        assert_eq!(quotes[0].requested_quantity, 1);
+        assert_eq!(quotes[0].source_badge, "desktop.forward_inventory");
     }
 
     #[test]
