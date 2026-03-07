@@ -1,10 +1,8 @@
 //! Canonical graph and plan representation for Rustygrad.
 
-use sha2::{Digest, Sha256};
-use rustygrad_core::{
-    DType, Device, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec,
-};
+use rustygrad_core::{DType, Device, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -53,6 +51,60 @@ pub enum GraphError {
         /// Requested target shape.
         to: Shape,
     },
+    /// A permute requested an invalid axis order.
+    #[error("invalid permute axes {axes:?} for shape {shape}")]
+    InvalidPermute {
+        /// Input shape.
+        shape: Shape,
+        /// Requested axes.
+        axes: Vec<usize>,
+    },
+    /// A slice requested invalid bounds.
+    #[error("invalid slice axis={axis} start={start} end={end} for shape {shape}")]
+    InvalidSlice {
+        /// Input shape.
+        shape: Shape,
+        /// Requested axis.
+        axis: usize,
+        /// Slice start.
+        start: usize,
+        /// Slice end.
+        end: usize,
+    },
+    /// A select requested an invalid index.
+    #[error("invalid select axis={axis} index={index} for shape {shape}")]
+    InvalidSelect {
+        /// Input shape.
+        shape: Shape,
+        /// Requested axis.
+        axis: usize,
+        /// Selected index.
+        index: usize,
+    },
+    /// A concat could not be formed from the provided tensors.
+    #[error("invalid concat axis={axis} for shapes {shapes:?}")]
+    InvalidConcat {
+        /// Requested axis.
+        axis: usize,
+        /// Input shapes.
+        shapes: Vec<Shape>,
+    },
+    /// An expand requested an incompatible target shape.
+    #[error("invalid expand from {from} to {to}")]
+    InvalidExpand {
+        /// Input shape.
+        from: Shape,
+        /// Requested target shape.
+        to: Shape,
+    },
+    /// A reduction requested an invalid axis.
+    #[error("invalid reduce_sum axis={axis} for shape {shape}")]
+    InvalidReduceAxis {
+        /// Input shape.
+        shape: Shape,
+        /// Requested axis.
+        axis: usize,
+    },
 }
 
 /// Operation kind recorded in the canonical graph.
@@ -76,8 +128,42 @@ pub enum OpKind {
     Matmul,
     /// Tensor reshape.
     Reshape,
-    /// Full reduction to a scalar.
-    ReduceSum,
+    /// Tensor permute.
+    Permute {
+        /// Axis order.
+        axes: Vec<usize>,
+    },
+    /// Tensor slice.
+    Slice {
+        /// Slice axis.
+        axis: usize,
+        /// Inclusive start.
+        start: usize,
+        /// Exclusive end.
+        end: usize,
+    },
+    /// Tensor select.
+    Select {
+        /// Selection axis.
+        axis: usize,
+        /// Selected index.
+        index: usize,
+    },
+    /// Tensor concat.
+    Concat {
+        /// Concat axis.
+        axis: usize,
+    },
+    /// Tensor expand/broadcast.
+    Expand {
+        /// Requested target shape.
+        shape: Shape,
+    },
+    /// Full or axis-specific reduction.
+    ReduceSum {
+        /// Reduction axis. `None` means reduce all elements.
+        axis: Option<usize>,
+    },
 }
 
 impl OpKind {
@@ -91,7 +177,12 @@ impl OpKind {
             Self::Mul => "mul",
             Self::Matmul => "matmul",
             Self::Reshape => "reshape",
-            Self::ReduceSum => "reduce_sum",
+            Self::Permute { .. } => "permute",
+            Self::Slice { .. } => "slice",
+            Self::Select { .. } => "select",
+            Self::Concat { .. } => "concat",
+            Self::Expand { .. } => "expand",
+            Self::ReduceSum { .. } => "reduce_sum",
         }
     }
 }
@@ -213,8 +304,42 @@ pub enum ExecutionOp {
     Matmul,
     /// Tensor reshape.
     Reshape,
-    /// Full reduction to a scalar.
-    ReduceSum,
+    /// Tensor permute.
+    Permute {
+        /// Axis order.
+        axes: Vec<usize>,
+    },
+    /// Tensor slice.
+    Slice {
+        /// Slice axis.
+        axis: usize,
+        /// Inclusive start.
+        start: usize,
+        /// Exclusive end.
+        end: usize,
+    },
+    /// Tensor select.
+    Select {
+        /// Selection axis.
+        axis: usize,
+        /// Selected index.
+        index: usize,
+    },
+    /// Tensor concat.
+    Concat {
+        /// Concat axis.
+        axis: usize,
+    },
+    /// Tensor expand/broadcast.
+    Expand {
+        /// Requested target shape.
+        shape: Shape,
+    },
+    /// Full or axis-specific reduction.
+    ReduceSum {
+        /// Reduction axis. `None` means reduce all elements.
+        axis: Option<usize>,
+    },
 }
 
 impl ExecutionOp {
@@ -228,7 +353,12 @@ impl ExecutionOp {
             Self::Mul => "mul",
             Self::Matmul => "matmul",
             Self::Reshape => "reshape",
-            Self::ReduceSum => "reduce_sum",
+            Self::Permute { .. } => "permute",
+            Self::Slice { .. } => "slice",
+            Self::Select { .. } => "select",
+            Self::Concat { .. } => "concat",
+            Self::Expand { .. } => "expand",
+            Self::ReduceSum { .. } => "reduce_sum",
         }
     }
 
@@ -242,7 +372,21 @@ impl ExecutionOp {
             OpKind::Mul => Self::Mul,
             OpKind::Matmul => Self::Matmul,
             OpKind::Reshape => Self::Reshape,
-            OpKind::ReduceSum => Self::ReduceSum,
+            OpKind::Permute { axes } => Self::Permute { axes: axes.clone() },
+            OpKind::Slice { axis, start, end } => Self::Slice {
+                axis: *axis,
+                start: *start,
+                end: *end,
+            },
+            OpKind::Select { axis, index } => Self::Select {
+                axis: *axis,
+                index: *index,
+            },
+            OpKind::Concat { axis } => Self::Concat { axis: *axis },
+            OpKind::Expand { shape } => Self::Expand {
+                shape: shape.clone(),
+            },
+            OpKind::ReduceSum { axis } => Self::ReduceSum { axis: *axis },
         }
     }
 }
@@ -308,10 +452,16 @@ impl ExecutionPlan {
     pub fn stable_debug(&self) -> String {
         let mut lines = vec![format!("graph|{}", self.graph_digest)];
         for step in &self.steps {
+            let payload = format_execution_payload(&step.op);
+            let op = if payload.is_empty() {
+                step.op.label().to_string()
+            } else {
+                format!("{}[{payload}]", step.op.label())
+            };
             lines.push(format!(
                 "{} <- {}({})",
                 step.output,
-                step.op.label(),
+                op,
                 step.inputs
                     .iter()
                     .map(ToString::to_string)
@@ -399,8 +549,9 @@ impl GraphBuilder {
     pub fn matmul(&mut self, left: &Tensor, right: &Tensor) -> Result<Tensor, GraphError> {
         let left_shape = left.spec().shape();
         let right_shape = right.spec().shape();
-        let valid =
-            left_shape.rank() == 2 && right_shape.rank() == 2 && left_shape.dims()[1] == right_shape.dims()[0];
+        let valid = left_shape.rank() == 2
+            && right_shape.rank() == 2
+            && left_shape.dims()[1] == right_shape.dims()[0];
         if !valid {
             return Err(GraphError::InvalidMatmulShapes {
                 left: left_shape.clone(),
@@ -408,7 +559,11 @@ impl GraphBuilder {
             });
         }
         let output_shape = Shape::new(vec![left_shape.dims()[0], right_shape.dims()[1]]);
-        let spec = TensorSpec::new(output_shape, left.spec().dtype(), left.spec().device().clone());
+        let spec = TensorSpec::new(
+            output_shape,
+            left.spec().dtype(),
+            left.spec().device().clone(),
+        );
         Ok(self.register(
             LazyOp::Matmul,
             OpKind::Matmul,
@@ -426,23 +581,174 @@ impl GraphBuilder {
             });
         }
         let spec = input.spec().with_shape(new_shape);
+        Ok(self.register(LazyOp::Reshape, OpKind::Reshape, vec![input.id()], spec))
+    }
+
+    /// Reorders axes using a logical view.
+    pub fn permute(&mut self, input: &Tensor, axes: Vec<usize>) -> Result<Tensor, GraphError> {
+        let Some(layout) = input.spec().layout().permuted(&axes) else {
+            return Err(GraphError::InvalidPermute {
+                shape: input.spec().shape().clone(),
+                axes,
+            });
+        };
         Ok(self.register(
-            LazyOp::Reshape,
-            OpKind::Reshape,
+            LazyOp::Permute { axes: axes.clone() },
+            OpKind::Permute { axes },
             vec![input.id()],
+            input.spec().with_layout(layout),
+        ))
+    }
+
+    /// Returns a narrowed tensor view.
+    pub fn slice(
+        &mut self,
+        input: &Tensor,
+        axis: usize,
+        start: usize,
+        end: usize,
+    ) -> Result<Tensor, GraphError> {
+        let Some(layout) = input.spec().layout().sliced(axis, start, end) else {
+            return Err(GraphError::InvalidSlice {
+                shape: input.spec().shape().clone(),
+                axis,
+                start,
+                end,
+            });
+        };
+        Ok(self.register(
+            LazyOp::Slice { axis, start, end },
+            OpKind::Slice { axis, start, end },
+            vec![input.id()],
+            input.spec().with_layout(layout),
+        ))
+    }
+
+    /// Returns a view that removes one axis by selecting a single index.
+    pub fn select(
+        &mut self,
+        input: &Tensor,
+        axis: usize,
+        index: usize,
+    ) -> Result<Tensor, GraphError> {
+        let Some(layout) = input.spec().layout().selected(axis, index) else {
+            return Err(GraphError::InvalidSelect {
+                shape: input.spec().shape().clone(),
+                axis,
+                index,
+            });
+        };
+        Ok(self.register(
+            LazyOp::Select { axis, index },
+            OpKind::Select { axis, index },
+            vec![input.id()],
+            input.spec().with_layout(layout),
+        ))
+    }
+
+    /// Concatenates tensors along a single axis.
+    pub fn concat(&mut self, inputs: &[Tensor], axis: usize) -> Result<Tensor, GraphError> {
+        let Some(first) = inputs.first() else {
+            return Err(GraphError::InvalidConcat {
+                axis,
+                shapes: Vec::new(),
+            });
+        };
+        let rank = first.spec().shape().rank();
+        if axis >= rank {
+            return Err(GraphError::InvalidConcat {
+                axis,
+                shapes: inputs
+                    .iter()
+                    .map(|tensor| tensor.spec().shape().clone())
+                    .collect(),
+            });
+        }
+
+        let dtype = first.spec().dtype();
+        let device = first.spec().device().clone();
+        let mut dims = first.spec().shape().dims().to_vec();
+        let mut shapes = Vec::with_capacity(inputs.len());
+        for tensor in inputs {
+            let shape = tensor.spec().shape();
+            shapes.push(shape.clone());
+            if tensor.spec().dtype() != dtype
+                || shape.rank() != rank
+                || shape
+                    .dims()
+                    .iter()
+                    .enumerate()
+                    .any(|(index, dim)| index != axis && *dim != dims[index])
+            {
+                return Err(GraphError::InvalidConcat { axis, shapes });
+            }
+        }
+
+        dims[axis] = inputs
+            .iter()
+            .map(|tensor| tensor.spec().shape().dims()[axis])
+            .sum();
+        let spec = TensorSpec::new(Shape::new(dims), dtype, device);
+        Ok(self.register(
+            LazyOp::Concat { axis },
+            OpKind::Concat { axis },
+            inputs.iter().map(Tensor::id).collect(),
             spec,
+        ))
+    }
+
+    /// Expands a tensor view through broadcast semantics.
+    pub fn expand(&mut self, input: &Tensor, shape: Shape) -> Result<Tensor, GraphError> {
+        let Some(layout) = input.spec().layout().expanded(&shape) else {
+            return Err(GraphError::InvalidExpand {
+                from: input.spec().shape().clone(),
+                to: shape,
+            });
+        };
+        Ok(self.register(
+            LazyOp::Expand {
+                shape: shape.clone(),
+            },
+            OpKind::Expand { shape },
+            vec![input.id()],
+            input.spec().with_layout(layout),
         ))
     }
 
     /// Reduces a tensor to a scalar sum.
     pub fn reduce_sum(&mut self, input: &Tensor) -> Tensor {
-        let spec = TensorSpec::new(Shape::scalar(), input.spec().dtype(), input.spec().device().clone());
+        let spec = TensorSpec::new(
+            Shape::scalar(),
+            input.spec().dtype(),
+            input.spec().device().clone(),
+        );
         self.register(
-            LazyOp::ReduceSum,
-            OpKind::ReduceSum,
+            LazyOp::ReduceSum { axis: None },
+            OpKind::ReduceSum { axis: None },
             vec![input.id()],
             spec,
         )
+    }
+
+    /// Reduces a tensor along a single axis.
+    pub fn reduce_sum_axis(&mut self, input: &Tensor, axis: usize) -> Result<Tensor, GraphError> {
+        let Some(output_shape) = input.spec().shape().without_axis(axis) else {
+            return Err(GraphError::InvalidReduceAxis {
+                shape: input.spec().shape().clone(),
+                axis,
+            });
+        };
+        let spec = TensorSpec::new(
+            output_shape,
+            input.spec().dtype(),
+            input.spec().device().clone(),
+        );
+        Ok(self.register(
+            LazyOp::ReduceSum { axis: Some(axis) },
+            OpKind::ReduceSum { axis: Some(axis) },
+            vec![input.id()],
+            spec,
+        ))
     }
 
     /// Finishes the graph with the provided outputs.
@@ -474,12 +780,12 @@ impl GraphBuilder {
             });
         }
 
-        Ok(self.register(
-            lazy_op,
-            op,
-            vec![left.id(), right.id()],
-            left.spec().clone(),
-        ))
+        let spec = TensorSpec::new(
+            left.spec().shape().clone(),
+            left.spec().dtype(),
+            left.spec().device().clone(),
+        );
+        Ok(self.register(lazy_op, op, vec![left.id(), right.id()], spec))
     }
 
     fn register(
@@ -506,7 +812,14 @@ impl GraphBuilder {
 }
 
 fn format_spec(spec: &TensorSpec) -> String {
-    format!("shape={} dtype={:?} device={}", spec.shape(), spec.dtype(), spec.device())
+    format!(
+        "shape={} strides={:?} offset={} dtype={:?} device={}",
+        spec.shape(),
+        spec.layout().strides(),
+        spec.layout().offset(),
+        spec.dtype(),
+        spec.device()
+    )
 }
 
 fn format_lazy_op(op: &LazyOp) -> String {
@@ -517,7 +830,14 @@ fn format_lazy_op(op: &LazyOp) -> String {
         LazyOp::Mul => String::from("mul"),
         LazyOp::Matmul => String::from("matmul"),
         LazyOp::Reshape => String::from("reshape"),
-        LazyOp::ReduceSum => String::from("reduce_sum"),
+        LazyOp::Permute { axes } => format!("permute:axes={}", format_axes(axes)),
+        LazyOp::Slice { axis, start, end } => {
+            format!("slice:axis={axis},start={start},end={end}")
+        }
+        LazyOp::Select { axis, index } => format!("select:axis={axis},index={index}"),
+        LazyOp::Concat { axis } => format!("concat:axis={axis}"),
+        LazyOp::Expand { shape } => format!("expand:shape={shape}"),
+        LazyOp::ReduceSum { axis } => format_reduce_axis(*axis),
     }
 }
 
@@ -548,7 +868,29 @@ fn format_execution_payload(op: &ExecutionOp) -> String {
             format!("f32:{bits}")
         }
         ExecutionOp::Input { name } => format!("input:{name}"),
+        ExecutionOp::Permute { axes } => format!("axes={}", format_axes(axes)),
+        ExecutionOp::Slice { axis, start, end } => {
+            format!("axis={axis},start={start},end={end}")
+        }
+        ExecutionOp::Select { axis, index } => format!("axis={axis},index={index}"),
+        ExecutionOp::Concat { axis } => format!("axis={axis}"),
+        ExecutionOp::Expand { shape } => format!("shape={shape}"),
+        ExecutionOp::ReduceSum { axis } => format_reduce_axis(*axis),
         _ => String::new(),
+    }
+}
+
+fn format_axes(axes: &[usize]) -> String {
+    axes.iter()
+        .map(ToString::to_string)
+        .collect::<Vec<_>>()
+        .join(",")
+}
+
+fn format_reduce_axis(axis: Option<usize>) -> String {
+    match axis {
+        Some(axis) => format!("axis={axis}"),
+        None => String::from("axis=all"),
     }
 }
 
@@ -568,7 +910,7 @@ mod tests {
     use super::{DType, GraphBuilder, Shape};
 
     #[test]
-    fn graph_digest_is_stable_for_identical_construction() -> Result<(), super::GraphError> {
+    fn graph_digest_is_stable_for_identical_layout_graphs() -> Result<(), super::GraphError> {
         let digest_a = build_sample_graph()?.stable_digest();
         let digest_b = build_sample_graph()?.stable_digest();
         assert_eq!(digest_a, digest_b);
@@ -576,22 +918,40 @@ mod tests {
     }
 
     #[test]
-    fn graph_debug_lists_core_ops() -> Result<(), super::GraphError> {
+    fn graph_debug_lists_layout_ops_and_parameters() -> Result<(), super::GraphError> {
         let graph = build_sample_graph()?;
         let debug = graph.stable_debug();
-        assert!(debug.contains("matmul"));
+        assert!(debug.contains("permute:axes=1,0"));
+        assert!(debug.contains("concat:axis=0"));
         assert!(debug.contains("reduce_sum"));
+        assert!(debug.contains("axis=0"));
+        Ok(())
+    }
+
+    #[test]
+    fn builder_tracks_expected_view_shapes() -> Result<(), super::GraphError> {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+        let permuted = builder.permute(&input, vec![1, 0])?;
+        let sliced = builder.slice(&permuted, 0, 1, 3)?;
+        let selected = builder.select(&sliced, 1, 0)?;
+        let expanded = builder.expand(&selected, Shape::new(vec![2, 2]))?;
+
+        assert_eq!(permuted.spec().shape().dims(), &[3, 2]);
+        assert_eq!(sliced.spec().shape().dims(), &[2, 2]);
+        assert_eq!(selected.spec().shape().dims(), &[2]);
+        assert_eq!(expanded.spec().shape().dims(), &[2, 2]);
         Ok(())
     }
 
     fn build_sample_graph() -> Result<super::Graph, super::GraphError> {
         let mut builder = GraphBuilder::new(Device::cpu());
         let input = builder.input("input", Shape::new(vec![2, 2]), DType::F32);
-        let weights = builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 0.0, 0.0, 1.0])?;
-        let bias = builder.constant_f32(Shape::new(vec![2, 2]), vec![0.5, 0.5, 0.5, 0.5])?;
-        let projected = builder.matmul(&input, &weights)?;
-        let shifted = builder.add(&projected, &bias)?;
-        let reduced = builder.reduce_sum(&shifted);
+        let permuted = builder.permute(&input, vec![1, 0])?;
+        let first_row = builder.slice(&permuted, 0, 0, 1)?;
+        let expanded = builder.expand(&first_row, Shape::new(vec![2, 2]))?;
+        let concatenated = builder.concat(&[input.clone(), expanded], 0)?;
+        let reduced = builder.reduce_sum_axis(&concatenated, 0)?;
         Ok(builder.finish(vec![reduced]))
     }
 }

@@ -1,4 +1,4 @@
-//! Core tensor, shape, dtype, and device types for Rustygrad.
+//! Core tensor, shape, dtype, device, and layout types for Rustygrad.
 //!
 //! This crate intentionally stays small and product-agnostic. It owns public
 //! engine-facing metadata, not backend execution logic.
@@ -143,6 +143,12 @@ impl Shape {
         &self.dims
     }
 
+    /// Returns the dimension at the provided axis.
+    #[must_use]
+    pub fn dim(&self, axis: usize) -> Option<usize> {
+        self.dims.get(axis).copied()
+    }
+
     /// Returns the rank.
     #[must_use]
     pub fn rank(&self) -> usize {
@@ -158,6 +164,30 @@ impl Shape {
             self.dims.iter().product()
         }
     }
+
+    /// Returns a new shape with axes permuted according to `order`.
+    #[must_use]
+    pub fn permuted(&self, order: &[usize]) -> Option<Self> {
+        if order.len() != self.rank() || !is_permutation(order) {
+            return None;
+        }
+        let dims = order
+            .iter()
+            .map(|&axis| self.dims[axis])
+            .collect::<Vec<_>>();
+        Some(Self::new(dims))
+    }
+
+    /// Returns a new shape with the given axis removed.
+    #[must_use]
+    pub fn without_axis(&self, axis: usize) -> Option<Self> {
+        if axis >= self.rank() {
+            return None;
+        }
+        let mut dims = self.dims.clone();
+        dims.remove(axis);
+        Some(Self::new(dims))
+    }
 }
 
 impl fmt::Display for Shape {
@@ -166,29 +196,182 @@ impl fmt::Display for Shape {
     }
 }
 
+/// Layout metadata for a logical tensor view.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Layout {
+    shape: Shape,
+    strides: Vec<usize>,
+    offset: usize,
+}
+
+impl Layout {
+    /// Creates a layout from explicit fields.
+    #[must_use]
+    pub fn new(shape: Shape, strides: Vec<usize>, offset: usize) -> Self {
+        Self {
+            shape,
+            strides,
+            offset,
+        }
+    }
+
+    /// Creates a standard row-major contiguous layout.
+    #[must_use]
+    pub fn contiguous(shape: Shape) -> Self {
+        let mut strides = vec![0; shape.rank()];
+        let mut running = 1;
+        for (index, dim) in shape.dims().iter().enumerate().rev() {
+            strides[index] = running;
+            running *= *dim;
+        }
+        Self::new(shape, strides, 0)
+    }
+
+    /// Returns the layout shape.
+    #[must_use]
+    pub fn shape(&self) -> &Shape {
+        &self.shape
+    }
+
+    /// Returns the logical strides.
+    #[must_use]
+    pub fn strides(&self) -> &[usize] {
+        &self.strides
+    }
+
+    /// Returns the storage offset.
+    #[must_use]
+    pub const fn offset(&self) -> usize {
+        self.offset
+    }
+
+    /// Returns the minimum backing storage length required by the layout.
+    #[must_use]
+    pub fn storage_size(&self) -> usize {
+        if self.shape.rank() == 0 {
+            return self.offset + 1;
+        }
+
+        let span = self
+            .shape
+            .dims()
+            .iter()
+            .zip(self.strides.iter())
+            .map(|(&dim, &stride)| dim.saturating_sub(1) * stride)
+            .sum::<usize>();
+        self.offset + span + 1
+    }
+
+    /// Returns whether the layout is row-major contiguous.
+    #[must_use]
+    pub fn is_contiguous(&self) -> bool {
+        *self == Self::contiguous(self.shape.clone())
+    }
+
+    /// Returns a permuted layout if `order` is valid.
+    #[must_use]
+    pub fn permuted(&self, order: &[usize]) -> Option<Self> {
+        let shape = self.shape.permuted(order)?;
+        let strides = order.iter().map(|&axis| self.strides[axis]).collect();
+        Some(Self::new(shape, strides, self.offset))
+    }
+
+    /// Returns a sliced layout if the requested bounds are valid.
+    #[must_use]
+    pub fn sliced(&self, axis: usize, start: usize, end: usize) -> Option<Self> {
+        let dim = self.shape.dim(axis)?;
+        if start > end || end > dim {
+            return None;
+        }
+        let mut dims = self.shape.dims.clone();
+        dims[axis] = end - start;
+        let offset = self.offset + (start * self.strides[axis]);
+        Some(Self::new(Shape::new(dims), self.strides.clone(), offset))
+    }
+
+    /// Returns a selected layout if the requested index is valid.
+    #[must_use]
+    pub fn selected(&self, axis: usize, index: usize) -> Option<Self> {
+        let dim = self.shape.dim(axis)?;
+        if index >= dim {
+            return None;
+        }
+        let shape = self.shape.without_axis(axis)?;
+        let mut strides = self.strides.clone();
+        strides.remove(axis);
+        let offset = self.offset + (index * self.strides[axis]);
+        Some(Self::new(shape, strides, offset))
+    }
+
+    /// Returns an expanded layout if the requested target shape is valid.
+    #[must_use]
+    pub fn expanded(&self, target_shape: &Shape) -> Option<Self> {
+        if target_shape.rank() < self.shape.rank() {
+            return None;
+        }
+
+        let rank_padding = target_shape.rank() - self.shape.rank();
+        let storage_stride = self.storage_size();
+        let mut current_dims = vec![1; rank_padding];
+        current_dims.extend_from_slice(self.shape.dims());
+
+        let mut strides = vec![storage_stride; rank_padding];
+        strides.extend_from_slice(&self.strides);
+
+        for (axis, (&current, &target)) in current_dims.iter().zip(target_shape.dims()).enumerate()
+        {
+            if current == target {
+                continue;
+            }
+            if current != 1 {
+                return None;
+            }
+            strides[axis] = 0;
+        }
+
+        Some(Self::new(target_shape.clone(), strides, self.offset))
+    }
+}
+
 /// Static tensor metadata.
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TensorSpec {
-    shape: Shape,
+    layout: Layout,
     dtype: DType,
     device: Device,
 }
 
 impl TensorSpec {
-    /// Creates a new tensor specification.
+    /// Creates a new contiguous tensor specification.
     #[must_use]
     pub fn new(shape: Shape, dtype: DType, device: Device) -> Self {
         Self {
-            shape,
+            layout: Layout::contiguous(shape),
             dtype,
             device,
         }
     }
 
+    /// Creates a tensor specification from an explicit layout.
+    #[must_use]
+    pub fn from_layout(layout: Layout, dtype: DType, device: Device) -> Self {
+        Self {
+            layout,
+            dtype,
+            device,
+        }
+    }
+
+    /// Returns the tensor layout.
+    #[must_use]
+    pub fn layout(&self) -> &Layout {
+        &self.layout
+    }
+
     /// Returns the tensor shape.
     #[must_use]
     pub fn shape(&self) -> &Shape {
-        &self.shape
+        self.layout.shape()
     }
 
     /// Returns the tensor dtype.
@@ -203,16 +386,29 @@ impl TensorSpec {
         &self.device
     }
 
-    /// Returns a copy with a different shape.
+    /// Returns a copy with a different contiguous shape.
     #[must_use]
     pub fn with_shape(&self, shape: Shape) -> Self {
         Self::new(shape, self.dtype, self.device.clone())
     }
 
+    /// Returns a copy with a different layout.
+    #[must_use]
+    pub fn with_layout(&self, layout: Layout) -> Self {
+        Self::from_layout(layout, self.dtype, self.device.clone())
+    }
+
     /// Returns the number of addressable elements.
     #[must_use]
     pub fn element_count(&self) -> usize {
-        self.shape.element_count()
+        self.shape().element_count()
+    }
+
+    /// Returns the minimum backing storage length required by the tensor
+    /// layout.
+    #[must_use]
+    pub fn storage_size(&self) -> usize {
+        self.layout.storage_size()
     }
 }
 
@@ -262,8 +458,22 @@ pub enum LazyOp {
     Matmul,
     /// Tensor reshape.
     Reshape,
-    /// Full reduction to a scalar.
-    ReduceSum,
+    /// Tensor permute.
+    Permute { axes: Vec<usize> },
+    /// Tensor slice.
+    Slice {
+        axis: usize,
+        start: usize,
+        end: usize,
+    },
+    /// Tensor select.
+    Select { axis: usize, index: usize },
+    /// Tensor concat.
+    Concat { axis: usize },
+    /// Tensor expand/broadcast.
+    Expand { shape: Shape },
+    /// Full or axis-specific reduction.
+    ReduceSum { axis: Option<usize> },
 }
 
 /// Public tensor handle produced by graph construction.
@@ -300,9 +510,20 @@ impl Tensor {
     }
 }
 
+fn is_permutation(order: &[usize]) -> bool {
+    let mut seen = vec![false; order.len()];
+    for &axis in order {
+        if axis >= order.len() || seen[axis] {
+            return false;
+        }
+        seen[axis] = true;
+    }
+    true
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{DType, Device, Shape, TensorSpec};
+    use super::{DType, Device, Layout, Shape, TensorSpec};
 
     #[test]
     fn scalar_shape_counts_as_one_element() {
@@ -320,5 +541,52 @@ mod tests {
 
         assert_eq!(spec.dtype(), DType::F32);
         assert_eq!(spec.device().kind(), super::DeviceKind::Cpu);
+        assert!(spec.layout().is_contiguous());
+    }
+
+    #[test]
+    fn layout_permute_updates_shape_and_strides() {
+        let layout = Layout::contiguous(Shape::new(vec![2, 3, 4]));
+        let permuted = layout.permuted(&[1, 0, 2]).expect("valid permute");
+
+        assert_eq!(permuted.shape().dims(), &[3, 2, 4]);
+        assert_eq!(permuted.strides(), &[4, 12, 1]);
+        assert!(!permuted.is_contiguous());
+    }
+
+    #[test]
+    fn layout_expand_uses_zero_strides() {
+        let layout = Layout::contiguous(Shape::new(vec![1, 3]));
+        let expanded = layout
+            .expanded(&Shape::new(vec![4, 3]))
+            .expect("valid expand");
+
+        assert_eq!(expanded.shape().dims(), &[4, 3]);
+        assert_eq!(expanded.strides(), &[0, 1]);
+    }
+
+    #[test]
+    fn layout_expand_can_increase_rank() {
+        let layout = Layout::contiguous(Shape::new(vec![2]));
+        let expanded = layout
+            .expanded(&Shape::new(vec![3, 2]))
+            .expect("valid expand");
+
+        assert_eq!(expanded.shape().dims(), &[3, 2]);
+        assert_eq!(expanded.strides(), &[0, 1]);
+    }
+
+    #[test]
+    fn expanded_layout_storage_size_matches_source_span() {
+        let spec = TensorSpec::from_layout(
+            Layout::contiguous(Shape::new(vec![1, 3]))
+                .expanded(&Shape::new(vec![4, 3]))
+                .expect("valid expand"),
+            DType::F32,
+            Device::cpu(),
+        );
+
+        assert_eq!(spec.element_count(), 12);
+        assert_eq!(spec.storage_size(), 3);
     }
 }
