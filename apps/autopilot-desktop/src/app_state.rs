@@ -15,12 +15,10 @@ use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
+use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::labor_orchestrator::{
     CodexLaborApprovalEvent, CodexLaborBinding, CodexLaborClaimState, CodexLaborSubmissionState,
     CodexLaborVerdictState, CodexRunClassification,
-};
-use crate::apple_fm_bridge::{
-    AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker,
 };
 use crate::ollama_execution::{
     OllamaExecutionCommand, OllamaExecutionProvenance, OllamaExecutionSnapshot,
@@ -49,11 +47,11 @@ mod app_state_domains;
 mod chat_projection;
 mod credentials_state;
 mod direct_messages;
+pub use crate::project_ops::ProjectOpsPaneState;
 pub use app_state_domains::*;
 pub use chat_projection::*;
 pub use credentials_state::CredentialsState;
 pub use direct_messages::*;
-pub use crate::project_ops::ProjectOpsPaneState;
 
 pub const WINDOW_TITLE: &str = "Autopilot";
 pub const WINDOW_WIDTH: f64 = 1280.0;
@@ -233,27 +231,32 @@ impl Default for RelayConnectionsPaneInputs {
 }
 
 pub struct NetworkRequestsPaneInputs {
-    pub request_type: TextInput,
-    pub payload: TextInput,
-    pub skill_scope_id: TextInput,
-    pub credit_envelope_ref: TextInput,
-    pub budget_sats: TextInput,
-    pub timeout_seconds: TextInput,
+    pub compute_family: TextInput,
+    pub preferred_backend: TextInput,
+    pub capability_constraints: TextInput,
+    pub quantity: TextInput,
+    pub window_minutes: TextInput,
+    pub max_price_sats: TextInput,
 }
 
 impl Default for NetworkRequestsPaneInputs {
     fn default() -> Self {
         Self {
-            request_type: TextInput::new()
-                .value("summarize.text")
-                .placeholder("Request type"),
-            payload: TextInput::new().placeholder("Request payload"),
-            skill_scope_id: TextInput::new()
-                .value("33400:npub1agent:summarize-text:0.1.0")
-                .placeholder("Skill scope id (optional)"),
-            credit_envelope_ref: TextInput::new().placeholder("Credit envelope id (optional)"),
-            budget_sats: TextInput::new().value("1500").placeholder("Budget sats"),
-            timeout_seconds: TextInput::new().value("60").placeholder("Timeout seconds"),
+            compute_family: TextInput::new()
+                .value("inference")
+                .placeholder("Compute family"),
+            preferred_backend: TextInput::new()
+                .value("ollama")
+                .placeholder("Preferred backend (optional)"),
+            capability_constraints: TextInput::new()
+                .placeholder("Capability envelope constraints (JSON or key=value list)"),
+            quantity: TextInput::new()
+                .value("1")
+                .placeholder("Requested quantity"),
+            window_minutes: TextInput::new()
+                .value("15")
+                .placeholder("Delivery window minutes"),
+            max_price_sats: TextInput::new().value("34").placeholder("Max price sats"),
         }
     }
 }
@@ -2678,7 +2681,8 @@ fn labor_tool_evidence_ref(
 }
 
 pub use crate::state::provider_runtime::{
-    EarnFailureClass, ProviderBlocker, ProviderMode, ProviderRuntimeState,
+    EarnFailureClass, ProviderBlocker, ProviderInventoryProductToggleTarget, ProviderMode,
+    ProviderRuntimeState,
 };
 #[allow(unused_imports)]
 pub use crate::state::{
@@ -2753,11 +2757,13 @@ macro_rules! impl_pane_status_access {
 
 #[allow(unused_imports)]
 pub use crate::state::operations::{
-    BuyerResolutionMode, BuyerResolutionReason, NetworkRequestStatus, NetworkRequestSubmission,
-    NetworkRequestsState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
-    ReciprocalLoopFailureDisposition, ReciprocalLoopState, RelayConnectionRow,
-    RelayConnectionStatus, RelayConnectionsState, StarterJobRow, StarterJobStatus,
-    StarterJobsState, SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
+    AcceptedSpotComputeOrder, BuyerResolutionMode, BuyerResolutionReason, NetworkRequestStatus,
+    NetworkRequestSubmission, NetworkRequestsState, ReciprocalLoopDirection,
+    ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition, ReciprocalLoopState,
+    RelayConnectionRow, RelayConnectionStatus, RelayConnectionsState,
+    SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate, SpotComputeRfqDraft,
+    StarterJobRow, StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
+    SyncRecoveryPhase,
 };
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]

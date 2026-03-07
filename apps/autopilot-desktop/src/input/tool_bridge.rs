@@ -2110,7 +2110,13 @@ fn pane_action_to_hit_action(
         },
         PaneKind::NetworkRequests => match action {
             "submit" | "submit_request" => Ok(PaneHitAction::NetworkRequests(
-                NetworkRequestsPaneAction::SubmitRequest,
+                NetworkRequestsPaneAction::RequestQuotes,
+            )),
+            "accept_quote" | "accept_selected_quote" => Ok(PaneHitAction::NetworkRequests(
+                NetworkRequestsPaneAction::AcceptSelectedQuote,
+            )),
+            "select_quote" => Ok(PaneHitAction::NetworkRequests(
+                NetworkRequestsPaneAction::SelectQuote(require_index(action)?),
             )),
             _ => unsupported(),
         },
@@ -2520,29 +2526,29 @@ fn apply_relay_connections_input(state: &mut RenderState, field: &str, value: &s
 
 fn apply_network_requests_input(state: &mut RenderState, field: &str, value: &str) -> bool {
     match field {
-        "request_type" => state
+        "compute_family" | "request_type" => state
             .network_requests_inputs
-            .request_type
+            .compute_family
             .set_value(value.to_string()),
-        "payload" => state
+        "preferred_backend" | "payload" => state
             .network_requests_inputs
-            .payload
+            .preferred_backend
             .set_value(value.to_string()),
-        "skill_scope_id" => state
+        "capability_constraints" | "skill_scope_id" => state
             .network_requests_inputs
-            .skill_scope_id
+            .capability_constraints
             .set_value(value.to_string()),
-        "credit_envelope_ref" => state
+        "quantity" | "credit_envelope_ref" => state
             .network_requests_inputs
-            .credit_envelope_ref
+            .quantity
             .set_value(value.to_string()),
-        "budget_sats" => state
+        "window_minutes" | "budget_sats" => state
             .network_requests_inputs
-            .budget_sats
+            .window_minutes
             .set_value(value.to_string()),
-        "timeout_seconds" => state
+        "max_price_sats" | "timeout_seconds" => state
             .network_requests_inputs
-            .timeout_seconds
+            .max_price_sats
             .set_value(value.to_string()),
         _ => return false,
     }

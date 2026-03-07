@@ -107,12 +107,12 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
     state.relay_connections_inputs.relay_url.blur();
-    state.network_requests_inputs.request_type.blur();
-    state.network_requests_inputs.payload.blur();
-    state.network_requests_inputs.skill_scope_id.blur();
-    state.network_requests_inputs.credit_envelope_ref.blur();
-    state.network_requests_inputs.budget_sats.blur();
-    state.network_requests_inputs.timeout_seconds.blur();
+    state.network_requests_inputs.compute_family.blur();
+    state.network_requests_inputs.preferred_backend.blur();
+    state.network_requests_inputs.capability_constraints.blur();
+    state.network_requests_inputs.quantity.blur();
+    state.network_requests_inputs.window_minutes.blur();
+    state.network_requests_inputs.max_price_sats.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();
@@ -225,8 +225,15 @@ pub enum SyncHealthPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderStatusPaneAction {
+    ToggleInventory(crate::app_state::ProviderInventoryProductToggleTarget),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum NetworkRequestsPaneAction {
-    SubmitRequest,
+    RequestQuotes,
+    AcceptSelectedQuote,
+    SelectQuote(usize),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -692,6 +699,7 @@ pub enum PaneHitAction {
     EarningsScoreboard(EarningsScoreboardPaneAction),
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
+    ProviderStatus(ProviderStatusPaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
     ReciprocalLoop(ReciprocalLoopPaneAction),
@@ -1521,6 +1529,16 @@ pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
+pub fn provider_inventory_toggle_button_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(2);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD + safe_index as f32 * 40.0,
+        (content_bounds.size.width * 0.34).clamp(180.0, 260.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
 pub fn codex_account_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
     codex_action_button_bounds(content_bounds, 0, 0, 3)
 }
@@ -1823,6 +1841,31 @@ pub fn network_requests_submit_button_bounds(content_bounds: Bounds) -> Bounds {
         (content_bounds.max_x() - timeout.max_x() - CHAT_PAD - JOB_INBOX_BUTTON_GAP).max(140.0),
         timeout.size.height,
     )
+}
+
+pub fn network_requests_accept_button_bounds(content_bounds: Bounds) -> Bounds {
+    let submit = network_requests_submit_button_bounds(content_bounds);
+    Bounds::new(
+        submit.origin.x,
+        submit.max_y() + 10.0,
+        submit.size.width,
+        submit.size.height,
+    )
+}
+
+pub fn network_requests_quote_row_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
+    let safe_index = row_index.min(4);
+    let accept = network_requests_accept_button_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        accept.max_y() + 56.0 + safe_index as f32 * (JOB_INBOX_ROW_HEIGHT + JOB_INBOX_ROW_GAP),
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(240.0),
+        JOB_INBOX_ROW_HEIGHT,
+    )
+}
+
+pub fn network_requests_visible_quote_count(row_count: usize) -> usize {
+    row_count.min(5)
 }
 
 pub fn starter_jobs_complete_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -3520,12 +3563,42 @@ fn pane_hit_action_for_pane(
                 None
             }
         }
+        PaneKind::ProviderStatus => {
+            for (row_index, target) in crate::app_state::ProviderInventoryProductToggleTarget::all()
+                .iter()
+                .enumerate()
+            {
+                if provider_inventory_toggle_button_bounds(content_bounds, row_index)
+                    .contains(point)
+                {
+                    return Some(PaneHitAction::ProviderStatus(
+                        ProviderStatusPaneAction::ToggleInventory(*target),
+                    ));
+                }
+            }
+            None
+        }
         PaneKind::NetworkRequests => {
             if network_requests_submit_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::NetworkRequests(
-                    NetworkRequestsPaneAction::SubmitRequest,
+                    NetworkRequestsPaneAction::RequestQuotes,
+                ))
+            } else if network_requests_accept_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::NetworkRequests(
+                    NetworkRequestsPaneAction::AcceptSelectedQuote,
                 ))
             } else {
+                let visible_rows = network_requests_visible_quote_count(
+                    state.network_requests.spot_quote_candidates.len(),
+                );
+                for row_index in 0..visible_rows {
+                    if network_requests_quote_row_bounds(content_bounds, row_index).contains(point)
+                    {
+                        return Some(PaneHitAction::NetworkRequests(
+                            NetworkRequestsPaneAction::SelectQuote(row_index),
+                        ));
+                    }
+                }
                 None
             }
         }
@@ -4143,7 +4216,7 @@ fn pane_hit_action_for_pane(
             let layout = spark_pane::pay_invoice_layout(content_bounds);
             spark_pane::hit_pay_invoice_action(layout, point).map(PaneHitAction::SparkPayInvoice)
         }
-        PaneKind::Empty | PaneKind::ProviderStatus => None,
+        PaneKind::Empty => None,
     }
 }
 
@@ -4273,7 +4346,7 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
     let mut handled = false;
     handled |= state
         .network_requests_inputs
-        .request_type
+        .compute_family
         .event(
             event,
             network_requests_type_input_bounds(content_bounds),
@@ -4282,7 +4355,7 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
-        .payload
+        .preferred_backend
         .event(
             event,
             network_requests_payload_input_bounds(content_bounds),
@@ -4291,7 +4364,7 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
-        .skill_scope_id
+        .capability_constraints
         .event(
             event,
             network_requests_skill_scope_input_bounds(content_bounds),
@@ -4300,7 +4373,7 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
-        .credit_envelope_ref
+        .quantity
         .event(
             event,
             network_requests_credit_envelope_input_bounds(content_bounds),
@@ -4309,7 +4382,7 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
-        .budget_sats
+        .window_minutes
         .event(
             event,
             network_requests_budget_input_bounds(content_bounds),
@@ -4318,7 +4391,7 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
-        .timeout_seconds
+        .max_price_sats
         .event(
             event,
             network_requests_timeout_input_bounds(content_bounds),

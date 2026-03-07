@@ -40,12 +40,12 @@ use crate::app_state::{
     ChatTranscriptSelectionDragState, EarnFailureClass, JobInboxNetworkRequest, JobInboxValidation,
     NetworkRequestSubmission, PaneKind, ProviderMode,
 };
+use crate::apple_fm_bridge::AppleFmBridgeCommand;
 use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::apple_fm_bridge::AppleFmBridgeCommand;
 use crate::ollama_execution::OllamaExecutionCommand;
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
@@ -53,9 +53,9 @@ use crate::pane_system::{
     CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
     EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    PaneInput, ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH,
-    SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction, cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    PaneInput, ProviderStatusPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
+    SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
+    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
     dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
@@ -453,6 +453,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if crate::kernel_control::drain_kernel_projection_updates(state) {
+        changed = true;
+    }
+    if crate::kernel_control::refresh_provider_inventory_rows(state) {
         changed = true;
     }
     if reducers::run_cad_demo_action(state, CadDemoPaneAction::Noop) {
@@ -2547,8 +2550,8 @@ pub(super) fn run_pane_hit_action(
                         }),
                 );
                 let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
-                let _ = state
-                    .queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
+                let _ =
+                    state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
                 let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::Refresh);
                 let _ = state
                     .queue_ollama_execution_command(OllamaExecutionCommand::WarmConfiguredModel);
@@ -2610,8 +2613,9 @@ pub(super) fn run_pane_hit_action(
                 if let Err(error) =
                     crate::kernel_control::register_online_compute_inventory_with_kernel(state)
                 {
-                    state.provider_runtime.last_result =
-                        Some(format!("Kernel online inventory registration failed: {error}"));
+                    state.provider_runtime.last_result = Some(format!(
+                        "Kernel online inventory registration failed: {error}"
+                    ));
                     state.provider_runtime.last_error_detail = Some(error);
                     state.provider_runtime.last_authoritative_error_class =
                         Some(EarnFailureClass::Reconciliation);
@@ -2691,6 +2695,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::EarningsScoreboard(action) => run_earnings_scoreboard_action(state, action),
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
+        PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
         PaneHitAction::ReciprocalLoop(action) => run_reciprocal_loop_action(state, action),
@@ -2737,7 +2742,9 @@ fn provider_blocker_detail(
         crate::app_state::ProviderBlocker::OllamaUnavailable
         | crate::app_state::ProviderBlocker::OllamaModelUnavailable => ollama_error,
         crate::app_state::ProviderBlocker::AppleFoundationModelsUnavailable
-        | crate::app_state::ProviderBlocker::AppleFoundationModelsModelUnavailable => apple_fm_error,
+        | crate::app_state::ProviderBlocker::AppleFoundationModelsModelUnavailable => {
+            apple_fm_error
+        }
         _ => None,
     };
 
@@ -2913,7 +2920,7 @@ fn handle_network_requests_keyboard_input(
         dispatch_network_requests_input_event,
         |s| {
             if network_requests_inputs_focused(s) {
-                return run_network_requests_action(s, NetworkRequestsPaneAction::SubmitRequest);
+                return run_network_requests_action(s, NetworkRequestsPaneAction::RequestQuotes);
             }
             false
         },

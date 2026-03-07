@@ -18,15 +18,15 @@ pub(super) fn create_invoice_inputs_focused(state: &crate::app_state::RenderStat
 }
 
 pub(super) fn network_requests_inputs_focused(state: &crate::app_state::RenderState) -> bool {
-    state.network_requests_inputs.request_type.is_focused()
-        || state.network_requests_inputs.payload.is_focused()
-        || state.network_requests_inputs.skill_scope_id.is_focused()
+    state.network_requests_inputs.compute_family.is_focused()
+        || state.network_requests_inputs.preferred_backend.is_focused()
         || state
             .network_requests_inputs
-            .credit_envelope_ref
+            .capability_constraints
             .is_focused()
-        || state.network_requests_inputs.budget_sats.is_focused()
-        || state.network_requests_inputs.timeout_seconds.is_focused()
+        || state.network_requests_inputs.quantity.is_focused()
+        || state.network_requests_inputs.window_minutes.is_focused()
+        || state.network_requests_inputs.max_price_sats.is_focused()
 }
 
 pub(super) fn settings_inputs_focused(state: &crate::app_state::RenderState) -> bool {
@@ -64,12 +64,12 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.create_invoice_inputs.description.blur();
     state.create_invoice_inputs.expiry_seconds.blur();
     state.relay_connections_inputs.relay_url.blur();
-    state.network_requests_inputs.request_type.blur();
-    state.network_requests_inputs.payload.blur();
-    state.network_requests_inputs.skill_scope_id.blur();
-    state.network_requests_inputs.credit_envelope_ref.blur();
-    state.network_requests_inputs.budget_sats.blur();
-    state.network_requests_inputs.timeout_seconds.blur();
+    state.network_requests_inputs.compute_family.blur();
+    state.network_requests_inputs.preferred_backend.blur();
+    state.network_requests_inputs.capability_constraints.blur();
+    state.network_requests_inputs.quantity.blur();
+    state.network_requests_inputs.window_minutes.blur();
+    state.network_requests_inputs.max_price_sats.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();

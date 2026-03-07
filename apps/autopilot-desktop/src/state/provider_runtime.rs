@@ -137,6 +137,156 @@ impl ProviderAppleFmRuntimeState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProviderInventoryProductToggleTarget {
+    OllamaInference,
+    OllamaEmbeddings,
+    AppleFoundationModelsInference,
+}
+
+impl ProviderInventoryProductToggleTarget {
+    pub const fn all() -> [Self; 3] {
+        [
+            Self::OllamaInference,
+            Self::OllamaEmbeddings,
+            Self::AppleFoundationModelsInference,
+        ]
+    }
+
+    pub const fn product_id(self) -> &'static str {
+        match self {
+            Self::OllamaInference => "ollama.text_generation",
+            Self::OllamaEmbeddings => "ollama.embeddings",
+            Self::AppleFoundationModelsInference => "apple_foundation_models.text_generation",
+        }
+    }
+
+    pub const fn display_label(self) -> &'static str {
+        match self {
+            Self::OllamaInference => "Ollama inference",
+            Self::OllamaEmbeddings => "Ollama embeddings",
+            Self::AppleFoundationModelsInference => "Apple FM inference",
+        }
+    }
+
+    pub const fn backend_label(self) -> &'static str {
+        match self {
+            Self::OllamaInference | Self::OllamaEmbeddings => "ollama",
+            Self::AppleFoundationModelsInference => "apple_foundation_models",
+        }
+    }
+
+    pub const fn compute_family_label(self) -> &'static str {
+        match self {
+            Self::OllamaInference | Self::AppleFoundationModelsInference => "inference",
+            Self::OllamaEmbeddings => "embeddings",
+        }
+    }
+
+    pub const fn capability_summary(self) -> &'static str {
+        match self {
+            Self::OllamaInference => "backend=ollama execution=local_inference family=inference",
+            Self::OllamaEmbeddings => "backend=ollama execution=local_inference family=embeddings",
+            Self::AppleFoundationModelsInference => {
+                "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
+            }
+        }
+    }
+
+    pub const fn terms_label(self) -> &'static str {
+        match self {
+            Self::OllamaInference | Self::OllamaEmbeddings => "spot session / local best effort",
+            Self::AppleFoundationModelsInference => "spot session / Apple gated best effort",
+        }
+    }
+
+    pub const fn default_price_floor_sats(self) -> u64 {
+        match self {
+            Self::OllamaInference => 21,
+            Self::OllamaEmbeddings => 8,
+            Self::AppleFoundationModelsInference => 34,
+        }
+    }
+
+    pub fn for_product_id(product_id: &str) -> Option<Self> {
+        match product_id.trim() {
+            "ollama.text_generation" => Some(Self::OllamaInference),
+            "ollama.embeddings" => Some(Self::OllamaEmbeddings),
+            "apple_foundation_models.text_generation" => Some(Self::AppleFoundationModelsInference),
+            _ => None,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderInventoryRow {
+    pub target: ProviderInventoryProductToggleTarget,
+    pub enabled: bool,
+    pub backend_ready: bool,
+    pub eligible: bool,
+    pub capability_summary: String,
+    pub source_badge: String,
+    pub capacity_lot_id: Option<String>,
+    pub total_quantity: u64,
+    pub reserved_quantity: u64,
+    pub available_quantity: u64,
+    pub delivery_state: String,
+    pub price_floor_sats: u64,
+    pub terms_label: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProviderInventoryControls {
+    pub ollama_inference_enabled: bool,
+    pub ollama_embeddings_enabled: bool,
+    pub apple_fm_inference_enabled: bool,
+}
+
+impl Default for ProviderInventoryControls {
+    fn default() -> Self {
+        Self {
+            ollama_inference_enabled: true,
+            ollama_embeddings_enabled: true,
+            apple_fm_inference_enabled: true,
+        }
+    }
+}
+
+impl ProviderInventoryControls {
+    pub const fn is_advertised(&self, target: ProviderInventoryProductToggleTarget) -> bool {
+        match target {
+            ProviderInventoryProductToggleTarget::OllamaInference => self.ollama_inference_enabled,
+            ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
+                self.ollama_embeddings_enabled
+            }
+            ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
+                self.apple_fm_inference_enabled
+            }
+        }
+    }
+
+    pub fn is_product_advertised(&self, product_id: &str) -> bool {
+        ProviderInventoryProductToggleTarget::for_product_id(product_id)
+            .is_some_and(|target| self.is_advertised(target))
+    }
+
+    pub fn toggle(&mut self, target: ProviderInventoryProductToggleTarget) -> bool {
+        let enabled = match target {
+            ProviderInventoryProductToggleTarget::OllamaInference => {
+                &mut self.ollama_inference_enabled
+            }
+            ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
+                &mut self.ollama_embeddings_enabled
+            }
+            ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
+                &mut self.apple_fm_inference_enabled
+            }
+        };
+        *enabled = !*enabled;
+        *enabled
+    }
+}
+
 pub struct ProviderRuntimeState {
     pub mode: ProviderMode,
     pub mode_changed_at: Instant,
@@ -153,6 +303,10 @@ pub struct ProviderRuntimeState {
     pub last_authoritative_status: Option<String>,
     pub last_authoritative_event_id: Option<String>,
     pub last_authoritative_error_class: Option<EarnFailureClass>,
+    pub inventory_controls: ProviderInventoryControls,
+    pub inventory_rows: Vec<ProviderInventoryRow>,
+    pub inventory_last_action: Option<String>,
+    pub inventory_last_error: Option<String>,
     pub ollama: ProviderOllamaRuntimeState,
     pub apple_fm: ProviderAppleFmRuntimeState,
 }
@@ -176,6 +330,12 @@ impl Default for ProviderRuntimeState {
             last_authoritative_status: None,
             last_authoritative_event_id: None,
             last_authoritative_error_class: None,
+            inventory_controls: ProviderInventoryControls::default(),
+            inventory_rows: Vec::new(),
+            inventory_last_action: Some(
+                "Launch compute inventory not materialized yet".to_string(),
+            ),
+            inventory_last_error: None,
             ollama: ProviderOllamaRuntimeState::default(),
             apple_fm: ProviderAppleFmRuntimeState::default(),
         }
@@ -190,9 +350,7 @@ impl ProviderRuntimeState {
     pub const fn backend_label(backend: LocalInferenceBackend) -> &'static str {
         match backend {
             LocalInferenceBackend::Ollama => "local Ollama runtime",
-            LocalInferenceBackend::AppleFoundationModels => {
-                "Apple Foundation Models bridge"
-            }
+            LocalInferenceBackend::AppleFoundationModels => "Apple Foundation Models bridge",
         }
     }
 
@@ -239,18 +397,35 @@ impl ProviderRuntimeState {
             .and_then(|last| now.checked_duration_since(last))
             .map(|duration| duration.as_secs())
     }
+
+    pub fn product_enabled(&self, product_id: &str) -> bool {
+        self.inventory_controls.is_product_advertised(product_id)
+    }
+
+    pub fn toggle_inventory_target(
+        &mut self,
+        target: ProviderInventoryProductToggleTarget,
+    ) -> bool {
+        self.inventory_controls.toggle(target)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{LocalInferenceBackend, ProviderRuntimeState};
+    use super::{
+        LocalInferenceBackend, ProviderInventoryControls, ProviderInventoryProductToggleTarget,
+        ProviderRuntimeState,
+    };
 
     #[test]
     fn provider_runtime_truth_labels_distinguish_control_and_projection() {
         let runtime = ProviderRuntimeState::default();
 
         assert_eq!(runtime.execution_lane_label(), "compute");
-        assert_eq!(runtime.execution_backend_label(), "no active inference backend");
+        assert_eq!(
+            runtime.execution_backend_label(),
+            "no active inference backend"
+        );
         assert_eq!(runtime.control_authority_label(false), "local only");
         assert_eq!(
             runtime.control_authority_label(true),
@@ -276,5 +451,18 @@ mod tests {
             runtime.active_inference_backend(),
             Some(LocalInferenceBackend::AppleFoundationModels)
         );
+    }
+
+    #[test]
+    fn inventory_controls_gate_launch_products_by_product_id() {
+        let mut controls = ProviderInventoryControls::default();
+        assert!(controls.is_product_advertised("ollama.text_generation"));
+        assert!(controls.is_product_advertised("ollama.embeddings"));
+        assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
+
+        let enabled = controls.toggle(ProviderInventoryProductToggleTarget::OllamaEmbeddings);
+        assert!(!enabled);
+        assert!(!controls.is_product_advertised("ollama.embeddings"));
+        assert!(controls.is_product_advertised("ollama.text_generation"));
     }
 }

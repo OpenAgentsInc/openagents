@@ -7,6 +7,7 @@ use crate::app_state::{PaneLoadState, PaneStatusAccess};
 use crate::bitcoin_display::format_sats_amount;
 use crate::runtime_lanes::RuntimeCommandResponse;
 use crate::sync_lifecycle::{RuntimeSyncConnectionState, RuntimeSyncHealthSnapshot};
+use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionStatus {
@@ -521,10 +522,150 @@ pub struct NetworkRequestSubmission {
     pub authority_command_seq: u64,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Default)]
+pub struct SpotComputeCapabilityConstraints {
+    pub accelerator_vendor: Option<String>,
+    pub accelerator_family: Option<String>,
+    pub min_memory_gb: Option<u32>,
+    pub max_latency_ms: Option<u32>,
+    pub min_throughput_per_minute: Option<u32>,
+    pub model_policy: Option<String>,
+    pub model_family: Option<String>,
+}
+
+impl SpotComputeCapabilityConstraints {
+    pub fn summary(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(vendor) = self.accelerator_vendor.as_deref() {
+            parts.push(format!("accelerator_vendor={vendor}"));
+        }
+        if let Some(family) = self.accelerator_family.as_deref() {
+            parts.push(format!("accelerator_family={family}"));
+        }
+        if let Some(memory_gb) = self.min_memory_gb {
+            parts.push(format!("min_memory_gb={memory_gb}"));
+        }
+        if let Some(latency_ms) = self.max_latency_ms {
+            parts.push(format!("max_latency_ms={latency_ms}"));
+        }
+        if let Some(throughput) = self.min_throughput_per_minute {
+            parts.push(format!("min_throughput_per_minute={throughput}"));
+        }
+        if let Some(model_policy) = self.model_policy.as_deref() {
+            parts.push(format!("model_policy={model_policy}"));
+        }
+        if let Some(model_family) = self.model_family.as_deref() {
+            parts.push(format!("model_family={model_family}"));
+        }
+        if parts.is_empty() {
+            "none".to_string()
+        } else {
+            parts.join(", ")
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpotComputeRfqDraft {
+    pub rfq_id: String,
+    pub compute_family: ComputeFamily,
+    pub preferred_backend: Option<ComputeBackendFamily>,
+    pub quantity: u64,
+    pub window_minutes: u64,
+    pub max_price_sats: u64,
+    pub capability_constraints: SpotComputeCapabilityConstraints,
+}
+
+impl SpotComputeRfqDraft {
+    pub const fn compute_family_label(&self) -> &'static str {
+        match self.compute_family {
+            ComputeFamily::Inference => "inference",
+            ComputeFamily::Embeddings => "embeddings",
+        }
+    }
+
+    pub const fn preferred_backend_label(&self) -> &'static str {
+        match self.preferred_backend {
+            Some(ComputeBackendFamily::Ollama) => "ollama",
+            Some(ComputeBackendFamily::AppleFoundationModels) => "apple_foundation_models",
+            None => "any",
+        }
+    }
+
+    pub fn summary(&self) -> String {
+        format!(
+            "rfq={} family={} backend={} qty={} window={}m max_price={} constraints={}",
+            self.rfq_id,
+            self.compute_family_label(),
+            self.preferred_backend_label(),
+            self.quantity,
+            self.window_minutes,
+            format_sats_amount(self.max_price_sats),
+            self.capability_constraints.summary()
+        )
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SpotComputeQuoteCandidate {
+    pub quote_id: String,
+    pub rfq_id: String,
+    pub product_id: String,
+    pub capacity_lot_id: String,
+    pub provider_id: String,
+    pub backend_family: ComputeBackendFamily,
+    pub compute_family: ComputeFamily,
+    pub available_quantity: u64,
+    pub requested_quantity: u64,
+    pub price_sats: u64,
+    pub delivery_window_label: String,
+    pub capability_summary: String,
+    pub source_badge: String,
+    pub terms_label: String,
+}
+
+impl SpotComputeQuoteCandidate {
+    pub const fn backend_label(&self) -> &'static str {
+        match self.backend_family {
+            ComputeBackendFamily::Ollama => "ollama",
+            ComputeBackendFamily::AppleFoundationModels => "apple_foundation_models",
+        }
+    }
+
+    pub const fn compute_family_label(&self) -> &'static str {
+        match self.compute_family {
+            ComputeFamily::Inference => "inference",
+            ComputeFamily::Embeddings => "embeddings",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AcceptedSpotComputeOrder {
+    pub order_id: String,
+    pub rfq_id: String,
+    pub quote_id: String,
+    pub instrument_id: String,
+    pub product_id: String,
+    pub capacity_lot_id: String,
+    pub provider_id: String,
+    pub backend_family: ComputeBackendFamily,
+    pub compute_family: ComputeFamily,
+    pub quantity: u64,
+    pub price_sats: u64,
+    pub delivery_window_label: String,
+    pub authority_status: String,
+    pub accepted_at_epoch_seconds: u64,
+}
+
 pub struct NetworkRequestsState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub last_spot_rfq: Option<SpotComputeRfqDraft>,
+    pub spot_quote_candidates: Vec<SpotComputeQuoteCandidate>,
+    pub selected_spot_quote_id: Option<String>,
+    pub accepted_spot_orders: Vec<AcceptedSpotComputeOrder>,
     pub submitted: Vec<SubmittedNetworkRequest>,
     pub pending_auto_payment_request_id: Option<String>,
     next_request_seq: u64,
@@ -536,6 +677,10 @@ impl Default for NetworkRequestsState {
             load_state: PaneLoadState::Loading,
             last_error: None,
             last_action: Some("Waiting for request lane snapshot".to_string()),
+            last_spot_rfq: None,
+            spot_quote_candidates: Vec::new(),
+            selected_spot_quote_id: None,
+            accepted_spot_orders: Vec::new(),
             submitted: Vec::new(),
             pending_auto_payment_request_id: None,
             next_request_seq: 0,
@@ -636,6 +781,89 @@ impl NetworkRequestsState {
             "Queued buyer request {request_id} -> cmd#{authority_command_seq}"
         ));
         Ok(request_id)
+    }
+
+    pub fn replace_spot_quotes(
+        &mut self,
+        rfq: SpotComputeRfqDraft,
+        mut quotes: Vec<SpotComputeQuoteCandidate>,
+    ) {
+        quotes.sort_by(|left, right| {
+            left.price_sats
+                .cmp(&right.price_sats)
+                .then_with(|| left.product_id.cmp(&right.product_id))
+                .then_with(|| left.capacity_lot_id.cmp(&right.capacity_lot_id))
+        });
+        self.last_spot_rfq = Some(rfq.clone());
+        self.selected_spot_quote_id = quotes.first().map(|quote| quote.quote_id.clone());
+        self.spot_quote_candidates = quotes;
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Loaded {} compute quote{} for {}",
+            self.spot_quote_candidates.len(),
+            if self.spot_quote_candidates.len() == 1 {
+                ""
+            } else {
+                "s"
+            },
+            rfq.summary()
+        ));
+    }
+
+    pub fn clear_spot_quotes_with_error(&mut self, error: impl Into<String>) -> String {
+        self.spot_quote_candidates.clear();
+        self.selected_spot_quote_id = None;
+        self.last_spot_rfq = None;
+        self.pane_set_error(error)
+    }
+
+    pub fn select_spot_quote_by_index(&mut self, index: usize) -> bool {
+        let Some(quote_id) = self
+            .spot_quote_candidates
+            .get(index)
+            .map(|quote| quote.quote_id.clone())
+        else {
+            return false;
+        };
+        self.selected_spot_quote_id = Some(quote_id.clone());
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!("Selected compute quote {quote_id}"));
+        true
+    }
+
+    pub fn selected_spot_quote(&self) -> Option<&SpotComputeQuoteCandidate> {
+        let selected = self.selected_spot_quote_id.as_deref()?;
+        self.spot_quote_candidates
+            .iter()
+            .find(|quote| quote.quote_id == selected)
+    }
+
+    pub fn record_spot_order_acceptance(&mut self, order: AcceptedSpotComputeOrder) {
+        let selected_quote_id = order.quote_id.clone();
+        let accepted_quantity = order.quantity;
+        self.accepted_spot_orders.insert(0, order.clone());
+        self.accepted_spot_orders.truncate(32);
+
+        for quote in &mut self.spot_quote_candidates {
+            if quote.quote_id != selected_quote_id {
+                continue;
+            }
+            quote.available_quantity = quote.available_quantity.saturating_sub(accepted_quantity);
+        }
+        self.spot_quote_candidates
+            .retain(|quote| quote.available_quantity >= quote.requested_quantity);
+        self.selected_spot_quote_id = self
+            .spot_quote_candidates
+            .first()
+            .map(|quote| quote.quote_id.clone());
+        self.load_state = PaneLoadState::Ready;
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Accepted compute quote {} -> instrument {}",
+            order.quote_id, order.instrument_id
+        ));
     }
 
     pub fn apply_nip90_request_publish_outcome(
@@ -2227,5 +2455,92 @@ impl ReciprocalLoopState {
             }
         }
         changed
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        AcceptedSpotComputeOrder, NetworkRequestsState, SpotComputeCapabilityConstraints,
+        SpotComputeQuoteCandidate, SpotComputeRfqDraft,
+    };
+    use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
+
+    fn sample_rfq() -> SpotComputeRfqDraft {
+        SpotComputeRfqDraft {
+            rfq_id: "rfq-spot-1".to_string(),
+            compute_family: ComputeFamily::Inference,
+            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            quantity: 1,
+            window_minutes: 15,
+            max_price_sats: 34,
+            capability_constraints: SpotComputeCapabilityConstraints::default(),
+        }
+    }
+
+    fn sample_quote(quote_id: &str, available_quantity: u64) -> SpotComputeQuoteCandidate {
+        SpotComputeQuoteCandidate {
+            quote_id: quote_id.to_string(),
+            rfq_id: "rfq-spot-1".to_string(),
+            product_id: "ollama.text_generation".to_string(),
+            capacity_lot_id: format!("lot-{quote_id}"),
+            provider_id: "npub1provider".to_string(),
+            backend_family: ComputeBackendFamily::Ollama,
+            compute_family: ComputeFamily::Inference,
+            available_quantity,
+            requested_quantity: 1,
+            price_sats: 21,
+            delivery_window_label: "15m".to_string(),
+            capability_summary: "backend=ollama family=inference".to_string(),
+            source_badge: "desktop.go_online".to_string(),
+            terms_label: "spot session / local best effort".to_string(),
+        }
+    }
+
+    #[test]
+    fn replacing_spot_quotes_selects_lowest_price_candidate() {
+        let mut state = NetworkRequestsState::default();
+        let mut expensive = sample_quote("quote-b", 4);
+        expensive.price_sats = 34;
+        let cheap = sample_quote("quote-a", 4);
+
+        state.replace_spot_quotes(sample_rfq(), vec![expensive, cheap.clone()]);
+
+        assert_eq!(state.spot_quote_candidates[0].quote_id, "quote-a");
+        assert_eq!(state.selected_spot_quote_id.as_deref(), Some("quote-a"));
+        assert_eq!(
+            state.last_spot_rfq.as_ref().map(|rfq| rfq.rfq_id.as_str()),
+            Some("rfq-spot-1")
+        );
+    }
+
+    #[test]
+    fn accepting_spot_order_consumes_selected_quote_capacity() {
+        let mut state = NetworkRequestsState::default();
+        state.replace_spot_quotes(sample_rfq(), vec![sample_quote("quote-a", 1)]);
+
+        state.record_spot_order_acceptance(AcceptedSpotComputeOrder {
+            order_id: "order-1".to_string(),
+            rfq_id: "rfq-spot-1".to_string(),
+            quote_id: "quote-a".to_string(),
+            instrument_id: "instrument-1".to_string(),
+            product_id: "ollama.text_generation".to_string(),
+            capacity_lot_id: "lot-quote-a".to_string(),
+            provider_id: "npub1provider".to_string(),
+            backend_family: ComputeBackendFamily::Ollama,
+            compute_family: ComputeFamily::Inference,
+            quantity: 1,
+            price_sats: 21,
+            delivery_window_label: "15m".to_string(),
+            authority_status: "spot-accepted".to_string(),
+            accepted_at_epoch_seconds: 1_762_000_000,
+        });
+
+        assert!(state.spot_quote_candidates.is_empty());
+        assert_eq!(state.accepted_spot_orders.len(), 1);
+        assert_eq!(
+            state.last_action.as_deref(),
+            Some("Accepted compute quote quote-a -> instrument instrument-1")
+        );
     }
 }
