@@ -39,6 +39,19 @@ Determine how OpenAgents can replace the current external Ollama dependency with
   - `crates/rustygrad/rustygrad-models/src/lib.rs`
   - `crates/rustygrad/rustygrad-serve/src/lib.rs`
   - `crates/rustygrad/rustygrad-provider/src/lib.rs`
+- `origin/rustygrad3` branch state:
+  - `git log origin/main..origin/rustygrad3 -- crates/rustygrad`
+  - `git diff --stat origin/main..origin/rustygrad3 -- crates/rustygrad`
+  - branch versions of:
+    - `crates/rustygrad/rustygrad-backend-metal/src/lib.rs`
+    - `crates/rustygrad/rustygrad-runtime/src/lib.rs`
+    - `crates/rustygrad/rustygrad-models/src/lib.rs`
+    - `crates/rustygrad/rustygrad-serve/src/lib.rs`
+    - `crates/rustygrad/rustygrad-provider/src/lib.rs`
+    - `crates/rustygrad/rustygrad-serve/tests/model_backed_embeddings.rs`
+    - `crates/rustygrad/rustygrad-serve/tests/model_backed_text_generation.rs`
+- Open Rustygrad roadmap issues:
+  - `#3150` through `#3162`
 - Local Ollama docs and upstream source:
   - `/Users/christopherdavid/code/ollama/README.md`
   - `/Users/christopherdavid/code/ollama/ARCHITECTURE_AND_RUST_PORT.md`
@@ -78,9 +91,24 @@ The first hard blocker is already documented in `docs/audits/2026-03-07-rustygra
 - it does not yet have merged model-backed GGUF loading and real model execution
 - it has no accelerated backend implementation at all
 
+Considering `origin/rustygrad3`, the engine is further along than `main`:
+
+- phase-2 model-backed CPU embeddings and text generation do exist there
+- those CPU product paths are currently safetensors/artifact-backed, not GGUF/Ollama-store-backed
+- partial phase-3 Metal groundwork also exists there
+  - device discovery and readiness reporting
+  - allocator/buffer surfaces
+  - command submission scaffolding
+- but `rustygrad3` still does not provide:
+  - a Metal `ExecutionBackend` with lowering/kernel coverage
+  - CPU-vs-Metal parity coverage
+  - a Metal-backed served product path
+  - GGUF + Ollama manifest compatibility
+  - a local model catalog and runtime lifecycle equivalent to the subset of Ollama the desktop uses
+
 So the correct short answer is:
 
-> replace the external Ollama daemon with a Rustygrad-backed local runtime, but only after recovering model-backed Rustygrad and adding an Ollama-compatible local model catalog and GGUF execution path.
+> replace the external Ollama daemon with a Rustygrad-backed local runtime, but start from the `rustygrad3` CPU baseline rather than `main`, then add the missing Ollama-compatible model catalog, GGUF ingestion, and remaining accelerated-backend work.
 
 ## What The Current OpenAgents "Ollama Integration" Actually Is
 
@@ -216,12 +244,12 @@ For MVP and for the current desktop code shape, the minimum internal runtime is:
 | Loaded model listing | yes | scheduler state / `PsHandler` | missing |
 | Model validation and metadata | yes | `ShowHandler` / GGUF metadata | missing |
 | Warm and unload lifecycle | yes | scheduler + keepalive semantics | missing |
-| Prompt text generation | yes | runner decode loop | reference-only, not real model-backed on `main` |
+| Prompt text generation | yes | runner decode loop | reference-only on `main`; model-backed CPU on `rustygrad3` via safetensors artifacts |
 | Sampling knobs | yes | Ollama generate options | missing |
 | Generation metrics | yes | generate response durations and token counts | missing |
-| Embeddings runtime | not for current NIP-90 path, but product-facing soon | embeddings route | reference smoke only |
+| Embeddings runtime | not for current NIP-90 path, but product-facing soon | embeddings route | smoke-only on `main`; model-backed CPU on `rustygrad3` via safetensors artifacts |
 | GGUF tokenizer + model-family loading | yes | GGUF/model packages | missing |
-| Real accelerated backend | effectively yes for product replacement | GGML/llama.cpp/GPU stack | missing |
+| Real accelerated backend | effectively yes for product replacement | GGML/llama.cpp/GPU stack | missing on `main`; partial Metal discovery/allocation/submission groundwork on `rustygrad3` only |
 
 ## What Rustygrad Already Gives Us
 
@@ -258,6 +286,64 @@ Rustygrad’s current layering already matches the replacement shape better than
 
 That matches `docs/OWNERSHIP.md`.
 
+## What `origin/rustygrad3` Changes
+
+The most important correction after reviewing `origin/rustygrad3` is that Rustygrad is no longer just a phase-0/phase-1 story off-main.
+
+### What is implemented on `origin/rustygrad3`
+
+Compared with `main`, the remote branch contains:
+
+- safetensors-backed local weight-bundle ingestion in `rustygrad-models`
+- explicit quantization metadata and artifact evidence
+- real model-backed CPU embeddings flow
+  - `ByteProjectionEmbedder`
+  - `CpuModelEmbeddingsService`
+  - `model_backed_embeddings.rs`
+- real model-backed CPU text-generation flow
+  - `ArtifactWordDecoder`
+  - `CpuModelTextGenerationService`
+  - `model_backed_text_generation.rs`
+- richer provider capability and receipt truth
+  - model revision
+  - weight-bundle evidence
+  - quantization metadata
+- partial phase-3 Metal backend work in `rustygrad-backend-metal`
+  - `MetalBackend`
+  - discovery report and readiness surfaces
+  - allocator/buffer implementation
+  - explicit command submission scaffolding
+
+That means the best available in-repo base for this replacement is not `main`; it is the unmerged `rustygrad3` branch.
+
+### What is still not implemented even on `origin/rustygrad3`
+
+The branch still does not show:
+
+- a Metal `ExecutionBackend` implementation
+- Metal graph lowering or product-op kernel coverage
+- CPU-vs-Metal parity harness
+- a Metal-backed served embeddings product path
+- AMD discovery/provider truth work
+- GGUF ingestion
+- Ollama manifest/blob compatibility
+- an Ollama-like local runtime with installed-model listing, loaded-model listing, warm/unload, and generate lifecycle
+
+So `rustygrad3` materially changes the starting point, but not the final conclusion.
+
+### Status drift is still real
+
+After reviewing `rustygrad3`, status drift is actually worse than the first audit implied:
+
+- `main` docs still describe phase 0
+- `origin/rustygrad3` branch code contains phase-2 CPU model work and partial phase-3 Metal groundwork
+- the branch README and `docs/INFERENCE_ENGINE.md` still read like phase-0 docs
+- the issue tracker now describes phase 3 as Metal and phase 4 as AMD
+
+So the honest statement is:
+
+> the current Rustygrad roadmap is best represented by `rustygrad3` plus open issues `#3150` through `#3162`, not by the checked-in README/docs alone.
+
 ## What Rustygrad Does Not Yet Have But Must Gain
 
 This is the actual gap list for a truthful Ollama replacement.
@@ -272,9 +358,9 @@ Current `main` still lacks merged:
 - real decoder model families
 - real embedding model families
 
-Per the March 7 Rustygrad audit, this work exists on `origin/rustygrad3` but is not merged into the audited `main` checkout.
+Per the March 7 Rustygrad audit and the branch review here, this work exists on `origin/rustygrad3` but is not merged into the audited `main` checkout.
 
-That makes "merge or recreate phase-2 Rustygrad" the first real step.
+That makes "adopt, merge, or recreate `rustygrad3` phase-2 CPU work" the first real step.
 
 ### 2. GGUF as a first-class Rustygrad weight format
 
@@ -283,11 +369,20 @@ That makes "merge or recreate phase-2 Rustygrad" the first real step.
 - `WeightFormat::ProgrammaticFixture`
 - `WeightFormat::SafeTensors`
 
-It does not yet have:
+`origin/rustygrad3` clearly advances the safetensors path. It still does not have:
 
 - `WeightFormat::Gguf`
 - tokenizer extraction from GGUF metadata
 - tensor-name mapping for Llama/Qwen/Mistral-style GGUF weights
+
+This creates a concrete fork in the replacement strategy:
+
+- safetensors-first Rustygrad runtime:
+  - fastest path to "our own Rust local inference runtime"
+  - does not reuse existing Ollama-installed models
+- GGUF/Ollama-compatible Rust runtime:
+  - required if the goal is "replace Ollama with our own Rust version of Ollama"
+  - needs new model-catalog and GGUF work beyond `rustygrad3`
 
 ### 3. Real tokenizer support
 
@@ -343,11 +438,11 @@ This is the biggest product-risk gap.
 Current Rustygrad backends:
 
 - CPU: implemented reference backend
-- Metal: placeholder
+- Metal: placeholder on `main`, partial discovery/allocation/submission backend on `rustygrad3`
 - AMD KFD: placeholder
 - AMD userspace: placeholder
 
-There is no accelerated backend implementation in the current audited tree.
+There is still no complete accelerated served-product backend in the current repo state.
 
 That means a full "replace external Ollama" cut on current `main` would be:
 
@@ -357,6 +452,61 @@ That means a full "replace external Ollama" cut on current `main` would be:
 
 A CPU-only dev cut is possible.
 A product-grade replacement is not.
+
+## Current Rustygrad Roadmap From Open Issues
+
+The current roadmap is better represented by the open Rustygrad issue stack than by the checked-in docs.
+
+### Phase 3 roadmap: Metal foundation
+
+Issue `#3150` defines phase 3 as:
+
+- truthful Metal discovery and readiness
+- Metal allocation and command submission
+- minimum product-op execution surface
+- truthful capability/fallback reporting
+- CPU-vs-Metal parity
+- first Metal-backed `rustygrad.embeddings` path
+
+Child issues:
+
+- `#3151` Metal discovery and readiness
+- `#3152` Metal allocator, buffers, and submission scaffolding
+- `#3153` Metal lowering and kernel coverage
+- `#3154` Metal backend selection and capability truth
+- `#3155` CPU-vs-Metal parity coverage
+- `#3156` tested Metal-backed embeddings path
+
+Branch reality:
+
+- `origin/rustygrad3` appears to partially cover `#3151` and `#3152`
+- `#3153` through `#3156` still read as genuinely open work
+
+### Phase 4 roadmap: AMD truth surfaces
+
+Issue `#3157` defines phase 4 as:
+
+- explicit AMD KFD vs AMD userspace distinction
+- discovery and readiness reporting
+- userspace opt-in and risk posture
+- provider truth and operator docs
+
+Child issues:
+
+- `#3158` AMD capability/topology/risk model
+- `#3159` AMD KFD discovery and health
+- `#3160` AMD userspace probe and opt-in gating
+- `#3161` provider truth extensions for AMD
+- `#3162` AMD runbooks and readiness validation
+
+Important roadmap implication:
+
+> the live acceleration roadmap after CPU is not “generic GPU parity.” It is “Metal embeddings first, then AMD discovery/truth surfaces.”
+
+That should shape the Ollama-replacement plan:
+
+- if the replacement needs acceleration soon, it should align with the Metal-first roadmap
+- if the replacement goal is specifically GGUF/Ollama compatibility, that is an additional workstream not yet represented by the open phase-3 and phase-4 issues
 
 ## Recommended Architecture In This Repo
 
@@ -493,15 +643,18 @@ That smaller target is the correct one.
 
 ## Migration Plan
 
-## Phase 0: Unblock Rustygrad
+## Phase 0: Choose the real base
 
 Before touching the desktop swap:
 
-1. Merge or recreate the unmerged Rustygrad model-backed phase-2 work referenced by `docs/audits/2026-03-07-rustygrad-implementation-and-gap-audit.md`.
-2. Add GGUF as a real weight format and tokenizer source.
-3. Add at least one real GGUF decoder family.
+1. Adopt `origin/rustygrad3` phase-2 CPU work as the baseline, or merge/recreate its equivalent on `main`.
+2. Decide explicitly whether the target is:
+   - Rustygrad-native local runtime with packaged safetensors models
+   - or an Ollama-compatible Rust runtime that can use existing Ollama-installed models
+3. If the target is Ollama-compatible replacement, add GGUF as a real weight format and tokenizer source.
+4. Add at least one real GGUF decoder family if existing Ollama model compatibility is required.
 
-Without this phase, the replacement is not real.
+Without this phase, the replacement is not grounded in the repo’s actual available engine state.
 
 ## Phase 1: Neutralize the app seam
 
@@ -544,6 +697,13 @@ For MVP, keep the lifecycle simple:
 - bounded single-request concurrency
 
 That matches current provider reality better than Ollama’s full scheduler.
+
+If the team instead chooses a safetensors-first runtime before GGUF compatibility, this phase can be split:
+
+- Phase 3A:
+  - Rustygrad-native runtime for packaged safetensors models
+- Phase 3B:
+  - GGUF/Ollama-store compatibility layer
 
 ## Phase 4: Swap desktop default to Rustygrad
 
@@ -626,11 +786,14 @@ The correct order is:
 
 ## Recommended Immediate Next Steps
 
-1. Treat Rustygrad phase-2 recovery as the prerequisite task, not optional follow-on work.
-2. Add a backend-neutral execution/provenance seam in the desktop before changing runtime behavior.
-3. Build a Rustygrad local model catalog that reads the existing Ollama manifest/blob store.
-4. Implement one real GGUF text-generation family and match the current worker’s option surface.
-5. Stop advertising or quoting embeddings unless there is a real executable embeddings path behind the selected backend.
+1. Rebase the replacement plan on `origin/rustygrad3`, not on `main`’s stale phase-0 docs.
+2. Decide explicitly between safetensors-first Rustygrad packaging and GGUF/Ollama-store compatibility.
+3. Add a backend-neutral execution/provenance seam in the desktop before changing runtime behavior.
+4. If existing Ollama-installed model reuse matters, build a Rustygrad local model catalog that reads the Ollama manifest/blob store and add GGUF model loading.
+5. Align any acceleration claims with the current roadmap:
+   - Metal embeddings first
+   - AMD discovery/provider truth later
+6. Stop advertising or quoting embeddings unless there is a real executable embeddings path behind the selected backend.
 
 ## Bottom Line
 
@@ -641,6 +804,8 @@ But the honest path is not "rewrite Ollama in Rust all at once."
 The honest path is:
 
 - use Rustygrad as the execution foundation
+- start from the `rustygrad3` CPU baseline rather than from `main`
+- decide whether the first ship target is safetensors-native or Ollama-compatible
 - add an Ollama-compatible local model catalog and GGUF ingestion layer
 - preserve the app-owned worker seam
 - replace the external daemon incrementally
