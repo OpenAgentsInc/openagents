@@ -75,9 +75,6 @@ impl SyncApplyEngine {
         }
 
         for row in document.streams {
-            if row.seq == 0 {
-                continue;
-            }
             let stream_id = row.stream_id.trim();
             if stream_id.is_empty() {
                 continue;
@@ -90,6 +87,19 @@ impl SyncApplyEngine {
     #[must_use]
     pub fn checkpoint_for(&self, stream_id: &str) -> Option<u64> {
         self.checkpoints.get(stream_id).copied()
+    }
+
+    pub fn ensure_stream_registered(&mut self, stream_id: &str) -> Result<bool, String> {
+        let stream_id = stream_id.trim();
+        if stream_id.is_empty() {
+            return Err("sync register stream_id must not be empty".to_string());
+        }
+        if self.checkpoints.contains_key(stream_id) {
+            return Ok(false);
+        }
+        self.checkpoints.insert(stream_id.to_string(), 0);
+        self.persist()?;
+        Ok(true)
     }
 
     #[must_use]
@@ -320,6 +330,23 @@ mod tests {
         assert_eq!(reader.checkpoint_for("runtime.command"), Some(2));
         assert_eq!(reader.checkpoint_for("codex.command"), Some(1));
         assert_eq!(reader.max_checkpoint_seq(), 2);
+    }
+
+    #[test]
+    fn ensure_stream_registered_persists_zero_seq_rows() {
+        let path = unique_temp_checkpoint_path("register");
+        let mut engine = SyncApplyEngine::load_or_new(path.clone(), SyncApplyPolicy::default())
+            .expect("engine should initialize");
+        assert!(
+            engine
+                .ensure_stream_registered("stream.pm.work_items.v1")
+                .expect("stream should register")
+        );
+        assert_eq!(engine.checkpoint_for("stream.pm.work_items.v1"), Some(0));
+
+        let restored = SyncApplyEngine::load_or_new(path, SyncApplyPolicy::default())
+            .expect("engine should reload");
+        assert_eq!(restored.checkpoint_for("stream.pm.work_items.v1"), Some(0));
     }
 
     #[test]
