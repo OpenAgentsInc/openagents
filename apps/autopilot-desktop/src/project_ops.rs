@@ -1,9 +1,20 @@
 use crate::app_state::PaneLoadState;
 
+pub mod contract;
 pub mod schema;
 
 pub const PROJECT_OPS_FEATURE_ENV: &str = "OPENAGENTS_ENABLE_PROJECT_OPS";
 pub const PROJECT_OPS_SOURCE_BADGE: &str = "source: local";
+
+#[allow(unused_imports)]
+pub use contract::{
+    step0_stream_specs, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
+    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCommand, ProjectOpsCommandEnvelope,
+    ProjectOpsCommandId, ProjectOpsCommandName, ProjectOpsEditWorkItemFieldsPatch,
+    ProjectOpsStreamSpec, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
+    PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+};
 
 #[allow(unused_imports)]
 pub use schema::{
@@ -46,9 +57,13 @@ impl Default for ProjectOpsPaneState {
                     PROJECT_OPS_STEP0_SCHEMA_VERSION
                 ),
                 format!(
-                    "Step 0 schema is frozen with workflow {} and priorities {}. Stream-backed work-item flows are not wired yet; this shell exists so the pane, command palette, and feature gate are real before the PM stream model lands.",
+                    "Step 0 schema is frozen with workflow {} and priorities {}. PM streams are reserved as {}, {}, {}, and {}. Stream-backed work-item flows are not wired yet; this shell exists so the pane, command palette, and feature gate are real before the PM stream model lands.",
                     ProjectOpsWorkItemStatus::workflow_summary(),
-                    ProjectOpsPriority::summary()
+                    ProjectOpsPriority::summary(),
+                    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+                    PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
+                    PROJECT_OPS_CYCLES_STREAM_ID,
+                    PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
                 ),
             )
         } else {
