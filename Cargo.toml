@@ -14,7 +14,20 @@ members = [
     "crates/spark",
     "crates/wgpui-core",
     "crates/wgpui-render",
-    "crates/wgpui", "apps/nexus-control", "apps/nexus-relay",
+    "crates/wgpui",
+    "crates/rustygrad/rustygrad-core",
+    "crates/rustygrad/rustygrad-ir",
+    "crates/rustygrad/rustygrad-compiler",
+    "crates/rustygrad/rustygrad-runtime",
+    "crates/rustygrad/rustygrad-models",
+    "crates/rustygrad/rustygrad-serve",
+    "crates/rustygrad/rustygrad-provider",
+    "crates/rustygrad/rustygrad-backend-cpu",
+    "crates/rustygrad/rustygrad-backend-metal",
+    "crates/rustygrad/rustygrad-backend-amd-kfd",
+    "crates/rustygrad/rustygrad-backend-amd-userspace",
+    "apps/nexus-control",
+    "apps/nexus-relay",
 ]
 
 [workspace.lints.rust]
@@ -181,6 +194,9 @@ rand = "0.9"
 bitcoin = "0.32.6"
 reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls", "cookies"] }
 insta = "1.34"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
 thiserror = "2.0.12"
 tokio = { version = "1", features = ["full"] }
 wgpu = "24.0"

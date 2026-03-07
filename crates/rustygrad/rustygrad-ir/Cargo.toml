@@ -1,0 +1,21 @@
+[package]
+name = "rustygrad-ir"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Canonical graph and execution plan types for Rustygrad"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+hex = { workspace = true }
+rustygrad-core = { path = "../rustygrad-core" }
+serde = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }

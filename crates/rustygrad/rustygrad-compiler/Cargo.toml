@@ -1,0 +1,21 @@
+[package]
+name = "rustygrad-compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Lowering and scheduling interfaces for Rustygrad"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+rustygrad-ir = { path = "../rustygrad-ir" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rustygrad-core = { path = "../rustygrad-core" }
