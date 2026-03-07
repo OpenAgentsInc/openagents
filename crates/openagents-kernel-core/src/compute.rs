@@ -418,6 +418,10 @@ pub struct ComputeIndex {
     #[serde(default)]
     pub status: ComputeIndexStatus,
     #[serde(default)]
+    pub correction_reason: Option<ComputeIndexCorrectionReason>,
+    #[serde(default)]
+    pub corrected_from_index_id: Option<String>,
+    #[serde(default)]
     pub metadata: Value,
 }
 

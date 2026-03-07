@@ -1,18 +1,18 @@
 use crate::authority::{
-    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
-    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
-    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
-    PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
-    RecordDeliveryProofResponse,
+    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CorrectComputeIndexRequest,
+    CorrectComputeIndexResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
+    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
+    CreateComputeProductResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
+    RecordDeliveryProofRequest, RecordDeliveryProofResponse,
 };
 use crate::compute::{
     ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
     CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
     CapacityNonDeliveryReason, CapacityReserveState, ComputeBackendFamily,
     ComputeCapabilityEnvelope, ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily,
-    ComputeIndex, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-    ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-    DeliveryRejectionReason, OllamaRuntimeCapability,
+    ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
+    ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
+    DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
 };
 use crate::receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
@@ -885,6 +885,43 @@ fn compute_index_status_from_proto(value: i32) -> ComputeIndexStatus {
     }
 }
 
+fn compute_index_correction_reason_to_proto(value: ComputeIndexCorrectionReason) -> i32 {
+    match value {
+        ComputeIndexCorrectionReason::DataQuality => {
+            proto_compute::ComputeIndexCorrectionReason::DataQuality as i32
+        }
+        ComputeIndexCorrectionReason::ManipulationFilter => {
+            proto_compute::ComputeIndexCorrectionReason::ManipulationFilter as i32
+        }
+        ComputeIndexCorrectionReason::MethodologyBug => {
+            proto_compute::ComputeIndexCorrectionReason::MethodologyBug as i32
+        }
+        ComputeIndexCorrectionReason::LateObservation => {
+            proto_compute::ComputeIndexCorrectionReason::LateObservation as i32
+        }
+    }
+}
+
+fn compute_index_correction_reason_from_proto(value: i32) -> Option<ComputeIndexCorrectionReason> {
+    match proto_compute::ComputeIndexCorrectionReason::try_from(value)
+        .unwrap_or(proto_compute::ComputeIndexCorrectionReason::Unspecified)
+    {
+        proto_compute::ComputeIndexCorrectionReason::DataQuality => {
+            Some(ComputeIndexCorrectionReason::DataQuality)
+        }
+        proto_compute::ComputeIndexCorrectionReason::ManipulationFilter => {
+            Some(ComputeIndexCorrectionReason::ManipulationFilter)
+        }
+        proto_compute::ComputeIndexCorrectionReason::MethodologyBug => {
+            Some(ComputeIndexCorrectionReason::MethodologyBug)
+        }
+        proto_compute::ComputeIndexCorrectionReason::LateObservation => {
+            Some(ComputeIndexCorrectionReason::LateObservation)
+        }
+        proto_compute::ComputeIndexCorrectionReason::Unspecified => None,
+    }
+}
+
 pub fn compute_capability_envelope_to_proto(
     envelope: &ComputeCapabilityEnvelope,
 ) -> proto_compute::ComputeCapabilityEnvelope {
@@ -1222,8 +1259,11 @@ pub fn compute_index_to_proto(index: &ComputeIndex) -> Result<proto_compute::Com
         reference_price: index.reference_price.as_ref().map(money_to_proto),
         methodology: index.methodology.clone(),
         status: compute_index_status_to_proto(index.status),
-        correction_reason: proto_compute::ComputeIndexCorrectionReason::Unspecified as i32,
-        corrected_from_index_id: None,
+        correction_reason: index
+            .correction_reason
+            .map(compute_index_correction_reason_to_proto)
+            .unwrap_or(proto_compute::ComputeIndexCorrectionReason::Unspecified as i32),
+        corrected_from_index_id: index.corrected_from_index_id.clone(),
         metadata_json: json_value_to_string(&index.metadata)?,
     })
 }
@@ -1244,6 +1284,8 @@ pub fn compute_index_from_proto(index: &proto_compute::ComputeIndex) -> Result<C
             .transpose()?,
         methodology: index.methodology.clone(),
         status: compute_index_status_from_proto(index.status),
+        correction_reason: compute_index_correction_reason_from_proto(index.correction_reason),
+        corrected_from_index_id: index.corrected_from_index_id.clone(),
         metadata: json_string_to_value(index.metadata_json.as_str())?,
     })
 }
@@ -1647,6 +1689,85 @@ pub fn publish_compute_index_response_from_proto(
     })
 }
 
+pub fn correct_compute_index_request_to_proto(
+    request: &CorrectComputeIndexRequest,
+) -> Result<proto_compute::CorrectComputeIndexRequest> {
+    Ok(proto_compute::CorrectComputeIndexRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        superseded_index_id: request.superseded_index_id.clone(),
+        corrected_index: Some(compute_index_to_proto(&request.corrected_index)?),
+        correction_reason: compute_index_correction_reason_to_proto(request.correction_reason),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn correct_compute_index_request_from_proto(
+    request: &proto_compute::CorrectComputeIndexRequest,
+) -> Result<CorrectComputeIndexRequest> {
+    Ok(CorrectComputeIndexRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        superseded_index_id: request.superseded_index_id.clone(),
+        corrected_index: compute_index_from_proto(
+            request
+                .corrected_index
+                .as_ref()
+                .ok_or_else(|| missing("corrected_index"))?,
+        )?,
+        correction_reason: compute_index_correction_reason_from_proto(request.correction_reason)
+            .ok_or_else(|| missing("correction_reason"))?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn correct_compute_index_response_to_proto(
+    response: &CorrectComputeIndexResponse,
+) -> Result<proto_compute::CorrectComputeIndexResponse> {
+    Ok(proto_compute::CorrectComputeIndexResponse {
+        superseded_index: Some(compute_index_to_proto(&response.superseded_index)?),
+        corrected_index: Some(compute_index_to_proto(&response.corrected_index)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn correct_compute_index_response_from_proto(
+    response: &proto_compute::CorrectComputeIndexResponse,
+) -> Result<CorrectComputeIndexResponse> {
+    Ok(CorrectComputeIndexResponse {
+        superseded_index: compute_index_from_proto(
+            response
+                .superseded_index
+                .as_ref()
+                .ok_or_else(|| missing("superseded_index"))?,
+        )?,
+        corrected_index: compute_index_from_proto(
+            response
+                .corrected_index
+                .as_ref()
+                .ok_or_else(|| missing("corrected_index"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
 pub fn list_compute_products_response_to_proto(
     products: &[ComputeProduct],
 ) -> Result<proto_compute::ListComputeProductsResponse> {
@@ -1841,18 +1962,24 @@ mod tests {
         close_capacity_instrument_request_to_proto, close_capacity_instrument_response_from_proto,
         close_capacity_instrument_response_to_proto, compute_index_from_proto,
         compute_index_to_proto, compute_product_from_proto, compute_product_to_proto,
+        correct_compute_index_request_from_proto, correct_compute_index_request_to_proto,
+        correct_compute_index_response_from_proto, correct_compute_index_response_to_proto,
         delivery_proof_from_proto, delivery_proof_to_proto, get_compute_index_response_from_proto,
         get_compute_index_response_to_proto, list_compute_products_response_from_proto,
         list_compute_products_response_to_proto,
     };
-    use crate::authority::{CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse};
+    use crate::authority::{
+        CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
+        CorrectComputeIndexRequest, CorrectComputeIndexResponse,
+    };
     use crate::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
         CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
-        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
+        ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
+        OllamaRuntimeCapability,
     };
     use crate::receipts::{PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext};
     use serde_json::json;
@@ -2004,6 +2131,8 @@ mod tests {
             reference_price: None,
             methodology: Some("accepted delivery median".to_string()),
             status: ComputeIndexStatus::Published,
+            correction_reason: None,
+            corrected_from_index_id: None,
             metadata: json!({"quality": "stable"}),
         }
     }
@@ -2115,6 +2244,59 @@ mod tests {
             &close_capacity_instrument_response_to_proto(&response).expect("close response proto"),
         )
         .expect("close response roundtrip");
+        assert_eq!(response_roundtrip, response);
+    }
+
+    #[test]
+    fn correct_compute_index_proto_roundtrip_preserves_supersession_fields() {
+        let request = CorrectComputeIndexRequest {
+            idempotency_key: "correct-index-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            superseded_index_id: "index.compute.alpha".to_string(),
+            corrected_index: ComputeIndex {
+                index_id: "index.compute.alpha.v2".to_string(),
+                correction_reason: Some(ComputeIndexCorrectionReason::LateObservation),
+                corrected_from_index_id: Some("index.compute.alpha".to_string()),
+                ..compute_index_fixture()
+            },
+            correction_reason: ComputeIndexCorrectionReason::LateObservation,
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let request_roundtrip = correct_compute_index_request_from_proto(
+            &correct_compute_index_request_to_proto(&request).expect("correct request proto"),
+        )
+        .expect("correct request roundtrip");
+        assert_eq!(request_roundtrip, request);
+
+        let response = CorrectComputeIndexResponse {
+            superseded_index: compute_index_fixture(),
+            corrected_index: ComputeIndex {
+                index_id: "index.compute.alpha.v2".to_string(),
+                correction_reason: Some(ComputeIndexCorrectionReason::LateObservation),
+                corrected_from_index_id: Some("index.compute.alpha".to_string()),
+                ..compute_index_fixture()
+            },
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.index.correct.alpha",
+                "kernel.compute.index.correct.v1",
+                1_700_000_123_000,
+                "correct-index-1",
+                TraceContext::default(),
+                PolicyContext {
+                    policy_bundle_id: "policy.compute.test".to_string(),
+                    policy_version: "1".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .build()
+            .expect("correct receipt"),
+        };
+        let response_roundtrip = correct_compute_index_response_from_proto(
+            &correct_compute_index_response_to_proto(&response).expect("correct response proto"),
+        )
+        .expect("correct response roundtrip");
         assert_eq!(response_roundtrip, response);
     }
 }

@@ -1,7 +1,8 @@
 use crate::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
-    CapacityLotStatus, CapacityNonDeliveryReason, ComputeIndex, ComputeProduct,
-    ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus,
+    CapacityLotStatus, CapacityNonDeliveryReason, ComputeIndex, ComputeIndexCorrectionReason,
+    ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
+    DeliveryProofStatus,
 };
 use crate::compute_contracts;
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -51,6 +52,10 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: PublishComputeIndexRequest,
     ) -> Result<PublishComputeIndexResponse>;
+    async fn correct_compute_index(
+        &self,
+        req: CorrectComputeIndexRequest,
+    ) -> Result<CorrectComputeIndexResponse>;
     async fn list_compute_products(
         &self,
         status: Option<ComputeProductStatus>,
@@ -342,6 +347,27 @@ pub struct PublishComputeIndexRequest {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct PublishComputeIndexResponse {
     pub index: ComputeIndex,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CorrectComputeIndexRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub superseded_index_id: String,
+    pub corrected_index: ComputeIndex,
+    pub correction_reason: ComputeIndexCorrectionReason,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CorrectComputeIndexResponse {
+    pub superseded_index: ComputeIndex,
+    pub corrected_index: ComputeIndex,
     pub receipt: Receipt,
 }
 
@@ -858,6 +884,20 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::PublishComputeIndexResponse =
             self.post_json("/v1/kernel/compute/indices", &wire).await?;
         compute_contracts::publish_compute_index_response_from_proto(&response)
+    }
+
+    async fn correct_compute_index(
+        &self,
+        req: CorrectComputeIndexRequest,
+    ) -> Result<CorrectComputeIndexResponse> {
+        let path = format!(
+            "/v1/kernel/compute/indices/{}/correct",
+            req.superseded_index_id.trim()
+        );
+        let wire = compute_contracts::correct_compute_index_request_to_proto(&req)?;
+        let response: proto_compute::CorrectComputeIndexResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::correct_compute_index_response_from_proto(&response)
     }
 
     async fn list_compute_products(

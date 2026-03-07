@@ -1,11 +1,12 @@
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
     AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CreateAccessGrantRequest,
-    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
-    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
-    CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CorrectComputeIndexRequest,
+    CorrectComputeIndexResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
+    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
+    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
+    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+    CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
     ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
@@ -21,9 +22,9 @@ use openagents_kernel_core::authority::{
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
     CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeCapabilityEnvelope,
-    ComputeDeliveryVarianceReason, ComputeIndex, ComputeProduct, ComputeProductStatus,
-    ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
-    validate_launch_compute_product,
+    ComputeDeliveryVarianceReason, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
+    ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
+    DeliveryProofStatus, DeliveryRejectionReason, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -352,6 +353,37 @@ struct DeliveryProofRecord {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeIndexRecord {
     index: ComputeIndex,
+    #[serde(default)]
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone)]
+struct ComputeIndexObservation {
+    delivery_proof_id: String,
+    instrument_id: String,
+    delivery_receipt_id: String,
+    instrument_receipt_id: Option<String>,
+    provider_id: Option<String>,
+    accepted_quantity: u64,
+    unit_price_value: f64,
+    fixed_price: Money,
+}
+
+#[derive(Debug, Clone, Default)]
+struct ComputeIndexObservationSet {
+    observations: Vec<ComputeIndexObservation>,
+    delivery_records_examined: u64,
+    excluded_non_accepted: u64,
+    excluded_zero_quantity: u64,
+    excluded_missing_instrument: u64,
+    excluded_unpriced: u64,
+    excluded_currency_mismatch: u64,
+}
+
+#[derive(Debug, Clone)]
+struct ComputeIndexPublication {
+    index: ComputeIndex,
+    evidence: Vec<EvidenceRef>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -452,6 +484,10 @@ pub struct ComputeMarketMetrics {
     pub compute_delivery_proofs_24h: u64,
     pub compute_delivery_quantity_24h: u64,
     pub compute_indices_published_24h: u64,
+    pub compute_index_corrections_24h: u64,
+    pub compute_index_thin_windows_24h: u64,
+    pub compute_index_settlement_eligible_24h: u64,
+    pub compute_index_quality_score_24h: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -2390,6 +2426,288 @@ impl KernelState {
         })
     }
 
+    fn active_compute_index_for_window(
+        &self,
+        product_id: &str,
+        observation_window_start_ms: i64,
+        observation_window_end_ms: i64,
+        exclude_index_id: Option<&str>,
+    ) -> Option<&ComputeIndexRecord> {
+        self.compute_indices.values().find(|record| {
+            record.index.product_id == product_id
+                && record.index.observation_window_start_ms == observation_window_start_ms
+                && record.index.observation_window_end_ms == observation_window_end_ms
+                && record.index.status == ComputeIndexStatus::Published
+                && exclude_index_id.is_none_or(|excluded| record.index.index_id != excluded)
+        })
+    }
+
+    fn collect_compute_index_observations(
+        &self,
+        product_id: &str,
+        observation_window_start_ms: i64,
+        observation_window_end_ms: i64,
+    ) -> ComputeIndexObservationSet {
+        let mut set = ComputeIndexObservationSet::default();
+        for record in self.delivery_proofs.values() {
+            let proof = &record.delivery_proof;
+            if proof.product_id != product_id
+                || proof.created_at_ms < observation_window_start_ms
+                || proof.created_at_ms >= observation_window_end_ms
+            {
+                continue;
+            }
+            set.delivery_records_examined = set.delivery_records_examined.saturating_add(1);
+            if proof.status != DeliveryProofStatus::Accepted {
+                set.excluded_non_accepted = set.excluded_non_accepted.saturating_add(1);
+                continue;
+            }
+            if proof.accepted_quantity == 0 {
+                set.excluded_zero_quantity = set.excluded_zero_quantity.saturating_add(1);
+                continue;
+            }
+            let Some(instrument_id) = proof
+                .instrument_id
+                .as_deref()
+                .filter(|instrument_id| !instrument_id.trim().is_empty())
+            else {
+                set.excluded_missing_instrument = set.excluded_missing_instrument.saturating_add(1);
+                continue;
+            };
+            let Some(instrument_record) = self.capacity_instruments.get(instrument_id) else {
+                set.excluded_missing_instrument = set.excluded_missing_instrument.saturating_add(1);
+                continue;
+            };
+            let Some(fixed_price) = instrument_record.instrument.fixed_price.clone() else {
+                set.excluded_unpriced = set.excluded_unpriced.saturating_add(1);
+                continue;
+            };
+            let committed_quantity = instrument_record.instrument.quantity.max(1);
+            set.observations.push(ComputeIndexObservation {
+                delivery_proof_id: proof.delivery_proof_id.clone(),
+                instrument_id: instrument_record.instrument.instrument_id.clone(),
+                delivery_receipt_id: record.receipt_id.clone(),
+                instrument_receipt_id: Some(instrument_record.receipt_id.clone()),
+                provider_id: instrument_record.instrument.provider_id.clone(),
+                accepted_quantity: proof.accepted_quantity,
+                unit_price_value: money_amount_value(&fixed_price) as f64
+                    / committed_quantity as f64,
+                fixed_price,
+            });
+        }
+        set
+    }
+
+    fn derive_compute_index_publication(
+        &self,
+        product_record: &ComputeProductRecord,
+        template: &ComputeIndex,
+        correction_reason: Option<ComputeIndexCorrectionReason>,
+        corrected_from_index_id: Option<&str>,
+    ) -> Result<ComputeIndexPublication, String> {
+        let mut observation_set = self.collect_compute_index_observations(
+            template.product_id.as_str(),
+            template.observation_window_start_ms,
+            template.observation_window_end_ms,
+        );
+        let baseline_price = observation_set
+            .observations
+            .first()
+            .map(|observation| observation.fixed_price.clone());
+        if let Some(baseline_price) = baseline_price.as_ref() {
+            let original_count = observation_set.observations.len();
+            observation_set.observations.retain(|observation| {
+                money_assets_match(&observation.fixed_price, baseline_price)
+                    && money_units_match(&observation.fixed_price, baseline_price)
+            });
+            observation_set.excluded_currency_mismatch = observation_set
+                .excluded_currency_mismatch
+                .saturating_add((original_count - observation_set.observations.len()) as u64);
+        }
+
+        observation_set
+            .observations
+            .sort_by(|lhs, rhs| lhs.unit_price_value.total_cmp(&rhs.unit_price_value));
+        let trim_each_side = usize::from(observation_set.observations.len() >= 5);
+        let trimmed_low_count = trim_each_side as u64;
+        let trimmed_high_count = trim_each_side as u64;
+        let used_observations = if trim_each_side > 0 {
+            observation_set.observations[trim_each_side
+                ..observation_set
+                    .observations
+                    .len()
+                    .saturating_sub(trim_each_side)]
+                .to_vec()
+        } else {
+            observation_set.observations.clone()
+        };
+        let used_provider_count = used_observations
+            .iter()
+            .filter_map(|observation| observation.provider_id.as_deref())
+            .filter(|provider_id| !provider_id.is_empty())
+            .collect::<BTreeSet<_>>()
+            .len() as u64;
+        let used_quantity = used_observations.iter().fold(0u64, |total, observation| {
+            total.saturating_add(observation.accepted_quantity)
+        });
+        let thin_market_reason = if used_observations.len() < 2 {
+            Some("insufficient_observations")
+        } else if used_provider_count < 2 {
+            Some("insufficient_provider_diversity")
+        } else {
+            None
+        };
+        let observation_score = (used_observations.len().min(5) as f64) / 5.0;
+        let provider_score = (used_provider_count.min(3) as f64) / 3.0;
+        let trim_score = if trim_each_side > 0 { 1.0 } else { 0.5 };
+        let quality_score = if thin_market_reason.is_some() {
+            (observation_score + provider_score) / 6.0
+        } else {
+            ((observation_score + provider_score + trim_score) / 3.0).min(1.0)
+        };
+        let quality_band = if thin_market_reason.is_some() {
+            "thin"
+        } else if quality_score >= 0.85 {
+            "high"
+        } else if quality_score >= 0.60 {
+            "tradable"
+        } else {
+            "watch"
+        };
+        let reference_price = if thin_market_reason.is_some() {
+            None
+        } else {
+            weighted_reference_price(&used_observations)
+        };
+        let settlement_eligible = thin_market_reason.is_none() && reference_price.is_some();
+        let mut metadata = template.metadata.clone();
+        let metadata_object = ensure_metadata_object(&mut metadata)?;
+        metadata_object.insert(
+            "window_key".to_string(),
+            Value::String(format!(
+                "{}:{}:{}",
+                template.product_id,
+                template.observation_window_start_ms,
+                template.observation_window_end_ms
+            )),
+        );
+        metadata_object.insert(
+            "market_slice".to_string(),
+            json!({
+                "product_id": template.product_id,
+                "backend_family": product_record
+                    .product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|capability| capability.backend_family)
+                    .map(backend_family_label),
+                "execution_kind": product_record
+                    .product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|capability| capability.execution_kind)
+                    .map(execution_kind_label),
+                "compute_family": product_record
+                    .product
+                    .capability_envelope
+                    .as_ref()
+                    .and_then(|capability| capability.compute_family)
+                    .map(compute_family_label),
+            }),
+        );
+        metadata_object.insert(
+            "observation_summary".to_string(),
+            json!({
+                "methodology_version": "accepted_delivery_trimmed_weighted_average.v1",
+                "delivery_records_examined": observation_set.delivery_records_examined,
+                "eligible_observation_count": observation_set.observations.len(),
+                "used_observation_count": used_observations.len(),
+                "trimmed_low_count": trimmed_low_count,
+                "trimmed_high_count": trimmed_high_count,
+                "excluded_non_accepted_count": observation_set.excluded_non_accepted,
+                "excluded_zero_quantity_count": observation_set.excluded_zero_quantity,
+                "excluded_missing_instrument_count": observation_set.excluded_missing_instrument,
+                "excluded_unpriced_count": observation_set.excluded_unpriced,
+                "excluded_currency_mismatch_count": observation_set.excluded_currency_mismatch,
+                "provider_diversity": used_provider_count,
+                "used_delivery_proof_ids": used_observations
+                    .iter()
+                    .map(|observation| observation.delivery_proof_id.clone())
+                    .collect::<Vec<_>>(),
+                "used_instrument_ids": used_observations
+                    .iter()
+                    .map(|observation| observation.instrument_id.clone())
+                    .collect::<Vec<_>>(),
+            }),
+        );
+        metadata_object.insert(
+            "quality".to_string(),
+            json!({
+                "score": quality_score,
+                "band": quality_band,
+                "thin_market": thin_market_reason.is_some(),
+                "thin_market_reason": thin_market_reason,
+            }),
+        );
+        metadata_object.insert(
+            "governance".to_string(),
+            json!({
+                "settlement_eligible": settlement_eligible,
+                "quote_inputs_used": false,
+                "correction_reason": correction_reason.map(|reason| reason.label()),
+                "corrected_from_index_id": corrected_from_index_id,
+            }),
+        );
+        if let Some(corrected_from_index_id) = corrected_from_index_id {
+            metadata_object.insert(
+                "supersedes_index_id".to_string(),
+                Value::String(corrected_from_index_id.to_string()),
+            );
+        }
+
+        let mut evidence = Vec::new();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        for observation in &used_observations {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(observation.delivery_receipt_id.as_str())
+                    .as_ref(),
+            );
+            if let Some(instrument_receipt_id) = observation.instrument_receipt_id.as_deref() {
+                push_receipt_evidence(
+                    &mut evidence,
+                    self.receipt_store
+                        .get_receipt(instrument_receipt_id)
+                        .as_ref(),
+                );
+            }
+        }
+        Ok(ComputeIndexPublication {
+            index: ComputeIndex {
+                index_id: template.index_id.clone(),
+                product_id: template.product_id.clone(),
+                observation_window_start_ms: template.observation_window_start_ms,
+                observation_window_end_ms: template.observation_window_end_ms,
+                published_at_ms: template.published_at_ms,
+                observation_count: used_observations.len() as u64,
+                total_accepted_quantity: used_quantity,
+                reference_price,
+                methodology: Some("accepted_delivery_trimmed_weighted_average.v1".to_string()),
+                status: ComputeIndexStatus::Published,
+                correction_reason,
+                corrected_from_index_id: corrected_from_index_id.map(str::to_owned),
+                metadata,
+            },
+            evidence,
+        })
+    }
+
     pub fn publish_compute_index(
         &mut self,
         context: &KernelMutationContext,
@@ -2420,37 +2738,24 @@ impl KernelState {
         if req.index.observation_window_end_ms <= req.index.observation_window_start_ms {
             return Err("compute_index_window_invalid".to_string());
         }
-        let delivery_records = self
-            .delivery_proofs
-            .values()
-            .filter(|record| {
-                record.delivery_proof.product_id == product_id
-                    && record.delivery_proof.created_at_ms >= req.index.observation_window_start_ms
-                    && record.delivery_proof.created_at_ms < req.index.observation_window_end_ms
-            })
-            .cloned()
-            .collect::<Vec<_>>();
-        req.index.observation_count = delivery_records.len() as u64;
-        req.index.total_accepted_quantity = delivery_records.iter().fold(0u64, |total, record| {
-            total.saturating_add(record.delivery_proof.accepted_quantity)
-        });
+        if self
+            .active_compute_index_for_window(
+                product_id.as_str(),
+                req.index.observation_window_start_ms,
+                req.index.observation_window_end_ms,
+                None,
+            )
+            .is_some()
+        {
+            return Err("compute_index_window_already_published".to_string());
+        }
         req.policy = normalized_policy(req.policy, context);
+        let publication =
+            self.derive_compute_index_publication(&product_record, &req.index, None, None)?;
+        req.index = publication.index.clone();
         let request_hash = request_hash(&req)?;
         let mut evidence = req.evidence.clone();
-        push_receipt_evidence(
-            &mut evidence,
-            self.receipt_store
-                .get_receipt(product_record.receipt_id.as_str())
-                .as_ref(),
-        );
-        for record in &delivery_records {
-            push_receipt_evidence(
-                &mut evidence,
-                self.receipt_store
-                    .get_receipt(record.receipt_id.as_str())
-                    .as_ref(),
-            );
-        }
+        evidence.extend(publication.evidence.clone());
         let index_payload = serde_json::to_value(&req.index)
             .map_err(|error| format!("kernel_compute_index_encode_failed: {error}"))?;
         let receipt = build_receipt(
@@ -2467,6 +2772,9 @@ impl KernelState {
                     "product_id": product_id.clone(),
                     "observation_count": req.index.observation_count,
                     "total_accepted_quantity": req.index.total_accepted_quantity,
+                    "reference_price": req.index.reference_price.clone(),
+                    "quality": req.index.metadata.get("quality").cloned(),
+                    "governance": req.index.metadata.get("governance").cloned(),
                     "product_receipt_id": product_record.receipt_id.clone(),
                 }),
                 evidence,
@@ -2500,6 +2808,7 @@ impl KernelState {
             index_id,
             ComputeIndexRecord {
                 index: req.index.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
             },
         );
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
@@ -2511,8 +2820,177 @@ impl KernelState {
         })
     }
 
+    pub fn correct_compute_index(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CorrectComputeIndexRequest,
+    ) -> Result<MutationResult<CorrectComputeIndexResponse>, String> {
+        let superseded_index_id =
+            normalize_required(req.superseded_index_id.as_str(), "compute_index_id_missing")?;
+        let Some(existing_record) = self
+            .compute_indices
+            .get(superseded_index_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_index_not_found".to_string());
+        };
+        if existing_record.index.status == ComputeIndexStatus::Superseded {
+            return Err("compute_index_already_superseded".to_string());
+        }
+        let corrected_index_id = normalize_required(
+            req.corrected_index.index_id.as_str(),
+            "compute_index_id_missing",
+        )?;
+        if corrected_index_id == superseded_index_id {
+            return Err("compute_index_correction_requires_new_index_id".to_string());
+        }
+        if self
+            .compute_indices
+            .contains_key(corrected_index_id.as_str())
+        {
+            return Err("compute_index_id_conflict".to_string());
+        }
+        let Some(product_record) = self
+            .compute_products
+            .get(existing_record.index.product_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_product_not_found".to_string());
+        };
+        req.corrected_index.index_id.clone_from(&corrected_index_id);
+        req.corrected_index
+            .product_id
+            .clone_from(&existing_record.index.product_id);
+        req.corrected_index.observation_window_start_ms =
+            existing_record.index.observation_window_start_ms;
+        req.corrected_index.observation_window_end_ms =
+            existing_record.index.observation_window_end_ms;
+        req.corrected_index.published_at_ms =
+            normalize_created_at_ms(req.corrected_index.published_at_ms, context.now_unix_ms);
+        req.policy = normalized_policy(req.policy, context);
+        let publication = self.derive_compute_index_publication(
+            &product_record,
+            &req.corrected_index,
+            Some(req.correction_reason),
+            Some(superseded_index_id.as_str()),
+        )?;
+        req.corrected_index = publication.index.clone();
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        evidence.extend(publication.evidence.clone());
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(existing_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let correction_payload = json!({
+            "superseded_index_id": superseded_index_id.clone(),
+            "correction_reason": req.correction_reason.label(),
+            "corrected_index": req.corrected_index.clone(),
+        });
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.index.correct".to_string(),
+                created_at_ms: req.corrected_index.published_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: correction_payload,
+                outputs_payload: json!({
+                    "superseded_index_id": superseded_index_id.clone(),
+                    "corrected_index_id": corrected_index_id.clone(),
+                    "product_id": existing_record.index.product_id.clone(),
+                    "correction_reason": req.correction_reason.label(),
+                    "quality": req.corrected_index.metadata.get("quality").cloned(),
+                    "governance": req.corrected_index.metadata.get("governance").cloned(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.index.correct",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let mut superseded_index = existing_record.index.clone();
+        {
+            let metadata = ensure_metadata_object(&mut superseded_index.metadata)?;
+            metadata.insert(
+                "superseded_by_index_id".to_string(),
+                Value::String(corrected_index_id.clone()),
+            );
+            metadata.insert(
+                "superseded_at_ms".to_string(),
+                Value::Number(req.corrected_index.published_at_ms.into()),
+            );
+            metadata.insert(
+                "supersession_reason".to_string(),
+                Value::String(req.correction_reason.label().to_string()),
+            );
+        }
+        superseded_index.status = ComputeIndexStatus::Superseded;
+        let response = CorrectComputeIndexResponse {
+            superseded_index: superseded_index.clone(),
+            corrected_index: req.corrected_index.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        if let Some(record) = self.compute_indices.get_mut(superseded_index_id.as_str()) {
+            record.index = superseded_index.clone();
+        }
+        self.compute_indices.insert(
+            corrected_index_id,
+            ComputeIndexRecord {
+                index: req.corrected_index.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.corrected_index.published_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     pub fn compute_market_metrics(&self, as_of_ms: i64) -> ComputeMarketMetrics {
         let window_start_ms = as_of_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
+        let index_window = self
+            .compute_indices
+            .values()
+            .filter(|record| {
+                record.index.published_at_ms >= window_start_ms
+                    && record.index.published_at_ms <= as_of_ms
+            })
+            .collect::<Vec<_>>();
+        let quality_sum = index_window.iter().fold(0.0, |total, record| {
+            total
+                + record
+                    .index
+                    .metadata
+                    .get("quality")
+                    .and_then(Value::as_object)
+                    .and_then(|quality| quality.get("score"))
+                    .and_then(Value::as_f64)
+                    .unwrap_or(0.0)
+        });
         ComputeMarketMetrics {
             compute_products_active: self
                 .compute_products
@@ -2560,14 +3038,42 @@ impl KernelState {
                 .fold(0u64, |total, record| {
                     total.saturating_add(record.delivery_proof.accepted_quantity)
                 }),
-            compute_indices_published_24h: self
-                .compute_indices
-                .values()
+            compute_indices_published_24h: index_window.len() as u64,
+            compute_index_corrections_24h: index_window
+                .iter()
+                .filter(|record| record.index.corrected_from_index_id.is_some())
+                .count() as u64,
+            compute_index_thin_windows_24h: index_window
+                .iter()
                 .filter(|record| {
-                    record.index.published_at_ms >= window_start_ms
-                        && record.index.published_at_ms <= as_of_ms
+                    record
+                        .index
+                        .metadata
+                        .get("quality")
+                        .and_then(Value::as_object)
+                        .and_then(|quality| quality.get("thin_market"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
                 })
                 .count() as u64,
+            compute_index_settlement_eligible_24h: index_window
+                .iter()
+                .filter(|record| {
+                    record
+                        .index
+                        .metadata
+                        .get("governance")
+                        .and_then(Value::as_object)
+                        .and_then(|governance| governance.get("settlement_eligible"))
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false)
+                })
+                .count() as u64,
+            compute_index_quality_score_24h: if index_window.is_empty() {
+                0.0
+            } else {
+                quality_sum / index_window.len() as f64
+            },
         }
     }
 
@@ -5204,6 +5710,65 @@ fn money_assets_match(lhs: &Money, rhs: &Money) -> bool {
     lhs.asset == rhs.asset
 }
 
+fn money_units_match(lhs: &Money, rhs: &Money) -> bool {
+    matches!(
+        (&lhs.amount, &rhs.amount),
+        (MoneyAmount::AmountMsats(_), MoneyAmount::AmountMsats(_))
+            | (MoneyAmount::AmountSats(_), MoneyAmount::AmountSats(_))
+    )
+}
+
+fn weighted_reference_price(observations: &[ComputeIndexObservation]) -> Option<Money> {
+    let template = observations.first()?.fixed_price.clone();
+    if observations.iter().any(|observation| {
+        !money_assets_match(&observation.fixed_price, &template)
+            || !money_units_match(&observation.fixed_price, &template)
+    }) {
+        return None;
+    }
+    let weighted_numerator = observations.iter().fold(0f64, |total, observation| {
+        total + observation.unit_price_value * observation.accepted_quantity as f64
+    });
+    let weighted_denominator = observations.iter().fold(0u64, |total, observation| {
+        total.saturating_add(observation.accepted_quantity)
+    });
+    if weighted_denominator == 0 {
+        return None;
+    }
+    let mut money = template;
+    set_money_amount(
+        &mut money,
+        (weighted_numerator / weighted_denominator as f64).round() as u64,
+    );
+    Some(money)
+}
+
+fn backend_family_label(
+    value: openagents_kernel_core::compute::ComputeBackendFamily,
+) -> &'static str {
+    match value {
+        openagents_kernel_core::compute::ComputeBackendFamily::Ollama => "ollama",
+        openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels => {
+            "apple_foundation_models"
+        }
+    }
+}
+
+fn execution_kind_label(
+    value: openagents_kernel_core::compute::ComputeExecutionKind,
+) -> &'static str {
+    match value {
+        openagents_kernel_core::compute::ComputeExecutionKind::LocalInference => "local_inference",
+    }
+}
+
+fn compute_family_label(value: openagents_kernel_core::compute::ComputeFamily) -> &'static str {
+    match value {
+        openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
+        openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
+    }
+}
+
 fn receipt_ref_for(receipt: &Receipt) -> ReceiptRef {
     ReceiptRef {
         receipt_id: receipt.receipt_id.clone(),
@@ -5394,6 +5959,11 @@ fn build_snapshot(
         compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
         compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
+        compute_index_corrections_24h: compute_metrics.compute_index_corrections_24h,
+        compute_index_thin_windows_24h: compute_metrics.compute_index_thin_windows_24h,
+        compute_index_settlement_eligible_24h: compute_metrics
+            .compute_index_settlement_eligible_24h,
+        compute_index_quality_score_24h: compute_metrics.compute_index_quality_score_24h,
         liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
         liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
         liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
@@ -5437,20 +6007,23 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 mod tests {
     use super::{KernelMutationContext, KernelState, floor_to_minute_utc};
     use openagents_kernel_core::authority::{
-        CloseCapacityInstrumentRequest, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
-        CreateComputeProductRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
+        CloseCapacityInstrumentRequest, CorrectComputeIndexRequest,
+        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
+        PublishComputeIndexRequest, RecordDeliveryProofRequest,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
         CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
-        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
-        OllamaRuntimeCapability,
+        ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
+        ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
+        DeliveryRejectionReason, OllamaRuntimeCapability,
     };
-    use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext};
-    use serde_json::json;
+    use openagents_kernel_core::receipts::{
+        Asset, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
+    };
+    use serde_json::{Value, json};
     use std::path::PathBuf;
 
     fn fixture_context(now_unix_ms: u64) -> KernelMutationContext {
@@ -5553,7 +6126,10 @@ mod tests {
                 delivery_start_ms: created_at_ms,
                 delivery_end_ms: created_at_ms + 30_000,
                 quantity: 256,
-                fixed_price: None,
+                fixed_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(1_500),
+                }),
                 reference_index_id: None,
                 kind: CapacityInstrumentKind::Spot,
                 settlement_mode: ComputeSettlementMode::Physical,
@@ -5652,6 +6228,8 @@ mod tests {
                 reference_price: None,
                 methodology: Some("accepted delivery median".to_string()),
                 status: openagents_kernel_core::compute::ComputeIndexStatus::Published,
+                correction_reason: None,
+                corrected_from_index_id: None,
                 metadata: json!({"source": "test"}),
             },
             evidence: Vec::new(),
@@ -5738,6 +6316,266 @@ mod tests {
         assert!(replay.snapshot_event.is_none());
 
         let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn publish_compute_index_marks_thin_market_windows_and_omits_price() {
+        let created_at_ms = 1_762_000_300_000u64;
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(
+                &fixture_context(created_at_ms),
+                compute_product_request(created_at_ms as i64),
+            )
+            .expect("create compute product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create capacity lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create capacity instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record delivery proof");
+
+        let published = kernel
+            .publish_compute_index(
+                &fixture_context(created_at_ms + 4_000),
+                compute_index_request(created_at_ms as i64 + 4_000),
+            )
+            .expect("publish compute index");
+        let quality = published
+            .response
+            .index
+            .metadata
+            .get("quality")
+            .and_then(Value::as_object)
+            .expect("quality metadata");
+        let governance = published
+            .response
+            .index
+            .metadata
+            .get("governance")
+            .and_then(Value::as_object)
+            .expect("governance metadata");
+        assert_eq!(published.response.index.observation_count, 1);
+        assert_eq!(published.response.index.total_accepted_quantity, 256);
+        assert_eq!(published.response.index.reference_price, None);
+        assert_eq!(
+            published.response.index.methodology.as_deref(),
+            Some("accepted_delivery_trimmed_weighted_average.v1")
+        );
+        assert_eq!(
+            quality.get("thin_market").and_then(Value::as_bool),
+            Some(true)
+        );
+        assert_eq!(
+            quality.get("thin_market_reason").and_then(Value::as_str),
+            Some("insufficient_observations")
+        );
+        assert_eq!(
+            governance
+                .get("settlement_eligible")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let metrics = kernel.compute_market_metrics(created_at_ms as i64 + 5_000);
+        assert_eq!(metrics.compute_indices_published_24h, 1);
+        assert_eq!(metrics.compute_index_thin_windows_24h, 1);
+        assert_eq!(metrics.compute_index_settlement_eligible_24h, 0);
+    }
+
+    #[test]
+    fn duplicate_compute_index_window_requires_correction_flow() {
+        let created_at_ms = 1_762_000_350_000u64;
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(
+                &fixture_context(created_at_ms),
+                compute_product_request(created_at_ms as i64),
+            )
+            .expect("create compute product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create capacity lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create capacity instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record delivery proof");
+        let request = compute_index_request(created_at_ms as i64 + 4_000);
+        kernel
+            .publish_compute_index(&fixture_context(created_at_ms + 4_000), request.clone())
+            .expect("publish compute index");
+        let error = kernel
+            .publish_compute_index(&fixture_context(created_at_ms + 5_000), request)
+            .expect_err("duplicate window should conflict");
+        assert_eq!(error, "compute_index_window_already_published");
+    }
+
+    #[test]
+    fn correct_compute_index_supersedes_prior_publication() {
+        let created_at_ms = 1_762_000_400_000u64;
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(
+                &fixture_context(created_at_ms),
+                compute_product_request(created_at_ms as i64),
+            )
+            .expect("create compute product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create capacity lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create first capacity instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record first delivery proof");
+        let first_publication = kernel
+            .publish_compute_index(
+                &fixture_context(created_at_ms + 4_000),
+                compute_index_request(created_at_ms as i64 + 4_000),
+            )
+            .expect("publish first compute index");
+        assert_eq!(first_publication.response.index.reference_price, None);
+
+        let mut second_instrument = capacity_instrument_request(created_at_ms as i64 + 5_000);
+        second_instrument.idempotency_key = "idemp.compute.instrument.beta".to_string();
+        second_instrument.instrument.instrument_id = "instrument.compute.beta".to_string();
+        second_instrument.instrument.provider_id = Some("provider.beta".to_string());
+        second_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_800),
+        });
+        kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 5_000), second_instrument)
+            .expect("create second capacity instrument");
+        let mut second_delivery = delivery_proof_request(created_at_ms as i64 + 3_500);
+        second_delivery.idempotency_key = "idemp.compute.delivery.beta".to_string();
+        second_delivery.delivery_proof.delivery_proof_id = "delivery.compute.beta".to_string();
+        second_delivery.delivery_proof.instrument_id = Some("instrument.compute.beta".to_string());
+        second_delivery.delivery_proof.created_at_ms = created_at_ms as i64 + 3_500;
+        kernel
+            .record_delivery_proof(&fixture_context(created_at_ms + 6_000), second_delivery)
+            .expect("record second delivery proof");
+
+        let corrected = kernel
+            .correct_compute_index(
+                &fixture_context(created_at_ms + 7_000),
+                CorrectComputeIndexRequest {
+                    idempotency_key: "idemp.compute.index.correct.alpha".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    superseded_index_id: "index.compute.alpha".to_string(),
+                    corrected_index: ComputeIndex {
+                        index_id: "index.compute.alpha.v2".to_string(),
+                        product_id: "ollama.text_generation".to_string(),
+                        observation_window_start_ms: 0,
+                        observation_window_end_ms: 0,
+                        published_at_ms: created_at_ms as i64 + 7_000,
+                        observation_count: 0,
+                        total_accepted_quantity: 0,
+                        reference_price: None,
+                        methodology: None,
+                        status: ComputeIndexStatus::Published,
+                        correction_reason: Some(ComputeIndexCorrectionReason::LateObservation),
+                        corrected_from_index_id: Some("index.compute.alpha".to_string()),
+                        metadata: json!({"source": "test"}),
+                    },
+                    correction_reason: ComputeIndexCorrectionReason::LateObservation,
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("correct compute index");
+
+        assert_eq!(
+            corrected.response.receipt.receipt_type,
+            "kernel.compute.index.correct.v1"
+        );
+        assert_eq!(
+            corrected.response.superseded_index.status,
+            ComputeIndexStatus::Superseded
+        );
+        assert_eq!(
+            corrected
+                .response
+                .superseded_index
+                .metadata
+                .get("superseded_by_index_id")
+                .and_then(Value::as_str),
+            Some("index.compute.alpha.v2")
+        );
+        assert_eq!(
+            corrected.response.corrected_index.correction_reason,
+            Some(ComputeIndexCorrectionReason::LateObservation)
+        );
+        assert_eq!(
+            corrected
+                .response
+                .corrected_index
+                .corrected_from_index_id
+                .as_deref(),
+            Some("index.compute.alpha")
+        );
+        assert_eq!(corrected.response.corrected_index.observation_count, 2);
+        assert!(corrected.response.corrected_index.reference_price.is_some());
+        assert_eq!(
+            corrected
+                .response
+                .corrected_index
+                .metadata
+                .get("quality")
+                .and_then(Value::as_object)
+                .and_then(|quality| quality.get("thin_market"))
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            corrected
+                .response
+                .corrected_index
+                .metadata
+                .get("governance")
+                .and_then(Value::as_object)
+                .and_then(|governance| governance.get("settlement_eligible"))
+                .and_then(Value::as_bool),
+            Some(true)
+        );
+        let metrics = kernel.compute_market_metrics(created_at_ms as i64 + 8_000);
+        assert_eq!(metrics.compute_indices_published_24h, 2);
+        assert_eq!(metrics.compute_index_corrections_24h, 1);
+        assert_eq!(metrics.compute_index_thin_windows_24h, 1);
+        assert_eq!(metrics.compute_index_settlement_eligible_24h, 1);
     }
 
     #[test]
