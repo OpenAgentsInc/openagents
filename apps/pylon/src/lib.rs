@@ -9,11 +9,13 @@ use openagents_provider_substrate::{
     ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
     ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent, ProviderIdentityMetadata,
     ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry, ProviderMode,
-    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderRuntimeStatusSnapshot,
+    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderReceiptSummary,
+    ProviderRecentJob, ProviderRuntimeStatusSnapshot,
     ProviderSandboxDetectionConfig, ProviderSandboxProfileSpec, ProviderStatusResponse,
     derive_provider_products, detect_sandbox_supply, provider_runtime_state_label,
     validate_provider_control_action,
 };
+use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
@@ -40,6 +42,12 @@ pub enum Command {
     Doctor,
     Serve,
     Status { json: bool },
+    Backends { json: bool },
+    Inventory { json: bool, limit: Option<usize> },
+    Products { json: bool },
+    Jobs { json: bool, limit: Option<usize> },
+    Earnings { json: bool },
+    Receipts { json: bool, limit: Option<usize> },
     Online,
     Offline,
     Pause,
@@ -71,6 +79,79 @@ struct DoctorReport {
     identity: ProviderIdentityMetadata,
     availability: ProviderAvailability,
     products: Vec<ProviderAdvertisedProduct>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct ReportContext {
+    state: String,
+    desired_mode: String,
+    listen_addr: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct BackendReport {
+    context: ReportContext,
+    backends: Vec<BackendEntry>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct BackendEntry {
+    backend_id: String,
+    display_label: String,
+    health_state: String,
+    reachable: bool,
+    ready: bool,
+    ready_model: Option<String>,
+    available_models: Vec<String>,
+    availability_message: Option<String>,
+    launch_product_ids: Vec<String>,
+    eligible_product_ids: Vec<String>,
+    last_error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct ProductReport {
+    context: ReportContext,
+    products: Vec<ProductEntry>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct ProductEntry {
+    product_id: String,
+    display_label: String,
+    compute_family: String,
+    backend: String,
+    enabled: bool,
+    backend_ready: bool,
+    eligible: bool,
+    capability_summary: String,
+    price_floor_sats: u64,
+    terms_label: String,
+    forward_terms_label: String,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct InventoryReport {
+    context: ReportContext,
+    rows: Vec<ProviderInventoryRow>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct JobsReport {
+    context: ReportContext,
+    jobs: Vec<ProviderRecentJob>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct EarningsReport {
+    context: ReportContext,
+    earnings: Option<ProviderEarningsSummary>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct ReceiptsReport {
+    context: ReportContext,
+    receipts: Vec<ProviderReceiptSummary>,
 }
 
 pub fn parse_args(args: Vec<String>) -> Result<Cli> {
@@ -143,6 +224,48 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_human_status(&status)))
         }
+        Command::Backends { json } => {
+            let report = load_backend_report(cli.config_path.as_path()).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_backend_report(&report)))
+        }
+        Command::Inventory { json, limit } => {
+            let report = load_inventory_report(cli.config_path.as_path(), limit).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_inventory_report(&report)))
+        }
+        Command::Products { json } => {
+            let report = load_product_report(cli.config_path.as_path()).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_product_report(&report)))
+        }
+        Command::Jobs { json, limit } => {
+            let report = load_jobs_report(cli.config_path.as_path(), limit).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_jobs_report(&report)))
+        }
+        Command::Earnings { json } => {
+            let report = load_earnings_report(cli.config_path.as_path()).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_earnings_report(&report)))
+        }
+        Command::Receipts { json, limit } => {
+            let report = load_receipts_report(cli.config_path.as_path(), limit).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_receipts_report(&report)))
+        }
         Command::Online => {
             let status =
                 apply_control_command(cli.config_path.as_path(), ProviderControlAction::Online)
@@ -187,6 +310,12 @@ Commands:\n\
   doctor\n\
   serve\n\
   status [--json]\n\
+  backends [--json]\n\
+  inventory [--json] [--limit <n>]\n\
+  products [--json]\n\
+  jobs [--json] [--limit <n>]\n\
+  earnings [--json]\n\
+  receipts [--json] [--limit <n>]\n\
   online\n\
   offline\n\
   pause\n\
@@ -231,6 +360,39 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
                 bail!("status does not accept additional arguments");
             }
             Ok(Command::Status { json })
+        }
+        "backends" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "backends", false)?;
+            if limit.is_some() {
+                bail!("backends does not support --limit");
+            }
+            Ok(Command::Backends { json })
+        }
+        "inventory" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "inventory", true)?;
+            Ok(Command::Inventory { json, limit })
+        }
+        "products" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "products", false)?;
+            if limit.is_some() {
+                bail!("products does not support --limit");
+            }
+            Ok(Command::Products { json })
+        }
+        "jobs" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "jobs", true)?;
+            Ok(Command::Jobs { json, limit })
+        }
+        "earnings" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "earnings", false)?;
+            if limit.is_some() {
+                bail!("earnings does not support --limit");
+            }
+            Ok(Command::Earnings { json })
+        }
+        "receipts" => {
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "receipts", true)?;
+            Ok(Command::Receipts { json, limit })
         }
         "online" => {
             if start_index + 1 != args.len() {
@@ -283,6 +445,36 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
         },
         other => bail!("unknown command: {other}"),
     }
+}
+
+fn parse_observability_flags(
+    args: &[String],
+    mut index: usize,
+    command: &str,
+    allow_limit: bool,
+) -> Result<(bool, Option<usize>)> {
+    let mut json = false;
+    let mut limit = None;
+    while index < args.len() {
+        match args[index].as_str() {
+            "--json" => {
+                json = true;
+                index += 1;
+            }
+            "--limit" if allow_limit => {
+                index += 1;
+                let value = args
+                    .get(index)
+                    .ok_or_else(|| anyhow!("missing value for --limit"))?;
+                limit = Some(value.parse::<usize>().with_context(|| {
+                    format!("invalid numeric limit for {command}: {value}")
+                })?);
+                index += 1;
+            }
+            other => bail!("unexpected argument for {command}: {other}"),
+        }
+    }
+    Ok((json, limit))
 }
 
 fn load_or_create_config(path: &Path) -> Result<PylonConfig> {
@@ -1022,6 +1214,468 @@ fn render_human_status(status: &ProviderStatusResponse) -> String {
     lines.join("\n")
 }
 
+fn load_config_or_default(path: &Path) -> Result<PylonConfig> {
+    if path.exists() {
+        return load_config(path);
+    }
+    let base_dir = path
+        .parent()
+        .map(PathBuf::from)
+        .unwrap_or_else(default_home_dir);
+    Ok(default_config(base_dir.as_path()))
+}
+
+async fn load_config_and_status(config_path: &Path) -> Result<(PylonConfig, ProviderStatusResponse)> {
+    let config = load_config_or_default(config_path)?;
+    let status = load_status_or_detect(config_path).await?;
+    Ok((config, status))
+}
+
+fn report_context(status: &ProviderStatusResponse) -> ReportContext {
+    ReportContext {
+        state: provider_runtime_state_label(status),
+        desired_mode: status.desired_mode.label().to_string(),
+        listen_addr: status.listen_addr.clone(),
+    }
+}
+
+fn products_from_status(
+    config: &PylonConfig,
+    status: &ProviderStatusResponse,
+) -> Vec<ProviderAdvertisedProduct> {
+    status
+        .snapshot
+        .as_ref()
+        .map(|snapshot| derive_provider_products(&snapshot.availability, &config.inventory_controls))
+        .unwrap_or_default()
+}
+
+fn backend_entry(
+    backend_id: &str,
+    display_label: &str,
+    health_state: String,
+    health: &ProviderBackendHealth,
+    products: &[ProviderAdvertisedProduct],
+) -> BackendEntry {
+    let launch_product_ids = products
+        .iter()
+        .map(|product| product.product.product_id().to_string())
+        .collect::<Vec<_>>();
+    let eligible_product_ids = products
+        .iter()
+        .filter(|product| product.eligible)
+        .map(|product| product.product.product_id().to_string())
+        .collect::<Vec<_>>();
+    BackendEntry {
+        backend_id: backend_id.to_string(),
+        display_label: display_label.to_string(),
+        health_state,
+        reachable: health.reachable,
+        ready: health.ready,
+        ready_model: health.ready_model.clone(),
+        available_models: health.available_models.clone(),
+        availability_message: health.availability_message.clone(),
+        launch_product_ids,
+        eligible_product_ids,
+        last_error: health.last_error.clone(),
+    }
+}
+
+fn ollama_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
+    if !config.inventory_controls.ollama_inference_enabled
+        && !config.inventory_controls.ollama_embeddings_enabled
+    {
+        return "disabled".to_string();
+    }
+    if health.ready {
+        return "healthy".to_string();
+    }
+    if health.reachable && health.available_models.is_empty() {
+        return "misconfigured".to_string();
+    }
+    if !health.reachable || health.last_error.is_some() {
+        return "unavailable".to_string();
+    }
+    "misconfigured".to_string()
+}
+
+fn apple_fm_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -> String {
+    if !config.inventory_controls.apple_fm_inference_enabled {
+        return "disabled".to_string();
+    }
+    if health.ready {
+        return "healthy".to_string();
+    }
+    if config.apple_fm_base_url.is_none() {
+        return if std::env::consts::OS == "macos" {
+            "misconfigured".to_string()
+        } else {
+            "unsupported".to_string()
+        };
+    }
+    if !health.reachable || health.last_error.is_some() {
+        return "unavailable".to_string();
+    }
+    if health.available_models.is_empty() {
+        return "misconfigured".to_string();
+    }
+    "misconfigured".to_string()
+}
+
+async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
+    let (config, status) = load_config_and_status(config_path).await?;
+    let availability = if config_path.exists() {
+        try_live_json::<ProviderAvailability>(&config, "/v1/backend-health")
+            .await?
+            .or_else(|| status.snapshot.as_ref().map(|snapshot| snapshot.availability.clone()))
+            .unwrap_or_default()
+    } else {
+        ProviderAvailability::default()
+    };
+    let products = derive_provider_products(&availability, &config.inventory_controls);
+    let ollama_products = products
+        .iter()
+        .filter(|product| product.product.backend_label() == "ollama")
+        .cloned()
+        .collect::<Vec<_>>();
+    let apple_fm_products = products
+        .iter()
+        .filter(|product| product.product.backend_label() == "apple_foundation_models")
+        .cloned()
+        .collect::<Vec<_>>();
+    Ok(BackendReport {
+        context: report_context(&status),
+        backends: vec![
+            backend_entry(
+                "ollama",
+                "Ollama",
+                ollama_health_state(&config, &availability.ollama),
+                &availability.ollama,
+                ollama_products.as_slice(),
+            ),
+            backend_entry(
+                "apple_foundation_models",
+                "Apple Foundation Models",
+                apple_fm_health_state(&config, &availability.apple_foundation_models),
+                &availability.apple_foundation_models,
+                apple_fm_products.as_slice(),
+            ),
+        ],
+    })
+}
+
+async fn load_inventory_report(config_path: &Path, limit: Option<usize>) -> Result<InventoryReport> {
+    let (config, status) = load_config_and_status(config_path).await?;
+    let rows = if config_path.exists() {
+        if let Some(rows) =
+            try_live_json::<Vec<ProviderInventoryRow>>(&config, inventory_endpoint(limit).as_str())
+                .await?
+        {
+            rows
+        } else if let Some(store) = open_existing_store(&config)? {
+            store.load_inventory_rows(limit).map_err(anyhow::Error::msg)?
+        } else {
+            take_limited_rows(
+                status
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.inventory_rows.clone())
+                    .unwrap_or_default(),
+                limit,
+            )
+        }
+    } else {
+        Vec::new()
+    };
+    Ok(InventoryReport {
+        context: report_context(&status),
+        rows,
+    })
+}
+
+async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
+    let (config, status) = load_config_and_status(config_path).await?;
+    let products = products_from_status(&config, &status)
+        .into_iter()
+        .map(|product| ProductEntry {
+            product_id: product.product.product_id().to_string(),
+            display_label: product.product.display_label().to_string(),
+            compute_family: product.product.compute_family_label().to_string(),
+            backend: product.product.backend_label().to_string(),
+            enabled: product.enabled,
+            backend_ready: product.backend_ready,
+            eligible: product.eligible,
+            capability_summary: product.capability_summary,
+            price_floor_sats: product.price_floor_sats,
+            terms_label: product.terms_label,
+            forward_terms_label: product.forward_terms_label,
+        })
+        .collect();
+    Ok(ProductReport {
+        context: report_context(&status),
+        products,
+    })
+}
+
+async fn load_jobs_report(config_path: &Path, limit: Option<usize>) -> Result<JobsReport> {
+    let (config, status) = load_config_and_status(config_path).await?;
+    let jobs = if config_path.exists() {
+        if let Some(jobs) =
+            try_live_json::<Vec<ProviderRecentJob>>(&config, jobs_endpoint(limit).as_str()).await?
+        {
+            jobs
+        } else if let Some(store) = open_existing_store(&config)? {
+            store.load_recent_jobs(limit).map_err(anyhow::Error::msg)?
+        } else {
+            take_limited_rows(
+                status
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.recent_jobs.clone())
+                    .unwrap_or_default(),
+                limit,
+            )
+        }
+    } else {
+        Vec::new()
+    };
+    Ok(JobsReport {
+        context: report_context(&status),
+        jobs,
+    })
+}
+
+async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> {
+    let (config, status) = load_config_and_status(config_path).await?;
+    let earnings = if config_path.exists() {
+        if let Some(earnings) =
+            try_live_json::<Option<ProviderEarningsSummary>>(&config, "/v1/earnings").await?
+        {
+            earnings
+        } else if let Some(store) = open_existing_store(&config)? {
+            store
+                .load_status()
+                .map_err(anyhow::Error::msg)?
+                .snapshot
+                .and_then(|snapshot| snapshot.earnings)
+        } else {
+            status.snapshot.as_ref().and_then(|snapshot| snapshot.earnings.clone())
+        }
+    } else {
+        None
+    };
+    Ok(EarningsReport {
+        context: report_context(&status),
+        earnings,
+    })
+}
+
+async fn load_receipts_report(config_path: &Path, limit: Option<usize>) -> Result<ReceiptsReport> {
+    let (config, status) = load_config_and_status(config_path).await?;
+    let receipts = if config_path.exists() {
+        if let Some(receipts) =
+            try_live_json::<Vec<ProviderReceiptSummary>>(&config, receipts_endpoint(limit).as_str())
+                .await?
+        {
+            receipts
+        } else if let Some(store) = open_existing_store(&config)? {
+            store.load_receipts(limit).map_err(anyhow::Error::msg)?
+        } else {
+            take_limited_rows(
+                status
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.receipts.clone())
+                    .unwrap_or_default(),
+                limit,
+            )
+        }
+    } else {
+        Vec::new()
+    };
+    Ok(ReceiptsReport {
+        context: report_context(&status),
+        receipts,
+    })
+}
+
+fn open_existing_store(config: &PylonConfig) -> Result<Option<ProviderPersistenceStore>> {
+    if !config.admin_db_path.exists() {
+        return Ok(None);
+    }
+    let admin_config = provider_admin_config(config)?;
+    Ok(Some(
+        ProviderPersistenceStore::open(&admin_config).map_err(anyhow::Error::msg)?,
+    ))
+}
+
+fn inventory_endpoint(limit: Option<usize>) -> String {
+    format!("/v1/inventory?limit={}", limit.unwrap_or(32))
+}
+
+fn jobs_endpoint(limit: Option<usize>) -> String {
+    format!("/v1/jobs?limit={}", limit.unwrap_or(32))
+}
+
+fn receipts_endpoint(limit: Option<usize>) -> String {
+    format!("/v1/receipts?limit={}", limit.unwrap_or(32))
+}
+
+fn take_limited_rows<T>(mut values: Vec<T>, limit: Option<usize>) -> Vec<T> {
+    if let Some(limit) = limit {
+        values.truncate(limit);
+    }
+    values
+}
+
+fn render_report_context(context: &ReportContext) -> Vec<String> {
+    let mut lines = vec![
+        format!("state: {}", context.state),
+        format!("desired_mode: {}", context.desired_mode),
+    ];
+    if let Some(listen_addr) = context.listen_addr.as_deref() {
+        lines.push(format!("listen_addr: {listen_addr}"));
+    }
+    lines
+}
+
+fn render_backend_report(report: &BackendReport) -> String {
+    let mut lines = render_report_context(&report.context);
+    for backend in &report.backends {
+        lines.push(String::new());
+        lines.push(format!("backend: {}", backend.backend_id));
+        lines.push(format!("display_label: {}", backend.display_label));
+        lines.push(format!("health_state: {}", backend.health_state));
+        lines.push(format!(
+            "launch_products: {}",
+            comma_or_none(backend.launch_product_ids.as_slice())
+        ));
+        lines.push(format!(
+            "eligible_products: {}",
+            comma_or_none(backend.eligible_product_ids.as_slice())
+        ));
+        lines.push(format!(
+            "ready_model: {}",
+            backend.ready_model.as_deref().unwrap_or("none")
+        ));
+        lines.push(format!(
+            "available_models: {}",
+            comma_or_none(backend.available_models.as_slice())
+        ));
+        if let Some(message) = backend.availability_message.as_deref() {
+            lines.push(format!("availability_message: {message}"));
+        }
+        if let Some(last_error) = backend.last_error.as_deref() {
+            lines.push(format!("last_error: {last_error}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_inventory_report(report: &InventoryReport) -> String {
+    let mut lines = render_report_context(&report.context);
+    for row in &report.rows {
+        lines.push(String::new());
+        lines.push(format!("product: {}", row.target.product_id()));
+        lines.push(format!("enabled: {}", row.enabled));
+        lines.push(format!("backend_ready: {}", row.backend_ready));
+        lines.push(format!("eligible: {}", row.eligible));
+        lines.push(format!("delivery_state: {}", row.delivery_state));
+        lines.push(format!(
+            "quantity: total={} reserved={} available={}",
+            row.total_quantity, row.reserved_quantity, row.available_quantity
+        ));
+        lines.push(format!("capability: {}", row.capability_summary));
+    }
+    lines.join("\n")
+}
+
+fn render_product_report(report: &ProductReport) -> String {
+    let mut lines = render_report_context(&report.context);
+    for product in &report.products {
+        lines.push(String::new());
+        lines.push(format!("product: {}", product.product_id));
+        lines.push(format!("display_label: {}", product.display_label));
+        lines.push(format!("family: {}", product.compute_family));
+        lines.push(format!("backend: {}", product.backend));
+        lines.push(format!("enabled: {}", product.enabled));
+        lines.push(format!("backend_ready: {}", product.backend_ready));
+        lines.push(format!("eligible: {}", product.eligible));
+        lines.push(format!("price_floor_sats: {}", product.price_floor_sats));
+        lines.push(format!("terms: {}", product.terms_label));
+        lines.push(format!("forward_terms: {}", product.forward_terms_label));
+        lines.push(format!("capability: {}", product.capability_summary));
+    }
+    lines.join("\n")
+}
+
+fn render_jobs_report(report: &JobsReport) -> String {
+    let mut lines = render_report_context(&report.context);
+    for job in &report.jobs {
+        lines.push(String::new());
+        lines.push(format!("job_id: {}", job.job_id));
+        lines.push(format!("status: {}", job.status));
+        lines.push(format!("demand_source: {}", job.demand_source));
+        lines.push(format!(
+            "product_id: {}",
+            job.product_id.as_deref().unwrap_or("none")
+        ));
+        lines.push(format!("payout_sats: {}", job.payout_sats));
+        if let Some(failure_reason) = job.failure_reason.as_deref() {
+            lines.push(format!("failure_reason: {failure_reason}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_earnings_report(report: &EarningsReport) -> String {
+    let mut lines = render_report_context(&report.context);
+    match report.earnings.as_ref() {
+        Some(earnings) => {
+            lines.push(String::new());
+            lines.push(format!("sats_today: {}", earnings.sats_today));
+            lines.push(format!("lifetime_sats: {}", earnings.lifetime_sats));
+            lines.push(format!("jobs_today: {}", earnings.jobs_today));
+            lines.push(format!(
+                "online_uptime_seconds: {}",
+                earnings.online_uptime_seconds
+            ));
+            lines.push(format!("last_job_result: {}", earnings.last_job_result));
+        }
+        None => {
+            lines.push(String::new());
+            lines.push("earnings: none".to_string());
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_receipts_report(report: &ReceiptsReport) -> String {
+    let mut lines = render_report_context(&report.context);
+    for receipt in &report.receipts {
+        lines.push(String::new());
+        lines.push(format!("receipt_id: {}", receipt.receipt_id));
+        lines.push(format!("receipt_type: {}", receipt.receipt_type));
+        lines.push(format!("canonical_hash: {}", receipt.canonical_hash));
+        lines.push(format!("created_at_ms: {}", receipt.created_at_ms));
+        if let Some(reason_code) = receipt.reason_code.as_deref() {
+            lines.push(format!("reason_code: {reason_code}"));
+        }
+        if let Some(notional_sats) = receipt.notional_sats {
+            lines.push(format!("notional_sats: {notional_sats}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn comma_or_none(values: &[String]) -> String {
+    if values.is_empty() {
+        "none".to_string()
+    } else {
+        values.join(", ")
+    }
+}
+
 async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusResponse>> {
     let client = admin_client()?;
     let url = format!("http://{}/v1/status", config.admin_listen_addr);
@@ -1045,6 +1699,40 @@ async fn try_live_status(config: &PylonConfig) -> Result<Option<ProviderStatusRe
         .await
         .context("failed to decode provider admin status response")?;
     Ok(Some(status))
+}
+
+async fn try_live_json<T: DeserializeOwned>(
+    config: &PylonConfig,
+    endpoint: &str,
+) -> Result<Option<T>> {
+    let client = admin_client()?;
+    let url = format!("http://{}{}", config.admin_listen_addr, endpoint);
+    let response = match client.get(url.as_str()).send().await {
+        Ok(response) => response,
+        Err(error) if is_local_control_unavailable(&error) => return Ok(None),
+        Err(error) => {
+            return Err(anyhow!(
+                "failed to query pylon admin endpoint {}: {error}",
+                endpoint
+            ))
+        }
+    };
+    if !response.status().is_success() {
+        let payload = response
+            .json::<Value>()
+            .await
+            .unwrap_or_else(|_| json!({"error": "failed to decode provider admin error"}));
+        bail!(
+            "provider admin endpoint {} failed: {}",
+            endpoint,
+            api_error_detail(&payload)
+        );
+    }
+    let value = response
+        .json::<T>()
+        .await
+        .with_context(|| format!("failed to decode pylon admin endpoint {}", endpoint))?;
+    Ok(Some(value))
 }
 
 async fn try_live_control(config: &PylonConfig, action: ProviderControlAction) -> Result<bool> {
@@ -1324,14 +2012,19 @@ fn now_epoch_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, PylonConfig, apply_config_set, apply_control_command, default_config,
-        ensure_identity, load_or_create_config, load_status_or_detect, parse_args,
-        render_human_status,
+        Command, PylonConfig, apply_config_set, apply_control_command, build_snapshot_from_availability,
+        default_config, ensure_identity, inventory_rows, load_backend_report,
+        load_earnings_report, load_inventory_report, load_jobs_report, load_or_create_config,
+        load_product_report, load_receipts_report, load_status_or_detect, parse_args,
+        provider_admin_config, render_human_status, save_config,
     };
     use openagents_provider_substrate::{
-        ProviderControlAction, ProviderDesiredMode, ProviderInventoryControls,
+        ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
+        ProviderEarningsSummary, ProviderInventoryControls, ProviderPersistenceStore,
+        ProviderReceiptSummary, ProviderRecentJob,
         provider_runtime_state_label,
     };
+    use serde_json::json;
 
     fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         if condition {
@@ -1496,6 +2189,241 @@ mod tests {
         ensure(
             provider_runtime_state_label(&offline_status) == "offline",
             "offline should surface the offline runtime state when no supply is ready",
+        )
+    }
+
+    #[test]
+    fn parse_args_supports_observability_commands() -> Result<(), Box<dyn std::error::Error>> {
+        ensure(
+            parse_args(vec!["backends".to_string(), "--json".to_string()])?.command
+                == Command::Backends { json: true },
+            "backends should parse with --json",
+        )?;
+        ensure(
+            parse_args(vec![
+                "inventory".to_string(),
+                "--limit".to_string(),
+                "5".to_string(),
+            ])?
+            .command
+                == Command::Inventory {
+                    json: false,
+                    limit: Some(5),
+                },
+            "inventory should parse with --limit",
+        )?;
+        ensure(
+            parse_args(vec![
+                "jobs".to_string(),
+                "--json".to_string(),
+                "--limit".to_string(),
+                "2".to_string(),
+            ])?
+            .command
+                == Command::Jobs {
+                    json: true,
+                    limit: Some(2),
+                },
+            "jobs should parse with json and limit flags",
+        )?;
+        ensure(
+            parse_args(vec![
+                "receipts".to_string(),
+                "--limit".to_string(),
+                "3".to_string(),
+            ])?
+            .command
+                == Command::Receipts {
+                    json: false,
+                    limit: Some(3),
+                },
+            "receipts should parse with a list limit",
+        )
+    }
+
+    fn ready_health(
+        ready_model: &str,
+        available_models: &[&str],
+        availability_message: Option<&str>,
+    ) -> ProviderBackendHealth {
+        ProviderBackendHealth {
+            reachable: true,
+            ready: true,
+            configured_model: Some(ready_model.to_string()),
+            ready_model: Some(ready_model.to_string()),
+            available_models: available_models.iter().map(|model| (*model).to_string()).collect(),
+            last_error: None,
+            last_action: Some("health check ready".to_string()),
+            availability_message: availability_message.map(str::to_string),
+            latency_ms_p50: Some(110),
+        }
+    }
+
+    fn seed_observability_snapshot(
+        config_path: &std::path::Path,
+    ) -> Result<PylonConfig, Box<dyn std::error::Error>> {
+        let config = load_or_create_config(config_path)?;
+        let identity = ensure_identity(config.identity_path.as_path())?;
+        save_config(config_path, &config)?;
+
+        let availability = ProviderAvailability {
+            ollama: ready_health(
+                "llama3.2:latest",
+                &["llama3.2:latest", "nomic-embed-text:latest"],
+                None,
+            ),
+            apple_foundation_models: ready_health(
+                "apple-foundation-model",
+                &["apple-foundation-model"],
+                Some("bridge_ready"),
+            ),
+            sandbox: Default::default(),
+        };
+        let mut snapshot = build_snapshot_from_availability(
+            &config,
+            Some(&identity),
+            ProviderDesiredMode::Online,
+            None,
+            availability.clone(),
+            None,
+        );
+        snapshot.inventory_rows =
+            inventory_rows(&super::derive_provider_products(&availability, &config.inventory_controls), ProviderDesiredMode::Online);
+        snapshot.recent_jobs = vec![ProviderRecentJob {
+            job_id: "job-1".to_string(),
+            request_id: Some("req-1".to_string()),
+            status: "settled".to_string(),
+            demand_source: "open_network".to_string(),
+            product_id: Some("ollama.embeddings".to_string()),
+            completed_at_epoch_seconds: 1_762_300_030,
+            payout_sats: 42,
+            payment_pointer: "payment-1".to_string(),
+            failure_reason: None,
+            delivery_proof_id: Some("proof-1".to_string()),
+        }];
+        snapshot.receipts = vec![ProviderReceiptSummary {
+            receipt_id: "receipt-1".to_string(),
+            receipt_type: "earn.job.settled.v1".to_string(),
+            created_at_ms: 1_762_300_030_500,
+            canonical_hash: "sha256:receipt-1".to_string(),
+            reason_code: Some("SETTLED".to_string()),
+            severity: Some("low".to_string()),
+            notional_sats: Some(42),
+            liability_premium_sats: Some(0),
+            work_unit_id: Some("work-unit-1".to_string()),
+        }];
+        snapshot.earnings = Some(ProviderEarningsSummary {
+            sats_today: 42,
+            lifetime_sats: 420,
+            jobs_today: 1,
+            online_uptime_seconds: 45,
+            last_job_result: "settled".to_string(),
+            first_job_latency_seconds: Some(8),
+            completion_ratio_bps: Some(10_000),
+            payout_success_ratio_bps: Some(10_000),
+            avg_wallet_confirmation_latency_seconds: Some(3),
+        });
+        snapshot.config_metadata.push(super::ProviderJsonEntry {
+            key: "test_marker".to_string(),
+            value: json!("observability"),
+        });
+
+        let admin_config = provider_admin_config(&config)?;
+        let mut store = ProviderPersistenceStore::open(&admin_config)?;
+        store.set_listen_addr(config.admin_listen_addr.as_str())?;
+        store.set_desired_mode(ProviderDesiredMode::Online)?;
+        store.persist_snapshot(&snapshot)?;
+        Ok(config)
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn backend_and_product_reports_preserve_launch_family_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        seed_observability_snapshot(config_path.as_path())?;
+
+        let backend_report = load_backend_report(config_path.as_path()).await?;
+        let product_report = load_product_report(config_path.as_path()).await?;
+
+        let ollama = backend_report
+            .backends
+            .iter()
+            .find(|backend| backend.backend_id == "ollama")
+            .ok_or_else(|| std::io::Error::other("missing ollama backend entry"))?;
+        ensure(
+            ollama.launch_product_ids
+                == vec![
+                    "ollama.text_generation".to_string(),
+                    "ollama.embeddings".to_string(),
+                ],
+            "ollama backend should expose inference and embeddings launch products",
+        )?;
+
+        let apple_fm = backend_report
+            .backends
+            .iter()
+            .find(|backend| backend.backend_id == "apple_foundation_models")
+            .ok_or_else(|| std::io::Error::other("missing apple fm backend entry"))?;
+        ensure(
+            apple_fm.launch_product_ids
+                == vec!["apple_foundation_models.text_generation".to_string()],
+            "apple fm backend should only expose inference at launch",
+        )?;
+        ensure(
+            product_report
+                .products
+                .iter()
+                .all(|product| product.product_id != "apple_foundation_models.embeddings"),
+            "product report must not overclaim Apple FM embeddings support",
+        )?;
+        ensure(
+            product_report
+                .products
+                .iter()
+                .any(|product| {
+                    product.product_id == "ollama.embeddings"
+                        && product.capability_summary.contains("family=embeddings")
+                }),
+            "product report should preserve capability-envelope qualifiers for embeddings",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn inventory_jobs_earnings_and_receipts_reports_round_trip_store_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        seed_observability_snapshot(config_path.as_path())?;
+
+        let inventory_report = load_inventory_report(config_path.as_path(), Some(8)).await?;
+        let jobs_report = load_jobs_report(config_path.as_path(), Some(4)).await?;
+        let earnings_report = load_earnings_report(config_path.as_path()).await?;
+        let receipts_report = load_receipts_report(config_path.as_path(), Some(2)).await?;
+
+        ensure(
+            inventory_report
+                .rows
+                .iter()
+                .any(|row| row.target.product_id() == "ollama.embeddings" && row.eligible),
+            "inventory report should show eligible embedding supply",
+        )?;
+        ensure(
+            jobs_report.jobs.len() == 1
+                && jobs_report.jobs[0].product_id.as_deref() == Some("ollama.embeddings"),
+            "jobs report should surface persisted recent jobs",
+        )?;
+        ensure(
+            earnings_report
+                .earnings
+                .as_ref()
+                .is_some_and(|earnings| earnings.lifetime_sats == 420),
+            "earnings report should surface persisted earnings",
+        )?;
+        ensure(
+            receipts_report.receipts.len() == 1
+                && receipts_report.receipts[0].receipt_id == "receipt-1",
+            "receipts report should surface persisted receipts",
         )
     }
 }
