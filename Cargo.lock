@@ -502,6 +502,7 @@ dependencies = [
  "nostr-client",
  "openagents-cad",
  "openagents-kernel-core",
+ "openagents-provider-substrate",
  "openagents-spark",
  "pollster",
  "reqwest",
@@ -5146,6 +5147,10 @@ dependencies = [
  "protoc-bin-vendored",
  "serde",
 ]
+
+[[package]]
+name = "openagents-provider-substrate"
+version = "0.1.0"
 
 [[package]]
 name = "openagents-spark"

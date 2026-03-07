@@ -1,0 +1,13 @@
+[package]
+name = "openagents-provider-substrate"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Narrow shared provider substrate for OpenAgents provider runtimes"
+
+[lints]
+workspace = true
+
+[dependencies]

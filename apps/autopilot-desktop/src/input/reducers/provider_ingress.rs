@@ -8,11 +8,15 @@ use crate::provider_nip90_lane::{
     ProviderNip90PublishRole, ProviderNip90RelayStatus,
 };
 use crate::spark_wallet::SparkWalletCommand;
-use crate::state::provider_runtime::LocalInferenceBackend;
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 use crate::state::operations::{BuyerResolutionAction, BuyerResolutionReason};
+use crate::state::provider_runtime::LocalInferenceBackend;
 use nostr::nip90::{JobFeedback, JobStatus, create_job_feedback_event};
 use nostr::{Event, EventTemplate, NostrIdentity};
+use openagents_provider_substrate::{
+    ProviderIngressMode, ProviderLifecycleInput, ProviderLifecycleTransition,
+    derive_provider_lifecycle,
+};
 
 pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip90LaneSnapshot) {
     let selected_url = state.relay_connections.selected_url.clone();
@@ -52,83 +56,91 @@ pub(super) fn apply_lane_snapshot(state: &mut RenderState, snapshot: ProviderNip
 
 pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderState) {
     let now = std::time::Instant::now();
-    let provider_was_offline = state.provider_runtime.mode == ProviderMode::Offline;
-    let relay_error = state.provider_nip90_lane.last_error.clone();
+    let availability = state.provider_runtime.availability();
+    let backend_unavailable_detail = state
+        .provider_runtime
+        .apple_fm
+        .last_error
+        .clone()
+        .or_else(|| state.provider_runtime.apple_fm.availability_message.clone())
+        .or_else(|| state.provider_runtime.ollama.last_error.clone())
+        .or_else(|| state.ollama_execution.last_error.clone());
+    let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
+        current_mode: state.provider_runtime.mode,
+        ingress_mode: map_ingress_mode(state.provider_nip90_lane.mode),
+        relay_error: state.provider_nip90_lane.last_error.as_deref(),
+        availability: &availability,
+        backend_unavailable_detail: backend_unavailable_detail.as_deref(),
+    });
 
-    if provider_was_offline && state.provider_nip90_lane.mode != ProviderNip90LaneMode::Online {
-        state.provider_runtime.mode = ProviderMode::Offline;
-        state.provider_runtime.degraded_reason_code = None;
-        state.provider_runtime.last_error_detail = None;
-        if matches!(
-            state.provider_nip90_lane.mode,
-            ProviderNip90LaneMode::Preview | ProviderNip90LaneMode::Connecting
-        ) {
-            state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
+    match transition {
+        ProviderLifecycleTransition::StayOffline => {
+            state.provider_runtime.mode = ProviderMode::Offline;
+            state.provider_runtime.degraded_reason_code = None;
+            state.provider_runtime.last_error_detail = None;
+            if matches!(
+                state.provider_nip90_lane.mode,
+                ProviderNip90LaneMode::Preview | ProviderNip90LaneMode::Connecting
+            ) {
+                state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
+            }
         }
-        return;
-    }
-
-    if let Some(last_error) = relay_error {
-        state.provider_runtime.mode = ProviderMode::Degraded;
-        state.provider_runtime.degraded_reason_code = Some("NIP90_RELAY_INGRESS_ERROR".to_string());
-        state.provider_runtime.last_error_detail = Some(last_error);
-        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Relay);
-        state.provider_runtime.last_result = state.provider_nip90_lane.last_action.clone();
-        state.provider_runtime.mode_changed_at = now;
-        return;
-    }
-
-    if state.provider_nip90_lane.mode != ProviderNip90LaneMode::Online {
-        return;
-    }
-
-    let Some(active_backend) = state.provider_runtime.active_inference_backend() else {
-        state.provider_runtime.mode = ProviderMode::Degraded;
-        state.provider_runtime.degraded_reason_code =
-            Some("INFERENCE_BACKEND_UNAVAILABLE".to_string());
-        state.provider_runtime.last_error_detail = Some(
-            state
-                .provider_runtime
-                .apple_fm
-                .last_error
+        ProviderLifecycleTransition::HoldCurrent => {}
+        ProviderLifecycleTransition::Degraded {
+            reason_code,
+            error_detail,
+            failure_class,
+        } => {
+            state.provider_runtime.mode = ProviderMode::Degraded;
+            state.provider_runtime.degraded_reason_code = Some(reason_code.to_string());
+            state.provider_runtime.last_error_detail = Some(error_detail);
+            state.provider_runtime.last_authoritative_error_class = Some(failure_class);
+            state.provider_runtime.last_result =
+                state.provider_nip90_lane.last_action.clone().or_else(|| {
+                    state
+                        .provider_runtime
+                        .apple_fm
+                        .last_action
+                        .clone()
+                        .or_else(|| state.provider_runtime.ollama.last_action.clone())
+                });
+            state.provider_runtime.mode_changed_at = now;
+        }
+        ProviderLifecycleTransition::Online { active_backend } => {
+            state.provider_runtime.mode = ProviderMode::Online;
+            state.provider_runtime.degraded_reason_code = None;
+            state.provider_runtime.last_error_detail = None;
+            if state.provider_runtime.last_authoritative_error_class
+                == Some(EarnFailureClass::Relay)
+                || state.provider_runtime.last_authoritative_error_class
+                    == Some(EarnFailureClass::Execution)
+            {
+                state.provider_runtime.last_authoritative_error_class = None;
+            }
+            state.provider_runtime.last_result = state
+                .provider_nip90_lane
+                .last_action
                 .clone()
-                .or_else(|| state.provider_runtime.apple_fm.availability_message.clone())
-                .or_else(|| state.provider_runtime.ollama.last_error.clone())
-                .or_else(|| state.ollama_execution.last_error.clone())
-                .unwrap_or_else(|| "No local inference backend is ready".to_string()),
-        );
-        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
-        state.provider_runtime.last_result = state
-            .provider_runtime
-            .apple_fm
-            .last_action
-            .clone()
-            .or_else(|| state.provider_runtime.ollama.last_action.clone());
-        state.provider_runtime.mode_changed_at = now;
-        return;
-    };
-
-    if state.provider_runtime.mode != ProviderMode::Offline {
-        state.provider_runtime.mode = ProviderMode::Online;
-        state.provider_runtime.degraded_reason_code = None;
-        state.provider_runtime.last_error_detail = None;
-        if state.provider_runtime.last_authoritative_error_class == Some(EarnFailureClass::Relay)
-            || state.provider_runtime.last_authoritative_error_class
-                == Some(EarnFailureClass::Execution)
-        {
-            state.provider_runtime.last_authoritative_error_class = None;
+                .or_else(|| match active_backend {
+                    LocalInferenceBackend::AppleFoundationModels => {
+                        state.provider_runtime.apple_fm.last_action.clone()
+                    }
+                    LocalInferenceBackend::Ollama => {
+                        state.provider_runtime.ollama.last_action.clone()
+                    }
+                });
+            state.provider_runtime.mode_changed_at = now;
         }
-        state.provider_runtime.last_result = state
-            .provider_nip90_lane
-            .last_action
-            .clone()
-            .or_else(|| match active_backend {
-                LocalInferenceBackend::AppleFoundationModels => {
-                    state.provider_runtime.apple_fm.last_action.clone()
-                }
-                LocalInferenceBackend::Ollama => state.provider_runtime.ollama.last_action.clone(),
-            });
-        state.provider_runtime.mode_changed_at = now;
+    }
+}
+
+fn map_ingress_mode(mode: ProviderNip90LaneMode) -> ProviderIngressMode {
+    match mode {
+        ProviderNip90LaneMode::Offline => ProviderIngressMode::Offline,
+        ProviderNip90LaneMode::Preview => ProviderIngressMode::Preview,
+        ProviderNip90LaneMode::Connecting => ProviderIngressMode::Connecting,
+        ProviderNip90LaneMode::Online => ProviderIngressMode::Online,
+        ProviderNip90LaneMode::Degraded => ProviderIngressMode::Degraded,
     }
 }
 

@@ -1,100 +1,22 @@
 //! Runtime-facing provider state for the embedded OpenAgents Runtime.
 //!
-//! This module models execution and operational health on the worker/client side.
-//! It is not economic authority: settlement truth, verification verdicts, and
-//! canonical receipts remain kernel- or wallet-authoritative elsewhere.
+//! This module keeps app-owned execution snapshots and UX-facing state local to
+//! `autopilot-desktop`, while reusing the narrow shared provider substrate for
+//! backend identity, launch-product derivation, inventory controls, and
+//! provider lifecycle semantics.
 
 use std::time::Instant;
 
 use crate::ollama_execution::OllamaExecutionMetrics;
+pub use openagents_provider_substrate::{
+    ProviderAdvertisedProduct, ProviderAvailability, ProviderBackendHealth, ProviderBackendKind,
+    ProviderBlocker, ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,
+    ProviderInventoryRow, ProviderMode, derive_provider_products,
+};
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum LocalInferenceBackend {
-    Ollama,
-    AppleFoundationModels,
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderMode {
-    Offline,
-    Connecting,
-    Online,
-    Degraded,
-}
-
-impl ProviderMode {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Offline => "offline",
-            Self::Connecting => "connecting",
-            Self::Online => "online",
-            Self::Degraded => "degraded",
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderBlocker {
-    IdentityMissing,
-    WalletError,
-    SkillTrustUnavailable,
-    CreditLaneUnavailable,
-    OllamaUnavailable,
-    OllamaModelUnavailable,
-    AppleFoundationModelsUnavailable,
-    AppleFoundationModelsModelUnavailable,
-}
-
-impl ProviderBlocker {
-    pub const fn code(self) -> &'static str {
-        match self {
-            Self::IdentityMissing => "IDENTITY_MISSING",
-            Self::WalletError => "WALLET_ERROR",
-            Self::SkillTrustUnavailable => "SKL_TRUST_UNAVAILABLE",
-            Self::CreditLaneUnavailable => "AC_CREDIT_UNAVAILABLE",
-            Self::OllamaUnavailable => "OLLAMA_UNAVAILABLE",
-            Self::OllamaModelUnavailable => "OLLAMA_MODEL_UNAVAILABLE",
-            Self::AppleFoundationModelsUnavailable => "APPLE_FM_UNAVAILABLE",
-            Self::AppleFoundationModelsModelUnavailable => "APPLE_FM_MODEL_UNAVAILABLE",
-        }
-    }
-
-    pub const fn detail(self) -> &'static str {
-        match self {
-            Self::IdentityMissing => "Nostr identity is not ready",
-            Self::WalletError => "Spark wallet reports an error",
-            Self::SkillTrustUnavailable => "SKL trust gate is not trusted",
-            Self::CreditLaneUnavailable => "AC credit lane is not available",
-            Self::OllamaUnavailable => "Local Ollama backend is unavailable",
-            Self::OllamaModelUnavailable => "No local Ollama serving model is ready",
-            Self::AppleFoundationModelsUnavailable => {
-                "Apple Foundation Models backend is unavailable"
-            }
-            Self::AppleFoundationModelsModelUnavailable => {
-                "Apple Foundation Models is not ready to serve inference"
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum EarnFailureClass {
-    Relay,
-    Execution,
-    Payment,
-    Reconciliation,
-}
-
-impl EarnFailureClass {
-    pub const fn label(self) -> &'static str {
-        match self {
-            Self::Relay => "relay",
-            Self::Execution => "execution",
-            Self::Payment => "payment",
-            Self::Reconciliation => "reconciliation",
-        }
-    }
-}
+pub type LocalInferenceBackend = ProviderBackendKind;
+pub type EarnFailureClass = ProviderFailureClass;
+pub type ProviderInventoryProductToggleTarget = ProviderComputeProduct;
 
 #[derive(Clone, Debug, Default)]
 pub struct ProviderOllamaRuntimeState {
@@ -113,6 +35,24 @@ pub struct ProviderOllamaRuntimeState {
 impl ProviderOllamaRuntimeState {
     pub fn is_ready(&self) -> bool {
         self.reachable && self.ready_model.is_some()
+    }
+
+    pub fn substrate_health(&self) -> ProviderBackendHealth {
+        ProviderBackendHealth {
+            reachable: self.reachable,
+            ready: self.is_ready(),
+            configured_model: self.configured_model.clone(),
+            ready_model: self.ready_model.clone(),
+            available_models: self.available_models.clone(),
+            last_error: self.last_error.clone(),
+            last_action: self.last_action.clone(),
+            availability_message: None,
+            latency_ms_p50: self
+                .last_metrics
+                .as_ref()
+                .and_then(|metrics| metrics.total_duration_ns)
+                .map(|duration_ns| duration_ns / 1_000_000),
+        }
     }
 }
 
@@ -135,172 +75,23 @@ impl ProviderAppleFmRuntimeState {
     pub fn is_ready(&self) -> bool {
         self.reachable && self.model_available && self.ready_model.is_some()
     }
-}
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub enum ProviderInventoryProductToggleTarget {
-    OllamaInference,
-    OllamaEmbeddings,
-    AppleFoundationModelsInference,
-}
-
-impl ProviderInventoryProductToggleTarget {
-    pub const fn all() -> [Self; 3] {
-        [
-            Self::OllamaInference,
-            Self::OllamaEmbeddings,
-            Self::AppleFoundationModelsInference,
-        ]
-    }
-
-    pub const fn product_id(self) -> &'static str {
-        match self {
-            Self::OllamaInference => "ollama.text_generation",
-            Self::OllamaEmbeddings => "ollama.embeddings",
-            Self::AppleFoundationModelsInference => "apple_foundation_models.text_generation",
+    pub fn substrate_health(&self) -> ProviderBackendHealth {
+        ProviderBackendHealth {
+            reachable: self.reachable,
+            ready: self.is_ready(),
+            configured_model: None,
+            ready_model: self.ready_model.clone(),
+            available_models: self.available_models.clone(),
+            last_error: self.last_error.clone(),
+            last_action: self.last_action.clone(),
+            availability_message: self.availability_message.clone(),
+            latency_ms_p50: self
+                .last_metrics
+                .as_ref()
+                .and_then(|metrics| metrics.total_duration_ns)
+                .map(|duration_ns| duration_ns / 1_000_000),
         }
-    }
-
-    pub const fn display_label(self) -> &'static str {
-        match self {
-            Self::OllamaInference => "Ollama inference",
-            Self::OllamaEmbeddings => "Ollama embeddings",
-            Self::AppleFoundationModelsInference => "Apple FM inference",
-        }
-    }
-
-    pub const fn backend_label(self) -> &'static str {
-        match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => "ollama",
-            Self::AppleFoundationModelsInference => "apple_foundation_models",
-        }
-    }
-
-    pub const fn compute_family_label(self) -> &'static str {
-        match self {
-            Self::OllamaInference | Self::AppleFoundationModelsInference => "inference",
-            Self::OllamaEmbeddings => "embeddings",
-        }
-    }
-
-    pub const fn capability_summary(self) -> &'static str {
-        match self {
-            Self::OllamaInference => "backend=ollama execution=local_inference family=inference",
-            Self::OllamaEmbeddings => "backend=ollama execution=local_inference family=embeddings",
-            Self::AppleFoundationModelsInference => {
-                "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
-            }
-        }
-    }
-
-    pub const fn terms_label(self) -> &'static str {
-        match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => "spot session / local best effort",
-            Self::AppleFoundationModelsInference => "spot session / Apple gated best effort",
-        }
-    }
-
-    pub const fn forward_terms_label(self) -> &'static str {
-        match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => {
-                "forward physical / committed local window"
-            }
-            Self::AppleFoundationModelsInference => {
-                "forward physical / Apple gated committed window"
-            }
-        }
-    }
-
-    pub const fn default_price_floor_sats(self) -> u64 {
-        match self {
-            Self::OllamaInference => 21,
-            Self::OllamaEmbeddings => 8,
-            Self::AppleFoundationModelsInference => 34,
-        }
-    }
-
-    pub fn for_product_id(product_id: &str) -> Option<Self> {
-        match product_id.trim() {
-            "ollama.text_generation" => Some(Self::OllamaInference),
-            "ollama.embeddings" => Some(Self::OllamaEmbeddings),
-            "apple_foundation_models.text_generation" => Some(Self::AppleFoundationModelsInference),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderInventoryRow {
-    pub target: ProviderInventoryProductToggleTarget,
-    pub enabled: bool,
-    pub backend_ready: bool,
-    pub eligible: bool,
-    pub capability_summary: String,
-    pub source_badge: String,
-    pub capacity_lot_id: Option<String>,
-    pub total_quantity: u64,
-    pub reserved_quantity: u64,
-    pub available_quantity: u64,
-    pub delivery_state: String,
-    pub price_floor_sats: u64,
-    pub terms_label: String,
-    pub forward_capacity_lot_id: Option<String>,
-    pub forward_delivery_window_label: Option<String>,
-    pub forward_total_quantity: u64,
-    pub forward_reserved_quantity: u64,
-    pub forward_available_quantity: u64,
-    pub forward_terms_label: Option<String>,
-}
-
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProviderInventoryControls {
-    pub ollama_inference_enabled: bool,
-    pub ollama_embeddings_enabled: bool,
-    pub apple_fm_inference_enabled: bool,
-}
-
-impl Default for ProviderInventoryControls {
-    fn default() -> Self {
-        Self {
-            ollama_inference_enabled: true,
-            ollama_embeddings_enabled: true,
-            apple_fm_inference_enabled: true,
-        }
-    }
-}
-
-impl ProviderInventoryControls {
-    pub const fn is_advertised(&self, target: ProviderInventoryProductToggleTarget) -> bool {
-        match target {
-            ProviderInventoryProductToggleTarget::OllamaInference => self.ollama_inference_enabled,
-            ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
-                self.ollama_embeddings_enabled
-            }
-            ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
-                self.apple_fm_inference_enabled
-            }
-        }
-    }
-
-    pub fn is_product_advertised(&self, product_id: &str) -> bool {
-        ProviderInventoryProductToggleTarget::for_product_id(product_id)
-            .is_some_and(|target| self.is_advertised(target))
-    }
-
-    pub fn toggle(&mut self, target: ProviderInventoryProductToggleTarget) -> bool {
-        let enabled = match target {
-            ProviderInventoryProductToggleTarget::OllamaInference => {
-                &mut self.ollama_inference_enabled
-            }
-            ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
-                &mut self.ollama_embeddings_enabled
-            }
-            ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
-                &mut self.apple_fm_inference_enabled
-            }
-        };
-        *enabled = !*enabled;
-        *enabled
     }
 }
 
@@ -364,27 +155,27 @@ impl ProviderRuntimeState {
         "compute"
     }
 
-    pub const fn backend_label(backend: LocalInferenceBackend) -> &'static str {
-        match backend {
-            LocalInferenceBackend::Ollama => "local Ollama runtime",
-            LocalInferenceBackend::AppleFoundationModels => "Apple Foundation Models bridge",
+    pub fn availability(&self) -> ProviderAvailability {
+        ProviderAvailability {
+            ollama: self.ollama.substrate_health(),
+            apple_foundation_models: self.apple_fm.substrate_health(),
         }
+    }
+
+    pub fn derived_inventory_products(&self) -> Vec<ProviderAdvertisedProduct> {
+        derive_provider_products(&self.availability(), &self.inventory_controls)
+    }
+
+    pub const fn backend_label(backend: LocalInferenceBackend) -> &'static str {
+        backend.label()
     }
 
     pub fn active_inference_backend(&self) -> Option<LocalInferenceBackend> {
-        if self.apple_fm.is_ready() {
-            Some(LocalInferenceBackend::AppleFoundationModels)
-        } else if self.ollama.is_ready() {
-            Some(LocalInferenceBackend::Ollama)
-        } else {
-            None
-        }
+        self.availability().active_inference_backend()
     }
 
     pub fn execution_backend_label(&self) -> &'static str {
-        self.active_inference_backend()
-            .map(Self::backend_label)
-            .unwrap_or("no active inference backend")
+        self.availability().execution_backend_label()
     }
 
     pub const fn control_authority_label(&self, backend_authoritative: bool) -> &'static str {

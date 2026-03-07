@@ -35,6 +35,7 @@ use openagents_kernel_core::receipts::{
 };
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::floor_to_minute_utc;
+use openagents_provider_substrate::ProviderAdvertisedProduct;
 use reqwest::Url;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -412,22 +413,22 @@ pub(crate) fn attach_compute_linkage_to_active_job(
 }
 
 fn build_provider_inventory_rows(state: &RenderState) -> Vec<ProviderInventoryRow> {
-    ProviderInventoryProductToggleTarget::all()
+    state
+        .provider_runtime
+        .derived_inventory_products()
         .into_iter()
-        .map(|target| build_provider_inventory_row(state, target))
+        .map(|product| build_provider_inventory_row(state, product))
         .collect()
 }
 
 fn build_provider_inventory_row(
     state: &RenderState,
-    target: ProviderInventoryProductToggleTarget,
+    derived_product: ProviderAdvertisedProduct,
 ) -> ProviderInventoryRow {
-    let enabled = state
-        .provider_runtime
-        .inventory_controls
-        .is_advertised(target);
-    let backend_ready = provider_inventory_backend_ready(state, target);
-    let eligible = enabled && backend_ready;
+    let target = derived_product.product;
+    let enabled = derived_product.enabled;
+    let backend_ready = derived_product.backend_ready;
+    let eligible = derived_product.eligible;
     let total_quantity = if eligible
         && state
             .provider_runtime
@@ -480,15 +481,15 @@ fn build_provider_inventory_row(
         enabled,
         backend_ready,
         eligible,
-        capability_summary: provider_inventory_capability_summary(state, target),
+        capability_summary: derived_product.capability_summary,
         source_badge: provider_inventory_source_badge(state, target, eligible).to_string(),
         capacity_lot_id,
         total_quantity,
         reserved_quantity,
         available_quantity,
         delivery_state: provider_inventory_delivery_state(state, target).to_string(),
-        price_floor_sats: target.default_price_floor_sats(),
-        terms_label: target.terms_label().to_string(),
+        price_floor_sats: derived_product.price_floor_sats,
+        terms_label: derived_product.terms_label,
         forward_capacity_lot_id,
         forward_delivery_window_label: state
             .provider_runtime
@@ -530,7 +531,7 @@ fn build_provider_inventory_row(
         } else {
             0
         },
-        forward_terms_label: eligible.then(|| target.forward_terms_label().to_string()),
+        forward_terms_label: eligible.then_some(derived_product.forward_terms_label),
     }
 }
 
@@ -2950,21 +2951,6 @@ fn provider_id_for_state(state: &RenderState) -> String {
         .unwrap_or_else(|| "autopilot.desktop".to_string())
 }
 
-fn provider_inventory_backend_ready(
-    state: &RenderState,
-    target: ProviderInventoryProductToggleTarget,
-) -> bool {
-    match target {
-        ProviderInventoryProductToggleTarget::OllamaInference
-        | ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
-            state.provider_runtime.ollama.is_ready()
-        }
-        ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
-            state.provider_runtime.apple_fm.is_ready()
-        }
-    }
-}
-
 fn provider_inventory_active_job_matches(
     state: &RenderState,
     target: ProviderInventoryProductToggleTarget,
@@ -3027,7 +3013,13 @@ fn provider_inventory_delivery_state(
     {
         return "disabled";
     }
-    if !provider_inventory_backend_ready(state, target) {
+    if !state
+        .provider_runtime
+        .derived_inventory_products()
+        .into_iter()
+        .find(|product| product.product == target)
+        .is_some_and(|product| product.backend_ready)
+    {
         return "backend_unavailable";
     }
     if let Some(job) = state.active_job.job.as_ref()
@@ -3042,58 +3034,6 @@ fn provider_inventory_delivery_state(
         "offline"
     } else {
         "idle"
-    }
-}
-
-fn provider_inventory_capability_summary(
-    state: &RenderState,
-    target: ProviderInventoryProductToggleTarget,
-) -> String {
-    let base_summary = target.capability_summary();
-    match target {
-        ProviderInventoryProductToggleTarget::OllamaInference
-        | ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
-            let ready_model = state
-                .provider_runtime
-                .ollama
-                .ready_model
-                .as_deref()
-                .unwrap_or("none");
-            let configured_model = state
-                .provider_runtime
-                .ollama
-                .configured_model
-                .as_deref()
-                .unwrap_or("none");
-            let latency_ms = state
-                .provider_runtime
-                .ollama
-                .last_metrics
-                .as_ref()
-                .and_then(|metrics| metrics.total_duration_ns)
-                .map(|duration_ns| duration_ns / 1_000_000);
-            format!(
-                "{base_summary} model={ready_model} configured_model={configured_model} latency_ms_p50={}",
-                latency_ms
-                    .map(|value| value.to_string())
-                    .unwrap_or_else(|| "n/a".to_string())
-            )
-        }
-        ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
-            let ready_model = state
-                .provider_runtime
-                .apple_fm
-                .ready_model
-                .as_deref()
-                .unwrap_or("none");
-            let availability = state
-                .provider_runtime
-                .apple_fm
-                .availability_message
-                .as_deref()
-                .unwrap_or("ready");
-            format!("{base_summary} model={ready_model} platform_gate={availability}")
-        }
     }
 }
 

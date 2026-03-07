@@ -28,6 +28,7 @@ autopilot-spacetime = { path = "../../crates/autopilot-spacetime" }
 codex-client = { path = "../../crates/codex-client" }
 openagents-cad = { path = "../../crates/cad" }
 openagents-kernel-core = { path = "../../crates/openagents-kernel-core" }
+openagents-provider-substrate = { path = "../../crates/openagents-provider-substrate" }
 openagents-spark = { path = "../../crates/spark" }
 nostr = { path = "../../crates/nostr/core" }
 nostr-client = { path = "../../crates/nostr/client" }
