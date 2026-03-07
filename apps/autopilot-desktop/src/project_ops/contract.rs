@@ -10,6 +10,8 @@ pub const PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID: &str = "stream.pm.activity_
 pub const PROJECT_OPS_CYCLES_STREAM_ID: &str = "stream.pm.cycles.v1";
 pub const PROJECT_OPS_SAVED_VIEWS_STREAM_ID: &str = "stream.pm.saved_views.v1";
 pub const PROJECT_OPS_V1_CONTRACT_VERSION: &str = "project_ops.contract.v1";
+pub const PROJECT_OPS_PRIMARY_SOURCE_BADGE: &str = "source: stream.pm.work_items.v1";
+pub const PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE: &str = "source: spacetime.sync.lifecycle";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct ProjectOpsStreamSpec {
@@ -108,6 +110,32 @@ pub struct ProjectOpsContractManifest {
     pub commands: Vec<ProjectOpsCommandContractSpec>,
     pub accepted_events: Vec<ProjectOpsAcceptedEventContractSpec>,
     pub streams: Vec<ProjectOpsStreamSpec>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectOpsSourceBadgeRule {
+    pub badge: &'static str,
+    pub scope: &'static str,
+    pub truth_rule: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectOpsCheckpointRule {
+    pub stream_id: &'static str,
+    pub duplicate_policy: &'static str,
+    pub out_of_order_policy: &'static str,
+    pub stale_cursor_policy: &'static str,
+    pub remote_checkpoint_policy: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectOpsSyncContract {
+    pub current_rollout_phase: &'static str,
+    pub local_truth_rule: &'static str,
+    pub live_truth_rule: &'static str,
+    pub source_badges: Vec<ProjectOpsSourceBadgeRule>,
+    pub required_stream_grants: Vec<&'static str>,
+    pub checkpoint_rules: Vec<ProjectOpsCheckpointRule>,
 }
 
 const COMMAND_ENVELOPE_FIELDS: [&str; 4] = [
@@ -353,6 +381,44 @@ pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
             },
         ],
         streams: step0_stream_specs().to_vec(),
+    }
+}
+
+pub fn project_ops_required_stream_grants() -> Vec<&'static str> {
+    step0_stream_specs()
+        .iter()
+        .map(|spec| spec.stream_id)
+        .collect()
+}
+
+pub fn project_ops_phase1_sync_contract() -> ProjectOpsSyncContract {
+    ProjectOpsSyncContract {
+        current_rollout_phase: "phase_1_mirror_proxy",
+        local_truth_rule: "Project Ops visible state is sourced from replay-safe local PM projection streams and shared SyncApplyEngine checkpoints, not live PM reducers",
+        live_truth_rule: "Only sync lifecycle/bootstrap health may use spacetime.sync.lifecycle in Phase 1; live PM collaboration truth requires a later ADR-approved Phase 2 cutover",
+        source_badges: vec![
+            ProjectOpsSourceBadgeRule {
+                badge: PROJECT_OPS_PRIMARY_SOURCE_BADGE,
+                scope: "Project Ops pane list/detail state and work-item activity rendered from local PM projections",
+                truth_rule: "Use while Project Ops is reading replay-safe local PM projection documents keyed by canonical PM stream ids",
+            },
+            ProjectOpsSourceBadgeRule {
+                badge: PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE,
+                scope: "Sync/bootstrap diagnostics such as lifecycle state, grant failures, rebootstrap status, and checkpoint hydration telemetry",
+                truth_rule: "Use only for sync lifecycle health or bootstrap state; do not label PM work-item values as live Spacetime authority in Phase 1",
+            },
+        ],
+        required_stream_grants: project_ops_required_stream_grants(),
+        checkpoint_rules: project_ops_required_stream_grants()
+            .into_iter()
+            .map(|stream_id| ProjectOpsCheckpointRule {
+                stream_id,
+                duplicate_policy: "drop duplicate seq <= local checkpoint",
+                out_of_order_policy: "surface out_of_order and require deterministic rebootstrap or rewind before apply continues",
+                stale_cursor_policy: "resume from max(local_checkpoint, remote_head - stale_clamp_window)",
+                remote_checkpoint_policy: "adopt newer remote checkpoint only when it advances the local checkpoint",
+            })
+            .collect(),
     }
 }
 
@@ -888,6 +954,7 @@ impl ProjectOpsAcceptedEventEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
+        project_ops_phase1_sync_contract, project_ops_required_stream_grants,
         project_ops_v1_contract_manifest, step0_stream_specs, ProjectOpsAcceptedEvent,
         ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsActor,
         ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCommandName,
@@ -895,7 +962,8 @@ mod tests {
         ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityKind, ProjectOpsSetBlockedReason,
         ProjectOpsWorkItemArchived, ProjectOpsWorkItemAssigned, ProjectOpsWorkItemDraft,
         ProjectOpsWorkItemRef, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_PRIMARY_SOURCE_BADGE,
+        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE,
         PROJECT_OPS_V1_CONTRACT_VERSION, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
     };
     use crate::project_ops::schema::{
@@ -1055,6 +1123,55 @@ mod tests {
                 (ProjectOpsEntityKind::Bounty, ProjectOpsDeliveryPhase::Phase5),
             ]
         );
+    }
+
+    #[test]
+    fn phase1_sync_contract_keeps_badges_truthful_and_grants_complete() {
+        let contract = project_ops_phase1_sync_contract();
+        assert_eq!(contract.current_rollout_phase, "phase_1_mirror_proxy");
+        assert_eq!(
+            contract.required_stream_grants,
+            project_ops_required_stream_grants()
+        );
+        assert_eq!(contract.source_badges.len(), 2);
+        assert_eq!(contract.source_badges[0].badge, PROJECT_OPS_PRIMARY_SOURCE_BADGE);
+        assert_eq!(
+            contract.source_badges[1].badge,
+            PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE
+        );
+        assert!(contract.source_badges[0]
+            .truth_rule
+            .contains("local PM projection documents"));
+        assert!(contract.source_badges[1]
+            .truth_rule
+            .contains("do not label PM work-item values as live Spacetime authority"));
+    }
+
+    #[test]
+    fn phase1_sync_contract_applies_checkpoint_rules_to_every_pm_stream() {
+        let contract = project_ops_phase1_sync_contract();
+        let stream_ids = contract
+            .checkpoint_rules
+            .iter()
+            .map(|rule| rule.stream_id)
+            .collect::<Vec<_>>();
+        assert_eq!(stream_ids, project_ops_required_stream_grants());
+        assert!(contract
+            .checkpoint_rules
+            .iter()
+            .all(|rule| rule.duplicate_policy == "drop duplicate seq <= local checkpoint"));
+        assert!(contract
+            .checkpoint_rules
+            .iter()
+            .all(|rule| rule.out_of_order_policy.contains("rebootstrap")));
+        assert!(contract
+            .checkpoint_rules
+            .iter()
+            .all(|rule| rule.stale_cursor_policy.contains("stale_clamp_window")));
+        assert!(contract
+            .checkpoint_rules
+            .iter()
+            .all(|rule| rule.remote_checkpoint_policy.contains("adopt newer remote checkpoint")));
     }
 
     #[test]

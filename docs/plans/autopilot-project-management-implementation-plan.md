@@ -203,7 +203,31 @@ Sequence progress should not be tracked in a separate PM-only metadata table. It
   6. mirror checkpoint acknowledgements back to Spacetime
   7. rebootstrap deterministically on stale cursor or out-of-order delivery
 
-### 3.6 First-slice entities
+### 3.6 Phase 1 badge, grant, and checkpoint truth rules
+
+Freeze these semantics now so Phase 2 wiring does not improvise them later:
+
+- Primary `Project Ops` pane badge
+  - `source: stream.pm.work_items.v1`
+  - use for visible work-item list/detail/activity state sourced from local PM projection documents
+- Sync/bootstrap diagnostics badge
+  - `source: spacetime.sync.lifecycle`
+  - use only for sync lifecycle, grant failures, checkpoint hydration state, rebootstrap state, or stale-cursor recovery diagnostics
+- Required PM stream grants for later live bootstrap wiring
+  - `stream.pm.work_items.v1`
+  - `stream.pm.activity_projection.v1`
+  - `stream.pm.cycles.v1`
+  - `stream.pm.saved_views.v1`
+- Per-stream checkpoint rules
+  - duplicate `seq <= checkpoint` is dropped
+  - out-of-order `seq` requires explicit rebootstrap or rewind before apply continues
+  - stale cursor resumes from `max(local_checkpoint, remote_head - stale_clamp_window)`
+  - remote checkpoint adoption only happens when it advances the local checkpoint
+- Live-vs-local truth rule
+  - In Phase 1, PM truth is local replay-safe projection state plus shared checkpoint discipline.
+  - Live remote PM reducers/subscriptions remain Phase 2 target behavior only after ADR approval.
+
+### 3.7 First-slice entities
 
 The native thin slice does not need the full long-term model on day one. Start with:
 

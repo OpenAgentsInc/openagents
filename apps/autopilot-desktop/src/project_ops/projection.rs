@@ -7,8 +7,8 @@ use serde::{Deserialize, Serialize};
 use crate::app_state::PaneLoadState;
 use crate::project_ops::contract::{
     ProjectOpsAcceptedEventName, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-    PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_PRIMARY_SOURCE_BADGE,
+    PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 use crate::project_ops::schema::{ProjectOpsCycleId, ProjectOpsWorkItem, ProjectOpsWorkItemId};
 use crate::project_ops::views::builtin_saved_view_specs;
@@ -323,7 +323,7 @@ impl ProjectOpsProjectionStore {
     }
 
     pub fn source_badge(&self) -> String {
-        format!("source: {}", PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+        PROJECT_OPS_PRIMARY_SOURCE_BADGE.to_string()
     }
 
     pub fn checkpoint_for(&self, stream_id: &str) -> Option<u64> {

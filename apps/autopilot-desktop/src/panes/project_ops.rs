@@ -1,5 +1,5 @@
 use crate::app_state::PaneLoadState;
-use crate::project_ops::ProjectOpsPaneState;
+use crate::project_ops::{project_ops_phase1_sync_contract, ProjectOpsPaneState};
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 pub fn paint_project_ops_pane(
@@ -7,6 +7,7 @@ pub fn paint_project_ops_pane(
     state: &ProjectOpsPaneState,
     paint: &mut PaintContext,
 ) {
+    let sync_contract = project_ops_phase1_sync_contract();
     let header = Bounds::new(
         bounds.origin.x + 12.0,
         bounds.origin.y + 12.0,
@@ -248,6 +249,26 @@ pub fn paint_project_ops_pane(
         11.0,
         theme::text::MUTED,
     ));
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Reserved grants: {}",
+            sync_contract.required_stream_grants.join(", ")
+        )
+        .as_str(),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 158.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Sync badge: {} | duplicates=drop | out-of-order=rebootstrap",
+            crate::project_ops::PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE
+        )
+        .as_str(),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 176.0),
+        10.0,
+        theme::text::MUTED,
+    ));
 
     paint.scene.draw_text(paint.text.layout(
         format!(
@@ -259,14 +280,14 @@ pub fn paint_project_ops_pane(
                 .unwrap_or("<none>")
         )
         .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 162.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 198.0),
         11.0,
         theme::text::PRIMARY,
     ));
     if let Some(selection_notice) = state.selection_notice.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             selection_notice,
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 180.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 216.0),
             10.0,
             theme::status::WARNING,
         ));
@@ -312,7 +333,7 @@ pub fn paint_project_ops_pane(
         for (index, line) in detail_lines.iter().enumerate() {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
-                Point::new(detail.origin.x + 12.0, detail.origin.y + 200.0 + index as f32 * 18.0),
+                Point::new(detail.origin.x + 12.0, detail.origin.y + 236.0 + index as f32 * 18.0),
                 10.5,
                 theme::text::PRIMARY,
             ));
@@ -320,7 +341,7 @@ pub fn paint_project_ops_pane(
     } else {
         paint.scene.draw_text(paint.text.layout(
             "Select a work item to load the detail editor.",
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 202.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 238.0),
             10.5,
             theme::text::SECONDARY,
         ));
@@ -361,14 +382,14 @@ pub fn paint_project_ops_pane(
     ));
     paint.scene.draw_text(paint.text.layout(
         "Activity Timeline",
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 318.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 354.0),
         12.0,
         theme::text::PRIMARY,
     ));
     if state.visible_activity_rows.is_empty() {
         paint.scene.draw_text(paint.text.layout(
             state.activity_empty_state.as_str(),
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 340.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 376.0),
             10.5,
             theme::text::SECONDARY,
         ));
@@ -383,7 +404,7 @@ pub fn paint_project_ops_pane(
                     row.summary
                 )
                 .as_str(),
-                Point::new(detail.origin.x + 12.0, detail.origin.y + 340.0 + index as f32 * 18.0),
+                Point::new(detail.origin.x + 12.0, detail.origin.y + 376.0 + index as f32 * 18.0),
                 10.0,
                 theme::text::PRIMARY,
             ));
