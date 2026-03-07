@@ -217,6 +217,12 @@ pub struct ProviderRecentJob {
     pub status: String,
     pub demand_source: String,
     pub product_id: Option<String>,
+    pub compute_family: Option<String>,
+    pub backend_family: Option<String>,
+    pub sandbox_execution_class: Option<String>,
+    pub sandbox_profile_id: Option<String>,
+    pub sandbox_profile_digest: Option<String>,
+    pub sandbox_termination_reason: Option<String>,
     pub completed_at_epoch_seconds: u64,
     pub payout_sats: u64,
     pub payment_pointer: String,
@@ -230,7 +236,14 @@ pub struct ProviderReceiptSummary {
     pub receipt_type: String,
     pub created_at_ms: i64,
     pub canonical_hash: String,
+    pub compute_family: Option<String>,
+    pub backend_family: Option<String>,
+    pub sandbox_execution_class: Option<String>,
+    pub sandbox_profile_id: Option<String>,
+    pub sandbox_profile_digest: Option<String>,
+    pub sandbox_termination_reason: Option<String>,
     pub reason_code: Option<String>,
+    pub failure_reason: Option<String>,
     pub severity: Option<String>,
     pub notional_sats: Option<u64>,
     pub liability_premium_sats: Option<u64>,
@@ -1522,6 +1535,12 @@ mod tests {
                 status: "succeeded".to_string(),
                 demand_source: "open_network".to_string(),
                 product_id: Some("ollama.text_generation".to_string()),
+                compute_family: Some("inference".to_string()),
+                backend_family: Some("ollama".to_string()),
+                sandbox_execution_class: None,
+                sandbox_profile_id: None,
+                sandbox_profile_digest: None,
+                sandbox_termination_reason: None,
                 completed_at_epoch_seconds: 1_762_300_030,
                 payout_sats: 42,
                 payment_pointer: "payment-1".to_string(),
@@ -1533,7 +1552,14 @@ mod tests {
                 receipt_type: "earn.job.settled.v1".to_string(),
                 created_at_ms: 1_762_300_030_500,
                 canonical_hash: "sha256:receipt-1".to_string(),
+                compute_family: Some("inference".to_string()),
+                backend_family: Some("ollama".to_string()),
+                sandbox_execution_class: None,
+                sandbox_profile_id: None,
+                sandbox_profile_digest: None,
+                sandbox_termination_reason: None,
                 reason_code: Some("SETTLED".to_string()),
+                failure_reason: None,
                 severity: Some("low".to_string()),
                 notional_sats: Some(42),
                 liability_premium_sats: Some(0),
@@ -1582,10 +1608,24 @@ mod tests {
         );
         assert_eq!(
             snapshot
+                .recent_jobs
+                .first()
+                .and_then(|job| job.compute_family.as_deref()),
+            Some("inference")
+        );
+        assert_eq!(
+            snapshot
                 .receipts
                 .first()
                 .and_then(|receipt| receipt.work_unit_id.as_deref()),
             Some("work-unit-1")
+        );
+        assert_eq!(
+            snapshot
+                .receipts
+                .first()
+                .and_then(|receipt| receipt.backend_family.as_deref()),
+            Some("ollama")
         );
         assert_eq!(
             snapshot.earnings.as_ref().map(|earnings| earnings.lifetime_sats),

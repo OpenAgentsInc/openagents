@@ -27,6 +27,9 @@ if grep -q 'apple_foundation_models.embeddings' <<<"$products_output"; then
   exit 1
 fi
 
+sandbox_output="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" sandbox)"
+grep -q '^supported_execution_classes: ' <<<"$sandbox_output"
+
 inventory_output="$(cargo run -p pylon -- --config-path "$CONFIG_PATH" inventory)"
 grep -q '^state: ' <<<"$inventory_output"
 
@@ -45,5 +48,10 @@ grep -q '^desired_mode: offline$' <<<"$offline_output"
 cargo run -p pylon -- --config-path "$CONFIG_PATH" jobs >/dev/null
 cargo run -p pylon -- --config-path "$CONFIG_PATH" earnings >/dev/null
 cargo run -p pylon -- --config-path "$CONFIG_PATH" receipts >/dev/null
+
+cargo test -p openagents-provider-substrate sandbox_execution::tests::policy_rejection_is_receipted -- --nocapture
+cargo test -p openagents-provider-substrate sandbox_execution::tests::local_subprocess_success_emits_receipt_and_artifacts -- --nocapture
+cargo test -p pylon sandbox_reports_surface_profiles_status_and_failures -- --nocapture
+cargo test -p autopilot-desktop snapshot_signature_changes_when_sandbox_truth_changes -- --nocapture
 
 echo "Pylon standalone verification passed."

@@ -11,9 +11,10 @@ use openagents_provider_substrate::{
     ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry, ProviderMode,
     ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderReceiptSummary,
     ProviderRecentJob, ProviderRuntimeStatusSnapshot, ProviderSnapshotParts,
-    ProviderSandboxDetectionConfig, ProviderSandboxProfileSpec, ProviderStatusResponse,
-    assemble_provider_persisted_snapshot, derive_provider_products, detect_sandbox_supply,
-    provider_runtime_state_label, validate_provider_control_action,
+    ProviderSandboxDetectionConfig, ProviderSandboxProfile, ProviderSandboxProfileSpec,
+    ProviderSandboxRuntimeHealth, ProviderStatusResponse, assemble_provider_persisted_snapshot,
+    derive_provider_products, detect_sandbox_supply, provider_runtime_state_label,
+    validate_provider_control_action,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -45,6 +46,7 @@ pub enum Command {
     Backends { json: bool },
     Inventory { json: bool, limit: Option<usize> },
     Products { json: bool },
+    Sandbox { json: bool, limit: Option<usize> },
     Jobs { json: bool, limit: Option<usize> },
     Earnings { json: bool },
     Receipts { json: bool, limit: Option<usize> },
@@ -106,6 +108,11 @@ struct BackendEntry {
     availability_message: Option<String>,
     launch_product_ids: Vec<String>,
     eligible_product_ids: Vec<String>,
+    supported_execution_classes: Vec<String>,
+    ready_execution_classes: Vec<String>,
+    runtime_kinds: Vec<String>,
+    ready_runtime_kinds: Vec<String>,
+    profile_ids: Vec<String>,
     last_error: Option<String>,
 }
 
@@ -152,6 +159,16 @@ struct EarningsReport {
 struct ReceiptsReport {
     context: ReportContext,
     receipts: Vec<ProviderReceiptSummary>,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
+struct SandboxReport {
+    context: ReportContext,
+    supported_execution_classes: Vec<String>,
+    ready_execution_classes: Vec<String>,
+    last_scan_error: Option<String>,
+    runtimes: Vec<ProviderSandboxRuntimeHealth>,
+    profiles: Vec<ProviderSandboxProfile>,
 }
 
 pub fn parse_args(args: Vec<String>) -> Result<Cli> {
@@ -245,6 +262,13 @@ pub async fn run_cli(cli: Cli) -> Result<Option<String>> {
             }
             Ok(Some(render_product_report(&report)))
         }
+        Command::Sandbox { json, limit } => {
+            let report = load_sandbox_report(cli.config_path.as_path(), limit).await?;
+            if json {
+                return Ok(Some(serde_json::to_string_pretty(&report)?));
+            }
+            Ok(Some(render_sandbox_report(&report)))
+        }
         Command::Jobs { json, limit } => {
             let report = load_jobs_report(cli.config_path.as_path(), limit).await?;
             if json {
@@ -313,6 +337,7 @@ Commands:\n\
   backends [--json]\n\
   inventory [--json] [--limit <n>]\n\
   products [--json]\n\
+  sandbox [--json] [--limit <n>]\n\
   jobs [--json] [--limit <n>]\n\
   earnings [--json]\n\
   receipts [--json] [--limit <n>]\n\
@@ -378,6 +403,11 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
                 bail!("products does not support --limit");
             }
             Ok(Command::Products { json })
+        }
+        "sandbox" => {
+            let (json, limit) =
+                parse_observability_flags(args, start_index + 1, "sandbox", true)?;
+            Ok(Command::Sandbox { json, limit })
         }
         "jobs" => {
             let (json, limit) = parse_observability_flags(args, start_index + 1, "jobs", true)?;
@@ -1166,6 +1196,37 @@ fn first_backend_error(availability: &ProviderAvailability) -> Option<String> {
         .or_else(|| availability.sandbox.last_scan_error.clone())
 }
 
+fn render_sandbox_status_lines(availability: &ProviderAvailability) -> Vec<String> {
+    let mut lines = Vec::new();
+    let sandbox = &availability.sandbox;
+    let supported = sandbox_supported_execution_classes(availability);
+    let ready = sandbox_ready_execution_classes(availability);
+    let runtimes = sandbox_runtime_kinds(availability, false);
+    let profiles = sandbox_profile_ids(availability);
+    if !supported.is_empty() || !runtimes.is_empty() || !profiles.is_empty() || sandbox.last_scan_error.is_some() {
+        lines.push(format!(
+            "sandbox_execution_classes: {}",
+            comma_or_none(supported.as_slice())
+        ));
+        lines.push(format!(
+            "sandbox_ready_classes: {}",
+            comma_or_none(ready.as_slice())
+        ));
+        lines.push(format!(
+            "sandbox_runtimes: {}",
+            comma_or_none(runtimes.as_slice())
+        ));
+        lines.push(format!(
+            "sandbox_profiles: {}",
+            comma_or_none(profiles.as_slice())
+        ));
+        if let Some(last_scan_error) = sandbox.last_scan_error.as_deref() {
+            lines.push(format!("sandbox_last_error: {last_scan_error}"));
+        }
+    }
+    lines
+}
+
 fn identity_metadata(identity: &NostrIdentity, node_label: &str) -> ProviderIdentityMetadata {
     ProviderIdentityMetadata {
         npub: Some(identity.npub.clone()),
@@ -1210,6 +1271,7 @@ fn render_human_status(status: &ProviderStatusResponse) -> String {
                 snapshot.runtime.provider_blocker_codes.join(", ")
             ));
         }
+        lines.extend(render_sandbox_status_lines(&snapshot.availability));
     }
     lines.join("\n")
 }
@@ -1277,6 +1339,11 @@ fn backend_entry(
         availability_message: health.availability_message.clone(),
         launch_product_ids,
         eligible_product_ids,
+        supported_execution_classes: Vec::new(),
+        ready_execution_classes: Vec::new(),
+        runtime_kinds: Vec::new(),
+        ready_runtime_kinds: Vec::new(),
+        profile_ids: Vec::new(),
         last_error: health.last_error.clone(),
     }
 }
@@ -1322,6 +1389,124 @@ fn apple_fm_health_state(config: &PylonConfig, health: &ProviderBackendHealth) -
     "misconfigured".to_string()
 }
 
+fn sandbox_controls_enabled(config: &PylonConfig) -> bool {
+    let controls = &config.inventory_controls;
+    controls.sandbox_container_exec_enabled
+        || controls.sandbox_python_exec_enabled
+        || controls.sandbox_node_exec_enabled
+        || controls.sandbox_posix_exec_enabled
+}
+
+fn sandbox_supported_execution_classes(availability: &ProviderAvailability) -> Vec<String> {
+    availability
+        .sandbox
+        .declared_execution_classes()
+        .into_iter()
+        .map(|execution_class| execution_class.product_id().to_string())
+        .collect()
+}
+
+fn sandbox_ready_execution_classes(availability: &ProviderAvailability) -> Vec<String> {
+    availability
+        .sandbox
+        .ready_execution_classes()
+        .into_iter()
+        .map(|execution_class| execution_class.product_id().to_string())
+        .collect()
+}
+
+fn sandbox_runtime_kinds(
+    availability: &ProviderAvailability,
+    ready_only: bool,
+) -> Vec<String> {
+    let kinds = if ready_only {
+        availability.sandbox.ready_runtime_kinds()
+    } else {
+        availability.sandbox.detected_runtime_kinds()
+    };
+    kinds.into_iter().map(|runtime_kind| runtime_kind.id().to_string()).collect()
+}
+
+fn sandbox_profile_ids(availability: &ProviderAvailability) -> Vec<String> {
+    availability
+        .sandbox
+        .profiles
+        .iter()
+        .map(|profile| profile.profile_id.clone())
+        .collect()
+}
+
+fn sandbox_health_state(
+    config: &PylonConfig,
+    availability: &ProviderAvailability,
+    products: &[ProviderAdvertisedProduct],
+) -> String {
+    if !sandbox_controls_enabled(config) {
+        return "disabled".to_string();
+    }
+    if availability.sandbox.last_scan_error.is_some() {
+        return "error".to_string();
+    }
+    if products.iter().any(|product| product.eligible) {
+        return "healthy".to_string();
+    }
+    if availability.sandbox.profiles.is_empty() {
+        return if availability
+            .sandbox
+            .detected_runtime_kinds()
+            .is_empty()
+        {
+            "unsupported".to_string()
+        } else {
+            "misconfigured".to_string()
+        };
+    }
+    if availability.sandbox.ready_runtime_kinds().is_empty() {
+        return "unavailable".to_string();
+    }
+    "misconfigured".to_string()
+}
+
+fn sandbox_backend_entry(
+    config: &PylonConfig,
+    availability: &ProviderAvailability,
+    products: &[ProviderAdvertisedProduct],
+) -> BackendEntry {
+    let visible_product_ids = products
+        .iter()
+        .map(|product| product.product.product_id().to_string())
+        .collect::<Vec<_>>();
+    let eligible_product_ids = products
+        .iter()
+        .filter(|product| product.eligible)
+        .map(|product| product.product.product_id().to_string())
+        .collect::<Vec<_>>();
+    BackendEntry {
+        backend_id: "sandbox".to_string(),
+        display_label: "Declared sandbox runtime".to_string(),
+        health_state: sandbox_health_state(config, availability, products),
+        reachable: !availability.sandbox.detected_runtime_kinds().is_empty(),
+        ready: !availability.sandbox.ready_runtime_kinds().is_empty(),
+        ready_model: None,
+        available_models: Vec::new(),
+        availability_message: availability.sandbox.last_scan_error.clone().or_else(|| {
+            if availability.sandbox.profiles.is_empty() {
+                Some("no declared sandbox profiles".to_string())
+            } else {
+                None
+            }
+        }),
+        launch_product_ids: visible_product_ids,
+        eligible_product_ids,
+        supported_execution_classes: sandbox_supported_execution_classes(availability),
+        ready_execution_classes: sandbox_ready_execution_classes(availability),
+        runtime_kinds: sandbox_runtime_kinds(availability, false),
+        ready_runtime_kinds: sandbox_runtime_kinds(availability, true),
+        profile_ids: sandbox_profile_ids(availability),
+        last_error: availability.sandbox.last_scan_error.clone(),
+    }
+}
+
 async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let availability = if config_path.exists() {
@@ -1343,6 +1528,11 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
         .filter(|product| product.product.backend_label() == "apple_foundation_models")
         .cloned()
         .collect::<Vec<_>>();
+    let sandbox_products = products
+        .iter()
+        .filter(|product| product.product.backend_label() == "sandbox")
+        .cloned()
+        .collect::<Vec<_>>();
     Ok(BackendReport {
         context: report_context(&status),
         backends: vec![
@@ -1360,6 +1550,7 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
                 &availability.apple_foundation_models,
                 apple_fm_products.as_slice(),
             ),
+            sandbox_backend_entry(&config, &availability, sandbox_products.as_slice()),
         ],
     })
 }
@@ -1414,6 +1605,84 @@ async fn load_product_report(config_path: &Path) -> Result<ProductReport> {
     Ok(ProductReport {
         context: report_context(&status),
         products,
+    })
+}
+
+async fn load_sandbox_report(config_path: &Path, limit: Option<usize>) -> Result<SandboxReport> {
+    let (config, status) = load_config_and_status(config_path).await?;
+    let (runtimes, profiles, last_scan_error) = if config_path.exists() {
+        let runtimes = if let Some(runtimes) = try_live_json::<Vec<ProviderSandboxRuntimeHealth>>(
+            &config,
+            sandbox_runtimes_endpoint(limit).as_str(),
+        )
+        .await?
+        {
+            runtimes
+        } else if let Some(store) = open_existing_store(&config)? {
+            store
+                .load_sandbox_runtimes(limit)
+                .map_err(anyhow::Error::msg)?
+        } else {
+            take_limited_rows(
+                status
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.availability.sandbox.runtimes.clone())
+                    .unwrap_or_default(),
+                limit,
+            )
+        };
+        let profiles = if let Some(profiles) = try_live_json::<Vec<ProviderSandboxProfile>>(
+            &config,
+            sandbox_profiles_endpoint(limit).as_str(),
+        )
+        .await?
+        {
+            profiles
+        } else if let Some(store) = open_existing_store(&config)? {
+            store
+                .load_sandbox_profiles(limit)
+                .map_err(anyhow::Error::msg)?
+        } else {
+            take_limited_rows(
+                status
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.availability.sandbox.profiles.clone())
+                    .unwrap_or_default(),
+                limit,
+            )
+        };
+        let last_scan_error = status
+            .snapshot
+            .as_ref()
+            .and_then(|snapshot| snapshot.availability.sandbox.last_scan_error.clone());
+        (runtimes, profiles, last_scan_error)
+    } else {
+        (Vec::new(), Vec::new(), None)
+    };
+
+    let supported_execution_classes = profiles
+        .iter()
+        .map(|profile| profile.execution_class.product_id().to_string())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    let ready_execution_classes = profiles
+        .iter()
+        .filter(|profile| profile.runtime_ready)
+        .map(|profile| profile.execution_class.product_id().to_string())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+
+    Ok(SandboxReport {
+        context: report_context(&status),
+        supported_execution_classes,
+        ready_execution_classes,
+        last_scan_error,
+        runtimes,
+        profiles,
     })
 }
 
@@ -1513,6 +1782,14 @@ fn inventory_endpoint(limit: Option<usize>) -> String {
     format!("/v1/inventory?limit={}", limit.unwrap_or(32))
 }
 
+fn sandbox_runtimes_endpoint(limit: Option<usize>) -> String {
+    format!("/v1/sandbox/runtimes?limit={}", limit.unwrap_or(32))
+}
+
+fn sandbox_profiles_endpoint(limit: Option<usize>) -> String {
+    format!("/v1/sandbox/profiles?limit={}", limit.unwrap_or(32))
+}
+
 fn jobs_endpoint(limit: Option<usize>) -> String {
     format!("/v1/jobs?limit={}", limit.unwrap_or(32))
 }
@@ -1554,6 +1831,36 @@ fn render_backend_report(report: &BackendReport) -> String {
             "eligible_products: {}",
             comma_or_none(backend.eligible_product_ids.as_slice())
         ));
+        if !backend.supported_execution_classes.is_empty() {
+            lines.push(format!(
+                "supported_execution_classes: {}",
+                comma_or_none(backend.supported_execution_classes.as_slice())
+            ));
+        }
+        if !backend.ready_execution_classes.is_empty() {
+            lines.push(format!(
+                "ready_execution_classes: {}",
+                comma_or_none(backend.ready_execution_classes.as_slice())
+            ));
+        }
+        if !backend.runtime_kinds.is_empty() {
+            lines.push(format!(
+                "runtime_kinds: {}",
+                comma_or_none(backend.runtime_kinds.as_slice())
+            ));
+        }
+        if !backend.ready_runtime_kinds.is_empty() {
+            lines.push(format!(
+                "ready_runtime_kinds: {}",
+                comma_or_none(backend.ready_runtime_kinds.as_slice())
+            ));
+        }
+        if !backend.profile_ids.is_empty() {
+            lines.push(format!(
+                "profile_ids: {}",
+                comma_or_none(backend.profile_ids.as_slice())
+            ));
+        }
         lines.push(format!(
             "ready_model: {}",
             backend.ready_model.as_deref().unwrap_or("none")
@@ -1620,6 +1927,24 @@ fn render_jobs_report(report: &JobsReport) -> String {
             "product_id: {}",
             job.product_id.as_deref().unwrap_or("none")
         ));
+        if let Some(compute_family) = job.compute_family.as_deref() {
+            lines.push(format!("compute_family: {compute_family}"));
+        }
+        if let Some(backend_family) = job.backend_family.as_deref() {
+            lines.push(format!("backend_family: {backend_family}"));
+        }
+        if let Some(execution_class) = job.sandbox_execution_class.as_deref() {
+            lines.push(format!("sandbox_execution_class: {execution_class}"));
+        }
+        if let Some(profile_id) = job.sandbox_profile_id.as_deref() {
+            lines.push(format!("sandbox_profile_id: {profile_id}"));
+        }
+        if let Some(profile_digest) = job.sandbox_profile_digest.as_deref() {
+            lines.push(format!("sandbox_profile_digest: {profile_digest}"));
+        }
+        if let Some(termination_reason) = job.sandbox_termination_reason.as_deref() {
+            lines.push(format!("sandbox_termination_reason: {termination_reason}"));
+        }
         lines.push(format!("payout_sats: {}", job.payout_sats));
         if let Some(failure_reason) = job.failure_reason.as_deref() {
             lines.push(format!("failure_reason: {failure_reason}"));
@@ -1658,11 +1983,93 @@ fn render_receipts_report(report: &ReceiptsReport) -> String {
         lines.push(format!("receipt_type: {}", receipt.receipt_type));
         lines.push(format!("canonical_hash: {}", receipt.canonical_hash));
         lines.push(format!("created_at_ms: {}", receipt.created_at_ms));
+        if let Some(compute_family) = receipt.compute_family.as_deref() {
+            lines.push(format!("compute_family: {compute_family}"));
+        }
+        if let Some(backend_family) = receipt.backend_family.as_deref() {
+            lines.push(format!("backend_family: {backend_family}"));
+        }
+        if let Some(execution_class) = receipt.sandbox_execution_class.as_deref() {
+            lines.push(format!("sandbox_execution_class: {execution_class}"));
+        }
+        if let Some(profile_id) = receipt.sandbox_profile_id.as_deref() {
+            lines.push(format!("sandbox_profile_id: {profile_id}"));
+        }
+        if let Some(profile_digest) = receipt.sandbox_profile_digest.as_deref() {
+            lines.push(format!("sandbox_profile_digest: {profile_digest}"));
+        }
+        if let Some(termination_reason) = receipt.sandbox_termination_reason.as_deref() {
+            lines.push(format!("sandbox_termination_reason: {termination_reason}"));
+        }
         if let Some(reason_code) = receipt.reason_code.as_deref() {
             lines.push(format!("reason_code: {reason_code}"));
         }
+        if let Some(failure_reason) = receipt.failure_reason.as_deref() {
+            lines.push(format!("failure_reason: {failure_reason}"));
+        }
         if let Some(notional_sats) = receipt.notional_sats {
             lines.push(format!("notional_sats: {notional_sats}"));
+        }
+    }
+    lines.join("\n")
+}
+
+fn render_sandbox_report(report: &SandboxReport) -> String {
+    let mut lines = render_report_context(&report.context);
+    lines.push(String::new());
+    lines.push(format!(
+        "supported_execution_classes: {}",
+        comma_or_none(report.supported_execution_classes.as_slice())
+    ));
+    lines.push(format!(
+        "ready_execution_classes: {}",
+        comma_or_none(report.ready_execution_classes.as_slice())
+    ));
+    if let Some(last_scan_error) = report.last_scan_error.as_deref() {
+        lines.push(format!("last_scan_error: {last_scan_error}"));
+    }
+    for runtime in &report.runtimes {
+        let supported_execution_classes = runtime
+            .supported_execution_classes
+            .iter()
+            .map(|execution_class| execution_class.product_id().to_string())
+            .collect::<Vec<_>>();
+        lines.push(String::new());
+        lines.push(format!("runtime_kind: {}", runtime.runtime_kind.id()));
+        lines.push(format!("detected: {}", runtime.detected));
+        lines.push(format!("ready: {}", runtime.ready));
+        lines.push(format!(
+            "supported_execution_classes: {}",
+            comma_or_none(supported_execution_classes.as_slice())
+        ));
+        if let Some(binary_name) = runtime.binary_name.as_deref() {
+            lines.push(format!("binary_name: {binary_name}"));
+        }
+        if let Some(binary_path) = runtime.binary_path.as_deref() {
+            lines.push(format!("binary_path: {binary_path}"));
+        }
+        if let Some(runtime_version) = runtime.runtime_version.as_deref() {
+            lines.push(format!("runtime_version: {runtime_version}"));
+        }
+        if let Some(last_error) = runtime.last_error.as_deref() {
+            lines.push(format!("last_error: {last_error}"));
+        }
+    }
+    for profile in &report.profiles {
+        lines.push(String::new());
+        lines.push(format!("profile_id: {}", profile.profile_id));
+        lines.push(format!(
+            "execution_class: {}",
+            profile.execution_class.product_id()
+        ));
+        lines.push(format!("profile_digest: {}", profile.profile_digest));
+        lines.push(format!("runtime_kind: {}", profile.runtime_kind.id()));
+        lines.push(format!("runtime_ready: {}", profile.runtime_ready));
+        lines.push(format!("network_mode: {}", profile.network_mode));
+        lines.push(format!("filesystem_mode: {}", profile.filesystem_mode));
+        lines.push(format!("timeout_limit_s: {}", profile.timeout_limit_s));
+        if let Some(accelerator_policy) = profile.accelerator_policy.as_deref() {
+            lines.push(format!("accelerator_policy: {accelerator_policy}"));
         }
     }
     lines.join("\n")
@@ -2015,13 +2422,16 @@ mod tests {
         Command, PylonConfig, apply_config_set, apply_control_command, build_snapshot_from_availability,
         default_config, ensure_identity, inventory_rows, load_backend_report,
         load_earnings_report, load_inventory_report, load_jobs_report, load_or_create_config,
-        load_product_report, load_receipts_report, load_status_or_detect, parse_args,
-        provider_admin_config, render_human_status, save_config,
+        load_product_report, load_receipts_report, load_sandbox_report, load_status_or_detect,
+        parse_args, provider_admin_config, render_human_status, render_sandbox_report,
+        save_config,
     };
     use openagents_provider_substrate::{
         ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
         ProviderEarningsSummary, ProviderInventoryControls, ProviderPersistenceStore,
-        ProviderReceiptSummary, ProviderRecentJob,
+        ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
+        ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
+        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
         provider_runtime_state_label,
     };
     use serde_json::json;
@@ -2238,6 +2648,20 @@ mod tests {
                     limit: Some(3),
                 },
             "receipts should parse with a list limit",
+        )?;
+        ensure(
+            parse_args(vec![
+                "sandbox".to_string(),
+                "--json".to_string(),
+                "--limit".to_string(),
+                "2".to_string(),
+            ])?
+            .command
+                == Command::Sandbox {
+                    json: true,
+                    limit: Some(2),
+                },
+            "sandbox should parse with json and limit flags",
         )
     }
 
@@ -2262,8 +2686,32 @@ mod tests {
     fn seed_observability_snapshot(
         config_path: &std::path::Path,
     ) -> Result<PylonConfig, Box<dyn std::error::Error>> {
-        let config = load_or_create_config(config_path)?;
+        let mut config = load_or_create_config(config_path)?;
         let identity = ensure_identity(config.identity_path.as_path())?;
+        config.inventory_controls.sandbox_python_exec_enabled = true;
+        config.declared_sandbox_profiles = vec![ProviderSandboxProfileSpec {
+            profile_id: "python-batch".to_string(),
+            execution_class: ProviderSandboxExecutionClass::PythonExec,
+            runtime_family: "python3".to_string(),
+            runtime_version: Some("Python 3.11.8".to_string()),
+            sandbox_engine: "local_subprocess".to_string(),
+            os_family: std::env::consts::OS.to_string(),
+            arch: std::env::consts::ARCH.to_string(),
+            cpu_limit: 2,
+            memory_limit_mb: 2048,
+            disk_limit_mb: 4096,
+            timeout_limit_s: 120,
+            network_mode: "none".to_string(),
+            filesystem_mode: "workspace_only".to_string(),
+            workspace_mode: "ephemeral".to_string(),
+            artifact_output_mode: "declared_paths_only".to_string(),
+            secrets_mode: "none".to_string(),
+            allowed_binaries: vec!["python3".to_string()],
+            toolchain_inventory: vec!["python3".to_string()],
+            container_image: None,
+            runtime_image_digest: None,
+            accelerator_policy: None,
+        }];
         save_config(config_path, &config)?;
 
         let availability = ProviderAvailability {
@@ -2277,7 +2725,49 @@ mod tests {
                 &["apple-foundation-model"],
                 Some("bridge_ready"),
             ),
-            sandbox: Default::default(),
+            sandbox: ProviderSandboxAvailability {
+                runtimes: vec![ProviderSandboxRuntimeHealth {
+                    runtime_kind: ProviderSandboxRuntimeKind::Python,
+                    detected: true,
+                    ready: true,
+                    binary_name: Some("python3".to_string()),
+                    binary_path: Some("/usr/bin/python3".to_string()),
+                    runtime_version: Some("Python 3.11.8".to_string()),
+                    supported_execution_classes: vec![
+                        ProviderSandboxExecutionClass::PythonExec,
+                    ],
+                    last_error: None,
+                }],
+                profiles: vec![ProviderSandboxProfile {
+                    profile_id: "python-batch".to_string(),
+                    profile_digest: "sha256:python-profile".to_string(),
+                    execution_class: ProviderSandboxExecutionClass::PythonExec,
+                    runtime_family: "python3".to_string(),
+                    runtime_version: "Python 3.11.8".to_string(),
+                    sandbox_engine: "local_subprocess".to_string(),
+                    os_family: std::env::consts::OS.to_string(),
+                    arch: std::env::consts::ARCH.to_string(),
+                    cpu_limit: 2,
+                    memory_limit_mb: 2048,
+                    disk_limit_mb: 4096,
+                    timeout_limit_s: 120,
+                    network_mode: "none".to_string(),
+                    filesystem_mode: "workspace_only".to_string(),
+                    workspace_mode: "ephemeral".to_string(),
+                    artifact_output_mode: "declared_paths_only".to_string(),
+                    secrets_mode: "none".to_string(),
+                    allowed_binaries: vec!["python3".to_string()],
+                    toolchain_inventory: vec!["python3".to_string()],
+                    container_image: None,
+                    runtime_image_digest: None,
+                    accelerator_policy: None,
+                    runtime_kind: ProviderSandboxRuntimeKind::Python,
+                    runtime_ready: true,
+                    runtime_binary_path: Some("/usr/bin/python3".to_string()),
+                    capability_summary: "backend=sandbox execution=sandbox.python.exec family=sandbox_execution profile_id=python-batch".to_string(),
+                }],
+                last_scan_error: None,
+            },
         };
         let mut snapshot = build_snapshot_from_availability(
             &config,
@@ -2295,22 +2785,69 @@ mod tests {
             status: "settled".to_string(),
             demand_source: "open_network".to_string(),
             product_id: Some("ollama.embeddings".to_string()),
+            compute_family: Some("embeddings".to_string()),
+            backend_family: Some("ollama".to_string()),
+            sandbox_execution_class: None,
+            sandbox_profile_id: None,
+            sandbox_profile_digest: None,
+            sandbox_termination_reason: None,
             completed_at_epoch_seconds: 1_762_300_030,
             payout_sats: 42,
             payment_pointer: "payment-1".to_string(),
             failure_reason: None,
             delivery_proof_id: Some("proof-1".to_string()),
+        }, ProviderRecentJob {
+            job_id: "job-2".to_string(),
+            request_id: Some("req-2".to_string()),
+            status: "failed".to_string(),
+            demand_source: "open_network".to_string(),
+            product_id: Some("sandbox.python.exec".to_string()),
+            compute_family: Some("sandbox_execution".to_string()),
+            backend_family: Some("sandbox".to_string()),
+            sandbox_execution_class: Some("sandbox.python.exec".to_string()),
+            sandbox_profile_id: Some("python-batch".to_string()),
+            sandbox_profile_digest: Some("sha256:python-profile".to_string()),
+            sandbox_termination_reason: Some("timeout".to_string()),
+            completed_at_epoch_seconds: 1_762_300_032,
+            payout_sats: 0,
+            payment_pointer: "payment-2".to_string(),
+            failure_reason: Some("sandbox execution exceeded timeout".to_string()),
+            delivery_proof_id: Some("proof-2".to_string()),
         }];
         snapshot.receipts = vec![ProviderReceiptSummary {
             receipt_id: "receipt-1".to_string(),
             receipt_type: "earn.job.settled.v1".to_string(),
             created_at_ms: 1_762_300_030_500,
             canonical_hash: "sha256:receipt-1".to_string(),
+            compute_family: Some("embeddings".to_string()),
+            backend_family: Some("ollama".to_string()),
+            sandbox_execution_class: None,
+            sandbox_profile_id: None,
+            sandbox_profile_digest: None,
+            sandbox_termination_reason: None,
             reason_code: Some("SETTLED".to_string()),
+            failure_reason: None,
             severity: Some("low".to_string()),
             notional_sats: Some(42),
             liability_premium_sats: Some(0),
             work_unit_id: Some("work-unit-1".to_string()),
+        }, ProviderReceiptSummary {
+            receipt_id: "receipt-2".to_string(),
+            receipt_type: "sandbox.execution.delivery.v1".to_string(),
+            created_at_ms: 1_762_300_032_500,
+            canonical_hash: "sha256:receipt-2".to_string(),
+            compute_family: Some("sandbox_execution".to_string()),
+            backend_family: Some("sandbox".to_string()),
+            sandbox_execution_class: Some("sandbox.python.exec".to_string()),
+            sandbox_profile_id: Some("python-batch".to_string()),
+            sandbox_profile_digest: Some("sha256:python-profile".to_string()),
+            sandbox_termination_reason: Some("timeout".to_string()),
+            reason_code: Some("SANDBOX_TIMEOUT".to_string()),
+            failure_reason: Some("sandbox execution exceeded timeout".to_string()),
+            severity: Some("warn".to_string()),
+            notional_sats: Some(0),
+            liability_premium_sats: Some(0),
+            work_unit_id: Some("work-unit-2".to_string()),
         }];
         snapshot.earnings = Some(ProviderEarningsSummary {
             sats_today: 42,
@@ -2386,6 +2923,19 @@ mod tests {
                         && product.capability_summary.contains("family=embeddings")
                 }),
             "product report should preserve capability-envelope qualifiers for embeddings",
+        )?;
+        let sandbox = backend_report
+            .backends
+            .iter()
+            .find(|backend| backend.backend_id == "sandbox")
+            .ok_or_else(|| std::io::Error::other("missing sandbox backend entry"))?;
+        ensure(
+            sandbox.supported_execution_classes == vec!["sandbox.python.exec".to_string()],
+            "sandbox backend should expose declared execution classes",
+        )?;
+        ensure(
+            sandbox.profile_ids == vec!["python-batch".to_string()],
+            "sandbox backend should expose declared profile ids",
         )
     }
 
@@ -2409,9 +2959,30 @@ mod tests {
             "inventory report should show eligible embedding supply",
         )?;
         ensure(
-            jobs_report.jobs.len() == 1
-                && jobs_report.jobs[0].product_id.as_deref() == Some("ollama.embeddings"),
+            inventory_report
+                .rows
+                .iter()
+                .any(|row| row.target.product_id() == "sandbox.python.exec" && row.eligible),
+            "inventory report should show eligible sandbox supply when profiles are declared",
+        )?;
+        ensure(
+            jobs_report.jobs.len() == 2
+                && jobs_report
+                    .jobs
+                    .iter()
+                    .any(|job| job.product_id.as_deref() == Some("ollama.embeddings")),
             "jobs report should surface persisted recent jobs",
+        )?;
+        let sandbox_job = jobs_report
+            .jobs
+            .iter()
+            .find(|job| job.product_id.as_deref() == Some("sandbox.python.exec"))
+            .ok_or_else(|| std::io::Error::other("missing sandbox job row"))?;
+        ensure(
+            sandbox_job.sandbox_execution_class.as_deref() == Some("sandbox.python.exec")
+                && sandbox_job.failure_reason.as_deref()
+                    == Some("sandbox execution exceeded timeout"),
+            "jobs report should surface sandbox failure classification and reason",
         )?;
         ensure(
             earnings_report
@@ -2421,9 +2992,69 @@ mod tests {
             "earnings report should surface persisted earnings",
         )?;
         ensure(
-            receipts_report.receipts.len() == 1
-                && receipts_report.receipts[0].receipt_id == "receipt-1",
+            receipts_report.receipts.len() == 2
+                && receipts_report
+                    .receipts
+                    .iter()
+                    .any(|receipt| receipt.receipt_id == "receipt-1"),
             "receipts report should surface persisted receipts",
+        )?;
+        let sandbox_receipt = receipts_report
+            .receipts
+            .iter()
+            .find(|receipt| receipt.receipt_id == "receipt-2")
+            .ok_or_else(|| std::io::Error::other("missing sandbox receipt row"))?;
+        ensure(
+            sandbox_receipt.sandbox_profile_id.as_deref() == Some("python-batch")
+                && sandbox_receipt.sandbox_termination_reason.as_deref()
+                    == Some("timeout"),
+            "receipts report should surface sandbox receipt integrity fields",
+        )
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn sandbox_reports_surface_profiles_status_and_failures()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp_dir = tempfile::tempdir()?;
+        let config_path = temp_dir.path().join("config.json");
+        seed_observability_snapshot(config_path.as_path())?;
+
+        let status = load_status_or_detect(config_path.as_path()).await?;
+        let status_render = render_human_status(&status);
+        ensure(
+            status_render.contains("sandbox_execution_classes: sandbox.python.exec"),
+            "status should surface supported sandbox execution classes",
+        )?;
+        ensure(
+            status_render.contains("sandbox_profiles: python-batch"),
+            "status should surface declared sandbox profile ids",
+        )?;
+
+        let sandbox_report = load_sandbox_report(config_path.as_path(), Some(4)).await?;
+        ensure(
+            sandbox_report.supported_execution_classes == vec!["sandbox.python.exec".to_string()],
+            "sandbox report should expose declared execution classes",
+        )?;
+        ensure(
+            sandbox_report
+                .profiles
+                .first()
+                .is_some_and(|profile| profile.profile_id == "python-batch" && profile.runtime_ready),
+            "sandbox report should expose runtime-ready declared profiles",
+        )?;
+
+        let rendered = render_sandbox_report(&sandbox_report);
+        ensure(
+            rendered.contains("runtime_kind: python"),
+            "sandbox report should render runtime kinds",
+        )?;
+        ensure(
+            rendered.contains("profile_digest: sha256:python-profile"),
+            "sandbox report should render profile digests for verification",
+        )?;
+        ensure(
+            rendered.contains("execution_class: sandbox.python.exec"),
+            "sandbox report should render execution classes for policy matching",
         )
     }
 }
