@@ -22,6 +22,7 @@ use openagents_cad::query::{
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
+use openagents_provider_substrate::ProviderDesiredMode;
 use std::collections::HashMap;
 use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
@@ -450,6 +451,9 @@ fn pump_background_state(state: &mut crate::app_state::RenderState) -> bool {
         changed = true;
     }
     if reducers::drain_runtime_lane_updates(state) {
+        changed = true;
+    }
+    if crate::provider_admin::pump_runtime(state) {
         changed = true;
     }
     if crate::kernel_control::drain_kernel_projection_updates(state) {
@@ -2535,156 +2539,22 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatSelectWorkspace(index) => run_chat_select_workspace_action(state, index),
         PaneHitAction::ChatToggleCategory(index) => run_chat_toggle_category_action(state, index),
         PaneHitAction::ChatSelectThread(index) => run_chat_select_thread_action(state, index),
-        PaneHitAction::GoOnlineToggle => {
-            let wants_online = matches!(
+        PaneHitAction::GoOnlineToggle => apply_provider_mode_target(
+            state,
+            matches!(
                 state.provider_runtime.mode,
                 ProviderMode::Offline | ProviderMode::Degraded
-            );
-            let worker_id = state.sync_lifecycle_worker_id.clone();
-            if wants_online {
-                state.provider_runtime.inventory_session_started_at_ms = Some(
-                    std::time::SystemTime::now()
-                        .duration_since(std::time::UNIX_EPOCH)
-                        .map_or(0, |duration| {
-                            duration.as_millis().min(i64::MAX as u128) as i64
-                        }),
-                );
-                let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
-                let _ =
-                    state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
-                let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::Refresh);
-                let _ = state
-                    .queue_ollama_execution_command(OllamaExecutionCommand::WarmConfiguredModel);
-                if let Some(reason) = provider_go_online_block_reason(state) {
-                    state.provider_runtime.last_result = Some(reason.clone());
-                    state.provider_runtime.last_error_detail = Some(reason);
-                    state.provider_runtime.last_authoritative_error_class =
-                        Some(EarnFailureClass::Execution);
-                    state.provider_runtime.mode = ProviderMode::Offline;
-                    state.provider_runtime.degraded_reason_code = None;
-                    state.provider_runtime.mode_changed_at = std::time::Instant::now();
-                    return true;
-                }
-                state.sync_lifecycle.mark_connecting(worker_id.as_str());
-                if let Err(error) = state
-                    .spacetime_presence
-                    .register_online(state.nostr_identity.as_ref())
-                {
-                    let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
-                    let _ = state.sync_lifecycle.mark_disconnect(
-                        worker_id.as_str(),
-                        reason,
-                        Some(error.clone()),
-                    );
-                    state.provider_runtime.last_result = Some(error.clone());
-                    state.provider_runtime.last_error_detail = Some(error);
-                    state.provider_runtime.mode = ProviderMode::Degraded;
-                    state.provider_runtime.degraded_reason_code =
-                        Some("SPACETIME_PRESENCE_BIND_FAILED".to_string());
-                    state.provider_runtime.last_authoritative_error_class =
-                        Some(EarnFailureClass::Execution);
-                    state.provider_runtime.mode_changed_at = std::time::Instant::now();
-                    state.sync_lifecycle_snapshot =
-                        state.sync_lifecycle.snapshot(worker_id.as_str());
-                    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
-                    return true;
-                }
+            ),
+            if matches!(
+                state.provider_runtime.mode,
+                ProviderMode::Offline | ProviderMode::Degraded
+            ) {
+                ProviderDesiredMode::Online
             } else {
-                let _ = state.sync_lifecycle.mark_disconnect(
-                    worker_id.as_str(),
-                    crate::sync_lifecycle::RuntimeSyncDisconnectReason::StreamClosed,
-                    Some("operator toggled provider offline".to_string()),
-                );
-                state.sync_lifecycle.mark_idle(worker_id.as_str());
-                let _ = state.spacetime_presence.register_offline();
-                if state.active_job.inflight_job_count() == 0 {
-                    state.provider_runtime.inventory_session_started_at_ms = None;
-                }
-                let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
-                let _ = state
-                    .queue_ollama_execution_command(OllamaExecutionCommand::UnloadConfiguredModel);
-            }
-            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
-
-            if wants_online {
-                queue_spark_command(state, SparkWalletCommand::Refresh);
-                let _ = state.sync_provider_nip90_lane_identity();
-                let _ = state.sync_provider_nip90_lane_relays();
-                if let Err(error) =
-                    crate::kernel_control::register_online_compute_inventory_with_kernel(state)
-                {
-                    state.provider_runtime.last_result = Some(format!(
-                        "Kernel online inventory registration failed: {error}"
-                    ));
-                    state.provider_runtime.last_error_detail = Some(error);
-                    state.provider_runtime.last_authoritative_error_class =
-                        Some(EarnFailureClass::Reconciliation);
-                }
-            }
-            if let Err(error) =
-                state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::SetOnline {
-                    online: wants_online,
-                })
-            {
-                let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
-                let _ = state.sync_lifecycle.mark_disconnect(
-                    worker_id.as_str(),
-                    reason,
-                    Some(error.clone()),
-                );
-                state.provider_runtime.last_result = Some(error.clone());
-                state.provider_runtime.last_error_detail = Some(error);
-                state.provider_runtime.mode = ProviderMode::Degraded;
-                state.provider_runtime.degraded_reason_code =
-                    Some("NIP90_INGRESS_QUEUE_ERROR".to_string());
-                state.provider_runtime.last_authoritative_error_class =
-                    Some(EarnFailureClass::Relay);
-                state.provider_runtime.mode_changed_at = std::time::Instant::now();
-            }
-            match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline {
-                online: wants_online,
-            }) {
-                Ok(command_seq) => {
-                    state.provider_runtime.last_result =
-                        Some(format!("Queued SetRunnerOnline command #{command_seq}"));
-                    state.provider_runtime.last_authoritative_status = Some("pending".to_string());
-                    state.provider_runtime.last_authoritative_event_id = None;
-                    state.provider_runtime.last_authoritative_error_class = None;
-                    if wants_online {
-                        let refresh_after = state
-                            .sync_lifecycle
-                            .snapshot(worker_id.as_str())
-                            .and_then(|snapshot| snapshot.token_refresh_after_in_seconds);
-                        state
-                            .sync_lifecycle
-                            .mark_live(worker_id.as_str(), refresh_after);
-                    } else {
-                        state.sync_lifecycle.mark_idle(worker_id.as_str());
-                    }
-                }
-                Err(error) => {
-                    let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
-                    let _ = state.sync_lifecycle.mark_disconnect(
-                        worker_id.as_str(),
-                        reason,
-                        Some(error.clone()),
-                    );
-                    state.provider_runtime.last_result = Some(error.clone());
-                    state.provider_runtime.last_error_detail = Some(error);
-                    state.provider_runtime.mode = ProviderMode::Degraded;
-                    state.provider_runtime.degraded_reason_code =
-                        Some("SA_COMMAND_QUEUE_ERROR".to_string());
-                    state.provider_runtime.mode_changed_at = std::time::Instant::now();
-                    state.provider_runtime.last_authoritative_status =
-                        Some(RuntimeCommandStatus::Retryable.label().to_string());
-                    state.provider_runtime.last_authoritative_event_id = None;
-                    state.provider_runtime.last_authoritative_error_class =
-                        Some(EarnFailureClass::Execution);
-                }
-            }
-            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
-            true
-        }
+                ProviderDesiredMode::Offline
+            },
+            "mission control toggle",
+        ),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
         PaneHitAction::CodexConfig(action) => run_codex_config_action(state, action),
@@ -2729,6 +2599,148 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SparkCreateInvoice(action) => run_create_invoice_action(state, action),
         PaneHitAction::SparkPayInvoice(action) => run_pay_invoice_action(state, action),
     }
+}
+
+pub(crate) fn apply_provider_mode_target(
+    state: &mut crate::app_state::RenderState,
+    wants_online: bool,
+    desired_mode: ProviderDesiredMode,
+    origin: &str,
+) -> bool {
+    crate::provider_admin::set_desired_mode(state, desired_mode);
+    let worker_id = state.sync_lifecycle_worker_id.clone();
+    if wants_online {
+        state.provider_runtime.inventory_session_started_at_ms = Some(
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |duration| {
+                    duration.as_millis().min(i64::MAX as u128) as i64
+                }),
+        );
+        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
+        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
+        let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::Refresh);
+        let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::WarmConfiguredModel);
+        if let Some(reason) = provider_go_online_block_reason(state) {
+            state.provider_runtime.last_result = Some(format!("{origin}: {reason}"));
+            state.provider_runtime.last_error_detail = Some(reason);
+            state.provider_runtime.last_authoritative_error_class =
+                Some(EarnFailureClass::Execution);
+            state.provider_runtime.mode = ProviderMode::Offline;
+            state.provider_runtime.degraded_reason_code = None;
+            state.provider_runtime.mode_changed_at = std::time::Instant::now();
+            return true;
+        }
+        state.sync_lifecycle.mark_connecting(worker_id.as_str());
+        if let Err(error) = state
+            .spacetime_presence
+            .register_online(state.nostr_identity.as_ref())
+        {
+            let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(error.clone()),
+            );
+            state.provider_runtime.last_result = Some(format!("{origin}: {error}"));
+            state.provider_runtime.last_error_detail = Some(error);
+            state.provider_runtime.mode = ProviderMode::Degraded;
+            state.provider_runtime.degraded_reason_code =
+                Some("SPACETIME_PRESENCE_BIND_FAILED".to_string());
+            state.provider_runtime.last_authoritative_error_class =
+                Some(EarnFailureClass::Execution);
+            state.provider_runtime.mode_changed_at = std::time::Instant::now();
+            state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+            return true;
+        }
+    } else {
+        let _ = state.sync_lifecycle.mark_disconnect(
+            worker_id.as_str(),
+            crate::sync_lifecycle::RuntimeSyncDisconnectReason::StreamClosed,
+            Some(origin.to_string()),
+        );
+        state.sync_lifecycle.mark_idle(worker_id.as_str());
+        let _ = state.spacetime_presence.register_offline();
+        if state.active_job.inflight_job_count() == 0 {
+            state.provider_runtime.inventory_session_started_at_ms = None;
+        }
+        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
+        let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::UnloadConfiguredModel);
+    }
+    state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
+
+    if wants_online {
+        queue_spark_command(state, SparkWalletCommand::Refresh);
+        let _ = state.sync_provider_nip90_lane_identity();
+        let _ = state.sync_provider_nip90_lane_relays();
+        if let Err(error) = crate::kernel_control::register_online_compute_inventory_with_kernel(state)
+        {
+            state.provider_runtime.last_result =
+                Some(format!("Kernel online inventory registration failed: {error}"));
+            state.provider_runtime.last_error_detail = Some(error);
+            state.provider_runtime.last_authoritative_error_class =
+                Some(EarnFailureClass::Reconciliation);
+        }
+    }
+    if let Err(error) = state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::SetOnline {
+        online: wants_online,
+    }) {
+        let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+        let _ = state.sync_lifecycle.mark_disconnect(
+            worker_id.as_str(),
+            reason,
+            Some(error.clone()),
+        );
+        state.provider_runtime.last_result = Some(format!("{origin}: {error}"));
+        state.provider_runtime.last_error_detail = Some(error);
+        state.provider_runtime.mode = ProviderMode::Degraded;
+        state.provider_runtime.degraded_reason_code = Some("NIP90_INGRESS_QUEUE_ERROR".to_string());
+        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Relay);
+        state.provider_runtime.mode_changed_at = std::time::Instant::now();
+    }
+    match state.queue_sa_command(SaLifecycleCommand::SetRunnerOnline {
+        online: wants_online,
+    }) {
+        Ok(command_seq) => {
+            state.provider_runtime.last_result =
+                Some(format!("Queued SetRunnerOnline command #{command_seq}"));
+            state.provider_runtime.last_authoritative_status = Some("pending".to_string());
+            state.provider_runtime.last_authoritative_event_id = None;
+            state.provider_runtime.last_authoritative_error_class = None;
+            if wants_online {
+                let refresh_after = state
+                    .sync_lifecycle
+                    .snapshot(worker_id.as_str())
+                    .and_then(|snapshot| snapshot.token_refresh_after_in_seconds);
+                state
+                    .sync_lifecycle
+                    .mark_live(worker_id.as_str(), refresh_after);
+            } else {
+                state.sync_lifecycle.mark_idle(worker_id.as_str());
+            }
+        }
+        Err(error) => {
+            let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
+            let _ = state.sync_lifecycle.mark_disconnect(
+                worker_id.as_str(),
+                reason,
+                Some(error.clone()),
+            );
+            state.provider_runtime.last_result = Some(format!("{origin}: {error}"));
+            state.provider_runtime.last_error_detail = Some(error);
+            state.provider_runtime.mode = ProviderMode::Degraded;
+            state.provider_runtime.degraded_reason_code = Some("SA_COMMAND_QUEUE_ERROR".to_string());
+            state.provider_runtime.mode_changed_at = std::time::Instant::now();
+            state.provider_runtime.last_authoritative_status =
+                Some(RuntimeCommandStatus::Retryable.label().to_string());
+            state.provider_runtime.last_authoritative_event_id = None;
+            state.provider_runtime.last_authoritative_error_class =
+                Some(EarnFailureClass::Execution);
+        }
+    }
+    state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+    true
 }
 
 fn provider_blocker_detail(

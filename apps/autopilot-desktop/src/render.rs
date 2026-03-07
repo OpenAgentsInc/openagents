@@ -198,6 +198,14 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
         let ollama_execution_worker = OllamaExecutionWorker::spawn();
+        let (provider_admin_runtime, provider_admin_listen_addr, provider_admin_last_error) =
+            match crate::provider_admin::spawn_runtime() {
+                Ok(runtime) => {
+                    let listen_addr = runtime.listen_addr().to_string();
+                    (Some(runtime), Some(listen_addr), None)
+                }
+                Err(error) => (None, None, Some(error)),
+            };
         let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
             Ok(engine) => engine,
             Err(error) => {
@@ -296,6 +304,11 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,
             provider_runtime: crate::app_state::ProviderRuntimeState::default(),
+            provider_admin_runtime,
+            provider_admin_listen_addr,
+            provider_admin_last_error,
+            provider_admin_last_sync_signature: None,
+            provider_admin_last_sync_at: None,
             earnings_scoreboard: crate::app_state::EarningsScoreboardState::default(),
             network_aggregate_counters: crate::app_state::NetworkAggregateCountersState::default(),
             relay_connections,

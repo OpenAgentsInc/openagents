@@ -5,7 +5,14 @@
 //! provider lifecycle derivation. App-specific UX, execution snapshots, and
 //! orchestration stay in app crates.
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+mod admin;
+
+pub use admin::*;
+
+use serde::{Deserialize, Serialize};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderBackendKind {
     Ollama,
     AppleFoundationModels,
@@ -20,7 +27,8 @@ impl ProviderBackendKind {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderMode {
     Offline,
     Connecting,
@@ -39,7 +47,8 @@ impl ProviderMode {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderIngressMode {
     Offline,
     Preview,
@@ -48,7 +57,8 @@ pub enum ProviderIngressMode {
     Degraded,
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderBlocker {
     IdentityMissing,
     WalletError,
@@ -92,7 +102,8 @@ impl ProviderBlocker {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderFailureClass {
     Relay,
     Execution,
@@ -111,7 +122,7 @@ impl ProviderFailureClass {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderBackendHealth {
     pub reachable: bool,
     pub ready: bool,
@@ -130,7 +141,7 @@ impl ProviderBackendHealth {
     }
 }
 
-#[derive(Clone, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAvailability {
     pub ollama: ProviderBackendHealth,
     pub apple_foundation_models: ProviderBackendHealth,
@@ -161,7 +172,8 @@ impl ProviderAvailability {
     }
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProviderComputeProduct {
     OllamaInference,
     OllamaEmbeddings,
@@ -284,7 +296,7 @@ impl ProviderComputeProduct {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderInventoryRow {
     pub target: ProviderComputeProduct,
     pub enabled: bool,
@@ -307,7 +319,7 @@ pub struct ProviderInventoryRow {
     pub forward_terms_label: Option<String>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderInventoryControls {
     pub ollama_inference_enabled: bool,
     pub ollama_embeddings_enabled: bool,
@@ -353,7 +365,7 @@ impl ProviderInventoryControls {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderAdvertisedProduct {
     pub product: ProviderComputeProduct,
     pub enabled: bool,
@@ -388,6 +400,7 @@ pub fn derive_provider_products(
         .collect()
 }
 
+#[derive(Clone, Debug)]
 pub struct ProviderLifecycleInput<'a> {
     pub current_mode: ProviderMode,
     pub ingress_mode: ProviderIngressMode,
