@@ -5,6 +5,11 @@ Date: 2026-03-07
 
 This note complements `docs/pylon/PYLON_PLAN.md`.
 
+Canonical contract note:
+
+- `docs/pylon/PYLON_SANDBOX_CONTRACT.md` is the ratified contract source of truth for the taxonomy, sandbox profile model, job-contract fields, receipt requirements, safety restrictions, and Compute-vs-Labor boundary.
+- This document remains useful as extension rationale and implementation-shaping context, but contract-level implementation work should defer to the dedicated contract doc.
+
 Current alignment:
 
 - current repo-wide compute-market launch scope under `#3116` remains `inference` and `embeddings`

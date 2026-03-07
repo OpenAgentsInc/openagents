@@ -206,6 +206,8 @@ This keeps the launch market honest. Pylon is publishing compute products backed
 
 The current repo-wide launch tranche under `#3116` remains `inference` and `embeddings`, but the Pylon plan should explicitly reserve the next compute-family extension for bounded `sandbox_execution`.
 
+The ratified contract surface for this family now lives in `docs/pylon/PYLON_SANDBOX_CONTRACT.md`. That document is the source of truth for the execution taxonomy, sandbox profile model, capability-envelope extensions, job-contract fields, receipt requirements, safety restrictions, and the hard Compute-vs-Labor boundary.
+
 `sandbox_execution` means:
 
 - bounded machine execution
@@ -324,6 +326,8 @@ Hard restrictions should remain explicit:
 - no hidden secrets injection
 - no arbitrary long-lived daemonization unless explicitly supported
 - no silent persistence outside declared workspace or artifact paths
+
+Implementation work for `sandbox_execution` should treat those rules as contract requirements rather than as optional planning notes.
 
 ## Dependencies On The `#3116` Program
 
