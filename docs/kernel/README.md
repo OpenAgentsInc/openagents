@@ -25,7 +25,7 @@ Supplementary coordination contracts that sit alongside the kernel docs:
 
 | Surface | Status | Notes |
 | --- | --- | --- |
-| Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop plus starter authority flows for compute products, lots, instruments, delivery proofs, and indices. Broader commodity instruments remain planned. |
+| Compute Market | `implemented`, `local prototype` | The MVP ships a real compute-provider earn loop plus starter authority flows for compute products, lots, instruments, delivery proofs, and indices. Launch positioning is Compute as the umbrella market with inference and embeddings as the first live compute product families; the retained implementation is still inference-led today, with embeddings remaining launch-target/productization work. Broader commodity instruments remain planned. |
 | Data Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for assets, grants, deliveries, and revocations. Broader discovery, pricing, and product UX remain planned. |
 | Labor Market | `implemented`, `local prototype`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter authority flows for work units, contracts, submissions, and verdicts. The desktop still carries broader local receipt/policy/snapshot modeling, and fuller claim/dispute productization remains planned. |
 | Liquidity Market | `implemented`, `planned` | `apps/nexus-control` and `openagents-kernel-core` now expose starter quote, route, envelope, settlement, and reserve-partition authority flows. Broader routing, FX, and solver-market productization remain planned. |
@@ -94,6 +94,7 @@ This is the resource market.
 
 It allocates the compute that agents and workloads need in order to run:
 
+* launch compute product families: inference and embeddings
 * spot compute
 * reserved or forward capacity
 * standardized compute products
@@ -104,9 +105,12 @@ It allocates the compute that agents and workloads need in order to run:
 This layer exists because compute is becoming a scarce industrial input.
 If machine labor is going to scale, the capacity that powers that labor must also become tradable, measurable, and settleable.
 
+At launch, the market is still the OpenAgents Compute Market. It is not framed as raw accelerator trading. Compute is the umbrella market category, inference and embeddings are the first standardized compute product families inside it, and accelerator or hardware characteristics belong in the capability envelope that refines supply rather than in the primary product identity.
+
 Current status:
 
 - `implemented`: compute-provider earn loop plus starter authority flows for products, lots, instruments, delivery proofs, and indices
+- `launch position`: inference and embeddings are the first live compute product families; the retained MVP code is still inference-led, with embeddings remaining launch-target and backend-dependent in the current tree
 - `local prototype`: richer kernel receipts, snapshots, and compute commodity framing
 - `planned`: full spot, forward, and hedging instruments
 
