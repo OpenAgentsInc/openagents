@@ -1,757 +1,24 @@
-# Autopilot Project Management — Step 0 Internal Dogfood Package
+# Autopilot Project Management — Step 0 Native Dogfood Package
 
-**Status:** Ready-to-use internal operating package  
-**Scope:** Step 0 only — GitHub-native internal dogfooding layer  
-**Goal:** Let the team start managing work immediately with minimal process overhead and without waiting for native Autopilot PM implementation.
+**Status:** Ready for implementation
+**Scope:** Step 0 only — native internal dogfood slice inside `apps/autopilot-desktop`
+**Goal:** Let one internal team manage a real cycle in a native PM surface without depending on an external tracker.
 
 ---
 
-## 1. Step 0 operating rules
+## 1. Step 0 definition
 
 ### What Step 0 is
 
-Step 0 is a lightweight internal operating system built on:
-
-- GitHub Issues
-- Labels
-- Milestones as cycles
-- Issue comments for async status
-- Pull requests linked back to work items
-
-It is intentionally simple. Its job is to make work visible, prioritized, and finishable while preserving alignment with the OpenAgents MVP.
-
-### What Step 0 is not
-
-- Not a full Linear/Jira replacement
-- Not a governance-heavy process
-- Not a long-term storage or protocol decision
-- Not a reason to slow down core MVP delivery
-
-### Required issue metadata for internal use
-
-Every active issue should have:
-
-- exactly **1** `type:*` label
-- exactly **1** `prio:*` label
-- exactly **1** `state:*` label
-- exactly **1** `team:*` label once triaged
-- **0-2** `area:*` labels
-- a clear title
-- a short problem or outcome statement
-- an assignee when work is committed or started
-
-Optional but recommended:
-
-- milestone for the current cycle
-- parent epic link
-- due date if externally constrained
-- linked PR or commit once implementation starts
-
-### Canonical workflow
-
-Use one shared workflow only:
-
-`Backlog -> Todo -> In Progress -> In Review -> Done -> Cancelled`
-
-Definitions:
-
-- **Backlog** — captured, not yet committed
-- **Todo** — accepted into a cycle, not started
-- **In Progress** — actively being worked by one clear owner
-- **In Review** — implementation complete, awaiting review/verification/merge
-- **Done** — accepted and complete
-- **Cancelled** — deliberately dropped or superseded
-
-### MVP-first prioritization scale
-
-- **Urgent** — directly blocks the MVP money-printing loop, correctness, or team execution right now
-- **High** — should land in the current or next cycle
-- **Medium** — valuable, but can wait behind MVP-critical work
-- **Low** — useful cleanup or enhancement
-- **None** — capture only; not currently prioritized
-
----
-
-## 2. GitHub label taxonomy
-
-### Label usage rules
-
-1. Keep the taxonomy small.
-2. Prefer one meaning per label.
-3. Avoid duplicate labels that encode the same thing.
-4. Do not invent team-specific labels unless the team is active.
-5. If a label stops helping decisions, remove it.
-
-### Label groups overview
-
-| Group | Purpose | When to use it | Example labels |
-| --- | --- | --- | --- |
-| `type:*` | Classifies the kind of work | Always; every issue gets exactly one | `type:bug`, `type:feature`, `type:research` |
-| `prio:*` | Signals urgency and ordering | Always; every issue gets exactly one | `prio:urgent`, `prio:high`, `prio:medium` |
-| `state:*` | Tracks workflow stage | Always; every issue gets exactly one | `state:backlog`, `state:todo`, `state:in-progress` |
-| `team:*` | Marks the owning team | After triage; every committed issue gets one | `team:desktop`, `team:runtime`, `team:protocol` |
-| `area:*` | Gives topical context | Optional; use 0-2 only | `area:wallet`, `area:nostr`, `area:sync` |
-| operational | Flags special handling | Only when it changes behavior | `blocked`, `needs-decision`, `needs-repro` |
-
-### `type:*` labels
-
-**Purpose**
-
-- Say what kind of work this is.
-- Make saved views and triage faster.
-
-**When to use**
-
-- Always.
-- Apply exactly one.
-
-**Starter set**
-
-- `type:bug` — incorrect behavior, regression, broken flow
-- `type:feature` — new user-facing capability
-- `type:improvement` — upgrade to an existing capability
-- `type:task` — implementation work that is not best framed as a feature or bug
-- `type:epic` — larger initiative that owns child issues
-- `type:research` — investigation, framing, analysis, or decision support
-- `type:agent-task` — work intended to be delegated to or executed by an agent
-
-### `prio:*` labels
-
-**Purpose**
-
-- Force explicit ordering decisions.
-- Keep the team aligned on what matters now.
-
-**When to use**
-
-- Always.
-- Apply exactly one.
-
-**Starter set**
-
-- `prio:urgent`
-- `prio:high`
-- `prio:medium`
-- `prio:low`
-- `prio:none`
-
-### `state:*` labels
-
-**Purpose**
-
-- Give the team one shared workflow language.
-- Make status visible without meetings.
-
-**When to use**
-
-- Always.
-- Apply exactly one.
-- When an issue is moved to `Done` or `Cancelled`, update the label and then close the issue.
-
-**Starter set**
-
-- `state:backlog`
-- `state:todo`
-- `state:in-progress`
-- `state:in-review`
-- `state:done`
-- `state:cancelled`
-
-### `team:*` labels
-
-**Purpose**
-
-- Make ownership obvious.
-- Support team-level views and cycle planning.
-
-**When to use**
-
-- Use once triage determines the owning team.
-- Apply exactly one on any issue that has entered `Todo`, `In Progress`, or `In Review`.
-
-**Example labels**
-
-- `team:desktop`
-- `team:runtime`
-- `team:protocol`
-- `team:wallet`
-- `team:design`
-
-Only create labels for teams that actively exist.
-
-### `area:*` labels
-
-**Purpose**
-
-- Add light topical context without turning labels into a taxonomy project.
-- Help find related work across teams.
-
-**When to use**
-
-- Optional.
-- Use 0-2 only.
-- Prefer stable product or system areas, not temporary initiatives.
-
-**Starter set**
-
-- `area:ui`
-- `area:sync`
-- `area:nostr`
-- `area:wallet`
-- `area:provider`
-- `area:auth`
-- `area:build`
-- `area:docs`
-
-### Operational labels
-
-**Purpose**
-
-- Mark issues that need special handling right now.
-
-**When to use**
-
-- Only when the label changes how the team responds.
-- Remove the label as soon as the special condition is gone.
-
-**Starter set**
-
-- `blocked` — cannot progress because of an external dependency or unresolved prerequisite
-- `needs-decision` — requires a product, architecture, or owner decision
-- `needs-repro` — bug exists but reproduction is not yet reliable
-
-**Important note**
-
-- Do **not** create a separate `agent-task` operational label; use `type:agent-task` only.
-
-### Recommended naming conventions for labels
-
-- Use lowercase only.
-- Use singular nouns where possible.
-- Use prefixes consistently: `type:*`, `prio:*`, `state:*`, `team:*`, `area:*`.
-- Avoid spaces except in rare plain operational labels.
-- Prefer stable names over clever names.
-
----
-
-## 3. Issue templates
-
-These templates are designed for low-friction team use. They are intentionally short. The goal is to create useful issues quickly, not write mini-specs.
-
-### 3.1 Bug template
-
-**Use when**
-
-- Something is broken, incorrect, misleading, or regressed.
-
-**Required fields**
-
-- problem summary
-- expected behavior
-- actual behavior
-- impact
-- labels: `type:bug`, one `prio:*`, one `state:*`, one `team:*` once triaged
-
-**Optional fields**
-
-- reproduction steps
-- logs/screenshots
-- suspected area
-- linked PR or issue
-
-**Template**
-
-```md
-## Summary
-<one sentence: what is broken?>
-
-## Expected behavior
-<what should happen?>
-
-## Actual behavior
-<what happens instead?>
-
-## Impact
-- Who or what is affected?
-- Does this block MVP-critical flow?
-
-## Reproduction
-1. 
-2. 
-3. 
-
-## Notes
-<logs, screenshots, guesses, linked issues/PRs>
-```
-
-### 3.2 Feature template
-
-**Use when**
-
-- A new user-facing or team-facing capability is needed.
-
-**Required fields**
-
-- problem or opportunity
-- desired outcome
-- scope of this issue
-- labels: `type:feature`, one `prio:*`, one `state:*`, one `team:*` once triaged
-
-**Optional fields**
-
-- acceptance notes
-- linked epic
-- dependencies
-- rollout notes
-
-**Template**
-
-```md
-## Problem / opportunity
-<what need are we addressing?>
-
-## Desired outcome
-<what should be true when this is done?>
-
-## Scope
-- In scope:
-- Out of scope:
-
-## Acceptance notes
-- 
-- 
-
-## Dependencies / links
-<epic, related issues, PRs, docs>
-```
-
-### 3.3 Research template
-
-**Use when**
-
-- The team needs investigation, comparison, framing, or a recommendation before implementation.
-
-**Required fields**
-
-- question to answer
-- why it matters now
-- expected output
-- labels: `type:research`, one `prio:*`, one `state:*`, one `team:*` once triaged
-
-**Optional fields**
-
-- decision deadline
-- references
-- linked epic or blocker
-
-**Template**
-
-```md
-## Question
-<what do we need to learn or decide?>
-
-## Why this matters now
-<why is this worth doing in this cycle?>
-
-## Expected output
-- Recommendation
-- Tradeoffs
-- Next-step proposal
-
-## Inputs / references
-- 
-- 
-
-## Done when
-<what artifact or decision closes this?>
-```
-
-### 3.4 Agent Task template
-
-**Use when**
-
-- The work is intended for an AI agent or needs to be structured so an agent can execute it with minimal ambiguity.
-
-**Required fields**
-
-- task objective
-- constraints
-- inputs/context
-- expected output
-- verification method
-- labels: `type:agent-task`, one `prio:*`, one `state:*`, one `team:*` once triaged
-
-**Optional fields**
-
-- repo/path scope
-- budget or timebox
-- linked human owner
-- follow-up tasks
-
-**Template**
-
-```md
-## Objective
-<what should the agent accomplish?>
-
-## Inputs / context
-- Repo/path scope:
-- Related issue/epic:
-- Relevant docs:
-
-## Constraints
-- Do not:
-- Must preserve:
-- Timebox / budget:
-
-## Expected output
-- 
-- 
-
-## Verification
-<how will a human or system verify completion?>
-
-## Human owner
-<who will review or unblock this?>
-```
-
----
-
-## 4. Epic template
-
-Use an epic only when the work clearly spans multiple deliverables or multiple cycles. If the work can be completed as one issue, do not create an epic.
-
-### Required fields
-
-- problem statement
-- desired outcome
-- scope
-- non-goals
-- milestones/checkpoints
-- child issue checklist
-- risks/dependencies
-- definition of done
-
-### Optional fields
-
-- owner
-- target cycle range
-- linked docs
-- status summary
-
-### Template
-
-```md
-## Problem statement
-<what problem is this initiative solving and why now?>
-
-## Desired outcome
-<what should be true when this epic is complete?>
-
-## Scope
-- In scope:
-- In scope:
-- Out of scope:
-
-## Non-goals
-- 
-- 
-
-## Milestones / checkpoints
-1. 
-2. 
-3. 
-
-## Child issues
-- [ ] Child issue title
-- [ ] Child issue title
-- [ ] Child issue title
-
-## Risks / dependencies
-- Dependency:
-- Risk:
-
-## Definition of done
-- 
-- 
-- 
-```
-
-### Epic usage rules
-
-- Give every child issue a backlink to the epic.
-- Do not put day-to-day implementation notes only in the epic; keep execution details in child issues.
-- Close the epic only when all required child issues are done or intentionally cancelled.
-
----
-
-## 5. Cycle ritual and lightweight operating runbook
-
-### 5.1 How work gets created
-
-1. Any team member may create a new issue.
-2. New work starts in `state:backlog` unless it is already agreed for the current cycle.
-3. The creator should choose the best `type:*` and a rough `prio:*`.
-4. During triage, the owning team, final priority, and next action are clarified.
-5. If the issue is larger than one deliverable, open an epic and then split child issues.
-
-### 5.2 How work gets prioritized
-
-Use these rules:
-
-- Prioritize work that protects or advances the core OpenAgents MVP loop first.
-- Prefer finishing active work over starting new work.
-- If two items compete, the item with clearer user impact or unblock value wins.
-- If work is interesting but not timely, give it `prio:none` and keep it in backlog.
-
-Practical triage order:
-
-1. Urgent bugs
-2. Active blockers
-3. Current cycle commitments
-4. Near-term MVP work
-5. Research and lower-priority backlog
-
-### 5.3 How issues move across states
-
-#### `state:backlog`
-
-- Default for newly captured work
-- Not yet committed
-- May be incomplete, but must have enough information to understand the request
-
-#### `state:todo`
-
-- The issue is accepted into the current cycle
-- A team owns it
-- It is ready to start without another planning meeting
-
-#### `state:in-progress`
-
-- One owner is actively working it
-- The issue should have a clear next step
-- If no progress occurs for multiple days, add a status comment or move it back
-
-#### `state:in-review`
-
-- Implementation or investigation is complete enough for review
-- PR, validation, or signoff is pending
-- Review comments should stay linked from the issue/PR pair
-
-#### `state:done`
-
-- Acceptance criteria are met
-- PR is merged or the agreed artifact exists
-- The issue is closed after the label is updated
-
-#### `state:cancelled`
-
-- The team explicitly decided not to do it now
-- The issue is closed after a short reason is left in a comment
-
-### 5.4 How blockers are handled
-
-When an issue is blocked:
-
-1. Add the `blocked` label.
-2. Leave a short comment with:
-   - what is blocked
-   - why it is blocked
-   - who or what is needed to unblock it
-   - the next check-in date if known
-3. If the blocker is a decision, also add `needs-decision`.
-4. If the blocker lasts beyond the current cycle, decide whether to:
-   - carry it over,
-   - move it back to backlog,
-   - or cancel it.
-
-**Blocked comment format**
-
-```md
-Blocked on: <dependency or decision>
-Need from: <owner/team>
-Next unblock check: <date or trigger>
-```
-
-### 5.5 Weekly planning and backlog grooming
-
-Run one short weekly session per active team.
-
-**Recommended duration:** 30-45 minutes
-
-**Agenda**
-
-1. Review urgent bugs.
-2. Review blocked issues.
-3. Review in-progress work that may need help.
-4. Pull the next highest-value issues from backlog into `Todo`.
-5. Assign the cycle milestone.
-6. Confirm each committed issue has:
-   - owner/team
-   - priority
-   - state
-   - enough detail to start
-
-### 5.6 Daily async update expectations
-
-Keep this lightweight.
-
-Post a short async update in the issue comment thread when:
-
-- the issue enters `In Progress`
-- the issue is blocked
-- the issue changes materially
-- the issue stays active across multiple days
-
-**Recommended update format**
-
-```md
-Yesterday: <what changed>
-Today: <next step>
-Blockers: <none / blocker>
-```
-
-Do not require a daily comment on dormant backlog items.
-
-### 5.7 End-of-cycle review
-
-At the end of each cycle:
-
-1. Review all `Done` issues.
-2. Review all unfinished `Todo`, `In Progress`, and `In Review` issues.
-3. Ask why unfinished work did not complete:
-   - unclear scope
-   - hidden dependency
-   - too large
-   - wrong priority
-   - resourcing gap
-4. Capture a short list of friction points in one retrospective note.
-5. Identify the smallest process fix for the next cycle.
-
-### 5.8 Carry-over rules
-
-Carry work over only when all of the following are true:
-
-- it is still valuable now
-- there is a clear owner
-- the next step is known
-- the work is small enough to finish in the next cycle, or is explicitly split first
-
-Otherwise:
-
-- move it back to `state:backlog`, or
-- close it as `state:cancelled` with a reason
-
-### 5.9 Definition of good Step 0 hygiene
-
-The workflow is healthy when:
-
-- active issues have owners
-- blocked issues are visibly marked
-- the backlog is not a dumping ground for half-written work
-- most in-progress items have visible next steps
-- cycle carry-over is the exception, not the default
-
----
-
-## 6. Recommended saved views and naming conventions
-
-### 6.1 Saved views
-
-Use a small set of high-value views first.
-
-| View | What it shows | Why it matters | Suggested filter logic |
-| --- | --- | --- | --- |
-| My Work | Open issues assigned to me | Personal daily queue | `is:open assignee:@me sort:updated-desc` |
-| Current Cycle | Open issues in the active milestone | Team commitment for the week/cycle | `is:open milestone:<current-cycle> sort:updated-desc` |
-| Blocked | Open issues that cannot move | Fastest way to find stuck work | `is:open label:blocked sort:updated-desc` |
-| Bugs | Open bug issues | Keeps broken behavior visible | `is:open label:"type:bug" sort:updated-desc` |
-| Recently Updated | Most recently touched open issues | Good default triage and review view | `is:open sort:updated-desc` |
-| Agent Tasks | Open work intended for agent execution | Separates agent-shaped work from human-owned work | `is:open label:"type:agent-task" sort:updated-desc` |
-
-### 6.2 Optional extra view if needed
-
-- **In Review** — `is:open label:"state:in-review" sort:updated-desc`
-
-Only add more views after the team is consistently using the starter set.
-
-### 6.3 Naming conventions
-
-#### Epics
-
-- Format: `[Epic] <outcome-oriented title>`
-- Example: `[Epic] Make provider online/offline state legible in desktop`
-
-Rule: epic titles should describe the outcome, not the implementation bucket.
-
-#### Issues
-
-- Format: `<verb> <object> <optional constraint or context>`
-- Good examples:
-  - `Show wallet sync health in the wallet pane`
-  - `Fix stale provider heartbeat after reconnect`
-  - `Research Nostr event shape for PM comments`
-
-Avoid vague titles like:
-
-- `Wallet stuff`
-- `PM improvements`
-- `Refactor issue model`
-
-#### Cycles
-
-- Format: `Cycle YYYY-Www`
-- Example: `Cycle 2026-W11`
-
-This is simple, sortable, and works well as a GitHub milestone name.
-
-#### Labels
-
-- Lowercase
-- Prefix-based for grouped labels
-- Stable terms only
-- Examples:
-  - `type:bug`
-  - `prio:high`
-  - `state:in-review`
-  - `team:desktop`
-  - `area:wallet`
-
-#### Team and project identifiers
-
-- Use short lowercase identifiers.
-- Prefer durable names over temporary code names.
-- Team examples:
-  - `desktop`
-  - `runtime`
-  - `protocol`
-  - `wallet`
-- Project examples:
-  - `autopilot`
-  - `provider-runtime`
-  - `spark-wallet`
-
----
-
-## 7. Immediate setup checklist
-
-Use this as the first adoption pass.
-
-1. Create the starter labels from Section 2.
-2. Create one current-cycle milestone using `Cycle YYYY-Www`.
-3. Create starter issue templates from Sections 3 and 4.
-4. Share this runbook with the pilot team.
-5. Move one real slice of work into the workflow.
-6. Use the workflow for one full cycle before changing the taxonomy.
-7. At cycle end, remove or simplify anything the team did not actually use.
-
----
-
-## 8. Final recommendation for Step 0
-
-Optimize for clarity and finish rate, not completeness.
-
-If the team can reliably answer these questions from GitHub alone, Step 0 is working:
+Step 0 is the smallest native PM subsystem that is still worth dogfooding:
+
+- one feature-gated `Project Ops` pane
+- one local authoritative store
+- one work-item model
+- one active internal pilot team
+- one real cycle of use
+
+Its job is not to solve all project management. Its job is to prove that the native surface can answer the daily questions that matter:
 
 - What are we doing now?
 - What is blocked?
@@ -759,4 +26,474 @@ If the team can reliably answer these questions from GitHub alone, Step 0 is wor
 - What should happen next?
 - What finished this cycle?
 
-If that is true, the dogfood layer is good enough to support internal adoption and inform the later native implementation.
+### What Step 0 is not
+
+- not a full collaboration suite
+- not a network sync project
+- not an agent runner
+- not a payout system
+- not a permissions/governance project
+- not an excuse to postpone MVP-critical work
+
+---
+
+## 2. Required domain shape
+
+### 2.1 Work-item fields
+
+| Field | Required | Notes |
+| --- | --- | --- |
+| `work_item_id` | yes | Stable internal ID |
+| `title` | yes | One-line outcome-oriented title |
+| `description` | yes | Short problem statement or expected outcome |
+| `status` | yes | One of the canonical workflow states |
+| `priority` | yes | `urgent`, `high`, `medium`, `low`, `none` |
+| `assignee` | no | Single owner for Step 0 |
+| `team_key` | yes | String key only in Step 0 |
+| `cycle_id` | no | Optional current-cycle assignment |
+| `parent_id` | no | Optional parent work item |
+| `area_tags` | no | Zero to two tags |
+| `blocked_reason` | no | Empty unless blocked |
+| `due_at_unix_ms` | no | Optional external commitment |
+| `created_at_unix_ms` | yes | Derived at creation |
+| `updated_at_unix_ms` | yes | Derived on change |
+| `archived_at_unix_ms` | no | Separate from done/cancelled |
+
+Keep Step 0 fields intentionally narrow. If a field does not change prioritization, execution, or visibility in the pilot, it does not belong in this slice.
+
+### 2.2 Canonical workflow
+
+Use one shared workflow only:
+
+`backlog -> todo -> in_progress -> in_review -> done -> cancelled`
+
+Definitions:
+
+- `backlog`
+  - captured, not yet committed
+- `todo`
+  - accepted into the active cycle and ready to start
+- `in_progress`
+  - actively being worked by one owner
+- `in_review`
+  - work complete enough for verification/review
+- `done`
+  - accepted and complete
+- `cancelled`
+  - intentionally dropped or superseded
+
+Blocked is not a separate workflow state in Step 0. It is a flag plus a reason on top of the primary status.
+
+### 2.3 Priority scale
+
+- `urgent`
+  - directly blocks the MVP earn loop, correctness, or immediate team execution
+- `high`
+  - should land in the current or next cycle
+- `medium`
+  - valuable, but not ahead of MVP-critical work
+- `low`
+  - useful cleanup or enhancement
+- `none`
+  - captured only; not actively prioritized
+
+### 2.4 Required commands
+
+Step 0 commands:
+
+- `CreateWorkItem`
+- `EditWorkItemFields`
+- `ChangeWorkItemStatus`
+- `AssignWorkItem`
+- `ClearAssignee`
+- `SetWorkItemCycle`
+- `ClearWorkItemCycle`
+- `SetBlockedReason`
+- `ClearBlockedReason`
+- `SetParentWorkItem`
+- `ClearParentWorkItem`
+- `ArchiveWorkItem`
+- `UnarchiveWorkItem`
+
+Every mutating command should include:
+
+- `command_id`
+- `issued_at_unix_ms`
+- actor identity or actor label
+
+### 2.5 Required events
+
+Step 0 authoritative events:
+
+- `WorkItemCreated`
+- `WorkItemFieldsEdited`
+- `WorkItemStatusChanged`
+- `WorkItemAssigned`
+- `WorkItemAssigneeCleared`
+- `WorkItemCycleSet`
+- `WorkItemCycleCleared`
+- `WorkItemBlocked`
+- `WorkItemUnblocked`
+- `WorkItemParentSet`
+- `WorkItemParentCleared`
+- `WorkItemArchived`
+- `WorkItemUnarchived`
+
+If one accepted user action causes more than one logical state change, emit multiple explicit events rather than hiding changes inside a generic blob.
+
+---
+
+## 3. UI package definition
+
+### 3.1 Pane layout
+
+The Step 0 pane should be list-first and fast to scan:
+
+- top toolbar
+  - view selector
+  - search input
+  - filter chips
+  - quick-create button
+- left column
+  - work-item list for the selected view
+- right column
+  - detail/editor panel for the selected item
+- optional lower section in the detail panel
+  - activity timeline
+
+### 3.2 Pane descriptions
+
+#### `Project Ops` shell
+
+Purpose:
+
+- contain the full Step 0 workflow in one place
+- make the currently selected view and item obvious
+
+Must show:
+
+- pane title
+- active saved view
+- active cycle indicator if one exists
+- quick-create entry point
+
+Must support these states:
+
+- loading initial snapshot
+- ready with selected view
+- empty with no work items
+- recoverable store/projection error
+
+#### Top toolbar
+
+Purpose:
+
+- let the user change context without leaving the pane
+
+Must show:
+
+- saved-view selector
+- text search input
+- active filter chips
+- quick-create button
+
+Must support:
+
+- clearing search
+- switching views without losing unsaved detail edits silently
+- showing active filter count when filters are applied
+
+#### Work-item list pane
+
+Purpose:
+
+- provide the fastest scanning surface for active work
+
+Must show per row:
+
+- title
+- status
+- priority
+- assignee if present
+- blocked indicator
+- cycle if present
+- updated time
+
+Must support:
+
+- row selection
+- stable sort order
+- keyboard navigation
+- empty state per selected view
+
+List empty-state copy should be specific to the active view:
+
+- `My Work`
+  - no assigned work right now
+- `Blocked`
+  - no blocked work
+- `Backlog`
+  - no captured backlog items
+
+#### Work-item detail/editor pane
+
+Purpose:
+
+- provide the authoritative editing surface for one selected work item
+
+Must show:
+
+- title
+- description
+- status
+- priority
+- assignee
+- cycle
+- parent link if present
+- blocked reason if present
+- created and updated timestamps
+
+Must support:
+
+- inline field editing
+- explicit save/apply behavior or autosave with visible success/failure
+- rejecting invalid state transitions clearly
+- preserving unsaved text during transient projection refresh
+
+If no row is selected, this pane should show a useful placeholder instead of blank chrome.
+
+#### Activity timeline region
+
+Purpose:
+
+- explain what changed and when without relying on memory
+
+Must show:
+
+- create event
+- field edits
+- status changes
+- assignee changes
+- cycle changes
+- blocked/unblocked events
+- archive/unarchive events
+
+Must support:
+
+- newest-first order
+- human-readable labels
+- actor label if available
+- timestamp per event
+
+This region may collapse by default on smaller layouts, but it must remain reachable from the selected item.
+
+### 3.3 Required default views
+
+Ship these built-in views:
+
+- `My Work`
+  - assigned to me, not done/cancelled
+- `Current Cycle`
+  - items in the active cycle
+- `Blocked`
+  - items with a blocked reason
+- `Backlog`
+  - uncommitted items
+- `Recently Updated`
+  - most recently changed active items
+
+Step 0 should also support one custom saved view per pilot user.
+
+### 3.4 Required create/edit flows
+
+- Quick create
+  - title
+  - description
+  - priority
+  - status defaults to `backlog`
+- Detail editor
+  - edit title/description
+  - change status
+  - change priority
+  - assign/clear assignee
+  - set/clear cycle
+  - set/clear blocked reason
+  - set/clear parent
+
+### 3.5 Required pane states
+
+Every Step 0 pane region should have defined behavior for:
+
+- loading
+  - waiting on initial store open or projection rebuild
+- empty
+  - no items match the current view/filter
+- error
+  - store open failure, projection failure, or rejected save
+- stale selection
+  - selected item was archived or filtered out
+
+Expected behavior:
+
+- loading should block destructive actions until the current snapshot is ready
+- empty should present the next useful action
+- error should explain whether retry or rebuild is possible
+- stale selection should move focus predictably to the next valid row or to the empty placeholder
+
+### 3.6 UX rules
+
+- All state changes should be visible in the activity timeline.
+- The pane should never silently drop edits.
+- Invalid transitions should explain why they were rejected.
+- Empty states should make the next action obvious.
+- Step 0 should optimize for keyboard flow before animation or visual flourish.
+
+---
+
+## 4. Persistence and replay contract
+
+### 4.1 Authoritative storage
+
+Use a local durable store with:
+
+- append-only PM event history
+- projected current-state tables
+- projection metadata
+
+The write path is:
+
+1. UI issues command.
+2. Service validates command.
+3. Service appends one or more events.
+4. Projections update in deterministic sequence order.
+5. UI re-renders from projections.
+
+### 4.2 Replay behavior
+
+On app launch:
+
+1. Open the PM store.
+2. Detect projection version.
+3. Rebuild stale projections from `pm_events` if needed.
+4. Publish a ready snapshot to the pane.
+
+Rebuild rules:
+
+- same event stream must produce the same projected state
+- duplicate command IDs must not duplicate state changes
+- partial projection failure must be recoverable by replay
+
+### 4.3 Projection requirements
+
+Step 0 requires these projections:
+
+- work-item list projection
+- work-item detail projection
+- activity timeline projection
+- saved-view projection
+- cycle summary projection
+
+### 4.4 Migration rules
+
+- Never rewrite old PM events in place.
+- Projection schema may change across migrations.
+- Event payloads may version forward, but replay of older versions must remain explicit and test-covered.
+
+---
+
+## 5. Pilot operating rules
+
+### 5.1 Pilot scope
+
+- one internal team only
+- one active cycle
+- no broad rollout until exit criteria are met
+
+### 5.2 Daily operating expectations
+
+The pilot team should use the native pane as the primary PM surface for the selected work slice.
+
+Required hygiene:
+
+- every active work item has a clear owner or is explicitly unassigned
+- every blocked item has a blocked reason
+- every `in_progress` item has a visible next step in its description
+- carry-over should be rare and justified
+
+### 5.3 Work triage rules
+
+Prioritize in this order:
+
+1. urgent bugs
+2. blocked items that unblock other work
+3. committed cycle items
+4. near-term MVP work
+5. backlog and research
+
+### 5.4 End-of-cycle review questions
+
+At the end of the pilot cycle, answer:
+
+1. Which fields were used every day?
+2. Which fields were ignored?
+3. Which status transitions were confusing?
+4. Which missing features actually slowed the team down?
+5. Did restart/replay behavior ever undermine trust?
+
+Only proven answers should shape Phase 1 and Phase 2.
+
+---
+
+## 6. Test matrix
+
+| Layer | What must be tested |
+| --- | --- |
+| reducer | valid transitions, invalid transitions, idempotency, blocked semantics |
+| persistence | event append, projection catch-up, rebuild from zero, migration behavior |
+| pane state | create/edit flows, selection behavior, dirty-state handling |
+| search/filter | built-in views, text search, blocked filter, cycle filter |
+| recovery | restart with unapplied events, duplicate command replay, corrupted projection rebuild |
+
+Minimum regression set:
+
+- creating a work item yields a visible list row and detail view
+- status changes appear in both current state and activity timeline
+- blocked items surface in the blocked view
+- replay from a clean store reproduces the same visible state
+- archive/unarchive does not lose event history
+
+---
+
+## 7. Implementation checklist
+
+1. Add `project_ops` feature gate and pane entry point.
+2. Create `project_ops` module structure in `apps/autopilot-desktop`.
+3. Define Step 0 entity, command, and event types.
+4. Add local store migrations and projection metadata.
+5. Implement reducer/service layer.
+6. Implement quick-create flow.
+7. Implement list and detail projections.
+8. Implement built-in saved views.
+9. Implement activity timeline projection.
+10. Add replay/rebuild regression tests.
+11. Enable for pilot users only.
+12. Run one real cycle and capture friction.
+
+---
+
+## 8. Exit criteria and go/no-go
+
+Step 0 is successful if:
+
+- one team completes one real cycle in the native pane
+- the team can identify active, blocked, and completed work without side-channel tracking
+- state survives restart and replay without ambiguity
+- the missing features list is short and concrete
+
+Do not move to broad Phase 2 build-out if:
+
+- replay behavior is still untrustworthy
+- the pane is materially slower than the team's current habit loop
+- the pilot reveals that the schema is still too speculative
+
+The correct output of Step 0 is not "more features". The correct output is a trusted thin slice plus a short list of earned follow-ups.
