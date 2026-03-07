@@ -2537,6 +2537,13 @@ pub(super) fn run_pane_hit_action(
             );
             let worker_id = state.sync_lifecycle_worker_id.clone();
             if wants_online {
+                state.provider_runtime.inventory_session_started_at_ms = Some(
+                    std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map_or(0, |duration| {
+                            duration.as_millis().min(i64::MAX as u128) as i64
+                        }),
+                );
                 let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::Refresh);
                 let _ = state
                     .queue_ollama_execution_command(OllamaExecutionCommand::WarmConfiguredModel);
@@ -2582,6 +2589,9 @@ pub(super) fn run_pane_hit_action(
                 );
                 state.sync_lifecycle.mark_idle(worker_id.as_str());
                 let _ = state.spacetime_presence.register_offline();
+                if state.active_job.inflight_job_count() == 0 {
+                    state.provider_runtime.inventory_session_started_at_ms = None;
+                }
                 let _ = state
                     .queue_ollama_execution_command(OllamaExecutionCommand::UnloadConfiguredModel);
             }
@@ -2591,6 +2601,15 @@ pub(super) fn run_pane_hit_action(
                 queue_spark_command(state, SparkWalletCommand::Refresh);
                 let _ = state.sync_provider_nip90_lane_identity();
                 let _ = state.sync_provider_nip90_lane_relays();
+                if let Err(error) =
+                    crate::kernel_control::register_online_compute_inventory_with_kernel(state)
+                {
+                    state.provider_runtime.last_result =
+                        Some(format!("Kernel online inventory registration failed: {error}"));
+                    state.provider_runtime.last_error_detail = Some(error);
+                    state.provider_runtime.last_authoritative_error_class =
+                        Some(EarnFailureClass::Reconciliation);
+                }
             }
             if let Err(error) =
                 state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::SetOnline {
