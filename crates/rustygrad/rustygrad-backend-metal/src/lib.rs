@@ -1,13 +1,16 @@
-//! Metal backend discovery, allocation, and submission surfaces for Rustygrad.
+//! Metal backend discovery, allocation, submission, and minimal execution
+//! surfaces for Rustygrad.
 
 #![allow(clippy::result_large_err)]
 
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
-use rustygrad_core::{DType, DeviceKind, TensorSpec};
+use rustygrad_compiler::compile_graph;
+use rustygrad_core::{DType, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
+use rustygrad_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use rustygrad_runtime::{
-    Allocator, BackendName, BufferHandle, DeviceDescriptor, DeviceDiscovery, HealthStatus,
-    RuntimeError, RuntimeHealth,
+    Allocator, BackendName, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
+    ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -17,6 +20,10 @@ pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submissio
 const MODERN_FAMILY_FLAG: &str = "family_modern";
 #[cfg(target_os = "macos")]
 const LEGACY_FAMILY_FLAG: &str = "family_legacy";
+
+/// Exact plan surface currently supported for the first accelerated
+/// `rustygrad.embeddings` milestone.
+pub const EMBEDDINGS_SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "add"];
 
 /// Metal buffer storage mode visible to Rustygrad.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -69,6 +76,7 @@ pub struct MetalSubmissionReport {
 }
 
 /// Metal-backed tensor buffer.
+#[derive(Clone)]
 pub struct MetalBuffer {
     spec: TensorSpec,
     byte_len: usize,
@@ -319,6 +327,36 @@ impl MetalBackend {
         platform::discovery_report()
     }
 
+    /// Creates a host-visible `f32` input buffer on the selected Metal device.
+    pub fn input_buffer(
+        &mut self,
+        shape: Shape,
+        values: impl Into<Vec<f32>>,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        let mut buffer = self.allocate(&TensorSpec::new(shape, DType::F32, device))?;
+        buffer.write_f32(values.into().as_slice())?;
+        Ok(buffer)
+    }
+
+    /// Compiles and executes a graph on the supported Metal embeddings surface.
+    pub fn compile_and_execute(
+        &mut self,
+        graph: &Graph,
+        inputs: &BTreeMap<TensorId, MetalBuffer>,
+    ) -> Result<ExecutionResult<MetalBuffer>, RuntimeError> {
+        let plan =
+            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        self.execute(&plan, inputs)
+    }
+
     /// Begins an explicit command submission on the selected Metal device.
     pub fn begin_submission(
         &self,
@@ -372,6 +410,25 @@ impl Allocator for MetalBackend {
     }
 }
 
+impl ExecutionBackend for MetalBackend {
+    type Buffer = MetalBuffer;
+
+    fn execute(
+        &mut self,
+        plan: &ExecutionPlan,
+        inputs: &BTreeMap<TensorId, Self::Buffer>,
+    ) -> Result<ExecutionResult<Self::Buffer>, RuntimeError> {
+        validate_supported_plan(plan)?;
+        match &mut self.state {
+            MetalBackendState::Available(backend) => backend.execute(plan, inputs),
+            MetalBackendState::Unavailable(health) => Err(RuntimeError::Backend(format!(
+                "metal backend unavailable: {}",
+                health.message
+            ))),
+        }
+    }
+}
+
 impl AvailableMetalBackend {
     fn allocate(&mut self, spec: &TensorSpec) -> Result<MetalBuffer, RuntimeError> {
         if spec.device().kind() != DeviceKind::Metal {
@@ -404,10 +461,218 @@ impl AvailableMetalBackend {
             platform: self.platform.allocate_buffer(byte_len)?,
         })
     }
+
+    fn buffer_from_tensor_data(
+        &mut self,
+        spec: &TensorSpec,
+        data: &TensorData,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let mut buffer = self.allocate(spec)?;
+        match data {
+            TensorData::F32(values) => buffer.write_f32(values.as_slice())?,
+        }
+        Ok(buffer)
+    }
+
+    fn execute(
+        &mut self,
+        plan: &ExecutionPlan,
+        inputs: &BTreeMap<TensorId, MetalBuffer>,
+    ) -> Result<ExecutionResult<MetalBuffer>, RuntimeError> {
+        let mut submission = MetalSubmission {
+            encoded_operations: 0,
+            synchronized_buffers: 0,
+            platform: self
+                .platform
+                .begin_submission(String::from("rustygrad.execute"))?,
+        };
+        let mut values = BTreeMap::new();
+
+        for step in &plan.steps {
+            match &step.op {
+                ExecutionOp::Input { .. } => {
+                    let input = inputs
+                        .get(&step.output)
+                        .ok_or(RuntimeError::MissingInput(step.output))?;
+                    if input.spec() != &step.spec {
+                        return Err(RuntimeError::InvalidBuffer {
+                            tensor: step.output,
+                            expected: step.spec.clone(),
+                            actual: input.spec().clone(),
+                        });
+                    }
+                    values.insert(step.output, input.clone());
+                }
+                ExecutionOp::Constant { data } => {
+                    values.insert(step.output, self.buffer_from_tensor_data(&step.spec, data)?);
+                }
+                ExecutionOp::Add => {
+                    let (left, right) = binary_inputs(step, &values)?;
+                    let output = self.allocate(&step.spec)?;
+                    self.platform.encode_add(
+                        &mut submission.platform,
+                        left,
+                        right,
+                        &output,
+                        step.spec.element_count(),
+                    )?;
+                    submission.encoded_operations += 1;
+                    values.insert(step.output, output);
+                }
+                ExecutionOp::Matmul => {
+                    let (left, right) = binary_inputs(step, &values)?;
+                    let output = self.allocate(&step.spec)?;
+                    self.platform
+                        .encode_matmul(&mut submission.platform, left, right, &output)?;
+                    submission.encoded_operations += 1;
+                    values.insert(step.output, output);
+                }
+                _ => {
+                    return Err(RuntimeError::UnsupportedStep(step.op.label().to_string()));
+                }
+            }
+        }
+
+        for output_id in &plan.outputs {
+            let Some(buffer) = values.get(output_id) else {
+                return Err(RuntimeError::MissingInput(*output_id));
+            };
+            if self
+                .platform
+                .synchronize_output(&mut submission.platform, buffer)?
+            {
+                submission.synchronized_buffers += 1;
+            }
+        }
+
+        let _report = submission.commit(MetalCommandWait::Completed)?;
+        let mut outputs = BTreeMap::new();
+        for output_id in &plan.outputs {
+            let Some(buffer) = values.remove(output_id) else {
+                return Err(RuntimeError::MissingInput(*output_id));
+            };
+            outputs.insert(*output_id, buffer);
+        }
+        Ok(ExecutionResult {
+            outputs,
+            metrics: ExecutionMetrics {
+                steps_executed: plan.steps.len(),
+            },
+        })
+    }
 }
 
 fn size_of_dtype(dtype: DType) -> usize {
     dtype.element_size_bytes()
+}
+
+fn validate_supported_plan(plan: &ExecutionPlan) -> Result<(), RuntimeError> {
+    for step in &plan.steps {
+        validate_supported_step(step)?;
+    }
+    Ok(())
+}
+
+fn validate_supported_step(step: &ExecutionStep) -> Result<(), RuntimeError> {
+    ensure_supported_spec(&step.spec)?;
+    match &step.op {
+        ExecutionOp::Input { .. } => {
+            if !step.inputs.is_empty() {
+                return Err(RuntimeError::Backend(format!(
+                    "metal input step {} unexpectedly has inputs",
+                    step.output
+                )));
+            }
+        }
+        ExecutionOp::Constant { data } => {
+            if data.as_f32_slice().len() != step.spec.storage_size() {
+                return Err(RuntimeError::Backend(format!(
+                    "metal constant {} payload length mismatch",
+                    step.output
+                )));
+            }
+        }
+        ExecutionOp::Add => {
+            if step.inputs.len() != 2 {
+                return Err(RuntimeError::Backend(format!(
+                    "metal add step {} requires two inputs",
+                    step.output
+                )));
+            }
+        }
+        ExecutionOp::Matmul => {
+            if step.inputs.len() != 2 {
+                return Err(RuntimeError::Backend(format!(
+                    "metal matmul step {} requires two inputs",
+                    step.output
+                )));
+            }
+            let dims = step.spec.shape().dims();
+            if dims.len() != 2 {
+                return Err(RuntimeError::Backend(format!(
+                    "metal matmul step {} requires a rank-2 output, actual rank {}",
+                    step.output,
+                    dims.len()
+                )));
+            }
+        }
+        _ => {
+            return Err(RuntimeError::UnsupportedStep(step.op.label().to_string()));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_supported_spec(spec: &TensorSpec) -> Result<(), RuntimeError> {
+    if spec.dtype() != DType::F32 {
+        return Err(RuntimeError::Backend(format!(
+            "metal embeddings surface only supports F32 tensors, actual {:?}",
+            spec.dtype()
+        )));
+    }
+    if spec.device().kind() != DeviceKind::Metal {
+        return Err(RuntimeError::Backend(format!(
+            "metal embeddings surface requires Metal tensor specs, actual device kind {}",
+            spec.device().kind()
+        )));
+    }
+    if !spec.layout().is_contiguous() || spec.layout().offset() != 0 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal embeddings surface requires contiguous zero-offset tensors",
+        )));
+    }
+    Ok(())
+}
+
+fn binary_inputs<'a>(
+    step: &ExecutionStep,
+    values: &'a BTreeMap<TensorId, MetalBuffer>,
+) -> Result<(&'a MetalBuffer, &'a MetalBuffer), RuntimeError> {
+    let Some(left_id) = step.inputs.first().copied() else {
+        return Err(RuntimeError::Backend(format!(
+            "missing left input for step {}",
+            step.output
+        )));
+    };
+    let Some(right_id) = step.inputs.get(1).copied() else {
+        return Err(RuntimeError::Backend(format!(
+            "missing right input for step {}",
+            step.output
+        )));
+    };
+    let left = values
+        .get(&left_id)
+        .ok_or(RuntimeError::MissingInput(left_id))?;
+    let right = values
+        .get(&right_id)
+        .ok_or(RuntimeError::MissingInput(right_id))?;
+    if left.spec() != right.spec() && !matches!(step.op, ExecutionOp::Matmul) {
+        return Err(RuntimeError::Backend(format!(
+            "metal {} requires matching input specs",
+            step.op.label()
+        )));
+    }
+    Ok((left, right))
 }
 
 #[cfg(target_os = "macos")]
@@ -415,23 +680,30 @@ mod platform {
     use std::ptr;
 
     use metal::{
-        Buffer, CommandBuffer, CommandQueue, Device as MetalDevice, DeviceRef as MetalDeviceRef,
-        MTLCommandBufferStatus, MTLDeviceLocation, MTLGPUFamily, MTLResourceOptions, NSRange,
+        Buffer, CommandBuffer, CommandQueue, CompileOptions, ComputePipelineState,
+        Device as MetalDevice, DeviceRef as MetalDeviceRef, MTLCommandBufferStatus,
+        MTLDeviceLocation, MTLGPUFamily, MTLResourceOptions, MTLSize, NSRange,
     };
     use rustygrad_core::{DType, Device, DeviceKind, QuantizationMode};
     use rustygrad_runtime::{
-        DeviceDescriptor, HealthStatus, QuantizationExecution, QuantizationSupport, RuntimeError,
-        RuntimeHealth,
+        BufferHandle, DeviceDescriptor, HealthStatus, QuantizationExecution, QuantizationSupport,
+        RuntimeError, RuntimeHealth,
     };
 
     use super::{
-        DeviceSupportTier, FamilySupport, LEGACY_FAMILY_FLAG, MODERN_FAMILY_FLAG,
+        DeviceSupportTier, FamilySupport, LEGACY_FAMILY_FLAG, MODERN_FAMILY_FLAG, MetalBuffer,
         MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalStorageMode,
         classify_support,
     };
 
+    #[derive(Clone)]
     pub(super) struct PlatformBuffer {
         raw: Buffer,
+    }
+
+    struct EmbeddingsPipelines {
+        add: ComputePipelineState,
+        matmul: ComputePipelineState,
     }
 
     impl PlatformBuffer {
@@ -514,6 +786,81 @@ mod platform {
             Ok(true)
         }
 
+        pub(super) fn encode_add(
+            &mut self,
+            pipeline: &ComputePipelineState,
+            left: &PlatformBuffer,
+            right: &PlatformBuffer,
+            output: &PlatformBuffer,
+            element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            let encoder = self.command_buffer.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(pipeline);
+            encoder.set_buffer(0, Some(&left.raw), 0);
+            encoder.set_buffer(1, Some(&right.raw), 0);
+            encoder.set_buffer(2, Some(&output.raw), 0);
+
+            let element_count = u32::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from("metal add element count overflow"))
+            })?;
+            encoder.set_bytes(3, 4, (&element_count as *const u32).cast());
+
+            let threadgroup_size = compute_threadgroup_size(
+                pipeline,
+                usize::try_from(element_count).map_err(|_| {
+                    RuntimeError::Backend(String::from(
+                        "metal add element count conversion overflow",
+                    ))
+                })?,
+            )?;
+            encoder.dispatch_threads(
+                MTLSize::new(u64::from(element_count), 1, 1),
+                threadgroup_size,
+            );
+            encoder.end_encoding();
+            Ok(())
+        }
+
+        pub(super) fn encode_matmul(
+            &mut self,
+            pipeline: &ComputePipelineState,
+            left: &PlatformBuffer,
+            right: &PlatformBuffer,
+            output: &PlatformBuffer,
+            m: usize,
+            k: usize,
+            n: usize,
+        ) -> Result<(), RuntimeError> {
+            let encoder = self.command_buffer.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(pipeline);
+            encoder.set_buffer(0, Some(&left.raw), 0);
+            encoder.set_buffer(1, Some(&right.raw), 0);
+            encoder.set_buffer(2, Some(&output.raw), 0);
+
+            let m = u32::try_from(m)
+                .map_err(|_| RuntimeError::Backend(String::from("metal matmul m overflow")))?;
+            let k = u32::try_from(k)
+                .map_err(|_| RuntimeError::Backend(String::from("metal matmul k overflow")))?;
+            let n = u32::try_from(n)
+                .map_err(|_| RuntimeError::Backend(String::from("metal matmul n overflow")))?;
+            encoder.set_bytes(3, 4, (&m as *const u32).cast());
+            encoder.set_bytes(4, 4, (&k as *const u32).cast());
+            encoder.set_bytes(5, 4, (&n as *const u32).cast());
+
+            let grid_width = u64::from(m)
+                .checked_mul(u64::from(n))
+                .ok_or_else(|| RuntimeError::Backend(String::from("metal matmul grid overflow")))?;
+            let threadgroup_size = compute_threadgroup_size(
+                pipeline,
+                usize::try_from(grid_width).map_err(|_| {
+                    RuntimeError::Backend(String::from("metal matmul grid conversion overflow"))
+                })?,
+            )?;
+            encoder.dispatch_threads(MTLSize::new(grid_width, 1, 1), threadgroup_size);
+            encoder.end_encoding();
+            Ok(())
+        }
+
         pub(super) fn commit(
             self,
             wait: MetalCommandWait,
@@ -557,6 +904,7 @@ mod platform {
         device: MetalDevice,
         command_queue: CommandQueue,
         storage_mode: MetalStorageMode,
+        pipelines: Option<EmbeddingsPipelines>,
     }
 
     impl ConfiguredBackend {
@@ -588,6 +936,70 @@ mod platform {
                 command_buffer.set_label(&label);
             }
             Ok(PlatformSubmission { command_buffer })
+        }
+
+        fn pipelines(&mut self) -> Result<&EmbeddingsPipelines, RuntimeError> {
+            if self.pipelines.is_none() {
+                self.pipelines = Some(compile_embeddings_pipelines(&self.device)?);
+            }
+            let Some(pipelines) = self.pipelines.as_ref() else {
+                return Err(RuntimeError::Backend(String::from(
+                    "metal embeddings pipelines were not initialized",
+                )));
+            };
+            Ok(pipelines)
+        }
+
+        pub(super) fn encode_add(
+            &mut self,
+            submission: &mut PlatformSubmission,
+            left: &MetalBuffer,
+            right: &MetalBuffer,
+            output: &MetalBuffer,
+            element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            let pipeline = &self.pipelines()?.add;
+            submission.encode_add(
+                pipeline,
+                &left.platform,
+                &right.platform,
+                &output.platform,
+                element_count,
+            )
+        }
+
+        pub(super) fn encode_matmul(
+            &mut self,
+            submission: &mut PlatformSubmission,
+            left: &MetalBuffer,
+            right: &MetalBuffer,
+            output: &MetalBuffer,
+        ) -> Result<(), RuntimeError> {
+            let left_dims = left.spec().shape().dims();
+            let right_dims = right.spec().shape().dims();
+            if left_dims.len() != 2 || right_dims.len() != 2 || left_dims[1] != right_dims[0] {
+                return Err(RuntimeError::Backend(String::from(
+                    "metal matmul requires rank-2 tensors with matching inner dimensions",
+                )));
+            }
+            let pipeline = &self.pipelines()?.matmul;
+            submission.encode_matmul(
+                pipeline,
+                &left.platform,
+                &right.platform,
+                &output.platform,
+                left_dims[0],
+                left_dims[1],
+                right_dims[1],
+            )
+        }
+
+        pub(super) fn synchronize_output(
+            &self,
+            submission: &mut PlatformSubmission,
+            output: &MetalBuffer,
+        ) -> Result<bool, RuntimeError> {
+            submission.synchronize_buffer(&output.platform, output.storage_mode())
         }
     }
 
@@ -624,6 +1036,7 @@ mod platform {
             device: record.device,
             command_queue,
             storage_mode,
+            pipelines: None,
         })
     }
 
@@ -807,6 +1220,50 @@ mod platform {
         }
     }
 
+    fn compile_embeddings_pipelines(
+        device: &MetalDeviceRef,
+    ) -> Result<EmbeddingsPipelines, RuntimeError> {
+        let options = CompileOptions::new();
+        options.set_fast_math_enabled(false);
+        let library = device
+            .new_library_with_source(EMBEDDINGS_METAL_SOURCE, &options)
+            .map_err(|error| {
+                RuntimeError::Backend(format!("metal shader compile failed: {error}"))
+            })?;
+        let add = library
+            .get_function("rustygrad_add", None)
+            .map_err(|error| RuntimeError::Backend(format!("missing Metal add kernel: {error}")))?;
+        let matmul = library
+            .get_function("rustygrad_matmul", None)
+            .map_err(|error| {
+                RuntimeError::Backend(format!("missing Metal matmul kernel: {error}"))
+            })?;
+
+        Ok(EmbeddingsPipelines {
+            add: device
+                .new_compute_pipeline_state_with_function(&add)
+                .map_err(|error| {
+                    RuntimeError::Backend(format!("metal add pipeline build failed: {error}"))
+                })?,
+            matmul: device
+                .new_compute_pipeline_state_with_function(&matmul)
+                .map_err(|error| {
+                    RuntimeError::Backend(format!("metal matmul pipeline build failed: {error}"))
+                })?,
+        })
+    }
+
+    fn compute_threadgroup_size(
+        pipeline: &ComputePipelineState,
+        grid_width: usize,
+    ) -> Result<MTLSize, RuntimeError> {
+        let width = pipeline.thread_execution_width();
+        let max_threads = pipeline.max_total_threads_per_threadgroup();
+        let grid_width = to_metal_size(grid_width)?;
+        let width = width.min(max_threads).min(grid_width.max(1));
+        Ok(MTLSize::new(width.max(1), 1, 1))
+    }
+
     fn map_command_status(status: MTLCommandBufferStatus) -> MetalCommandStatus {
         match status {
             MTLCommandBufferStatus::NotEnqueued => MetalCommandStatus::NotEnqueued,
@@ -826,6 +1283,46 @@ mod platform {
     fn byte_range(byte_len: usize) -> Result<NSRange, RuntimeError> {
         Ok(NSRange::new(0, to_metal_size(byte_len)?))
     }
+
+    const EMBEDDINGS_METAL_SOURCE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+kernel void rustygrad_add(
+    const device float* left [[buffer(0)]],
+    const device float* right [[buffer(1)]],
+    device float* output [[buffer(2)]],
+    constant uint& element_count [[buffer(3)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= element_count) {
+        return;
+    }
+    output[gid] = left[gid] + right[gid];
+}
+
+kernel void rustygrad_matmul(
+    const device float* left [[buffer(0)]],
+    const device float* right [[buffer(1)]],
+    device float* output [[buffer(2)]],
+    constant uint& m [[buffer(3)]],
+    constant uint& k [[buffer(4)]],
+    constant uint& n [[buffer(5)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    uint row = gid / n;
+    uint col = gid % n;
+    if (row >= m || col >= n) {
+        return;
+    }
+
+    float sum = 0.0f;
+    for (uint inner = 0; inner < k; inner++) {
+        sum += left[(row * k) + inner] * right[(inner * n) + col];
+    }
+    output[(row * n) + col] = sum;
+}
+"#;
 }
 
 #[cfg(not(target_os = "macos"))]
@@ -833,9 +1330,11 @@ mod platform {
     use rustygrad_runtime::{HealthStatus, RuntimeHealth};
 
     use super::{
-        MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalStorageMode, RuntimeError,
+        MetalBuffer, MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalStorageMode,
+        RuntimeError,
     };
 
+    #[derive(Clone)]
     pub(super) struct PlatformBuffer;
 
     impl PlatformBuffer {
@@ -931,6 +1430,41 @@ mod platform {
                 "metal backend is only available on macOS",
             )))
         }
+
+        pub(super) fn encode_add(
+            &mut self,
+            _submission: &mut PlatformSubmission,
+            _left: &MetalBuffer,
+            _right: &MetalBuffer,
+            _output: &MetalBuffer,
+            _element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
+
+        pub(super) fn encode_matmul(
+            &mut self,
+            _submission: &mut PlatformSubmission,
+            _left: &MetalBuffer,
+            _right: &MetalBuffer,
+            _output: &MetalBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
+
+        pub(super) fn synchronize_output(
+            &self,
+            _submission: &mut PlatformSubmission,
+            _output: &MetalBuffer,
+        ) -> Result<bool, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
     }
 
     pub(super) fn configure_preferred_backend() -> Result<ConfiguredBackend, RuntimeHealth> {
@@ -954,10 +1488,15 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
+    use rustygrad_compiler::compile_graph;
     use rustygrad_core::{DType, Device, DeviceKind, Shape, TensorSpec};
+    use rustygrad_ir::GraphBuilder;
     use rustygrad_runtime::{Allocator, HealthStatus};
 
-    use super::{DeviceSupportTier, FamilySupport, MetalBackend, classify_support};
+    use super::{
+        DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend, classify_support,
+        validate_supported_plan,
+    };
 
     #[test]
     fn apple_family_devices_classify_as_modern() {
@@ -985,6 +1524,31 @@ mod tests {
             ..FamilySupport::default()
         };
         assert_eq!(classify_support(family), DeviceSupportTier::Legacy);
+    }
+
+    #[test]
+    fn metal_embeddings_surface_is_documented() {
+        assert_eq!(
+            EMBEDDINGS_SUPPORTED_OPS,
+            &["input", "constant", "matmul", "add"]
+        );
+    }
+
+    #[test]
+    fn metal_plan_validation_rejects_unsupported_ops() -> Result<(), Box<dyn std::error::Error>> {
+        let device = Device::new(DeviceKind::Metal, 0, Some(String::from("metal:0")));
+        let mut builder = GraphBuilder::new(device);
+        let input = builder.input("features", Shape::new(vec![1, 2]), DType::F32);
+        let weights = builder.constant_f32(Shape::new(vec![1, 2]), vec![1.0, 0.0])?;
+        let unsupported = builder.mul(&input, &weights)?;
+        let graph = builder.finish(vec![unsupported]);
+        let plan = compile_graph(&graph)?;
+        let error = validate_supported_plan(&plan).expect_err("mul should be rejected");
+        assert_eq!(
+            error,
+            rustygrad_runtime::RuntimeError::UnsupportedStep(String::from("mul"))
+        );
+        Ok(())
     }
 
     #[cfg(not(target_os = "macos"))]
@@ -1070,6 +1634,39 @@ mod tests {
         assert_eq!(report.status, MetalCommandStatus::Completed);
         assert_eq!(report.encoded_operations, 1);
         assert_eq!(destination.read_f32()?, vec![1.0, 2.0, 3.0, 4.0]);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_executes_embedding_surface_on_supported_hardware()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let input = builder.input("features", Shape::new(vec![1, 2]), DType::F32);
+        let weights = builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])?;
+        let bias = builder.constant_f32(Shape::new(vec![1, 2]), vec![0.5, 0.5])?;
+        let projected = builder.matmul(&input, &weights)?;
+        let shifted = builder.add(&projected, &bias)?;
+        let graph = builder.finish(vec![shifted.clone()]);
+
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![1.0, 0.0])?,
+        );
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let output = result
+            .outputs
+            .get(&shifted.id())
+            .ok_or("missing metal embedding output")?;
+        assert_eq!(output.read_f32()?, vec![1.5, 2.5]);
+        assert_eq!(result.metrics.steps_executed, 5);
         Ok(())
     }
 }
