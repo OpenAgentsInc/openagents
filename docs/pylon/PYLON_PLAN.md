@@ -61,7 +61,7 @@ What is missing is a plan that preserves the good part of Pylon without reviving
 
 - keep `#3116` landing inside the current MVP ownership boundaries
 - make the provider substrate canonical and reusable there first
-- extract only the narrow provider/runtime seam once it is stable
+- land the narrow provider/runtime seam as `crates/openagents-provider-substrate`
 - package that seam as `Pylon`
 
 ## What Pylon Is
@@ -109,8 +109,8 @@ This plan is additive to the current repo direction, not a reversal of it.
 
 ### Pylon path during and immediately after `#3116`
 
-- A narrow shared provider substrate can be extracted from the stabilized `Autopilot` provider implementation.
-- `apps/pylon` can then be added as a standalone CLI/service binary on top of that substrate.
+- A narrow shared provider substrate now exists as `crates/openagents-provider-substrate`.
+- `apps/pylon` can be added as a standalone CLI/service binary on top of that substrate.
 - `Autopilot` can embed the same substrate instead of maintaining an incompatible provider stack.
 
 This means the right sequence is **canonize first, extract second, package third**, with extraction work starting during the current issue slate rather than being deferred indefinitely.

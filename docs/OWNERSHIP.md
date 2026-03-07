@@ -16,12 +16,14 @@ Owns:
 
 - App wiring and product behavior.
 - Pane orchestration, app-level event routing, and UX flows.
-- Composition of reusable crates (`wgpui`, `nostr`, `spark`).
+- Composition of reusable crates (`wgpui`, `nostr`, `spark`, `openagents-provider-substrate`).
+- App-owned execution snapshots, payout UX, inventory presentation, and provider orchestration.
 
 Must not own:
 
 - Reusable protocol/wallet primitives that belong in crates.
 - Generic UI toolkit primitives that belong in `wgpui`.
+- Reusable provider lifecycle or launch-product derivation logic that belongs in `openagents-provider-substrate`.
 
 ## `crates/wgpui`
 
@@ -93,6 +95,23 @@ Must not own:
 
 - App UI logic.
 - Nostr pane/product orchestration logic.
+
+## `crates/openagents-provider-substrate`
+
+Owns:
+
+- Narrow reusable provider-domain semantics shared by `Autopilot` and future provider binaries.
+- Provider backend identity and backend health models.
+- Launch compute-product derivation from detected backends.
+- Provider inventory control primitives and product metadata.
+- Provider lifecycle state-machine helpers that remain product-agnostic.
+
+Must not own:
+
+- Pane-facing product UX.
+- Mission Control orchestration.
+- Buyer workflows, payout UX, or app-specific execution snapshots.
+- App-to-kernel control flow that depends on `apps/autopilot-desktop`.
 
 ## Dependency Rules
 
