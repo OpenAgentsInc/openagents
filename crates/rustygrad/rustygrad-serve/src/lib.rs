@@ -1013,10 +1013,10 @@ impl CpuReferenceTextGenerationService {
     /// Returns the default reference model descriptor.
     #[must_use]
     pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
-        self.models
-            .active(ReferenceWordDecoder::MODEL_ID)
-            .expect("default reference decoder loaded")
-            .descriptor()
+        match self.models.active(ReferenceWordDecoder::MODEL_ID) {
+            Some(model) => model.descriptor(),
+            None => panic!("default reference decoder loaded"),
+        }
     }
 
     /// Returns the compiled plan digest for a loaded model.
@@ -1058,7 +1058,10 @@ impl CpuReferenceTextGenerationService {
 
 impl Default for CpuReferenceTextGenerationService {
     fn default() -> Self {
-        Self::new().expect("reference text-generation service should load")
+        match Self::new() {
+            Ok(service) => service,
+            Err(error) => panic!("reference text-generation service should load: {error}"),
+        }
     }
 }
 
@@ -1104,10 +1107,10 @@ impl CpuModelTextGenerationService {
     /// Returns the loaded model descriptor.
     #[must_use]
     pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
-        self.models
-            .active(ArtifactWordDecoder::MODEL_ID)
-            .expect("artifact-backed decoder loaded")
-            .descriptor()
+        match self.models.active(ArtifactWordDecoder::MODEL_ID) {
+            Some(model) => model.descriptor(),
+            None => panic!("artifact-backed decoder loaded"),
+        }
     }
 
     /// Returns the compiled plan digest for the loaded model.
