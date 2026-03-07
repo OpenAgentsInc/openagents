@@ -4366,6 +4366,104 @@ dependencies = [
 ]
 
 [[package]]
+name = "mox-backend-amd-kfd"
+version = "0.1.0"
+
+[[package]]
+name = "mox-backend-amd-userspace"
+version = "0.1.0"
+
+[[package]]
+name = "mox-backend-cpu"
+version = "0.1.0"
+dependencies = [
+ "mox-compiler",
+ "mox-core",
+ "mox-ir",
+ "mox-runtime",
+]
+
+[[package]]
+name = "mox-backend-metal"
+version = "0.1.0"
+
+[[package]]
+name = "mox-compiler"
+version = "0.1.0"
+dependencies = [
+ "mox-core",
+ "mox-ir",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "mox-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "mox-ir"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "mox-core",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "mox-models"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "mox-core",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "mox-provider"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "mox-runtime",
+ "mox-serve",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "mox-runtime"
+version = "0.1.0"
+dependencies = [
+ "mox-core",
+ "mox-ir",
+ "serde",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "mox-serve"
+version = "0.1.0"
+dependencies = [
+ "mox-backend-cpu",
+ "mox-compiler",
+ "mox-core",
+ "mox-ir",
+ "mox-models",
+ "mox-provider",
+ "mox-runtime",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "moxcms"
 version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6915,99 +7013,6 @@ dependencies = [
  "unicode-ccc 0.3.0",
  "unicode-properties",
  "unicode-script",
-]
-
-[[package]]
-name = "rustygrad-backend-amd-kfd"
-version = "0.1.0"
-
-[[package]]
-name = "rustygrad-backend-amd-userspace"
-version = "0.1.0"
-
-[[package]]
-name = "rustygrad-backend-cpu"
-version = "0.1.0"
-dependencies = [
- "rustygrad-compiler",
- "rustygrad-core",
- "rustygrad-ir",
- "rustygrad-runtime",
-]
-
-[[package]]
-name = "rustygrad-backend-metal"
-version = "0.1.0"
-
-[[package]]
-name = "rustygrad-compiler"
-version = "0.1.0"
-dependencies = [
- "rustygrad-core",
- "rustygrad-ir",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "rustygrad-core"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "rustygrad-ir"
-version = "0.1.0"
-dependencies = [
- "hex",
- "rustygrad-core",
- "serde",
- "sha2",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "rustygrad-models"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "rustygrad-provider"
-version = "0.1.0"
-dependencies = [
- "hex",
- "rustygrad-runtime",
- "rustygrad-serve",
- "serde",
- "serde_json",
- "sha2",
-]
-
-[[package]]
-name = "rustygrad-runtime"
-version = "0.1.0"
-dependencies = [
- "rustygrad-core",
- "rustygrad-ir",
- "serde",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "rustygrad-serve"
-version = "0.1.0"
-dependencies = [
- "rustygrad-backend-cpu",
- "rustygrad-core",
- "rustygrad-ir",
- "rustygrad-models",
- "rustygrad-provider",
- "rustygrad-runtime",
- "serde",
- "serde_json",
- "thiserror 2.0.17",
 ]
 
 [[package]]

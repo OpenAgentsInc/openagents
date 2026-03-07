@@ -1,0 +1,20 @@
+[package]
+name = "mox-runtime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Runtime traits for Mox devices and execution"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+mox-core = { path = "../mox-core" }
+mox-ir = { path = "../mox-ir" }
+serde = { workspace = true }
+thiserror = { workspace = true }
