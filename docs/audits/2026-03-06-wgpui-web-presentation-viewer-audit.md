@@ -55,7 +55,7 @@ Recommended split:
 
 | Layer | Recommendation | Why |
 | --- | --- | --- |
-| Browser presentation app | New workspace member: `apps/presentation-viewer-web` | This is app behavior, routing, deck loading, navigation, and browser bootstrapping, which do not belong in `wgpui`. |
+| Browser presentation app | New workspace member: `apps/deck` | This is app behavior, routing, deck loading, navigation, and browser bootstrapping, which do not belong in `wgpui`. |
 | Reusable UI primitives | Keep in `crates/wgpui` only if truly product-agnostic | This respects `docs/OWNERSHIP.md` and avoids turning `wgpui` into an app framework. |
 | Demo/proving ground | Use `crates/wgpui/examples/storybook` and/or a tiny desktop example for component validation | Good for iterating on chrome/widgets before wiring the browser app. |
 | Authoring/docs | Add deck authoring docs under `docs/` | The viewer needs an explicit content format, not just renderer code. |
@@ -66,7 +66,7 @@ Do **not** resurrect the old `crates/web/` stack wholesale. Reuse its lessons, v
 
 The repo still has enough retained WGPUI infrastructure to support a browser presentation viewer, but it no longer has a retained browser app shell. The strongest path is:
 
-1. Build a new small wasm app in `apps/presentation-viewer-web`.
+1. Build a new small wasm app in `apps/deck`.
 2. Keep deck state, routing, slide parsing, keyboard navigation, and browser-specific event wiring there.
 3. Only upstream generic pieces into `crates/wgpui` when they are clearly reusable outside presentations.
 
@@ -358,7 +358,7 @@ That belongs in an app, not the toolkit.
 
 Create:
 
-- `apps/presentation-viewer-web`
+- `apps/deck`
 
 This is the cleanest fit because it keeps:
 
@@ -397,7 +397,7 @@ Bad candidates:
 Recommended shape:
 
 ```text
-apps/presentation-viewer-web/
+apps/deck/
   Cargo.toml
   src/
     lib.rs
@@ -600,13 +600,232 @@ They should be used to:
 
 They should not become the production browser viewer.
 
+## Suggested GitHub Issues
+
+Below is the issue backlog I would create if the goal is to build `apps/deck` into a complete WGPUI-based presentation system.
+
+## Platform + app bootstrap
+
+### Issue: Create `apps/deck` workspace app
+
+Description:
+
+- Add a new workspace member at `apps/deck`.
+- Set up a wasm/browser entrypoint around the retained `wgpui` web feature.
+- Keep app-owned state, routing, and deck behavior out of `crates/wgpui`.
+- Add the minimal crate structure described in this audit.
+
+### Issue: Add browser HTML shell for `apps/deck`
+
+Description:
+
+- Add a minimal static HTML shell that mounts a full-screen canvas.
+- Initialize the wasm bundle and call into the deck app entrypoint.
+- Keep the shell intentionally thin, similar to the historical `/gfn` pattern.
+
+### Issue: Implement browser input bridge for deck viewer
+
+Description:
+
+- Translate DOM mouse, wheel, keyboard, and resize events into `wgpui::InputEvent`.
+- Support pointer updates, clicks, wheel scrolling, and core keyboard navigation.
+- Keep this bridge local to `apps/deck`, not in `crates/wgpui`, unless a clearly reusable abstraction emerges.
+
+### Issue: Add URL/hash routing for deck state
+
+Description:
+
+- Support route or hash state for current deck and current slide.
+- Make slide links shareable and reload-safe.
+- Keep browser history behavior deterministic and simple.
+
+## Deck model + content format
+
+### Issue: Define typed deck domain model
+
+Description:
+
+- Introduce typed models for `Deck`, `Slide`, `SlideKind`, `SlideTheme`, `SpeakerNotes`, `AssetRef`, and transition metadata.
+- Keep the model separate from rendering and input code.
+- Ensure the model can support both markdown-driven and custom-rendered slides.
+
+### Issue: Define markdown-plus-metadata deck format
+
+Description:
+
+- Specify the source format for authored decks.
+- Include deck-level frontmatter, slide separators, and per-slide metadata.
+- Support at least title, layout, theme, notes, and asset references.
+
+### Issue: Implement deck parser for markdown source
+
+Description:
+
+- Parse the chosen deck format into the typed deck model.
+- Validate required fields and produce useful error messages for malformed decks.
+- Keep parsing isolated from WGPUI rendering code.
+
+### Issue: Add sample deck content and authoring docs
+
+Description:
+
+- Add `docs/presentations/README.md`, `deck-format.md`, and a sample deck.
+- Use the sample deck as a functional integration target for the app.
+- Document the authoring conventions so future decks follow one format.
+
+## Slide rendering
+
+### Issue: Implement core slide renderer for `MarkdownSlide`
+
+Description:
+
+- Render basic slide bodies from parsed markdown.
+- Support title slides, bullets, paragraphs, tables, and code blocks.
+- Use WGPUI theme and HUD styling rather than raw markdown defaults.
+
+### Issue: Implement `CustomSlide` rendering lane
+
+Description:
+
+- Support slides that are not pure markdown and need custom WGPUI scene composition.
+- Make this the home for charts, network diagrams, timelines, and interactive visuals.
+- Avoid hard-coding every slide as a one-off scene by keeping a typed custom-slide interface.
+
+### Issue: Implement presentation layouts
+
+Description:
+
+- Add first-class layout support for single-column, two-column, title-only, code-focused, and diagram slides.
+- Drive layout from slide metadata instead of manual scene math in each slide.
+- Keep layout selection in the app layer.
+
+### Issue: Add deck chrome widgets
+
+Description:
+
+- Implement reusable app-local widgets for frame, progress bar, slide counter, footer/citation bar, and notes panel.
+- Keep them in `apps/deck/widgets` first.
+- Upstream only the pieces that prove reusable outside the deck app.
+
+## Navigation + presenter UX
+
+### Issue: Add keyboard and pointer slide navigation
+
+Description:
+
+- Support left/right arrows, `Home`, `End`, click zones, and optional space/shift-space navigation.
+- Ensure transitions update URL state correctly.
+- Keep navigation deterministic and easy to reason about.
+
+### Issue: Add overview mode / slide index
+
+Description:
+
+- Add a deck overview screen or filmstrip mode for fast navigation.
+- Show slide titles, current position, and a clear selection state.
+- Optimize for live presentation use, not just browsing.
+
+### Issue: Add presenter notes panel
+
+Description:
+
+- Support optional speaker notes per slide.
+- Allow toggling notes visibility in the browser viewer.
+- Keep notes in the deck model rather than a separate ad hoc structure.
+
+### Issue: Add fullscreen and presenter-friendly controls
+
+Description:
+
+- Support browser fullscreen mode and simple presenter controls.
+- Ensure the UI still behaves predictably after resize/fullscreen changes.
+- Keep controls minimal and presentation-safe.
+
+## Assets + richer content
+
+### Issue: Add image support to WGPUI markdown/rendering pipeline
+
+Description:
+
+- Add image handling to the markdown parser/render path, which currently ignores `Tag::Image`.
+- Support slide-local assets in the deck app.
+- Keep the generic parser/renderer improvements in `crates/wgpui` if they remain broadly useful.
+
+### Issue: Add SVG/media frame support for deck slides
+
+Description:
+
+- Add a clean way to render SVG and media-like framed assets inside slides.
+- Prefer generic reusable components if the implementation is not deck-specific.
+- Validate that the browser path works with current `wgpui` rendering constraints.
+
+### Issue: Improve markdown typography defaults for presentation use
+
+Description:
+
+- Add a presentation-oriented markdown config with stronger heading hierarchy and slide-friendly spacing.
+- Avoid changing global `MarkdownConfig::default()` unless that improves the broader toolkit.
+- Expose explicit configuration rather than hidden presentation-only behavior.
+
+### Issue: Add clickable links in `MarkdownView`
+
+Description:
+
+- Implement hit targets and click behavior for markdown links.
+- Preserve current styling while adding actual interaction.
+- Keep the interaction generic so other WGPUI apps benefit too.
+
+## Motion + polish
+
+### Issue: Add slide transition system
+
+Description:
+
+- Add fade and simple directional slide transitions between slides.
+- Keep transition metadata in the deck model.
+- Avoid overcomplicating v1 with too many bespoke animation types.
+
+### Issue: Port HUD visual language from historical `/gfn` work into deck chrome
+
+Description:
+
+- Reuse the strongest historical ideas from `/gfn`: framed content, dots-grid background, accent hierarchy, and polished scrollbar/chrome treatment.
+- Recreate the feel, not the old architecture.
+- Keep the deck app visually consistent with OpenAgents and WGPUI strengths.
+
+## Validation + release readiness
+
+### Issue: Add WGPUI storybook/demo coverage for presentation components
+
+Description:
+
+- Create focused examples or storybook sections for deck chrome, slide layouts, notes panels, and overview mode.
+- Use them to validate reusable pieces before upstreaming into `crates/wgpui`.
+- Treat storybook as a proving ground, not the shipping viewer.
+
+### Issue: Add end-to-end test coverage for deck navigation
+
+Description:
+
+- Use the retained WGPUI testing lane to cover slide navigation, overview mode, notes toggling, and basic interaction.
+- Focus first on deterministic flows like keyboard navigation and URL-state sync.
+- Keep tests targeted at the app behavior most likely to regress during iteration.
+
+### Issue: Add packaging and hosting path for `apps/deck`
+
+Description:
+
+- Define how the browser app is built and served in local development and deployment.
+- Keep the hosting story minimal and explicit.
+- Ensure the final path supports static assets, wasm bundle loading, and reproducible local runs.
+
 ## Suggested Build Order
 
 ## Phase 1: Recover the browser lane cleanly
 
 Deliver:
 
-- new `apps/presentation-viewer-web`
+- new `apps/deck`
 - wasm entrypoint
 - `WebPlatform` boot
 - canvas HTML shell

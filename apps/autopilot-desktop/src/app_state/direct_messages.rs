@@ -379,7 +379,9 @@ impl DirectMessageProjectionState {
         } else {
             self.local_state.read_cursors.remove(room_id);
         }
-        self.refresh_projection(format!("Updated read cursor for direct message room {room_id}"));
+        self.refresh_projection(format!(
+            "Updated read cursor for direct message room {room_id}"
+        ));
         Ok(())
     }
 
@@ -847,8 +849,7 @@ fn direct_message_is_after_cursor(
     let read_created_at = cursor.last_read_created_at.unwrap_or(0);
     let read_message_id = cursor.last_read_message_id.as_deref().unwrap_or("");
     message.created_at > read_created_at
-        || (message.created_at == read_created_at
-            && message.message_id.as_str() > read_message_id)
+        || (message.created_at == read_created_at && message.message_id.as_str() > read_message_id)
 }
 
 fn direct_message_is_priority_ping(
@@ -1104,12 +1105,15 @@ mod tests {
         let full_dir = tempdir().expect("tempdir");
         let req_dir = tempdir().expect("tempdir");
         let neg_dir = tempdir().expect("tempdir");
-        let mut full =
-            DirectMessageProjectionState::from_projection_path_for_tests(full_dir.path().join("full.json"));
-        let mut req =
-            DirectMessageProjectionState::from_projection_path_for_tests(req_dir.path().join("req.json"));
-        let mut neg =
-            DirectMessageProjectionState::from_projection_path_for_tests(neg_dir.path().join("neg.json"));
+        let mut full = DirectMessageProjectionState::from_projection_path_for_tests(
+            full_dir.path().join("full.json"),
+        );
+        let mut req = DirectMessageProjectionState::from_projection_path_for_tests(
+            req_dir.path().join("req.json"),
+        );
+        let mut neg = DirectMessageProjectionState::from_projection_path_for_tests(
+            neg_dir.path().join("neg.json"),
+        );
         let identity = fixture_identity();
         full.set_identity(Some(&identity));
         req.set_identity(Some(&identity));

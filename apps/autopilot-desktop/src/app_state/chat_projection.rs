@@ -1710,11 +1710,7 @@ mod tests {
         )
     }
 
-    fn build_edit_metadata_event(
-        id_ch: char,
-        created_at: u64,
-        changes: Vec<Vec<String>>,
-    ) -> Event {
+    fn build_edit_metadata_event(id_ch: char, created_at: u64, changes: Vec<Vec<String>>) -> Event {
         let template = ModerationEvent::new(
             "oa-main",
             ModerationAction::EditMetadata { changes },
@@ -1825,8 +1821,7 @@ mod tests {
         let mut neg = ManagedChatProjectionState::from_projection_path_for_tests(neg_path);
 
         let channel_create = build_channel_create_event('a', 20, "ops");
-        let channel_metadata =
-            build_channel_metadata_event('b', 21, &channel_create.id, "ops", 1);
+        let channel_metadata = build_channel_metadata_event('b', 21, &channel_create.id, "ops", 1);
         let message_one = build_message_event('c', 'a', 30, &channel_create.id, "ready");
         let message_two = build_reply_event(
             'd',
@@ -1856,12 +1851,7 @@ mod tests {
             message_two.clone(),
             reaction.clone(),
         ]);
-        neg.record_relay_events(vec![
-            group,
-            channel_create,
-            channel_metadata,
-            message_one,
-        ]);
+        neg.record_relay_events(vec![group, channel_create, channel_metadata, message_one]);
         neg.record_relay_events(vec![reaction, message_two]);
 
         assert_eq!(req.snapshot, full.snapshot);
