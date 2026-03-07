@@ -592,6 +592,14 @@ impl ProjectOpsPaneState {
         self.quick_create_draft.priority = priority;
     }
 
+    pub fn set_quick_create_area_tags(&mut self, tags: &[&str]) {
+        self.quick_create_draft.area_tags = editor::normalize_area_tags(tags.iter().copied());
+    }
+
+    pub fn set_quick_create_due_at(&mut self, due_at_unix_ms: Option<u64>) {
+        self.quick_create_draft.due_at_unix_ms = due_at_unix_ms;
+    }
+
     pub fn edit_detail_title(&mut self, title: &str) {
         if let Some(detail_draft) = self.detail_draft.as_mut() {
             detail_draft.title = title.trim().to_string();
@@ -644,12 +652,26 @@ impl ProjectOpsPaneState {
         }
     }
 
+    pub fn set_detail_area_tags(&mut self, tags: &[&str]) {
+        if let Some(detail_draft) = self.detail_draft.as_mut() {
+            detail_draft.area_tags = editor::normalize_area_tags(tags.iter().copied());
+            detail_draft.dirty = true;
+        }
+    }
+
     pub fn set_detail_blocked_reason(&mut self, blocked_reason: Option<&str>) {
         if let Some(detail_draft) = self.detail_draft.as_mut() {
             detail_draft.blocked_reason = blocked_reason
                 .map(str::trim)
                 .filter(|value| !value.is_empty())
                 .map(ToString::to_string);
+            detail_draft.dirty = true;
+        }
+    }
+
+    pub fn set_detail_due_at(&mut self, due_at_unix_ms: Option<u64>) {
+        if let Some(detail_draft) = self.detail_draft.as_mut() {
+            detail_draft.due_at_unix_ms = due_at_unix_ms;
             detail_draft.dirty = true;
         }
     }
@@ -745,6 +767,8 @@ impl ProjectOpsPaneState {
         if detail_draft.title != current.title
             || detail_draft.description != current.description
             || detail_draft.priority != current.priority
+            || detail_draft.due_at_unix_ms != current.due_at_unix_ms
+            || detail_draft.area_tags != current.area_tags
         {
             apply_command(ProjectOpsCommand::EditWorkItemFields(
                 contract::ProjectOpsEditWorkItemFields {
@@ -756,8 +780,10 @@ impl ProjectOpsPaneState {
                             .then(|| detail_draft.description.clone()),
                         priority: (detail_draft.priority != current.priority)
                             .then_some(detail_draft.priority),
-                        due_at_unix_ms: None,
-                        area_tags: None,
+                        due_at_unix_ms: (detail_draft.due_at_unix_ms != current.due_at_unix_ms)
+                            .then_some(detail_draft.due_at_unix_ms),
+                        area_tags: (detail_draft.area_tags != current.area_tags)
+                            .then(|| detail_draft.area_tags.clone()),
                     },
                 },
             ))?;
@@ -1671,19 +1697,26 @@ mod tests {
         pane.set_quick_create_title("Capture a new PM task");
         pane.set_quick_create_description("Quick create should add a backlog item.");
         pane.set_quick_create_priority(ProjectOpsPriority::Urgent);
+        pane.set_quick_create_area_tags(&["pm", "sync"]);
+        pane.set_quick_create_due_at(Some(1_762_500_000_000));
 
         let created_id = pane
             .apply_quick_create()
             .expect("quick create should succeed")
             .expect("quick create should return a new id");
         assert_eq!(created_id.as_str(), "wi-4");
-        assert!(
-            pane.local_store
-                .work_items
-                .iter()
-                .any(|item| item.work_item_id == created_id
-                    && item.status == ProjectOpsWorkItemStatus::Backlog)
+        let created = pane
+            .local_store
+            .work_items
+            .iter()
+            .find(|item| item.work_item_id == created_id)
+            .expect("created item should exist");
+        assert_eq!(created.status, ProjectOpsWorkItemStatus::Backlog);
+        assert_eq!(
+            created.area_tags,
+            vec!["pm".to_string(), "sync".to_string()]
         );
+        assert_eq!(created.due_at_unix_ms, Some(1_762_500_000_000));
         assert_eq!(pane.quick_create_draft.title, "");
         assert_eq!(
             pane.detail_save_status.as_deref(),
@@ -1699,7 +1732,12 @@ mod tests {
         pane.set_detail_status(ProjectOpsWorkItemStatus::InReview);
         pane.set_detail_priority(ProjectOpsPriority::Urgent);
         pane.set_detail_assignee(Some("teammate"));
+        pane.set_detail_parent(Some(
+            ProjectOpsWorkItemId::new("wi-1").expect("work item id"),
+        ));
+        pane.set_detail_area_tags(&["pm", "sync"]);
         pane.set_detail_blocked_reason(Some("Waiting on design"));
+        pane.set_detail_due_at(Some(1_762_600_000_000));
 
         assert!(
             pane.apply_detail_draft()
@@ -1717,7 +1755,19 @@ mod tests {
         assert_eq!(updated.status, ProjectOpsWorkItemStatus::InReview);
         assert_eq!(updated.priority, ProjectOpsPriority::Urgent);
         assert_eq!(updated.assignee.as_deref(), Some("teammate"));
+        assert_eq!(
+            updated
+                .parent_id
+                .as_ref()
+                .map(|parent_id| parent_id.as_str()),
+            Some("wi-1")
+        );
+        assert_eq!(
+            updated.area_tags,
+            vec!["pm".to_string(), "sync".to_string()]
+        );
         assert_eq!(updated.blocked_reason.as_deref(), Some("Waiting on design"));
+        assert_eq!(updated.due_at_unix_ms, Some(1_762_600_000_000));
         assert_eq!(
             pane.detail_save_status.as_deref(),
             Some("Detail changes applied")

@@ -681,9 +681,15 @@ impl ProjectOpsEditWorkItemFieldsPatch {
             && self.due_at_unix_ms.is_none()
             && self.area_tags.is_none()
         {
-            return Err("project ops edit patch must include at least one field change".to_string());
+            return Err(
+                "project ops edit patch must include at least one field change".to_string(),
+            );
         }
-        if self.title.as_deref().is_some_and(|value| value.trim().is_empty()) {
+        if self
+            .title
+            .as_deref()
+            .is_some_and(|value| value.trim().is_empty())
+        {
             return Err("project ops edit patch title must not be blank".to_string());
         }
         if self
@@ -692,6 +698,9 @@ impl ProjectOpsEditWorkItemFieldsPatch {
             .is_some_and(|value| value.trim().is_empty())
         {
             return Err("project ops edit patch description must not be blank".to_string());
+        }
+        if self.due_at_unix_ms == Some(Some(0)) {
+            return Err("project ops edit patch due_at_unix_ms must be > 0".to_string());
         }
         if self.area_tags.as_ref().is_some_and(|tags| tags.len() > 2) {
             return Err("project ops edit patch supports at most two area_tags".to_string());
@@ -922,7 +931,9 @@ impl ProjectOpsAcceptedEvent {
             Self::WorkItemFieldsEdited(_) => ProjectOpsAcceptedEventName::WorkItemFieldsEdited,
             Self::WorkItemStatusChanged(_) => ProjectOpsAcceptedEventName::WorkItemStatusChanged,
             Self::WorkItemAssigned(_) => ProjectOpsAcceptedEventName::WorkItemAssigned,
-            Self::WorkItemAssigneeCleared(_) => ProjectOpsAcceptedEventName::WorkItemAssigneeCleared,
+            Self::WorkItemAssigneeCleared(_) => {
+                ProjectOpsAcceptedEventName::WorkItemAssigneeCleared
+            }
             Self::WorkItemCycleSet(_) => ProjectOpsAcceptedEventName::WorkItemCycleSet,
             Self::WorkItemCycleCleared(_) => ProjectOpsAcceptedEventName::WorkItemCycleCleared,
             Self::WorkItemBlocked(_) => ProjectOpsAcceptedEventName::WorkItemBlocked,
@@ -947,7 +958,7 @@ impl ProjectOpsAcceptedEvent {
             Self::WorkItemBlocked(event) => {
                 if event.blocked_reason.trim().is_empty() {
                     return Err(
-                        "project ops accepted event blocked_reason must not be blank".to_string()
+                        "project ops accepted event blocked_reason must not be blank".to_string(),
                     );
                 }
                 Ok(())
@@ -1004,18 +1015,17 @@ impl ProjectOpsAcceptedEventEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        project_ops_phase1_sync_contract, project_ops_required_stream_grants,
-        project_ops_v1_contract_manifest, step0_stream_specs, ProjectOpsAcceptedEvent,
-        ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsActor,
-        ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCommandName,
-        ProjectOpsCreateWorkItem, ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFields,
-        ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityKind, ProjectOpsErrorCode,
-        ProjectOpsSetBlockedReason,
+        PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
+        PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+        PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
+        PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
+        ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCommand, ProjectOpsCommandEnvelope,
+        ProjectOpsCommandId, ProjectOpsCommandName, ProjectOpsCreateWorkItem,
+        ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch,
+        ProjectOpsEntityKind, ProjectOpsErrorCode, ProjectOpsSetBlockedReason,
         ProjectOpsWorkItemArchived, ProjectOpsWorkItemAssigned, ProjectOpsWorkItemDraft,
-        ProjectOpsWorkItemRef, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_PRIMARY_SOURCE_BADGE,
-        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE,
-        PROJECT_OPS_V1_CONTRACT_VERSION, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        ProjectOpsWorkItemRef, project_ops_phase1_sync_contract,
+        project_ops_required_stream_grants, project_ops_v1_contract_manifest, step0_stream_specs,
     };
     use crate::project_ops::schema::{
         ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
@@ -1130,7 +1140,10 @@ mod tests {
                 "actor.actor_id|actor.actor_label",
             ]
         );
-        assert_eq!(manifest.workflow, ProjectOpsWorkItemStatus::workflow().to_vec());
+        assert_eq!(
+            manifest.workflow,
+            ProjectOpsWorkItemStatus::workflow().to_vec()
+        );
         assert_eq!(manifest.priorities, ProjectOpsPriority::all().to_vec());
         assert_eq!(manifest.commands.len(), ProjectOpsCommandName::all().len());
         assert_eq!(
@@ -1163,16 +1176,32 @@ mod tests {
         let deferred = manifest
             .entities
             .iter()
-            .filter_map(|entity| entity.deferred_until_phase.map(|phase| (entity.entity_kind, phase)))
+            .filter_map(|entity| {
+                entity
+                    .deferred_until_phase
+                    .map(|phase| (entity.entity_kind, phase))
+            })
             .collect::<Vec<_>>();
         assert_eq!(
             deferred,
             vec![
-                (ProjectOpsEntityKind::Comment, ProjectOpsDeliveryPhase::Phase3),
+                (
+                    ProjectOpsEntityKind::Comment,
+                    ProjectOpsDeliveryPhase::Phase3
+                ),
                 (ProjectOpsEntityKind::Team, ProjectOpsDeliveryPhase::Phase3),
-                (ProjectOpsEntityKind::Project, ProjectOpsDeliveryPhase::Phase3),
-                (ProjectOpsEntityKind::AgentTask, ProjectOpsDeliveryPhase::Phase4),
-                (ProjectOpsEntityKind::Bounty, ProjectOpsDeliveryPhase::Phase5),
+                (
+                    ProjectOpsEntityKind::Project,
+                    ProjectOpsDeliveryPhase::Phase3
+                ),
+                (
+                    ProjectOpsEntityKind::AgentTask,
+                    ProjectOpsDeliveryPhase::Phase4
+                ),
+                (
+                    ProjectOpsEntityKind::Bounty,
+                    ProjectOpsDeliveryPhase::Phase5
+                ),
             ]
         );
     }
@@ -1186,17 +1215,24 @@ mod tests {
             project_ops_required_stream_grants()
         );
         assert_eq!(contract.source_badges.len(), 2);
-        assert_eq!(contract.source_badges[0].badge, PROJECT_OPS_PRIMARY_SOURCE_BADGE);
+        assert_eq!(
+            contract.source_badges[0].badge,
+            PROJECT_OPS_PRIMARY_SOURCE_BADGE
+        );
         assert_eq!(
             contract.source_badges[1].badge,
             PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE
         );
-        assert!(contract.source_badges[0]
-            .truth_rule
-            .contains("local PM projection documents"));
-        assert!(contract.source_badges[1]
-            .truth_rule
-            .contains("do not label PM work-item values as live Spacetime authority"));
+        assert!(
+            contract.source_badges[0]
+                .truth_rule
+                .contains("local PM projection documents")
+        );
+        assert!(
+            contract.source_badges[1]
+                .truth_rule
+                .contains("do not label PM work-item values as live Spacetime authority")
+        );
     }
 
     #[test]
@@ -1208,22 +1244,28 @@ mod tests {
             .map(|rule| rule.stream_id)
             .collect::<Vec<_>>();
         assert_eq!(stream_ids, project_ops_required_stream_grants());
-        assert!(contract
-            .checkpoint_rules
-            .iter()
-            .all(|rule| rule.duplicate_policy == "drop duplicate seq <= local checkpoint"));
-        assert!(contract
-            .checkpoint_rules
-            .iter()
-            .all(|rule| rule.out_of_order_policy.contains("rebootstrap")));
-        assert!(contract
-            .checkpoint_rules
-            .iter()
-            .all(|rule| rule.stale_cursor_policy.contains("stale_clamp_window")));
-        assert!(contract
-            .checkpoint_rules
-            .iter()
-            .all(|rule| rule.remote_checkpoint_policy.contains("adopt newer remote checkpoint")));
+        assert!(
+            contract
+                .checkpoint_rules
+                .iter()
+                .all(|rule| rule.duplicate_policy == "drop duplicate seq <= local checkpoint")
+        );
+        assert!(
+            contract
+                .checkpoint_rules
+                .iter()
+                .all(|rule| rule.out_of_order_policy.contains("rebootstrap"))
+        );
+        assert!(
+            contract
+                .checkpoint_rules
+                .iter()
+                .all(|rule| rule.stale_cursor_policy.contains("stale_clamp_window"))
+        );
+        assert!(contract.checkpoint_rules.iter().all(|rule| {
+            rule.remote_checkpoint_policy
+                .contains("adopt newer remote checkpoint")
+        }));
     }
 
     #[test]
@@ -1325,6 +1367,21 @@ mod tests {
             command.validate(),
             Err("project ops edit patch must include at least one field change".to_string())
         );
+
+        let command = ProjectOpsCommand::EditWorkItemFields(ProjectOpsEditWorkItemFields {
+            work_item_id: work_item_id(),
+            patch: ProjectOpsEditWorkItemFieldsPatch {
+                title: None,
+                description: None,
+                priority: None,
+                due_at_unix_ms: Some(Some(0)),
+                area_tags: None,
+            },
+        });
+        assert_eq!(
+            command.validate(),
+            Err("project ops edit patch due_at_unix_ms must be > 0".to_string())
+        );
     }
 
     #[test]
@@ -1421,7 +1478,9 @@ mod tests {
             command_id: ProjectOpsCommandId::new("cmd-42").expect("command id"),
             emitted_at_unix_ms: 1_762_000_000_000,
             actor: actor(),
-            event: ProjectOpsAcceptedEvent::WorkItemCreated { work_item: work_item() },
+            event: ProjectOpsAcceptedEvent::WorkItemCreated {
+                work_item: work_item(),
+            },
         };
         assert_eq!(event.validate(), Ok(()));
     }

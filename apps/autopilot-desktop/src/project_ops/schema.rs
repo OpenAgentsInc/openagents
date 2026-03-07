@@ -125,7 +125,13 @@ impl ProjectOpsPriority {
     }
 
     pub const fn all() -> &'static [Self] {
-        &[Self::Urgent, Self::High, Self::Medium, Self::Low, Self::None]
+        &[
+            Self::Urgent,
+            Self::High,
+            Self::Medium,
+            Self::Low,
+            Self::None,
+        ]
     }
 
     pub fn summary() -> String {
@@ -173,12 +179,11 @@ impl ProjectOpsWorkItem {
         if self.area_tags.len() > 2 {
             return Err("Step 0 supports at most two area_tags".to_string());
         }
-        if self
-            .area_tags
-            .iter()
-            .any(|tag| tag.trim().is_empty())
-        {
+        if self.area_tags.iter().any(|tag| tag.trim().is_empty()) {
             return Err("area_tags must not contain empty values".to_string());
+        }
+        if self.due_at_unix_ms == Some(0) {
+            return Err("due_at_unix_ms must be > 0 when present".to_string());
         }
         if self
             .blocked_reason
@@ -194,7 +199,10 @@ impl ProjectOpsWorkItem {
         {
             return Err("assignee must not be blank when present".to_string());
         }
-        if self.archived_at_unix_ms.is_some_and(|value| value < self.updated_at_unix_ms) {
+        if self
+            .archived_at_unix_ms
+            .is_some_and(|value| value < self.updated_at_unix_ms)
+        {
             return Err("archived_at_unix_ms must be >= updated_at_unix_ms".to_string());
         }
         Ok(())
@@ -210,8 +218,8 @@ impl ProjectOpsWorkItem {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority,
-        ProjectOpsTeamKey, ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+        PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey,
+        ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
     };
 
     fn sample_work_item() -> ProjectOpsWorkItem {
@@ -252,7 +260,10 @@ mod tests {
 
     #[test]
     fn priority_summary_matches_step0_scale() {
-        assert_eq!(ProjectOpsPriority::summary(), "urgent, high, medium, low, none");
+        assert_eq!(
+            ProjectOpsPriority::summary(),
+            "urgent, high, medium, low, none"
+        );
     }
 
     #[test]
@@ -294,6 +305,13 @@ mod tests {
             item.validate(),
             Err("Step 0 supports at most two area_tags".to_string())
         );
+
+        let mut item = sample_work_item();
+        item.due_at_unix_ms = Some(0);
+        assert_eq!(
+            item.validate(),
+            Err("due_at_unix_ms must be > 0 when present".to_string())
+        );
     }
 
     #[test]
@@ -312,4 +330,3 @@ mod tests {
         );
     }
 }
-
