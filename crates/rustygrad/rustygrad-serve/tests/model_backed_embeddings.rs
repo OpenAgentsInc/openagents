@@ -1,14 +1,12 @@
-use rustygrad_provider::{
-    CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus,
-};
+use rustygrad_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
 use rustygrad_serve::{
     ByteProjectionEmbedder, CpuModelEmbeddingsService, EmbeddingRequest, EmbeddingsExecutor,
 };
 use tempfile::tempdir;
 
 #[test]
-fn model_backed_embeddings_flow_returns_response_capability_and_receipt(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
+-> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -47,8 +45,25 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt(
     assert_eq!(capability.product_id, "rustygrad.embeddings");
     assert_eq!(capability.runtime_backend, "cpu");
     assert_eq!(capability.model_id, ByteProjectionEmbedder::MODEL_ID);
+    assert_eq!(
+        capability.model_family,
+        ByteProjectionEmbedder::MODEL_FAMILY
+    );
+    assert_eq!(capability.model_revision, "v1");
+    assert_eq!(
+        capability.weight_bundle.digest,
+        request.model.weights.digest
+    );
+    assert_eq!(
+        capability.weight_bundle.quantization,
+        rustygrad_serve::QuantizationMode::None
+    );
+    assert_eq!(capability.weight_bundle.artifacts.len(), 1);
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+    assert_eq!(receipt.model_family, ByteProjectionEmbedder::MODEL_FAMILY);
+    assert_eq!(receipt.model_revision, "v1");
+    assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
     assert_eq!(receipt.output_dimensions, 8);
     assert_eq!(receipt.output_vector_count, 2);
     assert!(receipt.failure_reason.is_none());

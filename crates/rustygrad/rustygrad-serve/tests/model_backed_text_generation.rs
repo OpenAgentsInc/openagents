@@ -57,11 +57,20 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert_eq!(capability.runtime_backend, "cpu");
     assert_eq!(capability.model_id, ArtifactWordDecoder::MODEL_ID);
     assert_eq!(capability.model_family, ArtifactWordDecoder::MODEL_FAMILY);
+    assert_eq!(capability.model_revision, "v1");
+    assert_eq!(
+        capability.weight_bundle.digest,
+        request.model.weights.digest
+    );
+    assert_eq!(capability.weight_bundle.artifacts.len(), 1);
     assert_eq!(capability.kv_cache_mode, KvCacheMode::InMemory);
     assert_eq!(capability.batch_posture, BatchPosture::SingleRequestOnly);
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
     assert_eq!(receipt.model_id, ArtifactWordDecoder::MODEL_ID);
+    assert_eq!(receipt.model_family, ArtifactWordDecoder::MODEL_FAMILY);
+    assert_eq!(receipt.model_revision, "v1");
+    assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
     assert_eq!(receipt.session_id, Some(session.session_id.clone()));
     assert_eq!(receipt.input_tokens, 2);
     assert_eq!(receipt.output_tokens, 2);

@@ -4,6 +4,7 @@ use std::collections::BTreeMap;
 
 use rustygrad_backend_cpu::CpuBackend;
 use rustygrad_compiler::{CompileError, compile_graph};
+pub use rustygrad_core::QuantizationMode;
 use rustygrad_core::{DType, Device, Shape, TensorId};
 use rustygrad_ir::{Graph, GraphBuilder, GraphError};
 pub use rustygrad_models::{
@@ -12,7 +13,8 @@ pub use rustygrad_models::{
     DecoderModelDescriptor, DecoderWeightLoader, EmbeddingModelDescriptor, EmbeddingNormalization,
     EmbeddingWeights, FixtureDecoderLoader, FixtureWordTokenizer, ModelDescriptor, ModelLoadError,
     ReferenceWordDecoder, SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary,
-    TokenizerBoundary, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
+    TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
+    WeightTensorMetadata,
 };
 use rustygrad_runtime::RuntimeError;
 use serde::{Deserialize, Serialize};

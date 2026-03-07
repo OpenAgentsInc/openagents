@@ -1,11 +1,9 @@
-use rustygrad_provider::{
-    CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus,
-};
+use rustygrad_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
 use rustygrad_serve::{EmbeddingRequest, EmbeddingsExecutor, SmokeEmbeddingsService};
 
 #[test]
-fn smoke_embeddings_flow_returns_response_capability_and_receipt(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn smoke_embeddings_flow_returns_response_capability_and_receipt()
+-> Result<(), Box<dyn std::error::Error>> {
     let mut service = SmokeEmbeddingsService::new()?;
     let request = EmbeddingRequest::new(
         "req-smoke-1",
@@ -28,9 +26,21 @@ fn smoke_embeddings_flow_returns_response_capability_and_receipt(
 
     assert_eq!(capability.product_id, "rustygrad.embeddings");
     assert_eq!(capability.runtime_backend, "cpu");
+    assert_eq!(capability.model_id, "smoke-byte-embed-v0");
+    assert_eq!(capability.model_family, "smoke");
+    assert_eq!(capability.model_revision, "v0");
+    assert_eq!(
+        capability.weight_bundle.digest,
+        request.model.weights.digest
+    );
+    assert!(capability.weight_bundle.artifacts.is_empty());
     assert_eq!(capability.dimensions, 8);
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+    assert_eq!(receipt.model_id, "smoke-byte-embed-v0");
+    assert_eq!(receipt.model_family, "smoke");
+    assert_eq!(receipt.model_revision, "v0");
+    assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
     assert_eq!(receipt.output_dimensions, 8);
     assert_eq!(receipt.output_vector_count, 2);
     assert!(receipt.failure_reason.is_none());

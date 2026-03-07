@@ -5,9 +5,10 @@ use sha2::{Digest, Sha256};
 
 use rustygrad_runtime::HealthStatus;
 use rustygrad_serve::{
-    DecoderModelDescriptor, EmbeddingModelDescriptor, EmbeddingRequest, EmbeddingResponse,
-    GenerationInput, GenerationRequest, GenerationResponse, SessionId, TerminationReason,
-    EMBEDDINGS_PRODUCT_ID, TEXT_GENERATION_PRODUCT_ID,
+    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
+    EmbeddingResponse, GenerationInput, GenerationRequest, GenerationResponse, QuantizationMode,
+    SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata,
+    WeightBundleMetadata, WeightFormat, WeightSource,
 };
 
 /// Human-readable crate ownership summary.
@@ -15,6 +16,35 @@ pub const CRATE_ROLE: &str = "provider integration, capabilities, and receipts";
 
 /// Provider-facing backend family identifier.
 pub const BACKEND_FAMILY: &str = "rustygrad";
+
+/// Stable provider-facing summary of the weight bundle backing a served model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeightBundleEvidence {
+    /// Weight artifact format.
+    pub format: WeightFormat,
+    /// Weight source authority.
+    pub source: WeightSource,
+    /// Weight quantization posture.
+    pub quantization: QuantizationMode,
+    /// Stable bundle digest.
+    pub digest: String,
+    /// External artifacts that backed the bundle, if any.
+    pub artifacts: Vec<WeightArtifactMetadata>,
+}
+
+impl WeightBundleEvidence {
+    /// Creates weight-bundle evidence from stable model metadata.
+    #[must_use]
+    pub fn from_metadata(metadata: &WeightBundleMetadata) -> Self {
+        Self {
+            format: metadata.format,
+            source: metadata.source,
+            quantization: metadata.quantization,
+            digest: metadata.digest.clone(),
+            artifacts: metadata.artifacts.clone(),
+        }
+    }
+}
 
 /// Capability envelope for a provider-advertised embeddings product.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +59,10 @@ pub struct CapabilityEnvelope {
     pub model_id: String,
     /// Model family.
     pub model_family: String,
+    /// Model revision.
+    pub model_revision: String,
+    /// Weight bundle identity for the loaded model.
+    pub weight_bundle: WeightBundleEvidence,
     /// Stable output dimensions.
     pub dimensions: usize,
     /// Current readiness status.
@@ -42,6 +76,8 @@ impl CapabilityEnvelope {
         runtime_backend: impl Into<String>,
         model_id: impl Into<String>,
         model_family: impl Into<String>,
+        model_revision: impl Into<String>,
+        weight_bundle: WeightBundleEvidence,
         dimensions: usize,
         readiness: ProviderReadiness,
     ) -> Self {
@@ -51,6 +87,8 @@ impl CapabilityEnvelope {
             runtime_backend: runtime_backend.into(),
             model_id: model_id.into(),
             model_family: model_family.into(),
+            model_revision: model_revision.into(),
+            weight_bundle,
             dimensions,
             readiness,
         }
@@ -67,6 +105,8 @@ impl CapabilityEnvelope {
             runtime_backend,
             model.model.model_id.clone(),
             model.model.family.clone(),
+            model.model.revision.clone(),
+            WeightBundleEvidence::from_metadata(&model.weights),
             model.dimensions,
             readiness,
         )
@@ -117,6 +157,12 @@ pub struct ExecutionReceipt {
     pub request_digest: String,
     /// Model identifier.
     pub model_id: String,
+    /// Model family.
+    pub model_family: String,
+    /// Model revision.
+    pub model_revision: String,
+    /// Weight bundle identity used during execution.
+    pub weight_bundle: WeightBundleEvidence,
     /// Output dimensions.
     pub output_dimensions: usize,
     /// Number of returned vectors.
@@ -149,6 +195,9 @@ impl ExecutionReceipt {
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
             model_id: response.metadata.model_id.clone(),
+            model_family: request.model.model.family.clone(),
+            model_revision: request.model.model.revision.clone(),
+            weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             output_dimensions: response.metadata.dimensions,
             output_vector_count: response.metadata.vector_count,
             started_at_unix_ms,
@@ -193,6 +242,9 @@ impl ExecutionReceipt {
             request_id: request.request_id.clone(),
             request_digest: digest_embedding_request(request),
             model_id: request.model.model.model_id.clone(),
+            model_family: request.model.model.family.clone(),
+            model_revision: request.model.model.revision.clone(),
+            weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             output_dimensions: request.model.dimensions,
             output_vector_count: 0,
             started_at_unix_ms,
@@ -242,6 +294,8 @@ pub struct TextGenerationCapabilityEnvelope {
     pub model_family: String,
     /// Model revision.
     pub model_revision: String,
+    /// Weight bundle identity for the loaded model.
+    pub weight_bundle: WeightBundleEvidence,
     /// Maximum supported context length.
     pub max_context: usize,
     /// Advertised KV cache posture.
@@ -260,6 +314,7 @@ impl TextGenerationCapabilityEnvelope {
         model_id: impl Into<String>,
         model_family: impl Into<String>,
         model_revision: impl Into<String>,
+        weight_bundle: WeightBundleEvidence,
         max_context: usize,
         kv_cache_mode: KvCacheMode,
         batch_posture: BatchPosture,
@@ -272,6 +327,7 @@ impl TextGenerationCapabilityEnvelope {
             model_id: model_id.into(),
             model_family: model_family.into(),
             model_revision: model_revision.into(),
+            weight_bundle,
             max_context,
             kv_cache_mode,
             batch_posture,
@@ -293,6 +349,7 @@ impl TextGenerationCapabilityEnvelope {
             model.model.model_id.clone(),
             model.model.family.clone(),
             model.model.revision.clone(),
+            WeightBundleEvidence::from_metadata(&model.weights),
             model.config.max_context,
             kv_cache_mode,
             batch_posture,
@@ -318,6 +375,12 @@ pub struct TextGenerationReceipt {
     pub execution_plan_digest: Option<String>,
     /// Model identifier.
     pub model_id: String,
+    /// Model family.
+    pub model_family: String,
+    /// Model revision.
+    pub model_revision: String,
+    /// Weight bundle identity used during execution.
+    pub weight_bundle: WeightBundleEvidence,
     /// Optional bound session identifier.
     pub session_id: Option<SessionId>,
     /// Prompt token count.
@@ -358,6 +421,9 @@ impl TextGenerationReceipt {
             request_digest: request_digest.into(),
             execution_plan_digest: Some(execution_plan_digest.into()),
             model_id: response.model_id.clone(),
+            model_family: request.model.model.family.clone(),
+            model_revision: request.model.model.revision.clone(),
+            weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             session_id: response.session_id.clone(),
             input_tokens: response.usage.input_tokens,
             output_tokens: response.usage.output_tokens,
@@ -414,6 +480,9 @@ impl TextGenerationReceipt {
             request_digest: digest_generation_request(request),
             execution_plan_digest,
             model_id: request.model.model.model_id.clone(),
+            model_family: request.model.model.family.clone(),
+            model_revision: request.model.model.revision.clone(),
+            weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             session_id: request.session_id.clone(),
             input_tokens,
             output_tokens: 0,
@@ -444,6 +513,8 @@ pub fn digest_embedding_request(request: &EmbeddingRequest) -> String {
     hasher.update(request.model.dimensions.to_string().as_bytes());
     hasher.update(b"|");
     hasher.update(format!("{:?}", request.model.normalization).as_bytes());
+    hasher.update(b"|");
+    digest_weight_bundle(&mut hasher, &request.model.weights);
     for input in &request.inputs {
         hasher.update(b"|");
         hasher.update(input.as_bytes());
@@ -473,7 +544,7 @@ pub fn digest_generation_request(request: &GenerationRequest) -> String {
     hasher.update(b"|");
     hasher.update(request.model.config.max_context.to_string().as_bytes());
     hasher.update(b"|");
-    hasher.update(request.model.weights.digest.as_bytes());
+    digest_weight_bundle(&mut hasher, &request.model.weights);
     hasher.update(b"|");
     if let Some(session_id) = &request.session_id {
         hasher.update(session_id.as_str().as_bytes());
@@ -523,6 +594,24 @@ fn digest_generation_input(hasher: &mut Sha256, input: &GenerationInput) {
     }
 }
 
+fn digest_weight_bundle(hasher: &mut Sha256, weight_bundle: &WeightBundleMetadata) {
+    hasher.update(format!("{:?}", weight_bundle.format).as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", weight_bundle.source).as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", weight_bundle.quantization).as_bytes());
+    hasher.update(b"|");
+    hasher.update(weight_bundle.digest.as_bytes());
+    for artifact in &weight_bundle.artifacts {
+        hasher.update(b"|");
+        hasher.update(artifact.name.as_bytes());
+        hasher.update(b":");
+        hasher.update(artifact.byte_length.to_string().as_bytes());
+        hasher.update(b":");
+        hasher.update(artifact.sha256.as_bytes());
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use rustygrad_runtime::HealthStatus;
@@ -532,9 +621,9 @@ mod tests {
     };
 
     use super::{
-        digest_embedding_request, digest_generation_request, BatchPosture, CapabilityEnvelope,
-        ExecutionReceipt, KvCacheMode, ProviderReadiness, ReceiptStatus,
-        TextGenerationCapabilityEnvelope, TextGenerationReceipt,
+        BatchPosture, CapabilityEnvelope, ExecutionReceipt, KvCacheMode, ProviderReadiness,
+        ReceiptStatus, TextGenerationCapabilityEnvelope, TextGenerationReceipt,
+        WeightBundleEvidence, digest_embedding_request, digest_generation_request,
     };
 
     #[test]
@@ -553,6 +642,14 @@ mod tests {
   "runtime_backend": "cpu",
   "model_id": "smoke-byte-embed-v0",
   "model_family": "smoke",
+  "model_revision": "v0",
+  "weight_bundle": {
+    "format": "ProgrammaticFixture",
+    "source": "Fixture",
+    "quantization": "none",
+    "digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
+    "artifacts": []
+  },
   "dimensions": 8,
   "readiness": {
     "status": "Ready",
@@ -582,6 +679,13 @@ mod tests {
   "model_id": "fixture-word-decoder-v0",
   "model_family": "fixture_decoder",
   "model_revision": "v0",
+  "weight_bundle": {
+    "format": "ProgrammaticFixture",
+    "source": "Fixture",
+    "quantization": "none",
+    "digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+    "artifacts": []
+  },
   "max_context": 8,
   "kv_cache_mode": "in_memory",
   "batch_posture": "single_request_only",
@@ -617,6 +721,12 @@ mod tests {
         assert_eq!(decoded, receipt);
         assert_eq!(decoded.output_vector_count, 1);
         assert_eq!(decoded.failure_reason, None);
+        assert_eq!(decoded.model_family, "smoke");
+        assert_eq!(decoded.model_revision, "v0");
+        assert_eq!(
+            decoded.weight_bundle,
+            WeightBundleEvidence::from_metadata(&request.model.weights)
+        );
         Ok(())
     }
 
@@ -656,6 +766,12 @@ mod tests {
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: TextGenerationReceipt = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, receipt);
+        assert_eq!(decoded.model_family, "fixture_decoder");
+        assert_eq!(decoded.model_revision, "v0");
+        assert_eq!(
+            decoded.weight_bundle,
+            WeightBundleEvidence::from_metadata(&request.model.weights)
+        );
         Ok(())
     }
 
@@ -671,6 +787,7 @@ mod tests {
             ExecutionReceipt::failed_for_request("cpu", &request, 5, 6, "backend offline");
         assert_eq!(receipt.status, ReceiptStatus::Failed);
         assert_eq!(receipt.failure_reason.as_deref(), Some("backend offline"));
+        assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
     }
 
     #[test]
@@ -695,6 +812,38 @@ mod tests {
         assert_eq!(
             digest_generation_request(&generation_request),
             digest_generation_request(&generation_request)
+        );
+    }
+
+    #[test]
+    fn request_digests_change_when_weight_identity_changes() {
+        let mut embedding_request = EmbeddingRequest::new(
+            "req-6",
+            sample_embedding_descriptor(),
+            vec![String::from("same input")],
+        );
+        let mut generation_request = GenerationRequest::new_tokens(
+            "gen-6",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-00000006")),
+            TokenSequence::new(vec![rustygrad_serve::FixtureWordTokenizer::HELLO_ID]),
+            GenerationOptions::greedy(2),
+        );
+
+        let embedding_digest = digest_embedding_request(&embedding_request);
+        let generation_digest = digest_generation_request(&generation_request);
+
+        embedding_request.model.weights.digest = String::from("different-embedding-bundle");
+        generation_request.model.weights.quantization =
+            rustygrad_serve::QuantizationMode::Int8Symmetric;
+
+        assert_ne!(
+            digest_embedding_request(&embedding_request),
+            embedding_digest
+        );
+        assert_ne!(
+            digest_generation_request(&generation_request),
+            generation_digest
         );
     }
 
