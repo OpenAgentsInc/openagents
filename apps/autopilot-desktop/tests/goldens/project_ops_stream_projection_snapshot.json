@@ -1,11 +1,15 @@
 {
   "source_badge": "source: stream.pm.work_items.v1",
+  "team_source_badge": "source: stream.pm.teams.v1",
+  "active_team_key": "desktop",
+  "active_team_title": "Desktop",
   "active_saved_view": "My Work",
   "selected_work_item_id": "wi-1",
   "checkpoints": {
     "stream.pm.activity_projection.v1": 7,
     "stream.pm.cycles.v1": 1,
     "stream.pm.saved_views.v1": 0,
+    "stream.pm.teams.v1": 0,
     "stream.pm.work_items.v1": 7
   },
   "accepted_events": [

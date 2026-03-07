@@ -9,8 +9,10 @@ pub const PROJECT_OPS_WORK_ITEMS_STREAM_ID: &str = "stream.pm.work_items.v1";
 pub const PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID: &str = "stream.pm.activity_projection.v1";
 pub const PROJECT_OPS_CYCLES_STREAM_ID: &str = "stream.pm.cycles.v1";
 pub const PROJECT_OPS_SAVED_VIEWS_STREAM_ID: &str = "stream.pm.saved_views.v1";
+pub const PROJECT_OPS_TEAMS_STREAM_ID: &str = "stream.pm.teams.v1";
 pub const PROJECT_OPS_V1_CONTRACT_VERSION: &str = "project_ops.contract.v1";
 pub const PROJECT_OPS_PRIMARY_SOURCE_BADGE: &str = "source: stream.pm.work_items.v1";
+pub const PROJECT_OPS_TEAM_SOURCE_BADGE: &str = "source: stream.pm.teams.v1";
 pub const PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE: &str = "source: spacetime.sync.lifecycle";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -50,6 +52,23 @@ const STEP0_STREAM_SPECS: [ProjectOpsStreamSpec; 4] = [
 
 pub fn step0_stream_specs() -> &'static [ProjectOpsStreamSpec] {
     &STEP0_STREAM_SPECS
+}
+
+const PHASE3_STREAM_SPECS: [ProjectOpsStreamSpec; 1] = [ProjectOpsStreamSpec {
+    stream_id: PROJECT_OPS_TEAMS_STREAM_ID,
+    purpose: "Team records, defaults, and scoped planning surfaces",
+    projection_payload: "Vec<ProjectOpsTeamRow>",
+    projection_responsibility: "Team-scoped defaults and planning context rendered from replay-safe local PM team projections under Phase 1 mirror/proxy semantics",
+}];
+
+pub fn phase3_stream_specs() -> &'static [ProjectOpsStreamSpec] {
+    &PHASE3_STREAM_SPECS
+}
+
+pub fn project_ops_stream_specs() -> Vec<ProjectOpsStreamSpec> {
+    let mut specs = step0_stream_specs().to_vec();
+    specs.extend_from_slice(phase3_stream_specs());
+    specs
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
@@ -250,8 +269,8 @@ pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
                 entity_kind: ProjectOpsEntityKind::Team,
                 step0_required: false,
                 projection_only: false,
-                deferred_until_phase: Some(ProjectOpsDeliveryPhase::Phase3),
-                purpose: "Shared planning scope and defaults across multiple operators or sub-groups",
+                deferred_until_phase: None,
+                purpose: "Shared planning scope, defaults, and team-aware views backed by canonical PM team projections",
             },
             ProjectOpsEntityContractSpec {
                 entity_kind: ProjectOpsEntityKind::Project,
@@ -429,13 +448,13 @@ pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
                 stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
             },
         ],
-        streams: step0_stream_specs().to_vec(),
+        streams: project_ops_stream_specs(),
         error_codes: ProjectOpsErrorCode::all().to_vec(),
     }
 }
 
 pub fn project_ops_required_stream_grants() -> Vec<&'static str> {
-    step0_stream_specs()
+    project_ops_stream_specs()
         .iter()
         .map(|spec| spec.stream_id)
         .collect()
@@ -444,13 +463,18 @@ pub fn project_ops_required_stream_grants() -> Vec<&'static str> {
 pub fn project_ops_phase1_sync_contract() -> ProjectOpsSyncContract {
     ProjectOpsSyncContract {
         current_rollout_phase: "phase_1_mirror_proxy",
-        local_truth_rule: "Project Ops visible state is sourced from replay-safe local PM projection streams and shared SyncApplyEngine checkpoints, not live PM reducers",
+        local_truth_rule: "Project Ops visible state is sourced from replay-safe local PM work-item, cycle, saved-view, and team projection streams plus shared SyncApplyEngine checkpoints, not live PM reducers",
         live_truth_rule: "Only sync lifecycle/bootstrap health may use spacetime.sync.lifecycle in Phase 1; live PM collaboration truth requires a later ADR-approved Phase 2 cutover",
         source_badges: vec![
             ProjectOpsSourceBadgeRule {
                 badge: PROJECT_OPS_PRIMARY_SOURCE_BADGE,
                 scope: "Project Ops pane list/detail state and work-item activity rendered from local PM projections",
                 truth_rule: "Use while Project Ops is reading replay-safe local PM projection documents keyed by canonical PM stream ids",
+            },
+            ProjectOpsSourceBadgeRule {
+                badge: PROJECT_OPS_TEAM_SOURCE_BADGE,
+                scope: "Project Ops team selectors, defaults, and team-scoped planning surfaces rendered from local PM team projections",
+                truth_rule: "Use while Project Ops team state is reading replay-safe local PM team projection documents; do not label team rows as live Spacetime authority in Phase 1",
             },
             ProjectOpsSourceBadgeRule {
                 badge: PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE,
@@ -1017,15 +1041,17 @@ mod tests {
     use super::{
         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
         PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-        PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
+        PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_TEAMS_STREAM_ID,
+        PROJECT_OPS_TEAM_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
         PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
         ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCommand, ProjectOpsCommandEnvelope,
         ProjectOpsCommandId, ProjectOpsCommandName, ProjectOpsCreateWorkItem,
         ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch,
         ProjectOpsEntityKind, ProjectOpsErrorCode, ProjectOpsSetBlockedReason,
         ProjectOpsWorkItemArchived, ProjectOpsWorkItemAssigned, ProjectOpsWorkItemDraft,
-        ProjectOpsWorkItemRef, project_ops_phase1_sync_contract,
-        project_ops_required_stream_grants, project_ops_v1_contract_manifest, step0_stream_specs,
+        ProjectOpsWorkItemRef, phase3_stream_specs, project_ops_phase1_sync_contract,
+        project_ops_required_stream_grants, project_ops_stream_specs, project_ops_v1_contract_manifest,
+        step0_stream_specs,
     };
     use crate::project_ops::schema::{
         ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
@@ -1118,6 +1144,20 @@ mod tests {
     }
 
     #[test]
+    fn phase3_stream_catalog_includes_team_projection() {
+        assert_eq!(
+            phase3_stream_specs(),
+            &[super::ProjectOpsStreamSpec {
+                stream_id: PROJECT_OPS_TEAMS_STREAM_ID,
+                purpose: "Team records, defaults, and scoped planning surfaces",
+                projection_payload: "Vec<ProjectOpsTeamRow>",
+                projection_responsibility: "Team-scoped defaults and planning context rendered from replay-safe local PM team projections under Phase 1 mirror/proxy semantics",
+            }]
+        );
+        assert_eq!(project_ops_stream_specs().len(), 5);
+    }
+
+    #[test]
     fn v1_contract_manifest_freezes_entities_commands_events_and_streams() {
         let manifest = project_ops_v1_contract_manifest();
         assert_eq!(manifest.contract_version, PROJECT_OPS_V1_CONTRACT_VERSION);
@@ -1150,7 +1190,7 @@ mod tests {
             manifest.accepted_events.len(),
             ProjectOpsAcceptedEventName::all().len()
         );
-        assert_eq!(manifest.streams, step0_stream_specs().to_vec());
+        assert_eq!(manifest.streams, project_ops_stream_specs());
         assert_eq!(manifest.error_codes, ProjectOpsErrorCode::all().to_vec());
     }
 
@@ -1189,7 +1229,6 @@ mod tests {
                     ProjectOpsEntityKind::Comment,
                     ProjectOpsDeliveryPhase::Phase3
                 ),
-                (ProjectOpsEntityKind::Team, ProjectOpsDeliveryPhase::Phase3),
                 (
                     ProjectOpsEntityKind::Project,
                     ProjectOpsDeliveryPhase::Phase3
@@ -1214,13 +1253,17 @@ mod tests {
             contract.required_stream_grants,
             project_ops_required_stream_grants()
         );
-        assert_eq!(contract.source_badges.len(), 2);
+        assert_eq!(contract.source_badges.len(), 3);
         assert_eq!(
             contract.source_badges[0].badge,
             PROJECT_OPS_PRIMARY_SOURCE_BADGE
         );
         assert_eq!(
             contract.source_badges[1].badge,
+            PROJECT_OPS_TEAM_SOURCE_BADGE
+        );
+        assert_eq!(
+            contract.source_badges[2].badge,
             PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE
         );
         assert!(
@@ -1230,6 +1273,11 @@ mod tests {
         );
         assert!(
             contract.source_badges[1]
+                .truth_rule
+                .contains("local PM team projection documents")
+        );
+        assert!(
+            contract.source_badges[2]
                 .truth_rule
                 .contains("do not label PM work-item values as live Spacetime authority")
         );
