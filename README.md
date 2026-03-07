@@ -12,6 +12,8 @@ Under the hood, Autopilot runs on the economic infrastructure for machine work, 
 
 The MVP is intentionally narrow. One user goes online, offers spare compute to the network, gets matched to paid machine work, sees bitcoin land in their Autopilot wallet, and withdraws over Lightning.
 
+The market is still called the OpenAgents Compute Market. At launch, the first live compute product families are `inference` and `embeddings`. That is an umbrella compute market with standardized launch products inside it, not a claim that raw accelerator spot or futures trading is already live.
+
 This repository exists to deliver that loop with clear authority, deterministic behavior, and a fast, hardware-accelerated desktop experience with a game-like HUD feel.
 
 ## Marketplace
@@ -25,7 +27,7 @@ Applications / Wedge
 
 Markets on one shared substrate
   Compute Market
-    buys and sells machine capacity
+    buys and sells machine capacity, with inference and embeddings as the first live compute product families
 
   Data Market
     buys and sells access to datasets, artifacts, stored conversations, and local context
@@ -48,7 +50,7 @@ Execution + Coordination Substrate
 
 These markets are not independent systems. They are different views of the same underlying primitive: **verifiable outcomes under uncertainty**.
 
-The compute market allocates scarce machine capacity. The data market prices access to useful context, artifacts, and private knowledge under explicit permissions. The labor market turns compute and data into completed work. The liquidity market moves value through the system. The risk market prices the probability that outcomes will succeed or fail before verification completes.
+The compute market allocates scarce machine capacity. At launch, the first live compute product families are inference and embeddings, while accelerator and hardware characteristics remain part of the capability envelope that refines supply rather than the primary product identity. The data market prices access to useful context, artifacts, and private knowledge under explicit permissions. The labor market turns compute and data into completed work. The liquidity market moves value through the system. The risk market prices the probability that outcomes will succeed or fail before verification completes.
 
 Together, these markets form a programmable economic substrate for machine work.
 
@@ -62,11 +64,11 @@ Docs are indexed in [docs/README.md](docs/README.md).
 
 ## Earn
 
-Autopilot Earn starts with spare compute. You run the desktop app, press `Go Online`, and offer idle CPU/GPU capacity into the network. Buyers purchase machine work, your machine executes it locally, and settlement happens over Lightning.
+Autopilot Earn starts with the OpenAgents Compute Market. You run the desktop app, press `Go Online`, and offer standardized compute products into the network. At launch, the first live compute product families are inference and embeddings. Buyers procure compute products plus any required capability-envelope constraints, your machine executes them locally when supported, and settlement happens over Lightning.
 
 MVP completion means this loop works end to end with clear proof in-app: job lifecycle, payment settlement, and wallet-confirmed earnings. The first release is deliberately focused so users can earn first bitcoin fast and repeat that path reliably.
 
-From there, the model expands from a single job type into a broader provider economy. Compute is lane one. Over time, the same economic infrastructure allows providers to supply compute capacity, sell data, perform agent work, participate in liquidity routing under Hydra, or underwrite risk in the prediction and coverage markets.
+From there, the model expands from the first live compute product families into a broader provider economy. Compute is lane one. Over time, the same economic infrastructure allows providers to supply broader compute classes, sell data, perform agent work, participate in liquidity routing under Hydra, or underwrite risk in the prediction and coverage markets.
 
 The architecture stays the same: intent-driven work, deterministic receipts, and explicit payouts.
 

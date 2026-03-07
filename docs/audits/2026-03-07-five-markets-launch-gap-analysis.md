@@ -87,9 +87,10 @@ Result: all passed.
 
 1. The repo now implements all five markets as `starter authority slices`. This is no longer just documentation. `apps/nexus-control` exposes authenticated kernel HTTP routes and passing tests for Compute, Data, Labor, Liquidity, and Risk.
 2. Only `Compute` is productized in the desktop app today. The compute-provider earn loop is real: `Go Online`, receive NIP-90 work, execute it, receive wallet-confirmed sats, and withdraw over Lightning.
-3. `Labor` is partially productized, but only as supporting infrastructure around the compute lane and local Codex labor modeling. It is not yet a launched open labor market for arbitrary coding work.
-4. `Data`, `Liquidity`, and `Risk` are implemented as backend/kernel state machines, receipts, and tests, but they are not yet exposed as real end-user market lanes in Autopilot.
-5. The biggest remaining gap is not object modeling. It is `market productization`: seller UX, buyer UX, discovery, pricing, operational flows, durable authority storage, and wire/package coverage beyond the thin initial proto slice.
+3. Public launch framing for `Compute` should remain "the OpenAgents Compute Market," with `inference` and `embeddings` as the first live compute product families inside that umbrella. The retained implementation is still inference-led today; embeddings are not yet productized as a distinct live family in the desktop.
+4. `Labor` is partially productized, but only as supporting infrastructure around the compute lane and local Codex labor modeling. It is not yet a launched open labor market for arbitrary coding work.
+5. `Data`, `Liquidity`, and `Risk` are implemented as backend/kernel state machines, receipts, and tests, but they are not yet exposed as real end-user market lanes in Autopilot.
+6. The biggest remaining gap is not object modeling. It is `market productization`: seller UX, buyer UX, discovery, pricing, operational flows, durable authority storage, and wire/package coverage beyond the thin initial proto slice.
 
 ## Market Matrix
 
@@ -126,11 +127,13 @@ Implemented:
   - `ComputeIndex`
 - Snapshot and `/stats` counters for compute activity.
 - Passing backend compute-market flow test plus passing desktop earn-loop tests.
+- Launchable market umbrella positioning in docs can be defended as `Compute Market`, not merely a single backend feature lane.
 
 Not yet implemented / not yet productized:
 
 - No desktop UI for browsing or creating compute products, lots, instruments, delivery proofs, or indices.
 - The user-visible compute earn loop does not currently drive those explicit compute-market objects. The desktop product flow still lands primarily in labor receipts plus wallet settlement.
+- The retained desktop flow is still inference-led; embeddings are not yet surfaced as a distinct live compute product family in desktop inventory, buyer procurement, or settlement UX.
 - No visible compute market orderbook, catalog, or commodity-style pricing UX.
 - No full compute-market wire/package surface beyond the thin `compute.v1` proto.
 - No durable kernel backing store for canonical compute receipts and objects; the kernel state inside `nexus-control` is in-memory.
@@ -138,6 +141,8 @@ Not yet implemented / not yet productized:
 Launch-note fit:
 
 - The March 11, 2026 claim "sell your spare compute for bitcoin" is broadly supported by the current desktop product.
+- The strongest accurate public framing is: "We are launching the OpenAgents Compute Market with inference and embeddings as the first live compute product families." That preserves the compute-market claim without implying raw accelerator trading is already live.
+- The retained implementation today can substantiate the compute-market umbrella and a real inference-led earn path, but not a fully productized embeddings family yet.
 - The stronger reading "the explicit compute market is launched as a surfaced market product" is only partially true today.
 
 ### Data

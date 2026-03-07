@@ -212,7 +212,7 @@ When the user flips it off, the provider must stop cleanly. There must be no zom
 
 As a provider, the app must be able to:
 
-* Receive NIP-90 requests for at least one supported job class (text generation is the baseline)
+* Receive NIP-90 requests for at least one supported launch compute family. The Compute Market launch families are inference and embeddings; the retained MVP implementation is still text-generation-led today, with embeddings as the next standardized compute family to productize.
 * Surface observed market activity even while offline so the user can browse demand before opting into provider mode
 * Auto-accept matching jobs by default based on configuration, capacity, and health; manual per-job approval is not part of the primary earn loop
 * Execute deterministically enough that failures are attributable and recoverable
