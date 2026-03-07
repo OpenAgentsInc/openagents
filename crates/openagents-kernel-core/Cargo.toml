@@ -13,6 +13,7 @@ workspace = true
 [dependencies]
 anyhow = { workspace = true }
 bitcoin = { workspace = true }
+openagents-kernel-proto = { path = "../openagents-kernel-proto" }
 reqwest = { workspace = true }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

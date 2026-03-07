@@ -21,6 +21,15 @@ pub enum ComputeProductStatus {
     Retired,
 }
 
+impl ComputeProductStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Active => "active",
+            Self::Retired => "retired",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum CapacityReserveState {
@@ -42,6 +51,19 @@ pub enum CapacityLotStatus {
     Expired,
 }
 
+impl CapacityLotStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Reserved => "reserved",
+            Self::Delivering => "delivering",
+            Self::Delivered => "delivered",
+            Self::Cancelled => "cancelled",
+            Self::Expired => "expired",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum DeliveryProofStatus {
@@ -51,12 +73,31 @@ pub enum DeliveryProofStatus {
     Rejected,
 }
 
+impl DeliveryProofStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Recorded => "recorded",
+            Self::Accepted => "accepted",
+            Self::Rejected => "rejected",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeIndexStatus {
     #[default]
     Published,
     Superseded,
+}
+
+impl ComputeIndexStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Published => "published",
+            Self::Superseded => "superseded",
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
@@ -83,6 +124,21 @@ pub enum CapacityInstrumentStatus {
     Expired,
 }
 
+impl CapacityInstrumentStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Active => "active",
+            Self::Delivering => "delivering",
+            Self::CashSettling => "cash_settling",
+            Self::Settled => "settled",
+            Self::Defaulted => "defaulted",
+            Self::Cancelled => "cancelled",
+            Self::Expired => "expired",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeBackendFamily {
@@ -102,6 +158,93 @@ pub enum ComputeFamily {
     Inference,
     Embeddings,
 }
+
+macro_rules! canonical_reason_code_enum {
+    ($name:ident { $($variant:ident => $label:literal),+ $(,)? }) => {
+        #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+        #[serde(rename_all = "snake_case")]
+        pub enum $name {
+            $($variant),+
+        }
+
+        impl $name {
+            pub const fn label(self) -> &'static str {
+                match self {
+                    $(Self::$variant => $label),+
+                }
+            }
+
+            pub fn parse(value: &str) -> Option<Self> {
+                match value {
+                    $($label => Some(Self::$variant),)+
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+canonical_reason_code_enum!(CapacityLotCancellationReason {
+    ProviderUnavailable => "provider_unavailable",
+    PolicyDisabled => "policy_disabled",
+    MarketHalt => "market_halt",
+    Superseded => "superseded",
+    OfferExpired => "offer_expired",
+});
+
+canonical_reason_code_enum!(CapacityCurtailmentReason {
+    RuntimeHealth => "runtime_health",
+    ProviderPreempted => "provider_preempted",
+    BuyerAborted => "buyer_aborted",
+    PolicyEnforcement => "policy_enforcement",
+    CapabilityDrift => "capability_drift",
+});
+
+canonical_reason_code_enum!(CapacityInstrumentClosureReason {
+    Filled => "filled",
+    BuyerCancelled => "buyer_cancelled",
+    ProviderCancelled => "provider_cancelled",
+    Curtailed => "curtailed",
+    Expired => "expired",
+    Defaulted => "defaulted",
+});
+
+canonical_reason_code_enum!(CapacityNonDeliveryReason {
+    ProviderOffline => "provider_offline",
+    CapabilityMismatch => "capability_mismatch",
+    PolicyBlocked => "policy_blocked",
+    MissedWindow => "missed_window",
+});
+
+canonical_reason_code_enum!(ComputeSettlementFailureReason {
+    PaymentTimeout => "payment_timeout",
+    ReceiptRejected => "receipt_rejected",
+    NonDelivery => "non_delivery",
+    CostAttestationMissing => "cost_attestation_missing",
+    AdjudicationRequired => "adjudication_required",
+});
+
+canonical_reason_code_enum!(ComputeDeliveryVarianceReason {
+    CapabilityEnvelopeMismatch => "capability_envelope_mismatch",
+    PartialQuantity => "partial_quantity",
+    LatencyBreach => "latency_breach",
+    ThroughputShortfall => "throughput_shortfall",
+    ModelPolicyDrift => "model_policy_drift",
+});
+
+canonical_reason_code_enum!(DeliveryRejectionReason {
+    AttestationMissing => "attestation_missing",
+    CostProofMissing => "cost_proof_missing",
+    RuntimeIdentityMismatch => "runtime_identity_mismatch",
+    NonConformingDelivery => "non_conforming_delivery",
+});
+
+canonical_reason_code_enum!(ComputeIndexCorrectionReason {
+    DataQuality => "data_quality",
+    ManipulationFilter => "manipulation_filter",
+    MethodologyBug => "methodology_bug",
+    LateObservation => "late_observation",
+});
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 pub struct ComputeHostCapability {

@@ -9,7 +9,18 @@ Current scope:
 - `openagents.compute.v1`
 - `openagents.labor.v1`
 
-This crate is intentionally thin. It covers the minimum wire surface needed to start backending the compute-provider earn flow:
+The compute package tree now includes explicit wire contracts for:
+
+- compute requirements
+- compute products
+- capacity lots
+- capacity instruments
+- delivery proofs
+- compute indices
+
+This crate remains intentionally scoped to the currently active kernel slices, but the compute layer is no longer only a thin requirement stub. It now covers the compute-market object model and the corresponding mutation/read-model contracts used by the service and reusable client.
+
+Core generated coverage includes:
 
 - `Receipt`
 - `ReceiptHints`
@@ -18,7 +29,12 @@ This crate is intentionally thin. It covers the minimum wire surface needed to s
 - `Submission`
 - `Verdict`
 - `EconomySnapshot`
-- minimal compute requirements
+- `ComputeRequirement`
+- `ComputeProduct`
+- `CapacityLot`
+- `CapacityInstrument`
+- `DeliveryProof`
+- `ComputeIndex`
 
 Deferred on purpose:
 

@@ -12,6 +12,7 @@ workspace = true
 
 [dependencies]
 prost = "0.13"
+serde = { version = "1", features = ["derive"] }
 
 [build-dependencies]
 prost-build = "0.13"

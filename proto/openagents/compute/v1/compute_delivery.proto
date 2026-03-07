@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+import "openagents/compute/v1/compute_products.proto";
+
+enum DeliveryProofStatus {
+  DELIVERY_PROOF_STATUS_UNSPECIFIED = 0;
+  DELIVERY_PROOF_STATUS_RECORDED = 1;
+  DELIVERY_PROOF_STATUS_ACCEPTED = 2;
+  DELIVERY_PROOF_STATUS_REJECTED = 3;
+}
+
+enum ComputeDeliveryVarianceReason {
+  COMPUTE_DELIVERY_VARIANCE_REASON_UNSPECIFIED = 0;
+  COMPUTE_DELIVERY_VARIANCE_REASON_CAPABILITY_ENVELOPE_MISMATCH = 1;
+  COMPUTE_DELIVERY_VARIANCE_REASON_PARTIAL_QUANTITY = 2;
+  COMPUTE_DELIVERY_VARIANCE_REASON_LATENCY_BREACH = 3;
+  COMPUTE_DELIVERY_VARIANCE_REASON_THROUGHPUT_SHORTFALL = 4;
+  COMPUTE_DELIVERY_VARIANCE_REASON_MODEL_POLICY_DRIFT = 5;
+}
+
+enum DeliveryRejectionReason {
+  DELIVERY_REJECTION_REASON_UNSPECIFIED = 0;
+  DELIVERY_REJECTION_REASON_ATTESTATION_MISSING = 1;
+  DELIVERY_REJECTION_REASON_COST_PROOF_MISSING = 2;
+  DELIVERY_REJECTION_REASON_RUNTIME_IDENTITY_MISMATCH = 3;
+  DELIVERY_REJECTION_REASON_NON_CONFORMING_DELIVERY = 4;
+}
+
+message DeliveryProof {
+  string delivery_proof_id = 1;
+  string capacity_lot_id = 2;
+  string product_id = 3;
+  optional string instrument_id = 4;
+  optional string contract_id = 5;
+  int64 created_at_ms = 6;
+  uint64 metered_quantity = 7;
+  uint64 accepted_quantity = 8;
+  optional string performance_band_observed = 9;
+  ComputeDeliveryVarianceReason variance_reason = 10;
+  optional string variance_reason_detail = 11;
+  optional string attestation_digest = 12;
+  optional string cost_attestation_ref = 13;
+  DeliveryProofStatus status = 14;
+  DeliveryRejectionReason rejection_reason = 15;
+  optional ComputeCapabilityEnvelope promised_capability_envelope = 16;
+  optional ComputeCapabilityEnvelope observed_capability_envelope = 17;
+  string metadata_json = 18;
+}
+
+message RecordDeliveryProofRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  DeliveryProof delivery_proof = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message RecordDeliveryProofResponse {
+  DeliveryProof delivery_proof = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListDeliveryProofsRequest {
+  optional string capacity_lot_id = 1;
+  DeliveryProofStatus status = 2;
+}
+
+message ListDeliveryProofsResponse {
+  repeated DeliveryProof delivery_proofs = 1;
+}
+
+message GetDeliveryProofRequest {
+  string delivery_proof_id = 1;
+}
+
+message GetDeliveryProofResponse {
+  DeliveryProof delivery_proof = 1;
+}

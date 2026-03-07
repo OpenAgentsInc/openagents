@@ -5,6 +5,11 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "../../proto/openagents/economy/v1/receipt.proto",
         "../../proto/openagents/economy/v1/snapshot.proto",
         "../../proto/openagents/compute/v1/compute.proto",
+        "../../proto/openagents/compute/v1/compute_products.proto",
+        "../../proto/openagents/compute/v1/compute_capacity.proto",
+        "../../proto/openagents/compute/v1/compute_instruments.proto",
+        "../../proto/openagents/compute/v1/compute_delivery.proto",
+        "../../proto/openagents/compute/v1/compute_indices.proto",
         "../../proto/openagents/labor/v1/work.proto",
     ];
 
@@ -14,6 +19,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut config = prost_build::Config::new();
     config.include_file("openagents.rs");
     config.protoc_executable(protoc);
+    config.type_attribute(".", "#[derive(serde::Serialize, serde::Deserialize)]");
     config.compile_protos(&proto_files, &[proto_root])?;
     Ok(())
 }
