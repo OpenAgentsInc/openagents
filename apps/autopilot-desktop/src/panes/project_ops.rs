@@ -247,6 +247,14 @@ pub fn paint_project_ops_pane(
         11.0,
         theme::text::PRIMARY,
     ));
+    if let Some(selection_notice) = state.selection_notice.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            selection_notice,
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 166.0),
+            10.0,
+            theme::status::WARNING,
+        ));
+    }
 
     if let Some(detail_draft) = state.detail_draft.as_ref() {
         let detail_lines = [
@@ -288,7 +296,7 @@ pub fn paint_project_ops_pane(
         for (index, line) in detail_lines.iter().enumerate() {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
-                Point::new(detail.origin.x + 12.0, detail.origin.y + 168.0 + index as f32 * 18.0),
+                Point::new(detail.origin.x + 12.0, detail.origin.y + 186.0 + index as f32 * 18.0),
                 10.5,
                 theme::text::PRIMARY,
             ));
@@ -296,7 +304,7 @@ pub fn paint_project_ops_pane(
     } else {
         paint.scene.draw_text(paint.text.layout(
             "Select a work item to load the detail editor.",
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 170.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 188.0),
             10.5,
             theme::text::SECONDARY,
         ));
@@ -335,19 +343,35 @@ pub fn paint_project_ops_pane(
         10.0,
         theme::text::MUTED,
     ));
-
-    let next_steps = [
-        "Next: activity timeline and pane-state handling",
-        "Next: keyboard and command-palette view switching",
-        "Next: tighten quick-create and editor input wiring",
-    ];
-    for (index, line) in next_steps.iter().enumerate() {
+    paint.scene.draw_text(paint.text.layout(
+        "Activity Timeline",
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 304.0),
+        12.0,
+        theme::text::PRIMARY,
+    ));
+    if state.visible_activity_rows.is_empty() {
         paint.scene.draw_text(paint.text.layout(
-            line,
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 286.0 + index as f32 * 18.0),
-            11.0,
-            theme::text::PRIMARY,
+            state.activity_empty_state.as_str(),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 326.0),
+            10.5,
+            theme::text::SECONDARY,
         ));
+    } else {
+        for (index, row) in state.visible_activity_rows.iter().take(4).enumerate() {
+            paint.scene.draw_text(paint.text.layout(
+                format!(
+                    "{} | {} | {} | {}",
+                    row.event_name.label(),
+                    row.actor_label,
+                    row.occurred_at_unix_ms,
+                    row.summary
+                )
+                .as_str(),
+                Point::new(detail.origin.x + 12.0, detail.origin.y + 326.0 + index as f32 * 18.0),
+                10.0,
+                theme::text::PRIMARY,
+            ));
+        }
     }
 
     paint.scene.draw_text(paint.text.layout(

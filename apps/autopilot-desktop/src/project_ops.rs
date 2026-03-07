@@ -72,6 +72,9 @@ pub struct ProjectOpsPaneState {
     pub visible_work_items: Vec<ProjectOpsWorkItem>,
     pub selected_work_item_id: Option<ProjectOpsWorkItemId>,
     pub empty_state_copy: String,
+    pub visible_activity_rows: Vec<ProjectOpsActivityRow>,
+    pub activity_empty_state: String,
+    pub selection_notice: Option<String>,
     pub available_saved_views: Vec<ProjectOpsSavedViewRow>,
     pub quick_create_draft: ProjectOpsQuickCreateDraft,
     pub detail_draft: Option<ProjectOpsDetailDraft>,
@@ -99,6 +102,9 @@ impl Default for ProjectOpsPaneState {
             visible_work_items,
             selected_work_item_id,
             empty_state_copy,
+            visible_activity_rows,
+            activity_empty_state,
+            selection_notice,
             available_saved_views,
         ) = if feature_enabled {
             derive_project_ops_view_state(
@@ -115,6 +121,9 @@ impl Default for ProjectOpsPaneState {
                 Vec::new(),
                 None,
                 empty_state_copy_for_view(active_saved_view_id.as_str()).to_string(),
+                Vec::new(),
+                "Select a work item to inspect activity.".to_string(),
+                None,
                 Vec::new(),
             )
         };
@@ -186,6 +195,9 @@ impl Default for ProjectOpsPaneState {
             visible_work_items,
             selected_work_item_id,
             empty_state_copy,
+            visible_activity_rows,
+            activity_empty_state,
+            selection_notice,
             available_saved_views,
             quick_create_draft: ProjectOpsQuickCreateDraft::default(),
             detail_draft,
@@ -212,6 +224,9 @@ impl ProjectOpsPaneState {
             visible_work_items,
             selected_work_item_id,
             empty_state_copy,
+            visible_activity_rows,
+            activity_empty_state,
+            selection_notice,
             available_saved_views,
         ) = derive_project_ops_view_state(
             &local_store,
@@ -242,6 +257,9 @@ impl ProjectOpsPaneState {
             visible_work_items,
             selected_work_item_id,
             empty_state_copy,
+            visible_activity_rows,
+            activity_empty_state,
+            selection_notice,
             available_saved_views,
             quick_create_draft: ProjectOpsQuickCreateDraft::default(),
             detail_draft,
@@ -329,6 +347,9 @@ impl ProjectOpsPaneState {
             visible_work_items,
             selected_work_item_id,
             empty_state_copy,
+            visible_activity_rows,
+            activity_empty_state,
+            selection_notice,
             available_saved_views,
         ) = derive_project_ops_view_state(
             &self.local_store,
@@ -342,6 +363,9 @@ impl ProjectOpsPaneState {
         self.visible_work_items = visible_work_items;
         self.selected_work_item_id = selected_work_item_id;
         self.empty_state_copy = empty_state_copy;
+        self.visible_activity_rows = visible_activity_rows;
+        self.activity_empty_state = activity_empty_state;
+        self.selection_notice = selection_notice;
         self.available_saved_views = available_saved_views;
         self.load_state = self.local_store.load_state;
         self.last_error = self.local_store.last_error.clone();
@@ -642,6 +666,9 @@ fn derive_project_ops_view_state(
     Vec<ProjectOpsWorkItem>,
     Option<ProjectOpsWorkItemId>,
     String,
+    Vec<ProjectOpsActivityRow>,
+    String,
+    Option<String>,
     Vec<ProjectOpsSavedViewRow>,
 ) {
     let available_saved_views = local_store.saved_views.clone();
@@ -659,6 +686,26 @@ fn derive_project_ops_view_state(
         operator_label,
         search_query,
     );
+    let selection_notice = selected_work_item_id.and_then(|selected| {
+        if visible_work_items
+            .iter()
+            .any(|item| item.work_item_id == *selected)
+        {
+            None
+        } else if local_store
+            .work_items
+            .iter()
+            .any(|item| item.work_item_id == *selected)
+        {
+            Some(format!(
+                "Selected item {} is filtered out of {}.",
+                selected.as_str(),
+                active_saved_view
+            ))
+        } else {
+            Some(format!("Selected item {} no longer exists.", selected.as_str()))
+        }
+    });
     let selected_work_item_id = selected_work_item_id
         .cloned()
         .filter(|selected| {
@@ -668,12 +715,33 @@ fn derive_project_ops_view_state(
         })
         .or_else(|| visible_work_items.first().map(|item| item.work_item_id.clone()));
     let empty_state_copy = empty_state_copy_for_view(active_saved_view_id).to_string();
+    let visible_activity_rows = selected_work_item_id
+        .as_ref()
+        .map(|selected| {
+            local_store
+                .activity_rows
+                .iter()
+                .filter(|row| &row.work_item_id == selected)
+                .cloned()
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    let activity_empty_state = if selected_work_item_id.is_none() {
+        "Select a work item to inspect activity.".to_string()
+    } else if visible_activity_rows.is_empty() {
+        "No activity yet for the selected work item.".to_string()
+    } else {
+        String::new()
+    };
     (
         active_saved_view,
         active_filter_chips,
         visible_work_items,
         selected_work_item_id,
         empty_state_copy,
+        visible_activity_rows,
+        activity_empty_state,
+        selection_notice,
         available_saved_views,
     )
 }
@@ -702,7 +770,10 @@ mod tests {
     use super::{
         ProjectOpsPaneState, PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
     };
-    use crate::project_ops::projection::{ProjectOpsCycleRow, ProjectOpsProjectionStore};
+    use crate::project_ops::contract::ProjectOpsAcceptedEventName;
+    use crate::project_ops::projection::{
+        ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore,
+    };
     use crate::project_ops::schema::{
         ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
         ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
@@ -786,6 +857,40 @@ mod tests {
                 ],
             )
             .expect("work item projection should apply");
+        store
+            .apply_activity_projection(
+                1,
+                vec![
+                    ProjectOpsActivityRow {
+                        event_id: "pm:activity:1".to_string(),
+                        work_item_id: ProjectOpsWorkItemId::new("wi-2").expect("work item id"),
+                        event_name: ProjectOpsAcceptedEventName::WorkItemStatusChanged,
+                        summary: "Moved wi-2 into in_progress".to_string(),
+                        actor_label: "cdavid".to_string(),
+                        command_id: "cmd-1".to_string(),
+                        occurred_at_unix_ms: 1_762_000_200_000,
+                    },
+                    ProjectOpsActivityRow {
+                        event_id: "pm:activity:2".to_string(),
+                        work_item_id: ProjectOpsWorkItemId::new("wi-2").expect("work item id"),
+                        event_name: ProjectOpsAcceptedEventName::WorkItemBlocked,
+                        summary: "Blocked wi-2 waiting on upstream".to_string(),
+                        actor_label: "cdavid".to_string(),
+                        command_id: "cmd-2".to_string(),
+                        occurred_at_unix_ms: 1_762_000_300_000,
+                    },
+                    ProjectOpsActivityRow {
+                        event_id: "pm:activity:3".to_string(),
+                        work_item_id: ProjectOpsWorkItemId::new("wi-1").expect("work item id"),
+                        event_name: ProjectOpsAcceptedEventName::WorkItemAssigned,
+                        summary: "Assigned wi-1 to cdavid".to_string(),
+                        actor_label: "cdavid".to_string(),
+                        command_id: "cmd-3".to_string(),
+                        occurred_at_unix_ms: 1_762_000_250_000,
+                    },
+                ],
+            )
+            .expect("activity projection should apply");
         store
     }
 
@@ -888,5 +993,36 @@ mod tests {
         assert_eq!(updated.assignee.as_deref(), Some("teammate"));
         assert_eq!(updated.blocked_reason.as_deref(), Some("Waiting on design"));
         assert_eq!(pane.detail_save_status.as_deref(), Some("Detail changes applied"));
+    }
+
+    #[test]
+    fn activity_rows_follow_selected_item_and_surface_filtered_selection_notice() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        assert_eq!(
+            pane.visible_activity_rows
+                .iter()
+                .map(|row| row.event_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["pm:activity:2", "pm:activity:1"]
+        );
+        assert!(pane.activity_empty_state.is_empty());
+
+        assert!(pane.set_search_query("wi-1"));
+        assert_eq!(
+            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            Some("wi-1")
+        );
+        assert!(
+            pane.selection_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("filtered out"))
+        );
+        assert_eq!(
+            pane.visible_activity_rows
+                .iter()
+                .map(|row| row.event_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["pm:activity:3"]
+        );
     }
 }
