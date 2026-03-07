@@ -50,6 +50,6 @@ mod tests {
         };
 
         assert_eq!(deck.metadata.title, "Autopilot + Five Markets");
-        assert_eq!(deck.slides.len(), 6);
+        assert_eq!(deck.slides.len(), 7);
     }
 }

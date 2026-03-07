@@ -48,8 +48,8 @@ async function stampVersionedAssetUrls() {
     readFile(indexPath, "utf8"),
   ]);
 
-  const jsVersion = digestHex(jsSource);
   const wasmVersion = digestHex(wasmSource);
+  const jsVersion = digestHex(`${jsSource}\n${wasmVersion}`);
 
   const stampedJs = jsSource
     .replaceAll("'deck_bg.wasm'", `'deck_bg.wasm?v=${wasmVersion}'`)
