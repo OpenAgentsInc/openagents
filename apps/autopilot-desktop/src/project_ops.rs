@@ -85,32 +85,31 @@ impl Default for ProjectOpsPaneState {
         };
         let operator_label = current_operator_label();
         let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
-        let active_saved_view = view_title_for_id(active_saved_view_id.as_str())
-            .unwrap_or("My Work")
-            .to_string();
         let search_query = String::new();
-        let active_filter_chips =
-            filter_chips_for_view(active_saved_view_id.as_str(), search_query.as_str());
-        let visible_work_items = if feature_enabled {
-            filter_work_items_for_view(
-                local_store.work_items.as_slice(),
-                local_store.cycles.as_slice(),
+        let (
+            active_saved_view,
+            active_filter_chips,
+            visible_work_items,
+            selected_work_item_id,
+            empty_state_copy,
+            available_saved_views,
+        ) = if feature_enabled {
+            derive_project_ops_view_state(
+                &local_store,
                 active_saved_view_id.as_str(),
                 operator_label.as_str(),
                 search_query.as_str(),
+                None,
             )
         } else {
-            Vec::new()
-        };
-        let selected_work_item_id = visible_work_items
-            .first()
-            .map(|item| item.work_item_id.clone());
-        let empty_state_copy =
-            empty_state_copy_for_view(active_saved_view_id.as_str()).to_string();
-        let available_saved_views = if feature_enabled {
-            local_store.saved_views.clone()
-        } else {
-            Vec::new()
+            (
+                "My Work".to_string(),
+                Vec::new(),
+                Vec::new(),
+                None,
+                empty_state_copy_for_view(active_saved_view_id.as_str()).to_string(),
+                Vec::new(),
+            )
         };
         let (load_state, last_error, last_action, source_badge, summary, status_note) =
             if feature_enabled {
@@ -177,5 +176,338 @@ impl Default for ProjectOpsPaneState {
             status_note,
             local_store,
         }
+    }
+}
+
+impl ProjectOpsPaneState {
+    #[cfg(test)]
+    pub(crate) fn from_local_store_for_tests(
+        local_store: ProjectOpsProjectionStore,
+        operator_label: &str,
+    ) -> Self {
+        let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
+        let search_query = String::new();
+        let (
+            active_saved_view,
+            active_filter_chips,
+            visible_work_items,
+            selected_work_item_id,
+            empty_state_copy,
+            available_saved_views,
+        ) = derive_project_ops_view_state(
+            &local_store,
+            active_saved_view_id.as_str(),
+            operator_label,
+            search_query.as_str(),
+            None,
+        );
+        Self {
+            load_state: local_store.load_state,
+            last_error: local_store.last_error.clone(),
+            last_action: local_store.last_action.clone(),
+            feature_enabled: true,
+            operator_label: operator_label.to_string(),
+            active_saved_view_id,
+            active_saved_view,
+            search_query,
+            active_filter_chips,
+            visible_work_items,
+            selected_work_item_id,
+            empty_state_copy,
+            available_saved_views,
+            source_badge: local_store.source_badge(),
+            summary: "Test PM pane".to_string(),
+            status_note: "Test PM pane".to_string(),
+            local_store,
+        }
+    }
+
+    pub fn selected_work_item(&self) -> Option<&ProjectOpsWorkItem> {
+        let selected_work_item_id = self.selected_work_item_id.as_ref()?;
+        self.visible_work_items
+            .iter()
+            .find(|item| &item.work_item_id == selected_work_item_id)
+    }
+
+    pub fn set_active_saved_view(&mut self, view_id: &str) -> bool {
+        let normalized = view_id.trim();
+        if normalized.is_empty() || normalized == self.active_saved_view_id {
+            return false;
+        }
+        self.active_saved_view_id = normalized.to_string();
+        self.refresh_derived_view_state();
+        self.last_action = Some(format!("Project Ops view -> {}", self.active_saved_view));
+        true
+    }
+
+    pub fn set_search_query(&mut self, query: &str) -> bool {
+        let normalized = query.trim().to_string();
+        if normalized == self.search_query {
+            return false;
+        }
+        self.search_query = normalized;
+        self.refresh_derived_view_state();
+        self.last_action = Some(if self.search_query.is_empty() {
+            "Project Ops search cleared".to_string()
+        } else {
+            format!("Project Ops search -> {}", self.search_query)
+        });
+        true
+    }
+
+    pub fn select_visible_row(&mut self, index: usize) -> bool {
+        let Some(work_item_id) = self
+            .visible_work_items
+            .get(index)
+            .map(|item| item.work_item_id.clone())
+        else {
+            return false;
+        };
+        if self.selected_work_item_id.as_ref() == Some(&work_item_id) {
+            return false;
+        }
+        self.selected_work_item_id = Some(work_item_id.clone());
+        self.last_action = Some(format!("Selected {}", work_item_id.as_str()));
+        true
+    }
+
+    pub fn move_selection(&mut self, delta: isize) -> bool {
+        if self.visible_work_items.is_empty() {
+            self.selected_work_item_id = None;
+            return false;
+        }
+        let current_index = self
+            .selected_work_item_id
+            .as_ref()
+            .and_then(|selected| {
+                self.visible_work_items
+                    .iter()
+                    .position(|item| &item.work_item_id == selected)
+            })
+            .unwrap_or(0);
+        let max_index = self.visible_work_items.len().saturating_sub(1) as isize;
+        let next_index = ((current_index as isize) + delta).clamp(0, max_index) as usize;
+        self.select_visible_row(next_index)
+    }
+
+    fn refresh_derived_view_state(&mut self) {
+        let (
+            active_saved_view,
+            active_filter_chips,
+            visible_work_items,
+            selected_work_item_id,
+            empty_state_copy,
+            available_saved_views,
+        ) = derive_project_ops_view_state(
+            &self.local_store,
+            self.active_saved_view_id.as_str(),
+            self.operator_label.as_str(),
+            self.search_query.as_str(),
+            self.selected_work_item_id.as_ref(),
+        );
+        self.active_saved_view = active_saved_view;
+        self.active_filter_chips = active_filter_chips;
+        self.visible_work_items = visible_work_items;
+        self.selected_work_item_id = selected_work_item_id;
+        self.empty_state_copy = empty_state_copy;
+        self.available_saved_views = available_saved_views;
+        self.load_state = self.local_store.load_state;
+        self.last_error = self.local_store.last_error.clone();
+    }
+}
+
+fn derive_project_ops_view_state(
+    local_store: &ProjectOpsProjectionStore,
+    active_saved_view_id: &str,
+    operator_label: &str,
+    search_query: &str,
+    selected_work_item_id: Option<&ProjectOpsWorkItemId>,
+) -> (
+    String,
+    Vec<String>,
+    Vec<ProjectOpsWorkItem>,
+    Option<ProjectOpsWorkItemId>,
+    String,
+    Vec<ProjectOpsSavedViewRow>,
+) {
+    let available_saved_views = local_store.saved_views.clone();
+    let active_saved_view = available_saved_views
+        .iter()
+        .find(|view| view.view_id == active_saved_view_id)
+        .map(|view| view.title.clone())
+        .or_else(|| view_title_for_id(active_saved_view_id).map(ToString::to_string))
+        .unwrap_or_else(|| "Saved View".to_string());
+    let active_filter_chips = filter_chips_for_view(active_saved_view_id, search_query);
+    let visible_work_items = filter_work_items_for_view(
+        local_store.work_items.as_slice(),
+        local_store.cycles.as_slice(),
+        active_saved_view_id,
+        operator_label,
+        search_query,
+    );
+    let selected_work_item_id = selected_work_item_id
+        .cloned()
+        .filter(|selected| {
+            visible_work_items
+                .iter()
+                .any(|item| item.work_item_id == *selected)
+        })
+        .or_else(|| visible_work_items.first().map(|item| item.work_item_id.clone()));
+    let empty_state_copy = empty_state_copy_for_view(active_saved_view_id).to_string();
+    (
+        active_saved_view,
+        active_filter_chips,
+        visible_work_items,
+        selected_work_item_id,
+        empty_state_copy,
+        available_saved_views,
+    )
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::PathBuf;
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    use super::{
+        ProjectOpsPaneState, PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
+    };
+    use crate::project_ops::projection::{ProjectOpsCycleRow, ProjectOpsProjectionStore};
+    use crate::project_ops::schema::{
+        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
+        ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+    };
+
+    static UNIQUE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+    fn unique_temp_path(name: &str) -> PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_or(0, |duration| duration.as_nanos());
+        let counter = UNIQUE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
+        std::env::temp_dir()
+            .join(format!("openagents-project-ops-pane-{name}-{nanos}-{counter}.json"))
+    }
+
+    fn work_item(
+        work_item_id: &str,
+        status: ProjectOpsWorkItemStatus,
+        assignee: Option<&str>,
+        blocked_reason: Option<&str>,
+        updated_offset_unix_ms: u64,
+    ) -> ProjectOpsWorkItem {
+        let created_at_unix_ms = 1_762_000_000_000;
+        ProjectOpsWorkItem {
+            work_item_id: ProjectOpsWorkItemId::new(work_item_id).expect("work item id"),
+            title: format!("Task {work_item_id}"),
+            description: format!("Description for {work_item_id}"),
+            status,
+            priority: ProjectOpsPriority::High,
+            assignee: assignee.map(ToString::to_string),
+            team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
+            cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
+            parent_id: None,
+            area_tags: vec!["pm".to_string()],
+            blocked_reason: blocked_reason.map(ToString::to_string),
+            due_at_unix_ms: None,
+            created_at_unix_ms,
+            updated_at_unix_ms: created_at_unix_ms + updated_offset_unix_ms,
+            archived_at_unix_ms: None,
+        }
+    }
+
+    fn sample_store() -> ProjectOpsProjectionStore {
+        let work_items_path = unique_temp_path("work-items");
+        let activity_path = unique_temp_path("activity");
+        let cycles_path = unique_temp_path("cycles");
+        let saved_views_path = unique_temp_path("saved-views");
+        let checkpoint_path = unique_temp_path("checkpoints");
+        let mut store = ProjectOpsProjectionStore::from_paths_for_tests(
+            work_items_path,
+            activity_path,
+            cycles_path,
+            saved_views_path,
+            checkpoint_path,
+        );
+        let cycle = ProjectOpsCycleRow {
+            cycle_id: ProjectOpsCycleId::new("2026-w10").expect("cycle id"),
+            title: "Week 10".to_string(),
+            goal: Some("Land PM pane selection".to_string()),
+            starts_at_unix_ms: 1_761_998_400_000,
+            ends_at_unix_ms: 1_762_603_200_000,
+            is_active: true,
+        };
+        store
+            .apply_cycles_projection(1, vec![cycle])
+            .expect("cycle projection should apply");
+        store
+            .apply_work_items_projection(
+                1,
+                vec![
+                    work_item("wi-1", ProjectOpsWorkItemStatus::Todo, Some("cdavid"), None, 10),
+                    work_item(
+                        "wi-2",
+                        ProjectOpsWorkItemStatus::InProgress,
+                        Some("cdavid"),
+                        Some("Waiting on upstream"),
+                        30,
+                    ),
+                    work_item("wi-3", ProjectOpsWorkItemStatus::Done, Some("cdavid"), None, 20),
+                ],
+            )
+            .expect("work item projection should apply");
+        store
+    }
+
+    #[test]
+    fn selection_defaults_to_first_visible_row_in_stable_sort_order() {
+        let pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        assert_eq!(pane.active_saved_view_id, PROJECT_OPS_MY_WORK_VIEW_ID);
+        assert_eq!(
+            pane.visible_work_items
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2", "wi-1"]
+        );
+        assert_eq!(
+            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            Some("wi-2")
+        );
+        assert_eq!(
+            pane.selected_work_item()
+                .map(|item| item.work_item_id.as_str().to_string()),
+            Some("wi-2".to_string())
+        );
+    }
+
+    #[test]
+    fn selection_can_move_and_reacts_to_view_filter_changes() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        assert!(pane.move_selection(1));
+        assert_eq!(
+            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            Some("wi-1")
+        );
+        assert!(!pane.move_selection(1));
+
+        assert!(pane.set_active_saved_view(PROJECT_OPS_BLOCKED_VIEW_ID));
+        assert_eq!(pane.active_saved_view, "Blocked");
+        assert_eq!(
+            pane.visible_work_items
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2"]
+        );
+        assert_eq!(
+            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            Some("wi-2")
+        );
+
+        assert!(pane.set_search_query("missing"));
+        assert!(pane.visible_work_items.is_empty());
+        assert!(pane.selected_work_item_id.is_none());
+        assert_eq!(pane.empty_state_copy, "No blocked work.");
     }
 }

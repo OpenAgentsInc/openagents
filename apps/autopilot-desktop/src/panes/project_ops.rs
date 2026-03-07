@@ -283,6 +283,20 @@ pub fn paint_project_ops_pane(
     } else {
         for (index, item) in state.visible_work_items.iter().take(8).enumerate() {
             let row_y = list.origin.y + 40.0 + index as f32 * 22.0;
+            let row_bounds = Bounds::new(list.origin.x + 8.0, row_y - 10.0, list.size.width - 16.0, 18.0);
+            let selected = state
+                .selected_work_item_id
+                .as_ref()
+                .is_some_and(|selected| selected == &item.work_item_id);
+            paint.scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_background(if selected {
+                        theme::bg::SURFACE
+                    } else {
+                        theme::bg::APP.with_alpha(0.04)
+                    })
+                    .with_corner_radius(6.0),
+            );
             let assignee = item.assignee.as_deref().unwrap_or("unassigned");
             let cycle = item
                 .cycle_id
@@ -301,9 +315,13 @@ pub fn paint_project_ops_pane(
                     blocked
                 )
                 .as_str(),
-                Point::new(list.origin.x + 12.0, row_y),
+                Point::new(list.origin.x + 14.0, row_y),
                 10.5,
-                theme::text::PRIMARY,
+                if selected {
+                    theme::text::PRIMARY
+                } else {
+                    theme::text::SECONDARY
+                },
             ));
         }
     }
