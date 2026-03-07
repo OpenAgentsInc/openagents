@@ -16,12 +16,12 @@ use winit::window::Window;
 use crate::app_state::{
     PaneKind, ProviderMode, RenderState, SidebarState, WINDOW_HEIGHT, WINDOW_TITLE, WINDOW_WIDTH,
 };
+use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::ollama_execution::{OllamaExecutionSnapshot, OllamaExecutionWorker};
 use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
@@ -315,6 +315,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             sync_health,
             sync_bootstrap_note: None,
             sync_bootstrap_error: None,
+            sync_bootstrap_stream_grants: Vec::new(),
             hosted_control_base_url: None,
             hosted_control_bearer_token: None,
             kernel_projection_worker: crate::kernel_control::KernelProjectionWorker::default(),
@@ -370,21 +371,34 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
-        let _ = state.queue_ollama_execution_command(crate::ollama_execution::OllamaExecutionCommand::Refresh);
+        let _ = state.queue_ollama_execution_command(
+            crate::ollama_execution::OllamaExecutionCommand::Refresh,
+        );
         open_startup_panes(&mut state);
         Ok(state)
     })
 }
 
+pub(crate) fn sync_project_ops_runtime_contract_state(state: &mut RenderState) {
+    state.project_ops.sync_runtime_contract_state(
+        state.sync_bootstrap_note.as_deref(),
+        state.sync_bootstrap_error.as_deref(),
+        state.sync_bootstrap_stream_grants.as_slice(),
+        state.sync_lifecycle_snapshot.as_ref(),
+    );
+}
+
 pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
     state.sync_bootstrap_note = None;
     state.sync_bootstrap_error = None;
+    state.sync_bootstrap_stream_grants.clear();
     state.hosted_control_base_url = None;
     state.hosted_control_bearer_token = None;
     state.spacetime_presence.clear_live_client();
     let worker_id = state.sync_lifecycle_worker_id.clone();
     state.sync_lifecycle.mark_idle(worker_id.as_str());
     state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+    sync_project_ops_runtime_contract_state(state);
 
     let client = match reqwest::blocking::Client::builder().build() {
         Ok(value) => value,
@@ -404,6 +418,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             );
             state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
             state.sync_health.last_error = Some(message);
+            sync_project_ops_runtime_contract_state(state);
             crate::kernel_control::sync_kernel_authority_mode(state);
             return;
         }
@@ -432,6 +447,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
 
     match crate::sync_bootstrap::bootstrap_sync_session_from_env(&client, bound_nostr_pubkey) {
         Ok(Some(result)) => {
+            state.sync_bootstrap_stream_grants = result.token_lease.stream_grants.clone();
             let mut note = format!(
                 "Minted sync token via {} and prepared subscribe target {}",
                 result.control_token_endpoint, result.target.subscribe_url
@@ -481,6 +497,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
+            sync_project_ops_runtime_contract_state(state);
         }
         Ok(None) => {
             let note =
@@ -495,6 +512,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_error = None;
             state.sync_health.last_action = Some(note);
+            sync_project_ops_runtime_contract_state(state);
         }
         Err(error) => {
             state.sync_bootstrap_error = Some(error.clone());
@@ -512,6 +530,7 @@ pub(crate) fn apply_spacetime_sync_bootstrap(state: &mut RenderState) {
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             state.sync_health.last_action = Some("Spacetime bootstrap failed".to_string());
             state.sync_health.last_error = Some(error);
+            sync_project_ops_runtime_contract_state(state);
         }
     }
     crate::kernel_control::sync_kernel_authority_mode(state);
@@ -534,6 +553,7 @@ fn hydrate_remote_sync_checkpoints(
     state.sync_health.last_applied_event_seq = state.sync_apply_engine.max_checkpoint_seq();
     state.sync_health.cursor_position = state.sync_health.last_applied_event_seq;
     state.sync_health.cursor_target_position = state.sync_health.last_applied_event_seq;
+    sync_project_ops_runtime_contract_state(state);
     Ok(adopted)
 }
 

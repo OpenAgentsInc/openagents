@@ -485,8 +485,7 @@ fn parse_sync_token_lease(
         return Err(auth_error_not_yet_valid("token_not_yet_valid"));
     }
     if let Some(expires_at) = expires_at_unix_ms
-        && now_unix_ms
-            > expires_at.saturating_add(SYNC_TOKEN_CLOCK_SKEW_TOLERANCE_MS)
+        && now_unix_ms > expires_at.saturating_add(SYNC_TOKEN_CLOCK_SKEW_TOLERANCE_MS)
     {
         return Err(auth_error_expired("token_expired"));
     }
@@ -608,10 +607,22 @@ fn required_stream_grants_from_env() -> Vec<String> {
             return parsed;
         }
     }
-    DEFAULT_REQUIRED_STREAM_GRANTS
+    default_required_stream_grants()
+}
+
+fn default_required_stream_grants() -> Vec<String> {
+    let mut required = DEFAULT_REQUIRED_STREAM_GRANTS
         .iter()
         .map(|value| value.to_string())
-        .collect()
+        .collect::<Vec<_>>();
+    if crate::project_ops::project_ops_enabled_from_env() {
+        for stream_id in crate::project_ops::project_ops_required_stream_grants() {
+            if !required.iter().any(|entry| entry == stream_id) {
+                required.push(stream_id.to_string());
+            }
+        }
+    }
+    required
 }
 
 fn claim_string(payload: &Value, claims: Option<&Value>, keys: &[&str]) -> Option<String> {
@@ -704,7 +715,7 @@ fn timestamp_value_as_ms(value: &Value) -> Option<u64> {
     }
 }
 
-fn stream_grant_allows(grant: &str, stream_id: &str) -> bool {
+pub(crate) fn stream_grant_allows(grant: &str, stream_id: &str) -> bool {
     let grant = grant.trim();
     if grant.is_empty() {
         return false;
@@ -818,13 +829,16 @@ mod tests {
     use reqwest::blocking::Client;
     use std::io::{Read, Write};
     use std::net::{SocketAddr, TcpListener};
+    use std::sync::Mutex;
 
     use super::{
         ControlSessionLease, DesktopSessionBootstrapRequest, SyncTokenLease,
         bootstrap_sync_session, canonical_desktop_session_endpoint, canonical_sync_token_endpoint,
         mint_control_session_blocking, mint_sync_token_blocking, parse_sync_token_lease,
-        resolve_control_bearer_auth, resolve_subscribe_target,
+        required_stream_grants_from_env, resolve_control_bearer_auth, resolve_subscribe_target,
     };
+
+    static ENV_LOCK: Mutex<()> = Mutex::new(());
 
     fn required_streams() -> Vec<String> {
         vec![
@@ -874,6 +888,29 @@ mod tests {
         });
 
         addr
+    }
+
+    fn with_project_ops_env_enabled(test: impl FnOnce()) {
+        let _guard = ENV_LOCK.lock().expect("env lock should not be poisoned");
+        let feature_key = crate::project_ops::PROJECT_OPS_FEATURE_ENV;
+        let grant_key = super::ENV_REQUIRED_STREAM_GRANTS;
+        let previous_feature = std::env::var(feature_key).ok();
+        let previous_grants = std::env::var(grant_key).ok();
+        unsafe {
+            std::env::set_var(feature_key, "1");
+            std::env::remove_var(grant_key);
+        }
+
+        test();
+
+        match previous_feature {
+            Some(value) => unsafe { std::env::set_var(feature_key, value) },
+            None => unsafe { std::env::remove_var(feature_key) },
+        }
+        match previous_grants {
+            Some(value) => unsafe { std::env::set_var(grant_key, value) },
+            None => unsafe { std::env::remove_var(grant_key) },
+        }
     }
 
     fn run_session_then_sync_token_server(
@@ -1107,6 +1144,29 @@ mod tests {
             result.target.subscribe_url,
             "https://sync.example.com/v1/database/autopilot/subscribe"
         );
+    }
+
+    #[test]
+    fn required_stream_grants_include_pm_streams_when_project_ops_enabled() {
+        with_project_ops_env_enabled(|| {
+            let required = required_stream_grants_from_env();
+            assert!(
+                required
+                    .iter()
+                    .any(|stream| stream == "stream.activity_projection.v1")
+            );
+            assert!(
+                required
+                    .iter()
+                    .any(|stream| stream == "stream.earn_job_lifecycle_projection.v1")
+            );
+            for stream_id in crate::project_ops::project_ops_required_stream_grants() {
+                assert!(
+                    required.iter().any(|stream| stream == stream_id),
+                    "missing PM stream grant {stream_id}"
+                );
+            }
+        });
     }
 
     #[test]

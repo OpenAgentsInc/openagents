@@ -121,6 +121,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             );
             state.sync_lifecycle.mark_idle(worker_id.as_str());
             state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            crate::render::sync_project_ops_runtime_contract_state(state);
             let _ = state.spacetime_presence.register_offline();
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             let _ = state.spark_worker.cancel_pending();
@@ -2651,6 +2652,7 @@ pub(crate) fn apply_provider_mode_target(
                 Some(EarnFailureClass::Execution);
             state.provider_runtime.mode_changed_at = std::time::Instant::now();
             state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+            crate::render::sync_project_ops_runtime_contract_state(state);
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             return true;
         }
@@ -2674,24 +2676,27 @@ pub(crate) fn apply_provider_mode_target(
         queue_spark_command(state, SparkWalletCommand::Refresh);
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
-        if let Err(error) = crate::kernel_control::register_online_compute_inventory_with_kernel(state)
+        if let Err(error) =
+            crate::kernel_control::register_online_compute_inventory_with_kernel(state)
         {
-            state.provider_runtime.last_result =
-                Some(format!("Kernel online inventory registration failed: {error}"));
+            state.provider_runtime.last_result = Some(format!(
+                "Kernel online inventory registration failed: {error}"
+            ));
             state.provider_runtime.last_error_detail = Some(error);
             state.provider_runtime.last_authoritative_error_class =
                 Some(EarnFailureClass::Reconciliation);
         }
     }
-    if let Err(error) = state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::SetOnline {
-        online: wants_online,
-    }) {
+    if let Err(error) =
+        state.queue_provider_nip90_lane_command(ProviderNip90LaneCommand::SetOnline {
+            online: wants_online,
+        })
+    {
         let reason = crate::sync_lifecycle::classify_disconnect_reason(error.as_str());
-        let _ = state.sync_lifecycle.mark_disconnect(
-            worker_id.as_str(),
-            reason,
-            Some(error.clone()),
-        );
+        let _ =
+            state
+                .sync_lifecycle
+                .mark_disconnect(worker_id.as_str(), reason, Some(error.clone()));
         state.provider_runtime.last_result = Some(format!("{origin}: {error}"));
         state.provider_runtime.last_error_detail = Some(error);
         state.provider_runtime.mode = ProviderMode::Degraded;
@@ -2730,7 +2735,8 @@ pub(crate) fn apply_provider_mode_target(
             state.provider_runtime.last_result = Some(format!("{origin}: {error}"));
             state.provider_runtime.last_error_detail = Some(error);
             state.provider_runtime.mode = ProviderMode::Degraded;
-            state.provider_runtime.degraded_reason_code = Some("SA_COMMAND_QUEUE_ERROR".to_string());
+            state.provider_runtime.degraded_reason_code =
+                Some("SA_COMMAND_QUEUE_ERROR".to_string());
             state.provider_runtime.mode_changed_at = std::time::Instant::now();
             state.provider_runtime.last_authoritative_status =
                 Some(RuntimeCommandStatus::Retryable.label().to_string());
@@ -2740,6 +2746,7 @@ pub(crate) fn apply_provider_mode_target(
         }
     }
     state.sync_lifecycle_snapshot = state.sync_lifecycle.snapshot(worker_id.as_str());
+    crate::render::sync_project_ops_runtime_contract_state(state);
     true
 }
 

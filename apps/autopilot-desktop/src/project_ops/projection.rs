@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::PaneLoadState;
 use crate::project_ops::contract::{
-    project_ops_error, ProjectOpsAcceptedEventName, ProjectOpsErrorCode,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
     PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEventName, ProjectOpsErrorCode,
+    project_ops_error,
 };
 use crate::project_ops::schema::{ProjectOpsCycleId, ProjectOpsWorkItem, ProjectOpsWorkItemId};
 use crate::project_ops::views::builtin_saved_view_specs;
@@ -73,9 +73,15 @@ impl ProjectOpsCycleRow {
             return Err("project ops cycle starts_at_unix_ms must be > 0".to_string());
         }
         if self.ends_at_unix_ms < self.starts_at_unix_ms {
-            return Err("project ops cycle ends_at_unix_ms must be >= starts_at_unix_ms".to_string());
+            return Err(
+                "project ops cycle ends_at_unix_ms must be >= starts_at_unix_ms".to_string(),
+            );
         }
-        if self.goal.as_deref().is_some_and(|goal| goal.trim().is_empty()) {
+        if self
+            .goal
+            .as_deref()
+            .is_some_and(|goal| goal.trim().is_empty())
+        {
             return Err("project ops cycle goal must not be blank when present".to_string());
         }
         Ok(())
@@ -155,7 +161,9 @@ impl ProjectOpsProjectionStore {
         Self {
             load_state: PaneLoadState::Loading,
             last_error: None,
-            last_action: Some("Project Ops local projections idle until the feature gate is enabled".to_string()),
+            last_action: Some(
+                "Project Ops local projections idle until the feature gate is enabled".to_string(),
+            ),
             work_items: Vec::new(),
             activity_rows: Vec::new(),
             cycles: Vec::new(),
@@ -333,28 +341,40 @@ impl ProjectOpsProjectionStore {
             .and_then(|checkpoints| checkpoints.checkpoint_for(stream_id))
     }
 
+    pub fn reload_shared_checkpoints(&mut self) -> Result<(), String> {
+        let checkpoints =
+            SyncApplyEngine::load_or_new(self.checkpoint_path.clone(), SyncApplyPolicy::default())?;
+        self.checkpoints = Some(checkpoints);
+        Ok(())
+    }
+
     pub fn max_checkpoint_seq(&self) -> u64 {
         self.checkpoints
             .as_ref()
             .map_or(0, SyncApplyEngine::max_checkpoint_seq)
     }
 
-    pub fn resume_cursor_for_stream(&self, stream_id: &str, remote_head_seq: Option<u64>) -> Option<u64> {
+    pub fn resume_cursor_for_stream(
+        &self,
+        stream_id: &str,
+        remote_head_seq: Option<u64>,
+    ) -> Option<u64> {
         self.checkpoints
             .as_ref()
             .map(|checkpoints| checkpoints.resume_cursor_for_stream(stream_id, remote_head_seq))
     }
 
     pub fn rewind_stream_checkpoint(&mut self, stream_id: &str, seq: u64) -> Result<(), String> {
-        let checkpoints = self
-            .checkpoints
-            .as_mut()
-            .ok_or_else(|| {
-                project_ops_error(
-                    ProjectOpsErrorCode::CheckpointConflict,
-                    format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()),
-                )
-            })?;
+        self.reload_shared_checkpoints()?;
+        let checkpoints = self.checkpoints.as_mut().ok_or_else(|| {
+            project_ops_error(
+                ProjectOpsErrorCode::CheckpointConflict,
+                format!(
+                    "PM checkpoints unavailable for {}",
+                    self.checkpoint_path.display()
+                ),
+            )
+        })?;
         checkpoints.rewind_stream(stream_id, seq)?;
         self.last_error = None;
         self.last_action = Some(format!("Rewound {stream_id} checkpoint to seq {seq}"));
@@ -363,15 +383,16 @@ impl ProjectOpsProjectionStore {
     }
 
     pub fn adopt_remote_checkpoint(&mut self, stream_id: &str, seq: u64) -> Result<bool, String> {
-        let checkpoints = self
-            .checkpoints
-            .as_mut()
-            .ok_or_else(|| {
-                project_ops_error(
-                    ProjectOpsErrorCode::CheckpointConflict,
-                    format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()),
-                )
-            })?;
+        self.reload_shared_checkpoints()?;
+        let checkpoints = self.checkpoints.as_mut().ok_or_else(|| {
+            project_ops_error(
+                ProjectOpsErrorCode::CheckpointConflict,
+                format!(
+                    "PM checkpoints unavailable for {}",
+                    self.checkpoint_path.display()
+                ),
+            )
+        })?;
         let adopted = checkpoints.adopt_checkpoint_if_newer(stream_id, seq)?;
         self.last_error = None;
         self.last_action = Some(if adopted {
@@ -592,15 +613,16 @@ impl ProjectOpsProjectionStore {
         stream_id: &str,
         seq: u64,
     ) -> Result<StreamApplyDecision, String> {
-        let checkpoints = self
-            .checkpoints
-            .as_mut()
-            .ok_or_else(|| {
-                project_ops_error(
-                    ProjectOpsErrorCode::CheckpointConflict,
-                    format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()),
-                )
-            })?;
+        self.reload_shared_checkpoints()?;
+        let checkpoints = self.checkpoints.as_mut().ok_or_else(|| {
+            project_ops_error(
+                ProjectOpsErrorCode::CheckpointConflict,
+                format!(
+                    "PM checkpoints unavailable for {}",
+                    self.checkpoint_path.display()
+                ),
+            )
+        })?;
         checkpoints.apply_seq(stream_id, seq)
     }
 }
@@ -684,7 +706,11 @@ fn builtin_saved_view_rows() -> Vec<ProjectOpsSavedViewRow> {
             view_id: spec.view_id.to_string(),
             title: spec.title.to_string(),
             query: spec.query.to_string(),
-            filters: spec.filters.iter().map(|filter| (*filter).to_string()).collect(),
+            filters: spec
+                .filters
+                .iter()
+                .map(|filter| (*filter).to_string())
+                .collect(),
             built_in: true,
         })
         .collect()
@@ -898,14 +924,14 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore,
-        ProjectOpsSavedViewRow, PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
+        PROJECT_OPS_PROJECTION_SCHEMA_VERSION, ProjectOpsActivityRow, ProjectOpsCycleRow,
+        ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
     };
     use crate::app_state::PaneLoadState;
     use crate::project_ops::contract::{
-        ProjectOpsAcceptedEventName, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-        PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
+        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        ProjectOpsAcceptedEventName,
     };
     use crate::project_ops::schema::{
         ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
@@ -989,13 +1015,19 @@ mod tests {
             checkpoint_path,
         );
         assert_eq!(store.load_state, PaneLoadState::Ready);
-        assert_eq!(store.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID), Some(0));
+        assert_eq!(
+            store.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID),
+            Some(0)
+        );
         assert_eq!(
             store.checkpoint_for(PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID),
             Some(0)
         );
         assert_eq!(store.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(0));
-        assert_eq!(store.checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID), Some(0));
+        assert_eq!(
+            store.checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID),
+            Some(0)
+        );
         assert_eq!(store.saved_views.len(), 5);
 
         for (path, stream_id) in [
@@ -1010,7 +1042,10 @@ mod tests {
                 json.get("schema_version").and_then(Value::as_u64),
                 Some(PROJECT_OPS_PROJECTION_SCHEMA_VERSION as u64)
             );
-            assert_eq!(json.get("stream_id").and_then(Value::as_str), Some(stream_id));
+            assert_eq!(
+                json.get("stream_id").and_then(Value::as_str),
+                Some(stream_id)
+            );
         }
     }
 
@@ -1066,13 +1101,22 @@ mod tests {
         assert_eq!(reloaded.activity_rows.len(), 1);
         assert_eq!(reloaded.cycles.len(), 1);
         assert_eq!(reloaded.saved_views.len(), 6);
-        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID), Some(1));
+        assert_eq!(
+            reloaded.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID),
+            Some(1)
+        );
         assert_eq!(
             reloaded.checkpoint_for(PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID),
             Some(1)
         );
-        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(1));
-        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID), Some(1));
+        assert_eq!(
+            reloaded.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID),
+            Some(1)
+        );
+        assert_eq!(
+            reloaded.checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID),
+            Some(1)
+        );
     }
 
     #[test]
@@ -1110,15 +1154,9 @@ mod tests {
             StreamApplyDecision::OutOfOrder { .. }
         ));
         assert_eq!(store.load_state, PaneLoadState::Error);
-        assert!(
-            store
-                .last_error
-                .as_deref()
-                .is_some_and(|error| {
-                    error.contains("project_ops.checkpoint_conflict:")
-                        && error.contains("Out-of-order")
-                })
-        );
+        assert!(store.last_error.as_deref().is_some_and(|error| {
+            error.contains("project_ops.checkpoint_conflict:") && error.contains("Out-of-order")
+        }));
         assert_eq!(store.work_items.len(), 1);
     }
 
@@ -1169,7 +1207,13 @@ mod tests {
             unique_temp_path("recover-saved-views-reload-unused"),
             checkpoint_path,
         );
-        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID), Some(1));
-        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(2));
+        assert_eq!(
+            reloaded.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID),
+            Some(1)
+        );
+        assert_eq!(
+            reloaded.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID),
+            Some(2)
+        );
     }
 }

@@ -1,5 +1,5 @@
 use crate::app_state::PaneLoadState;
-use crate::project_ops::{project_ops_phase1_sync_contract, ProjectOpsPaneState};
+use crate::project_ops::ProjectOpsPaneState;
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 pub fn paint_project_ops_pane(
@@ -7,7 +7,6 @@ pub fn paint_project_ops_pane(
     state: &ProjectOpsPaneState,
     paint: &mut PaintContext,
 ) {
-    let sync_contract = project_ops_phase1_sync_contract();
     let header = Bounds::new(
         bounds.origin.x + 12.0,
         bounds.origin.y + 12.0,
@@ -32,19 +31,21 @@ pub fn paint_project_ops_pane(
         11.0,
         theme::text::MUTED,
     ));
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "{} | {} | view:{} | operator:{}",
-            state.source_badge,
-            state.load_state.label(),
-            state.active_saved_view,
-            state.operator_label,
-        )
-        .as_str(),
-        Point::new(header.origin.x + 12.0, header.origin.y + 58.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "{} | {} | view:{} | operator:{}",
+                state.source_badge,
+                state.load_state.label(),
+                state.active_saved_view,
+                state.operator_label,
+            )
+            .as_str(),
+            Point::new(header.origin.x + 12.0, header.origin.y + 58.0),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
 
     let shell = Bounds::new(
         bounds.origin.x + 12.0,
@@ -108,35 +109,39 @@ pub fn paint_project_ops_pane(
         chip_x += chip_width + 8.0;
     }
 
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Search: {}",
-            if state.search_query.trim().is_empty() {
-                "<empty>"
-            } else {
-                state.search_query.as_str()
-            }
-        )
-        .as_str(),
-        Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 18.0),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Filters ({}) : {}",
-            state.active_filter_chips.len(),
-            if state.active_filter_chips.is_empty() {
-                "none".to_string()
-            } else {
-                state.active_filter_chips.join(", ")
-            }
-        )
-        .as_str(),
-        Point::new(toolbar.origin.x + 180.0, toolbar.max_y() - 18.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Search: {}",
+                if state.search_query.trim().is_empty() {
+                    "<empty>"
+                } else {
+                    state.search_query.as_str()
+                }
+            )
+            .as_str(),
+            Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 18.0),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Filters ({}) : {}",
+                state.active_filter_chips.len(),
+                if state.active_filter_chips.is_empty() {
+                    "none".to_string()
+                } else {
+                    state.active_filter_chips.join(", ")
+                }
+            )
+            .as_str(),
+            Point::new(toolbar.origin.x + 180.0, toolbar.max_y() - 18.0),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
 
     let content = Bounds::new(
         shell.origin.x + 12.0,
@@ -145,7 +150,12 @@ pub fn paint_project_ops_pane(
         shell.size.height - toolbar.size.height - 36.0,
     );
     let list_width = (content.size.width * 0.56).max(220.0);
-    let list = Bounds::new(content.origin.x, content.origin.y, list_width, content.size.height);
+    let list = Bounds::new(
+        content.origin.x,
+        content.origin.y,
+        list_width,
+        content.size.height,
+    );
     let detail = Bounds::new(
         list.max_x() + 12.0,
         content.origin.y,
@@ -169,9 +179,14 @@ pub fn paint_project_ops_pane(
         PaneLoadState::Error => theme::status::ERROR,
     };
     paint.scene.draw_quad(
-        Quad::new(Bounds::new(detail.origin.x + 12.0, detail.origin.y + 14.0, 10.0, 10.0))
-            .with_background(status_color)
-            .with_corner_radius(5.0),
+        Quad::new(Bounds::new(
+            detail.origin.x + 12.0,
+            detail.origin.y + 14.0,
+            10.0,
+            10.0,
+        ))
+        .with_background(status_color)
+        .with_corner_radius(5.0),
     );
     paint.scene.draw_text(paint.text.layout(
         "Project Ops Detail",
@@ -186,16 +201,15 @@ pub fn paint_project_ops_pane(
         theme::text::SECONDARY,
     ));
 
-    let action = state
-        .last_action
-        .as_deref()
-        .unwrap_or("Project Ops idle");
+    let action = state.last_action.as_deref().unwrap_or("Project Ops idle");
+    let mut detail_y = detail.origin.y + 84.0;
     paint.scene.draw_text(paint.text.layout(
         format!("Last action: {action}").as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 84.0),
+        Point::new(detail.origin.x + 12.0, detail_y),
         11.0,
         theme::text::MUTED,
     ));
+    detail_y += 20.0;
 
     let projection_counts = format!(
         "Rows: work items={} | activity={} | cycles={} | views={}",
@@ -206,91 +220,192 @@ pub fn paint_project_ops_pane(
     );
     paint.scene.draw_text(paint.text.layout(
         projection_counts.as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 104.0),
+        Point::new(detail.origin.x + 12.0, detail_y),
         11.0,
         theme::text::PRIMARY,
     ));
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Pilot: commands={} views={} rebuilds={} last={}ms",
-            state.pilot_metrics.command_counts.len(),
-            state.pilot_metrics.view_counts.len(),
-            state.pilot_metrics.projection_rebuild_count,
-            state
-                .pilot_metrics
-                .last_projection_rebuild_duration_ms
-                .unwrap_or(0)
-        )
-        .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 122.0),
-        10.0,
-        theme::text::MUTED,
-    ));
-
-    let checkpoint_status = format!(
-        "Checkpoints: max={} wi={:?} act={:?} cyc={:?} view={:?}",
-        state.local_store.max_checkpoint_seq(),
-        state
-            .local_store
-            .checkpoint_for(crate::project_ops::PROJECT_OPS_WORK_ITEMS_STREAM_ID),
-        state
-            .local_store
-            .checkpoint_for(crate::project_ops::PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID),
-        state
-            .local_store
-            .checkpoint_for(crate::project_ops::PROJECT_OPS_CYCLES_STREAM_ID),
-        state
-            .local_store
-            .checkpoint_for(crate::project_ops::PROJECT_OPS_SAVED_VIEWS_STREAM_ID),
+    detail_y += 18.0;
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Pilot: commands={} views={} rebuilds={} last={}ms",
+                state.pilot_metrics.command_counts.len(),
+                state.pilot_metrics.view_counts.len(),
+                state.pilot_metrics.projection_rebuild_count,
+                state
+                    .pilot_metrics
+                    .last_projection_rebuild_duration_ms
+                    .unwrap_or(0)
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::text::MUTED,
+        ),
     );
-    paint.scene.draw_text(paint.text.layout(
-        checkpoint_status.as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 140.0),
-        11.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Reserved grants: {}",
-            sync_contract.required_stream_grants.join(", ")
-        )
-        .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 158.0),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Sync badge: {} | duplicates=drop | out-of-order=rebootstrap",
-            crate::project_ops::PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE
-        )
-        .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 176.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    detail_y += 18.0;
 
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Selected: {}",
-            state
-                .selected_work_item_id
-                .as_ref()
-                .map(|id| id.as_str())
-                .unwrap_or("<none>")
-        )
-        .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 198.0),
-        11.0,
-        theme::text::PRIMARY,
-    ));
-    if let Some(selection_notice) = state.selection_notice.as_deref() {
+    let sync = &state.sync_diagnostics;
+    let replay_summary = match (sync.replay_cursor_seq, sync.replay_target_seq) {
+        (Some(cursor), Some(target)) => format!("replay={cursor}/{target}"),
+        (Some(cursor), None) => format!("replay={cursor}"),
+        _ => "replay=idle".to_string(),
+    };
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "PM sync: {} | lifecycle={} | {} | badge={}",
+                sync.bootstrap_state,
+                sync.lifecycle_state.as_deref().unwrap_or("idle"),
+                replay_summary,
+                sync.source_badge,
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            11.0,
+            theme::text::MUTED,
+        ),
+    );
+    detail_y += 18.0;
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Grants: required={} | granted={} | missing={}",
+                sync.required_stream_grants.len(),
+                sync.granted_stream_grants.len(),
+                sync.missing_stream_grants.len(),
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
+    detail_y += 18.0;
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Granted raw: {}",
+                if sync.granted_stream_grants.is_empty() {
+                    "none".to_string()
+                } else {
+                    sync.granted_stream_grants.join(", ")
+                }
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
+    detail_y += 18.0;
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Missing PM grants: {}",
+                if sync.missing_stream_grants.is_empty() {
+                    "none".to_string()
+                } else {
+                    sync.missing_stream_grants.join(", ")
+                }
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            if sync.missing_stream_grants.is_empty() {
+                theme::text::MUTED
+            } else {
+                theme::status::WARNING
+            },
+        ),
+    );
+    detail_y += 18.0;
+    if let Some(bootstrap_note) = sync.bootstrap_note.as_deref() {
         paint.scene.draw_text(paint.text.layout(
-            selection_notice,
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 216.0),
+            format!("Bootstrap note: {bootstrap_note}").as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        detail_y += 18.0;
+    }
+    if let Some(bootstrap_error) = sync.bootstrap_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            format!("Bootstrap error: {bootstrap_error}").as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        detail_y += 18.0;
+    }
+    if sync.stale_cursor_recovery_required {
+        paint.scene.draw_text(paint.text.layout(
+            "Recovery: stale cursor requires explicit rebootstrap or checkpoint rewind.",
+            Point::new(detail.origin.x + 12.0, detail_y),
             10.0,
             theme::status::WARNING,
         ));
+        detail_y += 18.0;
+    } else if let Some(reason) = sync.last_disconnect_reason.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            format!("Last disconnect: {reason}").as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        detail_y += 18.0;
+    }
+    for stream in sync.streams.iter().take(4) {
+        paint.scene.draw_text(
+            paint.text.layout(
+                format!(
+                    "{} grant={} checkpoint={} resume={}",
+                    compact_stream_label(stream.stream_id.as_str()),
+                    if stream.granted { "yes" } else { "no" },
+                    stream.checkpoint_seq,
+                    stream.resume_cursor_seq
+                )
+                .as_str(),
+                Point::new(detail.origin.x + 12.0, detail_y),
+                10.0,
+                theme::text::MUTED,
+            ),
+        );
+        detail_y += 16.0;
+    }
+    paint.scene.draw_text(paint.text.layout(
+        "Policy: duplicates drop | out-of-order requires rebootstrap or rewind",
+        Point::new(detail.origin.x + 12.0, detail_y),
+        10.0,
+        theme::text::MUTED,
+    ));
+    detail_y += 22.0;
+
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Selected: {}",
+                state
+                    .selected_work_item_id
+                    .as_ref()
+                    .map(|id| id.as_str())
+                    .unwrap_or("<none>")
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            11.0,
+            theme::text::PRIMARY,
+        ),
+    );
+    detail_y += 18.0;
+    if let Some(selection_notice) = state.selection_notice.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            selection_notice,
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::status::WARNING,
+        ));
+        detail_y += 20.0;
     }
 
     if let Some(detail_draft) = state.detail_draft.as_ref() {
@@ -318,10 +433,7 @@ pub fn paint_project_ops_pane(
                     .as_ref()
                     .map(|parent_id| parent_id.as_str())
                     .unwrap_or("none"),
-                detail_draft
-                    .blocked_reason
-                    .as_deref()
-                    .unwrap_or("none")
+                detail_draft.blocked_reason.as_deref().unwrap_or("none")
             ),
             format!(
                 "Created: {} | Updated: {} | Dirty: {}",
@@ -333,95 +445,108 @@ pub fn paint_project_ops_pane(
         for (index, line) in detail_lines.iter().enumerate() {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
-                Point::new(detail.origin.x + 12.0, detail.origin.y + 236.0 + index as f32 * 18.0),
+                Point::new(detail.origin.x + 12.0, detail_y + index as f32 * 18.0),
                 10.5,
                 theme::text::PRIMARY,
             ));
         }
+        detail_y += detail_lines.len() as f32 * 18.0;
     } else {
         paint.scene.draw_text(paint.text.layout(
             "Select a work item to load the detail editor.",
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 238.0),
+            Point::new(detail.origin.x + 12.0, detail_y),
             10.5,
             theme::text::SECONDARY,
         ));
+        detail_y += 22.0;
     }
 
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Quick Create: title={} | priority={} | desc={}",
-            if state.quick_create_draft.title.is_empty() {
-                "<empty>"
-            } else {
-                state.quick_create_draft.title.as_str()
-            },
-            state.quick_create_draft.priority.label(),
-            if state.quick_create_draft.description.is_empty() {
-                "<empty>"
-            } else {
-                state.quick_create_draft.description.as_str()
-            }
-        )
-        .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.max_y() - 58.0),
-        10.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Save Status: {}",
-            state
-                .detail_save_status
-                .as_deref()
-                .unwrap_or("no save applied yet")
-        )
-        .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.max_y() - 40.0),
-        10.0,
-        theme::text::MUTED,
-    ));
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Quick Create: title={} | priority={} | desc={}",
+                if state.quick_create_draft.title.is_empty() {
+                    "<empty>"
+                } else {
+                    state.quick_create_draft.title.as_str()
+                },
+                state.quick_create_draft.priority.label(),
+                if state.quick_create_draft.description.is_empty() {
+                    "<empty>"
+                } else {
+                    state.quick_create_draft.description.as_str()
+                }
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail.max_y() - 58.0),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Save Status: {}",
+                state
+                    .detail_save_status
+                    .as_deref()
+                    .unwrap_or("no save applied yet")
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail.max_y() - 40.0),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
     paint.scene.draw_text(paint.text.layout(
         "Activity Timeline",
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 354.0),
+        Point::new(detail.origin.x + 12.0, detail_y + 14.0),
         12.0,
         theme::text::PRIMARY,
     ));
     if state.visible_activity_rows.is_empty() {
         paint.scene.draw_text(paint.text.layout(
             state.activity_empty_state.as_str(),
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 376.0),
+            Point::new(detail.origin.x + 12.0, detail_y + 36.0),
             10.5,
             theme::text::SECONDARY,
         ));
     } else {
         for (index, row) in state.visible_activity_rows.iter().take(4).enumerate() {
-            paint.scene.draw_text(paint.text.layout(
-                format!(
-                    "{} | {} | {} | {}",
-                    row.event_name.label(),
-                    row.actor_label,
-                    row.occurred_at_unix_ms,
-                    row.summary
-                )
-                .as_str(),
-                Point::new(detail.origin.x + 12.0, detail.origin.y + 376.0 + index as f32 * 18.0),
-                10.0,
-                theme::text::PRIMARY,
-            ));
+            paint.scene.draw_text(
+                paint.text.layout(
+                    format!(
+                        "{} | {} | {} | {}",
+                        row.event_name.label(),
+                        row.actor_label,
+                        row.occurred_at_unix_ms,
+                        row.summary
+                    )
+                    .as_str(),
+                    Point::new(
+                        detail.origin.x + 12.0,
+                        detail_y + 36.0 + index as f32 * 18.0,
+                    ),
+                    10.0,
+                    theme::text::PRIMARY,
+                ),
+            );
         }
     }
 
-    paint.scene.draw_text(paint.text.layout(
-        format!(
-            "Visible in {} ({})",
-            state.active_saved_view,
-            state.visible_work_items.len()
-        )
-        .as_str(),
-        Point::new(list.origin.x + 12.0, list.origin.y + 16.0),
-        13.0,
-        theme::text::PRIMARY,
-    ));
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Visible in {} ({})",
+                state.active_saved_view,
+                state.visible_work_items.len()
+            )
+            .as_str(),
+            Point::new(list.origin.x + 12.0, list.origin.y + 16.0),
+            13.0,
+            theme::text::PRIMARY,
+        ),
+    );
     if state.visible_work_items.is_empty() {
         paint.scene.draw_text(paint.text.layout(
             state.empty_state_copy.as_str(),
@@ -432,7 +557,12 @@ pub fn paint_project_ops_pane(
     } else {
         for (index, item) in state.visible_work_items.iter().take(8).enumerate() {
             let row_y = list.origin.y + 40.0 + index as f32 * 22.0;
-            let row_bounds = Bounds::new(list.origin.x + 8.0, row_y - 10.0, list.size.width - 16.0, 18.0);
+            let row_bounds = Bounds::new(
+                list.origin.x + 8.0,
+                row_y - 10.0,
+                list.size.width - 16.0,
+                18.0,
+            );
             let selected = state
                 .selected_work_item_id
                 .as_ref()
@@ -453,25 +583,27 @@ pub fn paint_project_ops_pane(
                 .map(|cycle| cycle.as_str())
                 .unwrap_or("no-cycle");
             let blocked = if item.is_blocked() { " blocked" } else { "" };
-            paint.scene.draw_text(paint.text.layout(
-                format!(
-                    "{} | {} | {} | {} | {}{}",
-                    item.title,
-                    item.status.label(),
-                    item.priority.label(),
-                    assignee,
-                    cycle,
-                    blocked
-                )
-                .as_str(),
-                Point::new(list.origin.x + 14.0, row_y),
-                10.5,
-                if selected {
-                    theme::text::PRIMARY
-                } else {
-                    theme::text::SECONDARY
-                },
-            ));
+            paint.scene.draw_text(
+                paint.text.layout(
+                    format!(
+                        "{} | {} | {} | {} | {}{}",
+                        item.title,
+                        item.status.label(),
+                        item.priority.label(),
+                        assignee,
+                        cycle,
+                        blocked
+                    )
+                    .as_str(),
+                    Point::new(list.origin.x + 14.0, row_y),
+                    10.5,
+                    if selected {
+                        theme::text::PRIMARY
+                    } else {
+                        theme::text::SECONDARY
+                    },
+                ),
+            );
         }
     }
 
@@ -482,5 +614,15 @@ pub fn paint_project_ops_pane(
             10.0,
             theme::status::ERROR,
         ));
+    }
+}
+
+fn compact_stream_label(stream_id: &str) -> &str {
+    match stream_id {
+        crate::project_ops::PROJECT_OPS_WORK_ITEMS_STREAM_ID => "work_items",
+        crate::project_ops::PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID => "activity",
+        crate::project_ops::PROJECT_OPS_CYCLES_STREAM_ID => "cycles",
+        crate::project_ops::PROJECT_OPS_SAVED_VIEWS_STREAM_ID => "saved_views",
+        _ => stream_id,
     }
 }

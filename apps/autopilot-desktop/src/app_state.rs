@@ -5104,6 +5104,7 @@ pub struct RenderState {
     pub sync_health: SyncHealthState,
     pub sync_bootstrap_note: Option<String>,
     pub sync_bootstrap_error: Option<String>,
+    pub sync_bootstrap_stream_grants: Vec<String>,
     pub hosted_control_base_url: Option<String>,
     pub hosted_control_bearer_token: Option<String>,
     pub kernel_projection_worker: crate::kernel_control::KernelProjectionWorker,
