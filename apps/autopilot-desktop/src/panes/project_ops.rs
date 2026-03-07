@@ -1,6 +1,6 @@
 use crate::app_state::PaneLoadState;
 use crate::project_ops::{ProjectOpsPaneState, ProjectOpsPresentationMode};
-use wgpui::{Bounds, PaintContext, Point, Quad, theme};
+use wgpui::{theme, Bounds, PaintContext, Point, Quad};
 
 pub fn paint_project_ops_pane(
     bounds: Bounds,
@@ -34,11 +34,12 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "{} | {} | view:{} | presentation:{} | operator:{}",
+                "{} | {} | view:{} | presentation:{} | sort:{} | operator:{}",
                 state.source_badge,
                 state.load_state.label(),
                 state.active_saved_view,
                 state.presentation_mode.label(),
+                state.sort_preference.label(),
                 state.operator_label,
             )
             .as_str(),
@@ -113,12 +114,13 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Search: {}",
+                "Search: {} | sort:{}",
                 if state.search_query.trim().is_empty() {
                     "<empty>"
                 } else {
                     state.search_query.as_str()
-                }
+                },
+                state.sort_preference.label(),
             )
             .as_str(),
             Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 18.0),

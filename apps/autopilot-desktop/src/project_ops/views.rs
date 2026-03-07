@@ -1,5 +1,6 @@
 use super::projection::ProjectOpsCycleRow;
-use super::schema::{ProjectOpsWorkItem, ProjectOpsWorkItemStatus};
+use super::schema::{ProjectOpsPriority, ProjectOpsWorkItem, ProjectOpsWorkItemStatus};
+use serde::{Deserialize, Serialize};
 
 pub const PROJECT_OPS_MY_WORK_VIEW_ID: &str = "my-work";
 pub const PROJECT_OPS_CURRENT_CYCLE_VIEW_ID: &str = "current-cycle";
@@ -70,6 +71,33 @@ pub fn current_operator_label() -> String {
         .unwrap_or_else(|| "me".to_string())
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectOpsSortPreference {
+    #[default]
+    UpdatedDesc,
+    UpdatedAsc,
+    PriorityDesc,
+    PriorityAsc,
+    TitleAsc,
+    TitleDesc,
+    DueAsc,
+}
+
+impl ProjectOpsSortPreference {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::UpdatedDesc => "updated_desc",
+            Self::UpdatedAsc => "updated_asc",
+            Self::PriorityDesc => "priority_desc",
+            Self::PriorityAsc => "priority_asc",
+            Self::TitleAsc => "title_asc",
+            Self::TitleDesc => "title_desc",
+            Self::DueAsc => "due_asc",
+        }
+    }
+}
+
 pub fn filter_chips_for_view(view_id: &str, search_query: &str) -> Vec<String> {
     let mut chips: Vec<String> = builtin_saved_view_specs()
         .iter()
@@ -83,6 +111,10 @@ pub fn filter_chips_for_view(view_id: &str, search_query: &str) -> Vec<String> {
         .unwrap_or_default();
     chips.extend(parse_search_query(search_query).chips);
     chips
+}
+
+pub fn query_filter_chips(search_query: &str) -> Vec<String> {
+    parse_search_query(search_query).chips
 }
 
 pub fn empty_state_copy_for_view(view_id: &str) -> &'static str {
@@ -135,6 +167,7 @@ pub fn filter_work_items_for_view(
     view_id: &str,
     operator_label: &str,
     search_query: &str,
+    default_sort_preference: ProjectOpsSortPreference,
 ) -> Vec<ProjectOpsWorkItem> {
     let active_cycle_id = cycles
         .iter()
@@ -164,11 +197,8 @@ pub fn filter_work_items_for_view(
         })
         .cloned()
         .collect::<Vec<_>>();
-    rows.sort_by(|lhs, rhs| {
-        rhs.updated_at_unix_ms
-            .cmp(&lhs.updated_at_unix_ms)
-            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str()))
-    });
+    let sort_preference = query.sort_preference.unwrap_or(default_sort_preference);
+    sort_work_items(rows.as_mut_slice(), sort_preference);
     rows
 }
 
@@ -210,6 +240,7 @@ struct ProjectOpsSearchQuery {
     cycle_filters: Vec<ProjectOpsCycleFilter>,
     blocked_filters: Vec<bool>,
     tag_filters: Vec<String>,
+    sort_preference: Option<ProjectOpsSortPreference>,
     chips: Vec<String>,
 }
 
@@ -308,7 +339,15 @@ fn parse_search_query(search_query: &str) -> ProjectOpsSearchQuery {
                 parsed.chips.push(format!("tag:{normalized_value}"));
             }
             "sort" => {
-                parsed.chips.push(format!("sort:{normalized_value}"));
+                if let Some(sort_preference) = parse_sort_preference(normalized_value.as_str()) {
+                    parsed.sort_preference = Some(sort_preference);
+                    parsed.chips.push(format!("sort:{normalized_value}"));
+                } else {
+                    parsed.text_terms.push(token.to_ascii_lowercase());
+                    parsed
+                        .chips
+                        .push(format!("search:{}", token.to_ascii_lowercase()));
+                }
             }
             _ => {
                 parsed.text_terms.push(token.to_ascii_lowercase());
@@ -524,6 +563,69 @@ fn parse_bool_filter(value: &str) -> Option<bool> {
     }
 }
 
+fn parse_sort_preference(value: &str) -> Option<ProjectOpsSortPreference> {
+    match value {
+        "updated_desc" => Some(ProjectOpsSortPreference::UpdatedDesc),
+        "updated_asc" => Some(ProjectOpsSortPreference::UpdatedAsc),
+        "priority_desc" => Some(ProjectOpsSortPreference::PriorityDesc),
+        "priority_asc" => Some(ProjectOpsSortPreference::PriorityAsc),
+        "title_asc" => Some(ProjectOpsSortPreference::TitleAsc),
+        "title_desc" => Some(ProjectOpsSortPreference::TitleDesc),
+        "due_asc" => Some(ProjectOpsSortPreference::DueAsc),
+        _ => None,
+    }
+}
+
+fn sort_work_items(rows: &mut [ProjectOpsWorkItem], sort_preference: ProjectOpsSortPreference) {
+    rows.sort_by(|lhs, rhs| match sort_preference {
+        ProjectOpsSortPreference::UpdatedDesc => rhs
+            .updated_at_unix_ms
+            .cmp(&lhs.updated_at_unix_ms)
+            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str())),
+        ProjectOpsSortPreference::UpdatedAsc => lhs
+            .updated_at_unix_ms
+            .cmp(&rhs.updated_at_unix_ms)
+            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str())),
+        ProjectOpsSortPreference::PriorityDesc => priority_rank(lhs.priority)
+            .cmp(&priority_rank(rhs.priority))
+            .then_with(|| rhs.updated_at_unix_ms.cmp(&lhs.updated_at_unix_ms))
+            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str())),
+        ProjectOpsSortPreference::PriorityAsc => priority_rank(rhs.priority)
+            .cmp(&priority_rank(lhs.priority))
+            .then_with(|| rhs.updated_at_unix_ms.cmp(&lhs.updated_at_unix_ms))
+            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str())),
+        ProjectOpsSortPreference::TitleAsc => lhs
+            .title
+            .to_ascii_lowercase()
+            .cmp(&rhs.title.to_ascii_lowercase())
+            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str())),
+        ProjectOpsSortPreference::TitleDesc => rhs
+            .title
+            .to_ascii_lowercase()
+            .cmp(&lhs.title.to_ascii_lowercase())
+            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str())),
+        ProjectOpsSortPreference::DueAsc => due_rank(lhs)
+            .cmp(&due_rank(rhs))
+            .then_with(|| rhs.updated_at_unix_ms.cmp(&lhs.updated_at_unix_ms))
+            .then_with(|| lhs.work_item_id.as_str().cmp(rhs.work_item_id.as_str())),
+    });
+}
+
+fn priority_rank(priority: ProjectOpsPriority) -> u8 {
+    match priority {
+        ProjectOpsPriority::Urgent => 0,
+        ProjectOpsPriority::High => 1,
+        ProjectOpsPriority::Medium => 2,
+        ProjectOpsPriority::Low => 3,
+        ProjectOpsPriority::None => 4,
+    }
+}
+
+fn due_rank(item: &ProjectOpsWorkItem) -> (u8, u64) {
+    item.due_at_unix_ms
+        .map_or((1, u64::MAX), |due_at| (0, due_at))
+}
+
 fn board_lane_title(status: ProjectOpsWorkItemStatus) -> &'static str {
     match status {
         ProjectOpsWorkItemStatus::Backlog => "Backlog",
@@ -538,11 +640,11 @@ fn board_lane_title(status: ProjectOpsWorkItemStatus) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROJECT_OPS_BACKLOG_VIEW_ID, PROJECT_OPS_BLOCKED_VIEW_ID,
+        builtin_saved_view_specs, current_operator_label, empty_state_copy_for_view,
+        filter_chips_for_view, filter_work_items_for_view, project_board_lanes, view_title_for_id,
+        ProjectOpsSortPreference, PROJECT_OPS_BACKLOG_VIEW_ID, PROJECT_OPS_BLOCKED_VIEW_ID,
         PROJECT_OPS_CURRENT_CYCLE_VIEW_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
-        PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID, builtin_saved_view_specs, current_operator_label,
-        empty_state_copy_for_view, filter_chips_for_view, filter_work_items_for_view,
-        project_board_lanes, view_title_for_id,
+        PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID,
     };
     use crate::project_ops::projection::ProjectOpsCycleRow;
     use crate::project_ops::schema::{
@@ -664,6 +766,7 @@ mod tests {
                 PROJECT_OPS_MY_WORK_VIEW_ID,
                 "cdavid",
                 "",
+                ProjectOpsSortPreference::UpdatedDesc,
             )
             .iter()
             .map(|item| item.work_item_id.as_str())
@@ -677,6 +780,7 @@ mod tests {
                 PROJECT_OPS_CURRENT_CYCLE_VIEW_ID,
                 "cdavid",
                 "",
+                ProjectOpsSortPreference::UpdatedDesc,
             )
             .len(),
             3
@@ -688,6 +792,7 @@ mod tests {
                 PROJECT_OPS_BLOCKED_VIEW_ID,
                 "cdavid",
                 "",
+                ProjectOpsSortPreference::UpdatedDesc,
             )
             .iter()
             .map(|item| item.work_item_id.as_str())
@@ -701,6 +806,7 @@ mod tests {
                 PROJECT_OPS_BACKLOG_VIEW_ID,
                 "cdavid",
                 "",
+                ProjectOpsSortPreference::UpdatedDesc,
             )
             .iter()
             .map(|item| item.work_item_id.as_str())
@@ -714,6 +820,7 @@ mod tests {
                 PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID,
                 "cdavid",
                 "blocked",
+                ProjectOpsSortPreference::UpdatedDesc,
             )
             .iter()
             .map(|item| item.work_item_id.as_str())
@@ -783,6 +890,7 @@ mod tests {
             "custom",
             "cdavid",
             "assignee:teammate priority:high blocked:true cycle:active area:pm state:in_progress",
+            ProjectOpsSortPreference::UpdatedDesc,
         );
         assert_eq!(
             structured
@@ -798,6 +906,7 @@ mod tests {
             "custom",
             "cdavid",
             "assignee:me status:active search",
+            ProjectOpsSortPreference::UpdatedDesc,
         );
         assert_eq!(
             me_active
@@ -813,6 +922,7 @@ mod tests {
             "custom",
             "cdavid",
             "cycle:none assignee:none priority:low",
+            ProjectOpsSortPreference::UpdatedDesc,
         );
         assert!(no_cycle.is_empty());
         let backlog_none = filter_work_items_for_view(
@@ -821,6 +931,7 @@ mod tests {
             "custom",
             "cdavid",
             "cycle:none assignee:none state:backlog",
+            ProjectOpsSortPreference::UpdatedDesc,
         );
         assert_eq!(
             backlog_none
@@ -828,6 +939,74 @@ mod tests {
                 .map(|item| item.work_item_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["wi-3"]
+        );
+    }
+
+    #[test]
+    fn sort_preferences_reorder_rows_and_query_sort_overrides_default() {
+        let mut work_items = vec![
+            work_item(
+                "wi-1",
+                "Bravo",
+                ProjectOpsWorkItemStatus::Todo,
+                Some("cdavid"),
+                Some("2026-w10"),
+                None,
+                30,
+            ),
+            work_item(
+                "wi-2",
+                "Alpha",
+                ProjectOpsWorkItemStatus::InProgress,
+                Some("cdavid"),
+                Some("2026-w10"),
+                None,
+                40,
+            ),
+            work_item(
+                "wi-3",
+                "Zulu",
+                ProjectOpsWorkItemStatus::Backlog,
+                Some("cdavid"),
+                Some("2026-w10"),
+                None,
+                20,
+            ),
+        ];
+        work_items[0].priority = ProjectOpsPriority::High;
+        work_items[1].priority = ProjectOpsPriority::Low;
+        work_items[2].priority = ProjectOpsPriority::Urgent;
+
+        let priority_sorted = filter_work_items_for_view(
+            work_items.as_slice(),
+            cycles().as_slice(),
+            "custom",
+            "cdavid",
+            "",
+            ProjectOpsSortPreference::PriorityDesc,
+        );
+        assert_eq!(
+            priority_sorted
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-3", "wi-1", "wi-2"]
+        );
+
+        let query_override = filter_work_items_for_view(
+            work_items.as_slice(),
+            cycles().as_slice(),
+            "custom",
+            "cdavid",
+            "sort:title_asc",
+            ProjectOpsSortPreference::PriorityDesc,
+        );
+        assert_eq!(
+            query_override
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2", "wi-1", "wi-3"]
         );
     }
 

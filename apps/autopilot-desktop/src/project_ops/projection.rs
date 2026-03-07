@@ -6,10 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::PaneLoadState;
 use crate::project_ops::contract::{
+    project_ops_error, ProjectOpsAcceptedEventName, ProjectOpsErrorCode,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
     PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-    PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEventName, ProjectOpsErrorCode,
-    project_ops_error,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 use crate::project_ops::schema::{ProjectOpsCycleId, ProjectOpsWorkItem, ProjectOpsWorkItemId};
 use crate::project_ops::views::builtin_saved_view_specs;
@@ -608,6 +608,63 @@ impl ProjectOpsProjectionStore {
         Ok(decision)
     }
 
+    pub fn upsert_personal_saved_view(
+        &mut self,
+        row: ProjectOpsSavedViewRow,
+    ) -> Result<bool, String> {
+        if row.built_in {
+            return Err(project_ops_error(
+                ProjectOpsErrorCode::InvalidCommand,
+                format!("saved view {} must not be marked built-in", row.view_id),
+            ));
+        }
+        row.validate()?;
+        let mut next_rows = self
+            .saved_views
+            .iter()
+            .filter(|saved_view| !saved_view.built_in && saved_view.view_id != row.view_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        next_rows.push(row);
+        let seq = self
+            .checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID)
+            .unwrap_or(0)
+            .saturating_add(1);
+        Ok(matches!(
+            self.apply_saved_views_projection(seq, next_rows)?,
+            StreamApplyDecision::Applied { .. }
+        ))
+    }
+
+    pub fn remove_personal_saved_view(&mut self, view_id: &str) -> Result<bool, String> {
+        let normalized = view_id.trim();
+        if normalized.is_empty() {
+            return Ok(false);
+        }
+        let next_rows = self
+            .saved_views
+            .iter()
+            .filter(|saved_view| !saved_view.built_in && saved_view.view_id != normalized)
+            .cloned()
+            .collect::<Vec<_>>();
+        let current_custom_count = self
+            .saved_views
+            .iter()
+            .filter(|view| !view.built_in)
+            .count();
+        if next_rows.len() == current_custom_count {
+            return Ok(false);
+        }
+        let seq = self
+            .checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID)
+            .unwrap_or(0)
+            .saturating_add(1);
+        Ok(matches!(
+            self.apply_saved_views_projection(seq, next_rows)?,
+            StreamApplyDecision::Applied { .. }
+        ))
+    }
+
     fn apply_stream_seq(
         &mut self,
         stream_id: &str,
@@ -924,14 +981,14 @@ mod tests {
     use serde_json::Value;
 
     use super::{
-        PROJECT_OPS_PROJECTION_SCHEMA_VERSION, ProjectOpsActivityRow, ProjectOpsCycleRow,
-        ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
+        ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore,
+        ProjectOpsSavedViewRow, PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
     };
     use crate::app_state::PaneLoadState;
     use crate::project_ops::contract::{
-        PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
-        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
-        ProjectOpsAcceptedEventName,
+        ProjectOpsAcceptedEventName, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
+        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+        PROJECT_OPS_WORK_ITEMS_STREAM_ID,
     };
     use crate::project_ops::schema::{
         ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
@@ -1188,11 +1245,9 @@ mod tests {
             Some(10_000)
         );
 
-        assert!(
-            store
-                .adopt_remote_checkpoint(PROJECT_OPS_CYCLES_STREAM_ID, 4)
-                .expect("remote checkpoint should adopt")
-        );
+        assert!(store
+            .adopt_remote_checkpoint(PROJECT_OPS_CYCLES_STREAM_ID, 4)
+            .expect("remote checkpoint should adopt"));
         assert_eq!(store.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(4));
 
         store

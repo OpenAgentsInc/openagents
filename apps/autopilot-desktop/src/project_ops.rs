@@ -4,6 +4,7 @@ use std::collections::BTreeSet;
 pub mod contract;
 pub mod editor;
 pub mod pilot;
+pub mod preferences;
 pub mod projection;
 pub mod schema;
 pub mod service;
@@ -14,30 +15,30 @@ pub const PROJECT_OPS_SOURCE_BADGE: &str = contract::PROJECT_OPS_PRIMARY_SOURCE_
 
 #[allow(unused_imports)]
 pub use contract::{
+    project_ops_error, project_ops_phase1_sync_contract, project_ops_required_stream_grants,
+    project_ops_v1_contract_manifest, step0_stream_specs, ProjectOpsAcceptedEvent,
+    ProjectOpsAcceptedEventContractSpec, ProjectOpsAcceptedEventEnvelope,
+    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCheckpointRule, ProjectOpsCommand,
+    ProjectOpsCommandContractSpec, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
+    ProjectOpsCommandName, ProjectOpsContractManifest, ProjectOpsDeliveryPhase,
+    ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityContractSpec, ProjectOpsEntityKind,
+    ProjectOpsErrorCode, ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
     PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
     PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
-    PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventContractSpec,
-    ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsActor,
-    ProjectOpsCheckpointRule, ProjectOpsCommand, ProjectOpsCommandContractSpec,
-    ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCommandName,
-    ProjectOpsContractManifest, ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFieldsPatch,
-    ProjectOpsEntityContractSpec, ProjectOpsEntityKind, ProjectOpsErrorCode,
-    ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract, project_ops_error,
-    project_ops_phase1_sync_contract, project_ops_required_stream_grants,
-    project_ops_v1_contract_manifest, step0_stream_specs,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 
 #[allow(unused_imports)]
 pub use schema::{
-    PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey,
-    ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
+    ProjectOpsWorkItemId, ProjectOpsWorkItemStatus, PROJECT_OPS_STEP0_SCHEMA_VERSION,
 };
 
 #[allow(unused_imports)]
 pub use projection::{
-    PROJECT_OPS_PROJECTION_SCHEMA_VERSION, ProjectOpsActivityRow, ProjectOpsCycleRow,
-    ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
+    ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
+    PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
 };
 
 #[allow(unused_imports)]
@@ -47,15 +48,18 @@ pub use editor::{ProjectOpsDetailDraft, ProjectOpsQuickCreateDraft};
 pub use service::{ProjectOpsCommandApplyResult, ProjectOpsCommandResult, ProjectOpsService};
 
 #[allow(unused_imports)]
-pub use pilot::{PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION, ProjectOpsPilotMetricsState};
+pub use pilot::{ProjectOpsPilotMetricsState, PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION};
+
+#[allow(unused_imports)]
+pub use preferences::{ProjectOpsPreferencesState, PROJECT_OPS_PREFERENCES_SCHEMA_VERSION};
 
 #[allow(unused_imports)]
 pub use views::{
-    PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CURRENT_CYCLE_VIEW_ID, PROJECT_OPS_DEFAULT_VIEW_ID,
-    PROJECT_OPS_MY_WORK_VIEW_ID, PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID, ProjectOpsBoardLane,
-    ProjectOpsBuiltinSavedViewSpec, builtin_saved_view_specs, current_operator_label,
-    empty_state_copy_for_view, filter_chips_for_view, filter_work_items_for_view,
-    project_board_lanes, view_title_for_id,
+    builtin_saved_view_specs, current_operator_label, empty_state_copy_for_view,
+    filter_chips_for_view, filter_work_items_for_view, project_board_lanes, query_filter_chips,
+    view_title_for_id, ProjectOpsBoardLane, ProjectOpsBuiltinSavedViewSpec,
+    ProjectOpsSortPreference, PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CURRENT_CYCLE_VIEW_ID,
+    PROJECT_OPS_DEFAULT_VIEW_ID, PROJECT_OPS_MY_WORK_VIEW_ID, PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID,
 };
 
 pub fn project_ops_enabled_from_env() -> bool {
@@ -70,7 +74,8 @@ pub fn project_ops_enabled_from_env() -> bool {
         .unwrap_or(false)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum ProjectOpsPresentationMode {
     List,
     Board,
@@ -188,6 +193,7 @@ pub struct ProjectOpsPaneState {
     pub active_saved_view_id: String,
     pub active_saved_view: String,
     pub search_query: String,
+    pub sort_preference: ProjectOpsSortPreference,
     pub active_filter_chips: Vec<String>,
     pub visible_work_items: Vec<ProjectOpsWorkItem>,
     pub presentation_mode: ProjectOpsPresentationMode,
@@ -205,6 +211,7 @@ pub struct ProjectOpsPaneState {
     pub detail_draft: Option<ProjectOpsDetailDraft>,
     pub detail_save_status: Option<String>,
     pub pilot_metrics: ProjectOpsPilotMetricsState,
+    pub preferences: ProjectOpsPreferencesState,
     pub source_badge: String,
     pub summary: String,
     pub status_note: String,
@@ -215,7 +222,13 @@ pub struct ProjectOpsPaneState {
 impl Default for ProjectOpsPaneState {
     fn default() -> Self {
         let feature_enabled = project_ops_enabled_from_env();
-        let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
+        let preferences = if feature_enabled {
+            ProjectOpsPreferencesState::load_or_new_default()
+                .unwrap_or_else(|_| ProjectOpsPreferencesState::default_enabled())
+        } else {
+            ProjectOpsPreferencesState::disabled()
+        };
+        let active_saved_view_id = preferences.active_saved_view_id.clone();
         let projection_load_started_at = std::time::Instant::now();
         let local_store = if feature_enabled {
             ProjectOpsProjectionStore::load_or_bootstrap_default()
@@ -236,7 +249,8 @@ impl Default for ProjectOpsPaneState {
             let _ = pilot_metrics.record_view(active_saved_view_id.as_str());
         }
         let operator_label = current_operator_label();
-        let search_query = String::new();
+        let search_query = preferences.search_query.clone();
+        let sort_preference = preferences.sort_preference;
         let (
             active_saved_view,
             active_filter_chips,
@@ -254,6 +268,7 @@ impl Default for ProjectOpsPaneState {
                 operator_label.as_str(),
                 search_query.as_str(),
                 None,
+                sort_preference,
             )
         } else {
             (
@@ -345,9 +360,10 @@ impl Default for ProjectOpsPaneState {
             active_saved_view_id,
             active_saved_view,
             search_query,
+            sort_preference,
             active_filter_chips,
             visible_work_items,
-            presentation_mode: ProjectOpsPresentationMode::List,
+            presentation_mode: preferences.presentation_mode,
             board_lanes,
             board_drag_state: None,
             bulk_selected_work_item_ids: Vec::new(),
@@ -362,6 +378,7 @@ impl Default for ProjectOpsPaneState {
             detail_draft,
             detail_save_status: None,
             pilot_metrics,
+            preferences,
             source_badge,
             summary,
             status_note,
@@ -381,8 +398,22 @@ impl ProjectOpsPaneState {
         local_store: ProjectOpsProjectionStore,
         operator_label: &str,
     ) -> Self {
-        let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
-        let search_query = String::new();
+        Self::from_local_store_and_preferences_for_tests(
+            local_store,
+            operator_label,
+            ProjectOpsPreferencesState::disabled(),
+        )
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_local_store_and_preferences_for_tests(
+        local_store: ProjectOpsProjectionStore,
+        operator_label: &str,
+        preferences: ProjectOpsPreferencesState,
+    ) -> Self {
+        let active_saved_view_id = preferences.active_saved_view_id.clone();
+        let search_query = preferences.search_query.clone();
+        let sort_preference = preferences.sort_preference;
         let (
             active_saved_view,
             active_filter_chips,
@@ -399,6 +430,7 @@ impl ProjectOpsPaneState {
             operator_label,
             search_query.as_str(),
             None,
+            sort_preference,
         );
         let detail_draft = selected_work_item_id
             .as_ref()
@@ -419,9 +451,10 @@ impl ProjectOpsPaneState {
             active_saved_view_id,
             active_saved_view,
             search_query,
+            sort_preference,
             active_filter_chips,
             visible_work_items,
-            presentation_mode: ProjectOpsPresentationMode::List,
+            presentation_mode: preferences.presentation_mode,
             board_lanes,
             board_drag_state: None,
             bulk_selected_work_item_ids: Vec::new(),
@@ -436,6 +469,7 @@ impl ProjectOpsPaneState {
             detail_draft,
             detail_save_status: None,
             pilot_metrics: ProjectOpsPilotMetricsState::disabled(),
+            preferences,
             source_badge: local_store.source_badge(),
             summary: "Test PM pane".to_string(),
             status_note: "Test PM pane".to_string(),
@@ -461,6 +495,9 @@ impl ProjectOpsPaneState {
         self.active_saved_view_id = normalized.to_string();
         self.refresh_derived_view_state();
         let _ = self
+            .preferences
+            .set_active_saved_view_id(self.active_saved_view_id.as_str());
+        let _ = self
             .pilot_metrics
             .record_view(self.active_saved_view_id.as_str());
         self.last_action = Some(format!("Project Ops view -> {}", self.active_saved_view));
@@ -474,11 +511,25 @@ impl ProjectOpsPaneState {
         }
         self.search_query = normalized;
         self.refresh_derived_view_state();
+        let _ = self
+            .preferences
+            .set_search_query(self.search_query.as_str());
         self.last_action = Some(if self.search_query.is_empty() {
             "Project Ops search cleared".to_string()
         } else {
             format!("Project Ops search -> {}", self.search_query)
         });
+        true
+    }
+
+    pub fn set_sort_preference(&mut self, sort_preference: ProjectOpsSortPreference) -> bool {
+        if self.sort_preference == sort_preference {
+            return false;
+        }
+        self.sort_preference = sort_preference;
+        self.refresh_derived_view_state();
+        let _ = self.preferences.set_sort_preference(sort_preference);
+        self.last_action = Some(format!("Project Ops sort -> {}", sort_preference.label()));
         true
     }
 
@@ -527,6 +578,7 @@ impl ProjectOpsPaneState {
         if presentation_mode == ProjectOpsPresentationMode::List {
             self.board_drag_state = None;
         }
+        let _ = self.preferences.set_presentation_mode(presentation_mode);
         self.last_action = Some(format!(
             "Project Ops presentation -> {}",
             presentation_mode.label()
@@ -666,6 +718,67 @@ impl ProjectOpsPaneState {
         true
     }
 
+    pub fn save_current_view_as_personal_saved_view(
+        &mut self,
+        view_id: &str,
+        title: &str,
+    ) -> Result<bool, String> {
+        let normalized_view_id = view_id.trim();
+        if normalized_view_id.is_empty() {
+            return Err(project_ops_error(
+                ProjectOpsErrorCode::InvalidCommand,
+                "saved view id must not be empty",
+            ));
+        }
+        if builtin_saved_view_specs()
+            .iter()
+            .any(|spec| spec.view_id == normalized_view_id)
+        {
+            return Err(project_ops_error(
+                ProjectOpsErrorCode::InvalidCommand,
+                format!("cannot overwrite built-in saved view {normalized_view_id}"),
+            ));
+        }
+        let normalized_title = title.trim();
+        if normalized_title.is_empty() {
+            return Err(project_ops_error(
+                ProjectOpsErrorCode::InvalidCommand,
+                "saved view title must not be empty",
+            ));
+        }
+        let query = self.snapshot_current_view_query();
+        let saved_view = ProjectOpsSavedViewRow {
+            view_id: normalized_view_id.to_string(),
+            title: normalized_title.to_string(),
+            query: query.clone(),
+            filters: query_filter_chips(query.as_str()),
+            built_in: false,
+        };
+        let persisted = self.local_store.upsert_personal_saved_view(saved_view)?;
+        self.refresh_derived_view_state();
+        let _ = self.set_active_saved_view(normalized_view_id);
+        self.last_action = Some(format!("Saved personal view {normalized_title}"));
+        Ok(persisted)
+    }
+
+    pub fn remove_personal_saved_view(&mut self, view_id: &str) -> Result<bool, String> {
+        let normalized_view_id = view_id.trim();
+        if normalized_view_id.is_empty() {
+            return Ok(false);
+        }
+        let removed = self
+            .local_store
+            .remove_personal_saved_view(normalized_view_id)?;
+        self.refresh_derived_view_state();
+        if removed && self.active_saved_view_id == normalized_view_id {
+            let _ = self.set_active_saved_view(PROJECT_OPS_DEFAULT_VIEW_ID);
+        }
+        if removed {
+            self.last_action = Some(format!("Removed personal view {normalized_view_id}"));
+        }
+        Ok(removed)
+    }
+
     fn refresh_derived_view_state(&mut self) {
         let (
             active_saved_view,
@@ -683,6 +796,7 @@ impl ProjectOpsPaneState {
             self.operator_label.as_str(),
             self.search_query.as_str(),
             self.selected_work_item_id.as_ref(),
+            self.sort_preference,
         );
         self.active_saved_view = active_saved_view;
         self.active_filter_chips = active_filter_chips;
@@ -1325,6 +1439,36 @@ impl ProjectOpsPaneState {
         selected_ids
     }
 
+    fn snapshot_current_view_query(&self) -> String {
+        let mut parts = Vec::new();
+        if let Some(saved_view_query) = self.active_saved_view_query() {
+            parts.push(saved_view_query);
+        }
+        if !self.search_query.trim().is_empty() {
+            parts.push(self.search_query.trim().to_string());
+        }
+        let mut snapshot = parts.join(" ");
+        if !snapshot
+            .split_whitespace()
+            .any(|token| token.to_ascii_lowercase().starts_with("sort:"))
+            && self.sort_preference != ProjectOpsSortPreference::UpdatedDesc
+        {
+            if !snapshot.is_empty() {
+                snapshot.push(' ');
+            }
+            snapshot.push_str(format!("sort:{}", self.sort_preference.label()).as_str());
+        }
+        snapshot.trim().to_string()
+    }
+
+    fn active_saved_view_query(&self) -> Option<String> {
+        self.available_saved_views
+            .iter()
+            .find(|view| view.view_id == self.active_saved_view_id)
+            .map(|view| view.query.trim().to_string())
+            .filter(|query| !query.is_empty())
+    }
+
     fn sync_detail_draft_from_selection(&mut self) {
         let Some(selected) = self.selected_work_item_id.as_ref() else {
             self.detail_draft = None;
@@ -1355,6 +1499,7 @@ fn derive_project_ops_view_state(
     operator_label: &str,
     search_query: &str,
     selected_work_item_id: Option<&ProjectOpsWorkItemId>,
+    sort_preference: ProjectOpsSortPreference,
 ) -> (
     String,
     Vec<String>,
@@ -1367,19 +1512,38 @@ fn derive_project_ops_view_state(
     Vec<ProjectOpsSavedViewRow>,
 ) {
     let available_saved_views = local_store.saved_views.clone();
-    let active_saved_view = available_saved_views
+    let active_saved_view_row = available_saved_views
         .iter()
         .find(|view| view.view_id == active_saved_view_id)
+        .cloned();
+    let active_saved_view = active_saved_view_row
+        .as_ref()
         .map(|view| view.title.clone())
         .or_else(|| view_title_for_id(active_saved_view_id).map(ToString::to_string))
         .unwrap_or_else(|| "Saved View".to_string());
-    let active_filter_chips = filter_chips_for_view(active_saved_view_id, search_query);
+    let effective_search_query = active_saved_view_row.as_ref().map_or_else(
+        || search_query.trim().to_string(),
+        |saved_view| match (saved_view.query.trim(), search_query.trim()) {
+            ("", "") => String::new(),
+            ("", search_query) => search_query.to_string(),
+            (saved_view_query, "") => saved_view_query.to_string(),
+            (saved_view_query, search_query) => {
+                format!("{saved_view_query} {search_query}")
+            }
+        },
+    );
+    let mut active_filter_chips = active_saved_view_row
+        .as_ref()
+        .map(|view| view.filters.clone())
+        .unwrap_or_else(|| filter_chips_for_view(active_saved_view_id, ""));
+    active_filter_chips.extend(query_filter_chips(search_query));
     let visible_work_items = filter_work_items_for_view(
         local_store.work_items.as_slice(),
         local_store.cycles.as_slice(),
         active_saved_view_id,
         operator_label,
-        search_query,
+        effective_search_query.as_str(),
+        sort_preference,
     );
     let selection_notice = selected_work_item_id.and_then(|selected| {
         if visible_work_items
@@ -1474,11 +1638,11 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use super::{
-        PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_BLOCKED_VIEW_ID,
-        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
-        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsPaneState,
-        ProjectOpsPilotMetricsState, ProjectOpsPresentationMode, ProjectOpsService,
-        project_ops_required_stream_grants,
+        project_ops_required_stream_grants, ProjectOpsPaneState, ProjectOpsPilotMetricsState,
+        ProjectOpsPreferencesState, ProjectOpsPresentationMode, ProjectOpsService,
+        ProjectOpsSortPreference, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
+        PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
+        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
     };
     use crate::project_ops::contract::{
         ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName,
@@ -1534,19 +1698,7 @@ mod tests {
         }
     }
 
-    fn sample_store() -> ProjectOpsProjectionStore {
-        let work_items_path = unique_temp_path("work-items");
-        let activity_path = unique_temp_path("activity");
-        let cycles_path = unique_temp_path("cycles");
-        let saved_views_path = unique_temp_path("saved-views");
-        let checkpoint_path = unique_temp_path("checkpoints");
-        let mut store = ProjectOpsProjectionStore::from_paths_for_tests(
-            work_items_path,
-            activity_path,
-            cycles_path,
-            saved_views_path,
-            checkpoint_path,
-        );
+    fn seed_sample_store(store: &mut ProjectOpsProjectionStore) {
         let cycle = ProjectOpsCycleRow {
             cycle_id: ProjectOpsCycleId::new("2026-w10").expect("cycle id"),
             title: "Week 10".to_string(),
@@ -1620,6 +1772,22 @@ mod tests {
                 ],
             )
             .expect("activity projection should apply");
+    }
+
+    fn sample_store() -> ProjectOpsProjectionStore {
+        let work_items_path = unique_temp_path("work-items");
+        let activity_path = unique_temp_path("activity");
+        let cycles_path = unique_temp_path("cycles");
+        let saved_views_path = unique_temp_path("saved-views");
+        let checkpoint_path = unique_temp_path("checkpoints");
+        let mut store = ProjectOpsProjectionStore::from_paths_for_tests(
+            work_items_path,
+            activity_path,
+            cycles_path,
+            saved_views_path,
+            checkpoint_path,
+        );
+        seed_sample_store(&mut store);
         store
     }
 
@@ -2183,10 +2351,9 @@ mod tests {
         pane.set_detail_blocked_reason(Some("Waiting on design"));
         pane.set_detail_due_at(Some(1_762_600_000_000));
 
-        assert!(
-            pane.apply_detail_draft()
-                .expect("detail apply should succeed")
-        );
+        assert!(pane
+            .apply_detail_draft()
+            .expect("detail apply should succeed"));
 
         let updated = pane
             .local_store
@@ -2237,11 +2404,10 @@ mod tests {
                 .map(|item| item.as_str()),
             Some("wi-1")
         );
-        assert!(
-            pane.selection_notice
-                .as_deref()
-                .is_some_and(|notice| notice.contains("filtered out"))
-        );
+        assert!(pane
+            .selection_notice
+            .as_deref()
+            .is_some_and(|notice| notice.contains("filtered out")));
         assert_eq!(
             pane.visible_activity_rows
                 .iter()
@@ -2271,10 +2437,9 @@ mod tests {
             .unwrap_or(0);
         let activity_count_before = pane.local_store.activity_rows.len();
 
-        assert!(
-            pane.drop_board_drag(ProjectOpsWorkItemStatus::InReview)
-                .expect("board drop should succeed")
-        );
+        assert!(pane
+            .drop_board_drag(ProjectOpsWorkItemStatus::InReview)
+            .expect("board drop should succeed"));
 
         let updated = pane
             .local_store
@@ -2304,12 +2469,11 @@ mod tests {
                 .get("ChangeWorkItemStatus"),
             Some(&1)
         );
-        assert!(
-            pane.local_store
-                .activity_rows
-                .first()
-                .is_some_and(|row| row.summary.contains("in_review"))
-        );
+        assert!(pane
+            .local_store
+            .activity_rows
+            .first()
+            .is_some_and(|row| row.summary.contains("in_review")));
     }
 
     #[test]
@@ -2514,6 +2678,68 @@ mod tests {
     }
 
     #[test]
+    fn personal_saved_views_and_preferences_persist_across_restart() {
+        let paths = ProjectOpsFixturePaths::new("preferences");
+        let mut store = paths.build_store();
+        seed_sample_store(&mut store);
+        let preferences_path = unique_temp_path("preferences-file");
+        let preferences =
+            ProjectOpsPreferencesState::from_preferences_path_for_tests(preferences_path.clone())
+                .expect("preferences should initialize");
+        let mut pane = ProjectOpsPaneState::from_local_store_and_preferences_for_tests(
+            store,
+            "cdavid",
+            preferences,
+        );
+
+        assert!(pane.set_active_saved_view("all"));
+        assert!(pane.set_search_query("blocked:true priority:high"));
+        assert!(pane.set_sort_preference(ProjectOpsSortPreference::PriorityDesc));
+        assert!(pane
+            .save_current_view_as_personal_saved_view("focus", "Focus")
+            .expect("personal saved view should persist"));
+        assert!(pane.set_search_query(""));
+        assert_eq!(pane.active_saved_view_id, "focus");
+        assert_eq!(
+            pane.visible_work_items
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2"]
+        );
+        assert!(pane.available_saved_views.iter().any(|view| {
+            view.view_id == "focus"
+                && view.query.contains("blocked:true")
+                && view.query.contains("priority:high")
+                && view.query.contains("sort:priority_desc")
+        }));
+
+        let reloaded_preferences =
+            ProjectOpsPreferencesState::from_preferences_path_for_tests(preferences_path)
+                .expect("preferences should reload");
+        let reloaded_pane = ProjectOpsPaneState::from_local_store_and_preferences_for_tests(
+            paths.build_store(),
+            "cdavid",
+            reloaded_preferences,
+        );
+
+        assert_eq!(reloaded_pane.active_saved_view_id, "focus");
+        assert_eq!(reloaded_pane.search_query, "");
+        assert_eq!(
+            reloaded_pane.sort_preference,
+            ProjectOpsSortPreference::PriorityDesc
+        );
+        assert_eq!(
+            reloaded_pane
+                .visible_work_items
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2"]
+        );
+    }
+
+    #[test]
     fn scripted_pilot_cycle_records_command_and_view_usage() {
         let metrics_path = unique_temp_path("pilot-metrics");
         let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
@@ -2525,10 +2751,9 @@ mod tests {
             .expect("default view should record");
 
         pane.edit_detail_title("Pilot cycle edit");
-        assert!(
-            pane.apply_detail_draft()
-                .expect("detail apply should succeed")
-        );
+        assert!(pane
+            .apply_detail_draft()
+            .expect("detail apply should succeed"));
 
         pane.set_quick_create_title("Pilot cycle task");
         pane.set_quick_create_description("Created during scripted pilot cycle");
