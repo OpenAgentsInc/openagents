@@ -81,10 +81,7 @@ pub fn filter_chips_for_view(view_id: &str, search_query: &str) -> Vec<String> {
                 .collect()
         })
         .unwrap_or_default();
-    let query = search_query.trim();
-    if !query.is_empty() {
-        chips.push(format!("search:{query}"));
-    }
+    chips.extend(parse_search_query(search_query).chips);
     chips
 }
 
@@ -144,7 +141,7 @@ pub fn filter_work_items_for_view(
         .find(|cycle| cycle.is_active)
         .map(|cycle| cycle.cycle_id.as_str().to_string());
     let operator_label = operator_label.trim().to_ascii_lowercase();
-    let query = search_query.trim().to_ascii_lowercase();
+    let query = parse_search_query(search_query);
 
     let mut rows = work_items
         .iter()
@@ -157,7 +154,14 @@ pub fn filter_work_items_for_view(
                 active_cycle_id.as_deref(),
             )
         })
-        .filter(|item| matches_search(item, query.as_str()))
+        .filter(|item| {
+            matches_search(
+                item,
+                &query,
+                operator_label.as_str(),
+                active_cycle_id.as_deref(),
+            )
+        })
         .cloned()
         .collect::<Vec<_>>();
     rows.sort_by(|lhs, rhs| {
@@ -197,11 +201,190 @@ fn matches_view(
     }
 }
 
-fn matches_search(item: &ProjectOpsWorkItem, query: &str) -> bool {
-    if query.is_empty() {
+#[derive(Default)]
+struct ProjectOpsSearchQuery {
+    text_terms: Vec<String>,
+    status_filters: Vec<ProjectOpsStatusFilter>,
+    assignee_filters: Vec<ProjectOpsAssigneeFilter>,
+    priority_filters: Vec<ProjectOpsPriorityFilter>,
+    cycle_filters: Vec<ProjectOpsCycleFilter>,
+    blocked_filters: Vec<bool>,
+    tag_filters: Vec<String>,
+    chips: Vec<String>,
+}
+
+#[derive(Clone, Copy)]
+enum ProjectOpsStatusFilter {
+    Active,
+    Exact(ProjectOpsWorkItemStatus),
+}
+
+enum ProjectOpsAssigneeFilter {
+    Me,
+    None,
+    Exact(String),
+}
+
+#[derive(Clone, Copy)]
+enum ProjectOpsPriorityFilter {
+    Exact(super::schema::ProjectOpsPriority),
+}
+
+enum ProjectOpsCycleFilter {
+    Active,
+    None,
+    Exact(String),
+}
+
+fn parse_search_query(search_query: &str) -> ProjectOpsSearchQuery {
+    let mut parsed = ProjectOpsSearchQuery::default();
+    for raw_token in search_query.split_whitespace() {
+        let token = raw_token.trim();
+        if token.is_empty() {
+            continue;
+        }
+        let Some((key, value)) = token.split_once(':') else {
+            let normalized = token.to_ascii_lowercase();
+            parsed.text_terms.push(normalized.clone());
+            parsed.chips.push(format!("search:{normalized}"));
+            continue;
+        };
+        let normalized_key = key.trim().to_ascii_lowercase();
+        let normalized_value = normalize_query_value(value);
+        if normalized_value.is_empty() {
+            let normalized = token.to_ascii_lowercase();
+            parsed.text_terms.push(normalized.clone());
+            parsed.chips.push(format!("search:{normalized}"));
+            continue;
+        }
+        match normalized_key.as_str() {
+            "state" | "status" => {
+                if let Some(filter) = parse_status_filter(normalized_value.as_str()) {
+                    parsed.status_filters.push(filter);
+                    parsed.chips.push(format!("status:{normalized_value}"));
+                } else {
+                    parsed.text_terms.push(token.to_ascii_lowercase());
+                    parsed
+                        .chips
+                        .push(format!("search:{}", token.to_ascii_lowercase()));
+                }
+            }
+            "assignee" => {
+                parsed
+                    .assignee_filters
+                    .push(parse_assignee_filter(normalized_value.as_str()));
+                parsed.chips.push(format!("assignee:{normalized_value}"));
+            }
+            "priority" => {
+                if let Some(filter) = parse_priority_filter(normalized_value.as_str()) {
+                    parsed.priority_filters.push(filter);
+                    parsed.chips.push(format!("priority:{normalized_value}"));
+                } else {
+                    parsed.text_terms.push(token.to_ascii_lowercase());
+                    parsed
+                        .chips
+                        .push(format!("search:{}", token.to_ascii_lowercase()));
+                }
+            }
+            "cycle" => {
+                parsed
+                    .cycle_filters
+                    .push(parse_cycle_filter(normalized_value.as_str()));
+                parsed.chips.push(format!("cycle:{normalized_value}"));
+            }
+            "blocked" => {
+                if let Some(value) = parse_bool_filter(normalized_value.as_str()) {
+                    parsed.blocked_filters.push(value);
+                    parsed.chips.push(format!("blocked:{normalized_value}"));
+                } else {
+                    parsed.text_terms.push(token.to_ascii_lowercase());
+                    parsed
+                        .chips
+                        .push(format!("search:{}", token.to_ascii_lowercase()));
+                }
+            }
+            "tag" | "area" => {
+                parsed.tag_filters.push(normalized_value.clone());
+                parsed.chips.push(format!("tag:{normalized_value}"));
+            }
+            "sort" => {
+                parsed.chips.push(format!("sort:{normalized_value}"));
+            }
+            _ => {
+                parsed.text_terms.push(token.to_ascii_lowercase());
+                parsed
+                    .chips
+                    .push(format!("search:{}", token.to_ascii_lowercase()));
+            }
+        }
+    }
+    parsed
+}
+
+fn matches_search(
+    item: &ProjectOpsWorkItem,
+    query: &ProjectOpsSearchQuery,
+    operator_label: &str,
+    active_cycle_id: Option<&str>,
+) -> bool {
+    if !query.status_filters.is_empty()
+        && !query
+            .status_filters
+            .iter()
+            .any(|filter| matches_status_filter(item, *filter))
+    {
+        return false;
+    }
+    if !query.assignee_filters.is_empty()
+        && !query
+            .assignee_filters
+            .iter()
+            .any(|filter| matches_assignee_filter(item, filter, operator_label))
+    {
+        return false;
+    }
+    if !query.priority_filters.is_empty()
+        && !query
+            .priority_filters
+            .iter()
+            .any(|filter| matches_priority_filter(item, *filter))
+    {
+        return false;
+    }
+    if !query.cycle_filters.is_empty()
+        && !query
+            .cycle_filters
+            .iter()
+            .any(|filter| matches_cycle_filter(item, filter, active_cycle_id))
+    {
+        return false;
+    }
+    if !query.blocked_filters.is_empty()
+        && !query
+            .blocked_filters
+            .iter()
+            .any(|blocked| item.is_blocked() == *blocked)
+    {
+        return false;
+    }
+    if !query.tag_filters.iter().all(|tag| {
+        item.area_tags
+            .iter()
+            .any(|item_tag| item_tag.eq_ignore_ascii_case(tag))
+    }) {
+        return false;
+    }
+    if query.text_terms.is_empty() {
         return true;
     }
 
+    query
+        .text_terms
+        .iter()
+        .all(|term| matches_text_term(item, term.as_str()))
+}
+
+fn matches_text_term(item: &ProjectOpsWorkItem, query: &str) -> bool {
     item.title.to_ascii_lowercase().contains(query)
         || item.description.to_ascii_lowercase().contains(query)
         || item
@@ -219,6 +402,126 @@ fn matches_search(item: &ProjectOpsWorkItem, query: &str) -> bool {
             .area_tags
             .iter()
             .any(|tag| tag.to_ascii_lowercase().contains(query))
+}
+
+fn normalize_query_value(value: &str) -> String {
+    value.trim().to_ascii_lowercase().replace('-', "_")
+}
+
+fn parse_status_filter(value: &str) -> Option<ProjectOpsStatusFilter> {
+    match value {
+        "active" => Some(ProjectOpsStatusFilter::Active),
+        "backlog" => Some(ProjectOpsStatusFilter::Exact(
+            ProjectOpsWorkItemStatus::Backlog,
+        )),
+        "todo" => Some(ProjectOpsStatusFilter::Exact(
+            ProjectOpsWorkItemStatus::Todo,
+        )),
+        "in_progress" => Some(ProjectOpsStatusFilter::Exact(
+            ProjectOpsWorkItemStatus::InProgress,
+        )),
+        "in_review" => Some(ProjectOpsStatusFilter::Exact(
+            ProjectOpsWorkItemStatus::InReview,
+        )),
+        "done" => Some(ProjectOpsStatusFilter::Exact(
+            ProjectOpsWorkItemStatus::Done,
+        )),
+        "cancelled" => Some(ProjectOpsStatusFilter::Exact(
+            ProjectOpsWorkItemStatus::Cancelled,
+        )),
+        _ => None,
+    }
+}
+
+fn matches_status_filter(item: &ProjectOpsWorkItem, filter: ProjectOpsStatusFilter) -> bool {
+    match filter {
+        ProjectOpsStatusFilter::Active => !item.status.is_terminal(),
+        ProjectOpsStatusFilter::Exact(status) => item.status == status,
+    }
+}
+
+fn parse_assignee_filter(value: &str) -> ProjectOpsAssigneeFilter {
+    match value {
+        "me" => ProjectOpsAssigneeFilter::Me,
+        "none" | "unassigned" => ProjectOpsAssigneeFilter::None,
+        _ => ProjectOpsAssigneeFilter::Exact(value.to_string()),
+    }
+}
+
+fn matches_assignee_filter(
+    item: &ProjectOpsWorkItem,
+    filter: &ProjectOpsAssigneeFilter,
+    operator_label: &str,
+) -> bool {
+    match filter {
+        ProjectOpsAssigneeFilter::Me => item
+            .assignee
+            .as_deref()
+            .map(|assignee| assignee.eq_ignore_ascii_case(operator_label))
+            .unwrap_or(false),
+        ProjectOpsAssigneeFilter::None => item.assignee.is_none(),
+        ProjectOpsAssigneeFilter::Exact(value) => item
+            .assignee
+            .as_deref()
+            .map(|assignee| assignee.eq_ignore_ascii_case(value))
+            .unwrap_or(false),
+    }
+}
+
+fn parse_priority_filter(value: &str) -> Option<ProjectOpsPriorityFilter> {
+    use super::schema::ProjectOpsPriority;
+
+    match value {
+        "urgent" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::Urgent)),
+        "high" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::High)),
+        "medium" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::Medium)),
+        "low" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::Low)),
+        "none" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::None)),
+        _ => None,
+    }
+}
+
+fn matches_priority_filter(item: &ProjectOpsWorkItem, filter: ProjectOpsPriorityFilter) -> bool {
+    match filter {
+        ProjectOpsPriorityFilter::Exact(priority) => item.priority == priority,
+    }
+}
+
+fn parse_cycle_filter(value: &str) -> ProjectOpsCycleFilter {
+    match value {
+        "active" => ProjectOpsCycleFilter::Active,
+        "none" => ProjectOpsCycleFilter::None,
+        _ => ProjectOpsCycleFilter::Exact(value.to_string()),
+    }
+}
+
+fn matches_cycle_filter(
+    item: &ProjectOpsWorkItem,
+    filter: &ProjectOpsCycleFilter,
+    active_cycle_id: Option<&str>,
+) -> bool {
+    match filter {
+        ProjectOpsCycleFilter::Active => active_cycle_id.is_some_and(|cycle_id| {
+            item.cycle_id
+                .as_ref()
+                .map(|item_cycle| item_cycle.as_str() == cycle_id)
+                .unwrap_or(false)
+        }),
+        ProjectOpsCycleFilter::None => item.cycle_id.is_none(),
+        ProjectOpsCycleFilter::Exact(value) => item
+            .cycle_id
+            .as_ref()
+            .map(|cycle_id| cycle_id.as_str().eq_ignore_ascii_case(value))
+            .unwrap_or(false),
+    }
+}
+
+fn parse_bool_filter(value: &str) -> Option<bool> {
+    match value {
+        "true" | "yes" | "1" => Some(true),
+        "false" | "no" | "0" => Some(false),
+        _ => None,
+    }
 }
 
 fn board_lane_title(status: ProjectOpsWorkItemStatus) -> &'static str {
@@ -422,11 +725,16 @@ mod tests {
     #[test]
     fn filter_chips_and_empty_state_copy_are_specific_to_views() {
         assert_eq!(
-            filter_chips_for_view(PROJECT_OPS_MY_WORK_VIEW_ID, "wallet"),
+            filter_chips_for_view(
+                PROJECT_OPS_MY_WORK_VIEW_ID,
+                "wallet status:todo blocked:true"
+            ),
             vec![
                 "assignee:me".to_string(),
                 "status:active".to_string(),
-                "search:wallet".to_string()
+                "search:wallet".to_string(),
+                "status:todo".to_string(),
+                "blocked:true".to_string()
             ]
         );
         assert_eq!(
@@ -434,6 +742,93 @@ mod tests {
             "No blocked work."
         );
         assert!(!current_operator_label().trim().is_empty());
+    }
+
+    #[test]
+    fn advanced_query_filters_apply_structured_tokens() {
+        let work_items = vec![
+            work_item(
+                "wi-1",
+                "Search parser board",
+                ProjectOpsWorkItemStatus::Todo,
+                Some("cdavid"),
+                Some("2026-w10"),
+                None,
+                30,
+            ),
+            work_item(
+                "wi-2",
+                "Blocked sync work",
+                ProjectOpsWorkItemStatus::InProgress,
+                Some("teammate"),
+                Some("2026-w10"),
+                Some("Waiting on design"),
+                40,
+            ),
+            work_item(
+                "wi-3",
+                "Low-priority backlog",
+                ProjectOpsWorkItemStatus::Backlog,
+                None,
+                None,
+                None,
+                20,
+            ),
+        ];
+        let cycles = cycles();
+
+        let structured = filter_work_items_for_view(
+            work_items.as_slice(),
+            cycles.as_slice(),
+            "custom",
+            "cdavid",
+            "assignee:teammate priority:high blocked:true cycle:active area:pm state:in_progress",
+        );
+        assert_eq!(
+            structured
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2"]
+        );
+
+        let me_active = filter_work_items_for_view(
+            work_items.as_slice(),
+            cycles.as_slice(),
+            "custom",
+            "cdavid",
+            "assignee:me status:active search",
+        );
+        assert_eq!(
+            me_active
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-1"]
+        );
+
+        let no_cycle = filter_work_items_for_view(
+            work_items.as_slice(),
+            cycles.as_slice(),
+            "custom",
+            "cdavid",
+            "cycle:none assignee:none priority:low",
+        );
+        assert!(no_cycle.is_empty());
+        let backlog_none = filter_work_items_for_view(
+            work_items.as_slice(),
+            cycles.as_slice(),
+            "custom",
+            "cdavid",
+            "cycle:none assignee:none state:backlog",
+        );
+        assert_eq!(
+            backlog_none
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-3"]
+        );
     }
 
     #[test]
