@@ -3,17 +3,22 @@ syntax = "proto3";
 package openagents.compute.v1;
 
 import "openagents/common/v1/common.proto";
+import "openagents/compute/v1/compute_products.proto";
 
 enum ComputeCategory {
   COMPUTE_CATEGORY_UNSPECIFIED = 0;
-  COMPUTE_CATEGORY_CPU = 1;
-  COMPUTE_CATEGORY_GPU = 2;
-  COMPUTE_CATEGORY_INFERENCE = 3;
-  COMPUTE_CATEGORY_TRAINING = 4;
+  COMPUTE_CATEGORY_INFERENCE = 1;
+  COMPUTE_CATEGORY_EMBEDDINGS = 2;
+  COMPUTE_CATEGORY_ACCELERATOR = 3;
+  COMPUTE_CATEGORY_CPU = 4;
+  COMPUTE_CATEGORY_TRAINING = 5;
 }
 
 message ComputeRequirement {
   ComputeCategory category = 1;
-  string provider_capability_ref = 2;
-  openagents.common.v1.EvidenceRef delivery_proof_ref = 3;
+  string product_id = 2;
+  ComputeFamily compute_family = 3;
+  ComputeCapabilityEnvelope required_capability_envelope = 4;
+  string provider_capability_ref = 5;
+  openagents.common.v1.EvidenceRef delivery_proof_ref = 6;
 }

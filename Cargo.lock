@@ -4488,6 +4488,7 @@ dependencies = [
  "http 1.4.0",
  "http-body-util",
  "openagents-kernel-core",
+ "openagents-kernel-proto",
  "rand 0.9.2",
  "serde",
  "serde_json",
@@ -5130,6 +5131,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "bitcoin 0.32.8",
+ "openagents-kernel-proto",
  "reqwest",
  "serde",
  "serde_json",
@@ -5142,6 +5144,7 @@ dependencies = [
  "prost 0.13.5",
  "prost-build 0.13.5",
  "protoc-bin-vendored",
+ "serde",
 ]
 
 [[package]]

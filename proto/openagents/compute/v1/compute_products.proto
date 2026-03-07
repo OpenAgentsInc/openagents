@@ -1,0 +1,119 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+
+enum ComputeSettlementMode {
+  COMPUTE_SETTLEMENT_MODE_UNSPECIFIED = 0;
+  COMPUTE_SETTLEMENT_MODE_PHYSICAL = 1;
+  COMPUTE_SETTLEMENT_MODE_CASH = 2;
+  COMPUTE_SETTLEMENT_MODE_BUYER_ELECTION = 3;
+}
+
+enum ComputeProductStatus {
+  COMPUTE_PRODUCT_STATUS_UNSPECIFIED = 0;
+  COMPUTE_PRODUCT_STATUS_ACTIVE = 1;
+  COMPUTE_PRODUCT_STATUS_RETIRED = 2;
+}
+
+enum ComputeBackendFamily {
+  COMPUTE_BACKEND_FAMILY_UNSPECIFIED = 0;
+  COMPUTE_BACKEND_FAMILY_OLLAMA = 1;
+  COMPUTE_BACKEND_FAMILY_APPLE_FOUNDATION_MODELS = 2;
+}
+
+enum ComputeExecutionKind {
+  COMPUTE_EXECUTION_KIND_UNSPECIFIED = 0;
+  COMPUTE_EXECUTION_KIND_LOCAL_INFERENCE = 1;
+}
+
+enum ComputeFamily {
+  COMPUTE_FAMILY_UNSPECIFIED = 0;
+  COMPUTE_FAMILY_INFERENCE = 1;
+  COMPUTE_FAMILY_EMBEDDINGS = 2;
+}
+
+message ComputeHostCapability {
+  optional string accelerator_vendor = 1;
+  optional string accelerator_family = 2;
+  optional uint32 memory_gb = 3;
+}
+
+message ApplePlatformCapability {
+  bool apple_silicon_required = 1;
+  bool apple_intelligence_required = 2;
+  optional bool apple_intelligence_available = 3;
+  optional string minimum_macos_version = 4;
+}
+
+message OllamaRuntimeCapability {
+  optional bool runtime_ready = 1;
+  optional string model_name = 2;
+  optional string quantization = 3;
+}
+
+message ComputeCapabilityEnvelope {
+  ComputeBackendFamily backend_family = 1;
+  ComputeExecutionKind execution_kind = 2;
+  ComputeFamily compute_family = 3;
+  optional string model_policy = 4;
+  optional string model_family = 5;
+  optional ComputeHostCapability host_capability = 6;
+  optional ApplePlatformCapability apple_platform = 7;
+  optional OllamaRuntimeCapability ollama_runtime = 8;
+  optional uint32 latency_ms_p50 = 9;
+  optional uint32 throughput_per_minute = 10;
+  optional uint32 concurrency_limit = 11;
+}
+
+message ComputeProduct {
+  string product_id = 1;
+  string resource_class = 2;
+  string capacity_unit = 3;
+  string window_spec = 4;
+  repeated string region_spec = 5;
+  optional string performance_band = 6;
+  optional string sla_terms_ref = 7;
+  bool cost_proof_required = 8;
+  bool attestation_required = 9;
+  ComputeSettlementMode settlement_mode = 10;
+  bool index_eligible = 11;
+  ComputeProductStatus status = 12;
+  string version = 13;
+  int64 created_at_ms = 14;
+  optional string taxonomy_version = 15;
+  optional ComputeCapabilityEnvelope capability_envelope = 16;
+  string metadata_json = 17;
+}
+
+message CreateComputeProductRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeProduct product = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateComputeProductResponse {
+  ComputeProduct product = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListComputeProductsRequest {
+  ComputeProductStatus status = 1;
+}
+
+message ListComputeProductsResponse {
+  repeated ComputeProduct products = 1;
+}
+
+message GetComputeProductRequest {
+  string product_id = 1;
+}
+
+message GetComputeProductResponse {
+  ComputeProduct product = 1;
+}

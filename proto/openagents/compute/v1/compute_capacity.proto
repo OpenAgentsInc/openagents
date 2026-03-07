@@ -1,0 +1,110 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+
+enum CapacityReserveState {
+  CAPACITY_RESERVE_STATE_UNSPECIFIED = 0;
+  CAPACITY_RESERVE_STATE_AVAILABLE = 1;
+  CAPACITY_RESERVE_STATE_RESERVED = 2;
+  CAPACITY_RESERVE_STATE_EXHAUSTED = 3;
+}
+
+enum CapacityLotStatus {
+  CAPACITY_LOT_STATUS_UNSPECIFIED = 0;
+  CAPACITY_LOT_STATUS_OPEN = 1;
+  CAPACITY_LOT_STATUS_RESERVED = 2;
+  CAPACITY_LOT_STATUS_DELIVERING = 3;
+  CAPACITY_LOT_STATUS_DELIVERED = 4;
+  CAPACITY_LOT_STATUS_CANCELLED = 5;
+  CAPACITY_LOT_STATUS_EXPIRED = 6;
+}
+
+enum CapacityLotCancellationReason {
+  CAPACITY_LOT_CANCELLATION_REASON_UNSPECIFIED = 0;
+  CAPACITY_LOT_CANCELLATION_REASON_PROVIDER_UNAVAILABLE = 1;
+  CAPACITY_LOT_CANCELLATION_REASON_POLICY_DISABLED = 2;
+  CAPACITY_LOT_CANCELLATION_REASON_MARKET_HALT = 3;
+  CAPACITY_LOT_CANCELLATION_REASON_SUPERSEDED = 4;
+  CAPACITY_LOT_CANCELLATION_REASON_OFFER_EXPIRED = 5;
+}
+
+enum CapacityCurtailmentReason {
+  CAPACITY_CURTAILMENT_REASON_UNSPECIFIED = 0;
+  CAPACITY_CURTAILMENT_REASON_RUNTIME_HEALTH = 1;
+  CAPACITY_CURTAILMENT_REASON_PROVIDER_PREEMPTED = 2;
+  CAPACITY_CURTAILMENT_REASON_BUYER_ABORTED = 3;
+  CAPACITY_CURTAILMENT_REASON_POLICY_ENFORCEMENT = 4;
+  CAPACITY_CURTAILMENT_REASON_CAPABILITY_DRIFT = 5;
+}
+
+message CapacityLot {
+  string capacity_lot_id = 1;
+  string product_id = 2;
+  string provider_id = 3;
+  int64 delivery_start_ms = 4;
+  int64 delivery_end_ms = 5;
+  uint64 quantity = 6;
+  optional openagents.common.v1.Money min_unit_price = 7;
+  optional string region_hint = 8;
+  optional string attestation_posture = 9;
+  CapacityReserveState reserve_state = 10;
+  int64 offer_expires_at_ms = 11;
+  CapacityLotStatus status = 12;
+  CapacityLotCancellationReason cancellation_reason = 13;
+  CapacityCurtailmentReason curtailment_reason = 14;
+  optional string lifecycle_reason_detail = 15;
+  string metadata_json = 16;
+}
+
+message CreateCapacityLotRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  CapacityLot lot = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateCapacityLotResponse {
+  CapacityLot lot = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListCapacityLotsRequest {
+  optional string product_id = 1;
+  CapacityLotStatus status = 2;
+}
+
+message ListCapacityLotsResponse {
+  repeated CapacityLot lots = 1;
+}
+
+message GetCapacityLotRequest {
+  string capacity_lot_id = 1;
+}
+
+message GetCapacityLotResponse {
+  CapacityLot lot = 1;
+}
+
+message CancelCapacityLotRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string capacity_lot_id = 4;
+  int64 cancelled_at_ms = 5;
+  CapacityLotCancellationReason cancellation_reason = 6;
+  CapacityCurtailmentReason curtailment_reason = 7;
+  optional string lifecycle_reason_detail = 8;
+  string metadata_json = 9;
+  repeated openagents.common.v1.EvidenceRef evidence = 10;
+  openagents.economy.v1.ReceiptHints hints = 11;
+}
+
+message CancelCapacityLotResponse {
+  CapacityLot lot = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}

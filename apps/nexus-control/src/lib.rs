@@ -29,28 +29,26 @@ use axum::{Json, Router};
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
     AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-    CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
-    CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
-    CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
+    CreateAccessGrantRequest, CreateAccessGrantResponse, CreateContractRequest,
     CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
     CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
     CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
     ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
     FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
     IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
-    PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
-    PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
-    RecordDeliveryProofResponse, RegisterDataAssetRequest, RegisterDataAssetResponse,
-    RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
-    ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
-    SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
+    PlaceCoverageOfferResponse, PublishRiskSignalRequest, PublishRiskSignalResponse,
+    RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
+    RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
+    RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
+    SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
-    CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, ComputeIndex,
-    ComputeProduct, ComputeProductStatus, DeliveryProof, DeliveryProofStatus,
+    CapacityInstrumentStatus, CapacityLotStatus, ComputeProductStatus, DeliveryProofStatus,
 };
+use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
+use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use serde::{Deserialize, Serialize};
 use tokio::sync::broadcast;
 use tokio_stream::StreamExt;
@@ -1717,21 +1715,25 @@ async fn list_kernel_compute_products(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<ComputeProductsQuery>,
-) -> Result<Json<Vec<ComputeProduct>>, ApiError> {
+) -> Result<Json<proto_compute::ListComputeProductsResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_compute_products(query.status)))
+    let response = compute_contracts::list_compute_products_response_to_proto(
+        store.kernel.list_compute_products(query.status).as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_compute_product(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(product_id): Path<String>,
-) -> Result<Json<ComputeProduct>, ApiError> {
+) -> Result<Json<proto_compute::GetComputeProductResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let product_id = normalize_required_field(product_id.as_str(), "product_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -1746,31 +1748,37 @@ async fn get_kernel_compute_product(
             reason: "kernel_compute_product_not_found".to_string(),
         });
     };
-    Ok(Json(product))
+    let response = compute_contracts::get_compute_product_response_to_proto(&product)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_capacity_lots(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<CapacityLotsQuery>,
-) -> Result<Json<Vec<CapacityLot>>, ApiError> {
+) -> Result<Json<proto_compute::ListCapacityLotsResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_capacity_lots(
-        query.product_id.as_deref(),
-        query.status,
-    )))
+    let response = compute_contracts::list_capacity_lots_response_to_proto(
+        store
+            .kernel
+            .list_capacity_lots(query.product_id.as_deref(), query.status)
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_capacity_lot(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(lot_id): Path<String>,
-) -> Result<Json<CapacityLot>, ApiError> {
+) -> Result<Json<proto_compute::GetCapacityLotResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let lot_id = normalize_required_field(lot_id.as_str(), "capacity_lot_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -1785,32 +1793,41 @@ async fn get_kernel_capacity_lot(
             reason: "kernel_capacity_lot_not_found".to_string(),
         });
     };
-    Ok(Json(lot))
+    let response =
+        compute_contracts::get_capacity_lot_response_to_proto(&lot).map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_capacity_instruments(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<CapacityInstrumentsQuery>,
-) -> Result<Json<Vec<CapacityInstrument>>, ApiError> {
+) -> Result<Json<proto_compute::ListCapacityInstrumentsResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_capacity_instruments(
-        query.product_id.as_deref(),
-        query.capacity_lot_id.as_deref(),
-        query.status,
-    )))
+    let response = compute_contracts::list_capacity_instruments_response_to_proto(
+        store
+            .kernel
+            .list_capacity_instruments(
+                query.product_id.as_deref(),
+                query.capacity_lot_id.as_deref(),
+                query.status,
+            )
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_capacity_instrument(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(instrument_id): Path<String>,
-) -> Result<Json<CapacityInstrument>, ApiError> {
+) -> Result<Json<proto_compute::GetCapacityInstrumentResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let instrument_id = normalize_required_field(instrument_id.as_str(), "instrument_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -1825,7 +1842,9 @@ async fn get_kernel_capacity_instrument(
             reason: "kernel_capacity_instrument_not_found".to_string(),
         });
     };
-    Ok(Json(instrument))
+    let response = compute_contracts::get_capacity_instrument_response_to_proto(&instrument)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_delivery_proofs(
@@ -1833,7 +1852,7 @@ async fn list_kernel_delivery_proofs(
     headers: HeaderMap,
     Path(lot_id): Path<String>,
     Query(query): Query<DeliveryProofsQuery>,
-) -> Result<Json<Vec<DeliveryProof>>, ApiError> {
+) -> Result<Json<proto_compute::ListDeliveryProofsResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let lot_id = normalize_required_field(lot_id.as_str(), "capacity_lot_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -1841,18 +1860,21 @@ async fn list_kernel_delivery_proofs(
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(
+    let response = compute_contracts::list_delivery_proofs_response_to_proto(
         store
             .kernel
-            .list_delivery_proofs(Some(lot_id.as_str()), query.status),
-    ))
+            .list_delivery_proofs(Some(lot_id.as_str()), query.status)
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_delivery_proof(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(delivery_proof_id): Path<String>,
-) -> Result<Json<DeliveryProof>, ApiError> {
+) -> Result<Json<proto_compute::GetDeliveryProofResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let delivery_proof_id =
         normalize_required_field(delivery_proof_id.as_str(), "delivery_proof_id_missing")?;
@@ -1868,28 +1890,37 @@ async fn get_kernel_delivery_proof(
             reason: "kernel_delivery_proof_not_found".to_string(),
         });
     };
-    Ok(Json(delivery_proof))
+    let response = compute_contracts::get_delivery_proof_response_to_proto(&delivery_proof)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn list_kernel_compute_indices(
     State(state): State<AppState>,
     headers: HeaderMap,
     Query(query): Query<ComputeIndicesQuery>,
-) -> Result<Json<Vec<ComputeIndex>>, ApiError> {
+) -> Result<Json<proto_compute::ListComputeIndicesResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let store = state.store.read().map_err(|_| ApiError {
         status: StatusCode::INTERNAL_SERVER_ERROR,
         error: "internal_error",
         reason: "session_store_poisoned".to_string(),
     })?;
-    Ok(Json(store.kernel.list_compute_indices(query.product_id.as_deref())))
+    let response = compute_contracts::list_compute_indices_response_to_proto(
+        store
+            .kernel
+            .list_compute_indices(query.product_id.as_deref())
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn get_kernel_compute_index(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(index_id): Path<String>,
-) -> Result<Json<ComputeIndex>, ApiError> {
+) -> Result<Json<proto_compute::GetComputeIndexResponse>, ApiError> {
     let _session = authenticate_session(&state, &headers)?;
     let index_id = normalize_required_field(index_id.as_str(), "index_id_missing")?;
     let store = state.store.read().map_err(|_| ApiError {
@@ -1904,15 +1935,19 @@ async fn get_kernel_compute_index(
             reason: "kernel_compute_index_not_found".to_string(),
         });
     };
-    Ok(Json(index))
+    let response =
+        compute_contracts::get_compute_index_response_to_proto(&index).map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn create_kernel_compute_product(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<CreateComputeProductRequest>,
-) -> Result<Json<CreateComputeProductResponse>, ApiError> {
+    Json(request): Json<proto_compute::CreateComputeProductRequest>,
+) -> Result<Json<proto_compute::CreateComputeProductResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let request =
+        compute_contracts::create_compute_product_request_from_proto(&request).map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -1933,15 +1968,19 @@ async fn create_kernel_compute_product(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = compute_contracts::create_compute_product_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn create_kernel_capacity_lot(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<CreateCapacityLotRequest>,
-) -> Result<Json<CreateCapacityLotResponse>, ApiError> {
+    Json(request): Json<proto_compute::CreateCapacityLotRequest>,
+) -> Result<Json<proto_compute::CreateCapacityLotResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let request =
+        compute_contracts::create_capacity_lot_request_from_proto(&request).map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -1962,15 +2001,19 @@ async fn create_kernel_capacity_lot(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = compute_contracts::create_capacity_lot_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn create_kernel_capacity_instrument(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<CreateCapacityInstrumentRequest>,
-) -> Result<Json<CreateCapacityInstrumentResponse>, ApiError> {
+    Json(request): Json<proto_compute::CreateCapacityInstrumentRequest>,
+) -> Result<Json<proto_compute::CreateCapacityInstrumentResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let request = compute_contracts::create_capacity_instrument_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -1991,16 +2034,21 @@ async fn create_kernel_capacity_instrument(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response =
+        compute_contracts::create_capacity_instrument_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn record_kernel_delivery_proof(
     State(state): State<AppState>,
     headers: HeaderMap,
     Path(lot_id): Path<String>,
-    Json(mut request): Json<RecordDeliveryProofRequest>,
-) -> Result<Json<RecordDeliveryProofResponse>, ApiError> {
+    Json(request): Json<proto_compute::RecordDeliveryProofRequest>,
+) -> Result<Json<proto_compute::RecordDeliveryProofResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let mut request =
+        compute_contracts::record_delivery_proof_request_from_proto(&request).map_err(kernel_contract_error)?;
     let lot_id = normalize_required_field(lot_id.as_str(), "capacity_lot_id_missing")?;
     if !request.delivery_proof.capacity_lot_id.trim().is_empty()
         && request.delivery_proof.capacity_lot_id != lot_id
@@ -2032,15 +2080,19 @@ async fn record_kernel_delivery_proof(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = compute_contracts::record_delivery_proof_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn publish_kernel_compute_index(
     State(state): State<AppState>,
     headers: HeaderMap,
-    Json(request): Json<PublishComputeIndexRequest>,
-) -> Result<Json<PublishComputeIndexResponse>, ApiError> {
+    Json(request): Json<proto_compute::PublishComputeIndexRequest>,
+) -> Result<Json<proto_compute::PublishComputeIndexResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
+    let request =
+        compute_contracts::publish_compute_index_request_from_proto(&request).map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -2061,7 +2113,9 @@ async fn publish_kernel_compute_index(
         result.receipt_event.clone(),
         result.snapshot_event.clone(),
     );
-    Ok(Json(result.response))
+    let response = compute_contracts::publish_compute_index_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
 }
 
 async fn register_kernel_data_asset(
@@ -2835,6 +2889,14 @@ fn kernel_api_error(reason: String) -> ApiError {
     }
 }
 
+fn kernel_contract_error(error: anyhow::Error) -> ApiError {
+    ApiError {
+        status: StatusCode::BAD_REQUEST,
+        error: "kernel_contract_error",
+        reason: error.to_string(),
+    }
+}
+
 fn record_kernel_mutation_observability(
     state: &AppState,
     session: &DesktopSessionRecord,
@@ -3472,17 +3534,17 @@ mod tests {
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
         AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
         CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
-        CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
-        CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
+        CreateCapacityLotRequest, CreateComputeProductRequest, CreateContractRequest,
         CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
+        HttpKernelAuthorityClient, KernelAuthority,
         CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
         CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
         ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
         FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
         IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
-        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
-        PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
-        RecordDeliveryProofResponse, RegisterDataAssetRequest, RegisterDataAssetResponse,
+        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
+        PublishRiskSignalResponse, RecordDeliveryProofRequest, RegisterDataAssetRequest,
+        RegisterDataAssetResponse,
         RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
         ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
         SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
@@ -3495,6 +3557,7 @@ mod tests {
         ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementMode,
         DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
     };
+    use openagents_kernel_core::compute_contracts;
     use openagents_kernel_core::data::{
         AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
         DeliveryBundleStatus, PermissionPolicy, RevocationReceipt, RevocationStatus,
@@ -3516,6 +3579,7 @@ mod tests {
         PredictionPosition, PredictionPositionStatus, PredictionSide, RiskClaim, RiskClaimStatus,
         RiskSignal, RiskSignalStatus,
     };
+    use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
     use openagents_kernel_core::time::floor_to_minute_utc;
     use serde_json::json;
     use tower::ServiceExt;
@@ -3945,6 +4009,87 @@ mod tests {
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
+    }
+
+    fn compute_product_wire_request(
+        product_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> proto_compute::CreateComputeProductRequest {
+        compute_contracts::create_compute_product_request_to_proto(&compute_product_request(
+            product_id,
+            idempotency_key,
+            created_at_ms,
+        ))
+        .expect("compute product wire request")
+    }
+
+    fn capacity_lot_wire_request(
+        capacity_lot_id: &str,
+        product_id: &str,
+        idempotency_key: &str,
+        delivery_start_ms: i64,
+    ) -> proto_compute::CreateCapacityLotRequest {
+        compute_contracts::create_capacity_lot_request_to_proto(&capacity_lot_request(
+            capacity_lot_id,
+            product_id,
+            idempotency_key,
+            delivery_start_ms,
+        ))
+        .expect("capacity lot wire request")
+    }
+
+    fn capacity_instrument_wire_request(
+        instrument_id: &str,
+        product_id: &str,
+        capacity_lot_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> proto_compute::CreateCapacityInstrumentRequest {
+        compute_contracts::create_capacity_instrument_request_to_proto(
+            &capacity_instrument_request(
+                instrument_id,
+                product_id,
+                capacity_lot_id,
+                idempotency_key,
+                created_at_ms,
+            ),
+        )
+        .expect("capacity instrument wire request")
+    }
+
+    fn delivery_proof_wire_request(
+        delivery_proof_id: &str,
+        product_id: &str,
+        capacity_lot_id: &str,
+        instrument_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> proto_compute::RecordDeliveryProofRequest {
+        compute_contracts::record_delivery_proof_request_to_proto(&delivery_proof_request(
+            delivery_proof_id,
+            product_id,
+            capacity_lot_id,
+            instrument_id,
+            idempotency_key,
+            created_at_ms,
+        ))
+        .expect("delivery proof wire request")
+    }
+
+    fn compute_index_wire_request(
+        index_id: &str,
+        product_id: &str,
+        idempotency_key: &str,
+        published_at_ms: i64,
+    ) -> proto_compute::PublishComputeIndexRequest {
+        compute_contracts::publish_compute_index_request_to_proto(&compute_index_request(
+            index_id,
+            product_id,
+            idempotency_key,
+            published_at_ms,
+        ))
+        .expect("compute index wire request")
     }
 
     fn data_asset_request(
@@ -5294,7 +5439,7 @@ mod tests {
                     .uri("/v1/kernel/compute/products")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_product_request(
+                    .body(Body::from(serde_json::to_vec(&compute_product_wire_request(
                         "ollama.text_generation",
                         "idemp.compute.product.alpha",
                         created_at_ms,
@@ -5302,7 +5447,9 @@ mod tests {
             )
             .await?;
         assert_eq!(product.status(), StatusCode::OK);
-        let product_payload: CreateComputeProductResponse = response_json(product).await?;
+        let product_payload = compute_contracts::create_compute_product_response_from_proto(
+            &response_json::<proto_compute::CreateComputeProductResponse>(product).await?,
+        )?;
         assert_eq!(
             product_payload.receipt.receipt_type,
             "kernel.compute.product.create.v1"
@@ -5316,7 +5463,7 @@ mod tests {
                     .uri("/v1/kernel/compute/lots")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&capacity_lot_request(
+                    .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                         "lot.compute.alpha",
                         "ollama.text_generation",
                         "idemp.compute.lot.alpha",
@@ -5325,7 +5472,9 @@ mod tests {
             )
             .await?;
         assert_eq!(lot.status(), StatusCode::OK);
-        let lot_payload: CreateCapacityLotResponse = response_json(lot).await?;
+        let lot_payload = compute_contracts::create_capacity_lot_response_from_proto(
+            &response_json::<proto_compute::CreateCapacityLotResponse>(lot).await?,
+        )?;
         assert_eq!(
             lot_payload.receipt.receipt_type,
             "kernel.compute.lot.create.v1"
@@ -5340,7 +5489,7 @@ mod tests {
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(
-                        &capacity_instrument_request(
+                        &capacity_instrument_wire_request(
                             "instrument.compute.alpha",
                             "ollama.text_generation",
                             "lot.compute.alpha",
@@ -5351,8 +5500,11 @@ mod tests {
             )
             .await?;
         assert_eq!(instrument.status(), StatusCode::OK);
-        let instrument_payload: CreateCapacityInstrumentResponse =
-            response_json(instrument).await?;
+        let instrument_payload =
+            compute_contracts::create_capacity_instrument_response_from_proto(
+                &response_json::<proto_compute::CreateCapacityInstrumentResponse>(instrument)
+                    .await?,
+            )?;
         assert_eq!(
             instrument_payload.receipt.receipt_type,
             "kernel.compute.instrument.create.v1"
@@ -5366,7 +5518,7 @@ mod tests {
                     .uri("/v1/kernel/compute/lots/lot.compute.alpha/delivery_proofs")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&delivery_proof_request(
+                    .body(Body::from(serde_json::to_vec(&delivery_proof_wire_request(
                         "delivery.compute.alpha",
                         "ollama.text_generation",
                         "lot.compute.alpha",
@@ -5377,7 +5529,9 @@ mod tests {
             )
             .await?;
         assert_eq!(delivery.status(), StatusCode::OK);
-        let delivery_payload: RecordDeliveryProofResponse = response_json(delivery).await?;
+        let delivery_payload = compute_contracts::record_delivery_proof_response_from_proto(
+            &response_json::<proto_compute::RecordDeliveryProofResponse>(delivery).await?,
+        )?;
         assert_eq!(
             delivery_payload.receipt.receipt_type,
             "kernel.compute.delivery.record.v1"
@@ -5391,7 +5545,7 @@ mod tests {
                     .uri("/v1/kernel/compute/indices")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_index_request(
+                    .body(Body::from(serde_json::to_vec(&compute_index_wire_request(
                         "index.compute.alpha",
                         "ollama.text_generation",
                         "idemp.compute.index.alpha",
@@ -5400,7 +5554,9 @@ mod tests {
             )
             .await?;
         assert_eq!(index.status(), StatusCode::OK);
-        let index_payload: PublishComputeIndexResponse = response_json(index).await?;
+        let index_payload = compute_contracts::publish_compute_index_response_from_proto(
+            &response_json::<proto_compute::PublishComputeIndexResponse>(index).await?,
+        )?;
         assert_eq!(
             index_payload.receipt.receipt_type,
             "kernel.compute.index.publish.v1"
@@ -5484,7 +5640,7 @@ mod tests {
                     .uri("/v1/kernel/compute/products")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_product_request(
+                    .body(Body::from(serde_json::to_vec(&compute_product_wire_request(
                         "ollama.text_generation",
                         "idemp.compute.product.persisted",
                         created_at_ms,
@@ -5492,7 +5648,9 @@ mod tests {
             )
             .await?;
         assert_eq!(product_response.status(), StatusCode::OK);
-        let product_payload: CreateComputeProductResponse = response_json(product_response).await?;
+        let product_payload = compute_contracts::create_compute_product_response_from_proto(
+            &response_json::<proto_compute::CreateComputeProductResponse>(product_response).await?,
+        )?;
 
         let lot_response = app
             .clone()
@@ -5502,7 +5660,7 @@ mod tests {
                     .uri("/v1/kernel/compute/lots")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&capacity_lot_request(
+                    .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
                         "lot.compute.persisted",
                         "ollama.text_generation",
                         "idemp.compute.lot.persisted",
@@ -5520,7 +5678,7 @@ mod tests {
                     .uri("/v1/kernel/compute/instruments")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&capacity_instrument_request(
+                    .body(Body::from(serde_json::to_vec(&capacity_instrument_wire_request(
                         "instrument.compute.persisted",
                         "ollama.text_generation",
                         "lot.compute.persisted",
@@ -5539,7 +5697,7 @@ mod tests {
                     .uri("/v1/kernel/compute/lots/lot.compute.persisted/delivery_proofs")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&delivery_proof_request(
+                    .body(Body::from(serde_json::to_vec(&delivery_proof_wire_request(
                         "delivery.compute.persisted",
                         "ollama.text_generation",
                         "lot.compute.persisted",
@@ -5559,7 +5717,7 @@ mod tests {
                     .uri("/v1/kernel/compute/indices")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_index_request(
+                    .body(Body::from(serde_json::to_vec(&compute_index_wire_request(
                         "index.compute.persisted",
                         "ollama.text_generation",
                         "idemp.compute.index.persisted",
@@ -5583,7 +5741,9 @@ mod tests {
             )
             .await?;
         assert_eq!(products_response.status(), StatusCode::OK);
-        let products: Vec<ComputeProduct> = response_json(products_response).await?;
+        let products = compute_contracts::list_compute_products_response_from_proto(
+            &response_json::<proto_compute::ListComputeProductsResponse>(products_response).await?,
+        )?;
         assert!(products.iter().any(|product| {
             product.product_id == "ollama.text_generation"
                 || product.product_id == product_payload.product.product_id
@@ -5600,7 +5760,10 @@ mod tests {
             )
             .await?;
         assert_eq!(product_get_response.status(), StatusCode::OK);
-        let product_get: ComputeProduct = response_json(product_get_response).await?;
+        let product_get = compute_contracts::get_compute_product_response_from_proto(
+            &response_json::<proto_compute::GetComputeProductResponse>(product_get_response)
+                .await?,
+        )?;
         assert_eq!(product_get.product_id, "ollama.text_generation");
 
         let lots_response = reloaded_app
@@ -5614,7 +5777,9 @@ mod tests {
             )
             .await?;
         assert_eq!(lots_response.status(), StatusCode::OK);
-        let lots: Vec<CapacityLot> = response_json(lots_response).await?;
+        let lots = compute_contracts::list_capacity_lots_response_from_proto(
+            &response_json::<proto_compute::ListCapacityLotsResponse>(lots_response).await?,
+        )?;
         assert!(lots.iter().any(|lot| lot.capacity_lot_id == "lot.compute.persisted"));
 
         let instruments_response = reloaded_app
@@ -5628,7 +5793,10 @@ mod tests {
             )
             .await?;
         assert_eq!(instruments_response.status(), StatusCode::OK);
-        let instruments: Vec<CapacityInstrument> = response_json(instruments_response).await?;
+        let instruments = compute_contracts::list_capacity_instruments_response_from_proto(
+            &response_json::<proto_compute::ListCapacityInstrumentsResponse>(instruments_response)
+                .await?,
+        )?;
         assert!(instruments
             .iter()
             .any(|instrument| instrument.instrument_id == "instrument.compute.persisted"));
@@ -5644,7 +5812,10 @@ mod tests {
             )
             .await?;
         assert_eq!(delivery_proofs_response.status(), StatusCode::OK);
-        let delivery_proofs: Vec<DeliveryProof> = response_json(delivery_proofs_response).await?;
+        let delivery_proofs = compute_contracts::list_delivery_proofs_response_from_proto(
+            &response_json::<proto_compute::ListDeliveryProofsResponse>(delivery_proofs_response)
+                .await?,
+        )?;
         assert!(delivery_proofs
             .iter()
             .any(|proof| proof.delivery_proof_id == "delivery.compute.persisted"));
@@ -5660,12 +5831,141 @@ mod tests {
             )
             .await?;
         assert_eq!(indices_response.status(), StatusCode::OK);
-        let indices: Vec<ComputeIndex> = response_json(indices_response).await?;
+        let indices = compute_contracts::list_compute_indices_response_from_proto(
+            &response_json::<proto_compute::ListComputeIndicesResponse>(indices_response).await?,
+        )?;
         assert!(indices
             .iter()
             .any(|index| index.index_id == "index.compute.persisted"));
 
         let _ = std::fs::remove_file(kernel_state_path.as_path());
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compute_http_client_roundtrips_generated_contracts() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await?;
+        let local_addr = listener.local_addr()?;
+        let server = tokio::spawn(async move {
+            axum::serve(listener, app).await.expect("serve test app");
+        });
+
+        let client = HttpKernelAuthorityClient::new(
+            format!("http://{local_addr}"),
+            Some(session.access_token.clone()),
+        )?;
+        let created_at_ms = super::now_unix_ms() as i64;
+
+        let product = client
+            .create_compute_product(compute_product_request(
+                "ollama.text_generation",
+                "idemp.compute.client.product",
+                created_at_ms,
+            ))
+            .await?;
+        assert_eq!(product.product.product_id, "ollama.text_generation");
+
+        let lot = client
+            .create_capacity_lot(capacity_lot_request(
+                "lot.compute.client",
+                "ollama.text_generation",
+                "idemp.compute.client.lot",
+                created_at_ms + 1_000,
+            ))
+            .await?;
+        assert_eq!(lot.lot.capacity_lot_id, "lot.compute.client");
+
+        let instrument = client
+            .create_capacity_instrument(capacity_instrument_request(
+                "instrument.compute.client",
+                "ollama.text_generation",
+                "lot.compute.client",
+                "idemp.compute.client.instrument",
+                created_at_ms + 2_000,
+            ))
+            .await?;
+        assert_eq!(instrument.instrument.instrument_id, "instrument.compute.client");
+
+        let delivery = client
+            .record_delivery_proof(delivery_proof_request(
+                "delivery.compute.client",
+                "ollama.text_generation",
+                "lot.compute.client",
+                "instrument.compute.client",
+                "idemp.compute.client.delivery",
+                created_at_ms + 3_000,
+            ))
+            .await?;
+        assert_eq!(delivery.delivery_proof.delivery_proof_id, "delivery.compute.client");
+
+        let index = client
+            .publish_compute_index(compute_index_request(
+                "index.compute.client",
+                "ollama.text_generation",
+                "idemp.compute.client.index",
+                created_at_ms + 4_000,
+            ))
+            .await?;
+        assert_eq!(index.index.index_id, "index.compute.client");
+
+        let listed_products = client
+            .list_compute_products(Some(ComputeProductStatus::Active))
+            .await?;
+        assert!(listed_products
+            .iter()
+            .any(|item| item.product_id == "ollama.text_generation"));
+
+        let listed_lots = client
+            .list_capacity_lots(Some("ollama.text_generation"), None)
+            .await?;
+        assert!(listed_lots
+            .iter()
+            .any(|item| item.capacity_lot_id == "lot.compute.client"));
+
+        let listed_instruments = client
+            .list_capacity_instruments(None, Some("lot.compute.client"), None)
+            .await?;
+        assert!(listed_instruments
+            .iter()
+            .any(|item| item.instrument_id == "instrument.compute.client"));
+
+        let listed_delivery_proofs = client
+            .list_delivery_proofs(Some("lot.compute.client"), None)
+            .await?;
+        assert!(listed_delivery_proofs
+            .iter()
+            .any(|item| item.delivery_proof_id == "delivery.compute.client"));
+
+        let listed_indices = client
+            .list_compute_indices(Some("ollama.text_generation"))
+            .await?;
+        assert!(listed_indices
+            .iter()
+            .any(|item| item.index_id == "index.compute.client"));
+
+        let fetched_product = client.get_compute_product("ollama.text_generation").await?;
+        assert_eq!(fetched_product.product_id, "ollama.text_generation");
+
+        let fetched_lot = client.get_capacity_lot("lot.compute.client").await?;
+        assert_eq!(fetched_lot.capacity_lot_id, "lot.compute.client");
+
+        let fetched_instrument = client
+            .get_capacity_instrument("instrument.compute.client")
+            .await?;
+        assert_eq!(fetched_instrument.instrument_id, "instrument.compute.client");
+
+        let fetched_delivery = client
+            .get_delivery_proof("delivery.compute.client")
+            .await?;
+        assert_eq!(fetched_delivery.delivery_proof_id, "delivery.compute.client");
+
+        let fetched_index = client.get_compute_index("index.compute.client").await?;
+        assert_eq!(fetched_index.index_id, "index.compute.client");
+
+        server.abort();
         Ok(())
     }
 
@@ -5679,6 +5979,7 @@ mod tests {
             super::now_unix_ms() as i64,
         );
         request.product.resource_class = "gpu.h100".to_string();
+        let request = compute_contracts::create_compute_product_request_to_proto(&request)?;
 
         let response = app
             .clone()
@@ -5728,6 +6029,7 @@ mod tests {
             throughput_per_minute: Some(600),
             concurrency_limit: Some(1),
         });
+        let request = compute_contracts::create_compute_product_request_to_proto(&request)?;
 
         let response = app
             .clone()

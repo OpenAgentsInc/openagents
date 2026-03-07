@@ -1,0 +1,83 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+
+enum ComputeIndexStatus {
+  COMPUTE_INDEX_STATUS_UNSPECIFIED = 0;
+  COMPUTE_INDEX_STATUS_PUBLISHED = 1;
+  COMPUTE_INDEX_STATUS_SUPERSEDED = 2;
+}
+
+enum ComputeIndexCorrectionReason {
+  COMPUTE_INDEX_CORRECTION_REASON_UNSPECIFIED = 0;
+  COMPUTE_INDEX_CORRECTION_REASON_DATA_QUALITY = 1;
+  COMPUTE_INDEX_CORRECTION_REASON_MANIPULATION_FILTER = 2;
+  COMPUTE_INDEX_CORRECTION_REASON_METHODOLOGY_BUG = 3;
+  COMPUTE_INDEX_CORRECTION_REASON_LATE_OBSERVATION = 4;
+}
+
+message ComputeIndex {
+  string index_id = 1;
+  string product_id = 2;
+  int64 observation_window_start_ms = 3;
+  int64 observation_window_end_ms = 4;
+  int64 published_at_ms = 5;
+  uint64 observation_count = 6;
+  uint64 total_accepted_quantity = 7;
+  optional openagents.common.v1.Money reference_price = 8;
+  optional string methodology = 9;
+  ComputeIndexStatus status = 10;
+  ComputeIndexCorrectionReason correction_reason = 11;
+  optional string corrected_from_index_id = 12;
+  string metadata_json = 13;
+}
+
+message PublishComputeIndexRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  ComputeIndex index = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message PublishComputeIndexResponse {
+  ComputeIndex index = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListComputeIndicesRequest {
+  optional string product_id = 1;
+}
+
+message ListComputeIndicesResponse {
+  repeated ComputeIndex indices = 1;
+}
+
+message GetComputeIndexRequest {
+  string index_id = 1;
+}
+
+message GetComputeIndexResponse {
+  ComputeIndex index = 1;
+}
+
+message CorrectComputeIndexRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string superseded_index_id = 4;
+  ComputeIndex corrected_index = 5;
+  ComputeIndexCorrectionReason correction_reason = 6;
+  repeated openagents.common.v1.EvidenceRef evidence = 7;
+  openagents.economy.v1.ReceiptHints hints = 8;
+}
+
+message CorrectComputeIndexResponse {
+  ComputeIndex superseded_index = 1;
+  ComputeIndex corrected_index = 2;
+  openagents.economy.v1.Receipt receipt = 3;
+}

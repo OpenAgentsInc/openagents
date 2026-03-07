@@ -1,0 +1,129 @@
+syntax = "proto3";
+
+package openagents.compute.v1;
+
+import "openagents/common/v1/common.proto";
+import "openagents/economy/v1/receipt.proto";
+import "openagents/compute/v1/compute_products.proto";
+
+enum CapacityInstrumentKind {
+  CAPACITY_INSTRUMENT_KIND_UNSPECIFIED = 0;
+  CAPACITY_INSTRUMENT_KIND_SPOT = 1;
+  CAPACITY_INSTRUMENT_KIND_FORWARD_PHYSICAL = 2;
+  CAPACITY_INSTRUMENT_KIND_FUTURE_CASH = 3;
+  CAPACITY_INSTRUMENT_KIND_RESERVATION = 4;
+}
+
+enum CapacityInstrumentStatus {
+  CAPACITY_INSTRUMENT_STATUS_UNSPECIFIED = 0;
+  CAPACITY_INSTRUMENT_STATUS_OPEN = 1;
+  CAPACITY_INSTRUMENT_STATUS_ACTIVE = 2;
+  CAPACITY_INSTRUMENT_STATUS_DELIVERING = 3;
+  CAPACITY_INSTRUMENT_STATUS_CASH_SETTLING = 4;
+  CAPACITY_INSTRUMENT_STATUS_SETTLED = 5;
+  CAPACITY_INSTRUMENT_STATUS_DEFAULTED = 6;
+  CAPACITY_INSTRUMENT_STATUS_CANCELLED = 7;
+  CAPACITY_INSTRUMENT_STATUS_EXPIRED = 8;
+}
+
+enum CapacityInstrumentClosureReason {
+  CAPACITY_INSTRUMENT_CLOSURE_REASON_UNSPECIFIED = 0;
+  CAPACITY_INSTRUMENT_CLOSURE_REASON_FILLED = 1;
+  CAPACITY_INSTRUMENT_CLOSURE_REASON_BUYER_CANCELLED = 2;
+  CAPACITY_INSTRUMENT_CLOSURE_REASON_PROVIDER_CANCELLED = 3;
+  CAPACITY_INSTRUMENT_CLOSURE_REASON_CURTAILED = 4;
+  CAPACITY_INSTRUMENT_CLOSURE_REASON_EXPIRED = 5;
+  CAPACITY_INSTRUMENT_CLOSURE_REASON_DEFAULTED = 6;
+}
+
+enum CapacityNonDeliveryReason {
+  CAPACITY_NON_DELIVERY_REASON_UNSPECIFIED = 0;
+  CAPACITY_NON_DELIVERY_REASON_PROVIDER_OFFLINE = 1;
+  CAPACITY_NON_DELIVERY_REASON_CAPABILITY_MISMATCH = 2;
+  CAPACITY_NON_DELIVERY_REASON_POLICY_BLOCKED = 3;
+  CAPACITY_NON_DELIVERY_REASON_MISSED_WINDOW = 4;
+}
+
+enum ComputeSettlementFailureReason {
+  COMPUTE_SETTLEMENT_FAILURE_REASON_UNSPECIFIED = 0;
+  COMPUTE_SETTLEMENT_FAILURE_REASON_PAYMENT_TIMEOUT = 1;
+  COMPUTE_SETTLEMENT_FAILURE_REASON_RECEIPT_REJECTED = 2;
+  COMPUTE_SETTLEMENT_FAILURE_REASON_NON_DELIVERY = 3;
+  COMPUTE_SETTLEMENT_FAILURE_REASON_COST_ATTESTATION_MISSING = 4;
+  COMPUTE_SETTLEMENT_FAILURE_REASON_ADJUDICATION_REQUIRED = 5;
+}
+
+message CapacityInstrument {
+  string instrument_id = 1;
+  string product_id = 2;
+  optional string capacity_lot_id = 3;
+  optional string buyer_id = 4;
+  optional string provider_id = 5;
+  int64 delivery_start_ms = 6;
+  int64 delivery_end_ms = 7;
+  uint64 quantity = 8;
+  optional openagents.common.v1.Money fixed_price = 9;
+  optional string reference_index_id = 10;
+  CapacityInstrumentKind kind = 11;
+  ComputeSettlementMode settlement_mode = 12;
+  int64 created_at_ms = 13;
+  CapacityInstrumentStatus status = 14;
+  CapacityInstrumentClosureReason closure_reason = 15;
+  CapacityNonDeliveryReason non_delivery_reason = 16;
+  ComputeSettlementFailureReason settlement_failure_reason = 17;
+  optional string lifecycle_reason_detail = 18;
+  string metadata_json = 19;
+}
+
+message CreateCapacityInstrumentRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  CapacityInstrument instrument = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateCapacityInstrumentResponse {
+  CapacityInstrument instrument = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}
+
+message ListCapacityInstrumentsRequest {
+  optional string product_id = 1;
+  optional string capacity_lot_id = 2;
+  CapacityInstrumentStatus status = 3;
+}
+
+message ListCapacityInstrumentsResponse {
+  repeated CapacityInstrument instruments = 1;
+}
+
+message GetCapacityInstrumentRequest {
+  string instrument_id = 1;
+}
+
+message GetCapacityInstrumentResponse {
+  CapacityInstrument instrument = 1;
+}
+
+message CloseCapacityInstrumentRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string instrument_id = 4;
+  CapacityInstrumentStatus status = 5;
+  int64 closed_at_ms = 6;
+  CapacityInstrumentClosureReason closure_reason = 7;
+  CapacityNonDeliveryReason non_delivery_reason = 8;
+  ComputeSettlementFailureReason settlement_failure_reason = 9;
+  optional string lifecycle_reason_detail = 10;
+  string metadata_json = 11;
+  repeated openagents.common.v1.EvidenceRef evidence = 12;
+  openagents.economy.v1.ReceiptHints hints = 13;
+}
+
+message CloseCapacityInstrumentResponse {
+  CapacityInstrument instrument = 1;
+  openagents.economy.v1.Receipt receipt = 2;
+}

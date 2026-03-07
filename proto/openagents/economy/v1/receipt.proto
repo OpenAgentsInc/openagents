@@ -14,6 +14,8 @@ message ReceiptHints {
   string reason_code = 7;
   openagents.common.v1.Money notional = 8;
   openagents.common.v1.Money liability_premium = 9;
+  openagents.common.v1.AuthAssuranceLevel auth_assurance_level = 10;
+  optional bool personhood_proved = 11;
 }
 
 message Receipt {
@@ -28,4 +30,5 @@ message Receipt {
   string outputs_hash = 9;
   repeated openagents.common.v1.EvidenceRef evidence = 10;
   ReceiptHints hints = 11;
+  map<string, string> tags = 12;
 }

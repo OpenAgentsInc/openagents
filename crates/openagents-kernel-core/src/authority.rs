@@ -1,5 +1,7 @@
+use crate::compute_contracts;
 use crate::compute::{
     CapacityInstrument, CapacityLot, ComputeIndex, ComputeProduct, DeliveryProof,
+    CapacityInstrumentStatus, CapacityLotStatus, ComputeProductStatus, DeliveryProofStatus,
 };
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
 use crate::labor::{ClaimHook, Contract, SettlementLink, Submission, Verdict, WorkUnit};
@@ -10,6 +12,7 @@ use crate::risk::{
 };
 use crate::snapshots::EconomySnapshot;
 use anyhow::{Result, anyhow};
+use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
 use reqwest::Url;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -43,6 +46,32 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: PublishComputeIndexRequest,
     ) -> Result<PublishComputeIndexResponse>;
+    async fn list_compute_products(
+        &self,
+        status: Option<ComputeProductStatus>,
+    ) -> Result<Vec<ComputeProduct>>;
+    async fn get_compute_product(&self, product_id: &str) -> Result<ComputeProduct>;
+    async fn list_capacity_lots(
+        &self,
+        product_id: Option<&str>,
+        status: Option<CapacityLotStatus>,
+    ) -> Result<Vec<CapacityLot>>;
+    async fn get_capacity_lot(&self, capacity_lot_id: &str) -> Result<CapacityLot>;
+    async fn list_capacity_instruments(
+        &self,
+        product_id: Option<&str>,
+        capacity_lot_id: Option<&str>,
+        status: Option<CapacityInstrumentStatus>,
+    ) -> Result<Vec<CapacityInstrument>>;
+    async fn get_capacity_instrument(&self, instrument_id: &str) -> Result<CapacityInstrument>;
+    async fn list_delivery_proofs(
+        &self,
+        capacity_lot_id: Option<&str>,
+        status: Option<DeliveryProofStatus>,
+    ) -> Result<Vec<DeliveryProof>>;
+    async fn get_delivery_proof(&self, delivery_proof_id: &str) -> Result<DeliveryProof>;
+    async fn list_compute_indices(&self, product_id: Option<&str>) -> Result<Vec<ComputeIndex>>;
+    async fn get_compute_index(&self, index_id: &str) -> Result<ComputeIndex>;
     async fn register_data_asset(
         &self,
         req: RegisterDataAssetRequest,
@@ -682,6 +711,23 @@ impl HttpKernelAuthorityClient {
     }
 }
 
+fn join_query_pairs(path: &str, pairs: &[(&str, Option<String>)]) -> String {
+    let parts = pairs
+        .iter()
+        .filter_map(|(key, value)| {
+            value
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .map(|value| format!("{key}={value}"))
+        })
+        .collect::<Vec<_>>();
+    if parts.is_empty() {
+        path.to_string()
+    } else {
+        format!("{path}?{}", parts.join("&"))
+    }
+}
+
 impl KernelAuthority for HttpKernelAuthorityClient {
     async fn create_work_unit(&self, req: CreateWorkUnitRequest) -> Result<CreateWorkUnitResponse> {
         self.post_json("/v1/kernel/work_units", &req).await
@@ -714,21 +760,30 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         &self,
         req: CreateComputeProductRequest,
     ) -> Result<CreateComputeProductResponse> {
-        self.post_json("/v1/kernel/compute/products", &req).await
+        let wire = compute_contracts::create_compute_product_request_to_proto(&req)?;
+        let response: proto_compute::CreateComputeProductResponse =
+            self.post_json("/v1/kernel/compute/products", &wire).await?;
+        compute_contracts::create_compute_product_response_from_proto(&response)
     }
 
     async fn create_capacity_lot(
         &self,
         req: CreateCapacityLotRequest,
     ) -> Result<CreateCapacityLotResponse> {
-        self.post_json("/v1/kernel/compute/lots", &req).await
+        let wire = compute_contracts::create_capacity_lot_request_to_proto(&req)?;
+        let response: proto_compute::CreateCapacityLotResponse =
+            self.post_json("/v1/kernel/compute/lots", &wire).await?;
+        compute_contracts::create_capacity_lot_response_from_proto(&response)
     }
 
     async fn create_capacity_instrument(
         &self,
         req: CreateCapacityInstrumentRequest,
     ) -> Result<CreateCapacityInstrumentResponse> {
-        self.post_json("/v1/kernel/compute/instruments", &req).await
+        let wire = compute_contracts::create_capacity_instrument_request_to_proto(&req)?;
+        let response: proto_compute::CreateCapacityInstrumentResponse =
+            self.post_json("/v1/kernel/compute/instruments", &wire).await?;
+        compute_contracts::create_capacity_instrument_response_from_proto(&response)
     }
 
     async fn record_delivery_proof(
@@ -739,14 +794,126 @@ impl KernelAuthority for HttpKernelAuthorityClient {
             "/v1/kernel/compute/lots/{}/delivery_proofs",
             req.delivery_proof.capacity_lot_id.trim()
         );
-        self.post_json(path.as_str(), &req).await
+        let wire = compute_contracts::record_delivery_proof_request_to_proto(&req)?;
+        let response: proto_compute::RecordDeliveryProofResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::record_delivery_proof_response_from_proto(&response)
     }
 
     async fn publish_compute_index(
         &self,
         req: PublishComputeIndexRequest,
     ) -> Result<PublishComputeIndexResponse> {
-        self.post_json("/v1/kernel/compute/indices", &req).await
+        let wire = compute_contracts::publish_compute_index_request_to_proto(&req)?;
+        let response: proto_compute::PublishComputeIndexResponse =
+            self.post_json("/v1/kernel/compute/indices", &wire).await?;
+        compute_contracts::publish_compute_index_response_from_proto(&response)
+    }
+
+    async fn list_compute_products(
+        &self,
+        status: Option<ComputeProductStatus>,
+    ) -> Result<Vec<ComputeProduct>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/products",
+            &[("status", status.map(|value| value.label().to_string()))],
+        );
+        let response: proto_compute::ListComputeProductsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_products_response_from_proto(&response)
+    }
+
+    async fn get_compute_product(&self, product_id: &str) -> Result<ComputeProduct> {
+        let path = format!("/v1/kernel/compute/products/{product_id}");
+        let response: proto_compute::GetComputeProductResponse = self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_product_response_from_proto(&response)
+    }
+
+    async fn list_capacity_lots(
+        &self,
+        product_id: Option<&str>,
+        status: Option<CapacityLotStatus>,
+    ) -> Result<Vec<CapacityLot>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/lots",
+            &[
+                ("product_id", product_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListCapacityLotsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_capacity_lots_response_from_proto(&response)
+    }
+
+    async fn get_capacity_lot(&self, capacity_lot_id: &str) -> Result<CapacityLot> {
+        let path = format!("/v1/kernel/compute/lots/{capacity_lot_id}");
+        let response: proto_compute::GetCapacityLotResponse = self.get_json(path.as_str()).await?;
+        compute_contracts::get_capacity_lot_response_from_proto(&response)
+    }
+
+    async fn list_capacity_instruments(
+        &self,
+        product_id: Option<&str>,
+        capacity_lot_id: Option<&str>,
+        status: Option<CapacityInstrumentStatus>,
+    ) -> Result<Vec<CapacityInstrument>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/instruments",
+            &[
+                ("product_id", product_id.map(ToOwned::to_owned)),
+                ("capacity_lot_id", capacity_lot_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListCapacityInstrumentsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_capacity_instruments_response_from_proto(&response)
+    }
+
+    async fn get_capacity_instrument(&self, instrument_id: &str) -> Result<CapacityInstrument> {
+        let path = format!("/v1/kernel/compute/instruments/{instrument_id}");
+        let response: proto_compute::GetCapacityInstrumentResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_capacity_instrument_response_from_proto(&response)
+    }
+
+    async fn list_delivery_proofs(
+        &self,
+        capacity_lot_id: Option<&str>,
+        status: Option<DeliveryProofStatus>,
+    ) -> Result<Vec<DeliveryProof>> {
+        let lot_id = capacity_lot_id.ok_or_else(|| anyhow!("capacity_lot_id_missing"))?;
+        let path = join_query_pairs(
+            format!("/v1/kernel/compute/lots/{lot_id}/delivery_proofs").as_str(),
+            &[("status", status.map(|value| value.label().to_string()))],
+        );
+        let response: proto_compute::ListDeliveryProofsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_delivery_proofs_response_from_proto(&response)
+    }
+
+    async fn get_delivery_proof(&self, delivery_proof_id: &str) -> Result<DeliveryProof> {
+        let path = format!("/v1/kernel/compute/delivery_proofs/{delivery_proof_id}");
+        let response: proto_compute::GetDeliveryProofResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_delivery_proof_response_from_proto(&response)
+    }
+
+    async fn list_compute_indices(&self, product_id: Option<&str>) -> Result<Vec<ComputeIndex>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/indices",
+            &[("product_id", product_id.map(ToOwned::to_owned))],
+        );
+        let response: proto_compute::ListComputeIndicesResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_compute_indices_response_from_proto(&response)
+    }
+
+    async fn get_compute_index(&self, index_id: &str) -> Result<ComputeIndex> {
+        let path = format!("/v1/kernel/compute/indices/{index_id}");
+        let response: proto_compute::GetComputeIndexResponse = self.get_json(path.as_str()).await?;
+        compute_contracts::get_compute_index_response_from_proto(&response)
     }
 
     async fn register_data_asset(
@@ -897,10 +1064,15 @@ pub fn canonical_kernel_endpoint(base_url: &str, path: &str) -> Result<Url> {
             "kernel authority path must start with '/': {normalized_path}"
         ));
     }
+    let (path_only, query) = normalized_path
+        .split_once('?')
+        .map_or((normalized_path, None), |(path_only, query)| {
+            (path_only, Some(query))
+        });
     let mut url = Url::parse(normalized_base.as_str())
         .map_err(|error| anyhow!("invalid kernel authority base url: {error}"))?;
-    url.set_path(normalized_path);
-    url.set_query(None);
+    url.set_path(path_only);
+    url.set_query(query);
     url.set_fragment(None);
     Ok(url)
 }
@@ -988,6 +1160,19 @@ mod tests {
         assert_eq!(
             endpoint.as_str(),
             "https://control.example.com/v1/kernel/work_units"
+        );
+    }
+
+    #[test]
+    fn canonical_endpoint_preserves_path_query_parameters() {
+        let endpoint = canonical_kernel_endpoint(
+            "https://control.example.com/base",
+            "/v1/kernel/compute/products?status=active",
+        )
+        .expect("endpoint");
+        assert_eq!(
+            endpoint.as_str(),
+            "https://control.example.com/v1/kernel/compute/products?status=active"
         );
     }
 

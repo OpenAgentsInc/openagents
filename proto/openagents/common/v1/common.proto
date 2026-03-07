@@ -16,6 +16,7 @@ enum FeedbackLatencyClass {
   FEEDBACK_LATENCY_CLASS_SHORT = 2;
   FEEDBACK_LATENCY_CLASS_LONG = 3;
   FEEDBACK_LATENCY_CLASS_UNKNOWN = 4;
+  FEEDBACK_LATENCY_CLASS_MEDIUM = 5;
 }
 
 enum SeverityClass {
@@ -41,6 +42,16 @@ enum ProvenanceGrade {
   PROVENANCE_GRADE_P1_TOOLCHAIN = 2;
   PROVENANCE_GRADE_P2_LINEAGE = 3;
   PROVENANCE_GRADE_P3_ATTESTED = 4;
+}
+
+enum AuthAssuranceLevel {
+  AUTH_ASSURANCE_LEVEL_UNSPECIFIED = 0;
+  AUTH_ASSURANCE_LEVEL_ANON = 1;
+  AUTH_ASSURANCE_LEVEL_AUTHENTICATED = 2;
+  AUTH_ASSURANCE_LEVEL_ORG_KYC = 3;
+  AUTH_ASSURANCE_LEVEL_PERSONHOOD = 4;
+  AUTH_ASSURANCE_LEVEL_GOV_ID = 5;
+  AUTH_ASSURANCE_LEVEL_HARDWARE_BOUND = 6;
 }
 
 message Money {
@@ -72,6 +83,7 @@ message EvidenceRef {
   string kind = 1;
   string uri = 2;
   string digest = 3;
+  string meta_json = 4;
 }
 
 message ReceiptRef {
