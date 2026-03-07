@@ -45,6 +45,107 @@ impl ProviderDesiredMode {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProviderControlAction {
+    Online,
+    Offline,
+    Pause,
+    Resume,
+}
+
+impl ProviderControlAction {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Online => "online",
+            Self::Offline => "offline",
+            Self::Pause => "pause",
+            Self::Resume => "resume",
+        }
+    }
+
+    pub const fn target_desired_mode(self) -> ProviderDesiredMode {
+        match self {
+            Self::Online | Self::Resume => ProviderDesiredMode::Online,
+            Self::Offline => ProviderDesiredMode::Offline,
+            Self::Pause => ProviderDesiredMode::Paused,
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderTransitionError {
+    pub code: String,
+    pub detail: String,
+    pub action: ProviderControlAction,
+    pub current_state: String,
+    pub desired_mode: ProviderDesiredMode,
+}
+
+impl std::fmt::Display for ProviderTransitionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}: {}", self.code, self.detail)
+    }
+}
+
+impl std::error::Error for ProviderTransitionError {}
+
+pub fn provider_runtime_state_label(status: &ProviderStatusResponse) -> String {
+    status
+        .snapshot
+        .as_ref()
+        .and_then(|snapshot| snapshot.runtime.authoritative_status.clone())
+        .or_else(|| {
+            status
+                .snapshot
+                .as_ref()
+                .map(|snapshot| snapshot.runtime.mode.label().to_string())
+        })
+        .unwrap_or_else(|| "unconfigured".to_string())
+}
+
+pub fn validate_provider_control_action(
+    status: &ProviderStatusResponse,
+    action: ProviderControlAction,
+) -> Result<ProviderDesiredMode, ProviderTransitionError> {
+    let current_state = provider_runtime_state_label(status);
+    match action {
+        ProviderControlAction::Online | ProviderControlAction::Offline => {
+            Ok(action.target_desired_mode())
+        }
+        ProviderControlAction::Pause => {
+            if status.desired_mode == ProviderDesiredMode::Online
+                || matches!(current_state.as_str(), "online" | "degraded" | "draining")
+            {
+                Ok(ProviderDesiredMode::Paused)
+            } else {
+                Err(ProviderTransitionError {
+                    code: "provider_not_online".to_string(),
+                    detail: "pause requires an online or degraded provider".to_string(),
+                    action,
+                    current_state,
+                    desired_mode: action.target_desired_mode(),
+                })
+            }
+        }
+        ProviderControlAction::Resume => {
+            if status.desired_mode == ProviderDesiredMode::Paused
+                || current_state.as_str() == "paused"
+            {
+                Ok(ProviderDesiredMode::Online)
+            } else {
+                Err(ProviderTransitionError {
+                    code: "provider_not_paused".to_string(),
+                    detail: "resume requires a paused provider".to_string(),
+                    action,
+                    current_state,
+                    desired_mode: action.target_desired_mode(),
+                })
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderJsonEntry {
     pub key: String,
@@ -215,6 +316,7 @@ impl ProviderAdminConfig {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct ProviderControlEvent {
+    pub action: ProviderControlAction,
     pub desired_mode: ProviderDesiredMode,
     pub issued_at_ms: i64,
     pub source: String,
@@ -249,9 +351,9 @@ impl ProviderAdminRuntime {
         let join_handle = std::thread::spawn(move || {
             run_provider_admin_loop(command_rx, update_tx, ready_tx, config);
         });
-        let listen_addr = ready_rx
-            .recv()
-            .map_err(|error| format!("Provider admin runtime failed to report readiness: {error}"))??;
+        let listen_addr = ready_rx.recv().map_err(|error| {
+            format!("Provider admin runtime failed to report readiness: {error}")
+        })??;
         Ok(Self {
             command_tx,
             update_rx,
@@ -342,10 +444,9 @@ impl ProviderPersistenceStore {
     }
 
     pub fn persist_snapshot(&mut self, snapshot: &ProviderPersistedSnapshot) -> Result<(), String> {
-        let tx = self
-            .connection
-            .transaction()
-            .map_err(|error| format!("Failed to start provider admin sqlite transaction: {error}"))?;
+        let tx = self.connection.transaction().map_err(|error| {
+            format!("Failed to start provider admin sqlite transaction: {error}")
+        })?;
 
         tx.execute(
             "INSERT OR REPLACE INTO provider_runtime_snapshot (row_id, captured_at_ms, value_json) VALUES (?1, ?2, ?3)",
@@ -358,19 +459,28 @@ impl ProviderPersistenceStore {
         .map_err(|error| format!("Failed to upsert provider runtime snapshot: {error}"))?;
 
         replace_config_rows(&tx, snapshot.config_metadata.as_slice())?;
-        replace_singleton_json(&tx, "provider_identity_snapshot", snapshot.identity.as_ref())?;
+        replace_singleton_json(
+            &tx,
+            "provider_identity_snapshot",
+            snapshot.identity.as_ref(),
+        )?;
         replace_singleton_json(&tx, "provider_runtime_status", Some(&snapshot.runtime))?;
         replace_backend_rows(&tx, &snapshot.availability, snapshot.captured_at_ms)?;
         replace_sandbox_rows(&tx, &snapshot.availability.sandbox, snapshot.captured_at_ms)?;
-        replace_inventory_rows(&tx, snapshot.inventory_rows.as_slice(), snapshot.captured_at_ms)?;
+        replace_inventory_rows(
+            &tx,
+            snapshot.inventory_rows.as_slice(),
+            snapshot.captured_at_ms,
+        )?;
         replace_recent_jobs(&tx, snapshot.recent_jobs.as_slice())?;
         replace_receipts(&tx, snapshot.receipts.as_slice())?;
         replace_payouts(&tx, snapshot.payouts.as_slice())?;
         replace_health_events(&tx, snapshot.health_events.as_slice())?;
         replace_singleton_json(&tx, "provider_earnings_summary", snapshot.earnings.as_ref())?;
 
-        tx.commit()
-            .map_err(|error| format!("Failed to commit provider admin sqlite transaction: {error}"))?;
+        tx.commit().map_err(|error| {
+            format!("Failed to commit provider admin sqlite transaction: {error}")
+        })?;
         Ok(())
     }
 
@@ -587,10 +697,14 @@ impl ProviderPersistenceStore {
                 );
                 ",
             )
-            .map_err(|error| format!("Failed to apply provider admin sqlite migrations: {error}"))?;
+            .map_err(|error| {
+                format!("Failed to apply provider admin sqlite migrations: {error}")
+            })?;
         self.connection
             .pragma_update(None, "user_version", PROVIDER_ADMIN_SCHEMA_VERSION)
-            .map_err(|error| format!("Failed to set provider admin sqlite schema version: {error}"))?;
+            .map_err(|error| {
+                format!("Failed to set provider admin sqlite schema version: {error}")
+            })?;
         Ok(())
     }
 
@@ -614,9 +728,7 @@ impl ProviderPersistenceStore {
             )
             .optional()
             .map_err(|error| format!("Failed to query provider admin metadata {key}: {error}"))?;
-        payload
-            .map(|raw| decode_json::<T>(&raw))
-            .transpose()
+        payload.map(|raw| decode_json::<T>(&raw)).transpose()
     }
 }
 
@@ -691,7 +803,8 @@ fn run_provider_admin_loop(
     while let Ok(command) = command_rx.recv() {
         match command {
             ProviderAdminCommand::SyncSnapshot(snapshot) => {
-                if let Err(error) = with_locked_store(&shared, |store| store.persist_snapshot(&snapshot))
+                if let Err(error) =
+                    with_locked_store(&shared, |store| store.persist_snapshot(&snapshot))
                 {
                     let _ = update_tx.send(ProviderAdminUpdate::WorkerError(error));
                 }
@@ -765,7 +878,10 @@ struct LimitQuery {
 
 #[derive(Clone, Debug, Serialize)]
 struct ProviderApiError {
+    code: String,
     error: String,
+    current_state: Option<String>,
+    desired_mode: Option<ProviderDesiredMode>,
 }
 
 type ProviderApiResult<T> = Result<Json<T>, (StatusCode, Json<ProviderApiError>)>;
@@ -814,7 +930,10 @@ async fn get_earnings(
     State(shared): State<Arc<ProviderAdminSharedState>>,
 ) -> ProviderApiResult<Option<ProviderEarningsSummary>> {
     load_from_store(&shared, |store| {
-        Ok(store.load_status()?.snapshot.and_then(|snapshot| snapshot.earnings))
+        Ok(store
+            .load_status()?
+            .snapshot
+            .and_then(|snapshot| snapshot.earnings))
     })
     .map(Json)
 }
@@ -843,36 +962,39 @@ async fn get_health_events(
 async fn post_online(
     State(shared): State<Arc<ProviderAdminSharedState>>,
 ) -> ProviderApiResult<ProviderStatusResponse> {
-    apply_control_mode(&shared, ProviderDesiredMode::Online)
+    apply_control_action(&shared, ProviderControlAction::Online)
 }
 
 async fn post_offline(
     State(shared): State<Arc<ProviderAdminSharedState>>,
 ) -> ProviderApiResult<ProviderStatusResponse> {
-    apply_control_mode(&shared, ProviderDesiredMode::Offline)
+    apply_control_action(&shared, ProviderControlAction::Offline)
 }
 
 async fn post_pause(
     State(shared): State<Arc<ProviderAdminSharedState>>,
 ) -> ProviderApiResult<ProviderStatusResponse> {
-    apply_control_mode(&shared, ProviderDesiredMode::Paused)
+    apply_control_action(&shared, ProviderControlAction::Pause)
 }
 
 async fn post_resume(
     State(shared): State<Arc<ProviderAdminSharedState>>,
 ) -> ProviderApiResult<ProviderStatusResponse> {
-    apply_control_mode(&shared, ProviderDesiredMode::Online)
+    apply_control_action(&shared, ProviderControlAction::Resume)
 }
 
-fn apply_control_mode(
+fn apply_control_action(
     shared: &Arc<ProviderAdminSharedState>,
-    desired_mode: ProviderDesiredMode,
+    action: ProviderControlAction,
 ) -> ProviderApiResult<ProviderStatusResponse> {
-    with_locked_store(shared, |store| store.set_desired_mode(desired_mode))
-        .map_err(api_error)?;
+    let status = with_locked_store(shared, |store| store.load_status()).map_err(api_error)?;
+    let desired_mode =
+        validate_provider_control_action(&status, action).map_err(transition_api_error)?;
+    with_locked_store(shared, |store| store.set_desired_mode(desired_mode)).map_err(api_error)?;
     shared
         .update_tx
         .send(ProviderAdminUpdate::ControlEvent(ProviderControlEvent {
+            action,
             desired_mode,
             issued_at_ms: now_epoch_ms(),
             source: "localhost_http".to_string(),
@@ -880,7 +1002,7 @@ fn apply_control_mode(
         .map_err(|error| {
             api_error(format!(
                 "Failed to enqueue provider admin control event {}: {error}",
-                desired_mode.label()
+                action.label()
             ))
         })?;
     load_from_store(shared, ProviderPersistenceStore::load_status).map(Json)
@@ -901,10 +1023,11 @@ fn load_from_store<T>(
     shared: &ProviderAdminSharedState,
     operation: impl FnOnce(&ProviderPersistenceStore) -> Result<T, String>,
 ) -> Result<T, (StatusCode, Json<ProviderApiError>)> {
-    let store = shared
-        .store
-        .lock()
-        .map_err(|error| api_error(format!("Provider admin sqlite store lock poisoned: {error}")))?;
+    let store = shared.store.lock().map_err(|error| {
+        api_error(format!(
+            "Provider admin sqlite store lock poisoned: {error}"
+        ))
+    })?;
     operation(&store).map_err(api_error)
 }
 
@@ -1157,7 +1280,8 @@ fn load_json_rows<T: DeserializeOwned>(
         .map_err(|error| format!("Failed to query provider admin list rows: {error}"))?;
     let mut values = Vec::new();
     for row in rows {
-        let payload = row.map_err(|error| format!("Failed to decode provider admin list row: {error}"))?;
+        let payload =
+            row.map_err(|error| format!("Failed to decode provider admin list row: {error}"))?;
         values.push(decode_json::<T>(&payload)?);
     }
     Ok(values)
@@ -1197,7 +1321,22 @@ fn api_error(error: impl Into<String>) -> (StatusCode, Json<ProviderApiError>) {
     (
         StatusCode::INTERNAL_SERVER_ERROR,
         Json(ProviderApiError {
+            code: "internal_error".to_string(),
             error: error.into(),
+            current_state: None,
+            desired_mode: None,
+        }),
+    )
+}
+
+fn transition_api_error(error: ProviderTransitionError) -> (StatusCode, Json<ProviderApiError>) {
+    (
+        StatusCode::CONFLICT,
+        Json(ProviderApiError {
+            code: error.code,
+            error: error.detail,
+            current_state: Some(error.current_state),
+            desired_mode: Some(error.desired_mode),
         }),
     )
 }
@@ -1205,16 +1344,18 @@ fn api_error(error: impl Into<String>) -> (StatusCode, Json<ProviderApiError>) {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderAdminConfig, ProviderAdminRuntime, ProviderDesiredMode, ProviderEarningsSummary,
-        ProviderHealthEvent, ProviderIdentityMetadata, ProviderJsonEntry, ProviderPersistedSnapshot,
+        ProviderAdminConfig, ProviderAdminRuntime, ProviderControlAction, ProviderDesiredMode,
+        ProviderEarningsSummary, ProviderHealthEvent, ProviderIdentityMetadata, ProviderJsonEntry,
+        ProviderPayoutSummary, ProviderPersistedSnapshot, ProviderPersistenceStore,
         ProviderReceiptSummary, ProviderRecentJob, ProviderRuntimeStatusSnapshot,
-        ProviderStatusResponse, ProviderPersistenceStore, ProviderPayoutSummary,
+        ProviderStatusResponse,
     };
     use crate::{
         ProviderAvailability, ProviderBackendHealth, ProviderComputeProduct, ProviderInventoryRow,
         ProviderMode, ProviderSandboxAvailability, ProviderSandboxExecutionClass,
         ProviderSandboxProfile, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
     };
+    use axum::http::StatusCode;
     use serde_json::json;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
     use std::path::PathBuf;
@@ -1229,7 +1370,10 @@ mod tests {
     }
 
     fn sample_config(db_path: PathBuf) -> ProviderAdminConfig {
-        ProviderAdminConfig::new(db_path, SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)))
+        ProviderAdminConfig::new(
+            db_path,
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, 0)),
+        )
     }
 
     fn sample_snapshot() -> ProviderPersistedSnapshot {
@@ -1393,8 +1537,8 @@ mod tests {
     }
 
     #[test]
-    fn sqlite_store_round_trips_runtime_snapshot_and_lists() -> Result<(), Box<dyn std::error::Error>>
-    {
+    fn sqlite_store_round_trips_runtime_snapshot_and_lists()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp_dir = tempfile::tempdir()?;
         let db_path = temp_dir.path().join("provider-admin.sqlite");
         let config = sample_config(db_path.clone());
@@ -1460,11 +1604,17 @@ mod tests {
             .build()?;
         let status_url = format!("http://{}/v1/status", runtime.listen_addr());
         let jobs_url = format!("http://{}/v1/jobs?limit=1", runtime.listen_addr());
-        let sandbox_runtimes_url =
-            format!("http://{}/v1/sandbox/runtimes?limit=4", runtime.listen_addr());
-        let sandbox_profiles_url =
-            format!("http://{}/v1/sandbox/profiles?limit=4", runtime.listen_addr());
+        let sandbox_runtimes_url = format!(
+            "http://{}/v1/sandbox/runtimes?limit=4",
+            runtime.listen_addr()
+        );
+        let sandbox_profiles_url = format!(
+            "http://{}/v1/sandbox/profiles?limit=4",
+            runtime.listen_addr()
+        );
         let online_url = format!("http://{}/v1/online", runtime.listen_addr());
+        let pause_url = format!("http://{}/v1/pause", runtime.listen_addr());
+        let resume_url = format!("http://{}/v1/resume", runtime.listen_addr());
 
         let mut status = None::<ProviderStatusResponse>;
         for _ in 0..20 {
@@ -1476,7 +1626,8 @@ mod tests {
             }
             tokio::time::sleep(std::time::Duration::from_millis(25)).await;
         }
-        let initial_status = status.ok_or("provider admin status never observed persisted snapshot")?;
+        let initial_status =
+            status.ok_or("provider admin status never observed persisted snapshot")?;
         ensure(
             initial_status.desired_mode == ProviderDesiredMode::Offline,
             "provider admin api should default desired mode to offline",
@@ -1497,7 +1648,10 @@ mod tests {
             .await?
             .json::<Vec<ProviderRecentJob>>()
             .await?;
-        ensure(jobs.len() == 1, "provider admin api did not return recent jobs")?;
+        ensure(
+            jobs.len() == 1,
+            "provider admin api did not return recent jobs",
+        )?;
         ensure(
             jobs.first().map(|job| job.job_id.as_str()) == Some("job-1"),
             "provider admin api returned the wrong recent job id",
@@ -1525,6 +1679,20 @@ mod tests {
             "provider admin api did not return sandbox profiles",
         )?;
 
+        let invalid_pause = client.post(pause_url.as_str()).send().await?;
+        ensure(
+            invalid_pause.status() == StatusCode::CONFLICT,
+            "provider admin api should reject pause while offline",
+        )?;
+        let invalid_pause_payload = invalid_pause.json::<serde_json::Value>().await?;
+        ensure(
+            invalid_pause_payload
+                .get("code")
+                .and_then(serde_json::Value::as_str)
+                == Some("provider_not_online"),
+            "provider admin api did not expose a machine-readable pause rejection code",
+        )?;
+
         let online_status = client
             .post(online_url.as_str())
             .send()
@@ -1534,6 +1702,39 @@ mod tests {
         ensure(
             online_status.desired_mode == ProviderDesiredMode::Online,
             "provider admin api did not persist online desired mode",
+        )?;
+
+        let repeated_online_status = client
+            .post(online_url.as_str())
+            .send()
+            .await?
+            .json::<ProviderStatusResponse>()
+            .await?;
+        ensure(
+            repeated_online_status.desired_mode == ProviderDesiredMode::Online,
+            "provider admin api should allow idempotent online retries",
+        )?;
+
+        let paused_status = client
+            .post(pause_url.as_str())
+            .send()
+            .await?
+            .json::<ProviderStatusResponse>()
+            .await?;
+        ensure(
+            paused_status.desired_mode == ProviderDesiredMode::Paused,
+            "provider admin api did not persist paused desired mode",
+        )?;
+
+        let resumed_status = client
+            .post(resume_url.as_str())
+            .send()
+            .await?
+            .json::<ProviderStatusResponse>()
+            .await?;
+        ensure(
+            resumed_status.desired_mode == ProviderDesiredMode::Online,
+            "provider admin api did not persist resumed online desired mode",
         )?;
 
         let updates = tokio::task::spawn_blocking(move || {
@@ -1552,12 +1753,37 @@ mod tests {
         .await??;
 
         ensure(
-            updates.iter().any(|update| matches!(
-                update,
-                super::ProviderAdminUpdate::ControlEvent(event)
-                    if event.desired_mode == ProviderDesiredMode::Online
-            )),
+            updates.iter().any(|update| {
+                matches!(
+                    update,
+                    super::ProviderAdminUpdate::ControlEvent(event)
+                        if event.action == ProviderControlAction::Online
+                            && event.desired_mode == ProviderDesiredMode::Online
+                )
+            }),
             "provider admin runtime did not emit an online control event",
+        )?;
+        ensure(
+            updates.iter().any(|update| {
+                matches!(
+                    update,
+                    super::ProviderAdminUpdate::ControlEvent(event)
+                        if event.action == ProviderControlAction::Pause
+                            && event.desired_mode == ProviderDesiredMode::Paused
+                )
+            }),
+            "provider admin runtime did not emit a pause control event",
+        )?;
+        ensure(
+            updates.iter().any(|update| {
+                matches!(
+                    update,
+                    super::ProviderAdminUpdate::ControlEvent(event)
+                        if event.action == ProviderControlAction::Resume
+                            && event.desired_mode == ProviderDesiredMode::Online
+                )
+            }),
+            "provider admin runtime did not emit a resume control event",
         )?;
         Ok(())
     }
