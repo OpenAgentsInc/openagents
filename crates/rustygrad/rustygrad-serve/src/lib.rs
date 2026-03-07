@@ -1,8 +1,16 @@
 //! Served compute product contracts for Rustygrad.
 
-use serde::{Deserialize, Serialize};
+use std::collections::BTreeMap;
 
-pub use rustygrad_models::{EmbeddingModelDescriptor, EmbeddingNormalization, ModelDescriptor};
+use rustygrad_backend_cpu::CpuBackend;
+use rustygrad_core::{DType, Device, Shape, TensorId};
+use rustygrad_ir::{Graph, GraphBuilder, GraphError};
+pub use rustygrad_models::{
+    EmbeddingModelDescriptor, EmbeddingNormalization, ModelDescriptor, SmokeByteEmbedder,
+};
+use rustygrad_runtime::RuntimeError;
+use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "request and response types for served products";
@@ -102,11 +110,135 @@ pub trait EmbeddingsExecutor {
     fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error>;
 }
 
+/// Smoke embeddings execution error.
+#[derive(Debug, Error)]
+pub enum SmokeEmbeddingsError {
+    /// The request targeted the wrong product.
+    #[error("unsupported product id `{0}`")]
+    UnsupportedProduct(String),
+    /// The request targeted the wrong model.
+    #[error("unsupported model `{0}`")]
+    UnsupportedModel(String),
+    /// The request carried no inputs.
+    #[error("embedding request must contain at least one input")]
+    EmptyInputBatch,
+    /// Graph construction failed.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// CPU runtime execution failed.
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+}
+
+/// CPU-backed embeddings smoke service.
+#[derive(Clone, Debug)]
+pub struct SmokeEmbeddingsService {
+    backend: CpuBackend,
+    model: SmokeByteEmbedder,
+    graph: Graph,
+    input_shape: Shape,
+    input_id: TensorId,
+    output_id: TensorId,
+}
+
+impl SmokeEmbeddingsService {
+    /// Creates a new smoke embeddings service.
+    pub fn new() -> Result<Self, SmokeEmbeddingsError> {
+        let model = SmokeByteEmbedder::new();
+        let input_shape = Shape::new(vec![1, model.input_dimensions()]);
+        let (graph, input_id, output_id) = build_smoke_graph(&model, input_shape.clone())?;
+        Ok(Self {
+            backend: CpuBackend::new(),
+            model,
+            graph,
+            input_shape,
+            input_id,
+            output_id,
+        })
+    }
+
+    /// Returns the smoke model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &EmbeddingModelDescriptor {
+        self.model.descriptor()
+    }
+
+    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, SmokeEmbeddingsError> {
+        let mut runtime_inputs = BTreeMap::new();
+        runtime_inputs.insert(
+            self.input_id,
+            self.backend
+                .input_buffer(self.input_shape.clone(), self.model.featurize(input))?,
+        );
+        let result = self.backend.compile_and_execute(&self.graph, &runtime_inputs)?;
+        let Some(output) = result.outputs.get(&self.output_id) else {
+            return Err(SmokeEmbeddingsError::Runtime(RuntimeError::Backend(
+                String::from("missing smoke embedding output"),
+            )));
+        };
+        Ok(output.as_f32_slice().to_vec())
+    }
+}
+
+impl EmbeddingsExecutor for SmokeEmbeddingsService {
+    type Error = SmokeEmbeddingsError;
+
+    fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        if request.product_id != EMBEDDINGS_PRODUCT_ID {
+            return Err(SmokeEmbeddingsError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+        if request.model.model.model_id != self.model.descriptor().model.model_id {
+            return Err(SmokeEmbeddingsError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+        if request.inputs.is_empty() {
+            return Err(SmokeEmbeddingsError::EmptyInputBatch);
+        }
+
+        let mut embeddings = Vec::with_capacity(request.inputs.len());
+        for (index, input) in request.inputs.iter().enumerate() {
+            embeddings.push(EmbeddingVector {
+                index,
+                values: self.embed_one(input)?,
+            });
+        }
+
+        Ok(EmbeddingResponse::new(request, embeddings))
+    }
+}
+
+fn build_smoke_graph(
+    model: &SmokeByteEmbedder,
+    input_shape: Shape,
+) -> Result<(Graph, TensorId, TensorId), GraphError> {
+    let mut builder = GraphBuilder::new(Device::cpu());
+    let input = builder.input("features", input_shape, DType::F32);
+    let weights = builder.constant_f32(
+        Shape::new(vec![model.input_dimensions(), model.descriptor().dimensions]),
+        model.projection().to_vec(),
+    )?;
+    let bias = builder.constant_f32(
+        Shape::new(vec![1, model.descriptor().dimensions]),
+        model.bias().to_vec(),
+    )?;
+    let projected = builder.matmul(&input, &weights)?;
+    let shifted = builder.add(&projected, &bias)?;
+    let output_id = shifted.id();
+    let input_id = input.id();
+    let graph = builder.finish(vec![shifted]);
+    Ok((graph, input_id, output_id))
+}
+
 #[cfg(test)]
 mod tests {
+    use super::{
+        EmbeddingRequest, EmbeddingResponse, EmbeddingVector, EmbeddingsExecutor,
+        SmokeEmbeddingsService,
+    };
     use rustygrad_models::{EmbeddingModelDescriptor, EmbeddingNormalization, ModelDescriptor};
-
-    use super::{EmbeddingRequest, EmbeddingResponse, EmbeddingVector};
 
     #[test]
     fn embedding_request_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
@@ -164,6 +296,22 @@ mod tests {
         let encoded = serde_json::to_string(&response)?;
         let decoded: EmbeddingResponse = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, response);
+        Ok(())
+    }
+
+    #[test]
+    fn smoke_embeddings_service_is_deterministic() -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = SmokeEmbeddingsService::new()?;
+        let request = EmbeddingRequest::new(
+            "req-4",
+            service.model_descriptor().clone(),
+            vec![String::from("hello world")],
+        );
+
+        let first = service.embed(&request)?;
+        let second = service.embed(&request)?;
+        assert_eq!(first, second);
+        assert_eq!(first.metadata.dimensions, 8);
         Ok(())
     }
 }

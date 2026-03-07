@@ -1,9 +1,12 @@
 //! OpenAgents provider-facing types for Rustygrad.
 
+use sha2::{Digest, Sha256};
 use serde::{Deserialize, Serialize};
 
 use rustygrad_runtime::HealthStatus;
-use rustygrad_serve::{EmbeddingRequest, EmbeddingResponse, EMBEDDINGS_PRODUCT_ID};
+use rustygrad_serve::{
+    EmbeddingModelDescriptor, EmbeddingRequest, EmbeddingResponse, EMBEDDINGS_PRODUCT_ID,
+};
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "provider integration, capabilities, and receipts";
@@ -49,6 +52,22 @@ impl CapabilityEnvelope {
             dimensions,
             readiness,
         }
+    }
+
+    /// Creates a capability envelope directly from an embeddings model descriptor.
+    #[must_use]
+    pub fn from_embedding_model(
+        runtime_backend: impl Into<String>,
+        model: &EmbeddingModelDescriptor,
+        readiness: ProviderReadiness,
+    ) -> Self {
+        Self::embeddings(
+            runtime_backend,
+            model.model.model_id.clone(),
+            model.model.family.clone(),
+            model.dimensions,
+            readiness,
+        )
     }
 }
 
@@ -106,6 +125,8 @@ pub struct ExecutionReceipt {
     pub ended_at_unix_ms: u64,
     /// Terminal status.
     pub status: ReceiptStatus,
+    /// Optional failure reason.
+    pub failure_reason: Option<String>,
 }
 
 impl ExecutionReceipt {
@@ -131,8 +152,77 @@ impl ExecutionReceipt {
             started_at_unix_ms,
             ended_at_unix_ms,
             status: ReceiptStatus::Succeeded,
+            failure_reason: None,
         }
     }
+
+    /// Creates a success receipt and computes the request digest internally.
+    #[must_use]
+    pub fn succeeded_for_response(
+        runtime_backend: impl Into<String>,
+        request: &EmbeddingRequest,
+        response: &EmbeddingResponse,
+        started_at_unix_ms: u64,
+        ended_at_unix_ms: u64,
+    ) -> Self {
+        Self::succeeded(
+            runtime_backend,
+            request,
+            response,
+            digest_embedding_request(request),
+            started_at_unix_ms,
+            ended_at_unix_ms,
+        )
+    }
+
+    /// Creates a failure receipt for a request that could not be executed.
+    #[must_use]
+    pub fn failed_for_request(
+        runtime_backend: impl Into<String>,
+        request: &EmbeddingRequest,
+        started_at_unix_ms: u64,
+        ended_at_unix_ms: u64,
+        failure_reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            product_id: request.product_id.clone(),
+            backend_family: String::from(BACKEND_FAMILY),
+            runtime_backend: runtime_backend.into(),
+            request_id: request.request_id.clone(),
+            request_digest: digest_embedding_request(request),
+            model_id: request.model.model.model_id.clone(),
+            output_dimensions: request.model.dimensions,
+            output_vector_count: 0,
+            started_at_unix_ms,
+            ended_at_unix_ms,
+            status: ReceiptStatus::Failed,
+            failure_reason: Some(failure_reason.into()),
+        }
+    }
+}
+
+/// Computes a deterministic digest for an embeddings request.
+#[must_use]
+pub fn digest_embedding_request(request: &EmbeddingRequest) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(request.request_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.product_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.model.model.model_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.model.model.family.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.model.model.revision.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.model.dimensions.to_string().as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", request.model.normalization).as_bytes());
+    for input in &request.inputs {
+        hasher.update(b"|");
+        hasher.update(input.as_bytes());
+    }
+    hex::encode(hasher.finalize())
 }
 
 /// Provider-side adapter interface for the embeddings smoke path.
@@ -152,15 +242,21 @@ mod tests {
         EmbeddingVector, ModelDescriptor,
     };
 
-    use super::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
+    use super::{
+        digest_embedding_request, CapabilityEnvelope, ExecutionReceipt, ProviderReadiness,
+        ReceiptStatus,
+    };
 
     #[test]
     fn capability_envelope_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
-        let envelope = CapabilityEnvelope::embeddings(
-            "cpu",
-            "smoke-byte-embed-v0",
-            "smoke",
+        let model = EmbeddingModelDescriptor::new(
+            ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
             8,
+            EmbeddingNormalization::None,
+        );
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            "cpu",
+            &model,
             ProviderReadiness::ready("cpu backend ready"),
         );
 
@@ -199,14 +295,50 @@ mod tests {
                 values: vec![0.1, 0.2, 0.3, 0.4],
             }],
         );
-        let receipt = ExecutionReceipt::succeeded("cpu", &request, &response, "digest-123", 10, 20);
+        let receipt = ExecutionReceipt::succeeded_for_response("cpu", &request, &response, 10, 20);
 
         assert_eq!(receipt.status, ReceiptStatus::Succeeded);
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: ExecutionReceipt = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, receipt);
         assert_eq!(decoded.output_vector_count, 1);
+        assert_eq!(decoded.failure_reason, None);
         Ok(())
+    }
+
+    #[test]
+    fn failed_receipt_carries_reason() {
+        let request = EmbeddingRequest::new(
+            "req-4",
+            EmbeddingModelDescriptor::new(
+                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
+                8,
+                EmbeddingNormalization::None,
+            ),
+            vec![String::from("hello")],
+        );
+
+        let receipt =
+            ExecutionReceipt::failed_for_request("cpu", &request, 5, 6, "backend offline");
+        assert_eq!(receipt.status, ReceiptStatus::Failed);
+        assert_eq!(receipt.failure_reason.as_deref(), Some("backend offline"));
+    }
+
+    #[test]
+    fn request_digest_is_deterministic() {
+        let request = EmbeddingRequest::new(
+            "req-5",
+            EmbeddingModelDescriptor::new(
+                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
+                8,
+                EmbeddingNormalization::None,
+            ),
+            vec![String::from("same input")],
+        );
+
+        let first = digest_embedding_request(&request);
+        let second = digest_embedding_request(&request);
+        assert_eq!(first, second);
     }
 
     #[test]

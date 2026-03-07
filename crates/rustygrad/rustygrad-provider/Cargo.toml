@@ -14,7 +14,9 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+hex = { workspace = true }
 rustygrad-runtime = { path = "../rustygrad-runtime" }
 rustygrad-serve = { path = "../rustygrad-serve" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+sha2 = { workspace = true }
