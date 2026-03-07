@@ -6887,6 +6887,99 @@ dependencies = [
 ]
 
 [[package]]
+name = "rustygrad-backend-amd-kfd"
+version = "0.1.0"
+
+[[package]]
+name = "rustygrad-backend-amd-userspace"
+version = "0.1.0"
+
+[[package]]
+name = "rustygrad-backend-cpu"
+version = "0.1.0"
+dependencies = [
+ "rustygrad-compiler",
+ "rustygrad-core",
+ "rustygrad-ir",
+ "rustygrad-runtime",
+]
+
+[[package]]
+name = "rustygrad-backend-metal"
+version = "0.1.0"
+
+[[package]]
+name = "rustygrad-compiler"
+version = "0.1.0"
+dependencies = [
+ "rustygrad-core",
+ "rustygrad-ir",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "rustygrad-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rustygrad-ir"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "rustygrad-core",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "rustygrad-models"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "rustygrad-provider"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "rustygrad-runtime",
+ "rustygrad-serve",
+ "serde",
+ "serde_json",
+ "sha2",
+]
+
+[[package]]
+name = "rustygrad-runtime"
+version = "0.1.0"
+dependencies = [
+ "rustygrad-core",
+ "rustygrad-ir",
+ "serde",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "rustygrad-serve"
+version = "0.1.0"
+dependencies = [
+ "rustygrad-backend-cpu",
+ "rustygrad-core",
+ "rustygrad-ir",
+ "rustygrad-models",
+ "rustygrad-provider",
+ "rustygrad-runtime",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "ryu"
 version = "1.0.22"
 source = "registry+https://github.com/rust-lang/crates.io-index"

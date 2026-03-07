@@ -14,6 +14,14 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+rustygrad-backend-cpu = { path = "../rustygrad-backend-cpu" }
+rustygrad-core = { path = "../rustygrad-core" }
+rustygrad-ir = { path = "../rustygrad-ir" }
 rustygrad-models = { path = "../rustygrad-models" }
+rustygrad-runtime = { path = "../rustygrad-runtime" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+rustygrad-provider = { path = "../rustygrad-provider" }
