@@ -1,4 +1,5 @@
 use crate::app_state::PaneLoadState;
+use std::collections::BTreeSet;
 
 pub mod contract;
 pub mod editor;
@@ -149,6 +150,35 @@ pub struct ProjectOpsBoardDragState {
     pub from_status: ProjectOpsWorkItemStatus,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectOpsBulkActionOutcome {
+    pub action_label: String,
+    pub targeted_work_item_ids: Vec<ProjectOpsWorkItemId>,
+    pub applied_count: usize,
+    pub skipped_count: usize,
+    pub failures: Vec<String>,
+}
+
+impl ProjectOpsBulkActionOutcome {
+    pub fn summary_line(&self) -> String {
+        let targeted = self.targeted_work_item_ids.len();
+        if self.failures.is_empty() {
+            format!(
+                "{} applied to {}/{} selected items",
+                self.action_label, self.applied_count, targeted
+            )
+        } else {
+            format!(
+                "{} applied to {}/{} selected items ({} failed)",
+                self.action_label,
+                self.applied_count,
+                targeted,
+                self.failures.len()
+            )
+        }
+    }
+}
+
 pub struct ProjectOpsPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -163,6 +193,8 @@ pub struct ProjectOpsPaneState {
     pub presentation_mode: ProjectOpsPresentationMode,
     pub board_lanes: Vec<ProjectOpsBoardLane>,
     pub board_drag_state: Option<ProjectOpsBoardDragState>,
+    pub bulk_selected_work_item_ids: Vec<ProjectOpsWorkItemId>,
+    pub bulk_action_status: Option<String>,
     pub selected_work_item_id: Option<ProjectOpsWorkItemId>,
     pub empty_state_copy: String,
     pub visible_activity_rows: Vec<ProjectOpsActivityRow>,
@@ -318,6 +350,8 @@ impl Default for ProjectOpsPaneState {
             presentation_mode: ProjectOpsPresentationMode::List,
             board_lanes,
             board_drag_state: None,
+            bulk_selected_work_item_ids: Vec::new(),
+            bulk_action_status: None,
             selected_work_item_id,
             empty_state_copy,
             visible_activity_rows,
@@ -390,6 +424,8 @@ impl ProjectOpsPaneState {
             presentation_mode: ProjectOpsPresentationMode::List,
             board_lanes,
             board_drag_state: None,
+            bulk_selected_work_item_ids: Vec::new(),
+            bulk_action_status: None,
             selected_work_item_id,
             empty_state_copy,
             visible_activity_rows,
@@ -458,6 +494,7 @@ impl ProjectOpsPaneState {
             return false;
         }
         self.selected_work_item_id = Some(work_item_id.clone());
+        self.bulk_selected_work_item_ids = vec![work_item_id.clone()];
         self.sync_detail_draft_from_selection();
         self.last_action = Some(format!("Selected {}", work_item_id.as_str()));
         true
@@ -508,6 +545,7 @@ impl ProjectOpsPaneState {
         };
         self.presentation_mode = ProjectOpsPresentationMode::Board;
         self.selected_work_item_id = Some(dragged_work_item_id.clone());
+        self.bulk_selected_work_item_ids = vec![dragged_work_item_id.clone()];
         self.sync_detail_draft_from_selection();
         self.board_drag_state = Some(ProjectOpsBoardDragState {
             work_item_id: dragged_work_item_id.clone(),
@@ -550,6 +588,84 @@ impl ProjectOpsPaneState {
         Ok(moved)
     }
 
+    pub fn toggle_bulk_selection(&mut self, work_item_id: &str) -> bool {
+        let normalized = work_item_id.trim();
+        if normalized.is_empty() {
+            return false;
+        }
+        let Some(target_id) = self
+            .visible_work_items
+            .iter()
+            .find(|item| item.work_item_id.as_str() == normalized)
+            .map(|item| item.work_item_id.clone())
+        else {
+            return false;
+        };
+        if let Some(index) = self
+            .bulk_selected_work_item_ids
+            .iter()
+            .position(|item| item == &target_id)
+        {
+            self.bulk_selected_work_item_ids.remove(index);
+        } else {
+            self.bulk_selected_work_item_ids.push(target_id.clone());
+            self.bulk_selected_work_item_ids =
+                self.normalize_bulk_selection_ids(self.bulk_selected_work_item_ids.as_slice());
+        }
+        self.selected_work_item_id = Some(target_id);
+        self.sync_detail_draft_from_selection();
+        self.last_action = Some(format!(
+            "Bulk selection -> {} items",
+            self.bulk_selected_work_item_ids.len()
+        ));
+        true
+    }
+
+    pub fn set_bulk_selection(&mut self, work_item_ids: &[&str]) -> usize {
+        let candidate_ids = work_item_ids
+            .iter()
+            .filter_map(|work_item_id| ProjectOpsWorkItemId::new(*work_item_id).ok())
+            .collect::<Vec<_>>();
+        self.bulk_selected_work_item_ids =
+            self.normalize_bulk_selection_ids(candidate_ids.as_slice());
+        if let Some(selected) = self.bulk_selected_work_item_ids.first() {
+            self.selected_work_item_id = Some(selected.clone());
+        }
+        self.sync_detail_draft_from_selection();
+        self.last_action = Some(format!(
+            "Bulk selection -> {} items",
+            self.bulk_selected_work_item_ids.len()
+        ));
+        self.bulk_selected_work_item_ids.len()
+    }
+
+    pub fn select_all_visible_work_items(&mut self) -> usize {
+        self.bulk_selected_work_item_ids = self
+            .visible_work_items
+            .iter()
+            .map(|item| item.work_item_id.clone())
+            .collect();
+        if let Some(selected) = self.bulk_selected_work_item_ids.first() {
+            self.selected_work_item_id = Some(selected.clone());
+        }
+        self.sync_detail_draft_from_selection();
+        self.last_action = Some(format!(
+            "Bulk selection -> {} items",
+            self.bulk_selected_work_item_ids.len()
+        ));
+        self.bulk_selected_work_item_ids.len()
+    }
+
+    pub fn clear_bulk_selection(&mut self) -> bool {
+        if self.bulk_selected_work_item_ids.is_empty() {
+            return false;
+        }
+        self.bulk_selected_work_item_ids.clear();
+        self.bulk_action_status = None;
+        self.last_action = Some("Bulk selection cleared".to_string());
+        true
+    }
+
     fn refresh_derived_view_state(&mut self) {
         let (
             active_saved_view,
@@ -572,6 +688,8 @@ impl ProjectOpsPaneState {
         self.active_filter_chips = active_filter_chips;
         self.visible_work_items = visible_work_items;
         self.board_lanes = project_board_lanes(self.visible_work_items.as_slice());
+        self.bulk_selected_work_item_ids =
+            self.normalize_bulk_selection_ids(self.bulk_selected_work_item_ids.as_slice());
         if self.board_drag_state.as_ref().is_some_and(|drag| {
             !self.visible_work_items.iter().any(|item| {
                 item.work_item_id == drag.work_item_id && item.status == drag.from_status
@@ -990,6 +1108,81 @@ impl ProjectOpsPaneState {
         Ok(applied_any)
     }
 
+    pub fn apply_bulk_status_change(
+        &mut self,
+        status: ProjectOpsWorkItemStatus,
+    ) -> Result<ProjectOpsBulkActionOutcome, String> {
+        self.apply_bulk_action(
+            format!("Bulk status -> {}", status.label()),
+            |work_item_id| {
+                ProjectOpsCommand::ChangeWorkItemStatus(contract::ProjectOpsChangeWorkItemStatus {
+                    work_item_id: work_item_id.clone(),
+                    status,
+                })
+            },
+        )
+    }
+
+    pub fn apply_bulk_assignee(
+        &mut self,
+        assignee: Option<&str>,
+    ) -> Result<ProjectOpsBulkActionOutcome, String> {
+        let normalized = assignee
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(ToString::to_string);
+        let action_label = normalized.as_deref().map_or_else(
+            || "Bulk assignee clear".to_string(),
+            |assignee| format!("Bulk assignee -> {assignee}"),
+        );
+        self.apply_bulk_action(action_label, move |work_item_id| {
+            if let Some(assignee) = normalized.clone() {
+                ProjectOpsCommand::AssignWorkItem(contract::ProjectOpsAssignWorkItem {
+                    work_item_id: work_item_id.clone(),
+                    assignee,
+                })
+            } else {
+                ProjectOpsCommand::ClearAssignee(contract::ProjectOpsWorkItemRef {
+                    work_item_id: work_item_id.clone(),
+                })
+            }
+        })
+    }
+
+    pub fn apply_bulk_cycle_change(
+        &mut self,
+        cycle_id: Option<ProjectOpsCycleId>,
+    ) -> Result<ProjectOpsBulkActionOutcome, String> {
+        let action_label = cycle_id.as_ref().map_or_else(
+            || "Bulk cycle clear".to_string(),
+            |cycle_id| format!("Bulk cycle -> {}", cycle_id.as_str()),
+        );
+        self.apply_bulk_action(action_label, move |work_item_id| {
+            if let Some(cycle_id) = cycle_id.clone() {
+                ProjectOpsCommand::SetWorkItemCycle(contract::ProjectOpsSetWorkItemCycle {
+                    work_item_id: work_item_id.clone(),
+                    cycle_id,
+                })
+            } else {
+                ProjectOpsCommand::ClearWorkItemCycle(contract::ProjectOpsWorkItemRef {
+                    work_item_id: work_item_id.clone(),
+                })
+            }
+        })
+    }
+
+    pub fn apply_bulk_archive(&mut self) -> Result<ProjectOpsBulkActionOutcome, String> {
+        self.apply_bulk_action("Bulk archive".to_string(), |work_item_id| {
+            ProjectOpsCommand::ArchiveWorkItem(contract::ProjectOpsWorkItemRef {
+                work_item_id: work_item_id.clone(),
+            })
+        })
+    }
+
+    pub fn apply_bulk_cancel(&mut self) -> Result<ProjectOpsBulkActionOutcome, String> {
+        self.apply_bulk_status_change(ProjectOpsWorkItemStatus::Cancelled)
+    }
+
     fn move_work_item_to_status(
         &mut self,
         work_item_id: &ProjectOpsWorkItemId,
@@ -1023,6 +1216,113 @@ impl ProjectOpsPaneState {
         self.sync_detail_draft_from_selection();
         let _ = self.pilot_metrics.record_command("ChangeWorkItemStatus");
         Ok(matches!(result, ProjectOpsCommandResult::Applied(_)))
+    }
+
+    fn apply_bulk_action<F>(
+        &mut self,
+        action_label: String,
+        build_command: F,
+    ) -> Result<ProjectOpsBulkActionOutcome, String>
+    where
+        F: Fn(&ProjectOpsWorkItemId) -> ProjectOpsCommand,
+    {
+        if !self.feature_enabled {
+            return Err(project_ops_error(
+                ProjectOpsErrorCode::InvalidCommand,
+                "project ops feature gate is disabled",
+            ));
+        }
+        let targeted_work_item_ids = self.effective_bulk_selection_ids();
+        if targeted_work_item_ids.is_empty() {
+            return Err(project_ops_error(
+                ProjectOpsErrorCode::InvalidCommand,
+                "select one or more visible work items before running a bulk action",
+            ));
+        }
+
+        let issued_at_unix_ms = now_unix_ms();
+        let mut applied_count = 0usize;
+        let mut skipped_count = 0usize;
+        let mut failures = Vec::new();
+        let mut applied_command_labels = Vec::new();
+
+        for (index, work_item_id) in targeted_work_item_ids.iter().enumerate() {
+            let command = build_command(work_item_id);
+            let command_label = command.name().label().to_string();
+            let envelope = ProjectOpsCommandEnvelope {
+                command_id: ProjectOpsCommandId::new(format!(
+                    "pm-bulk-{issued_at_unix_ms}-{index}-{}-{}",
+                    command_label,
+                    work_item_id.as_str()
+                ))?,
+                issued_at_unix_ms: issued_at_unix_ms.saturating_add(index as u64),
+                actor: ProjectOpsActor {
+                    actor_id: None,
+                    actor_label: Some(self.operator_label.clone()),
+                },
+                command,
+            };
+            match ProjectOpsService::apply_command_to_store(&mut self.local_store, envelope) {
+                Ok(ProjectOpsCommandResult::Applied(_)) => {
+                    applied_count = applied_count.saturating_add(1);
+                    applied_command_labels.push(command_label);
+                }
+                Ok(ProjectOpsCommandResult::DuplicateCommand { .. }) => {
+                    skipped_count = skipped_count.saturating_add(1);
+                }
+                Err(error) => failures.push(format!("{} -> {}", work_item_id.as_str(), error)),
+            }
+        }
+
+        self.selected_work_item_id = targeted_work_item_ids.first().cloned();
+        self.refresh_derived_view_state();
+        let command_labels = applied_command_labels
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let _ = self
+            .pilot_metrics
+            .record_commands(command_labels.as_slice());
+
+        let outcome = ProjectOpsBulkActionOutcome {
+            action_label,
+            targeted_work_item_ids,
+            applied_count,
+            skipped_count,
+            failures,
+        };
+        let summary = outcome.summary_line();
+        self.bulk_action_status = Some(summary.clone());
+        self.detail_save_status = Some(summary.clone());
+        self.last_action = Some(summary);
+        Ok(outcome)
+    }
+
+    fn effective_bulk_selection_ids(&self) -> Vec<ProjectOpsWorkItemId> {
+        if !self.bulk_selected_work_item_ids.is_empty() {
+            return self.normalize_bulk_selection_ids(self.bulk_selected_work_item_ids.as_slice());
+        }
+        self.selected_work_item_id
+            .as_ref()
+            .map(|selected| self.normalize_bulk_selection_ids(std::slice::from_ref(selected)))
+            .unwrap_or_default()
+    }
+
+    fn normalize_bulk_selection_ids(
+        &self,
+        candidate_ids: &[ProjectOpsWorkItemId],
+    ) -> Vec<ProjectOpsWorkItemId> {
+        let mut allowed = BTreeSet::new();
+        for candidate_id in candidate_ids {
+            allowed.insert(candidate_id.as_str().to_string());
+        }
+        let mut selected_ids = Vec::new();
+        for item in &self.visible_work_items {
+            if allowed.remove(item.work_item_id.as_str()) {
+                selected_ids.push(item.work_item_id.clone());
+            }
+        }
+        selected_ids
     }
 
     fn sync_detail_draft_from_selection(&mut self) {
@@ -2047,6 +2347,169 @@ mod tests {
                 .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
                 .unwrap_or(0),
             work_items_seq_before
+        );
+    }
+
+    #[test]
+    fn bulk_status_change_routes_explicit_commands_for_each_selected_row() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        let work_items_seq_before = pane
+            .local_store
+            .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+            .unwrap_or(0);
+        let activity_count_before = pane.local_store.activity_rows.len();
+
+        assert_eq!(pane.set_bulk_selection(&["wi-1", "wi-2"]), 2);
+        let outcome = pane
+            .apply_bulk_cancel()
+            .expect("bulk cancel should execute through PM command path");
+
+        assert_eq!(
+            outcome
+                .targeted_work_item_ids
+                .iter()
+                .map(|work_item_id| work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2", "wi-1"]
+        );
+        assert_eq!(outcome.applied_count, 2);
+        assert!(outcome.failures.is_empty());
+        assert_eq!(
+            pane.local_store
+                .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+                .unwrap_or(0),
+            work_items_seq_before + 2
+        );
+        assert_eq!(
+            pane.local_store.activity_rows.len(),
+            activity_count_before + 2
+        );
+        assert_eq!(
+            pane.local_store
+                .work_items
+                .iter()
+                .filter(|item| {
+                    matches!(item.work_item_id.as_str(), "wi-1" | "wi-2")
+                        && item.status == ProjectOpsWorkItemStatus::Cancelled
+                })
+                .count(),
+            2
+        );
+        assert!(pane.visible_work_items.is_empty());
+        assert!(pane.bulk_selected_work_item_ids.is_empty());
+        assert_eq!(
+            pane.bulk_action_status.as_deref(),
+            Some("Bulk status -> cancelled applied to 2/2 selected items")
+        );
+        assert_eq!(
+            pane.pilot_metrics
+                .command_counts
+                .get("ChangeWorkItemStatus"),
+            Some(&2)
+        );
+    }
+
+    #[test]
+    fn bulk_assignment_and_cycle_change_follow_command_event_projection_path() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        assert!(pane.set_active_saved_view("all"));
+        assert_eq!(pane.set_bulk_selection(&["wi-1", "wi-2"]), 2);
+
+        let assign = pane
+            .apply_bulk_assignee(Some("teammate"))
+            .expect("bulk assign should succeed");
+        assert_eq!(assign.applied_count, 2);
+        assert!(assign.failures.is_empty());
+
+        let clear_cycle = pane
+            .apply_bulk_cycle_change(None)
+            .expect("bulk cycle clear should succeed");
+        assert_eq!(clear_cycle.applied_count, 2);
+        assert!(clear_cycle.failures.is_empty());
+
+        for item in pane
+            .local_store
+            .work_items
+            .iter()
+            .filter(|item| matches!(item.work_item_id.as_str(), "wi-1" | "wi-2"))
+        {
+            assert_eq!(item.assignee.as_deref(), Some("teammate"));
+            assert!(item.cycle_id.is_none());
+        }
+        assert_eq!(
+            pane.pilot_metrics.command_counts.get("AssignWorkItem"),
+            Some(&2)
+        );
+        assert_eq!(
+            pane.pilot_metrics.command_counts.get("ClearWorkItemCycle"),
+            Some(&2)
+        );
+        assert_eq!(
+            pane.bulk_action_status.as_deref(),
+            Some("Bulk cycle clear applied to 2/2 selected items")
+        );
+    }
+
+    #[test]
+    fn bulk_actions_report_partial_failures_without_hidden_mass_mutation() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        assert_eq!(pane.set_bulk_selection(&["wi-1", "wi-2"]), 2);
+
+        let outcome = pane
+            .apply_bulk_status_change(ProjectOpsWorkItemStatus::Backlog)
+            .expect("bulk status apply should return a truthful outcome");
+
+        assert_eq!(outcome.applied_count, 1);
+        assert_eq!(outcome.failures.len(), 1);
+        assert!(outcome.failures[0].contains("wi-2"));
+        assert!(outcome.failures[0].contains("invalid status transition"));
+        assert_eq!(
+            pane.local_store
+                .work_items
+                .iter()
+                .find(|item| item.work_item_id.as_str() == "wi-1")
+                .map(|item| item.status),
+            Some(ProjectOpsWorkItemStatus::Backlog)
+        );
+        assert_eq!(
+            pane.local_store
+                .work_items
+                .iter()
+                .find(|item| item.work_item_id.as_str() == "wi-2")
+                .map(|item| item.status),
+            Some(ProjectOpsWorkItemStatus::InProgress)
+        );
+        assert_eq!(
+            pane.bulk_action_status.as_deref(),
+            Some("Bulk status -> backlog applied to 1/2 selected items (1 failed)")
+        );
+    }
+
+    #[test]
+    fn bulk_archive_uses_archive_commands_and_clears_selection_when_rows_leave_view() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        let activity_count_before = pane.local_store.activity_rows.len();
+        assert_eq!(pane.select_all_visible_work_items(), 2);
+
+        let outcome = pane
+            .apply_bulk_archive()
+            .expect("bulk archive should succeed");
+
+        assert_eq!(outcome.applied_count, 2);
+        assert!(outcome.failures.is_empty());
+        assert_eq!(
+            pane.local_store.activity_rows.len(),
+            activity_count_before + 2
+        );
+        assert_eq!(
+            pane.pilot_metrics.command_counts.get("ArchiveWorkItem"),
+            Some(&2)
+        );
+        assert!(pane.visible_work_items.is_empty());
+        assert!(pane.bulk_selected_work_item_ids.is_empty());
+        assert_eq!(
+            pane.bulk_action_status.as_deref(),
+            Some("Bulk archive applied to 2/2 selected items")
         );
     }
 
