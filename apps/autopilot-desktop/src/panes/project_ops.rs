@@ -209,6 +209,22 @@ pub fn paint_project_ops_pane(
         11.0,
         theme::text::PRIMARY,
     ));
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Pilot: commands={} views={} rebuilds={} last={}ms",
+            state.pilot_metrics.command_counts.len(),
+            state.pilot_metrics.view_counts.len(),
+            state.pilot_metrics.projection_rebuild_count,
+            state
+                .pilot_metrics
+                .last_projection_rebuild_duration_ms
+                .unwrap_or(0)
+        )
+        .as_str(),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 122.0),
+        10.0,
+        theme::text::MUTED,
+    ));
 
     let checkpoint_status = format!(
         "Checkpoints: max={} wi={:?} act={:?} cyc={:?} view={:?}",
@@ -228,7 +244,7 @@ pub fn paint_project_ops_pane(
     );
     paint.scene.draw_text(paint.text.layout(
         checkpoint_status.as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 124.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 140.0),
         11.0,
         theme::text::MUTED,
     ));
@@ -243,14 +259,14 @@ pub fn paint_project_ops_pane(
                 .unwrap_or("<none>")
         )
         .as_str(),
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 148.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 162.0),
         11.0,
         theme::text::PRIMARY,
     ));
     if let Some(selection_notice) = state.selection_notice.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             selection_notice,
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 166.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 180.0),
             10.0,
             theme::status::WARNING,
         ));
@@ -296,7 +312,7 @@ pub fn paint_project_ops_pane(
         for (index, line) in detail_lines.iter().enumerate() {
             paint.scene.draw_text(paint.text.layout(
                 line.as_str(),
-                Point::new(detail.origin.x + 12.0, detail.origin.y + 186.0 + index as f32 * 18.0),
+                Point::new(detail.origin.x + 12.0, detail.origin.y + 200.0 + index as f32 * 18.0),
                 10.5,
                 theme::text::PRIMARY,
             ));
@@ -304,7 +320,7 @@ pub fn paint_project_ops_pane(
     } else {
         paint.scene.draw_text(paint.text.layout(
             "Select a work item to load the detail editor.",
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 188.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 202.0),
             10.5,
             theme::text::SECONDARY,
         ));
@@ -345,14 +361,14 @@ pub fn paint_project_ops_pane(
     ));
     paint.scene.draw_text(paint.text.layout(
         "Activity Timeline",
-        Point::new(detail.origin.x + 12.0, detail.origin.y + 304.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 318.0),
         12.0,
         theme::text::PRIMARY,
     ));
     if state.visible_activity_rows.is_empty() {
         paint.scene.draw_text(paint.text.layout(
             state.activity_empty_state.as_str(),
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 326.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 340.0),
             10.5,
             theme::text::SECONDARY,
         ));
@@ -367,7 +383,7 @@ pub fn paint_project_ops_pane(
                     row.summary
                 )
                 .as_str(),
-                Point::new(detail.origin.x + 12.0, detail.origin.y + 326.0 + index as f32 * 18.0),
+                Point::new(detail.origin.x + 12.0, detail.origin.y + 340.0 + index as f32 * 18.0),
                 10.0,
                 theme::text::PRIMARY,
             ));
