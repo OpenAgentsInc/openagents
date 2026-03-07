@@ -1658,6 +1658,7 @@ mod tests {
                     Shape::new(vec![4, 4]),
                     DType::F32,
                 )],
+                artifacts: Vec::new(),
             },
         )
     }
