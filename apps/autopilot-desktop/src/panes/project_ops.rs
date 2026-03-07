@@ -409,6 +409,19 @@ pub fn paint_project_ops_pane(
     }
 
     if let Some(detail_draft) = state.detail_draft.as_ref() {
+        let parent_summary = detail_draft
+            .parent_id
+            .as_ref()
+            .map(|parent_id| {
+                state
+                    .local_store
+                    .work_items
+                    .iter()
+                    .find(|item| &item.work_item_id == parent_id)
+                    .map(|item| format!("{} ({})", parent_id.as_str(), item.title))
+                    .unwrap_or_else(|| format!("{} (missing)", parent_id.as_str()))
+            })
+            .unwrap_or_else(|| "none".to_string());
         let detail_lines = [
             format!("Title: {}", detail_draft.title),
             format!("Description: {}", detail_draft.description),
@@ -427,12 +440,20 @@ pub fn paint_project_ops_pane(
                     .unwrap_or("none")
             ),
             format!(
-                "Parent: {} | Blocked: {}",
+                "Parent: {} | Due: {}",
+                parent_summary,
                 detail_draft
-                    .parent_id
-                    .as_ref()
-                    .map(|parent_id| parent_id.as_str())
-                    .unwrap_or("none"),
+                    .due_at_unix_ms
+                    .map(|due_at| due_at.to_string())
+                    .unwrap_or_else(|| "none".to_string())
+            ),
+            format!(
+                "Tags: {} | Blocked: {}",
+                if detail_draft.area_tags.is_empty() {
+                    "none".to_string()
+                } else {
+                    detail_draft.area_tags.join(", ")
+                },
                 detail_draft.blocked_reason.as_deref().unwrap_or("none")
             ),
             format!(
@@ -464,13 +485,23 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Quick Create: title={} | priority={} | desc={}",
+                "Quick Create: title={} | priority={} | due={} | tags={} | desc={}",
                 if state.quick_create_draft.title.is_empty() {
                     "<empty>"
                 } else {
                     state.quick_create_draft.title.as_str()
                 },
                 state.quick_create_draft.priority.label(),
+                state
+                    .quick_create_draft
+                    .due_at_unix_ms
+                    .map(|due_at| due_at.to_string())
+                    .unwrap_or_else(|| "none".to_string()),
+                if state.quick_create_draft.area_tags.is_empty() {
+                    "none".to_string()
+                } else {
+                    state.quick_create_draft.area_tags.join(", ")
+                },
                 if state.quick_create_draft.description.is_empty() {
                     "<empty>"
                 } else {

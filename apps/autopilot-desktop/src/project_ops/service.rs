@@ -410,6 +410,20 @@ impl ProjectOpsService {
                         ),
                     ));
                 }
+                if parent_assignment_creates_cycle(
+                    work_items.as_slice(),
+                    &command.work_item_id,
+                    &command.parent_id,
+                ) {
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::InvalidCommand,
+                        format!(
+                            "setting parent {} for {} would create a parent cycle",
+                            command.parent_id.as_str(),
+                            command.work_item_id.as_str()
+                        ),
+                    ));
+                }
                 if current.parent_id.as_ref() == Some(&command.parent_id) {
                     return Err(project_ops_error(
                         ProjectOpsErrorCode::NoopMutation,
@@ -625,6 +639,24 @@ fn actor_display_label(actor: &ProjectOpsActor) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
+fn parent_assignment_creates_cycle(
+    work_items: &[ProjectOpsWorkItem],
+    work_item_id: &ProjectOpsWorkItemId,
+    candidate_parent_id: &ProjectOpsWorkItemId,
+) -> bool {
+    let mut cursor = Some(candidate_parent_id);
+    while let Some(current_parent_id) = cursor {
+        if current_parent_id == work_item_id {
+            return true;
+        }
+        cursor = work_items
+            .iter()
+            .find(|item| &item.work_item_id == current_parent_id)
+            .and_then(|item| item.parent_id.as_ref());
+    }
+    false
+}
+
 fn reject_archived_mutation(work_item: &ProjectOpsWorkItem, action: &str) -> Result<(), String> {
     if work_item.archived_at_unix_ms.is_some() {
         return Err(project_ops_error(
@@ -729,7 +761,7 @@ mod tests {
         ProjectOpsActor, ProjectOpsAssignWorkItem, ProjectOpsChangeWorkItemStatus,
         ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
         ProjectOpsCreateWorkItem, ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch,
-        ProjectOpsSetWorkItemCycle, ProjectOpsWorkItemDraft,
+        ProjectOpsSetParentWorkItem, ProjectOpsSetWorkItemCycle, ProjectOpsWorkItemDraft,
     };
     use crate::project_ops::projection::{ProjectOpsCycleRow, ProjectOpsProjectionStore};
     use crate::project_ops::schema::{
@@ -962,6 +994,60 @@ mod tests {
             .expect_err("missing work item should reject");
         assert!(error.contains("project_ops.work_item_missing:"));
         assert!(error.contains("does not exist"));
+    }
+
+    #[test]
+    fn parent_assignment_rejects_indirect_cycles() {
+        let mut service = service();
+        let _ = service
+            .apply_command(command_envelope(
+                "cmd-1",
+                1_762_000_000_000,
+                ProjectOpsCommand::CreateWorkItem(ProjectOpsCreateWorkItem {
+                    draft: draft(ProjectOpsWorkItemStatus::Todo),
+                }),
+            ))
+            .expect("first item should create");
+        let _ = service
+            .apply_command(command_envelope(
+                "cmd-2",
+                1_762_000_010_000,
+                ProjectOpsCommand::CreateWorkItem(ProjectOpsCreateWorkItem {
+                    draft: ProjectOpsWorkItemDraft {
+                        work_item_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-2")
+                            .expect("work item id"),
+                        ..draft(ProjectOpsWorkItemStatus::Todo)
+                    },
+                }),
+            ))
+            .expect("second item should create");
+        let _ = service
+            .apply_command(command_envelope(
+                "cmd-3",
+                1_762_000_020_000,
+                ProjectOpsCommand::SetParentWorkItem(ProjectOpsSetParentWorkItem {
+                    work_item_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-1")
+                        .expect("work item id"),
+                    parent_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-2")
+                        .expect("work item id"),
+                }),
+            ))
+            .expect("first parent assignment should succeed");
+
+        let error = service
+            .apply_command(command_envelope(
+                "cmd-4",
+                1_762_000_030_000,
+                ProjectOpsCommand::SetParentWorkItem(ProjectOpsSetParentWorkItem {
+                    work_item_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-2")
+                        .expect("work item id"),
+                    parent_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-1")
+                        .expect("work item id"),
+                }),
+            ))
+            .expect_err("cyclic parent assignment should reject");
+        assert!(error.contains("project_ops.invalid_command:"));
+        assert!(error.contains("would create a parent cycle"));
     }
 
     #[test]
