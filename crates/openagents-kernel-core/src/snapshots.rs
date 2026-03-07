@@ -179,6 +179,14 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub compute_indices_published_24h: u64,
     #[serde(default)]
+    pub compute_index_corrections_24h: u64,
+    #[serde(default)]
+    pub compute_index_thin_windows_24h: u64,
+    #[serde(default)]
+    pub compute_index_settlement_eligible_24h: u64,
+    #[serde(default)]
+    pub compute_index_quality_score_24h: f64,
+    #[serde(default)]
     pub liquidity_quotes_active: u64,
     #[serde(default)]
     pub liquidity_route_plans_active: u64,

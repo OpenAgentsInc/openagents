@@ -689,6 +689,10 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             "/v1/kernel/compute/indices/{index_id}",
             get(get_kernel_compute_index),
         )
+        .route(
+            "/v1/kernel/compute/indices/{index_id}/correct",
+            post(correct_kernel_compute_index),
+        )
         .route("/v1/kernel/data/assets", post(register_kernel_data_asset))
         .route("/v1/kernel/data/grants", post(create_kernel_access_grant))
         .route(
@@ -2171,6 +2175,42 @@ async fn publish_kernel_compute_index(
     Ok(Json(response))
 }
 
+async fn correct_kernel_compute_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(index_id): Path<String>,
+    Json(request): Json<proto_compute::CorrectComputeIndexRequest>,
+) -> Result<Json<proto_compute::CorrectComputeIndexResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let mut request = compute_contracts::correct_compute_index_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    request.superseded_index_id =
+        normalize_required_field(index_id.as_str(), "compute_index_id_missing")?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .correct_compute_index(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.index.corrected",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::correct_compute_index_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
 async fn register_kernel_data_asset(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2811,6 +2851,7 @@ fn kernel_api_error(reason: String) -> ApiError {
         "kernel_contract_not_found"
         | "kernel_work_unit_not_found"
         | "compute_product_not_found"
+        | "compute_index_not_found"
         | "capacity_lot_not_found"
         | "capacity_instrument_not_found"
         | "data_asset_not_found"
@@ -2833,6 +2874,10 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_capacity_instrument_mismatch"
         | "capacity_lot_instrument_mismatch"
         | "compute_product_not_index_eligible"
+        | "compute_index_window_already_published"
+        | "compute_index_already_superseded"
+        | "compute_index_correction_requires_new_index_id"
+        | "compute_index_id_conflict"
         | "data_asset_provider_mismatch"
         | "access_grant_consumer_mismatch"
         | "access_grant_already_revoked"
@@ -3410,6 +3455,11 @@ fn runtime_snapshot(
         compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
         compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
+        compute_index_corrections_24h: compute_metrics.compute_index_corrections_24h,
+        compute_index_thin_windows_24h: compute_metrics.compute_index_thin_windows_24h,
+        compute_index_settlement_eligible_24h: compute_metrics
+            .compute_index_settlement_eligible_24h,
+        compute_index_quality_score_24h: compute_metrics.compute_index_quality_score_24h,
         liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
         liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
         liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
@@ -3586,10 +3636,10 @@ mod tests {
     use openagents_kernel_core::authority::{
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
         AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-        CloseCapacityInstrumentRequest, CreateAccessGrantRequest, CreateAccessGrantResponse,
-        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
-        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
-        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+        CloseCapacityInstrumentRequest, CorrectComputeIndexRequest, CreateAccessGrantRequest,
+        CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
+        CreateComputeProductRequest, CreateContractRequest, CreateContractResponse,
+        CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
         CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
         CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
         ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
@@ -3607,9 +3657,9 @@ mod tests {
         CapacityInstrumentClosureReason, CapacityInstrumentKind, CapacityInstrumentStatus,
         CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState,
         ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily,
-        ComputeHostCapability, ComputeIndex, ComputeIndexStatus, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
-        DeliveryProofStatus, OllamaRuntimeCapability,
+        ComputeHostCapability, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
+        ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
+        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
     };
     use openagents_kernel_core::compute_contracts;
     use openagents_kernel_core::data::{
@@ -4107,10 +4157,47 @@ mod tests {
                 }),
                 methodology: Some("accepted_quantity_vwap".to_string()),
                 status: ComputeIndexStatus::Published,
+                correction_reason: None,
+                corrected_from_index_id: None,
                 metadata: json!({
                     "source": "authoritative-kernel"
                 }),
             },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn correct_compute_index_request(
+        superseded_index_id: &str,
+        corrected_index_id: &str,
+        idempotency_key: &str,
+        published_at_ms: i64,
+        correction_reason: ComputeIndexCorrectionReason,
+    ) -> CorrectComputeIndexRequest {
+        CorrectComputeIndexRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            superseded_index_id: superseded_index_id.to_string(),
+            corrected_index: ComputeIndex {
+                index_id: corrected_index_id.to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                observation_window_start_ms: published_at_ms - 60_000,
+                observation_window_end_ms: published_at_ms + 1,
+                published_at_ms,
+                observation_count: 0,
+                total_accepted_quantity: 0,
+                reference_price: None,
+                methodology: None,
+                status: ComputeIndexStatus::Published,
+                correction_reason: Some(correction_reason),
+                corrected_from_index_id: Some(superseded_index_id.to_string()),
+                metadata: json!({
+                    "source": "authoritative-kernel"
+                }),
+            },
+            correction_reason,
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -4206,6 +4293,23 @@ mod tests {
             published_at_ms,
         ))
         .expect("compute index wire request")
+    }
+
+    fn correct_compute_index_wire_request(
+        superseded_index_id: &str,
+        corrected_index_id: &str,
+        idempotency_key: &str,
+        published_at_ms: i64,
+        correction_reason: ComputeIndexCorrectionReason,
+    ) -> proto_compute::CorrectComputeIndexRequest {
+        compute_contracts::correct_compute_index_request_to_proto(&correct_compute_index_request(
+            superseded_index_id,
+            corrected_index_id,
+            idempotency_key,
+            published_at_ms,
+            correction_reason,
+        ))
+        .expect("correct compute index wire request")
     }
 
     fn data_asset_request(
@@ -5683,6 +5787,17 @@ mod tests {
         );
         assert_eq!(index_payload.index.observation_count, 1);
         assert_eq!(index_payload.index.total_accepted_quantity, 6);
+        assert_eq!(index_payload.index.reference_price, None);
+        assert_eq!(
+            index_payload
+                .index
+                .metadata
+                .get("quality")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|quality| quality.get("thin_market"))
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
 
         let snapshot_response = app
             .clone()
@@ -5703,6 +5818,9 @@ mod tests {
         assert_eq!(snapshot.compute_delivery_proofs_24h, 1);
         assert_eq!(snapshot.compute_delivery_quantity_24h, 6);
         assert_eq!(snapshot.compute_indices_published_24h, 1);
+        assert_eq!(snapshot.compute_index_corrections_24h, 0);
+        assert_eq!(snapshot.compute_index_thin_windows_24h, 1);
+        assert_eq!(snapshot.compute_index_settlement_eligible_24h, 0);
 
         let stats_response = app
             .clone()
@@ -5722,6 +5840,9 @@ mod tests {
         assert_eq!(stats.compute_delivery_proofs_24h, 1);
         assert_eq!(stats.compute_delivery_quantity_24h, 6);
         assert_eq!(stats.compute_indices_published_24h, 1);
+        assert_eq!(stats.compute_index_corrections_24h, 0);
+        assert_eq!(stats.compute_index_thin_windows_24h, 1);
+        assert_eq!(stats.compute_index_settlement_eligible_24h, 0);
         assert!(
             stats
                 .recent_receipts
@@ -5831,6 +5952,259 @@ mod tests {
             closed_payload.instrument.closure_reason,
             Some(CapacityInstrumentClosureReason::Defaulted)
         );
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compute_index_correction_route_supersedes_prior_index_and_updates_stats() -> Result<()>
+    {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(30_000);
+
+        let product = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_product_wire_request(
+                            "ollama.text_generation",
+                            "idemp.compute.product.index-correct",
+                            created_at_ms,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(product.status(), StatusCode::OK);
+
+        let lot = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
+                        "lot.compute.index-correct",
+                        "ollama.text_generation",
+                        "idemp.compute.lot.index-correct",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(lot.status(), StatusCode::OK);
+
+        let first_instrument = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &capacity_instrument_wire_request(
+                            "instrument.compute.index-correct.alpha",
+                            "ollama.text_generation",
+                            "lot.compute.index-correct",
+                            "idemp.compute.instrument.index-correct.alpha",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_instrument.status(), StatusCode::OK);
+
+        let first_delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots/lot.compute.index-correct/delivery_proofs")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &delivery_proof_wire_request(
+                            "delivery.compute.index-correct.alpha",
+                            "ollama.text_generation",
+                            "lot.compute.index-correct",
+                            "instrument.compute.index-correct.alpha",
+                            "idemp.compute.delivery.index-correct.alpha",
+                            created_at_ms + 3_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(first_delivery.status(), StatusCode::OK);
+
+        let published = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/indices")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_index_wire_request(
+                            "index.compute.index-correct",
+                            "ollama.text_generation",
+                            "idemp.compute.index-correct.publish",
+                            created_at_ms + 4_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(published.status(), StatusCode::OK);
+
+        let mut second_lot = capacity_lot_request(
+            "lot.compute.index-correct.beta",
+            "ollama.text_generation",
+            "idemp.compute.lot.index-correct.beta",
+            created_at_ms + 1_500,
+        );
+        second_lot.lot.provider_id = "desktop-provider.beta".to_string();
+        let second_lot = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::create_capacity_lot_request_to_proto(&second_lot)?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_lot.status(), StatusCode::OK);
+
+        let mut second_instrument = capacity_instrument_request(
+            "instrument.compute.index-correct.beta",
+            "ollama.text_generation",
+            "lot.compute.index-correct.beta",
+            "idemp.compute.instrument.index-correct.beta",
+            created_at_ms + 5_000,
+        );
+        second_instrument.instrument.provider_id = Some("desktop-provider.beta".to_string());
+        second_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_800),
+        });
+        let second_instrument = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::create_capacity_instrument_request_to_proto(
+                            &second_instrument,
+                        )?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_instrument.status(), StatusCode::OK);
+
+        let mut second_delivery = delivery_proof_request(
+            "delivery.compute.index-correct.beta",
+            "ollama.text_generation",
+            "lot.compute.index-correct.beta",
+            "instrument.compute.index-correct.beta",
+            "idemp.compute.delivery.index-correct.beta",
+            created_at_ms + 3_500,
+        );
+        second_delivery.delivery_proof.created_at_ms = created_at_ms + 3_500;
+        let second_delivery = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots/lot.compute.index-correct.beta/delivery_proofs")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::record_delivery_proof_request_to_proto(
+                            &second_delivery,
+                        )?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_delivery.status(), StatusCode::OK);
+
+        let corrected = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/indices/index.compute.index-correct/correct")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &correct_compute_index_wire_request(
+                            "index.compute.index-correct",
+                            "index.compute.index-correct.v2",
+                            "idemp.compute.index-correct.correct",
+                            created_at_ms + 7_000,
+                            ComputeIndexCorrectionReason::LateObservation,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(corrected.status(), StatusCode::OK);
+        let corrected_payload = compute_contracts::correct_compute_index_response_from_proto(
+            &response_json::<proto_compute::CorrectComputeIndexResponse>(corrected).await?,
+        )?;
+        assert_eq!(
+            corrected_payload.receipt.receipt_type,
+            "kernel.compute.index.correct.v1"
+        );
+        assert_eq!(
+            corrected_payload.superseded_index.status,
+            ComputeIndexStatus::Superseded
+        );
+        assert_eq!(
+            corrected_payload
+                .corrected_index
+                .corrected_from_index_id
+                .as_deref(),
+            Some("index.compute.index-correct")
+        );
+        assert!(corrected_payload.corrected_index.reference_price.is_some());
+        assert_eq!(
+            corrected_payload
+                .corrected_index
+                .metadata
+                .get("governance")
+                .and_then(serde_json::Value::as_object)
+                .and_then(|governance| governance.get("settlement_eligible"))
+                .and_then(serde_json::Value::as_bool),
+            Some(true)
+        );
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.compute_indices_published_24h, 2);
+        assert_eq!(stats.compute_index_corrections_24h, 1);
+        assert_eq!(stats.compute_index_thin_windows_24h, 1);
+        assert_eq!(stats.compute_index_settlement_eligible_24h, 1);
 
         Ok(())
     }
@@ -6151,6 +6525,72 @@ mod tests {
             ))
             .await?;
         assert_eq!(index.index.index_id, "index.compute.client");
+        assert_eq!(index.index.reference_price, None);
+
+        let mut second_lot = capacity_lot_request(
+            "lot.compute.client.beta",
+            "ollama.text_generation",
+            "idemp.compute.client.lot.beta",
+            created_at_ms + 1_500,
+        );
+        second_lot.lot.provider_id = "desktop-provider.beta".to_string();
+        let second_lot = client.create_capacity_lot(second_lot).await?;
+        assert_eq!(second_lot.lot.capacity_lot_id, "lot.compute.client.beta");
+
+        let mut second_instrument = capacity_instrument_request(
+            "instrument.compute.client.beta",
+            "ollama.text_generation",
+            "lot.compute.client.beta",
+            "idemp.compute.client.instrument.beta",
+            created_at_ms + 5_000,
+        );
+        second_instrument.instrument.provider_id = Some("desktop-provider.beta".to_string());
+        second_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_800),
+        });
+        let second_instrument = client.create_capacity_instrument(second_instrument).await?;
+        assert_eq!(
+            second_instrument.instrument.instrument_id,
+            "instrument.compute.client.beta"
+        );
+
+        let second_delivery = client
+            .record_delivery_proof(delivery_proof_request(
+                "delivery.compute.client.beta",
+                "ollama.text_generation",
+                "lot.compute.client.beta",
+                "instrument.compute.client.beta",
+                "idemp.compute.client.delivery.beta",
+                created_at_ms + 3_500,
+            ))
+            .await?;
+        assert_eq!(
+            second_delivery.delivery_proof.delivery_proof_id,
+            "delivery.compute.client.beta"
+        );
+
+        let corrected_index = client
+            .correct_compute_index(correct_compute_index_request(
+                "index.compute.client",
+                "index.compute.client.v2",
+                "idemp.compute.client.index.correct",
+                created_at_ms + 7_000,
+                ComputeIndexCorrectionReason::LateObservation,
+            ))
+            .await?;
+        assert_eq!(
+            corrected_index.superseded_index.status,
+            ComputeIndexStatus::Superseded
+        );
+        assert_eq!(
+            corrected_index
+                .corrected_index
+                .corrected_from_index_id
+                .as_deref(),
+            Some("index.compute.client")
+        );
+        assert!(corrected_index.corrected_index.reference_price.is_some());
 
         let listed_products = client
             .list_compute_products(Some(ComputeProductStatus::Active))
@@ -6196,6 +6636,11 @@ mod tests {
                 .iter()
                 .any(|item| item.index_id == "index.compute.client")
         );
+        assert!(
+            listed_indices
+                .iter()
+                .any(|item| item.index_id == "index.compute.client.v2")
+        );
 
         let fetched_product = client.get_compute_product("ollama.text_generation").await?;
         assert_eq!(fetched_product.product_id, "ollama.text_generation");
@@ -6217,8 +6662,8 @@ mod tests {
             "delivery.compute.client"
         );
 
-        let fetched_index = client.get_compute_index("index.compute.client").await?;
-        assert_eq!(fetched_index.index_id, "index.compute.client");
+        let fetched_index = client.get_compute_index("index.compute.client.v2").await?;
+        assert_eq!(fetched_index.index_id, "index.compute.client.v2");
 
         let closed = client
             .close_capacity_instrument(close_capacity_instrument_request(
