@@ -987,18 +987,22 @@ pub struct CpuReferenceTextGenerationService {
     backend: CpuBackend,
     models: InMemoryGenerationModelRegistry<CpuReferenceGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
+    model_descriptor: DecoderModelDescriptor,
 }
 
 impl CpuReferenceTextGenerationService {
     /// Creates a service with the default reference decoder loaded.
     pub fn new() -> Result<Self, ReferenceTextGenerationError> {
-        let mut service = Self {
+        let model = ReferenceWordDecoder::new();
+        let model_descriptor = model.descriptor().clone();
+        let mut models = InMemoryGenerationModelRegistry::new();
+        models.load(CpuReferenceGenerationModel::new(model)?);
+        Ok(Self {
             backend: CpuBackend::new(),
-            models: InMemoryGenerationModelRegistry::new(),
+            models,
             sessions: InMemoryGenerationSessionStore::new(),
-        };
-        service.load_model(ReferenceWordDecoder::new())?;
-        Ok(service)
+            model_descriptor,
+        })
     }
 
     /// Loads or replaces a reference decoder model.
@@ -1006,6 +1010,7 @@ impl CpuReferenceTextGenerationService {
         &mut self,
         model: ReferenceWordDecoder,
     ) -> Result<(), ReferenceTextGenerationError> {
+        self.model_descriptor = model.descriptor().clone();
         self.models.load(CpuReferenceGenerationModel::new(model)?);
         Ok(())
     }
@@ -1013,10 +1018,7 @@ impl CpuReferenceTextGenerationService {
     /// Returns the default reference model descriptor.
     #[must_use]
     pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
-        match self.models.active(ReferenceWordDecoder::MODEL_ID) {
-            Some(model) => model.descriptor(),
-            None => panic!("default reference decoder loaded"),
-        }
+        &self.model_descriptor
     }
 
     /// Returns the compiled plan digest for a loaded model.
@@ -1056,15 +1058,6 @@ impl CpuReferenceTextGenerationService {
     }
 }
 
-impl Default for CpuReferenceTextGenerationService {
-    fn default() -> Self {
-        match Self::new() {
-            Ok(service) => service,
-            Err(error) => panic!("reference text-generation service should load: {error}"),
-        }
-    }
-}
-
 impl TextGenerationExecutor for CpuReferenceTextGenerationService {
     type Error = ReferenceTextGenerationError;
 
@@ -1079,6 +1072,7 @@ pub struct CpuModelTextGenerationService {
     backend: CpuBackend,
     models: InMemoryGenerationModelRegistry<CpuModelGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
+    model_descriptor: DecoderModelDescriptor,
 }
 
 impl CpuModelTextGenerationService {
@@ -1086,13 +1080,16 @@ impl CpuModelTextGenerationService {
     pub fn from_safetensors_artifact(
         path: impl AsRef<std::path::Path>,
     ) -> Result<Self, ReferenceTextGenerationError> {
-        let mut service = Self {
+        let model = ArtifactWordDecoder::from_safetensors_artifact(path)?;
+        let model_descriptor = model.descriptor().clone();
+        let mut models = InMemoryGenerationModelRegistry::new();
+        models.load(CpuModelGenerationModel::new(model)?);
+        Ok(Self {
             backend: CpuBackend::new(),
-            models: InMemoryGenerationModelRegistry::new(),
+            models,
             sessions: InMemoryGenerationSessionStore::new(),
-        };
-        service.load_model(ArtifactWordDecoder::from_safetensors_artifact(path)?)?;
-        Ok(service)
+            model_descriptor,
+        })
     }
 
     /// Loads or replaces an artifact-backed decoder model.
@@ -1100,6 +1097,7 @@ impl CpuModelTextGenerationService {
         &mut self,
         model: ArtifactWordDecoder,
     ) -> Result<(), ReferenceTextGenerationError> {
+        self.model_descriptor = model.descriptor().clone();
         self.models.load(CpuModelGenerationModel::new(model)?);
         Ok(())
     }
@@ -1107,10 +1105,7 @@ impl CpuModelTextGenerationService {
     /// Returns the loaded model descriptor.
     #[must_use]
     pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
-        match self.models.active(ArtifactWordDecoder::MODEL_ID) {
-            Some(model) => model.descriptor(),
-            None => panic!("artifact-backed decoder loaded"),
-        }
+        &self.model_descriptor
     }
 
     /// Returns the compiled plan digest for the loaded model.
