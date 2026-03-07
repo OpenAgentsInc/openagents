@@ -150,6 +150,11 @@ impl DeckApp {
         palette: &DeckPalette,
         cx: &mut PaintContext,
     ) {
+        if is_minimal_title_slide(slide) {
+            self.paint_minimal_title_slide(slide, content_bounds, cx);
+            return;
+        }
+
         let body_top = self.paint_slide_header(slide, content_bounds, palette, 42.0, cx);
         let gap = 18.0;
         let panel_height = (content_bounds.max_y() - body_top).max(1.0);
@@ -206,6 +211,49 @@ impl DeckApp {
             cx,
         );
         self.paint_diagram(slide.diagram, right_bounds.inset(16.0), palette, cx);
+    }
+
+    fn paint_minimal_title_slide(
+        &self,
+        slide: &Slide,
+        content_bounds: Bounds,
+        cx: &mut PaintContext,
+    ) {
+        let title_width = (content_bounds.width() * 0.72).clamp(320.0, 860.0);
+        let title_y = content_bounds.min_y() + content_bounds.height() * 0.32;
+        let title_bounds = Bounds::new(
+            content_bounds.min_x() + (content_bounds.width() - title_width) * 0.5,
+            title_y,
+            title_width,
+            (content_bounds.height() * 0.28).max(120.0),
+        );
+
+        let title_height = draw_wrapped_text(
+            cx,
+            slide.title.as_str(),
+            title_bounds,
+            58.0,
+            theme::text::PRIMARY,
+            TextAlign::Center,
+            false,
+        );
+
+        if let Some(summary) = slide.summary.as_deref() {
+            draw_wrapped_text(
+                cx,
+                summary,
+                Bounds::new(
+                    title_bounds.min_x(),
+                    title_y + title_height + 20.0,
+                    title_bounds.width(),
+                    40.0,
+                ),
+                18.0,
+                theme::text::SECONDARY,
+                TextAlign::Center,
+                false,
+            );
+        }
     }
 
     fn paint_market_slide(
@@ -431,6 +479,16 @@ fn paint_background_wash(bounds: Bounds, palette: &DeckPalette, cx: &mut PaintCo
             .with_background(palette.wash.with_alpha(0.08))
             .with_corner_radius(28.0),
     );
+}
+
+fn is_minimal_title_slide(slide: &Slide) -> bool {
+    slide.layout == SlideLayout::Title
+        && slide.eyebrow.is_none()
+        && slide.diagram.is_none()
+        && slide
+            .markdown()
+            .map(|markdown| markdown.markdown.trim().is_empty())
+            .unwrap_or(true)
 }
 
 fn content_bounds(bounds: Bounds) -> Bounds {

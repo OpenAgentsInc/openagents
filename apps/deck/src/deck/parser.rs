@@ -68,10 +68,6 @@ impl DeckParser {
         };
 
         let markdown = markdown_body.trim();
-        if markdown.is_empty() {
-            return Err(format!("slide {} has no markdown body", index + 1));
-        }
-
         let document = self.markdown_parser.parse(markdown);
         let inferred_title = infer_markdown_title(&document);
         let title = raw_slide
@@ -397,5 +393,33 @@ title = "Broken"
         );
 
         assert!(parsed.is_err());
+    }
+
+    #[test]
+    fn parses_title_only_slide() {
+        let parsed = DeckParser::new().parse(
+            r#"
+---
++++
+title = "Autopilot"
+layout = "title"
++++
+"#,
+        );
+
+        assert!(parsed.is_ok(), "deck should parse: {parsed:?}");
+        let Ok(deck) = parsed else {
+            return;
+        };
+
+        assert_eq!(deck.slides.len(), 1);
+        assert_eq!(deck.slides[0].title, "Autopilot");
+        assert_eq!(deck.slides[0].layout, SlideLayout::Title);
+        assert_eq!(
+            deck.slides[0]
+                .markdown()
+                .map(|markdown| markdown.markdown.as_str()),
+            Some("")
+        );
     }
 }
