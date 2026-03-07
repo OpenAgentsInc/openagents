@@ -14,6 +14,8 @@ The new definition is:
 
 It is a narrow, installable, headless compute connector that can run on a spare laptop, desktop, workstation, or server, detect eligible local backends, expose standardized compute products, connect that supply to the OpenAgents network, execute supported jobs locally, emit delivery evidence, and track payouts.
 
+Pylon should also be shaped so bounded `sandbox_execution` can become the next compute family on the same provider substrate without reopening the product boundary. That means declared sandbox profiles, explicit resource and policy limits, and receiptable execution evidence. It does not mean arbitrary host access or labor-mode autonomous task execution.
+
 This plan does **not** change the current MVP ownership model:
 
 - `Autopilot` remains the primary user-facing product and the active owner of the current provider loop in `docs/MVP.md`.
@@ -67,10 +69,10 @@ What is missing is a plan that preserves the good part of Pylon without reviving
 Pylon v0 should own exactly these responsibilities:
 
 1. Machine and provider initialization.
-2. Backend detection and backend health checks.
-3. Compute-product derivation from detected backends.
+2. Backend detection, backend health checks, and extension-ready sandbox runtime/profile detection.
+3. Compute-product and execution-profile derivation from detected supply.
 4. Inventory publication and truthful provider lifecycle state.
-5. Acceptance and execution of supported compute jobs.
+5. Acceptance and execution of supported compute jobs inside declared backend or sandbox constraints.
 6. Delivery evidence and receipt emission.
 7. Earnings and payout-state tracking.
 8. Local status, recent jobs, and failure visibility.
@@ -87,6 +89,7 @@ These are explicit non-goals for the new Pylon:
 - no browser or WebSocket bridge
 - no Codex shell
 - no RLM product surface
+- no labor-mode autonomous task marketplace
 - no local general-purpose workstation runtime bundle
 - no broad wallet shell beyond what payout correctness requires
 - no revival of archived `crates/pylon`
@@ -137,6 +140,8 @@ Open issues that Pylon should align with closely:
 - `#3115` observability, policy breakers, verification matrix, and rollout gates
 
 Of those, `#3110` and `#3115` are the strongest blockers for a truthful public Pylon launch. `#3109` matters for shared provider truth and desktop integration, but its buyer-facing `Autopilot` UI scope is not itself a blocker for a narrow standalone provider node.
+
+The current open compute-market issues are still launch-family scoped around `inference` and `embeddings`. `sandbox_execution` should therefore be treated as a Pylon-extension track that reuses the same provider substrate, receipt model, and rollout controls rather than creating a second provider stack.
 
 ### 3. Later market-layer issues must stay compatible but should not block Pylon v0
 
@@ -196,6 +201,129 @@ Accelerator and machine traits belong in the capability envelope, not in the pri
 - `latency_posture`
 
 This keeps the launch market honest. Pylon is publishing compute products backed by local runtimes, not pretending to broker a raw GPU market on day one.
+
+### Planned next compute family: `sandbox_execution`
+
+The current repo-wide launch tranche under `#3116` remains `inference` and `embeddings`, but the Pylon plan should explicitly reserve the next compute-family extension for bounded `sandbox_execution`.
+
+`sandbox_execution` means:
+
+- bounded machine execution
+- explicit runtime contract
+- explicit resource limits
+- explicit filesystem policy
+- explicit network policy
+- explicit artifact and output policy
+- explicit timeout and termination policy
+- machine-verifiable receipts and delivery evidence
+
+It does not mean:
+
+- arbitrary host access
+- privileged execution
+- hidden secrets access
+- open-ended autonomous problem solving
+- labor-style agent tasks disguised as compute
+
+### Compute vs Labor boundary
+
+The hard boundary is:
+
+- If the buyer says "run this bounded thing in this declared sandbox," that is Compute.
+- If the buyer says "figure out what to do and do it," that is Labor.
+
+Pylon may execute the first kind of request. It must not quietly absorb the second.
+
+### Initial sandbox execution classes
+
+The first bounded execution classes should stay narrow:
+
+- `sandbox.container.exec`
+- `sandbox.python.exec`
+- `sandbox.node.exec`
+- `sandbox.posix.exec`
+
+Optional later classes can exist, but the initial set should stay policy-first and independently matchable.
+
+### Sandbox profile and capability extensions
+
+The capability envelope should be able to describe sandbox supply as well as model-serving supply. In addition to the launch fields above, Pylon should carry support for fields such as:
+
+- `sandbox_profile`
+- `os_family`
+- `arch`
+- `cpu_cores`
+- `disk_gb`
+- `network_posture`
+- `filesystem_posture`
+- `toolchain_inventory`
+- `container_runtime`
+- `max_timeout_s`
+
+Each sandbox execution offer should also carry a first-class sandbox profile. At minimum that profile should include:
+
+- `runtime_family`
+- `runtime_version`
+- `sandbox_engine`
+- `os_family`
+- `arch`
+- `cpu_limit`
+- `memory_limit_mb`
+- `disk_limit_mb`
+- `timeout_limit_s`
+- `network_mode`
+- `filesystem_mode`
+- `workspace_mode`
+- `artifact_output_mode`
+- `secrets_mode`
+- `allowed_binaries`
+- `toolchain_inventory`
+- `container_image` or `runtime_image_digest`
+
+### Sandbox execution contract, receipts, and policy
+
+When `sandbox_execution` lands, the job contract should include explicit fields such as:
+
+- `execution_class`
+- `entrypoint_type`
+- `payload_ref` or embedded payload
+- `arguments`
+- `environment_policy`
+- `resource_request`
+- `timeout_request_s`
+- `network_request`
+- `filesystem_request`
+- `expected_outputs`
+- `artifact_policy`
+- `determinism_posture`
+
+Sandbox execution receipts should be explicit enough to keep this family inside Compute rather than Labor. At minimum they should capture:
+
+- provider identity
+- compute product ID
+- sandbox profile ID or digest
+- runtime image or environment digest
+- job input digest
+- command or entrypoint digest
+- start time
+- end time
+- exit code or termination reason
+- stdout digest
+- stderr digest
+- artifact digests
+- resource usage summary
+- payout linkage
+- verification or attestation posture
+
+Hard restrictions should remain explicit:
+
+- no privileged containers
+- no host root mounts
+- no undeclared filesystem access
+- no undeclared network access
+- no hidden secrets injection
+- no arbitrary long-lived daemonization unless explicitly supported
+- no silent persistence outside declared workspace or artifact paths
 
 ## Dependencies On The `#3116` Program
 
@@ -274,9 +402,11 @@ Good extraction candidates:
 - backend detection
 - backend health model
 - compute-product derivation
+- extension-ready sandbox runtime and profile detection seams
 - provider lifecycle state machine
 - local persistence schema and read model
 - job execution adapters
+- bounded sandbox execution adapters and policy hooks
 - delivery-evidence emitters
 - local control and status API
 
@@ -289,6 +419,8 @@ Do not extract:
 - app-specific onboarding or product copy
 
 If a new shared crate is created later, it should be narrow and product-agnostic. It should not become a new monolith.
+
+That extracted boundary should be shaped so `sandbox_execution` plugs into the same substrate through runtime/profile detection, bounded execution adapters, and receipt emission rather than through app-specific side paths.
 
 This extraction should begin during the later part of the current issue slate, not after a long pause.
 
@@ -370,6 +502,7 @@ Use local SQLite for:
 - provider identity metadata
 - provider state
 - backend inventory snapshots
+- detected sandbox profiles
 - published products
 - recent jobs
 - delivery proofs and receipts
@@ -391,6 +524,7 @@ Minimum operations:
 - online or offline transition
 - pause or resume
 - backend health
+- execution class and sandbox profile summary
 - inventory summary
 - recent jobs
 - earnings summary
@@ -419,28 +553,45 @@ Minimum operations:
 
 Truthful status matters more than optimistic status.
 
+### Sandbox job states
+
+When `sandbox_execution` is enabled, execution-level states should remain explicit:
+
+- `queued`
+- `assigned`
+- `running`
+- `completed`
+- `failed`
+- `timed_out`
+- `killed`
+- `rejected`
+- `verified`
+- `settled`
+
 ## Acceptance Criteria
 
 The first standalone Pylon deserves to exist only if all of the following are true:
 
 1. It can be installed and initialized on a machine without `Autopilot`.
-2. It can truthfully detect supported local backends.
-3. It can expose launch compute products for `inference` and `embeddings` without overclaiming unsupported supply.
+2. It can truthfully detect supported local backends and keep a clear path for declared sandbox runtime and profile detection.
+3. It can expose launch compute products for `inference` and `embeddings` without overclaiming unsupported supply, and it is shaped so bounded `sandbox_execution` can land without a second provider stack.
 4. It can go online, go offline, pause, and resume with explicit local state.
-5. It can accept and execute supported compute jobs locally.
+5. It can accept and execute supported compute jobs locally under declared backend or sandbox constraints.
 6. It can emit delivery evidence and receipts linked to the canonical compute flow.
 7. It can show recent jobs, earnings, and payout state locally.
 8. `Autopilot` can embed the same provider substrate instead of maintaining a separate incompatible stack.
-9. No buyer, host, bridge, Codex-shell, or RLM scope creeps back in.
+9. No buyer, host, bridge, Codex-shell, RLM, or labor-market scope creeps back in.
 
 ## Testing Expectations
 
 The plan should be considered complete only if the eventual implementation proves:
 
 - backend detection and product derivation are unit-tested
+- sandbox profile detection and policy matching are unit-tested when that family is enabled
 - provider lifecycle transitions are integration-tested
 - local persistence is restart-safe
 - delivery-proof emission is tied to real execution completion
+- sandbox execution receipts capture declared profile, digests, termination data, and resource summary when that family is enabled
 - `Autopilot` embedding and standalone `Pylon` both pass against the same provider-runtime contract
 - rollout gates align with the verification matrix already called for in `#3115`
 
@@ -450,4 +601,4 @@ The old Pylon failed because it tried to be the whole local OpenAgents universe.
 
 The new Pylon should be small enough that its purpose is obvious:
 
-**it turns a machine into truthful, network-visible compute supply.**
+**it turns a machine into truthful, network-visible compute supply, including bounded sandbox execution where policy allows.**
