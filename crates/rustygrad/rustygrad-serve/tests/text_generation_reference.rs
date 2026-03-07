@@ -1,3 +1,4 @@
+use rustygrad_backend_cpu::CpuBackend;
 use rustygrad_provider::{ReceiptStatus, TextGenerationReceipt};
 use rustygrad_serve::{
     CpuReferenceTextGenerationService, GenerationOptions, GenerationRequest, ReferenceWordDecoder,
@@ -5,8 +6,8 @@ use rustygrad_serve::{
 };
 
 #[test]
-fn cpu_reference_text_generation_flow_returns_response_and_receipt()
--> Result<(), Box<dyn std::error::Error>> {
+fn cpu_reference_text_generation_flow_returns_response_and_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
     let mut service = CpuReferenceTextGenerationService::new()?;
     let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
     let request = GenerationRequest::new_text(
@@ -19,7 +20,7 @@ fn cpu_reference_text_generation_flow_returns_response_and_receipt()
 
     let response = service.generate(&request)?;
     let receipt = TextGenerationReceipt::succeeded_for_response(
-        "cpu",
+        cpu_backend_selection()?,
         &request,
         &response,
         service
@@ -33,6 +34,7 @@ fn cpu_reference_text_generation_flow_returns_response_and_receipt()
     assert_eq!(response.output.text, "open agents");
     assert_eq!(response.termination, TerminationReason::EndOfSequence);
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+    assert_eq!(receipt.backend_selection.requested_backend, "cpu");
     assert_eq!(receipt.model_id, ReferenceWordDecoder::MODEL_ID);
     assert_eq!(receipt.model_family, "fixture_decoder");
     assert_eq!(receipt.model_revision, "v0");
@@ -44,4 +46,9 @@ fn cpu_reference_text_generation_flow_returns_response_and_receipt()
     assert_eq!(receipt.termination, Some(TerminationReason::EndOfSequence));
     assert!(receipt.execution_plan_digest.is_some());
     Ok(())
+}
+
+fn cpu_backend_selection(
+) -> Result<rustygrad_runtime::BackendSelection, rustygrad_runtime::RuntimeError> {
+    CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }

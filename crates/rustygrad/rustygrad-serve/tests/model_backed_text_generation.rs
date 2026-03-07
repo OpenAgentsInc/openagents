@@ -1,3 +1,4 @@
+use rustygrad_backend_cpu::CpuBackend;
 use rustygrad_models::ModelLoadError;
 use rustygrad_provider::{
     BatchPosture, KvCacheMode, ProviderReadiness, ReceiptStatus, TextGenerationCapabilityEnvelope,
@@ -11,8 +12,8 @@ use rustygrad_serve::{
 use tempfile::tempdir;
 
 #[test]
-fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
--> Result<(), Box<dyn std::error::Error>> {
+fn model_backed_text_generation_flow_returns_response_capability_and_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("wordpiece_decoder.safetensors");
     ArtifactWordDecoder::write_default_safetensors_artifact(&path)?;
@@ -29,14 +30,14 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
 
     let response = service.generate(&request)?;
     let capability = TextGenerationCapabilityEnvelope::from_decoder_model(
-        "cpu",
+        cpu_backend_selection()?,
         service.model_descriptor(),
         KvCacheMode::InMemory,
         BatchPosture::SingleRequestOnly,
         ProviderReadiness::ready("cpu backend ready"),
     );
     let receipt = TextGenerationReceipt::succeeded_for_response(
-        "cpu",
+        cpu_backend_selection()?,
         &request,
         &response,
         service
@@ -56,6 +57,8 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
 
     assert_eq!(capability.product_id, "rustygrad.text_generation");
     assert_eq!(capability.runtime_backend, "cpu");
+    assert_eq!(capability.backend_selection.requested_backend, "cpu");
+    assert!(capability.backend_selection.fallback_reason.is_none());
     assert_eq!(capability.model_id, ArtifactWordDecoder::MODEL_ID);
     assert_eq!(capability.model_family, ArtifactWordDecoder::MODEL_FAMILY);
     assert_eq!(capability.model_revision, "v1");
@@ -71,6 +74,7 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert!(capability_json.contains("\"weight_bundle\""));
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+    assert_eq!(receipt.backend_selection.effective_backend, "cpu");
     assert_eq!(receipt.model_id, ArtifactWordDecoder::MODEL_ID);
     assert_eq!(receipt.model_family, ArtifactWordDecoder::MODEL_FAMILY);
     assert_eq!(receipt.model_revision, "v1");
@@ -123,8 +127,8 @@ fn model_backed_text_generation_service_reports_missing_artifact() {
 }
 
 #[test]
-fn model_backed_text_generation_rejects_reference_descriptor_without_fallback()
--> Result<(), Box<dyn std::error::Error>> {
+fn model_backed_text_generation_rejects_reference_descriptor_without_fallback(
+) -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("wordpiece_decoder.safetensors");
     ArtifactWordDecoder::write_default_safetensors_artifact(&path)?;
@@ -147,6 +151,11 @@ fn model_backed_text_generation_rejects_reference_descriptor_without_fallback()
             if model_id == ReferenceWordDecoder::MODEL_ID
     ));
     Ok(())
+}
+
+fn cpu_backend_selection(
+) -> Result<rustygrad_runtime::BackendSelection, rustygrad_runtime::RuntimeError> {
+    CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }
 
 #[test]

@@ -3,12 +3,12 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use rustygrad_runtime::HealthStatus;
+use rustygrad_runtime::{BackendSelection, HealthStatus};
 use rustygrad_serve::{
-    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
-    EmbeddingResponse, GenerationInput, GenerationRequest, GenerationResponse, QuantizationMode,
-    SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata,
-    WeightBundleMetadata, WeightFormat, WeightSource,
+    DecoderModelDescriptor, EmbeddingModelDescriptor, EmbeddingRequest, EmbeddingResponse,
+    GenerationInput, GenerationRequest, GenerationResponse, QuantizationMode, SessionId,
+    TerminationReason, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
+    EMBEDDINGS_PRODUCT_ID, TEXT_GENERATION_PRODUCT_ID,
 };
 
 /// Human-readable crate ownership summary.
@@ -55,6 +55,8 @@ pub struct CapabilityEnvelope {
     pub product_id: String,
     /// Runtime backend such as `cpu`.
     pub runtime_backend: String,
+    /// Explicit backend selection and fallback truth.
+    pub backend_selection: BackendSelection,
     /// Model identifier.
     pub model_id: String,
     /// Model family.
@@ -73,7 +75,7 @@ impl CapabilityEnvelope {
     /// Creates a capability envelope for an embeddings model.
     #[must_use]
     pub fn embeddings(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         model_id: impl Into<String>,
         model_family: impl Into<String>,
         model_revision: impl Into<String>,
@@ -84,7 +86,8 @@ impl CapabilityEnvelope {
         Self {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(EMBEDDINGS_PRODUCT_ID),
-            runtime_backend: runtime_backend.into(),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_selection,
             model_id: model_id.into(),
             model_family: model_family.into(),
             model_revision: model_revision.into(),
@@ -97,12 +100,12 @@ impl CapabilityEnvelope {
     /// Creates a capability envelope directly from an embeddings model descriptor.
     #[must_use]
     pub fn from_embedding_model(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         model: &EmbeddingModelDescriptor,
         readiness: ProviderReadiness,
     ) -> Self {
         Self::embeddings(
-            runtime_backend,
+            backend_selection,
             model.model.model_id.clone(),
             model.model.family.clone(),
             model.model.revision.clone(),
@@ -151,6 +154,8 @@ pub struct ExecutionReceipt {
     pub backend_family: String,
     /// Runtime backend.
     pub runtime_backend: String,
+    /// Explicit backend selection and fallback truth.
+    pub backend_selection: BackendSelection,
     /// Request identifier.
     pub request_id: String,
     /// Stable request digest.
@@ -181,7 +186,7 @@ impl ExecutionReceipt {
     /// Creates a success receipt from request/response contracts.
     #[must_use]
     pub fn succeeded(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         request: &EmbeddingRequest,
         response: &EmbeddingResponse,
         request_digest: impl Into<String>,
@@ -191,7 +196,8 @@ impl ExecutionReceipt {
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
-            runtime_backend: runtime_backend.into(),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_selection,
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
             model_id: response.metadata.model_id.clone(),
@@ -210,14 +216,14 @@ impl ExecutionReceipt {
     /// Creates a success receipt and computes the request digest internally.
     #[must_use]
     pub fn succeeded_for_response(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         request: &EmbeddingRequest,
         response: &EmbeddingResponse,
         started_at_unix_ms: u64,
         ended_at_unix_ms: u64,
     ) -> Self {
         Self::succeeded(
-            runtime_backend,
+            backend_selection,
             request,
             response,
             digest_embedding_request(request),
@@ -229,7 +235,7 @@ impl ExecutionReceipt {
     /// Creates a failure receipt for a request that could not be executed.
     #[must_use]
     pub fn failed_for_request(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         request: &EmbeddingRequest,
         started_at_unix_ms: u64,
         ended_at_unix_ms: u64,
@@ -238,7 +244,8 @@ impl ExecutionReceipt {
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
-            runtime_backend: runtime_backend.into(),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_selection,
             request_id: request.request_id.clone(),
             request_digest: digest_embedding_request(request),
             model_id: request.model.model.model_id.clone(),
@@ -288,6 +295,8 @@ pub struct TextGenerationCapabilityEnvelope {
     pub product_id: String,
     /// Runtime backend such as `cpu`.
     pub runtime_backend: String,
+    /// Explicit backend selection and fallback truth.
+    pub backend_selection: BackendSelection,
     /// Model identifier.
     pub model_id: String,
     /// Model family.
@@ -310,7 +319,7 @@ impl TextGenerationCapabilityEnvelope {
     /// Creates a capability envelope from a decoder model descriptor.
     #[must_use]
     pub fn from_decoder_model(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         model: &DecoderModelDescriptor,
         kv_cache_mode: KvCacheMode,
         batch_posture: BatchPosture,
@@ -319,7 +328,8 @@ impl TextGenerationCapabilityEnvelope {
         Self {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
-            runtime_backend: runtime_backend.into(),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_selection,
             model_id: model.model.model_id.clone(),
             model_family: model.model.family.clone(),
             model_revision: model.model.revision.clone(),
@@ -341,6 +351,8 @@ pub struct TextGenerationReceipt {
     pub backend_family: String,
     /// Runtime backend.
     pub runtime_backend: String,
+    /// Explicit backend selection and fallback truth.
+    pub backend_selection: BackendSelection,
     /// Request identifier.
     pub request_id: String,
     /// Stable request digest.
@@ -379,7 +391,7 @@ impl TextGenerationReceipt {
     /// Creates a success receipt from request/response contracts.
     #[must_use]
     pub fn succeeded(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         request: &GenerationRequest,
         response: &GenerationResponse,
         request_digest: impl Into<String>,
@@ -390,7 +402,8 @@ impl TextGenerationReceipt {
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
-            runtime_backend: runtime_backend.into(),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_selection,
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
             execution_plan_digest: Some(execution_plan_digest.into()),
@@ -413,7 +426,7 @@ impl TextGenerationReceipt {
     /// Creates a success receipt and computes the request digest internally.
     #[must_use]
     pub fn succeeded_for_response(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         request: &GenerationRequest,
         response: &GenerationResponse,
         execution_plan_digest: impl Into<String>,
@@ -421,7 +434,7 @@ impl TextGenerationReceipt {
         ended_at_unix_ms: u64,
     ) -> Self {
         Self::succeeded(
-            runtime_backend,
+            backend_selection,
             request,
             response,
             digest_generation_request(request),
@@ -434,7 +447,7 @@ impl TextGenerationReceipt {
     /// Creates a failure receipt for a request that could not be executed.
     #[must_use]
     pub fn failed_for_request(
-        runtime_backend: impl Into<String>,
+        backend_selection: BackendSelection,
         request: &GenerationRequest,
         execution_plan_digest: Option<String>,
         started_at_unix_ms: u64,
@@ -449,7 +462,8 @@ impl TextGenerationReceipt {
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
-            runtime_backend: runtime_backend.into(),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_selection,
             request_id: request.request_id.clone(),
             request_digest: digest_generation_request(request),
             execution_plan_digest,
@@ -588,49 +602,84 @@ fn digest_weight_bundle(hasher: &mut Sha256, weight_bundle: &WeightBundleMetadat
 
 #[cfg(test)]
 mod tests {
-    use rustygrad_runtime::HealthStatus;
+    use rustygrad_core::{DType, Device, QuantizationMode as RuntimeQuantizationMode};
+    use rustygrad_runtime::{
+        BackendSelection, DeviceDescriptor, HealthStatus, QuantizationExecution,
+        QuantizationSupport,
+    };
     use rustygrad_serve::{
         EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationOptions, GenerationRequest,
         GenerationResponse, ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TokenSequence,
     };
+    use serde_json::json;
 
     use super::{
-        BatchPosture, CapabilityEnvelope, ExecutionReceipt, KvCacheMode, ProviderReadiness,
-        ReceiptStatus, TextGenerationCapabilityEnvelope, TextGenerationReceipt,
-        WeightBundleEvidence, digest_embedding_request, digest_generation_request,
+        digest_embedding_request, digest_generation_request, BatchPosture, CapabilityEnvelope,
+        ExecutionReceipt, KvCacheMode, ProviderReadiness, ReceiptStatus,
+        TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
     };
 
     #[test]
     fn capability_envelope_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
-            "cpu",
+            cpu_backend_selection(),
             &model,
             ProviderReadiness::ready("cpu backend ready"),
         );
 
-        let encoded = serde_json::to_string_pretty(&envelope)?;
-        let expected = r#"{
-  "backend_family": "rustygrad",
-  "product_id": "rustygrad.embeddings",
-  "runtime_backend": "cpu",
-  "model_id": "smoke-byte-embed-v0",
-  "model_family": "smoke",
-  "model_revision": "v0",
-  "weight_bundle": {
-    "format": "ProgrammaticFixture",
-    "source": "Fixture",
-    "quantization": "none",
-    "digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
-    "artifacts": []
-  },
-  "dimensions": 8,
-  "readiness": {
-    "status": "Ready",
-    "message": "cpu backend ready"
-  }
-}"#;
-        assert_eq!(encoded, expected);
+        assert_eq!(
+            serde_json::to_value(&envelope)?,
+            json!({
+                "backend_family": "rustygrad",
+                "product_id": "rustygrad.embeddings",
+                "runtime_backend": "cpu",
+                "backend_selection": {
+                    "requested_backend": "cpu",
+                    "effective_backend": "cpu",
+                    "selected_device": {
+                        "backend": "cpu",
+                        "device": {
+                            "kind": "Cpu",
+                            "ordinal": 0,
+                            "label": "cpu:0"
+                        },
+                        "device_name": "host cpu",
+                        "supported_dtypes": ["F32"],
+                        "supported_quantization": [
+                            {
+                                "mode": "none",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "int8_symmetric",
+                                "execution": "dequantize_to_f32"
+                            }
+                        ],
+                        "memory_capacity_bytes": null,
+                        "unified_memory": true,
+                        "feature_flags": ["host_memory"]
+                    },
+                    "supported_ops": ["input", "constant", "matmul", "add"],
+                    "fallback_reason": null
+                },
+                "model_id": "smoke-byte-embed-v0",
+                "model_family": "smoke",
+                "model_revision": "v0",
+                "weight_bundle": {
+                    "format": "ProgrammaticFixture",
+                    "source": "Fixture",
+                    "quantization": "none",
+                    "digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
+                    "artifacts": []
+                },
+                "dimensions": 8,
+                "readiness": {
+                    "status": "Ready",
+                    "message": "cpu backend ready"
+                }
+            })
+        );
         Ok(())
     }
 
@@ -638,37 +687,94 @@ mod tests {
     fn text_generation_capability_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_decoder_descriptor();
         let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
-            "cpu",
+            cpu_backend_selection(),
             &model,
             KvCacheMode::InMemory,
             BatchPosture::SingleRequestOnly,
             ProviderReadiness::ready("cpu backend ready"),
         );
 
-        let encoded = serde_json::to_string_pretty(&envelope)?;
-        let expected = r#"{
-  "backend_family": "rustygrad",
-  "product_id": "rustygrad.text_generation",
-  "runtime_backend": "cpu",
-  "model_id": "fixture-word-decoder-v0",
-  "model_family": "fixture_decoder",
-  "model_revision": "v0",
-  "weight_bundle": {
-    "format": "ProgrammaticFixture",
-    "source": "Fixture",
-    "quantization": "none",
-    "digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
-    "artifacts": []
-  },
-  "max_context": 8,
-  "kv_cache_mode": "in_memory",
-  "batch_posture": "single_request_only",
-  "readiness": {
-    "status": "Ready",
-    "message": "cpu backend ready"
-  }
-}"#;
-        assert_eq!(encoded, expected);
+        assert_eq!(
+            serde_json::to_value(&envelope)?,
+            json!({
+                "backend_family": "rustygrad",
+                "product_id": "rustygrad.text_generation",
+                "runtime_backend": "cpu",
+                "backend_selection": {
+                    "requested_backend": "cpu",
+                    "effective_backend": "cpu",
+                    "selected_device": {
+                        "backend": "cpu",
+                        "device": {
+                            "kind": "Cpu",
+                            "ordinal": 0,
+                            "label": "cpu:0"
+                        },
+                        "device_name": "host cpu",
+                        "supported_dtypes": ["F32"],
+                        "supported_quantization": [
+                            {
+                                "mode": "none",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "int8_symmetric",
+                                "execution": "dequantize_to_f32"
+                            }
+                        ],
+                        "memory_capacity_bytes": null,
+                        "unified_memory": true,
+                        "feature_flags": ["host_memory"]
+                    },
+                    "supported_ops": ["input", "constant", "matmul", "add"],
+                    "fallback_reason": null
+                },
+                "model_id": "fixture-word-decoder-v0",
+                "model_family": "fixture_decoder",
+                "model_revision": "v0",
+                "weight_bundle": {
+                    "format": "ProgrammaticFixture",
+                    "source": "Fixture",
+                    "quantization": "none",
+                    "digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+                    "artifacts": []
+                },
+                "max_context": 8,
+                "kv_cache_mode": "in_memory",
+                "batch_posture": "single_request_only",
+                "readiness": {
+                    "status": "Ready",
+                    "message": "cpu backend ready"
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn fallback_capability_reports_requested_metal_but_effective_cpu(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            metal_fallback_selection(),
+            &model,
+            ProviderReadiness::ready("cpu fallback ready"),
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(encoded["runtime_backend"], json!("cpu"));
+        assert_eq!(
+            encoded["backend_selection"]["requested_backend"],
+            json!("metal")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["effective_backend"],
+            json!("cpu")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["fallback_reason"],
+            json!("metal backend unavailable: no supported Metal device")
+        );
         Ok(())
     }
 
@@ -687,12 +793,20 @@ mod tests {
                 // Receipt tests do not care about matching model dimensions here.
             }],
         );
-        let receipt = ExecutionReceipt::succeeded_for_response("cpu", &request, &response, 10, 20);
+        let receipt = ExecutionReceipt::succeeded_for_response(
+            cpu_backend_selection(),
+            &request,
+            &response,
+            10,
+            20,
+        );
 
         assert_eq!(receipt.status, ReceiptStatus::Succeeded);
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: ExecutionReceipt = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, receipt);
+        assert_eq!(decoded.runtime_backend, "cpu");
+        assert_eq!(decoded.backend_selection.requested_backend, "cpu");
         assert_eq!(decoded.output_vector_count, 1);
         assert_eq!(decoded.failure_reason, None);
         assert_eq!(decoded.model_family, "smoke");
@@ -723,7 +837,7 @@ mod tests {
             rustygrad_serve::TerminationReason::EndOfSequence,
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
-            "cpu",
+            cpu_backend_selection(),
             &request,
             &response,
             "plan-digest-1",
@@ -740,6 +854,8 @@ mod tests {
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: TextGenerationReceipt = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, receipt);
+        assert_eq!(decoded.runtime_backend, "cpu");
+        assert_eq!(decoded.backend_selection.requested_backend, "cpu");
         assert_eq!(decoded.model_family, "fixture_decoder");
         assert_eq!(decoded.model_revision, "v0");
         assert_eq!(
@@ -757,10 +873,17 @@ mod tests {
             vec![String::from("hello")],
         );
 
-        let receipt =
-            ExecutionReceipt::failed_for_request("cpu", &request, 5, 6, "backend offline");
+        let receipt = ExecutionReceipt::failed_for_request(
+            metal_fallback_selection(),
+            &request,
+            5,
+            6,
+            "backend offline",
+        );
         assert_eq!(receipt.status, ReceiptStatus::Failed);
         assert_eq!(receipt.failure_reason.as_deref(), Some("backend offline"));
+        assert_eq!(receipt.runtime_backend, "cpu");
+        assert_eq!(receipt.backend_selection.requested_backend, "metal");
         assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
     }
 
@@ -834,5 +957,55 @@ mod tests {
 
     fn sample_embedding_descriptor() -> rustygrad_serve::EmbeddingModelDescriptor {
         SmokeByteEmbedder::new().descriptor().clone()
+    }
+
+    fn cpu_backend_selection() -> BackendSelection {
+        BackendSelection::direct(
+            "cpu",
+            Some(sample_cpu_device()),
+            vec![
+                String::from("input"),
+                String::from("constant"),
+                String::from("matmul"),
+                String::from("add"),
+            ],
+        )
+    }
+
+    fn metal_fallback_selection() -> BackendSelection {
+        BackendSelection::fallback(
+            "metal",
+            "cpu",
+            Some(sample_cpu_device()),
+            vec![
+                String::from("input"),
+                String::from("constant"),
+                String::from("matmul"),
+                String::from("add"),
+            ],
+            "metal backend unavailable: no supported Metal device",
+        )
+    }
+
+    fn sample_cpu_device() -> DeviceDescriptor {
+        DeviceDescriptor {
+            backend: String::from("cpu"),
+            device: Device::cpu(),
+            device_name: Some(String::from("host cpu")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: vec![
+                QuantizationSupport {
+                    mode: RuntimeQuantizationMode::None,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: RuntimeQuantizationMode::Int8Symmetric,
+                    execution: QuantizationExecution::DequantizeToF32,
+                },
+            ],
+            memory_capacity_bytes: None,
+            unified_memory: Some(true),
+            feature_flags: vec![String::from("host_memory")],
+        }
     }
 }

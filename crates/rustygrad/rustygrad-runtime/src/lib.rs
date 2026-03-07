@@ -97,6 +97,95 @@ pub struct RuntimeHealth {
     pub message: String,
 }
 
+/// Explicit runtime backend selection and fallback truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendSelection {
+    /// Backend the caller or higher-level runtime requested.
+    pub requested_backend: String,
+    /// Backend that will actually execute the work.
+    pub effective_backend: String,
+    /// Selected device for the effective backend, when one exists.
+    pub selected_device: Option<DeviceDescriptor>,
+    /// Supported op labels for the advertised product path.
+    pub supported_ops: Vec<String>,
+    /// Explicit fallback reason when the effective backend differs from the requested backend.
+    pub fallback_reason: Option<String>,
+}
+
+impl BackendSelection {
+    /// Creates a direct backend selection with no fallback.
+    #[must_use]
+    pub fn direct(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+    ) -> Self {
+        let backend = backend.into();
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_device,
+            supported_ops,
+            fallback_reason: None,
+        }
+    }
+
+    /// Creates an explicit fallback selection.
+    #[must_use]
+    pub fn fallback(
+        requested_backend: impl Into<String>,
+        effective_backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        fallback_reason: impl Into<String>,
+    ) -> Self {
+        Self {
+            requested_backend: requested_backend.into(),
+            effective_backend: effective_backend.into(),
+            selected_device,
+            supported_ops,
+            fallback_reason: Some(fallback_reason.into()),
+        }
+    }
+
+    /// Creates a direct selection from a discovered backend.
+    pub fn from_backend<B>(backend: &B, supported_ops: &[&str]) -> Result<Self, RuntimeError>
+    where
+        B: DeviceDiscovery + ?Sized,
+    {
+        Ok(Self::direct(
+            backend.backend_name(),
+            backend.discover_devices()?.into_iter().next(),
+            supported_ops
+                .iter()
+                .map(|label| String::from(*label))
+                .collect(),
+        ))
+    }
+
+    /// Creates a fallback selection to an effective backend discovered at runtime.
+    pub fn fallback_to_backend<B>(
+        requested_backend: impl Into<String>,
+        effective_backend: &B,
+        supported_ops: &[&str],
+        fallback_reason: impl Into<String>,
+    ) -> Result<Self, RuntimeError>
+    where
+        B: DeviceDiscovery + ?Sized,
+    {
+        Ok(Self::fallback(
+            requested_backend,
+            effective_backend.backend_name(),
+            effective_backend.discover_devices()?.into_iter().next(),
+            supported_ops
+                .iter()
+                .map(|label| String::from(*label))
+                .collect(),
+            fallback_reason,
+        ))
+    }
+}
+
 /// Minimal execution metrics.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionMetrics {
@@ -159,10 +248,11 @@ mod tests {
 
     use rustygrad_core::{DType, Device, Shape, TensorSpec};
     use rustygrad_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
+    use serde_json::json;
 
     use super::{
-        Allocator, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-        ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
+        Allocator, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
+        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
         QuantizationSupport, RuntimeError, RuntimeHealth,
     };
 
@@ -272,6 +362,59 @@ mod tests {
                 result.metrics.steps_executed
             )));
         }
+        Ok(())
+    }
+
+    #[test]
+    fn backend_selection_helpers_capture_direct_and_fallback_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let direct = BackendSelection::from_backend(&MockRuntime, &["input", "matmul"])?;
+        assert_eq!(direct.requested_backend, "mock");
+        assert_eq!(direct.effective_backend, "mock");
+        assert_eq!(
+            direct.supported_ops,
+            vec![String::from("input"), String::from("matmul")]
+        );
+        assert!(direct.fallback_reason.is_none());
+        assert_eq!(
+            serde_json::to_value(&direct)?,
+            json!({
+                "requested_backend": "mock",
+                "effective_backend": "mock",
+                "selected_device": {
+                    "backend": "mock",
+                    "device": {
+                        "kind": "Cpu",
+                        "ordinal": 0,
+                        "label": "cpu:0"
+                    },
+                    "device_name": "mock cpu",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [{
+                        "mode": "none",
+                        "execution": "native"
+                    }],
+                    "memory_capacity_bytes": null,
+                    "unified_memory": true,
+                    "feature_flags": ["mock_execution"]
+                },
+                "supported_ops": ["input", "matmul"],
+                "fallback_reason": null
+            })
+        );
+
+        let fallback = BackendSelection::fallback_to_backend(
+            "metal",
+            &MockRuntime,
+            &["input", "matmul"],
+            "metal backend unavailable: offline",
+        )?;
+        assert_eq!(fallback.requested_backend, "metal");
+        assert_eq!(fallback.effective_backend, "mock");
+        assert_eq!(
+            fallback.fallback_reason.as_deref(),
+            Some("metal backend unavailable: offline")
+        );
         Ok(())
     }
 }

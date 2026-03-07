@@ -1,3 +1,4 @@
+use rustygrad_backend_cpu::CpuBackend;
 use rustygrad_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
 use rustygrad_serve::{
     ByteProjectionEmbedder, CpuModelEmbeddingsService, EmbeddingRequest, EmbeddingsExecutor,
@@ -6,8 +7,8 @@ use rustygrad_serve::{
 use tempfile::tempdir;
 
 #[test]
-fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
--> Result<(), Box<dyn std::error::Error>> {
+fn model_backed_embeddings_flow_returns_response_capability_and_receipt(
+) -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -21,11 +22,17 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
 
     let response = service.embed(&request)?;
     let capability = CapabilityEnvelope::from_embedding_model(
-        "cpu",
+        cpu_backend_selection()?,
         service.model_descriptor(),
         ProviderReadiness::ready("cpu backend ready"),
     );
-    let receipt = ExecutionReceipt::succeeded_for_response("cpu", &request, &response, 100, 120);
+    let receipt = ExecutionReceipt::succeeded_for_response(
+        cpu_backend_selection()?,
+        &request,
+        &response,
+        100,
+        120,
+    );
 
     assert_eq!(response.metadata.model_id, ByteProjectionEmbedder::MODEL_ID);
     assert_eq!(response.metadata.dimensions, 8);
@@ -45,6 +52,8 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
 
     assert_eq!(capability.product_id, "rustygrad.embeddings");
     assert_eq!(capability.runtime_backend, "cpu");
+    assert_eq!(capability.backend_selection.requested_backend, "cpu");
+    assert!(capability.backend_selection.fallback_reason.is_none());
     assert_eq!(capability.model_id, ByteProjectionEmbedder::MODEL_ID);
     assert_eq!(
         capability.model_family,
@@ -65,6 +74,7 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
     assert!(capability_json.contains("\"weight_bundle\""));
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+    assert_eq!(receipt.backend_selection.effective_backend, "cpu");
     assert_eq!(receipt.model_family, ByteProjectionEmbedder::MODEL_FAMILY);
     assert_eq!(receipt.model_revision, "v1");
     assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
@@ -90,8 +100,8 @@ fn model_backed_embeddings_service_reports_missing_artifact() {
 }
 
 #[test]
-fn model_backed_embeddings_reject_reference_descriptor_without_fallback()
--> Result<(), Box<dyn std::error::Error>> {
+fn model_backed_embeddings_reject_reference_descriptor_without_fallback(
+) -> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -112,6 +122,11 @@ fn model_backed_embeddings_reject_reference_descriptor_without_fallback()
             if model_id == SmokeByteEmbedder::MODEL_ID
     ));
     Ok(())
+}
+
+fn cpu_backend_selection(
+) -> Result<rustygrad_runtime::BackendSelection, rustygrad_runtime::RuntimeError> {
+    CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }
 
 #[test]

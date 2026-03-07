@@ -9,8 +9,8 @@ use rustygrad_compiler::compile_graph;
 use rustygrad_core::{DType, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
 use rustygrad_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use rustygrad_runtime::{
-    Allocator, BackendName, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-    ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
+    Allocator, BackendName, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
+    ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -374,6 +374,48 @@ impl MetalBackend {
             ))),
         }
     }
+
+    /// Returns truthful backend-selection data for a supported Metal product path.
+    pub fn backend_selection(
+        &self,
+        supported_ops: &[&str],
+    ) -> Result<BackendSelection, RuntimeError> {
+        match &self.state {
+            MetalBackendState::Available(backend) => Ok(BackendSelection::direct(
+                self.backend_name(),
+                Some(backend.descriptor.clone()),
+                supported_ops
+                    .iter()
+                    .map(|label| String::from(*label))
+                    .collect(),
+            )),
+            MetalBackendState::Unavailable(health) => Err(RuntimeError::Backend(format!(
+                "metal backend unavailable: {}",
+                health.message
+            ))),
+        }
+    }
+
+    /// Returns an explicit fallback selection when Metal cannot execute the
+    /// requested product path on the local machine.
+    pub fn fallback_selection<B>(
+        &self,
+        fallback_backend: &B,
+        supported_ops: &[&str],
+    ) -> Result<BackendSelection, RuntimeError>
+    where
+        B: DeviceDiscovery + ?Sized,
+    {
+        match &self.state {
+            MetalBackendState::Available(_) => self.backend_selection(supported_ops),
+            MetalBackendState::Unavailable(health) => BackendSelection::fallback_to_backend(
+                self.backend_name(),
+                fallback_backend,
+                supported_ops,
+                format!("metal backend unavailable: {}", health.message),
+            ),
+        }
+    }
 }
 
 impl DeviceDiscovery for MetalBackend {
@@ -691,9 +733,9 @@ mod platform {
     };
 
     use super::{
-        DeviceSupportTier, FamilySupport, LEGACY_FAMILY_FLAG, MODERN_FAMILY_FLAG, MetalBuffer,
-        MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalStorageMode,
-        classify_support,
+        classify_support, DeviceSupportTier, FamilySupport, MetalBuffer, MetalCommandStatus,
+        MetalCommandWait, MetalDiscoveryReport, MetalStorageMode, LEGACY_FAMILY_FLAG,
+        MODERN_FAMILY_FLAG,
     };
 
     #[derive(Clone)]
@@ -1488,14 +1530,15 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
+    use rustygrad_backend_cpu::CpuBackend;
     use rustygrad_compiler::compile_graph;
     use rustygrad_core::{DType, Device, DeviceKind, Shape, TensorSpec};
     use rustygrad_ir::GraphBuilder;
     use rustygrad_runtime::{Allocator, HealthStatus};
 
     use super::{
-        DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend, classify_support,
-        validate_supported_plan,
+        classify_support, validate_supported_plan, DeviceSupportTier, FamilySupport, MetalBackend,
+        EMBEDDINGS_SUPPORTED_OPS,
     };
 
     #[test]
@@ -1553,8 +1596,8 @@ mod tests {
 
     #[cfg(not(target_os = "macos"))]
     #[test]
-    fn metal_backend_reports_offline_on_unsupported_platform()
-    -> Result<(), rustygrad_runtime::RuntimeError> {
+    fn metal_backend_reports_offline_on_unsupported_platform(
+    ) -> Result<(), rustygrad_runtime::RuntimeError> {
         let backend = MetalBackend::new();
         let report = backend.discovery_report()?;
         assert!(report.devices.is_empty());
@@ -1564,6 +1607,29 @@ mod tests {
             String::from("metal backend is only available on macOS")
         );
         assert!(backend.selected_device().is_none());
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn metal_backend_fallback_selection_reports_explicit_cpu_fallback(
+    ) -> Result<(), rustygrad_runtime::RuntimeError> {
+        let backend = MetalBackend::new();
+        let cpu = CpuBackend::new();
+        let selection = backend.fallback_selection(&cpu, EMBEDDINGS_SUPPORTED_OPS)?;
+        assert_eq!(selection.requested_backend, "metal");
+        assert_eq!(selection.effective_backend, "cpu");
+        assert_eq!(
+            selection.fallback_reason.as_deref(),
+            Some("metal backend unavailable: metal backend is only available on macOS")
+        );
+        assert_eq!(
+            selection.supported_ops,
+            EMBEDDINGS_SUPPORTED_OPS
+                .iter()
+                .map(|label| String::from(*label))
+                .collect::<Vec<_>>()
+        );
         Ok(())
     }
 
@@ -1612,8 +1678,33 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn metal_backend_allocates_and_submits_copy_on_supported_hardware()
-    -> Result<(), rustygrad_runtime::RuntimeError> {
+    fn metal_backend_selection_reports_ready_metal_or_explicit_cpu_fallback(
+    ) -> Result<(), rustygrad_runtime::RuntimeError> {
+        let backend = MetalBackend::new();
+        let cpu = CpuBackend::new();
+        match backend.backend_selection(EMBEDDINGS_SUPPORTED_OPS) {
+            Ok(selection) => {
+                assert_eq!(selection.requested_backend, "metal");
+                assert_eq!(selection.effective_backend, "metal");
+                assert!(selection.selected_device.is_some());
+                assert!(selection.fallback_reason.is_none());
+            }
+            Err(error) => {
+                assert!(error.to_string().starts_with("metal backend unavailable: "));
+                let fallback = backend.fallback_selection(&cpu, EMBEDDINGS_SUPPORTED_OPS)?;
+                assert_eq!(fallback.requested_backend, "metal");
+                assert_eq!(fallback.effective_backend, "cpu");
+                assert!(fallback.selected_device.is_some());
+                assert!(fallback.fallback_reason.is_some());
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_allocates_and_submits_copy_on_supported_hardware(
+    ) -> Result<(), rustygrad_runtime::RuntimeError> {
         use super::{MetalCommandStatus, MetalCommandWait};
 
         let mut backend = MetalBackend::new();
@@ -1639,8 +1730,8 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn metal_backend_executes_embedding_surface_on_supported_hardware()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_backend_executes_embedding_surface_on_supported_hardware(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = MetalBackend::new();
         let Some(selected) = backend.selected_device().cloned() else {
             assert_ne!(backend.health().status, HealthStatus::Ready);
