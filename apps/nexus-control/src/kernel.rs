@@ -2,13 +2,15 @@ use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
     AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
     CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
-    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CorrectComputeIndexRequest,
-    CorrectComputeIndexResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
-    CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
-    CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
-    CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
-    CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
+    CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
+    CorrectComputeIndexRequest, CorrectComputeIndexResponse, CreateAccessGrantRequest,
+    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
+    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
+    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
+    CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
     CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
+    CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
     ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
     IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
@@ -25,7 +27,9 @@ use openagents_kernel_core::compute::{
     CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeCapabilityEnvelope,
     ComputeDeliveryVarianceReason, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
     ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
-    DeliveryProofStatus, DeliveryRejectionReason, validate_launch_compute_product,
+    DeliveryProofStatus, DeliveryRejectionReason, StructuredCapacityInstrument,
+    StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+    StructuredCapacityLegRole, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -292,6 +296,7 @@ pub struct KernelState {
     compute_products: HashMap<String, ComputeProductRecord>,
     capacity_lots: HashMap<String, CapacityLotRecord>,
     capacity_instruments: HashMap<String, CapacityInstrumentRecord>,
+    structured_capacity_instruments: HashMap<String, StructuredCapacityInstrumentRecord>,
     delivery_proofs: HashMap<String, DeliveryProofRecord>,
     compute_indices: HashMap<String, ComputeIndexRecord>,
     data_assets: HashMap<String, DataAssetRecord>,
@@ -351,6 +356,12 @@ struct CapacityInstrumentRecord {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct StructuredCapacityInstrumentRecord {
+    structured_instrument: StructuredCapacityInstrument,
+    receipt_id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DeliveryProofRecord {
     delivery_proof: DeliveryProof,
     receipt_id: String,
@@ -399,6 +410,8 @@ struct PersistedComputeAuthorityState {
     compute_products: BTreeMap<String, ComputeProductRecord>,
     capacity_lots: BTreeMap<String, CapacityLotRecord>,
     capacity_instruments: BTreeMap<String, CapacityInstrumentRecord>,
+    #[serde(default)]
+    structured_capacity_instruments: BTreeMap<String, StructuredCapacityInstrumentRecord>,
     delivery_proofs: BTreeMap<String, DeliveryProofRecord>,
     compute_indices: BTreeMap<String, ComputeIndexRecord>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
@@ -703,6 +716,105 @@ fn default_closure_reason_for_status(
     }
 }
 
+fn capacity_instrument_status_is_live(status: CapacityInstrumentStatus) -> bool {
+    matches!(
+        status,
+        CapacityInstrumentStatus::Open
+            | CapacityInstrumentStatus::Active
+            | CapacityInstrumentStatus::Delivering
+            | CapacityInstrumentStatus::CashSettling
+    )
+}
+
+fn capacity_instrument_status_is_terminal(status: CapacityInstrumentStatus) -> bool {
+    matches!(
+        status,
+        CapacityInstrumentStatus::Settled
+            | CapacityInstrumentStatus::Defaulted
+            | CapacityInstrumentStatus::Cancelled
+            | CapacityInstrumentStatus::Expired
+    )
+}
+
+fn structured_capacity_status_is_terminal(status: StructuredCapacityInstrumentStatus) -> bool {
+    matches!(
+        status,
+        StructuredCapacityInstrumentStatus::Settled
+            | StructuredCapacityInstrumentStatus::Defaulted
+            | StructuredCapacityInstrumentStatus::Cancelled
+            | StructuredCapacityInstrumentStatus::Expired
+    )
+}
+
+fn structured_capacity_close_target_status(
+    status: StructuredCapacityInstrumentStatus,
+) -> Option<CapacityInstrumentStatus> {
+    match status {
+        StructuredCapacityInstrumentStatus::Defaulted => Some(CapacityInstrumentStatus::Defaulted),
+        StructuredCapacityInstrumentStatus::Cancelled => Some(CapacityInstrumentStatus::Cancelled),
+        StructuredCapacityInstrumentStatus::Expired => Some(CapacityInstrumentStatus::Expired),
+        StructuredCapacityInstrumentStatus::Settled
+        | StructuredCapacityInstrumentStatus::Open
+        | StructuredCapacityInstrumentStatus::Active
+        | StructuredCapacityInstrumentStatus::PartiallyClosed => None,
+    }
+}
+
+fn derive_structured_capacity_status(
+    legs: &[CapacityInstrument],
+) -> StructuredCapacityInstrumentStatus {
+    if legs.is_empty() {
+        return StructuredCapacityInstrumentStatus::Open;
+    }
+    let all_open = legs
+        .iter()
+        .all(|leg| leg.status == CapacityInstrumentStatus::Open);
+    if all_open {
+        return StructuredCapacityInstrumentStatus::Open;
+    }
+    let live_count = legs
+        .iter()
+        .filter(|leg| capacity_instrument_status_is_live(leg.status))
+        .count();
+    if live_count == legs.len() {
+        return StructuredCapacityInstrumentStatus::Active;
+    }
+    if live_count > 0 {
+        return StructuredCapacityInstrumentStatus::PartiallyClosed;
+    }
+    if legs
+        .iter()
+        .any(|leg| leg.status == CapacityInstrumentStatus::Defaulted)
+    {
+        return StructuredCapacityInstrumentStatus::Defaulted;
+    }
+    if legs
+        .iter()
+        .all(|leg| leg.status == CapacityInstrumentStatus::Settled)
+    {
+        return StructuredCapacityInstrumentStatus::Settled;
+    }
+    if legs
+        .iter()
+        .all(|leg| leg.status == CapacityInstrumentStatus::Cancelled)
+    {
+        return StructuredCapacityInstrumentStatus::Cancelled;
+    }
+    if legs
+        .iter()
+        .all(|leg| leg.status == CapacityInstrumentStatus::Expired)
+    {
+        return StructuredCapacityInstrumentStatus::Expired;
+    }
+    if legs
+        .iter()
+        .any(|leg| leg.status == CapacityInstrumentStatus::Cancelled)
+    {
+        return StructuredCapacityInstrumentStatus::Cancelled;
+    }
+    StructuredCapacityInstrumentStatus::Expired
+}
+
 fn infer_non_delivery_reason_from_rejection(
     reason: Option<DeliveryRejectionReason>,
     detail: Option<&str>,
@@ -821,6 +933,86 @@ impl KernelState {
             .map(|record| record.instrument.clone())
     }
 
+    fn structured_capacity_leg_instruments(
+        &self,
+        structured_instrument: &StructuredCapacityInstrument,
+    ) -> Result<Vec<CapacityInstrument>, String> {
+        structured_instrument
+            .legs
+            .iter()
+            .map(|leg| {
+                self.capacity_instruments
+                    .get(leg.instrument_id.as_str())
+                    .map(|record| record.instrument.clone())
+                    .ok_or_else(|| "structured_capacity_leg_not_found".to_string())
+            })
+            .collect::<Result<Vec<_>, _>>()
+    }
+
+    fn materialize_structured_capacity_instrument(
+        &self,
+        record: &StructuredCapacityInstrumentRecord,
+    ) -> Result<StructuredCapacityInstrument, String> {
+        let mut structured_instrument = record.structured_instrument.clone();
+        let legs = self.structured_capacity_leg_instruments(&structured_instrument)?;
+        structured_instrument.status = derive_structured_capacity_status(&legs);
+        if let Some(metadata) = structured_instrument.metadata.as_object_mut() {
+            metadata.insert(
+                "leg_status_summary".to_string(),
+                json!(
+                    legs.iter()
+                        .map(|leg| json!({
+                            "instrument_id": leg.instrument_id,
+                            "status": leg.status.label(),
+                            "kind": match leg.kind {
+                                openagents_kernel_core::compute::CapacityInstrumentKind::Spot => "spot",
+                                openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical => "forward_physical",
+                                openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash => "future_cash",
+                                openagents_kernel_core::compute::CapacityInstrumentKind::Reservation => "reservation",
+                            }
+                        }))
+                        .collect::<Vec<_>>()
+                ),
+            );
+        }
+        Ok(structured_instrument)
+    }
+
+    pub fn list_structured_capacity_instruments(
+        &self,
+        product_id: Option<&str>,
+        status: Option<StructuredCapacityInstrumentStatus>,
+    ) -> Vec<StructuredCapacityInstrument> {
+        let mut items = self
+            .structured_capacity_instruments
+            .values()
+            .filter_map(|record| self.materialize_structured_capacity_instrument(record).ok())
+            .filter(|structured_instrument| {
+                product_id.is_none_or(|expected| structured_instrument.product_id == expected)
+                    && status.is_none_or(|expected| structured_instrument.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.product_id
+                .cmp(&rhs.product_id)
+                .then_with(|| lhs.created_at_ms.cmp(&rhs.created_at_ms))
+                .then_with(|| {
+                    lhs.structured_instrument_id
+                        .cmp(&rhs.structured_instrument_id)
+                })
+        });
+        items
+    }
+
+    pub fn get_structured_capacity_instrument(
+        &self,
+        structured_instrument_id: &str,
+    ) -> Option<StructuredCapacityInstrument> {
+        self.structured_capacity_instruments
+            .get(structured_instrument_id)
+            .and_then(|record| self.materialize_structured_capacity_instrument(record).ok())
+    }
+
     pub fn list_delivery_proofs(
         &self,
         lot_id: Option<&str>,
@@ -907,6 +1099,10 @@ impl KernelState {
         self.compute_products = persisted.compute_products.into_iter().collect();
         self.capacity_lots = persisted.capacity_lots.into_iter().collect();
         self.capacity_instruments = persisted.capacity_instruments.into_iter().collect();
+        self.structured_capacity_instruments = persisted
+            .structured_capacity_instruments
+            .into_iter()
+            .collect();
         self.delivery_proofs = persisted.delivery_proofs.into_iter().collect();
         self.compute_indices = persisted.compute_indices.into_iter().collect();
         self.snapshots = persisted.snapshots;
@@ -924,6 +1120,11 @@ impl KernelState {
             compute_products: self.compute_products.clone().into_iter().collect(),
             capacity_lots: self.capacity_lots.clone().into_iter().collect(),
             capacity_instruments: self.capacity_instruments.clone().into_iter().collect(),
+            structured_capacity_instruments: self
+                .structured_capacity_instruments
+                .clone()
+                .into_iter()
+                .collect(),
             delivery_proofs: self.delivery_proofs.clone().into_iter().collect(),
             compute_indices: self.compute_indices.clone().into_iter().collect(),
             snapshots: self.snapshots.clone(),
@@ -1657,6 +1858,265 @@ impl KernelState {
         )
     }
 
+    fn validate_structured_capacity_instrument(
+        &self,
+        structured_instrument: &mut StructuredCapacityInstrument,
+    ) -> Result<(ComputeProductRecord, Vec<CapacityInstrumentRecord>), String> {
+        let structured_instrument_id = normalize_required(
+            structured_instrument.structured_instrument_id.as_str(),
+            "structured_capacity_instrument_id_missing",
+        )?;
+        let product_id = normalize_required(
+            structured_instrument.product_id.as_str(),
+            "compute_product_id_missing",
+        )?;
+        let Some(product_record) = self.compute_products.get(product_id.as_str()).cloned() else {
+            return Err("compute_product_not_found".to_string());
+        };
+        if structured_instrument.legs.is_empty() {
+            return Err("structured_capacity_instrument_legs_missing".to_string());
+        }
+        structured_instrument
+            .structured_instrument_id
+            .clone_from(&structured_instrument_id);
+        structured_instrument.product_id.clone_from(&product_id);
+        structured_instrument.legs.sort_by(|lhs, rhs| {
+            lhs.leg_order
+                .cmp(&rhs.leg_order)
+                .then_with(|| lhs.instrument_id.cmp(&rhs.instrument_id))
+        });
+
+        let mut seen_ids = BTreeSet::new();
+        let mut seen_orders = BTreeSet::new();
+        let mut buyer_ids = BTreeSet::new();
+        let mut provider_ids = BTreeSet::new();
+        let mut leg_records = Vec::with_capacity(structured_instrument.legs.len());
+        for leg in &mut structured_instrument.legs {
+            leg.instrument_id = normalize_required(
+                leg.instrument_id.as_str(),
+                "structured_capacity_leg_instrument_id_missing",
+            )?;
+            if !seen_ids.insert(leg.instrument_id.clone()) {
+                return Err("structured_capacity_leg_duplicate".to_string());
+            }
+            if !seen_orders.insert(leg.leg_order) {
+                return Err("structured_capacity_leg_order_duplicate".to_string());
+            }
+            let Some(leg_record) = self
+                .capacity_instruments
+                .get(leg.instrument_id.as_str())
+                .cloned()
+            else {
+                return Err("structured_capacity_leg_not_found".to_string());
+            };
+            if leg_record.instrument.product_id != product_id {
+                return Err("structured_capacity_leg_product_mismatch".to_string());
+            }
+            if !capacity_instrument_status_is_live(leg_record.instrument.status) {
+                return Err("structured_capacity_leg_not_live".to_string());
+            }
+            if let Some(existing_bundle_id) = leg_record
+                .instrument
+                .metadata
+                .get("structured_instrument_id")
+                .and_then(Value::as_str)
+                .filter(|value| !value.trim().is_empty())
+                && existing_bundle_id != structured_instrument_id
+            {
+                return Err("capacity_instrument_already_structured".to_string());
+            }
+            if let Some(buyer_id) = leg_record.instrument.buyer_id.clone() {
+                buyer_ids.insert(buyer_id);
+            }
+            if let Some(provider_id) = leg_record.instrument.provider_id.clone() {
+                provider_ids.insert(provider_id);
+            }
+            if !leg.metadata.is_object() && !leg.metadata.is_null() {
+                return Err("structured_capacity_leg_metadata_invalid".to_string());
+            }
+            if leg.metadata.is_null() {
+                leg.metadata = json!({});
+            }
+            leg_records.push(leg_record);
+        }
+
+        if let Some(expected) = structured_instrument.buyer_id.as_deref()
+            && leg_records
+                .iter()
+                .any(|record| record.instrument.buyer_id.as_deref() != Some(expected))
+        {
+            return Err("structured_capacity_leg_buyer_mismatch".to_string());
+        }
+        if let Some(expected) = structured_instrument.provider_id.as_deref()
+            && leg_records
+                .iter()
+                .any(|record| record.instrument.provider_id.as_deref() != Some(expected))
+        {
+            return Err("structured_capacity_leg_provider_mismatch".to_string());
+        }
+        if structured_instrument.buyer_id.is_none() && buyer_ids.len() == 1 {
+            structured_instrument.buyer_id = buyer_ids.into_iter().next();
+        }
+        if structured_instrument.provider_id.is_none() && provider_ids.len() == 1 {
+            structured_instrument.provider_id = provider_ids.into_iter().next();
+        }
+
+        match structured_instrument.kind {
+            StructuredCapacityInstrumentKind::Reservation => {
+                if structured_instrument.legs.len() != 1 {
+                    return Err("structured_reservation_leg_count_invalid".to_string());
+                }
+                if structured_instrument.legs[0].role != StructuredCapacityLegRole::ReservationRight
+                {
+                    return Err("structured_reservation_role_invalid".to_string());
+                }
+                let leg = &leg_records[0].instrument;
+                if leg.kind != openagents_kernel_core::compute::CapacityInstrumentKind::Reservation
+                {
+                    return Err("structured_reservation_leg_kind_invalid".to_string());
+                }
+                if leg.settlement_mode
+                    != openagents_kernel_core::compute::ComputeSettlementMode::BuyerElection
+                {
+                    return Err("structured_reservation_settlement_mode_invalid".to_string());
+                }
+                if leg.capacity_lot_id.is_none() {
+                    return Err("structured_reservation_capacity_lot_required".to_string());
+                }
+                if leg.metadata.get("reservation_terms").is_none() {
+                    return Err("structured_reservation_terms_missing".to_string());
+                }
+            }
+            StructuredCapacityInstrumentKind::Swap => {
+                if structured_instrument.legs.len() != 2 {
+                    return Err("structured_swap_leg_count_invalid".to_string());
+                }
+                let pay_count = structured_instrument
+                    .legs
+                    .iter()
+                    .filter(|leg| leg.role == StructuredCapacityLegRole::SwapPay)
+                    .count();
+                let receive_count = structured_instrument
+                    .legs
+                    .iter()
+                    .filter(|leg| leg.role == StructuredCapacityLegRole::SwapReceive)
+                    .count();
+                if pay_count != 1 || receive_count != 1 {
+                    return Err("structured_swap_roles_invalid".to_string());
+                }
+                let lhs = &leg_records[0].instrument;
+                let rhs = &leg_records[1].instrument;
+                if lhs.kind != rhs.kind
+                    || !matches!(
+                        lhs.kind,
+                        openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+                            | openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+                    )
+                {
+                    return Err("structured_swap_leg_kind_invalid".to_string());
+                }
+                if lhs.quantity != rhs.quantity {
+                    return Err("structured_swap_quantity_mismatch".to_string());
+                }
+                if lhs.delivery_start_ms != rhs.delivery_start_ms
+                    || lhs.delivery_end_ms != rhs.delivery_end_ms
+                {
+                    return Err("structured_swap_window_mismatch".to_string());
+                }
+                if lhs.kind == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash {
+                    if lhs.settlement_mode
+                        != openagents_kernel_core::compute::ComputeSettlementMode::Cash
+                        || rhs.settlement_mode
+                            != openagents_kernel_core::compute::ComputeSettlementMode::Cash
+                    {
+                        return Err("structured_swap_settlement_mode_invalid".to_string());
+                    }
+                    if lhs.reference_index_id.is_none() || rhs.reference_index_id.is_none() {
+                        return Err("structured_swap_reference_index_required".to_string());
+                    }
+                }
+                if lhs.kind
+                    == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+                {
+                    if lhs.settlement_mode
+                        != openagents_kernel_core::compute::ComputeSettlementMode::Physical
+                        || rhs.settlement_mode
+                            != openagents_kernel_core::compute::ComputeSettlementMode::Physical
+                    {
+                        return Err("structured_swap_settlement_mode_invalid".to_string());
+                    }
+                    if lhs.capacity_lot_id.is_none() || rhs.capacity_lot_id.is_none() {
+                        return Err("structured_swap_capacity_lot_required".to_string());
+                    }
+                }
+            }
+            StructuredCapacityInstrumentKind::Strip => {
+                if structured_instrument.legs.len() < 2 {
+                    return Err("structured_strip_leg_count_invalid".to_string());
+                }
+                if structured_instrument
+                    .legs
+                    .iter()
+                    .any(|leg| leg.role != StructuredCapacityLegRole::StripSegment)
+                {
+                    return Err("structured_strip_role_invalid".to_string());
+                }
+                let first = &leg_records[0].instrument;
+                if !matches!(
+                    first.kind,
+                    openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+                        | openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+                ) {
+                    return Err("structured_strip_leg_kind_invalid".to_string());
+                }
+                let mut previous_end_ms = first.delivery_end_ms;
+                for leg in leg_records.iter().skip(1).map(|record| &record.instrument) {
+                    if leg.kind != first.kind {
+                        return Err("structured_strip_leg_kind_invalid".to_string());
+                    }
+                    if leg.quantity != first.quantity {
+                        return Err("structured_strip_quantity_mismatch".to_string());
+                    }
+                    if leg.delivery_start_ms <= previous_end_ms {
+                        return Err("structured_strip_window_sequence_invalid".to_string());
+                    }
+                    previous_end_ms = leg.delivery_end_ms;
+                }
+            }
+        }
+
+        if !structured_instrument.metadata.is_object() && !structured_instrument.metadata.is_null()
+        {
+            return Err("structured_capacity_instrument_metadata_invalid".to_string());
+        }
+        if structured_instrument.metadata.is_null() {
+            structured_instrument.metadata = json!({});
+        }
+        let metadata = ensure_metadata_object(&mut structured_instrument.metadata)?;
+        metadata.insert(
+            "visibility_scope".to_string(),
+            Value::String("advanced_only".to_string()),
+        );
+        metadata.insert(
+            "decomposition_mode".to_string(),
+            Value::String("explicit_legs".to_string()),
+        );
+        metadata.insert(
+            "structured_kind".to_string(),
+            Value::String(structured_instrument.kind.label().to_string()),
+        );
+        metadata.insert(
+            "bounded_risk_posture".to_string(),
+            Value::String("inherited_from_underlying_legs".to_string()),
+        );
+        metadata.insert(
+            "leg_count".to_string(),
+            Value::Number((structured_instrument.legs.len() as u64).into()),
+        );
+
+        Ok((product_record, leg_records))
+    }
+
     pub fn create_capacity_instrument(
         &mut self,
         context: &KernelMutationContext,
@@ -1739,6 +2199,68 @@ impl KernelState {
             {
                 return Err("forward_capacity_settlement_mode_invalid".to_string());
             }
+        }
+        if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::Reservation
+        {
+            if lot_record.is_none() {
+                return Err("reservation_capacity_lot_required".to_string());
+            }
+            if req.instrument.delivery_start_ms <= req.instrument.created_at_ms {
+                return Err("reservation_window_not_future".to_string());
+            }
+            if req.instrument.settlement_mode
+                != openagents_kernel_core::compute::ComputeSettlementMode::BuyerElection
+            {
+                return Err("reservation_settlement_mode_invalid".to_string());
+            }
+            if req.instrument.fixed_price.is_none() {
+                return Err("reservation_premium_price_missing".to_string());
+            }
+            if req.instrument.buyer_id.as_deref().is_none() {
+                return Err("reservation_buyer_required".to_string());
+            }
+            let reservation_terms = req
+                .instrument
+                .metadata
+                .get("reservation_terms")
+                .and_then(Value::as_object)
+                .ok_or_else(|| "reservation_terms_missing".to_string())?;
+            let exercise_window_start_ms = reservation_terms
+                .get("exercise_window_start_ms")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| "reservation_exercise_window_start_missing".to_string())?;
+            let exercise_window_end_ms = reservation_terms
+                .get("exercise_window_end_ms")
+                .and_then(Value::as_i64)
+                .ok_or_else(|| "reservation_exercise_window_end_missing".to_string())?;
+            if exercise_window_end_ms <= exercise_window_start_ms {
+                return Err("reservation_exercise_window_invalid".to_string());
+            }
+            if exercise_window_start_ms < req.instrument.created_at_ms
+                || exercise_window_end_ms > req.instrument.delivery_end_ms
+            {
+                return Err("reservation_exercise_window_outside_delivery".to_string());
+            }
+            let exercise_price = reservation_terms
+                .get("exercise_price")
+                .cloned()
+                .ok_or_else(|| "reservation_exercise_price_missing".to_string())
+                .and_then(|value| {
+                    serde_json::from_value::<Money>(value)
+                        .map_err(|error| format!("reservation_exercise_price_invalid:{error}"))
+                })?;
+            let premium_price = req
+                .instrument
+                .fixed_price
+                .as_ref()
+                .ok_or_else(|| "reservation_premium_price_missing".to_string())?;
+            if !money_assets_match(&exercise_price, premium_price)
+                || !money_units_match(&exercise_price, premium_price)
+            {
+                return Err("reservation_price_asset_mismatch".to_string());
+            }
+            req.instrument.status = CapacityInstrumentStatus::Active;
         }
         let future_cash_reference_index = if req.instrument.kind
             == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
@@ -1858,6 +2380,30 @@ impl KernelState {
             metadata.insert(
                 "remedy_profile".to_string(),
                 Value::String(forward_remedy_profile(product_id.as_str()).to_string()),
+            );
+        }
+        if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::Reservation
+        {
+            metadata.insert(
+                "market_phase".to_string(),
+                Value::String("reservation_right".to_string()),
+            );
+            metadata.insert(
+                "visibility_scope".to_string(),
+                Value::String("advanced_only".to_string()),
+            );
+            metadata.insert(
+                "decomposition_mode".to_string(),
+                Value::String("explicit_leg".to_string()),
+            );
+            metadata.insert(
+                "bounded_risk_posture".to_string(),
+                json!({
+                    "buyer_loss_limited_to_premium": true,
+                    "provider_obligation": "reserved_capacity_or_explicit_default",
+                    "exercise_style": "buyer_election",
+                }),
             );
         }
         if let Some(reference_index) = future_cash_reference_index.as_ref() {
@@ -2450,6 +2996,367 @@ impl KernelState {
         );
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
         let snapshot_event = self.refresh_snapshot_for(req.settled_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn create_structured_capacity_instrument(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CreateStructuredCapacityInstrumentRequest,
+    ) -> Result<MutationResult<CreateStructuredCapacityInstrumentResponse>, String> {
+        req.structured_instrument.created_at_ms =
+            normalize_created_at_ms(req.structured_instrument.created_at_ms, context.now_unix_ms);
+        let (product_record, leg_records) =
+            self.validate_structured_capacity_instrument(&mut req.structured_instrument)?;
+        req.structured_instrument.status = derive_structured_capacity_status(
+            &leg_records
+                .iter()
+                .map(|record| record.instrument.clone())
+                .collect::<Vec<_>>(),
+        );
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let leg_receipt_ids = leg_records
+            .iter()
+            .map(|record| {
+                push_receipt_evidence(
+                    &mut evidence,
+                    self.receipt_store
+                        .get_receipt(record.receipt_id.as_str())
+                        .as_ref(),
+                );
+                record.receipt_id.clone()
+            })
+            .collect::<Vec<_>>();
+        let structured_payload =
+            serde_json::to_value(&req.structured_instrument).map_err(|error| {
+                format!("kernel_structured_capacity_instrument_encode_failed: {error}")
+            })?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.structured_instrument.create".to_string(),
+                created_at_ms: req.structured_instrument.created_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: structured_payload,
+                outputs_payload: json!({
+                    "structured_instrument_id": req.structured_instrument.structured_instrument_id.clone(),
+                    "product_id": req.structured_instrument.product_id.clone(),
+                    "status": req.structured_instrument.status.label(),
+                    "kind": req.structured_instrument.kind.label(),
+                    "leg_instrument_ids": req
+                        .structured_instrument
+                        .legs
+                        .iter()
+                        .map(|leg| leg.instrument_id.clone())
+                        .collect::<Vec<_>>(),
+                    "leg_receipt_ids": leg_receipt_ids,
+                    "product_receipt_id": product_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.structured_instrument.create",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CreateStructuredCapacityInstrumentResponse {
+            structured_instrument: req.structured_instrument.clone(),
+            legs: leg_records
+                .iter()
+                .map(|record| record.instrument.clone())
+                .collect(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        for leg in &req.structured_instrument.legs {
+            if let Some(record) = self
+                .capacity_instruments
+                .get_mut(leg.instrument_id.as_str())
+            {
+                let metadata = ensure_metadata_object(&mut record.instrument.metadata)?;
+                metadata.insert(
+                    "structured_instrument_id".to_string(),
+                    Value::String(req.structured_instrument.structured_instrument_id.clone()),
+                );
+                metadata.insert(
+                    "structured_kind".to_string(),
+                    Value::String(req.structured_instrument.kind.label().to_string()),
+                );
+                metadata.insert(
+                    "structured_leg_role".to_string(),
+                    Value::String(leg.role.label().to_string()),
+                );
+                metadata.insert(
+                    "structured_leg_order".to_string(),
+                    Value::Number((leg.leg_order as u64).into()),
+                );
+                metadata.insert(
+                    "visibility_scope".to_string(),
+                    Value::String("advanced_only".to_string()),
+                );
+            }
+        }
+
+        self.structured_capacity_instruments.insert(
+            req.structured_instrument.structured_instrument_id.clone(),
+            StructuredCapacityInstrumentRecord {
+                structured_instrument: req.structured_instrument.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.structured_instrument.created_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn close_structured_capacity_instrument(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CloseStructuredCapacityInstrumentRequest,
+    ) -> Result<MutationResult<CloseStructuredCapacityInstrumentResponse>, String> {
+        let structured_instrument_id = normalize_required(
+            req.structured_instrument_id.as_str(),
+            "structured_capacity_instrument_id_missing",
+        )?;
+        let Some(existing_record) = self
+            .structured_capacity_instruments
+            .get(structured_instrument_id.as_str())
+            .cloned()
+        else {
+            return Err("structured_capacity_instrument_not_found".to_string());
+        };
+        if !structured_capacity_status_is_terminal(req.status) {
+            return Err("structured_capacity_instrument_close_status_invalid".to_string());
+        }
+        req.structured_instrument_id
+            .clone_from(&structured_instrument_id);
+        req.closed_at_ms = normalize_created_at_ms(req.closed_at_ms, context.now_unix_ms);
+        req.policy = normalized_policy(req.policy, context);
+
+        let Some(product_record) = self
+            .compute_products
+            .get(existing_record.structured_instrument.product_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_product_not_found".to_string());
+        };
+        let target_leg_status = structured_capacity_close_target_status(req.status);
+        if req.propagate_to_open_legs && target_leg_status.is_none() {
+            return Err(
+                "structured_capacity_instrument_settlement_propagation_invalid".to_string(),
+            );
+        }
+
+        let mut legs = Vec::with_capacity(existing_record.structured_instrument.legs.len());
+        for leg in &existing_record.structured_instrument.legs {
+            let Some(current_leg) = self.get_capacity_instrument(leg.instrument_id.as_str()) else {
+                return Err("structured_capacity_leg_not_found".to_string());
+            };
+            if req.propagate_to_open_legs && capacity_instrument_status_is_live(current_leg.status)
+            {
+                let close_response = self.close_capacity_instrument(
+                    context,
+                    CloseCapacityInstrumentRequest {
+                        idempotency_key: format!(
+                            "{}:structured_leg:{}",
+                            req.idempotency_key, leg.instrument_id
+                        ),
+                        trace: req.trace.clone(),
+                        policy: req.policy.clone(),
+                        instrument_id: leg.instrument_id.clone(),
+                        status: target_leg_status.ok_or_else(|| {
+                            "structured_capacity_instrument_settlement_propagation_invalid"
+                                .to_string()
+                        })?,
+                        closed_at_ms: req.closed_at_ms,
+                        closure_reason: default_closure_reason_for_status(
+                            target_leg_status.ok_or_else(|| {
+                                "structured_capacity_instrument_settlement_propagation_invalid"
+                                    .to_string()
+                            })?,
+                        ),
+                        non_delivery_reason: None,
+                        settlement_failure_reason: None,
+                        lifecycle_reason_detail: req.lifecycle_reason_detail.clone(),
+                        metadata: json!({
+                            "structured_instrument_id": structured_instrument_id.clone(),
+                            "structured_close_requested_status": req.status.label(),
+                        }),
+                        evidence: Vec::new(),
+                        hints: ReceiptHints::default(),
+                    },
+                )?;
+                legs.push(close_response.response.instrument);
+            } else {
+                legs.push(current_leg);
+            }
+        }
+
+        let derived_status = derive_structured_capacity_status(&legs);
+        if legs
+            .iter()
+            .any(|leg| !capacity_instrument_status_is_terminal(leg.status))
+        {
+            return Err("structured_capacity_instrument_live_legs_require_propagation".to_string());
+        }
+        if req.status == StructuredCapacityInstrumentStatus::Settled
+            && derived_status != StructuredCapacityInstrumentStatus::Settled
+        {
+            return Err("structured_capacity_instrument_legs_not_settled".to_string());
+        }
+        if req.status != StructuredCapacityInstrumentStatus::Settled && derived_status != req.status
+        {
+            return Err("structured_capacity_instrument_close_status_mismatch".to_string());
+        }
+
+        let mut closed_structured_instrument = existing_record.structured_instrument.clone();
+        closed_structured_instrument.status = derived_status;
+        closed_structured_instrument
+            .lifecycle_reason_detail
+            .clone_from(&req.lifecycle_reason_detail);
+        let metadata = ensure_metadata_object(&mut closed_structured_instrument.metadata)?;
+        metadata.insert(
+            "closed_at_ms".to_string(),
+            Value::Number(req.closed_at_ms.into()),
+        );
+        metadata.insert(
+            "close_requested_status".to_string(),
+            Value::String(req.status.label().to_string()),
+        );
+        metadata.insert(
+            "close_final_status".to_string(),
+            Value::String(derived_status.label().to_string()),
+        );
+        metadata.insert(
+            "propagate_to_open_legs".to_string(),
+            Value::Bool(req.propagate_to_open_legs),
+        );
+        if req.metadata.is_object() {
+            metadata.insert("close_request".to_string(), req.metadata.clone());
+        }
+
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(existing_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        let leg_receipt_ids = existing_record
+            .structured_instrument
+            .legs
+            .iter()
+            .filter_map(|leg| self.capacity_instruments.get(leg.instrument_id.as_str()))
+            .map(|record| {
+                push_receipt_evidence(
+                    &mut evidence,
+                    self.receipt_store
+                        .get_receipt(record.receipt_id.as_str())
+                        .as_ref(),
+                );
+                record.receipt_id.clone()
+            })
+            .collect::<Vec<_>>();
+        let close_payload =
+            serde_json::to_value(&closed_structured_instrument).map_err(|error| {
+                format!("kernel_structured_capacity_instrument_close_encode_failed: {error}")
+            })?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.structured_instrument.close".to_string(),
+                created_at_ms: req.closed_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: close_payload,
+                outputs_payload: json!({
+                    "structured_instrument_id": structured_instrument_id.clone(),
+                    "product_id": closed_structured_instrument.product_id.clone(),
+                    "requested_status": req.status.label(),
+                    "status": derived_status.label(),
+                    "propagate_to_open_legs": req.propagate_to_open_legs,
+                    "leg_receipt_ids": leg_receipt_ids,
+                    "product_receipt_id": product_record.receipt_id.clone(),
+                    "structured_instrument_receipt_id": existing_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.structured_instrument.close",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CloseStructuredCapacityInstrumentResponse {
+            structured_instrument: closed_structured_instrument.clone(),
+            legs: legs.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.structured_capacity_instruments.insert(
+            structured_instrument_id,
+            StructuredCapacityInstrumentRecord {
+                structured_instrument: closed_structured_instrument,
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.closed_at_ms)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -6633,8 +7540,10 @@ mod tests {
     use super::{KernelMutationContext, KernelState, floor_to_minute_utc, money_amount_value};
     use openagents_kernel_core::authority::{
         CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
-        CorrectComputeIndexRequest, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
-        CreateComputeProductRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
+        CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
+        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
+        CreateStructuredCapacityInstrumentRequest, PublishComputeIndexRequest,
+        RecordDeliveryProofRequest,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
@@ -6643,7 +7552,9 @@ mod tests {
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
         ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-        DeliveryRejectionReason, OllamaRuntimeCapability,
+        DeliveryRejectionReason, OllamaRuntimeCapability, StructuredCapacityInstrument,
+        StructuredCapacityInstrumentKind, StructuredCapacityInstrumentStatus,
+        StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, ReceiptHints, TraceContext,
@@ -6913,6 +7824,173 @@ mod tests {
             settled_at_ms,
             settlement_index_id: None,
             metadata: json!({}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn reservation_instrument_request(
+        instrument_id: &str,
+        created_at_ms: i64,
+    ) -> CreateCapacityInstrumentRequest {
+        CreateCapacityInstrumentRequest {
+            idempotency_key: format!("idemp.compute.instrument.reservation.{instrument_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument: CapacityInstrument {
+                instrument_id: instrument_id.to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                capacity_lot_id: Some("lot.compute.alpha".to_string()),
+                buyer_id: Some("buyer.alpha".to_string()),
+                provider_id: Some("provider.alpha".to_string()),
+                delivery_start_ms: created_at_ms + 30_000,
+                delivery_end_ms: created_at_ms + 55_000,
+                quantity: 128,
+                fixed_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(25),
+                }),
+                reference_index_id: None,
+                kind: CapacityInstrumentKind::Reservation,
+                settlement_mode: ComputeSettlementMode::BuyerElection,
+                created_at_ms,
+                status: CapacityInstrumentStatus::Open,
+                closure_reason: None,
+                non_delivery_reason: None,
+                settlement_failure_reason: None,
+                lifecycle_reason_detail: None,
+                metadata: json!({
+                    "reservation_terms": {
+                        "exercise_window_start_ms": created_at_ms + 35_000,
+                        "exercise_window_end_ms": created_at_ms + 50_000,
+                        "exercise_price": serde_json::to_value(Money {
+                            asset: Asset::Btc,
+                            amount: MoneyAmount::AmountSats(1500),
+                        }).expect("reservation exercise price"),
+                    }
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn forward_instrument_request(
+        instrument_id: &str,
+        created_at_ms: i64,
+        delivery_start_ms: i64,
+        capacity_lot_id: &str,
+    ) -> CreateCapacityInstrumentRequest {
+        CreateCapacityInstrumentRequest {
+            idempotency_key: format!("idemp.compute.instrument.forward.{instrument_id}"),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument: CapacityInstrument {
+                instrument_id: instrument_id.to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                capacity_lot_id: Some(capacity_lot_id.to_string()),
+                buyer_id: Some("buyer.alpha".to_string()),
+                provider_id: Some("provider.alpha".to_string()),
+                delivery_start_ms,
+                delivery_end_ms: delivery_start_ms + 30_000,
+                quantity: 128,
+                fixed_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(1500),
+                }),
+                reference_index_id: None,
+                kind: CapacityInstrumentKind::ForwardPhysical,
+                settlement_mode: ComputeSettlementMode::Physical,
+                created_at_ms,
+                status: CapacityInstrumentStatus::Open,
+                closure_reason: None,
+                non_delivery_reason: None,
+                settlement_failure_reason: None,
+                lifecycle_reason_detail: None,
+                metadata: json!({}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn structured_reservation_request(
+        created_at_ms: i64,
+    ) -> CreateStructuredCapacityInstrumentRequest {
+        CreateStructuredCapacityInstrumentRequest {
+            idempotency_key: "idemp.compute.structured.reservation.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            structured_instrument: StructuredCapacityInstrument {
+                structured_instrument_id: "structured.compute.reservation.alpha".to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                buyer_id: Some("buyer.alpha".to_string()),
+                provider_id: Some("provider.alpha".to_string()),
+                kind: StructuredCapacityInstrumentKind::Reservation,
+                created_at_ms,
+                status: StructuredCapacityInstrumentStatus::Open,
+                lifecycle_reason_detail: None,
+                legs: vec![StructuredCapacityLeg {
+                    instrument_id: "instrument.compute.reservation.alpha".to_string(),
+                    role: StructuredCapacityLegRole::ReservationRight,
+                    leg_order: 1,
+                    metadata: json!({"summary": "reservation right"}),
+                }],
+                metadata: json!({}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn structured_strip_request(created_at_ms: i64) -> CreateStructuredCapacityInstrumentRequest {
+        CreateStructuredCapacityInstrumentRequest {
+            idempotency_key: "idemp.compute.structured.strip.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            structured_instrument: StructuredCapacityInstrument {
+                structured_instrument_id: "structured.compute.strip.alpha".to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                buyer_id: Some("buyer.alpha".to_string()),
+                provider_id: Some("provider.alpha".to_string()),
+                kind: StructuredCapacityInstrumentKind::Strip,
+                created_at_ms,
+                status: StructuredCapacityInstrumentStatus::Open,
+                lifecycle_reason_detail: None,
+                legs: vec![
+                    StructuredCapacityLeg {
+                        instrument_id: "instrument.compute.strip.1".to_string(),
+                        role: StructuredCapacityLegRole::StripSegment,
+                        leg_order: 1,
+                        metadata: json!({}),
+                    },
+                    StructuredCapacityLeg {
+                        instrument_id: "instrument.compute.strip.2".to_string(),
+                        role: StructuredCapacityLegRole::StripSegment,
+                        leg_order: 2,
+                        metadata: json!({}),
+                    },
+                ],
+                metadata: json!({}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn close_structured_reservation_request(
+        closed_at_ms: i64,
+    ) -> CloseStructuredCapacityInstrumentRequest {
+        CloseStructuredCapacityInstrumentRequest {
+            idempotency_key: "idemp.compute.structured.reservation.close.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            structured_instrument_id: "structured.compute.reservation.alpha".to_string(),
+            status: StructuredCapacityInstrumentStatus::Cancelled,
+            closed_at_ms,
+            propagate_to_open_legs: true,
+            lifecycle_reason_detail: Some("operator cancelled reservation".to_string()),
+            metadata: json!({"source": "test"}),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -7808,6 +8886,185 @@ mod tests {
                 .get("market_phase")
                 .and_then(serde_json::Value::as_str),
             Some("forward_physical")
+        );
+    }
+
+    #[test]
+    fn structured_reservation_links_explicit_leg_and_marks_advanced_only() {
+        let created_at_ms = 1_762_000_370_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 1_000),
+                reservation_instrument_request(
+                    "instrument.compute.reservation.alpha",
+                    created_at_ms as i64 + 1_000,
+                ),
+            )
+            .expect("reservation leg");
+
+        let response = kernel
+            .create_structured_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                structured_reservation_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("structured reservation");
+
+        assert_eq!(
+            response.response.structured_instrument.status,
+            StructuredCapacityInstrumentStatus::Active
+        );
+        assert_eq!(response.response.legs.len(), 1);
+        assert_eq!(
+            response.response.legs[0].kind,
+            CapacityInstrumentKind::Reservation
+        );
+        assert_eq!(
+            response.response.receipt.receipt_type,
+            "kernel.compute.structured_instrument.create.v1"
+        );
+        let leg = kernel
+            .get_capacity_instrument("instrument.compute.reservation.alpha")
+            .expect("linked reservation leg");
+        assert_eq!(
+            leg.metadata
+                .get("structured_instrument_id")
+                .and_then(Value::as_str),
+            Some("structured.compute.reservation.alpha")
+        );
+        let structured = kernel
+            .get_structured_capacity_instrument("structured.compute.reservation.alpha")
+            .expect("structured reservation read model");
+        assert_eq!(
+            structured
+                .metadata
+                .get("visibility_scope")
+                .and_then(Value::as_str),
+            Some("advanced_only")
+        );
+        assert_eq!(structured.legs.len(), 1);
+        assert_eq!(
+            structured.legs[0].role,
+            StructuredCapacityLegRole::ReservationRight
+        );
+    }
+
+    #[test]
+    fn structured_strip_rejects_non_monotonic_delivery_windows() {
+        let created_at_ms = 1_762_000_380_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(
+                &context,
+                capacity_lot_request(created_at_ms as i64 + 200_000),
+            )
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 1_000),
+                forward_instrument_request(
+                    "instrument.compute.strip.1",
+                    created_at_ms as i64 + 1_000,
+                    created_at_ms as i64 + 210_000,
+                    "lot.compute.alpha",
+                ),
+            )
+            .expect("first strip leg");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                forward_instrument_request(
+                    "instrument.compute.strip.2",
+                    created_at_ms as i64 + 2_000,
+                    created_at_ms as i64 + 220_000,
+                    "lot.compute.alpha",
+                ),
+            )
+            .expect("second strip leg");
+
+        let mut request = structured_strip_request(created_at_ms as i64 + 3_000);
+        request.structured_instrument.legs[0].leg_order = 1;
+        request.structured_instrument.legs[1].leg_order = 2;
+        let second_leg = kernel
+            .capacity_instruments
+            .get_mut("instrument.compute.strip.2")
+            .expect("second strip leg record");
+        second_leg.instrument.delivery_start_ms = created_at_ms as i64 + 215_000;
+        second_leg.instrument.delivery_end_ms = created_at_ms as i64 + 235_000;
+
+        let error = kernel
+            .create_structured_capacity_instrument(&fixture_context(created_at_ms + 3_000), request)
+            .expect_err("expected non-monotonic strip to fail");
+        assert_eq!(error, "structured_strip_window_sequence_invalid");
+    }
+
+    #[test]
+    fn close_structured_reservation_propagates_cancellation_to_live_leg() {
+        let created_at_ms = 1_762_000_390_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 1_000),
+                reservation_instrument_request(
+                    "instrument.compute.reservation.alpha",
+                    created_at_ms as i64 + 1_000,
+                ),
+            )
+            .expect("reservation leg");
+        kernel
+            .create_structured_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                structured_reservation_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("structured reservation");
+
+        let response = kernel
+            .close_structured_capacity_instrument(
+                &fixture_context(created_at_ms + 3_000),
+                close_structured_reservation_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("close structured reservation");
+        assert_eq!(
+            response.response.structured_instrument.status,
+            StructuredCapacityInstrumentStatus::Cancelled
+        );
+        assert_eq!(response.response.legs.len(), 1);
+        assert_eq!(
+            response.response.legs[0].status,
+            CapacityInstrumentStatus::Cancelled
+        );
+        assert_eq!(
+            response.response.receipt.receipt_type,
+            "kernel.compute.structured_instrument.close.v1"
+        );
+        let leg = kernel
+            .get_capacity_instrument("instrument.compute.reservation.alpha")
+            .expect("reservation leg after close");
+        assert_eq!(leg.status, CapacityInstrumentStatus::Cancelled);
+        let structured = kernel
+            .get_structured_capacity_instrument("structured.compute.reservation.alpha")
+            .expect("structured reservation after close");
+        assert_eq!(
+            structured.status,
+            StructuredCapacityInstrumentStatus::Cancelled
         );
     }
 }

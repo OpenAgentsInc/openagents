@@ -44,6 +44,7 @@ use openagents_kernel_core::authority::{
 };
 use openagents_kernel_core::compute::{
     CapacityInstrumentStatus, CapacityLotStatus, ComputeProductStatus, DeliveryProofStatus,
+    StructuredCapacityInstrumentStatus,
 };
 use openagents_kernel_core::compute_contracts;
 use openagents_kernel_core::receipts::Receipt;
@@ -676,6 +677,19 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         .route(
             "/v1/kernel/compute/instruments/{instrument_id}/cash_settle",
             post(cash_settle_kernel_capacity_instrument),
+        )
+        .route(
+            "/v1/kernel/compute/structured_instruments",
+            get(list_kernel_structured_capacity_instruments)
+                .post(create_kernel_structured_capacity_instrument),
+        )
+        .route(
+            "/v1/kernel/compute/structured_instruments/{structured_instrument_id}",
+            get(get_kernel_structured_capacity_instrument),
+        )
+        .route(
+            "/v1/kernel/compute/structured_instruments/{structured_instrument_id}/close",
+            post(close_kernel_structured_capacity_instrument),
         )
         .route(
             "/v1/kernel/compute/lots/{lot_id}/delivery_proofs",
@@ -1720,6 +1734,12 @@ struct CapacityInstrumentsQuery {
 }
 
 #[derive(Debug, Deserialize)]
+struct StructuredCapacityInstrumentsQuery {
+    product_id: Option<String>,
+    status: Option<StructuredCapacityInstrumentStatus>,
+}
+
+#[derive(Debug, Deserialize)]
 struct DeliveryProofsQuery {
     status: Option<DeliveryProofStatus>,
 }
@@ -1862,6 +1882,59 @@ async fn get_kernel_capacity_instrument(
     };
     let response = compute_contracts::get_capacity_instrument_response_to_proto(&instrument)
         .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn list_kernel_structured_capacity_instruments(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<StructuredCapacityInstrumentsQuery>,
+) -> Result<Json<proto_compute::ListStructuredCapacityInstrumentsResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let response = compute_contracts::list_structured_capacity_instruments_response_to_proto(
+        store
+            .kernel
+            .list_structured_capacity_instruments(query.product_id.as_deref(), query.status)
+            .as_slice(),
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn get_kernel_structured_capacity_instrument(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(structured_instrument_id): Path<String>,
+) -> Result<Json<proto_compute::GetStructuredCapacityInstrumentResponse>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let structured_instrument_id = normalize_required_field(
+        structured_instrument_id.as_str(),
+        "structured_capacity_instrument_id_missing",
+    )?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(structured_instrument) = store
+        .kernel
+        .get_structured_capacity_instrument(structured_instrument_id.as_str())
+    else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_structured_capacity_instrument_not_found".to_string(),
+        });
+    };
+    let response = compute_contracts::get_structured_capacity_instrument_response_to_proto(
+        &structured_instrument,
+    )
+    .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -2142,6 +2215,92 @@ async fn cash_settle_kernel_capacity_instrument(
     );
     let response =
         compute_contracts::cash_settle_capacity_instrument_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn create_kernel_structured_capacity_instrument(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Json(request): Json<proto_compute::CreateStructuredCapacityInstrumentRequest>,
+) -> Result<Json<proto_compute::CreateStructuredCapacityInstrumentResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let request =
+        compute_contracts::create_structured_capacity_instrument_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .create_structured_capacity_instrument(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.structured_instrument.created",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::create_structured_capacity_instrument_response_to_proto(
+        &result.response,
+    )
+    .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn close_kernel_structured_capacity_instrument(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(structured_instrument_id): Path<String>,
+    Json(request): Json<proto_compute::CloseStructuredCapacityInstrumentRequest>,
+) -> Result<Json<proto_compute::CloseStructuredCapacityInstrumentResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let mut request =
+        compute_contracts::close_structured_capacity_instrument_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let structured_instrument_id = normalize_required_field(
+        structured_instrument_id.as_str(),
+        "structured_capacity_instrument_id_missing",
+    )?;
+    if !request.structured_instrument_id.trim().is_empty()
+        && request.structured_instrument_id != structured_instrument_id
+    {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_structured_capacity_instrument_id_mismatch".to_string(),
+        });
+    }
+    request.structured_instrument_id = structured_instrument_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .close_structured_capacity_instrument(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.structured_instrument.closed",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::close_structured_capacity_instrument_response_to_proto(&result.response)
             .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
@@ -2903,6 +3062,8 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_index_not_found"
         | "capacity_lot_not_found"
         | "capacity_instrument_not_found"
+        | "structured_capacity_instrument_not_found"
+        | "structured_capacity_leg_not_found"
         | "data_asset_not_found"
         | "access_grant_not_found"
         | "delivery_bundle_not_found"
@@ -2923,6 +3084,34 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_capacity_instrument_mismatch"
         | "compute_product_reference_index_mismatch"
         | "capacity_lot_instrument_mismatch"
+        | "structured_capacity_instrument_id_conflict"
+        | "capacity_instrument_already_structured"
+        | "structured_capacity_leg_product_mismatch"
+        | "structured_capacity_leg_buyer_mismatch"
+        | "structured_capacity_leg_provider_mismatch"
+        | "structured_reservation_leg_count_invalid"
+        | "structured_reservation_role_invalid"
+        | "structured_reservation_leg_kind_invalid"
+        | "structured_reservation_settlement_mode_invalid"
+        | "structured_reservation_capacity_lot_required"
+        | "structured_reservation_terms_missing"
+        | "structured_swap_leg_count_invalid"
+        | "structured_swap_roles_invalid"
+        | "structured_swap_leg_kind_invalid"
+        | "structured_swap_quantity_mismatch"
+        | "structured_swap_window_mismatch"
+        | "structured_swap_settlement_mode_invalid"
+        | "structured_swap_reference_index_required"
+        | "structured_swap_capacity_lot_required"
+        | "structured_strip_leg_count_invalid"
+        | "structured_strip_role_invalid"
+        | "structured_strip_leg_kind_invalid"
+        | "structured_strip_quantity_mismatch"
+        | "structured_strip_window_sequence_invalid"
+        | "structured_capacity_instrument_settlement_propagation_invalid"
+        | "structured_capacity_instrument_live_legs_require_propagation"
+        | "structured_capacity_instrument_legs_not_settled"
+        | "structured_capacity_instrument_close_status_mismatch"
         | "compute_product_not_index_eligible"
         | "compute_index_window_already_published"
         | "compute_index_already_superseded"
@@ -2955,6 +3144,8 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_id_missing"
         | "capacity_lot_id_missing"
         | "capacity_instrument_id_missing"
+        | "structured_capacity_instrument_id_missing"
+        | "structured_capacity_leg_instrument_id_missing"
         | "delivery_proof_id_missing"
         | "compute_index_id_missing"
         | "compute_product_resource_class_invalid"
@@ -2978,6 +3169,26 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_apple_silicon_requirement_missing"
         | "capacity_lot_window_invalid"
         | "capacity_instrument_window_invalid"
+        | "reservation_capacity_lot_required"
+        | "reservation_window_not_future"
+        | "reservation_settlement_mode_invalid"
+        | "reservation_premium_price_missing"
+        | "reservation_buyer_required"
+        | "reservation_terms_missing"
+        | "reservation_exercise_window_start_missing"
+        | "reservation_exercise_window_end_missing"
+        | "reservation_exercise_window_invalid"
+        | "reservation_exercise_window_outside_delivery"
+        | "reservation_exercise_price_missing"
+        | "reservation_exercise_price_invalid"
+        | "reservation_price_asset_mismatch"
+        | "structured_capacity_instrument_legs_missing"
+        | "structured_capacity_leg_duplicate"
+        | "structured_capacity_leg_order_duplicate"
+        | "structured_capacity_leg_not_live"
+        | "structured_capacity_leg_metadata_invalid"
+        | "structured_capacity_instrument_metadata_invalid"
+        | "structured_capacity_instrument_close_status_invalid"
         | "future_cash_capacity_lot_not_allowed"
         | "future_cash_settlement_mode_invalid"
         | "future_cash_window_not_future"
@@ -3709,18 +3920,19 @@ mod tests {
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
         AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
         CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
-        CorrectComputeIndexRequest, CreateAccessGrantRequest, CreateAccessGrantResponse,
-        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
-        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
-        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
-        CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
-        CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
-        ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
-        HttpKernelAuthorityClient, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
-        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, KernelAuthority,
-        PlaceCoverageOfferRequest, PlaceCoverageOfferResponse, PublishComputeIndexRequest,
-        PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
-        RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
+        CloseStructuredCapacityInstrumentRequest, CorrectComputeIndexRequest,
+        CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
+        CreateCapacityLotRequest, CreateComputeProductRequest, CreateContractRequest,
+        CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
+        CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
+        CreateRiskClaimResponse, CreateStructuredCapacityInstrumentRequest, CreateWorkUnitRequest,
+        CreateWorkUnitResponse, ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse,
+        FinalizeVerdictRequest, FinalizeVerdictResponse, HttpKernelAuthorityClient,
+        IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
+        IssueLiquidityEnvelopeResponse, KernelAuthority, PlaceCoverageOfferRequest,
+        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
+        PublishRiskSignalResponse, RecordDeliveryProofRequest, RegisterDataAssetRequest,
+        RegisterDataAssetResponse, RegisterReservePartitionRequest,
         RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
         RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
         SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
@@ -3733,6 +3945,8 @@ mod tests {
         ComputeHostCapability, ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus,
         ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
         ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+        StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use openagents_kernel_core::compute_contracts;
     use openagents_kernel_core::data::{
@@ -4335,6 +4549,106 @@ mod tests {
         }
     }
 
+    fn reservation_instrument_request(
+        instrument_id: &str,
+        capacity_lot_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateCapacityInstrumentRequest {
+        CreateCapacityInstrumentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            instrument: CapacityInstrument {
+                instrument_id: instrument_id.to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                capacity_lot_id: Some(capacity_lot_id.to_string()),
+                buyer_id: Some("buyer.compute.alpha".to_string()),
+                provider_id: Some("desktop-provider.alpha".to_string()),
+                delivery_start_ms: created_at_ms + 60_000,
+                delivery_end_ms: created_at_ms + 180_000,
+                quantity: 10,
+                fixed_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(50),
+                }),
+                reference_index_id: None,
+                kind: CapacityInstrumentKind::Reservation,
+                settlement_mode: ComputeSettlementMode::BuyerElection,
+                created_at_ms,
+                status: CapacityInstrumentStatus::Open,
+                closure_reason: None,
+                non_delivery_reason: None,
+                settlement_failure_reason: None,
+                lifecycle_reason_detail: None,
+                metadata: json!({
+                    "reservation_terms": {
+                        "exercise_window_start_ms": created_at_ms + 75_000,
+                        "exercise_window_end_ms": created_at_ms + 150_000,
+                        "exercise_price": serde_json::to_value(Money {
+                            asset: Asset::Btc,
+                            amount: MoneyAmount::AmountSats(1_500),
+                        }).expect("reservation exercise price")
+                    }
+                }),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn structured_reservation_request(
+        structured_instrument_id: &str,
+        leg_instrument_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> CreateStructuredCapacityInstrumentRequest {
+        CreateStructuredCapacityInstrumentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            structured_instrument: StructuredCapacityInstrument {
+                structured_instrument_id: structured_instrument_id.to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                buyer_id: Some("buyer.compute.alpha".to_string()),
+                provider_id: Some("desktop-provider.alpha".to_string()),
+                kind: StructuredCapacityInstrumentKind::Reservation,
+                created_at_ms,
+                status: StructuredCapacityInstrumentStatus::Open,
+                lifecycle_reason_detail: None,
+                legs: vec![StructuredCapacityLeg {
+                    instrument_id: leg_instrument_id.to_string(),
+                    role: StructuredCapacityLegRole::ReservationRight,
+                    leg_order: 1,
+                    metadata: json!({"summary": "reservation right"}),
+                }],
+                metadata: json!({}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn close_structured_capacity_instrument_request(
+        structured_instrument_id: &str,
+        idempotency_key: &str,
+        closed_at_ms: i64,
+    ) -> CloseStructuredCapacityInstrumentRequest {
+        CloseStructuredCapacityInstrumentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            structured_instrument_id: structured_instrument_id.to_string(),
+            status: StructuredCapacityInstrumentStatus::Cancelled,
+            closed_at_ms,
+            propagate_to_open_legs: true,
+            lifecycle_reason_detail: Some("operator cancelled advanced reservation".to_string()),
+            metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
     fn compute_product_wire_request(
         product_id: &str,
         idempotency_key: &str,
@@ -4453,6 +4767,55 @@ mod tests {
             &cash_settle_capacity_instrument_request(instrument_id, idempotency_key, settled_at_ms),
         )
         .expect("cash settle capacity instrument wire request")
+    }
+
+    fn reservation_instrument_wire_request(
+        instrument_id: &str,
+        capacity_lot_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> proto_compute::CreateCapacityInstrumentRequest {
+        compute_contracts::create_capacity_instrument_request_to_proto(
+            &reservation_instrument_request(
+                instrument_id,
+                capacity_lot_id,
+                idempotency_key,
+                created_at_ms,
+            ),
+        )
+        .expect("reservation instrument wire request")
+    }
+
+    fn structured_reservation_wire_request(
+        structured_instrument_id: &str,
+        leg_instrument_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+    ) -> proto_compute::CreateStructuredCapacityInstrumentRequest {
+        compute_contracts::create_structured_capacity_instrument_request_to_proto(
+            &structured_reservation_request(
+                structured_instrument_id,
+                leg_instrument_id,
+                idempotency_key,
+                created_at_ms,
+            ),
+        )
+        .expect("structured reservation wire request")
+    }
+
+    fn close_structured_capacity_instrument_wire_request(
+        structured_instrument_id: &str,
+        idempotency_key: &str,
+        closed_at_ms: i64,
+    ) -> proto_compute::CloseStructuredCapacityInstrumentRequest {
+        compute_contracts::close_structured_capacity_instrument_request_to_proto(
+            &close_structured_capacity_instrument_request(
+                structured_instrument_id,
+                idempotency_key,
+                closed_at_ms,
+            ),
+        )
+        .expect("close structured capacity instrument wire request")
     }
 
     fn data_asset_request(
@@ -6617,6 +6980,168 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn structured_reservation_routes_roundtrip_explicit_legs() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(90_000);
+
+        for request in [
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/products")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(
+                    &compute_product_wire_request(
+                        "ollama.text_generation",
+                        "idemp.compute.product.structured",
+                        created_at_ms,
+                    ),
+                )?))?,
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/lots")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
+                    "lot.compute.structured.alpha",
+                    "ollama.text_generation",
+                    "idemp.compute.lot.structured.alpha",
+                    created_at_ms + 1_000,
+                ))?))?,
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/instruments")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(
+                    &reservation_instrument_wire_request(
+                        "instrument.compute.reservation.route",
+                        "lot.compute.structured.alpha",
+                        "idemp.compute.instrument.reservation.route",
+                        created_at_ms + 2_000,
+                    ),
+                )?))?,
+        ] {
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let created = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/structured_instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &structured_reservation_wire_request(
+                            "structured.compute.reservation.route",
+                            "instrument.compute.reservation.route",
+                            "idemp.compute.structured.reservation.route",
+                            created_at_ms + 3_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(created.status(), StatusCode::OK);
+        let created_payload =
+            compute_contracts::create_structured_capacity_instrument_response_from_proto(
+                &response_json::<proto_compute::CreateStructuredCapacityInstrumentResponse>(
+                    created,
+                )
+                .await?,
+            )?;
+        assert_eq!(
+            created_payload.receipt.receipt_type,
+            "kernel.compute.structured_instrument.create.v1"
+        );
+        assert_eq!(created_payload.legs.len(), 1);
+        assert_eq!(
+            created_payload.structured_instrument.kind,
+            StructuredCapacityInstrumentKind::Reservation
+        );
+
+        let listed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/structured_instruments?product_id=ollama.text_generation")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(listed.status(), StatusCode::OK);
+        let listed_payload =
+            compute_contracts::list_structured_capacity_instruments_response_from_proto(
+                &response_json::<proto_compute::ListStructuredCapacityInstrumentsResponse>(listed)
+                    .await?,
+            )?;
+        assert_eq!(listed_payload.len(), 1);
+        assert_eq!(
+            listed_payload[0]
+                .metadata
+                .get("visibility_scope")
+                .and_then(serde_json::Value::as_str),
+            Some("advanced_only")
+        );
+
+        let fetched = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/structured_instruments/structured.compute.reservation.route")
+                    .header("authorization", authorization(&session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(fetched.status(), StatusCode::OK);
+        let fetched_payload =
+            compute_contracts::get_structured_capacity_instrument_response_from_proto(
+                &response_json::<proto_compute::GetStructuredCapacityInstrumentResponse>(fetched)
+                    .await?,
+            )?;
+        assert_eq!(fetched_payload.legs.len(), 1);
+
+        let closed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/structured_instruments/structured.compute.reservation.route/close")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &close_structured_capacity_instrument_wire_request(
+                            "structured.compute.reservation.route",
+                            "idemp.compute.structured.reservation.route.close",
+                            created_at_ms + 4_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(closed.status(), StatusCode::OK);
+        let closed_payload =
+            compute_contracts::close_structured_capacity_instrument_response_from_proto(
+                &response_json::<proto_compute::CloseStructuredCapacityInstrumentResponse>(closed)
+                    .await?,
+            )?;
+        assert_eq!(
+            closed_payload.structured_instrument.status,
+            StructuredCapacityInstrumentStatus::Cancelled
+        );
+        assert_eq!(
+            closed_payload.legs[0].status,
+            CapacityInstrumentStatus::Cancelled
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn compute_read_models_reload_after_restart_when_kernel_state_is_persisted() -> Result<()>
     {
         let kernel_state_path = std::env::temp_dir().join(format!(
@@ -6944,6 +7469,19 @@ mod tests {
         let second_lot = client.create_capacity_lot(second_lot).await?;
         assert_eq!(second_lot.lot.capacity_lot_id, "lot.compute.client.beta");
 
+        let reservation_lot = client
+            .create_capacity_lot(capacity_lot_request(
+                "lot.compute.client.reservation",
+                "ollama.text_generation",
+                "idemp.compute.client.lot.reservation",
+                created_at_ms + 2_500,
+            ))
+            .await?;
+        assert_eq!(
+            reservation_lot.lot.capacity_lot_id,
+            "lot.compute.client.reservation"
+        );
+
         let mut second_instrument = capacity_instrument_request(
             "instrument.compute.client.beta",
             "ollama.text_generation",
@@ -7043,6 +7581,33 @@ mod tests {
             Some(150)
         );
 
+        let reservation_leg = client
+            .create_capacity_instrument(reservation_instrument_request(
+                "instrument.compute.client.reservation",
+                "lot.compute.client.reservation",
+                "idemp.compute.client.instrument.reservation",
+                created_at_ms + 9_000,
+            ))
+            .await?;
+        assert_eq!(
+            reservation_leg.instrument.kind,
+            CapacityInstrumentKind::Reservation
+        );
+
+        let structured_reservation = client
+            .create_structured_capacity_instrument(structured_reservation_request(
+                "structured.compute.client.reservation",
+                "instrument.compute.client.reservation",
+                "idemp.compute.client.structured.reservation",
+                created_at_ms + 10_000,
+            ))
+            .await?;
+        assert_eq!(
+            structured_reservation.structured_instrument.kind,
+            StructuredCapacityInstrumentKind::Reservation
+        );
+        assert_eq!(structured_reservation.legs.len(), 1);
+
         let listed_products = client
             .list_compute_products(Some(ComputeProductStatus::Active))
             .await?;
@@ -7069,6 +7634,13 @@ mod tests {
                 .iter()
                 .any(|item| item.instrument_id == "instrument.compute.client")
         );
+
+        let listed_structured = client
+            .list_structured_capacity_instruments(Some("ollama.text_generation"), None)
+            .await?;
+        assert!(listed_structured.iter().any(|item| {
+            item.structured_instrument_id == "structured.compute.client.reservation"
+        }));
 
         let listed_delivery_proofs = client
             .list_delivery_proofs(Some("lot.compute.client"), None)
@@ -7107,6 +7679,14 @@ mod tests {
             "instrument.compute.client"
         );
 
+        let fetched_structured = client
+            .get_structured_capacity_instrument("structured.compute.client.reservation")
+            .await?;
+        assert_eq!(
+            fetched_structured.structured_instrument_id,
+            "structured.compute.client.reservation"
+        );
+
         let fetched_delivery = client.get_delivery_proof("delivery.compute.client").await?;
         assert_eq!(
             fetched_delivery.delivery_proof_id,
@@ -7134,6 +7714,22 @@ mod tests {
         assert_eq!(
             closed.instrument.non_delivery_reason,
             Some(CapacityNonDeliveryReason::ProviderOffline)
+        );
+
+        let structured_closed = client
+            .close_structured_capacity_instrument(close_structured_capacity_instrument_request(
+                "structured.compute.client.reservation",
+                "idemp.compute.client.structured.reservation.close",
+                created_at_ms + 11_000,
+            ))
+            .await?;
+        assert_eq!(
+            structured_closed.structured_instrument.status,
+            StructuredCapacityInstrumentStatus::Cancelled
+        );
+        assert_eq!(
+            structured_closed.legs[0].status,
+            CapacityInstrumentStatus::Cancelled
         );
 
         server.abort();

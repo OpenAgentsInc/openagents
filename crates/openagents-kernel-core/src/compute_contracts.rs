@@ -1,10 +1,13 @@
 use crate::authority::{
     CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
-    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CorrectComputeIndexRequest,
-    CorrectComputeIndexResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
-    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
-    CreateComputeProductResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
-    RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
+    CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
+    CorrectComputeIndexRequest, CorrectComputeIndexResponse, CreateCapacityInstrumentRequest,
+    CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
+    CreateComputeProductRequest, CreateComputeProductResponse,
+    CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
+    PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
+    RecordDeliveryProofResponse,
 };
 use crate::compute::{
     ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
@@ -14,6 +17,8 @@ use crate::compute::{
     ComputeIndex, ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct,
     ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
     DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
+    StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+    StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
 };
 use crate::receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
@@ -637,6 +642,131 @@ fn capacity_instrument_status_from_proto(value: i32) -> CapacityInstrumentStatus
     }
 }
 
+fn structured_capacity_instrument_kind_to_proto(value: StructuredCapacityInstrumentKind) -> i32 {
+    match value {
+        StructuredCapacityInstrumentKind::Reservation => {
+            proto_compute::StructuredCapacityInstrumentKind::Reservation as i32
+        }
+        StructuredCapacityInstrumentKind::Swap => {
+            proto_compute::StructuredCapacityInstrumentKind::Swap as i32
+        }
+        StructuredCapacityInstrumentKind::Strip => {
+            proto_compute::StructuredCapacityInstrumentKind::Strip as i32
+        }
+    }
+}
+
+fn structured_capacity_instrument_kind_from_proto(value: i32) -> StructuredCapacityInstrumentKind {
+    match proto_compute::StructuredCapacityInstrumentKind::try_from(value)
+        .unwrap_or(proto_compute::StructuredCapacityInstrumentKind::Reservation)
+    {
+        proto_compute::StructuredCapacityInstrumentKind::Swap => {
+            StructuredCapacityInstrumentKind::Swap
+        }
+        proto_compute::StructuredCapacityInstrumentKind::Strip => {
+            StructuredCapacityInstrumentKind::Strip
+        }
+        proto_compute::StructuredCapacityInstrumentKind::Unspecified
+        | proto_compute::StructuredCapacityInstrumentKind::Reservation => {
+            StructuredCapacityInstrumentKind::Reservation
+        }
+    }
+}
+
+fn structured_capacity_instrument_status_to_proto(
+    value: StructuredCapacityInstrumentStatus,
+) -> i32 {
+    match value {
+        StructuredCapacityInstrumentStatus::Open => {
+            proto_compute::StructuredCapacityInstrumentStatus::Open as i32
+        }
+        StructuredCapacityInstrumentStatus::Active => {
+            proto_compute::StructuredCapacityInstrumentStatus::Active as i32
+        }
+        StructuredCapacityInstrumentStatus::PartiallyClosed => {
+            proto_compute::StructuredCapacityInstrumentStatus::PartiallyClosed as i32
+        }
+        StructuredCapacityInstrumentStatus::Settled => {
+            proto_compute::StructuredCapacityInstrumentStatus::Settled as i32
+        }
+        StructuredCapacityInstrumentStatus::Defaulted => {
+            proto_compute::StructuredCapacityInstrumentStatus::Defaulted as i32
+        }
+        StructuredCapacityInstrumentStatus::Cancelled => {
+            proto_compute::StructuredCapacityInstrumentStatus::Cancelled as i32
+        }
+        StructuredCapacityInstrumentStatus::Expired => {
+            proto_compute::StructuredCapacityInstrumentStatus::Expired as i32
+        }
+    }
+}
+
+fn structured_capacity_instrument_status_from_proto(
+    value: i32,
+) -> StructuredCapacityInstrumentStatus {
+    match proto_compute::StructuredCapacityInstrumentStatus::try_from(value)
+        .unwrap_or(proto_compute::StructuredCapacityInstrumentStatus::Open)
+    {
+        proto_compute::StructuredCapacityInstrumentStatus::Active => {
+            StructuredCapacityInstrumentStatus::Active
+        }
+        proto_compute::StructuredCapacityInstrumentStatus::PartiallyClosed => {
+            StructuredCapacityInstrumentStatus::PartiallyClosed
+        }
+        proto_compute::StructuredCapacityInstrumentStatus::Settled => {
+            StructuredCapacityInstrumentStatus::Settled
+        }
+        proto_compute::StructuredCapacityInstrumentStatus::Defaulted => {
+            StructuredCapacityInstrumentStatus::Defaulted
+        }
+        proto_compute::StructuredCapacityInstrumentStatus::Cancelled => {
+            StructuredCapacityInstrumentStatus::Cancelled
+        }
+        proto_compute::StructuredCapacityInstrumentStatus::Expired => {
+            StructuredCapacityInstrumentStatus::Expired
+        }
+        proto_compute::StructuredCapacityInstrumentStatus::Unspecified
+        | proto_compute::StructuredCapacityInstrumentStatus::Open => {
+            StructuredCapacityInstrumentStatus::Open
+        }
+    }
+}
+
+fn structured_capacity_leg_role_to_proto(value: StructuredCapacityLegRole) -> i32 {
+    match value {
+        StructuredCapacityLegRole::ReservationRight => {
+            proto_compute::StructuredCapacityLegRole::ReservationRight as i32
+        }
+        StructuredCapacityLegRole::SwapPay => {
+            proto_compute::StructuredCapacityLegRole::SwapPay as i32
+        }
+        StructuredCapacityLegRole::SwapReceive => {
+            proto_compute::StructuredCapacityLegRole::SwapReceive as i32
+        }
+        StructuredCapacityLegRole::StripSegment => {
+            proto_compute::StructuredCapacityLegRole::StripSegment as i32
+        }
+    }
+}
+
+fn structured_capacity_leg_role_from_proto(value: i32) -> StructuredCapacityLegRole {
+    match proto_compute::StructuredCapacityLegRole::try_from(value)
+        .unwrap_or(proto_compute::StructuredCapacityLegRole::ReservationRight)
+    {
+        proto_compute::StructuredCapacityLegRole::SwapPay => StructuredCapacityLegRole::SwapPay,
+        proto_compute::StructuredCapacityLegRole::SwapReceive => {
+            StructuredCapacityLegRole::SwapReceive
+        }
+        proto_compute::StructuredCapacityLegRole::StripSegment => {
+            StructuredCapacityLegRole::StripSegment
+        }
+        proto_compute::StructuredCapacityLegRole::Unspecified
+        | proto_compute::StructuredCapacityLegRole::ReservationRight => {
+            StructuredCapacityLegRole::ReservationRight
+        }
+    }
+}
+
 fn capacity_instrument_closure_reason_to_proto(value: CapacityInstrumentClosureReason) -> i32 {
     match value {
         CapacityInstrumentClosureReason::Filled => {
@@ -1182,6 +1312,70 @@ pub fn capacity_instrument_from_proto(
     })
 }
 
+pub fn structured_capacity_leg_to_proto(
+    leg: &StructuredCapacityLeg,
+) -> Result<proto_compute::StructuredCapacityLeg> {
+    Ok(proto_compute::StructuredCapacityLeg {
+        instrument_id: leg.instrument_id.clone(),
+        role: structured_capacity_leg_role_to_proto(leg.role),
+        leg_order: leg.leg_order,
+        metadata_json: json_value_to_string(&leg.metadata)?,
+    })
+}
+
+pub fn structured_capacity_leg_from_proto(
+    leg: &proto_compute::StructuredCapacityLeg,
+) -> Result<StructuredCapacityLeg> {
+    Ok(StructuredCapacityLeg {
+        instrument_id: leg.instrument_id.clone(),
+        role: structured_capacity_leg_role_from_proto(leg.role),
+        leg_order: leg.leg_order,
+        metadata: json_string_to_value(leg.metadata_json.as_str())?,
+    })
+}
+
+pub fn structured_capacity_instrument_to_proto(
+    instrument: &StructuredCapacityInstrument,
+) -> Result<proto_compute::StructuredCapacityInstrument> {
+    Ok(proto_compute::StructuredCapacityInstrument {
+        structured_instrument_id: instrument.structured_instrument_id.clone(),
+        product_id: instrument.product_id.clone(),
+        buyer_id: instrument.buyer_id.clone(),
+        provider_id: instrument.provider_id.clone(),
+        kind: structured_capacity_instrument_kind_to_proto(instrument.kind),
+        created_at_ms: instrument.created_at_ms,
+        status: structured_capacity_instrument_status_to_proto(instrument.status),
+        lifecycle_reason_detail: instrument.lifecycle_reason_detail.clone(),
+        legs: instrument
+            .legs
+            .iter()
+            .map(structured_capacity_leg_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        metadata_json: json_value_to_string(&instrument.metadata)?,
+    })
+}
+
+pub fn structured_capacity_instrument_from_proto(
+    instrument: &proto_compute::StructuredCapacityInstrument,
+) -> Result<StructuredCapacityInstrument> {
+    Ok(StructuredCapacityInstrument {
+        structured_instrument_id: instrument.structured_instrument_id.clone(),
+        product_id: instrument.product_id.clone(),
+        buyer_id: instrument.buyer_id.clone(),
+        provider_id: instrument.provider_id.clone(),
+        kind: structured_capacity_instrument_kind_from_proto(instrument.kind),
+        created_at_ms: instrument.created_at_ms,
+        status: structured_capacity_instrument_status_from_proto(instrument.status),
+        lifecycle_reason_detail: instrument.lifecycle_reason_detail.clone(),
+        legs: instrument
+            .legs
+            .iter()
+            .map(structured_capacity_leg_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        metadata: json_string_to_value(instrument.metadata_json.as_str())?,
+    })
+}
+
 pub fn delivery_proof_to_proto(proof: &DeliveryProof) -> Result<proto_compute::DeliveryProof> {
     Ok(proto_compute::DeliveryProof {
         delivery_proof_id: proof.delivery_proof_id.clone(),
@@ -1664,6 +1858,171 @@ pub fn cash_settle_capacity_instrument_response_from_proto(
     })
 }
 
+pub fn create_structured_capacity_instrument_request_to_proto(
+    request: &CreateStructuredCapacityInstrumentRequest,
+) -> Result<proto_compute::CreateStructuredCapacityInstrumentRequest> {
+    Ok(proto_compute::CreateStructuredCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        structured_instrument: Some(structured_capacity_instrument_to_proto(
+            &request.structured_instrument,
+        )?),
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn create_structured_capacity_instrument_request_from_proto(
+    request: &proto_compute::CreateStructuredCapacityInstrumentRequest,
+) -> Result<CreateStructuredCapacityInstrumentRequest> {
+    Ok(CreateStructuredCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        structured_instrument: structured_capacity_instrument_from_proto(
+            request
+                .structured_instrument
+                .as_ref()
+                .ok_or_else(|| missing("structured_instrument"))?,
+        )?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn create_structured_capacity_instrument_response_to_proto(
+    response: &CreateStructuredCapacityInstrumentResponse,
+) -> Result<proto_compute::CreateStructuredCapacityInstrumentResponse> {
+    Ok(proto_compute::CreateStructuredCapacityInstrumentResponse {
+        structured_instrument: Some(structured_capacity_instrument_to_proto(
+            &response.structured_instrument,
+        )?),
+        legs: response
+            .legs
+            .iter()
+            .map(capacity_instrument_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn create_structured_capacity_instrument_response_from_proto(
+    response: &proto_compute::CreateStructuredCapacityInstrumentResponse,
+) -> Result<CreateStructuredCapacityInstrumentResponse> {
+    Ok(CreateStructuredCapacityInstrumentResponse {
+        structured_instrument: structured_capacity_instrument_from_proto(
+            response
+                .structured_instrument
+                .as_ref()
+                .ok_or_else(|| missing("structured_instrument"))?,
+        )?,
+        legs: response
+            .legs
+            .iter()
+            .map(capacity_instrument_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn close_structured_capacity_instrument_request_to_proto(
+    request: &CloseStructuredCapacityInstrumentRequest,
+) -> Result<proto_compute::CloseStructuredCapacityInstrumentRequest> {
+    Ok(proto_compute::CloseStructuredCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        structured_instrument_id: request.structured_instrument_id.clone(),
+        status: structured_capacity_instrument_status_to_proto(request.status),
+        closed_at_ms: request.closed_at_ms,
+        propagate_to_open_legs: request.propagate_to_open_legs,
+        lifecycle_reason_detail: request.lifecycle_reason_detail.clone(),
+        metadata_json: json_value_to_string(&request.metadata)?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn close_structured_capacity_instrument_request_from_proto(
+    request: &proto_compute::CloseStructuredCapacityInstrumentRequest,
+) -> Result<CloseStructuredCapacityInstrumentRequest> {
+    Ok(CloseStructuredCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        structured_instrument_id: request.structured_instrument_id.clone(),
+        status: structured_capacity_instrument_status_from_proto(request.status),
+        closed_at_ms: request.closed_at_ms,
+        propagate_to_open_legs: request.propagate_to_open_legs,
+        lifecycle_reason_detail: request.lifecycle_reason_detail.clone(),
+        metadata: json_string_to_value(request.metadata_json.as_str())?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn close_structured_capacity_instrument_response_to_proto(
+    response: &CloseStructuredCapacityInstrumentResponse,
+) -> Result<proto_compute::CloseStructuredCapacityInstrumentResponse> {
+    Ok(proto_compute::CloseStructuredCapacityInstrumentResponse {
+        structured_instrument: Some(structured_capacity_instrument_to_proto(
+            &response.structured_instrument,
+        )?),
+        legs: response
+            .legs
+            .iter()
+            .map(capacity_instrument_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn close_structured_capacity_instrument_response_from_proto(
+    response: &proto_compute::CloseStructuredCapacityInstrumentResponse,
+) -> Result<CloseStructuredCapacityInstrumentResponse> {
+    Ok(CloseStructuredCapacityInstrumentResponse {
+        structured_instrument: structured_capacity_instrument_from_proto(
+            response
+                .structured_instrument
+                .as_ref()
+                .ok_or_else(|| missing("structured_instrument"))?,
+        )?,
+        legs: response
+            .legs
+            .iter()
+            .map(capacity_instrument_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
 pub fn record_delivery_proof_request_to_proto(
     request: &RecordDeliveryProofRequest,
 ) -> Result<proto_compute::RecordDeliveryProofRequest> {
@@ -1978,6 +2337,46 @@ pub fn get_capacity_instrument_response_from_proto(
     )
 }
 
+pub fn list_structured_capacity_instruments_response_to_proto(
+    instruments: &[StructuredCapacityInstrument],
+) -> Result<proto_compute::ListStructuredCapacityInstrumentsResponse> {
+    Ok(proto_compute::ListStructuredCapacityInstrumentsResponse {
+        structured_instruments: instruments
+            .iter()
+            .map(structured_capacity_instrument_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+    })
+}
+
+pub fn list_structured_capacity_instruments_response_from_proto(
+    response: &proto_compute::ListStructuredCapacityInstrumentsResponse,
+) -> Result<Vec<StructuredCapacityInstrument>> {
+    response
+        .structured_instruments
+        .iter()
+        .map(structured_capacity_instrument_from_proto)
+        .collect()
+}
+
+pub fn get_structured_capacity_instrument_response_to_proto(
+    instrument: &StructuredCapacityInstrument,
+) -> Result<proto_compute::GetStructuredCapacityInstrumentResponse> {
+    Ok(proto_compute::GetStructuredCapacityInstrumentResponse {
+        structured_instrument: Some(structured_capacity_instrument_to_proto(instrument)?),
+    })
+}
+
+pub fn get_structured_capacity_instrument_response_from_proto(
+    response: &proto_compute::GetStructuredCapacityInstrumentResponse,
+) -> Result<StructuredCapacityInstrument> {
+    structured_capacity_instrument_from_proto(
+        response
+            .structured_instrument
+            .as_ref()
+            .ok_or_else(|| missing("structured_instrument"))?,
+    )
+}
+
 pub fn list_delivery_proofs_response_to_proto(
     proofs: &[DeliveryProof],
 ) -> Result<proto_compute::ListDeliveryProofsResponse> {
@@ -2063,18 +2462,32 @@ mod tests {
         cash_settle_capacity_instrument_response_to_proto,
         close_capacity_instrument_request_from_proto, close_capacity_instrument_request_to_proto,
         close_capacity_instrument_response_from_proto, close_capacity_instrument_response_to_proto,
-        compute_index_from_proto, compute_index_to_proto, compute_product_from_proto,
-        compute_product_to_proto, correct_compute_index_request_from_proto,
-        correct_compute_index_request_to_proto, correct_compute_index_response_from_proto,
-        correct_compute_index_response_to_proto, delivery_proof_from_proto,
+        close_structured_capacity_instrument_request_from_proto,
+        close_structured_capacity_instrument_request_to_proto,
+        close_structured_capacity_instrument_response_from_proto,
+        close_structured_capacity_instrument_response_to_proto, compute_index_from_proto,
+        compute_index_to_proto, compute_product_from_proto, compute_product_to_proto,
+        correct_compute_index_request_from_proto, correct_compute_index_request_to_proto,
+        correct_compute_index_response_from_proto, correct_compute_index_response_to_proto,
+        create_structured_capacity_instrument_request_from_proto,
+        create_structured_capacity_instrument_request_to_proto,
+        create_structured_capacity_instrument_response_from_proto,
+        create_structured_capacity_instrument_response_to_proto, delivery_proof_from_proto,
         delivery_proof_to_proto, get_compute_index_response_from_proto,
-        get_compute_index_response_to_proto, list_compute_products_response_from_proto,
-        list_compute_products_response_to_proto,
+        get_compute_index_response_to_proto,
+        get_structured_capacity_instrument_response_from_proto,
+        get_structured_capacity_instrument_response_to_proto,
+        list_compute_products_response_from_proto, list_compute_products_response_to_proto,
+        list_structured_capacity_instruments_response_from_proto,
+        list_structured_capacity_instruments_response_to_proto,
+        structured_capacity_instrument_from_proto, structured_capacity_instrument_to_proto,
     };
     use crate::authority::{
         CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
         CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
+        CloseStructuredCapacityInstrumentRequest, CloseStructuredCapacityInstrumentResponse,
         CorrectComputeIndexRequest, CorrectComputeIndexResponse,
+        CreateStructuredCapacityInstrumentRequest, CreateStructuredCapacityInstrumentResponse,
     };
     use crate::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
@@ -2083,7 +2496,8 @@ mod tests {
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
         ComputeIndexCorrectionReason, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
         ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-        OllamaRuntimeCapability,
+        OllamaRuntimeCapability, StructuredCapacityInstrument, StructuredCapacityInstrumentKind,
+        StructuredCapacityInstrumentStatus, StructuredCapacityLeg, StructuredCapacityLegRole,
     };
     use crate::receipts::{
         Asset, Money, MoneyAmount, PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
@@ -2243,6 +2657,37 @@ mod tests {
         }
     }
 
+    fn structured_capacity_instrument_fixture() -> StructuredCapacityInstrument {
+        StructuredCapacityInstrument {
+            structured_instrument_id: "structured.compute.alpha".to_string(),
+            product_id: "ollama.text_generation".to_string(),
+            buyer_id: Some("buyer.alpha".to_string()),
+            provider_id: Some("provider.alpha".to_string()),
+            kind: StructuredCapacityInstrumentKind::Swap,
+            created_at_ms: 1_700_000_010_000,
+            status: StructuredCapacityInstrumentStatus::Active,
+            lifecycle_reason_detail: None,
+            legs: vec![
+                StructuredCapacityLeg {
+                    instrument_id: "instrument.compute.pay".to_string(),
+                    role: StructuredCapacityLegRole::SwapPay,
+                    leg_order: 1,
+                    metadata: json!({"direction": "pay"}),
+                },
+                StructuredCapacityLeg {
+                    instrument_id: "instrument.compute.receive".to_string(),
+                    role: StructuredCapacityLegRole::SwapReceive,
+                    leg_order: 2,
+                    metadata: json!({"direction": "receive"}),
+                },
+            ],
+            metadata: json!({
+                "visibility_scope": "advanced_only",
+                "decomposition_mode": "explicit_legs"
+            }),
+        }
+    }
+
     #[test]
     fn compute_object_proto_roundtrip_preserves_launch_models() {
         let product = compute_product_fixture();
@@ -2275,6 +2720,13 @@ mod tests {
             compute_index_from_proto(&compute_index_to_proto(&index).expect("index proto"))
                 .expect("index roundtrip");
         assert_eq!(index_roundtrip, index);
+
+        let structured = structured_capacity_instrument_fixture();
+        let structured_roundtrip = structured_capacity_instrument_from_proto(
+            &structured_capacity_instrument_to_proto(&structured).expect("structured proto"),
+        )
+        .expect("structured roundtrip");
+        assert_eq!(structured_roundtrip, structured);
     }
 
     #[test]
@@ -2292,6 +2744,21 @@ mod tests {
         )
         .expect("index response roundtrip");
         assert_eq!(index_roundtrip, index);
+
+        let structured = structured_capacity_instrument_fixture();
+        let structured_list_roundtrip = list_structured_capacity_instruments_response_from_proto(
+            &list_structured_capacity_instruments_response_to_proto(&[structured.clone()])
+                .expect("structured list proto"),
+        )
+        .expect("structured list roundtrip");
+        assert_eq!(structured_list_roundtrip, vec![structured.clone()]);
+
+        let structured_get_roundtrip = get_structured_capacity_instrument_response_from_proto(
+            &get_structured_capacity_instrument_response_to_proto(&structured)
+                .expect("structured get proto"),
+        )
+        .expect("structured get roundtrip");
+        assert_eq!(structured_get_roundtrip, structured);
     }
 
     #[test]
@@ -2470,6 +2937,118 @@ mod tests {
                 .expect("cash settle response proto"),
         )
         .expect("cash settle response roundtrip");
+        assert_eq!(response_roundtrip, response);
+    }
+
+    #[test]
+    fn structured_capacity_instrument_proto_roundtrip_preserves_explicit_legs() {
+        let request = CreateStructuredCapacityInstrumentRequest {
+            idempotency_key: "structured-create-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            structured_instrument: structured_capacity_instrument_fixture(),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let request_roundtrip = create_structured_capacity_instrument_request_from_proto(
+            &create_structured_capacity_instrument_request_to_proto(&request)
+                .expect("structured create request proto"),
+        )
+        .expect("structured create request roundtrip");
+        assert_eq!(request_roundtrip, request);
+
+        let response = CreateStructuredCapacityInstrumentResponse {
+            structured_instrument: structured_capacity_instrument_fixture(),
+            legs: vec![
+                CapacityInstrument {
+                    instrument_id: "instrument.compute.pay".to_string(),
+                    kind: CapacityInstrumentKind::FutureCash,
+                    settlement_mode: ComputeSettlementMode::Cash,
+                    ..capacity_instrument_fixture()
+                },
+                CapacityInstrument {
+                    instrument_id: "instrument.compute.receive".to_string(),
+                    kind: CapacityInstrumentKind::FutureCash,
+                    settlement_mode: ComputeSettlementMode::Cash,
+                    ..capacity_instrument_fixture()
+                },
+            ],
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.structured.create.alpha",
+                "kernel.compute.structured_instrument.create.v1",
+                1_700_000_123_000,
+                "structured-create-1",
+                TraceContext::default(),
+                PolicyContext {
+                    policy_bundle_id: "policy.compute.test".to_string(),
+                    policy_version: "1".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .build()
+            .expect("structured create receipt"),
+        };
+        let response_roundtrip = create_structured_capacity_instrument_response_from_proto(
+            &create_structured_capacity_instrument_response_to_proto(&response)
+                .expect("structured create response proto"),
+        )
+        .expect("structured create response roundtrip");
+        assert_eq!(response_roundtrip, response);
+    }
+
+    #[test]
+    fn close_structured_capacity_instrument_proto_roundtrip_preserves_propagation() {
+        let request = CloseStructuredCapacityInstrumentRequest {
+            idempotency_key: "structured-close-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            structured_instrument_id: "structured.compute.alpha".to_string(),
+            status: StructuredCapacityInstrumentStatus::Cancelled,
+            closed_at_ms: 1_700_000_124_000,
+            propagate_to_open_legs: true,
+            lifecycle_reason_detail: Some("operator cancelled advanced swap".to_string()),
+            metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let request_roundtrip = close_structured_capacity_instrument_request_from_proto(
+            &close_structured_capacity_instrument_request_to_proto(&request)
+                .expect("structured close request proto"),
+        )
+        .expect("structured close request roundtrip");
+        assert_eq!(request_roundtrip, request);
+
+        let response = CloseStructuredCapacityInstrumentResponse {
+            structured_instrument: StructuredCapacityInstrument {
+                status: StructuredCapacityInstrumentStatus::Cancelled,
+                lifecycle_reason_detail: Some("operator cancelled advanced swap".to_string()),
+                ..structured_capacity_instrument_fixture()
+            },
+            legs: vec![CapacityInstrument {
+                status: CapacityInstrumentStatus::Cancelled,
+                closure_reason: Some(CapacityInstrumentClosureReason::BuyerCancelled),
+                ..capacity_instrument_fixture()
+            }],
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.structured.close.alpha",
+                "kernel.compute.structured_instrument.close.v1",
+                1_700_000_124_000,
+                "structured-close-1",
+                TraceContext::default(),
+                PolicyContext {
+                    policy_bundle_id: "policy.compute.test".to_string(),
+                    policy_version: "1".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .build()
+            .expect("structured close receipt"),
+        };
+        let response_roundtrip = close_structured_capacity_instrument_response_from_proto(
+            &close_structured_capacity_instrument_response_to_proto(&response)
+                .expect("structured close response proto"),
+        )
+        .expect("structured close response roundtrip");
         assert_eq!(response_roundtrip, response);
     }
 }
