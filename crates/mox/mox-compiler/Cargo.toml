@@ -1,0 +1,21 @@
+[package]
+name = "mox-compiler"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Lowering and scheduling interfaces for Mox"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+mox-ir = { path = "../mox-ir" }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+mox-core = { path = "../mox-core" }
