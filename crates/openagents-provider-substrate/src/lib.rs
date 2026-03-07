@@ -6,8 +6,10 @@
 //! orchestration stay in app crates.
 
 mod admin;
+mod sandbox;
 
 pub use admin::*;
+pub use sandbox::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -145,6 +147,7 @@ impl ProviderBackendHealth {
 pub struct ProviderAvailability {
     pub ollama: ProviderBackendHealth,
     pub apple_foundation_models: ProviderBackendHealth,
+    pub sandbox: ProviderSandboxAvailability,
 }
 
 impl ProviderAvailability {
@@ -164,10 +167,72 @@ impl ProviderAvailability {
             .unwrap_or("no active inference backend")
     }
 
-    pub fn health_for_product(&self, product: ProviderComputeProduct) -> &ProviderBackendHealth {
-        match product.backend_kind() {
-            ProviderBackendKind::Ollama => &self.ollama,
-            ProviderBackendKind::AppleFoundationModels => &self.apple_foundation_models,
+    pub fn product_visible(&self, product: ProviderComputeProduct) -> bool {
+        match product {
+            ProviderComputeProduct::OllamaInference
+            | ProviderComputeProduct::OllamaEmbeddings
+            | ProviderComputeProduct::AppleFoundationModelsInference => true,
+            ProviderComputeProduct::SandboxContainerExec => self
+                .sandbox
+                .has_declared_execution_class(ProviderSandboxExecutionClass::ContainerExec),
+            ProviderComputeProduct::SandboxPythonExec => self
+                .sandbox
+                .has_declared_execution_class(ProviderSandboxExecutionClass::PythonExec),
+            ProviderComputeProduct::SandboxNodeExec => self
+                .sandbox
+                .has_declared_execution_class(ProviderSandboxExecutionClass::NodeExec),
+            ProviderComputeProduct::SandboxPosixExec => self
+                .sandbox
+                .has_declared_execution_class(ProviderSandboxExecutionClass::PosixExec),
+        }
+    }
+
+    pub fn product_backend_ready(&self, product: ProviderComputeProduct) -> bool {
+        match product {
+            ProviderComputeProduct::OllamaInference | ProviderComputeProduct::OllamaEmbeddings => {
+                self.ollama.is_ready()
+            }
+            ProviderComputeProduct::AppleFoundationModelsInference => {
+                self.apple_foundation_models.is_ready()
+            }
+            ProviderComputeProduct::SandboxContainerExec => self
+                .sandbox
+                .backend_ready_for_class(ProviderSandboxExecutionClass::ContainerExec),
+            ProviderComputeProduct::SandboxPythonExec => self
+                .sandbox
+                .backend_ready_for_class(ProviderSandboxExecutionClass::PythonExec),
+            ProviderComputeProduct::SandboxNodeExec => self
+                .sandbox
+                .backend_ready_for_class(ProviderSandboxExecutionClass::NodeExec),
+            ProviderComputeProduct::SandboxPosixExec => self
+                .sandbox
+                .backend_ready_for_class(ProviderSandboxExecutionClass::PosixExec),
+        }
+    }
+
+    pub fn capability_summary_for_product(&self, product: ProviderComputeProduct) -> String {
+        match product {
+            ProviderComputeProduct::SandboxContainerExec => self
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::ContainerExec)
+                .unwrap_or_else(|| product.capability_summary_base().to_string()),
+            ProviderComputeProduct::SandboxPythonExec => self
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::PythonExec)
+                .unwrap_or_else(|| product.capability_summary_base().to_string()),
+            ProviderComputeProduct::SandboxNodeExec => self
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::NodeExec)
+                .unwrap_or_else(|| product.capability_summary_base().to_string()),
+            ProviderComputeProduct::SandboxPosixExec => self
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::PosixExec)
+                .unwrap_or_else(|| product.capability_summary_base().to_string()),
+            ProviderComputeProduct::OllamaInference
+            | ProviderComputeProduct::OllamaEmbeddings
+            | ProviderComputeProduct::AppleFoundationModelsInference => {
+                product.capability_summary(self)
+            }
         }
     }
 }
@@ -178,14 +243,22 @@ pub enum ProviderComputeProduct {
     OllamaInference,
     OllamaEmbeddings,
     AppleFoundationModelsInference,
+    SandboxContainerExec,
+    SandboxPythonExec,
+    SandboxNodeExec,
+    SandboxPosixExec,
 }
 
 impl ProviderComputeProduct {
-    pub const fn all() -> [Self; 3] {
+    pub const fn all() -> [Self; 7] {
         [
             Self::OllamaInference,
             Self::OllamaEmbeddings,
             Self::AppleFoundationModelsInference,
+            Self::SandboxContainerExec,
+            Self::SandboxPythonExec,
+            Self::SandboxNodeExec,
+            Self::SandboxPosixExec,
         ]
     }
 
@@ -194,6 +267,10 @@ impl ProviderComputeProduct {
             Self::OllamaInference => "ollama.text_generation",
             Self::OllamaEmbeddings => "ollama.embeddings",
             Self::AppleFoundationModelsInference => "apple_foundation_models.text_generation",
+            Self::SandboxContainerExec => "sandbox.container.exec",
+            Self::SandboxPythonExec => "sandbox.python.exec",
+            Self::SandboxNodeExec => "sandbox.node.exec",
+            Self::SandboxPosixExec => "sandbox.posix.exec",
         }
     }
 
@@ -202,20 +279,32 @@ impl ProviderComputeProduct {
             Self::OllamaInference => "Ollama inference",
             Self::OllamaEmbeddings => "Ollama embeddings",
             Self::AppleFoundationModelsInference => "Apple FM inference",
+            Self::SandboxContainerExec => "Sandbox container exec",
+            Self::SandboxPythonExec => "Sandbox python exec",
+            Self::SandboxNodeExec => "Sandbox node exec",
+            Self::SandboxPosixExec => "Sandbox posix exec",
         }
     }
 
-    pub const fn backend_kind(self) -> ProviderBackendKind {
+    pub const fn backend_kind(self) -> Option<ProviderBackendKind> {
         match self {
-            Self::OllamaInference | Self::OllamaEmbeddings => ProviderBackendKind::Ollama,
-            Self::AppleFoundationModelsInference => ProviderBackendKind::AppleFoundationModels,
+            Self::OllamaInference | Self::OllamaEmbeddings => Some(ProviderBackendKind::Ollama),
+            Self::AppleFoundationModelsInference => Some(ProviderBackendKind::AppleFoundationModels),
+            Self::SandboxContainerExec
+            | Self::SandboxPythonExec
+            | Self::SandboxNodeExec
+            | Self::SandboxPosixExec => None,
         }
     }
 
     pub const fn backend_label(self) -> &'static str {
-        match self.backend_kind() {
-            ProviderBackendKind::Ollama => "ollama",
-            ProviderBackendKind::AppleFoundationModels => "apple_foundation_models",
+        match self {
+            Self::OllamaInference | Self::OllamaEmbeddings => "ollama",
+            Self::AppleFoundationModelsInference => "apple_foundation_models",
+            Self::SandboxContainerExec
+            | Self::SandboxPythonExec
+            | Self::SandboxNodeExec
+            | Self::SandboxPosixExec => "sandbox",
         }
     }
 
@@ -223,6 +312,10 @@ impl ProviderComputeProduct {
         match self {
             Self::OllamaInference | Self::AppleFoundationModelsInference => "inference",
             Self::OllamaEmbeddings => "embeddings",
+            Self::SandboxContainerExec
+            | Self::SandboxPythonExec
+            | Self::SandboxNodeExec
+            | Self::SandboxPosixExec => "sandbox_execution",
         }
     }
 
@@ -233,14 +326,26 @@ impl ProviderComputeProduct {
             Self::AppleFoundationModelsInference => {
                 "backend=apple_foundation_models execution=local_inference family=inference apple_silicon=true apple_intelligence=true"
             }
+            Self::SandboxContainerExec => {
+                "backend=sandbox execution=sandbox.container.exec family=sandbox_execution"
+            }
+            Self::SandboxPythonExec => {
+                "backend=sandbox execution=sandbox.python.exec family=sandbox_execution"
+            }
+            Self::SandboxNodeExec => {
+                "backend=sandbox execution=sandbox.node.exec family=sandbox_execution"
+            }
+            Self::SandboxPosixExec => {
+                "backend=sandbox execution=sandbox.posix.exec family=sandbox_execution"
+            }
         }
     }
 
     pub fn capability_summary(self, availability: &ProviderAvailability) -> String {
         let base_summary = self.capability_summary_base();
-        let health = availability.health_for_product(self);
         match self {
             Self::OllamaInference | Self::OllamaEmbeddings => {
+                let health = &availability.ollama;
                 let ready_model = health.ready_model.as_deref().unwrap_or("none");
                 let configured_model = health.configured_model.as_deref().unwrap_or("none");
                 let latency_ms = health
@@ -252,11 +357,28 @@ impl ProviderComputeProduct {
                 )
             }
             Self::AppleFoundationModelsInference => {
+                let health = &availability.apple_foundation_models;
                 let ready_model = health.ready_model.as_deref().unwrap_or("none");
                 let availability_message =
                     health.availability_message.as_deref().unwrap_or("ready");
                 format!("{base_summary} model={ready_model} platform_gate={availability_message}")
             }
+            Self::SandboxContainerExec => availability
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::ContainerExec)
+                .unwrap_or_else(|| base_summary.to_string()),
+            Self::SandboxPythonExec => availability
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::PythonExec)
+                .unwrap_or_else(|| base_summary.to_string()),
+            Self::SandboxNodeExec => availability
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::NodeExec)
+                .unwrap_or_else(|| base_summary.to_string()),
+            Self::SandboxPosixExec => availability
+                .sandbox
+                .capability_summary_for_class(ProviderSandboxExecutionClass::PosixExec)
+                .unwrap_or_else(|| base_summary.to_string()),
         }
     }
 
@@ -264,6 +386,10 @@ impl ProviderComputeProduct {
         match self {
             Self::OllamaInference | Self::OllamaEmbeddings => "spot session / local best effort",
             Self::AppleFoundationModelsInference => "spot session / Apple gated best effort",
+            Self::SandboxContainerExec
+            | Self::SandboxPythonExec
+            | Self::SandboxNodeExec
+            | Self::SandboxPosixExec => "spot session / declared sandbox profile",
         }
     }
 
@@ -275,6 +401,10 @@ impl ProviderComputeProduct {
             Self::AppleFoundationModelsInference => {
                 "forward physical / Apple gated committed window"
             }
+            Self::SandboxContainerExec
+            | Self::SandboxPythonExec
+            | Self::SandboxNodeExec
+            | Self::SandboxPosixExec => "forward physical / declared sandbox profile window",
         }
     }
 
@@ -283,6 +413,10 @@ impl ProviderComputeProduct {
             Self::OllamaInference => 21,
             Self::OllamaEmbeddings => 8,
             Self::AppleFoundationModelsInference => 34,
+            Self::SandboxContainerExec => 55,
+            Self::SandboxPythonExec => 34,
+            Self::SandboxNodeExec => 34,
+            Self::SandboxPosixExec => 21,
         }
     }
 
@@ -291,6 +425,10 @@ impl ProviderComputeProduct {
             "ollama.text_generation" => Some(Self::OllamaInference),
             "ollama.embeddings" => Some(Self::OllamaEmbeddings),
             "apple_foundation_models.text_generation" => Some(Self::AppleFoundationModelsInference),
+            "sandbox.container.exec" => Some(Self::SandboxContainerExec),
+            "sandbox.python.exec" => Some(Self::SandboxPythonExec),
+            "sandbox.node.exec" => Some(Self::SandboxNodeExec),
+            "sandbox.posix.exec" => Some(Self::SandboxPosixExec),
             _ => None,
         }
     }
@@ -324,6 +462,10 @@ pub struct ProviderInventoryControls {
     pub ollama_inference_enabled: bool,
     pub ollama_embeddings_enabled: bool,
     pub apple_fm_inference_enabled: bool,
+    pub sandbox_container_exec_enabled: bool,
+    pub sandbox_python_exec_enabled: bool,
+    pub sandbox_node_exec_enabled: bool,
+    pub sandbox_posix_exec_enabled: bool,
 }
 
 impl Default for ProviderInventoryControls {
@@ -332,6 +474,10 @@ impl Default for ProviderInventoryControls {
             ollama_inference_enabled: true,
             ollama_embeddings_enabled: true,
             apple_fm_inference_enabled: true,
+            sandbox_container_exec_enabled: false,
+            sandbox_python_exec_enabled: false,
+            sandbox_node_exec_enabled: false,
+            sandbox_posix_exec_enabled: false,
         }
     }
 }
@@ -344,6 +490,10 @@ impl ProviderInventoryControls {
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 self.apple_fm_inference_enabled
             }
+            ProviderComputeProduct::SandboxContainerExec => self.sandbox_container_exec_enabled,
+            ProviderComputeProduct::SandboxPythonExec => self.sandbox_python_exec_enabled,
+            ProviderComputeProduct::SandboxNodeExec => self.sandbox_node_exec_enabled,
+            ProviderComputeProduct::SandboxPosixExec => self.sandbox_posix_exec_enabled,
         }
     }
 
@@ -359,6 +509,12 @@ impl ProviderInventoryControls {
             ProviderComputeProduct::AppleFoundationModelsInference => {
                 &mut self.apple_fm_inference_enabled
             }
+            ProviderComputeProduct::SandboxContainerExec => {
+                &mut self.sandbox_container_exec_enabled
+            }
+            ProviderComputeProduct::SandboxPythonExec => &mut self.sandbox_python_exec_enabled,
+            ProviderComputeProduct::SandboxNodeExec => &mut self.sandbox_node_exec_enabled,
+            ProviderComputeProduct::SandboxPosixExec => &mut self.sandbox_posix_exec_enabled,
         };
         *enabled = !*enabled;
         *enabled
@@ -383,15 +539,16 @@ pub fn derive_provider_products(
 ) -> Vec<ProviderAdvertisedProduct> {
     ProviderComputeProduct::all()
         .into_iter()
+        .filter(|product| availability.product_visible(*product))
         .map(|product| {
             let enabled = controls.is_advertised(product);
-            let backend_ready = availability.health_for_product(product).is_ready();
+            let backend_ready = availability.product_backend_ready(product);
             ProviderAdvertisedProduct {
                 product,
                 enabled,
                 backend_ready,
                 eligible: enabled && backend_ready,
-                capability_summary: product.capability_summary(availability),
+                capability_summary: availability.capability_summary_for_product(product),
                 price_floor_sats: product.default_price_floor_sats(),
                 terms_label: product.terms_label().to_string(),
                 forward_terms_label: product.forward_terms_label().to_string(),
@@ -468,8 +625,21 @@ mod tests {
         ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderComputeProduct,
         ProviderFailureClass, ProviderIngressMode, ProviderInventoryControls,
         ProviderLifecycleInput, ProviderLifecycleTransition, ProviderMode,
+        ProviderSandboxAvailability, ProviderSandboxDetectionConfig,
+        ProviderSandboxExecutionClass, ProviderSandboxProfileSpec, detect_sandbox_supply,
         derive_provider_lifecycle, derive_provider_products,
     };
+
+    fn ensure(
+        condition: bool,
+        message: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        if condition {
+            Ok(())
+        } else {
+            Err(std::io::Error::other(message.to_string()).into())
+        }
+    }
 
     fn ready_health(
         configured_model: Option<&str>,
@@ -494,6 +664,7 @@ mod tests {
         let availability = ProviderAvailability {
             ollama: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ready_health(None, "apple-foundation-model", None),
+            sandbox: ProviderSandboxAvailability::default(),
         };
 
         assert_eq!(
@@ -512,6 +683,7 @@ mod tests {
         assert!(controls.is_product_advertised("ollama.text_generation"));
         assert!(controls.is_product_advertised("ollama.embeddings"));
         assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
+        assert!(!controls.is_product_advertised("sandbox.python.exec"));
 
         let enabled = controls.toggle(ProviderComputeProduct::OllamaEmbeddings);
         assert!(!enabled);
@@ -533,6 +705,7 @@ mod tests {
                 availability_message: Some("apple_intelligence_disabled".to_string()),
                 latency_ms_p50: None,
             },
+            sandbox: ProviderSandboxAvailability::default(),
         };
         let products =
             derive_provider_products(&availability, &ProviderInventoryControls::default());
@@ -551,6 +724,66 @@ mod tests {
                 .capability_summary
                 .contains("platform_gate=apple_intelligence_disabled")
         );
+    }
+
+    #[test]
+    fn derive_provider_products_includes_declared_sandbox_profiles_when_enabled(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let availability = ProviderAvailability {
+            ollama: ProviderBackendHealth::default(),
+            apple_foundation_models: ProviderBackendHealth::default(),
+            sandbox: detect_sandbox_supply(
+                &ProviderSandboxDetectionConfig {
+                    path_entries: Vec::new(),
+                    declared_profiles: vec![ProviderSandboxProfileSpec {
+                        profile_id: "python-batch".to_string(),
+                        execution_class: ProviderSandboxExecutionClass::PythonExec,
+                        runtime_family: "python3".to_string(),
+                        runtime_version: Some("3.11".to_string()),
+                        sandbox_engine: "local_subprocess".to_string(),
+                        os_family: std::env::consts::OS.to_string(),
+                        arch: std::env::consts::ARCH.to_string(),
+                        cpu_limit: 2,
+                        memory_limit_mb: 2048,
+                        disk_limit_mb: 4096,
+                        timeout_limit_s: 120,
+                        network_mode: "none".to_string(),
+                        filesystem_mode: "workspace_only".to_string(),
+                        workspace_mode: "ephemeral".to_string(),
+                        artifact_output_mode: "declared_paths_only".to_string(),
+                        secrets_mode: "none".to_string(),
+                        allowed_binaries: vec!["python3".to_string()],
+                        toolchain_inventory: vec!["python3".to_string()],
+                        container_image: None,
+                        runtime_image_digest: None,
+                        accelerator_policy: None,
+                    }],
+                },
+            ),
+        };
+        let mut controls = ProviderInventoryControls::default();
+        controls.sandbox_python_exec_enabled = true;
+
+        let products = derive_provider_products(&availability, &controls);
+        let sandbox_product = products
+            .iter()
+            .find(|product| product.product == ProviderComputeProduct::SandboxPythonExec)
+            .ok_or_else(|| std::io::Error::other("missing sandbox python product"))?;
+        ensure(
+            !sandbox_product.backend_ready,
+            "sandbox product should stay unready without a detected runtime",
+        )?;
+        ensure(
+            sandbox_product.capability_summary.contains("sandbox.python.exec"),
+            "sandbox capability summary should include python execution class",
+        )?;
+        ensure(
+            sandbox_product
+                .capability_summary
+                .contains("profile_ids=python-batch"),
+            "sandbox capability summary should include declared profile id",
+        )?;
+        Ok(())
     }
 
     #[test]
@@ -600,6 +833,7 @@ mod tests {
         let availability = ProviderAvailability {
             ollama: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
+            sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
             current_mode: ProviderMode::Offline,
@@ -617,6 +851,7 @@ mod tests {
         let availability = ProviderAvailability {
             ollama: ready_health(Some("llama3.2:latest"), "llama3.2:latest", Some(140)),
             apple_foundation_models: ProviderBackendHealth::default(),
+            sandbox: ProviderSandboxAvailability::default(),
         };
         let transition = derive_provider_lifecycle(&ProviderLifecycleInput {
             current_mode: ProviderMode::Connecting,

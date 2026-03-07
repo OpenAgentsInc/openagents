@@ -15,7 +15,11 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 use tokio::sync::watch;
 
-use crate::{ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderFailureClass, ProviderInventoryRow, ProviderMode};
+use crate::{
+    ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderFailureClass,
+    ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability, ProviderSandboxProfile,
+    ProviderSandboxRuntimeHealth,
+};
 
 const PROVIDER_ADMIN_SCHEMA_VERSION: i64 = 1;
 const PROVIDER_ADMIN_SNAPSHOT_ROW_ID: i64 = 1;
@@ -357,6 +361,7 @@ impl ProviderPersistenceStore {
         replace_singleton_json(&tx, "provider_identity_snapshot", snapshot.identity.as_ref())?;
         replace_singleton_json(&tx, "provider_runtime_status", Some(&snapshot.runtime))?;
         replace_backend_rows(&tx, &snapshot.availability, snapshot.captured_at_ms)?;
+        replace_sandbox_rows(&tx, &snapshot.availability.sandbox, snapshot.captured_at_ms)?;
         replace_inventory_rows(&tx, snapshot.inventory_rows.as_slice(), snapshot.captured_at_ms)?;
         replace_recent_jobs(&tx, snapshot.recent_jobs.as_slice())?;
         replace_receipts(&tx, snapshot.receipts.as_slice())?;
@@ -453,6 +458,11 @@ impl ProviderPersistenceStore {
                 _ => {}
             }
         }
+        availability.sandbox = ProviderSandboxAvailability {
+            runtimes: self.load_sandbox_runtimes(None)?,
+            profiles: self.load_sandbox_profiles(None)?,
+            last_scan_error: None,
+        };
         Ok(availability)
     }
 
@@ -464,6 +474,30 @@ impl ProviderPersistenceStore {
         load_json_rows(
             &self.connection,
             "SELECT value_json FROM provider_inventory_rows ORDER BY product_id ASC LIMIT ?1",
+            limit,
+        )
+    }
+
+    pub fn load_sandbox_runtimes(
+        &self,
+        limit: Option<usize>,
+    ) -> Result<Vec<ProviderSandboxRuntimeHealth>, String> {
+        let limit = bounded_limit(limit, self.list_limit);
+        load_json_rows(
+            &self.connection,
+            "SELECT value_json FROM provider_sandbox_runtime_health ORDER BY runtime_kind ASC LIMIT ?1",
+            limit,
+        )
+    }
+
+    pub fn load_sandbox_profiles(
+        &self,
+        limit: Option<usize>,
+    ) -> Result<Vec<ProviderSandboxProfile>, String> {
+        let limit = bounded_limit(limit, self.list_limit);
+        load_json_rows(
+            &self.connection,
+            "SELECT value_json FROM provider_sandbox_profiles ORDER BY execution_class ASC, profile_id ASC LIMIT ?1",
             limit,
         )
     }
@@ -500,6 +534,20 @@ impl ProviderPersistenceStore {
                     captured_at_ms INTEGER NOT NULL,
                     value_json TEXT NOT NULL
                 );
+                CREATE TABLE IF NOT EXISTS provider_sandbox_runtime_health (
+                    runtime_kind TEXT PRIMARY KEY,
+                    captured_at_ms INTEGER NOT NULL,
+                    value_json TEXT NOT NULL
+                );
+                CREATE TABLE IF NOT EXISTS provider_sandbox_profiles (
+                    profile_id TEXT PRIMARY KEY,
+                    execution_class TEXT NOT NULL,
+                    profile_digest TEXT NOT NULL,
+                    captured_at_ms INTEGER NOT NULL,
+                    value_json TEXT NOT NULL
+                );
+                CREATE INDEX IF NOT EXISTS provider_sandbox_profiles_class_idx
+                    ON provider_sandbox_profiles (execution_class ASC, profile_id ASC);
                 CREATE TABLE IF NOT EXISTS provider_inventory_rows (
                     product_id TEXT PRIMARY KEY,
                     captured_at_ms INTEGER NOT NULL,
@@ -695,6 +743,8 @@ fn build_provider_admin_router(shared: Arc<ProviderAdminSharedState>) -> Router 
     Router::new()
         .route("/v1/status", get(get_status))
         .route("/v1/backend-health", get(get_backend_health))
+        .route("/v1/sandbox/runtimes", get(get_sandbox_runtimes))
+        .route("/v1/sandbox/profiles", get(get_sandbox_profiles))
         .route("/v1/inventory", get(get_inventory))
         .route("/v1/jobs", get(get_jobs))
         .route("/v1/earnings", get(get_earnings))
@@ -730,6 +780,20 @@ async fn get_backend_health(
     State(shared): State<Arc<ProviderAdminSharedState>>,
 ) -> ProviderApiResult<ProviderAvailability> {
     load_from_store(&shared, ProviderPersistenceStore::load_availability).map(Json)
+}
+
+async fn get_sandbox_runtimes(
+    State(shared): State<Arc<ProviderAdminSharedState>>,
+    Query(query): Query<LimitQuery>,
+) -> ProviderApiResult<Vec<ProviderSandboxRuntimeHealth>> {
+    load_from_store(&shared, |store| store.load_sandbox_runtimes(query.limit)).map(Json)
+}
+
+async fn get_sandbox_profiles(
+    State(shared): State<Arc<ProviderAdminSharedState>>,
+    Query(query): Query<LimitQuery>,
+) -> ProviderApiResult<Vec<ProviderSandboxProfile>> {
+    load_from_store(&shared, |store| store.load_sandbox_profiles(query.limit)).map(Json)
 }
 
 async fn get_inventory(
@@ -903,6 +967,54 @@ fn replace_backend_rows(
         &availability.apple_foundation_models,
         captured_at_ms,
     )?;
+    Ok(())
+}
+
+fn replace_sandbox_rows(
+    tx: &rusqlite::Transaction<'_>,
+    sandbox: &ProviderSandboxAvailability,
+    captured_at_ms: i64,
+) -> Result<(), String> {
+    tx.execute("DELETE FROM provider_sandbox_runtime_health", [])
+        .map_err(|error| format!("Failed to clear provider sandbox runtime rows: {error}"))?;
+    tx.execute("DELETE FROM provider_sandbox_profiles", [])
+        .map_err(|error| format!("Failed to clear provider sandbox profile rows: {error}"))?;
+
+    for runtime in &sandbox.runtimes {
+        tx.execute(
+            "INSERT INTO provider_sandbox_runtime_health (runtime_kind, captured_at_ms, value_json) VALUES (?1, ?2, ?3)",
+            params![
+                format!("{:?}", runtime.runtime_kind).to_lowercase(),
+                captured_at_ms,
+                encode_json(runtime)?
+            ],
+        )
+        .map_err(|error| {
+            format!(
+                "Failed to insert provider sandbox runtime row {:?}: {error}",
+                runtime.runtime_kind
+            )
+        })?;
+    }
+
+    for profile in &sandbox.profiles {
+        tx.execute(
+            "INSERT INTO provider_sandbox_profiles (profile_id, execution_class, profile_digest, captured_at_ms, value_json) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![
+                profile.profile_id,
+                format!("{:?}", profile.execution_class).to_lowercase(),
+                profile.profile_digest,
+                captured_at_ms,
+                encode_json(profile)?
+            ],
+        )
+        .map_err(|error| {
+            format!(
+                "Failed to insert provider sandbox profile row {}: {error}",
+                profile.profile_id
+            )
+        })?;
+    }
     Ok(())
 }
 
@@ -1100,7 +1212,8 @@ mod tests {
     };
     use crate::{
         ProviderAvailability, ProviderBackendHealth, ProviderComputeProduct, ProviderInventoryRow,
-        ProviderMode,
+        ProviderMode, ProviderSandboxAvailability, ProviderSandboxExecutionClass,
+        ProviderSandboxProfile, ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
     };
     use serde_json::json;
     use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4};
@@ -1160,6 +1273,49 @@ mod tests {
                     latency_ms_p50: Some(110),
                 },
                 apple_foundation_models: ProviderBackendHealth::default(),
+                sandbox: ProviderSandboxAvailability {
+                    runtimes: vec![ProviderSandboxRuntimeHealth {
+                        runtime_kind: ProviderSandboxRuntimeKind::Python,
+                        detected: true,
+                        ready: true,
+                        binary_name: Some("python3".to_string()),
+                        binary_path: Some("/usr/bin/python3".to_string()),
+                        runtime_version: Some("Python 3.11.8".to_string()),
+                        supported_execution_classes: vec![
+                            ProviderSandboxExecutionClass::PythonExec,
+                        ],
+                        last_error: None,
+                    }],
+                    profiles: vec![ProviderSandboxProfile {
+                        profile_id: "python-batch".to_string(),
+                        profile_digest: "sha256:python-profile".to_string(),
+                        execution_class: ProviderSandboxExecutionClass::PythonExec,
+                        runtime_family: "python3".to_string(),
+                        runtime_version: "Python 3.11.8".to_string(),
+                        sandbox_engine: "local_subprocess".to_string(),
+                        os_family: "linux".to_string(),
+                        arch: "x86_64".to_string(),
+                        cpu_limit: 2,
+                        memory_limit_mb: 2048,
+                        disk_limit_mb: 4096,
+                        timeout_limit_s: 120,
+                        network_mode: "none".to_string(),
+                        filesystem_mode: "workspace_only".to_string(),
+                        workspace_mode: "ephemeral".to_string(),
+                        artifact_output_mode: "declared_paths_only".to_string(),
+                        secrets_mode: "none".to_string(),
+                        allowed_binaries: vec!["python3".to_string()],
+                        toolchain_inventory: vec!["python3".to_string()],
+                        container_image: None,
+                        runtime_image_digest: None,
+                        accelerator_policy: None,
+                        runtime_kind: ProviderSandboxRuntimeKind::Python,
+                        runtime_ready: true,
+                        runtime_binary_path: Some("/usr/bin/python3".to_string()),
+                        capability_summary: "backend=sandbox execution=sandbox.python.exec family=sandbox_execution profile_id=python-batch".to_string(),
+                    }],
+                    last_scan_error: None,
+                },
             },
             inventory_rows: vec![ProviderInventoryRow {
                 target: ProviderComputeProduct::OllamaInference,
@@ -1279,6 +1435,14 @@ mod tests {
             reopened.load_health_events(Some(1))? == snapshot.health_events,
             "provider admin store did not round-trip health events",
         )?;
+        ensure(
+            reopened.load_sandbox_runtimes(Some(4))? == snapshot.availability.sandbox.runtimes,
+            "provider admin store did not round-trip sandbox runtimes",
+        )?;
+        ensure(
+            reopened.load_sandbox_profiles(Some(4))? == snapshot.availability.sandbox.profiles,
+            "provider admin store did not round-trip sandbox profiles",
+        )?;
         Ok(())
     }
 
@@ -1296,6 +1460,10 @@ mod tests {
             .build()?;
         let status_url = format!("http://{}/v1/status", runtime.listen_addr());
         let jobs_url = format!("http://{}/v1/jobs?limit=1", runtime.listen_addr());
+        let sandbox_runtimes_url =
+            format!("http://{}/v1/sandbox/runtimes?limit=4", runtime.listen_addr());
+        let sandbox_profiles_url =
+            format!("http://{}/v1/sandbox/profiles?limit=4", runtime.listen_addr());
         let online_url = format!("http://{}/v1/online", runtime.listen_addr());
 
         let mut status = None::<ProviderStatusResponse>;
@@ -1333,6 +1501,28 @@ mod tests {
         ensure(
             jobs.first().map(|job| job.job_id.as_str()) == Some("job-1"),
             "provider admin api returned the wrong recent job id",
+        )?;
+
+        let sandbox_runtimes = client
+            .get(sandbox_runtimes_url.as_str())
+            .send()
+            .await?
+            .json::<Vec<ProviderSandboxRuntimeHealth>>()
+            .await?;
+        ensure(
+            sandbox_runtimes.len() == 1,
+            "provider admin api did not return sandbox runtimes",
+        )?;
+
+        let sandbox_profiles = client
+            .get(sandbox_profiles_url.as_str())
+            .send()
+            .await?
+            .json::<Vec<ProviderSandboxProfile>>()
+            .await?;
+        ensure(
+            sandbox_profiles.len() == 1,
+            "provider admin api did not return sandbox profiles",
         )?;
 
         let online_status = client

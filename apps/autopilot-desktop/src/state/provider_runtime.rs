@@ -5,13 +5,14 @@
 //! backend identity, launch-product derivation, inventory controls, and
 //! provider lifecycle semantics.
 
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use crate::ollama_execution::OllamaExecutionMetrics;
 pub use openagents_provider_substrate::{
     ProviderAdvertisedProduct, ProviderAvailability, ProviderBackendHealth, ProviderBackendKind,
     ProviderBlocker, ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,
-    ProviderInventoryRow, ProviderMode, derive_provider_products,
+    ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
+    ProviderSandboxDetectionConfig, detect_sandbox_supply, derive_provider_products,
 };
 
 pub type LocalInferenceBackend = ProviderBackendKind;
@@ -117,11 +118,17 @@ pub struct ProviderRuntimeState {
     pub inventory_last_error: Option<String>,
     pub ollama: ProviderOllamaRuntimeState,
     pub apple_fm: ProviderAppleFmRuntimeState,
+    pub sandbox: ProviderSandboxAvailability,
+    sandbox_detection: ProviderSandboxDetectionConfig,
+    sandbox_last_scanned_at: Option<Instant>,
+    sandbox_refresh_interval: Duration,
 }
 
 impl Default for ProviderRuntimeState {
     fn default() -> Self {
         let now = Instant::now();
+        let sandbox_detection = ProviderSandboxDetectionConfig::default();
+        let sandbox = detect_sandbox_supply(&sandbox_detection);
         Self {
             mode: ProviderMode::Offline,
             mode_changed_at: now,
@@ -146,6 +153,10 @@ impl Default for ProviderRuntimeState {
             inventory_last_error: None,
             ollama: ProviderOllamaRuntimeState::default(),
             apple_fm: ProviderAppleFmRuntimeState::default(),
+            sandbox,
+            sandbox_detection,
+            sandbox_last_scanned_at: Some(now),
+            sandbox_refresh_interval: Duration::from_secs(30),
         }
     }
 }
@@ -159,6 +170,7 @@ impl ProviderRuntimeState {
         ProviderAvailability {
             ollama: self.ollama.substrate_health(),
             apple_foundation_models: self.apple_fm.substrate_health(),
+            sandbox: self.sandbox.clone(),
         }
     }
 
@@ -216,6 +228,34 @@ impl ProviderRuntimeState {
     ) -> bool {
         self.inventory_controls.toggle(target)
     }
+
+    pub fn refresh_sandbox_supply_if_due(&mut self) -> bool {
+        let should_refresh = self
+            .sandbox_last_scanned_at
+            .is_none_or(|last| last.elapsed() >= self.sandbox_refresh_interval);
+        if !should_refresh {
+            return false;
+        }
+        let next = detect_sandbox_supply(&self.sandbox_detection);
+        self.sandbox_last_scanned_at = Some(Instant::now());
+        if self.sandbox == next {
+            return false;
+        }
+        self.sandbox = next;
+        true
+    }
+
+    #[cfg(test)]
+    pub fn sandbox_profiles(&self) -> &[openagents_provider_substrate::ProviderSandboxProfile] {
+        self.sandbox.profiles.as_slice()
+    }
+
+    #[cfg(test)]
+    pub fn sandbox_runtimes(
+        &self,
+    ) -> &[openagents_provider_substrate::ProviderSandboxRuntimeHealth] {
+        self.sandbox.runtimes.as_slice()
+    }
 }
 
 #[cfg(test)]
@@ -267,10 +307,19 @@ mod tests {
         assert!(controls.is_product_advertised("ollama.text_generation"));
         assert!(controls.is_product_advertised("ollama.embeddings"));
         assert!(controls.is_product_advertised("apple_foundation_models.text_generation"));
+        assert!(!controls.is_product_advertised("sandbox.python.exec"));
 
         let enabled = controls.toggle(ProviderInventoryProductToggleTarget::OllamaEmbeddings);
         assert!(!enabled);
         assert!(!controls.is_product_advertised("ollama.embeddings"));
         assert!(controls.is_product_advertised("ollama.text_generation"));
+    }
+
+    #[test]
+    fn runtime_detects_sandbox_runtimes_even_without_declared_profiles() {
+        let runtime = ProviderRuntimeState::default();
+
+        assert!(!runtime.sandbox_runtimes().is_empty());
+        assert!(runtime.sandbox_profiles().is_empty());
     }
 }

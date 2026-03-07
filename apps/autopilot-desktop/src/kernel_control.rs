@@ -321,14 +321,15 @@ pub(crate) fn register_online_compute_inventory_with_kernel(
 }
 
 pub(crate) fn refresh_provider_inventory_rows(state: &mut RenderState) -> bool {
+    let mut changed = state.provider_runtime.refresh_sandbox_supply_if_due();
     let rows = build_provider_inventory_rows(state);
-    let changed = state.provider_runtime.inventory_rows != rows;
-    if changed {
+    if state.provider_runtime.inventory_rows != rows {
         state.provider_runtime.inventory_rows = rows;
+        changed = true;
     }
     state.provider_runtime.inventory_last_error = None;
     state.provider_runtime.inventory_last_action = Some(format!(
-        "Materialized {} launch inventory row{}",
+        "Materialized {} provider inventory row{}",
         state.provider_runtime.inventory_rows.len(),
         if state.provider_runtime.inventory_rows.len() == 1 {
             ""
