@@ -7,7 +7,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use rustygrad_core::{DType, Shape};
+use rustygrad_core::{DType, QuantizationMode, Shape};
 use safetensors::{Dtype as SafeTensorsDType, SafeTensors};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -470,6 +470,8 @@ pub struct WeightTensorMetadata {
     pub shape: Shape,
     /// Scalar dtype.
     pub dtype: DType,
+    /// Storage quantization mode for the tensor.
+    pub quantization: QuantizationMode,
 }
 
 impl WeightTensorMetadata {
@@ -480,7 +482,15 @@ impl WeightTensorMetadata {
             name: name.into(),
             shape,
             dtype,
+            quantization: QuantizationMode::None,
         }
+    }
+
+    /// Returns a copy tagged with an explicit quantization mode.
+    #[must_use]
+    pub fn with_quantization(mut self, quantization: QuantizationMode) -> Self {
+        self.quantization = quantization;
+        self
     }
 
     /// Returns the tensor element count.
@@ -497,6 +507,8 @@ pub struct WeightBundleMetadata {
     pub format: WeightFormat,
     /// Source authority.
     pub source: WeightSource,
+    /// Dominant quantization mode for logical model weights.
+    pub quantization: QuantizationMode,
     /// Stable digest over tensor metadata and values.
     pub digest: String,
     /// Ordered tensor metadata.
@@ -601,13 +613,26 @@ impl SafeTensorsWeightBundleLoader {
         let mut metadata = Vec::with_capacity(names.len());
         let mut loaded = BTreeMap::new();
         let mut hasher = Sha256::new();
+        let mut bundle_quantization = QuantizationMode::None;
         for name in names {
+            if name.ends_with("__scale") {
+                continue;
+            }
             let tensor = tensors.tensor(name).map_err(|error| ModelLoadError::ArtifactFormat {
                 format: String::from("safetensors"),
                 message: error.to_string(),
             })?;
-            let dtype = match tensor.dtype() {
-                SafeTensorsDType::F32 => DType::F32,
+            let (dtype, quantization, values) = match tensor.dtype() {
+                SafeTensorsDType::F32 => (
+                    DType::F32,
+                    QuantizationMode::None,
+                    decode_f32_values(name, tensor.data())?,
+                ),
+                SafeTensorsDType::I8 => (
+                    DType::I8,
+                    QuantizationMode::Int8Symmetric,
+                    decode_int8_symmetric_values(name, tensor.data(), &tensors)?,
+                ),
                 other => {
                     return Err(ModelLoadError::UnsupportedTensorDType {
                         name: name.to_string(),
@@ -615,9 +640,12 @@ impl SafeTensorsWeightBundleLoader {
                     });
                 }
             };
+            if quantization != QuantizationMode::None {
+                bundle_quantization = quantization;
+            }
             let shape = Shape::new(tensor.shape().to_vec());
-            let values = decode_f32_values(name, tensor.data())?;
-            let tensor_metadata = WeightTensorMetadata::new(name, shape, dtype);
+            let tensor_metadata =
+                WeightTensorMetadata::new(name, shape, dtype).with_quantization(quantization);
             digest_tensor(&mut hasher, &tensor_metadata, &values);
             metadata.push(tensor_metadata.clone());
             loaded.insert(
@@ -630,6 +658,7 @@ impl SafeTensorsWeightBundleLoader {
             WeightBundleMetadata {
                 format: WeightFormat::SafeTensors,
                 source: WeightSource::ExternalArtifact,
+                quantization: bundle_quantization,
                 digest: hex::encode(hasher.finalize()),
                 tensors: metadata,
                 artifacts: vec![artifact],
@@ -801,6 +830,9 @@ pub enum ModelLoadError {
     /// A required tensor is missing from the artifact bundle.
     #[error("missing required tensor `{0}` in artifact bundle")]
     MissingTensor(String),
+    /// A quantized tensor is missing its scale tensor.
+    #[error("missing scale tensor `{0}__scale` for quantized tensor")]
+    MissingTensorScale(String),
     /// A tensor shape in the artifact bundle does not match the descriptor.
     #[error("tensor `{name}` has shape {actual:?}, expected {expected:?}")]
     InvalidTensorShape {
@@ -809,6 +841,14 @@ pub enum ModelLoadError {
         /// Expected dimensions.
         expected: Vec<usize>,
         /// Actual dimensions.
+        actual: Vec<usize>,
+    },
+    /// A quantized tensor scale tensor has an invalid shape.
+    #[error("scale tensor for `{name}` has shape {actual:?}, expected scalar or [1]")]
+    InvalidTensorScaleShape {
+        /// Logical tensor name.
+        name: String,
+        /// Actual dimensions from the scale tensor.
         actual: Vec<usize>,
     },
     /// Loaded bundle metadata does not match the requested descriptor.
@@ -1229,6 +1269,7 @@ fn build_weight_bundle_metadata(
     WeightBundleMetadata {
         format: WeightFormat::ProgrammaticFixture,
         source: WeightSource::Fixture,
+        quantization: QuantizationMode::None,
         digest: hex::encode(hasher.finalize()),
         tensors,
         artifacts: Vec::new(),
@@ -1239,6 +1280,8 @@ fn digest_tensor(hasher: &mut Sha256, metadata: &WeightTensorMetadata, values: &
     hasher.update(metadata.name.as_bytes());
     hasher.update(b"|");
     hasher.update(format!("{:?}", metadata.dtype).as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", metadata.quantization).as_bytes());
     hasher.update(b"|");
     for dim in metadata.shape.dims() {
         hasher.update(dim.to_string().as_bytes());
@@ -1312,10 +1355,43 @@ fn decode_f32_values(name: &str, data: &[u8]) -> Result<Vec<f32>, ModelLoadError
         .collect())
 }
 
+fn decode_int8_symmetric_values(
+    name: &str,
+    data: &[u8],
+    tensors: &SafeTensors<'_>,
+) -> Result<Vec<f32>, ModelLoadError> {
+    let scale_name = format!("{name}__scale");
+    let scale_tensor = tensors
+        .tensor(&scale_name)
+        .map_err(|_| ModelLoadError::MissingTensorScale(String::from(name)))?;
+    let scale_shape = scale_tensor.shape().to_vec();
+    if !(scale_shape.is_empty() || scale_shape == [1]) {
+        return Err(ModelLoadError::InvalidTensorScaleShape {
+            name: String::from(name),
+            actual: scale_shape,
+        });
+    }
+    if scale_tensor.dtype() != SafeTensorsDType::F32 {
+        return Err(ModelLoadError::UnsupportedTensorDType {
+            name: scale_name,
+            dtype: scale_tensor.dtype().to_string(),
+        });
+    }
+    let scale = decode_f32_values(name, scale_tensor.data())?
+        .into_iter()
+        .next()
+        .ok_or_else(|| ModelLoadError::MissingTensorScale(String::from(name)))?;
+    Ok(data
+        .iter()
+        .map(|byte| f32::from(i8::from_le_bytes([*byte])) * scale)
+        .collect())
+}
+
 #[cfg(test)]
 mod tests {
     use std::{collections::BTreeMap, path::Path};
 
+    use rustygrad_core::{DType, QuantizationMode};
     use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType};
     use tempfile::tempdir;
 
@@ -1375,6 +1451,7 @@ mod tests {
             WeightFormat::ProgrammaticFixture
         );
         assert_eq!(model.descriptor().weights.source, WeightSource::Fixture);
+        assert_eq!(model.descriptor().weights.quantization, QuantizationMode::None);
         assert_eq!(model.descriptor().weights.tensors.len(), 5);
         assert!(model.descriptor().weights.artifacts.is_empty());
     }
@@ -1451,6 +1528,34 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn safetensors_loader_reports_and_dequantizes_int8_weights(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("quantized.safetensors");
+        let tensors = BTreeMap::from([
+            (
+                String::from("projection"),
+                quantized_tensor_view(vec![2, 2], &[0.5, -0.5, 1.0, -1.0], 0.5)?,
+            ),
+            (
+                String::from("projection__scale"),
+                tensor_view(vec![1], &[0.5])?,
+            ),
+        ]);
+        serialize_to_file(tensors, None, &path)?;
+
+        let bundle = SafeTensorsWeightBundleLoader.load_path(&path)?;
+        assert_eq!(bundle.metadata().quantization, QuantizationMode::Int8Symmetric);
+        let Some(tensor) = bundle.tensor("projection") else {
+            return Err("missing projection tensor".into());
+        };
+        assert_eq!(tensor.metadata().dtype, DType::I8);
+        assert_eq!(tensor.metadata().quantization, QuantizationMode::Int8Symmetric);
+        assert_eq!(tensor.values(), &[0.5, -0.5, 1.0, -1.0]);
+        Ok(())
+    }
+
     fn write_reference_decoder_bundle(
         descriptor: &DecoderModelDescriptor,
         path: &Path,
@@ -1504,5 +1609,19 @@ mod tests {
             .into_boxed_slice();
         let leaked = Box::leak(bytes);
         Ok(TensorView::new(SafeTensorsDType::F32, shape, leaked)?)
+    }
+
+    fn quantized_tensor_view(
+        shape: Vec<usize>,
+        values: &[f32],
+        scale: f32,
+    ) -> Result<TensorView<'static>, Box<dyn std::error::Error>> {
+        let bytes = values
+            .iter()
+            .map(|value| ((*value / scale).round() as i8).to_le_bytes()[0])
+            .collect::<Vec<_>>()
+            .into_boxed_slice();
+        let leaked = Box::leak(bytes);
+        Ok(TensorView::new(SafeTensorsDType::I8, shape, leaked)?)
     }
 }

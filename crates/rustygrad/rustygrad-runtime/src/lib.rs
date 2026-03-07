@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use rustygrad_core::{DType, Device, TensorId, TensorSpec};
+use rustygrad_core::{DType, Device, QuantizationMode, TensorId, TensorSpec};
 use rustygrad_ir::ExecutionPlan;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -46,8 +46,29 @@ pub struct DeviceDescriptor {
     pub device: Device,
     /// Supported dtypes for the device.
     pub supported_dtypes: Vec<DType>,
+    /// Supported quantization modes for model-backed execution.
+    pub supported_quantization: Vec<QuantizationSupport>,
     /// Optional memory capacity in bytes.
     pub memory_capacity_bytes: Option<u64>,
+}
+
+/// How a backend handles a quantization mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationExecution {
+    /// Execute the quantized representation directly.
+    Native,
+    /// Dequantize weights to `f32` before execution.
+    DequantizeToF32,
+}
+
+/// Runtime support declaration for a quantization mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizationSupport {
+    /// Supported quantization mode.
+    pub mode: QuantizationMode,
+    /// How the runtime executes that mode.
+    pub execution: QuantizationExecution,
 }
 
 /// Runtime health state.
@@ -135,7 +156,8 @@ mod tests {
 
     use super::{
         Allocator, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-        ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
+        ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
+        QuantizationSupport, RuntimeError, RuntimeHealth,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -161,6 +183,10 @@ mod tests {
                 backend: String::from("mock"),
                 device: Device::cpu(),
                 supported_dtypes: vec![DType::F32],
+                supported_quantization: vec![QuantizationSupport {
+                    mode: rustygrad_core::QuantizationMode::None,
+                    execution: QuantizationExecution::Native,
+                }],
                 memory_capacity_bytes: None,
             }])
         }

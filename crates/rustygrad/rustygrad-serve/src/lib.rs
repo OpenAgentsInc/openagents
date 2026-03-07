@@ -1652,6 +1652,7 @@ mod tests {
             WeightBundleMetadata {
                 format: WeightFormat::ProgrammaticFixture,
                 source: WeightSource::Fixture,
+                quantization: rustygrad_core::QuantizationMode::None,
                 digest: String::from("fixture-digest"),
                 tensors: vec![WeightTensorMetadata::new(
                     "lm_head",

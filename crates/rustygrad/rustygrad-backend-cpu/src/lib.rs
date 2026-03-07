@@ -7,7 +7,8 @@ use rustygrad_core::{DType, Device, Shape, TensorData, TensorId, TensorSpec};
 use rustygrad_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use rustygrad_runtime::{
     Allocator, BackendName, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-    ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
+    ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
+    QuantizationSupport, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -321,6 +322,16 @@ impl DeviceDiscovery for CpuBackend {
             backend: String::from(self.backend_name()),
             device: Device::cpu(),
             supported_dtypes: vec![DType::F32],
+            supported_quantization: vec![
+                QuantizationSupport {
+                    mode: rustygrad_core::QuantizationMode::None,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: rustygrad_core::QuantizationMode::Int8Symmetric,
+                    execution: QuantizationExecution::DequantizeToF32,
+                },
+            ],
             memory_capacity_bytes: None,
         }])
     }
@@ -446,6 +457,20 @@ mod tests {
         let devices = backend.discover_devices()?;
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].device, Device::cpu());
+        assert_eq!(devices[0].supported_dtypes, vec![DType::F32]);
+        assert_eq!(
+            devices[0].supported_quantization,
+            vec![
+                super::QuantizationSupport {
+                    mode: rustygrad_core::QuantizationMode::None,
+                    execution: super::QuantizationExecution::Native,
+                },
+                super::QuantizationSupport {
+                    mode: rustygrad_core::QuantizationMode::Int8Symmetric,
+                    execution: super::QuantizationExecution::DequantizeToF32,
+                }
+            ]
+        );
         Ok(())
     }
 

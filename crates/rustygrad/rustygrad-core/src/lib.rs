@@ -27,6 +27,8 @@ impl fmt::Display for TensorId {
 pub enum DType {
     /// 32-bit floating point values.
     F32,
+    /// 8-bit signed integer values.
+    I8,
 }
 
 impl DType {
@@ -35,8 +37,19 @@ impl DType {
     pub const fn element_size_bytes(self) -> usize {
         match self {
             Self::F32 => 4,
+            Self::I8 => 1,
         }
     }
+}
+
+/// Quantization mode for stored model weights.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationMode {
+    /// Unquantized weights.
+    None,
+    /// Symmetric int8 quantization with explicit scale tensors.
+    Int8Symmetric,
 }
 
 /// Runtime backend family for a device.
