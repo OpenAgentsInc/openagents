@@ -2,6 +2,7 @@ use crate::app_state::PaneLoadState;
 
 pub mod contract;
 pub mod editor;
+pub mod pilot;
 pub mod projection;
 pub mod schema;
 pub mod service;
@@ -37,6 +38,9 @@ pub use editor::{ProjectOpsDetailDraft, ProjectOpsQuickCreateDraft};
 
 #[allow(unused_imports)]
 pub use service::{ProjectOpsCommandApplyResult, ProjectOpsCommandResult, ProjectOpsService};
+
+#[allow(unused_imports)]
+pub use pilot::{ProjectOpsPilotMetricsState, PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION};
 
 #[allow(unused_imports)]
 pub use views::{
@@ -79,6 +83,7 @@ pub struct ProjectOpsPaneState {
     pub quick_create_draft: ProjectOpsQuickCreateDraft,
     pub detail_draft: Option<ProjectOpsDetailDraft>,
     pub detail_save_status: Option<String>,
+    pub pilot_metrics: ProjectOpsPilotMetricsState,
     pub source_badge: String,
     pub summary: String,
     pub status_note: String,
@@ -88,13 +93,27 @@ pub struct ProjectOpsPaneState {
 impl Default for ProjectOpsPaneState {
     fn default() -> Self {
         let feature_enabled = project_ops_enabled_from_env();
+        let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
+        let projection_load_started_at = std::time::Instant::now();
         let local_store = if feature_enabled {
             ProjectOpsProjectionStore::load_or_bootstrap_default()
         } else {
             ProjectOpsProjectionStore::disabled()
         };
+        let mut pilot_metrics = if feature_enabled {
+            ProjectOpsPilotMetricsState::load_or_new_default()
+                .unwrap_or_else(|_| ProjectOpsPilotMetricsState::disabled())
+        } else {
+            ProjectOpsPilotMetricsState::disabled()
+        };
+        if feature_enabled {
+            let _ = pilot_metrics.record_projection_rebuild(
+                projection_load_started_at.elapsed().as_millis() as u64,
+                local_store.max_checkpoint_seq(),
+            );
+            let _ = pilot_metrics.record_view(active_saved_view_id.as_str());
+        }
         let operator_label = current_operator_label();
-        let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
         let search_query = String::new();
         let (
             active_saved_view,
@@ -202,6 +221,7 @@ impl Default for ProjectOpsPaneState {
             quick_create_draft: ProjectOpsQuickCreateDraft::default(),
             detail_draft,
             detail_save_status: None,
+            pilot_metrics,
             source_badge,
             summary,
             status_note,
@@ -264,6 +284,7 @@ impl ProjectOpsPaneState {
             quick_create_draft: ProjectOpsQuickCreateDraft::default(),
             detail_draft,
             detail_save_status: None,
+            pilot_metrics: ProjectOpsPilotMetricsState::disabled(),
             source_badge: local_store.source_badge(),
             summary: "Test PM pane".to_string(),
             status_note: "Test PM pane".to_string(),
@@ -285,6 +306,7 @@ impl ProjectOpsPaneState {
         }
         self.active_saved_view_id = normalized.to_string();
         self.refresh_derived_view_state();
+        let _ = self.pilot_metrics.record_view(self.active_saved_view_id.as_str());
         self.last_action = Some(format!("Project Ops view -> {}", self.active_saved_view));
         true
     }
@@ -469,6 +491,7 @@ impl ProjectOpsPaneState {
         };
         let result = ProjectOpsService::apply_command_to_store(&mut self.local_store, command)?;
         self.refresh_derived_view_state();
+        let _ = self.pilot_metrics.record_command("CreateWorkItem");
         self.quick_create_draft = ProjectOpsQuickCreateDraft::default();
         self.detail_save_status = Some("Quick create applied".to_string());
         match result {
@@ -503,8 +526,10 @@ impl ProjectOpsPaneState {
         let issued_at_unix_ms = now_unix_ms();
         let mut command_counter = 0u64;
         let mut applied_any = false;
+        let mut applied_command_names = Vec::new();
 
         let mut apply_command = |command: ProjectOpsCommand| -> Result<(), String> {
+            let command_name = command.name().label().to_string();
             command_counter = command_counter.saturating_add(1);
             let envelope = ProjectOpsCommandEnvelope {
                 command_id: ProjectOpsCommandId::new(format!(
@@ -520,6 +545,7 @@ impl ProjectOpsPaneState {
             let result =
                 ProjectOpsService::apply_command_to_store(&mut self.local_store, envelope)?;
             applied_any |= matches!(result, ProjectOpsCommandResult::Applied(_));
+            applied_command_names.push(command_name);
             Ok(())
         };
 
@@ -622,6 +648,11 @@ impl ProjectOpsPaneState {
         }
 
         self.refresh_derived_view_state();
+        let command_labels = applied_command_names
+            .iter()
+            .map(String::as_str)
+            .collect::<Vec<_>>();
+        let _ = self.pilot_metrics.record_commands(command_labels.as_slice());
         self.detail_save_status = Some(if applied_any {
             "Detail changes applied".to_string()
         } else {
@@ -768,7 +799,8 @@ mod tests {
     use std::sync::atomic::{AtomicU64, Ordering};
 
     use super::{
-        ProjectOpsPaneState, PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
+        ProjectOpsPaneState, ProjectOpsPilotMetricsState, PROJECT_OPS_BLOCKED_VIEW_ID,
+        PROJECT_OPS_MY_WORK_VIEW_ID,
     };
     use crate::project_ops::contract::ProjectOpsAcceptedEventName;
     use crate::project_ops::projection::{
@@ -1023,6 +1055,47 @@ mod tests {
                 .map(|row| row.event_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["pm:activity:3"]
+        );
+    }
+
+    #[test]
+    fn scripted_pilot_cycle_records_command_and_view_usage() {
+        let metrics_path = unique_temp_path("pilot-metrics");
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        pane.pilot_metrics = ProjectOpsPilotMetricsState::from_metrics_path_for_tests(
+            metrics_path.clone(),
+        )
+        .expect("pilot metrics should initialize");
+        pane
+            .pilot_metrics
+            .record_view(pane.active_saved_view_id.as_str())
+            .expect("default view should record");
+
+        pane.edit_detail_title("Pilot cycle edit");
+        assert!(pane.apply_detail_draft().expect("detail apply should succeed"));
+
+        pane.set_quick_create_title("Pilot cycle task");
+        pane.set_quick_create_description("Created during scripted pilot cycle");
+        pane.set_quick_create_priority(ProjectOpsPriority::High);
+        let _ = pane
+            .apply_quick_create()
+            .expect("quick create should succeed")
+            .expect("quick create should produce an id");
+
+        assert!(pane.set_active_saved_view(PROJECT_OPS_BLOCKED_VIEW_ID));
+        pane.pilot_metrics
+            .record_cycle_summary("scripted internal PM cycle completed")
+            .expect("cycle summary should record");
+
+        let restored = ProjectOpsPilotMetricsState::from_metrics_path_for_tests(metrics_path)
+            .expect("pilot metrics should reload");
+        assert_eq!(restored.view_counts.get(PROJECT_OPS_MY_WORK_VIEW_ID), Some(&1));
+        assert_eq!(restored.view_counts.get(PROJECT_OPS_BLOCKED_VIEW_ID), Some(&1));
+        assert_eq!(restored.command_counts.get("CreateWorkItem"), Some(&1));
+        assert_eq!(restored.command_counts.get("EditWorkItemFields"), Some(&1));
+        assert_eq!(
+            restored.last_cycle_summary.as_deref(),
+            Some("scripted internal PM cycle completed")
         );
     }
 }
