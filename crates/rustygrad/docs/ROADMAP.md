@@ -5,7 +5,9 @@
 > This file is the single roadmap for `crates/rustygrad/`. It consolidates the
 > current open GitHub issues plus the missing issue set required to replace the
 > external Ollama dependency with an in-repo Rust runtime built around
-> tinygrad-style primitives and truthful backend surfaces.
+> tinygrad-style primitives and truthful backend surfaces, and it now calls out
+> the additional runtime/evidence work needed for the broader Compute Market
+> plan.
 
 ## Objective
 
@@ -21,6 +23,34 @@ that:
 
 This is not a plan to rebuild all of Ollama. It is a plan to replace the
 desktop's actual Ollama dependency boundary.
+
+It is also not enough, by itself, to fulfill the broader Compute Market plan.
+The compute-market docs require Rustygrad to become the reusable execution
+substrate for truthful `inference` and `embeddings` supply first, with later
+bounded `sandbox_execution` support only if that family is implemented without
+blurring Compute and Labor.
+
+## Compute Market Scope Note
+
+The live market authority in `docs/MVP.md` remains the MVP earn loop, and the
+market docs keep initial launch truth narrow:
+
+- `compute` is the umbrella market
+- the first live compute families are `inference` and `embeddings`
+- the first launch products are backend-specific products such as
+  `ollama.text_generation`, `ollama.embeddings`, and
+  `apple_foundation_models.text_generation`
+
+For Rustygrad, that means "replace Ollama" is only the first half of the work.
+The second half is exposing reusable runtime truth that the Compute Market docs
+already depend on:
+
+- capability-envelope truth for backend, model family, accelerator, memory,
+  topology, concurrency posture, and latency posture
+- batch/queue/admission behavior that can be published honestly as supply
+- runtime evidence and plan digests that can feed delivery proofs and
+  settlement-linked receipts
+- a bounded execution-profile model for later `sandbox_execution` support
 
 ## Ownership Rules
 
@@ -45,10 +75,15 @@ port Tinygrad line by line:
 - keep model formats and model stores separate from backend execution
 - keep the serving surface library-first and in-process; any compatibility HTTP
   shim should be thin and optional
+- treat JIT capture, compile plans, and kernel-cache behavior as first-class
+  runtime policy because they affect cold/warm latency, observability, and
+  delivery evidence
+- keep batching, queueing, and topology/multi-device behavior explicit in
+  capability surfaces instead of hiding them as scheduler accidents
 - never silently run on CPU while advertising Metal, AMD, or NVIDIA readiness
 
 The first backend-complete primitive surface should be just large enough to run
-the launch product paths:
+the launch `inference` and `embeddings` product paths:
 
 - matmul / batched matmul
 - embedding lookup / gather
@@ -149,6 +184,38 @@ From the local Ollama source reviewed for this update:
 That behavior is why the roadmap needs explicit issues for prompt rendering,
 context budgets, memory admission, streaming, integrity, errors, and fallback.
 
+## Tinygrad Findings That Expand Compute Market Scope
+
+Reviewing `~/code/tinygrad` adds a few concrete scope expansions beyond Ollama
+parity.
+
+- `tinygrad/jit.py` already treats JIT capture, input replacement, and cached
+  batch execution as core runtime behavior rather than optional optimization
+- `tinygrad/ops.py` separates compiled backends, batch executors, op estimates,
+  and memory estimates in a way that maps cleanly to market-facing capability
+  and evidence surfaces
+- `docs/env_vars.md` exposes `CUDA`, `METAL`, `GRAPH`, `KCACHE`, `BS`, and
+  `DIST`, which is a reminder that backend truth, compile-cache policy, batch
+  posture, and distributed execution cannot stay implicit if Rustygrad becomes
+  the compute substrate
+- `examples/llama.py` shows the actual text-generation shape Rustygrad will need
+  to own: KV cache lifecycle, start-position accounting, and JIT-vs-non-JIT
+  behavior
+- `models/bert.py` confirms that embeddings paths are part of the same
+  primitive/runtime story, not a separate future product
+
+That matters to the Compute Market plan because the market does not only need a
+local runtime that "works." It needs a runtime that can publish truthful supply
+and produce reusable execution evidence. That adds missing roadmap work for:
+
+- capability-envelope qualifiers beyond simple backend selection
+- batch posture, queue discipline, and throughput-class truth
+- multi-device or sharded execution planning where a served product outgrows one
+  device
+- execution-plan caching and warm/cold compile-path evidence
+- runtime evidence that can feed compute delivery proofs
+- a bounded execution-profile model for later `sandbox_execution`
+
 ## Current Open GitHub Issues
 
 These are the current open issues in the active Rustygrad roadmap, verified on
@@ -196,6 +263,17 @@ They do not yet track:
 - backend-neutral error taxonomy
 - explicit fallback and degraded-state policy
 - performance thresholds for cutover
+- compute-market capability-envelope qualifiers for inventory, topology, memory,
+  concurrency posture, and latency posture
+- batch posture, queue discipline, and throughput-class truth for market-facing
+  supply
+- execution-plan and kernel-cache policy with warm/cold compile-path evidence
+- multi-device or sharded execution planning for large-model and topology-aware
+  supply
+- runtime evidence surfaces that can feed compute delivery proofs and
+  settlement-linked receipts
+- reusable bounded execution-profile and receipt contracts for a later
+  `sandbox_execution` family
 - Metal text generation
 - NVIDIA support
 - AMD execution kernels and served-product parity after the current AMD truth
@@ -326,6 +404,23 @@ cutover hardens the wrong assumptions.
 | `RGR-160` | Define in-process vs subprocess isolation policy for Rustygrad local serving | `rustygrad-serve`, `rustygrad-runtime`, backend crates | `RGR-125`, `RGR-136` | The desktop needs an explicit decision on whether local serving crashes, backend resets, and device loss can take down the app process. |
 | `RGR-170` | Define the boundary between Ollama-compat migration support and the long-term Rustygrad-native model/runtime format | `rustygrad-models`, `rustygrad-catalog`, `rustygrad-serve` | `RGR-120`, `RGR-125` | Migration support should not permanently dictate Rustygrad storage and runtime architecture. |
 
+### Epic J: Compute Market execution substrate beyond Ollama parity
+
+These issues keep the roadmap aligned with the Compute Market docs without
+moving app-owned market UX or authority logic into Rustygrad. The goal here is
+reusable runtime truth, not crate-level product orchestration.
+
+| Local ID | Proposed issue | Crates | Depends on | Why it exists |
+| --- | --- | --- | --- | --- |
+| `RGR-171` | Expand Rustygrad capability surfaces for compute-market inventory, topology, and performance qualifiers | `rustygrad-provider`, `rustygrad-runtime` | `RGR-124`, `RGR-129`, current [#3154](https://github.com/OpenAgentsInc/openagents/issues/3154), current [#3161](https://github.com/OpenAgentsInc/openagents/issues/3161) | The Compute Market plan needs backend family, execution kind, accelerator vendor/family, memory, topology, concurrency posture, and latency posture to be published honestly rather than inferred from "GPU available". |
+| `RGR-172` | Add batch execution posture, queueing policy, and throughput-class capability reporting | `rustygrad-serve`, `rustygrad-runtime`, `rustygrad-provider` | `RGR-129`, `RGR-159`, `RGR-171` | Tinygrad-style batch execution and queue behavior affect what supply a provider can honestly advertise, especially for inference and embeddings. |
+| `RGR-173` | Add multi-device and sharded execution planning for supported product paths | `rustygrad-runtime`, `rustygrad-compiler`, backend crates, `rustygrad-provider` | `RGR-171`, `RGR-172`, `RGR-140`, `RGR-150` | The Compute Market plan eventually needs topology-aware supply and large-model truth; Rustygrad should either support multi-device execution explicitly or refuse it explicitly. |
+| `RGR-174` | Add execution-plan caching, kernel-cache policy, and warm/cold compile-path evidence | `rustygrad-runtime`, `rustygrad-compiler`, backend crates, `rustygrad-provider` | `RGR-124`, `RGR-138`, `RGR-159` | Tinygrad makes JIT capture and cache behavior first-class; Rustygrad needs explicit plan-digest, cache, and cold-vs-warm semantics for performance truth and delivery evidence. |
+| `RGR-175` | Extend Rustygrad runtime evidence with compute-market delivery-proof fields and settlement-linkage inputs | `rustygrad-serve`, `rustygrad-provider`, `rustygrad-runtime` | `RGR-124`, `RGR-171`, `RGR-174` | The Compute Market plan needs reusable runtime evidence for product ID, capability envelope, plan digest, execution timings, resource summary, and output digests without pushing kernel authority types into Rustygrad. |
+| `RGR-176` | Define a reusable Rustygrad execution-profile model for bounded `sandbox_execution` | `rustygrad-runtime`, `rustygrad-provider` | `RGR-171`, `RGR-175` | The next planned compute family after inference/embeddings is bounded `sandbox_execution`, and the runtime profile contract should be reusable and machine-checkable before any app flow depends on it. |
+| `RGR-177` | Add reusable sandbox-execution receipt and evidence contracts compatible with Compute Market supply | `rustygrad-runtime`, `rustygrad-provider` | `RGR-175`, `RGR-176` | If `sandbox_execution` lands, it must stay in Compute via explicit digests, exit reasons, resource summaries, and profile variance records. |
+| `RGR-178` | Add topology-aware substitution and deliverability checks for accelerator-sensitive compute offers | `rustygrad-provider`, `rustygrad-runtime` | `RGR-171`, `RGR-173`, `RGR-175` | The Compute Market docs require comparing promised versus delivered capability envelopes; Rustygrad should expose the reusable truth inputs for that comparison. |
+
 ## Recommended Order
 
 The shortest honest path is:
@@ -344,10 +439,16 @@ The shortest honest path is:
 7. `RGR-140` through `RGR-147`: add NVIDIA as a first-class backend track
 8. finish the current open AMD truth work: [#3157](https://github.com/OpenAgentsInc/openagents/issues/3157), [#3158](https://github.com/OpenAgentsInc/openagents/issues/3158), [#3159](https://github.com/OpenAgentsInc/openagents/issues/3159), [#3160](https://github.com/OpenAgentsInc/openagents/issues/3160), [#3161](https://github.com/OpenAgentsInc/openagents/issues/3161), [#3162](https://github.com/OpenAgentsInc/openagents/issues/3162)
 9. `RGR-150` through `RGR-154`: add AMD execution only after AMD truth exists
-10. `RGR-160` and `RGR-170`: lock the process-isolation posture and the
+10. `RGR-171` through `RGR-175`: add the compute-market runtime substrate for
+    capability truth, batching, topology, cache behavior, and delivery-proof
+    evidence
+11. `RGR-160` and `RGR-170`: lock the process-isolation posture and the
     post-migration Rustygrad-native boundary before the cutover hardens old
     assumptions
-11. `OA-200` through `OA-203`: cut the desktop over and remove the daemon
+12. `OA-200` through `OA-203`: cut the desktop over and remove the daemon
+13. `RGR-176` through `RGR-178`: add bounded sandbox-execution contracts and
+    topology-aware deliverability only after the inference/embeddings runtime
+    substrate is already truthful
 
 ## Definition Of Done For "Replace Ollama"
 
@@ -381,6 +482,26 @@ true:
 - the repo has an explicit boundary between temporary Ollama-compat migration
   support and the long-term Rustygrad-native model/runtime format
 
+## Additional Definition Of Done For Rustygrad As Compute Market Substrate
+
+Rustygrad is not yet a credible Compute Market substrate until all of the
+following are also true:
+
+- Rustygrad can publish truthful capability-envelope fields for backend family,
+  execution kind, model family or policy, accelerator vendor/family, memory,
+  topology, concurrency posture, and latency posture
+- batchability, queueing, admission, warm/cold behavior, and compile/cache
+  posture are explicit runtime policy, not hidden implementation detail
+- runtime evidence includes stable digests and summaries that can feed
+  compute-market delivery proofs without re-deriving execution truth in app code
+- multi-device or sharded execution is either explicitly supported for a product
+  path or explicitly refused with stable diagnostics
+- accelerator-sensitive offers can compare promised versus delivered topology
+  and capability truth
+- if `sandbox_execution` is added later, Rustygrad exposes a bounded execution
+  profile and machine-checkable evidence surface rather than an open-ended tool
+  runner
+
 ## Non-Goals For This Roadmap
 
 This roadmap does not require:
@@ -390,6 +511,8 @@ This roadmap does not require:
 - OpenAI-compatible HTTP endpoints as a first milestone
 - multimodal parity
 - multi-runner LRU complexity before the one-model MVP lifecycle is solid
+- raw accelerator trading before backend-specific compute products and
+  capability envelopes are truthful
 
 The right near-term target is smaller:
 
