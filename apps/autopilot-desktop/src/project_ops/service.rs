@@ -836,6 +836,7 @@ mod tests {
             unique_temp_path("activity"),
             unique_temp_path("cycles"),
             unique_temp_path("saved-views"),
+            unique_temp_path("teams"),
             unique_temp_path("checkpoints"),
         );
         ProjectOpsService::from_projection_store(store)
@@ -905,12 +906,14 @@ mod tests {
         let activity_path = unique_temp_path("reload-activity");
         let cycles_path = unique_temp_path("reload-cycles");
         let saved_views_path = unique_temp_path("reload-saved-views");
+        let teams_path = unique_temp_path("reload-teams");
         let checkpoint_path = unique_temp_path("reload-checkpoints");
         let store = ProjectOpsProjectionStore::from_paths_for_tests(
             work_items_path,
             activity_path,
             cycles_path,
             saved_views_path,
+            teams_path,
             checkpoint_path.clone(),
         );
         let mut external = crate::sync_apply::SyncApplyEngine::load_or_new(

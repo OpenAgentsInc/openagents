@@ -1,5 +1,7 @@
 use super::projection::ProjectOpsCycleRow;
-use super::schema::{ProjectOpsPriority, ProjectOpsWorkItem, ProjectOpsWorkItemStatus};
+use super::schema::{
+    ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem, ProjectOpsWorkItemStatus,
+};
 use serde::{Deserialize, Serialize};
 
 pub const PROJECT_OPS_MY_WORK_VIEW_ID: &str = "my-work";
@@ -238,6 +240,7 @@ struct ProjectOpsSearchQuery {
     assignee_filters: Vec<ProjectOpsAssigneeFilter>,
     priority_filters: Vec<ProjectOpsPriorityFilter>,
     cycle_filters: Vec<ProjectOpsCycleFilter>,
+    team_filters: Vec<ProjectOpsTeamFilter>,
     blocked_filters: Vec<bool>,
     tag_filters: Vec<String>,
     sort_preference: Option<ProjectOpsSortPreference>,
@@ -265,6 +268,10 @@ enum ProjectOpsCycleFilter {
     Active,
     None,
     Exact(String),
+}
+
+struct ProjectOpsTeamFilter {
+    team_key: ProjectOpsTeamKey,
 }
 
 fn parse_search_query(search_query: &str) -> ProjectOpsSearchQuery {
@@ -322,6 +329,17 @@ fn parse_search_query(search_query: &str) -> ProjectOpsSearchQuery {
                     .cycle_filters
                     .push(parse_cycle_filter(normalized_value.as_str()));
                 parsed.chips.push(format!("cycle:{normalized_value}"));
+            }
+            "team" => {
+                if let Ok(team_key) = ProjectOpsTeamKey::new(normalized_value.clone()) {
+                    parsed.team_filters.push(ProjectOpsTeamFilter { team_key });
+                    parsed.chips.push(format!("team:{normalized_value}"));
+                } else {
+                    parsed.text_terms.push(token.to_ascii_lowercase());
+                    parsed
+                        .chips
+                        .push(format!("search:{}", token.to_ascii_lowercase()));
+                }
             }
             "blocked" => {
                 if let Some(value) = parse_bool_filter(normalized_value.as_str()) {
@@ -398,6 +416,14 @@ fn matches_search(
     {
         return false;
     }
+    if !query.team_filters.is_empty()
+        && !query
+            .team_filters
+            .iter()
+            .any(|filter| item.team_key == filter.team_key)
+    {
+        return false;
+    }
     if !query.blocked_filters.is_empty()
         && !query
             .blocked_filters
@@ -437,6 +463,7 @@ fn matches_text_term(item: &ProjectOpsWorkItem, query: &str) -> bool {
             .as_ref()
             .map(|cycle_id| cycle_id.as_str().to_ascii_lowercase().contains(query))
             .unwrap_or(false)
+        || item.team_key.as_str().to_ascii_lowercase().contains(query)
         || item
             .area_tags
             .iter()
@@ -834,14 +861,15 @@ mod tests {
         assert_eq!(
             filter_chips_for_view(
                 PROJECT_OPS_MY_WORK_VIEW_ID,
-                "wallet status:todo blocked:true"
+                "wallet status:todo blocked:true team:desktop"
             ),
             vec![
                 "assignee:me".to_string(),
                 "status:active".to_string(),
                 "search:wallet".to_string(),
                 "status:todo".to_string(),
-                "blocked:true".to_string()
+                "blocked:true".to_string(),
+                "team:desktop".to_string()
             ]
         );
         assert_eq!(
@@ -853,7 +881,7 @@ mod tests {
 
     #[test]
     fn advanced_query_filters_apply_structured_tokens() {
-        let work_items = vec![
+        let mut work_items = vec![
             work_item(
                 "wi-1",
                 "Search parser board",
@@ -882,6 +910,7 @@ mod tests {
                 20,
             ),
         ];
+        work_items[1].team_key = ProjectOpsTeamKey::new("ops").expect("team key");
         let cycles = cycles();
 
         let structured = filter_work_items_for_view(
@@ -939,6 +968,22 @@ mod tests {
                 .map(|item| item.work_item_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["wi-3"]
+        );
+
+        let team_filtered = filter_work_items_for_view(
+            work_items.as_slice(),
+            cycles.as_slice(),
+            "custom",
+            "cdavid",
+            "team:ops",
+            ProjectOpsSortPreference::UpdatedDesc,
+        );
+        assert_eq!(
+            team_filtered
+                .iter()
+                .map(|item| item.work_item_id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["wi-2"]
         );
     }
 
