@@ -1,5 +1,5 @@
 use crate::app_state::PaneLoadState;
-use crate::project_ops::ProjectOpsPaneState;
+use crate::project_ops::{ProjectOpsPaneState, ProjectOpsPresentationMode};
 use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 pub fn paint_project_ops_pane(
@@ -34,10 +34,11 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "{} | {} | view:{} | operator:{}",
+                "{} | {} | view:{} | presentation:{} | operator:{}",
                 state.source_badge,
                 state.load_state.label(),
                 state.active_saved_view,
+                state.presentation_mode.label(),
                 state.operator_label,
             )
             .as_str(),
@@ -142,6 +143,29 @@ pub fn paint_project_ops_pane(
             theme::text::MUTED,
         ),
     );
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Presentation: {} | {}",
+                state.presentation_mode.label(),
+                if let Some(drag) = state.board_drag_state.as_ref() {
+                    format!(
+                        "drag={} from {}",
+                        drag.work_item_id.as_str(),
+                        drag.from_status.label()
+                    )
+                } else if state.presentation_mode == ProjectOpsPresentationMode::Board {
+                    "board lanes show per-status counts and blocked rows".to_string()
+                } else {
+                    "list stays in stable updated-desc order".to_string()
+                }
+            )
+            .as_str(),
+            Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 36.0),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
 
     let content = Bounds::new(
         shell.origin.x + 12.0,
@@ -149,7 +173,11 @@ pub fn paint_project_ops_pane(
         shell.size.width - 24.0,
         shell.size.height - toolbar.size.height - 36.0,
     );
-    let list_width = (content.size.width * 0.56).max(220.0);
+    let list_width = if state.presentation_mode == ProjectOpsPresentationMode::Board {
+        (content.size.width * 0.64).max(280.0)
+    } else {
+        (content.size.width * 0.56).max(220.0)
+    };
     let list = Bounds::new(
         content.origin.x,
         content.origin.y,
@@ -578,64 +606,10 @@ pub fn paint_project_ops_pane(
             theme::text::PRIMARY,
         ),
     );
-    if state.visible_work_items.is_empty() {
-        paint.scene.draw_text(paint.text.layout(
-            state.empty_state_copy.as_str(),
-            Point::new(list.origin.x + 12.0, list.origin.y + 40.0),
-            11.0,
-            theme::text::SECONDARY,
-        ));
+    if state.presentation_mode == ProjectOpsPresentationMode::Board {
+        paint_board_presentation(list, state, paint);
     } else {
-        for (index, item) in state.visible_work_items.iter().take(8).enumerate() {
-            let row_y = list.origin.y + 40.0 + index as f32 * 22.0;
-            let row_bounds = Bounds::new(
-                list.origin.x + 8.0,
-                row_y - 10.0,
-                list.size.width - 16.0,
-                18.0,
-            );
-            let selected = state
-                .selected_work_item_id
-                .as_ref()
-                .is_some_and(|selected| selected == &item.work_item_id);
-            paint.scene.draw_quad(
-                Quad::new(row_bounds)
-                    .with_background(if selected {
-                        theme::bg::SURFACE
-                    } else {
-                        theme::bg::APP.with_alpha(0.04)
-                    })
-                    .with_corner_radius(6.0),
-            );
-            let assignee = item.assignee.as_deref().unwrap_or("unassigned");
-            let cycle = item
-                .cycle_id
-                .as_ref()
-                .map(|cycle| cycle.as_str())
-                .unwrap_or("no-cycle");
-            let blocked = if item.is_blocked() { " blocked" } else { "" };
-            paint.scene.draw_text(
-                paint.text.layout(
-                    format!(
-                        "{} | {} | {} | {} | {}{}",
-                        item.title,
-                        item.status.label(),
-                        item.priority.label(),
-                        assignee,
-                        cycle,
-                        blocked
-                    )
-                    .as_str(),
-                    Point::new(list.origin.x + 14.0, row_y),
-                    10.5,
-                    if selected {
-                        theme::text::PRIMARY
-                    } else {
-                        theme::text::SECONDARY
-                    },
-                ),
-            );
-        }
+        paint_list_presentation(list, state, paint);
     }
 
     if let Some(error) = state.last_error.as_deref() {
@@ -655,5 +629,196 @@ fn compact_stream_label(stream_id: &str) -> &str {
         crate::project_ops::PROJECT_OPS_CYCLES_STREAM_ID => "cycles",
         crate::project_ops::PROJECT_OPS_SAVED_VIEWS_STREAM_ID => "saved_views",
         _ => stream_id,
+    }
+}
+
+fn paint_list_presentation(list: Bounds, state: &ProjectOpsPaneState, paint: &mut PaintContext) {
+    if state.visible_work_items.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            state.empty_state_copy.as_str(),
+            Point::new(list.origin.x + 12.0, list.origin.y + 40.0),
+            11.0,
+            theme::text::SECONDARY,
+        ));
+        return;
+    }
+
+    for (index, item) in state.visible_work_items.iter().take(8).enumerate() {
+        let row_y = list.origin.y + 40.0 + index as f32 * 22.0;
+        let row_bounds = Bounds::new(
+            list.origin.x + 8.0,
+            row_y - 10.0,
+            list.size.width - 16.0,
+            18.0,
+        );
+        let selected = state
+            .selected_work_item_id
+            .as_ref()
+            .is_some_and(|selected| selected == &item.work_item_id);
+        paint.scene.draw_quad(
+            Quad::new(row_bounds)
+                .with_background(if selected {
+                    theme::bg::SURFACE
+                } else {
+                    theme::bg::APP.with_alpha(0.04)
+                })
+                .with_corner_radius(6.0),
+        );
+        let assignee = item.assignee.as_deref().unwrap_or("unassigned");
+        let cycle = item
+            .cycle_id
+            .as_ref()
+            .map(|cycle| cycle.as_str())
+            .unwrap_or("no-cycle");
+        let blocked = if item.is_blocked() { " blocked" } else { "" };
+        paint.scene.draw_text(
+            paint.text.layout(
+                format!(
+                    "{} | {} | {} | {} | {}{}",
+                    item.title,
+                    item.status.label(),
+                    item.priority.label(),
+                    assignee,
+                    cycle,
+                    blocked
+                )
+                .as_str(),
+                Point::new(list.origin.x + 14.0, row_y),
+                10.5,
+                if selected {
+                    theme::text::PRIMARY
+                } else {
+                    theme::text::SECONDARY
+                },
+            ),
+        );
+    }
+}
+
+fn paint_board_presentation(board: Bounds, state: &ProjectOpsPaneState, paint: &mut PaintContext) {
+    if state.visible_work_items.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            state.empty_state_copy.as_str(),
+            Point::new(board.origin.x + 12.0, board.origin.y + 40.0),
+            11.0,
+            theme::text::SECONDARY,
+        ));
+        return;
+    }
+
+    let gutter = 10.0;
+    let lane_width = ((board.size.width - gutter) / 2.0).max(120.0);
+    let lane_height = ((board.size.height - gutter * 2.0 - 40.0) / 3.0).max(88.0);
+    for (index, lane) in state.board_lanes.iter().enumerate() {
+        let column = (index % 2) as f32;
+        let row = (index / 2) as f32;
+        let lane_bounds = Bounds::new(
+            board.origin.x + column * (lane_width + gutter),
+            board.origin.y + 32.0 + row * (lane_height + gutter),
+            lane_width,
+            lane_height,
+        );
+        let is_drag_source = state
+            .board_drag_state
+            .as_ref()
+            .is_some_and(|drag| drag.from_status == lane.status);
+        paint.scene.draw_quad(
+            Quad::new(lane_bounds)
+                .with_background(if is_drag_source {
+                    theme::bg::SURFACE
+                } else {
+                    theme::bg::APP.with_alpha(0.08)
+                })
+                .with_corner_radius(8.0),
+        );
+        paint.scene.draw_text(
+            paint.text.layout(
+                format!(
+                    "{} | count:{} | blocked:{}",
+                    lane.title, lane.work_item_count, lane.blocked_count
+                )
+                .as_str(),
+                Point::new(lane_bounds.origin.x + 8.0, lane_bounds.origin.y + 14.0),
+                10.5,
+                theme::text::PRIMARY,
+            ),
+        );
+        paint.scene.draw_text(paint.text.layout(
+            if is_drag_source {
+                "drag source"
+            } else if state.board_drag_state.is_some() {
+                "drop target -> command/event status change"
+            } else {
+                "same filtered PM projection as list view"
+            },
+            Point::new(lane_bounds.origin.x + 8.0, lane_bounds.origin.y + 30.0),
+            9.5,
+            theme::text::MUTED,
+        ));
+
+        if lane.items.is_empty() {
+            paint.scene.draw_text(paint.text.layout(
+                lane.empty_state_copy.as_str(),
+                Point::new(lane_bounds.origin.x + 8.0, lane_bounds.origin.y + 50.0),
+                9.5,
+                theme::text::SECONDARY,
+            ));
+            continue;
+        }
+
+        for (item_index, item) in lane.items.iter().take(4).enumerate() {
+            let card_y = lane_bounds.origin.y + 52.0 + item_index as f32 * 22.0;
+            let card_bounds = Bounds::new(
+                lane_bounds.origin.x + 6.0,
+                card_y - 10.0,
+                lane_bounds.size.width - 12.0,
+                18.0,
+            );
+            let selected = state
+                .selected_work_item_id
+                .as_ref()
+                .is_some_and(|selected| selected == &item.work_item_id);
+            let dragged = state
+                .board_drag_state
+                .as_ref()
+                .is_some_and(|drag| drag.work_item_id == item.work_item_id);
+            paint.scene.draw_quad(
+                Quad::new(card_bounds)
+                    .with_background(if dragged || selected {
+                        theme::bg::HOVER
+                    } else {
+                        theme::bg::APP.with_alpha(0.06)
+                    })
+                    .with_corner_radius(6.0),
+            );
+            paint.scene.draw_text(
+                paint.text.layout(
+                    format!(
+                        "{} | {}{}",
+                        item.title,
+                        item.priority.label(),
+                        if item.is_blocked() { " | blocked" } else { "" }
+                    )
+                    .as_str(),
+                    Point::new(lane_bounds.origin.x + 10.0, card_y),
+                    9.5,
+                    if selected {
+                        theme::text::PRIMARY
+                    } else {
+                        theme::text::SECONDARY
+                    },
+                ),
+            );
+        }
+
+        let overflow = lane.items.len().saturating_sub(4);
+        if overflow > 0 {
+            paint.scene.draw_text(paint.text.layout(
+                format!("+{} more", overflow).as_str(),
+                Point::new(lane_bounds.origin.x + 8.0, lane_bounds.max_y() - 10.0),
+                9.0,
+                theme::text::MUTED,
+            ));
+        }
     }
 }

@@ -51,10 +51,10 @@ pub use pilot::{PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION, ProjectOpsPilotMetrics
 #[allow(unused_imports)]
 pub use views::{
     PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CURRENT_CYCLE_VIEW_ID, PROJECT_OPS_DEFAULT_VIEW_ID,
-    PROJECT_OPS_MY_WORK_VIEW_ID, PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID,
+    PROJECT_OPS_MY_WORK_VIEW_ID, PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID, ProjectOpsBoardLane,
     ProjectOpsBuiltinSavedViewSpec, builtin_saved_view_specs, current_operator_label,
     empty_state_copy_for_view, filter_chips_for_view, filter_work_items_for_view,
-    view_title_for_id,
+    project_board_lanes, view_title_for_id,
 };
 
 pub fn project_ops_enabled_from_env() -> bool {
@@ -67,6 +67,21 @@ pub fn project_ops_enabled_from_env() -> bool {
             )
         })
         .unwrap_or(false)
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ProjectOpsPresentationMode {
+    List,
+    Board,
+}
+
+impl ProjectOpsPresentationMode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::List => "list",
+            Self::Board => "board",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -128,6 +143,12 @@ impl Default for ProjectOpsSyncDiagnostics {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectOpsBoardDragState {
+    pub work_item_id: ProjectOpsWorkItemId,
+    pub from_status: ProjectOpsWorkItemStatus,
+}
+
 pub struct ProjectOpsPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
@@ -139,6 +160,9 @@ pub struct ProjectOpsPaneState {
     pub search_query: String,
     pub active_filter_chips: Vec<String>,
     pub visible_work_items: Vec<ProjectOpsWorkItem>,
+    pub presentation_mode: ProjectOpsPresentationMode,
+    pub board_lanes: Vec<ProjectOpsBoardLane>,
+    pub board_drag_state: Option<ProjectOpsBoardDragState>,
     pub selected_work_item_id: Option<ProjectOpsWorkItemId>,
     pub empty_state_copy: String,
     pub visible_activity_rows: Vec<ProjectOpsActivityRow>,
@@ -278,6 +302,7 @@ impl Default for ProjectOpsPaneState {
                     .cloned()
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
+        let board_lanes = project_board_lanes(visible_work_items.as_slice());
 
         let mut state = Self {
             load_state,
@@ -290,6 +315,9 @@ impl Default for ProjectOpsPaneState {
             search_query,
             active_filter_chips,
             visible_work_items,
+            presentation_mode: ProjectOpsPresentationMode::List,
+            board_lanes,
+            board_drag_state: None,
             selected_work_item_id,
             empty_state_copy,
             visible_activity_rows,
@@ -347,6 +375,7 @@ impl ProjectOpsPaneState {
                     .cloned()
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
+        let board_lanes = project_board_lanes(visible_work_items.as_slice());
         let mut state = Self {
             load_state: local_store.load_state,
             last_error: local_store.last_error.clone(),
@@ -358,6 +387,9 @@ impl ProjectOpsPaneState {
             search_query,
             active_filter_chips,
             visible_work_items,
+            presentation_mode: ProjectOpsPresentationMode::List,
+            board_lanes,
+            board_drag_state: None,
             selected_work_item_id,
             empty_state_copy,
             visible_activity_rows,
@@ -450,6 +482,74 @@ impl ProjectOpsPaneState {
         self.select_visible_row(next_index)
     }
 
+    pub fn set_presentation_mode(&mut self, presentation_mode: ProjectOpsPresentationMode) -> bool {
+        if self.presentation_mode == presentation_mode {
+            return false;
+        }
+        self.presentation_mode = presentation_mode;
+        if presentation_mode == ProjectOpsPresentationMode::List {
+            self.board_drag_state = None;
+        }
+        self.last_action = Some(format!(
+            "Project Ops presentation -> {}",
+            presentation_mode.label()
+        ));
+        true
+    }
+
+    pub fn start_board_drag(&mut self, work_item_id: &str) -> bool {
+        let Some((dragged_work_item_id, from_status)) = self
+            .visible_work_items
+            .iter()
+            .find(|item| item.work_item_id.as_str() == work_item_id.trim())
+            .map(|item| (item.work_item_id.clone(), item.status))
+        else {
+            return false;
+        };
+        self.presentation_mode = ProjectOpsPresentationMode::Board;
+        self.selected_work_item_id = Some(dragged_work_item_id.clone());
+        self.sync_detail_draft_from_selection();
+        self.board_drag_state = Some(ProjectOpsBoardDragState {
+            work_item_id: dragged_work_item_id.clone(),
+            from_status,
+        });
+        self.last_action = Some(format!(
+            "Board drag {} from {}",
+            dragged_work_item_id.as_str(),
+            from_status.label()
+        ));
+        true
+    }
+
+    pub fn drop_board_drag(
+        &mut self,
+        target_status: ProjectOpsWorkItemStatus,
+    ) -> Result<bool, String> {
+        let Some(drag_state) = self.board_drag_state.clone() else {
+            return Ok(false);
+        };
+        if drag_state.from_status == target_status {
+            self.board_drag_state = None;
+            self.last_action = Some(format!(
+                "Board drag cleared for {}",
+                drag_state.work_item_id.as_str()
+            ));
+            return Ok(false);
+        }
+        let moved = self.move_work_item_to_status(&drag_state.work_item_id, target_status)?;
+        if moved {
+            self.board_drag_state = None;
+            self.presentation_mode = ProjectOpsPresentationMode::Board;
+            self.last_action = Some(format!(
+                "Board move {} -> {}",
+                drag_state.work_item_id.as_str(),
+                target_status.label()
+            ));
+            self.detail_save_status = Some("Board move applied".to_string());
+        }
+        Ok(moved)
+    }
+
     fn refresh_derived_view_state(&mut self) {
         let (
             active_saved_view,
@@ -471,6 +571,14 @@ impl ProjectOpsPaneState {
         self.active_saved_view = active_saved_view;
         self.active_filter_chips = active_filter_chips;
         self.visible_work_items = visible_work_items;
+        self.board_lanes = project_board_lanes(self.visible_work_items.as_slice());
+        if self.board_drag_state.as_ref().is_some_and(|drag| {
+            !self.visible_work_items.iter().any(|item| {
+                item.work_item_id == drag.work_item_id && item.status == drag.from_status
+            })
+        }) {
+            self.board_drag_state = None;
+        }
         self.selected_work_item_id = selected_work_item_id;
         self.empty_state_copy = empty_state_copy;
         self.visible_activity_rows = visible_activity_rows;
@@ -882,6 +990,41 @@ impl ProjectOpsPaneState {
         Ok(applied_any)
     }
 
+    fn move_work_item_to_status(
+        &mut self,
+        work_item_id: &ProjectOpsWorkItemId,
+        target_status: ProjectOpsWorkItemStatus,
+    ) -> Result<bool, String> {
+        if !self.feature_enabled {
+            return Ok(false);
+        }
+        let issued_at_unix_ms = now_unix_ms();
+        let command = ProjectOpsCommandEnvelope {
+            command_id: ProjectOpsCommandId::new(format!(
+                "pm-board-status-{issued_at_unix_ms}-{}-{}",
+                work_item_id.as_str(),
+                target_status.label(),
+            ))?,
+            issued_at_unix_ms,
+            actor: ProjectOpsActor {
+                actor_id: None,
+                actor_label: Some(self.operator_label.clone()),
+            },
+            command: ProjectOpsCommand::ChangeWorkItemStatus(
+                contract::ProjectOpsChangeWorkItemStatus {
+                    work_item_id: work_item_id.clone(),
+                    status: target_status,
+                },
+            ),
+        };
+        let result = ProjectOpsService::apply_command_to_store(&mut self.local_store, command)?;
+        self.refresh_derived_view_state();
+        self.selected_work_item_id = Some(work_item_id.clone());
+        self.sync_detail_draft_from_selection();
+        let _ = self.pilot_metrics.record_command("ChangeWorkItemStatus");
+        Ok(matches!(result, ProjectOpsCommandResult::Applied(_)))
+    }
+
     fn sync_detail_draft_from_selection(&mut self) {
         let Some(selected) = self.selected_work_item_id.as_ref() else {
             self.detail_draft = None;
@@ -1034,7 +1177,8 @@ mod tests {
         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_BLOCKED_VIEW_ID,
         PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
         PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsPaneState,
-        ProjectOpsPilotMetricsState, ProjectOpsService, project_ops_required_stream_grants,
+        ProjectOpsPilotMetricsState, ProjectOpsPresentationMode, ProjectOpsService,
+        project_ops_required_stream_grants,
     };
     use crate::project_ops::contract::{
         ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName,
@@ -1804,6 +1948,105 @@ mod tests {
                 .map(|row| row.event_id.as_str())
                 .collect::<Vec<_>>(),
             vec!["pm:activity:3"]
+        );
+    }
+
+    #[test]
+    fn board_lane_drop_routes_through_pm_command_path() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+
+        assert!(pane.set_presentation_mode(ProjectOpsPresentationMode::Board));
+        assert_eq!(pane.presentation_mode, ProjectOpsPresentationMode::Board);
+        assert!(pane.start_board_drag("wi-2"));
+        assert_eq!(
+            pane.board_drag_state
+                .as_ref()
+                .map(|drag| (drag.work_item_id.as_str(), drag.from_status)),
+            Some(("wi-2", ProjectOpsWorkItemStatus::InProgress))
+        );
+
+        let work_items_seq_before = pane
+            .local_store
+            .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+            .unwrap_or(0);
+        let activity_count_before = pane.local_store.activity_rows.len();
+
+        assert!(
+            pane.drop_board_drag(ProjectOpsWorkItemStatus::InReview)
+                .expect("board drop should succeed")
+        );
+
+        let updated = pane
+            .local_store
+            .work_items
+            .iter()
+            .find(|item| item.work_item_id.as_str() == "wi-2")
+            .expect("board-moved item should exist");
+        assert_eq!(updated.status, ProjectOpsWorkItemStatus::InReview);
+        assert_eq!(
+            pane.local_store
+                .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+                .unwrap_or(0),
+            work_items_seq_before + 1
+        );
+        assert_eq!(
+            pane.local_store.activity_rows.len(),
+            activity_count_before + 1
+        );
+        assert_eq!(pane.board_drag_state, None);
+        assert_eq!(
+            pane.detail_save_status.as_deref(),
+            Some("Board move applied")
+        );
+        assert_eq!(
+            pane.pilot_metrics
+                .command_counts
+                .get("ChangeWorkItemStatus"),
+            Some(&1)
+        );
+        assert!(
+            pane.local_store
+                .activity_rows
+                .first()
+                .is_some_and(|row| row.summary.contains("in_review"))
+        );
+    }
+
+    #[test]
+    fn board_lane_drop_rejects_invalid_transition_without_bypassing_service_rules() {
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
+        let activity_count_before = pane.local_store.activity_rows.len();
+        let work_items_seq_before = pane
+            .local_store
+            .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+            .unwrap_or(0);
+
+        assert!(pane.set_presentation_mode(ProjectOpsPresentationMode::Board));
+        assert!(pane.start_board_drag("wi-1"));
+        let error = pane
+            .drop_board_drag(ProjectOpsWorkItemStatus::Done)
+            .expect_err("invalid board transition should reject");
+        assert!(error.contains("invalid status transition"));
+        assert_eq!(
+            pane.board_drag_state
+                .as_ref()
+                .map(|drag| drag.work_item_id.as_str()),
+            Some("wi-1")
+        );
+        assert_eq!(
+            pane.local_store
+                .work_items
+                .iter()
+                .find(|item| item.work_item_id.as_str() == "wi-1")
+                .map(|item| item.status),
+            Some(ProjectOpsWorkItemStatus::Todo)
+        );
+        assert_eq!(pane.local_store.activity_rows.len(), activity_count_before);
+        assert_eq!(
+            pane.local_store
+                .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+                .unwrap_or(0),
+            work_items_seq_before
         );
     }
 
