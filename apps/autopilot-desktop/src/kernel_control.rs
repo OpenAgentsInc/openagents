@@ -1,4 +1,5 @@
 use crate::app_state::{ActiveJobRecord, JobInboxDecision, RenderState};
+use crate::state::provider_runtime::LocalInferenceBackend;
 use crate::state::job_inbox::JobInboxRequest;
 use openagents_kernel_core::authority::{
     CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
@@ -9,9 +10,9 @@ use openagents_kernel_core::authority::{
 use openagents_kernel_core::compute::{
     COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument, CapacityInstrumentKind,
     CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityReserveState,
-    ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily,
-    ComputeProduct, ComputeProductStatus, ComputeSettlementMode, DeliveryProof,
-    DeliveryProofStatus, OllamaRuntimeCapability,
+    ApplePlatformCapability, ComputeBackendFamily, ComputeCapabilityEnvelope,
+    ComputeExecutionKind, ComputeFamily, ComputeProduct, ComputeProductStatus,
+    ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::labor::{
@@ -230,7 +231,7 @@ pub(crate) fn register_accepted_request_with_kernel(
     request: &JobInboxRequest,
 ) -> Result<(), String> {
     let client = remote_authority_client_for_state(state)?;
-    let binding = compute_binding_for_capability(request.capability.as_str()).ok_or_else(|| {
+    let binding = selected_launch_compute_binding_for_request(state, request).ok_or_else(|| {
         format!(
             "unsupported compute capability for canonicalization: {}",
             request.capability
@@ -346,6 +347,7 @@ fn current_authority_mode(state: &RenderState) -> KernelAuthorityMode {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct LaunchComputeBinding {
     product_id: &'static str,
+    backend_family: ComputeBackendFamily,
     compute_family: ComputeFamily,
     model_policy: &'static str,
 }
@@ -401,8 +403,27 @@ where
 
 fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchComputeBinding> {
     let mut bindings = Vec::new();
+    if state.provider_runtime.apple_fm.is_ready()
+        && let Some(binding) = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::AppleFoundationModels,
+            "text_generation",
+        )
+    {
+        bindings.push(binding);
+    }
     if state.provider_runtime.ollama.is_ready()
-        && let Some(binding) = compute_binding_for_capability("text_generation")
+        && let Some(binding) = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_generation",
+        )
+    {
+        bindings.push(binding);
+    }
+    if state.provider_runtime.ollama.is_ready()
+        && let Some(binding) = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_embeddings",
+        )
     {
         bindings.push(binding);
     }
@@ -789,6 +810,27 @@ async fn sleep_until_retry(shutdown_rx: &mut watch::Receiver<bool>) -> bool {
 }
 
 fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateComputeProductRequest {
+    let (apple_platform, ollama_runtime, backend_family) = match binding.backend_family {
+        ComputeBackendFamily::Ollama => (
+            None,
+            Some(OllamaRuntimeCapability {
+                runtime_ready: None,
+                model_name: None,
+                quantization: None,
+            }),
+            "ollama",
+        ),
+        ComputeBackendFamily::AppleFoundationModels => (
+            Some(ApplePlatformCapability {
+                apple_silicon_required: true,
+                apple_intelligence_required: true,
+                apple_intelligence_available: None,
+                minimum_macos_version: Some("26.0".to_string()),
+            }),
+            None,
+            "apple_foundation_models",
+        ),
+    };
     CreateComputeProductRequest {
         idempotency_key: format!("desktop.compute_product:{}", binding.product_id),
         trace: TraceContext {
@@ -825,25 +867,21 @@ fn build_compute_product_request(binding: LaunchComputeBinding) -> CreateCompute
             created_at_ms: LAUNCH_PRODUCT_CREATED_AT_MS,
             taxonomy_version: Some(COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string()),
             capability_envelope: Some(ComputeCapabilityEnvelope {
-                backend_family: Some(ComputeBackendFamily::Ollama),
+                backend_family: Some(binding.backend_family),
                 execution_kind: Some(ComputeExecutionKind::LocalInference),
                 compute_family: Some(binding.compute_family),
                 model_policy: Some(binding.model_policy.to_string()),
                 model_family: None,
                 host_capability: None,
-                apple_platform: None,
-                ollama_runtime: Some(OllamaRuntimeCapability {
-                    runtime_ready: None,
-                    model_name: None,
-                    quantization: None,
-                }),
+                apple_platform,
+                ollama_runtime,
                 latency_ms_p50: None,
                 throughput_per_minute: None,
                 concurrency_limit: Some(1),
             }),
             metadata: json!({
                 "source": "desktop.online_inventory",
-                "backend_family": "ollama",
+                "backend_family": backend_family,
                 "compute_family": compute_family_label(binding.compute_family),
                 "product_family": binding.product_id,
             }),
@@ -1432,24 +1470,85 @@ fn btc_sats_money(amount_sats: u64) -> Money {
     }
 }
 
-fn compute_binding_for_capability(capability: &str) -> Option<LaunchComputeBinding> {
+fn compute_binding_for_backend_and_capability(
+    backend: LocalInferenceBackend,
+    capability: &str,
+) -> Option<LaunchComputeBinding> {
     let normalized = capability
         .trim()
         .to_ascii_lowercase()
         .replace(['.', '-'], "_");
-    match normalized.as_str() {
-        "text_generation" => Some(LaunchComputeBinding {
+    match (backend, normalized.as_str()) {
+        (LocalInferenceBackend::Ollama, "text_generation") => Some(LaunchComputeBinding {
             product_id: "ollama.text_generation",
+            backend_family: ComputeBackendFamily::Ollama,
             compute_family: ComputeFamily::Inference,
             model_policy: "ollama.text_generation.launch",
         }),
-        "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => {
-            Some(LaunchComputeBinding {
+        (
+            LocalInferenceBackend::Ollama,
+            "embedding" | "embeddings" | "text_embedding" | "text_embeddings",
+        ) => Some(LaunchComputeBinding {
                 product_id: "ollama.embeddings",
+                backend_family: ComputeBackendFamily::Ollama,
                 compute_family: ComputeFamily::Embeddings,
                 model_policy: "ollama.embeddings.launch",
+            }),
+        (LocalInferenceBackend::AppleFoundationModels, "text_generation") => {
+            Some(LaunchComputeBinding {
+                product_id: "apple_foundation_models.text_generation",
+                backend_family: ComputeBackendFamily::AppleFoundationModels,
+                compute_family: ComputeFamily::Inference,
+                model_policy: "apple_foundation_models.text_generation.launch",
             })
         }
+        _ => None,
+    }
+}
+
+fn compute_binding_for_product_id(product_id: &str) -> Option<LaunchComputeBinding> {
+    match product_id.trim() {
+        "ollama.text_generation" => compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_generation",
+        ),
+        "ollama.embeddings" => compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_embeddings",
+        ),
+        "apple_foundation_models.text_generation" => compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::AppleFoundationModels,
+            "text_generation",
+        ),
+        _ => None,
+    }
+}
+
+fn selected_launch_compute_binding_for_request(
+    state: &RenderState,
+    request: &JobInboxRequest,
+) -> Option<LaunchComputeBinding> {
+    let normalized = request
+        .capability
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['.', '-'], "_");
+    match normalized.as_str() {
+        "text_generation" => state
+            .provider_runtime
+            .active_inference_backend()
+            .and_then(|backend| compute_binding_for_backend_and_capability(backend, "text_generation")),
+        "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => state
+            .provider_runtime
+            .ollama
+            .is_ready()
+            .then(|| {
+                compute_binding_for_backend_and_capability(
+                    LocalInferenceBackend::Ollama,
+                    "text_embeddings",
+                )
+            })
+            .flatten(),
         _ => None,
     }
 }
@@ -1459,7 +1558,20 @@ fn compute_linkage_for_request(
     request_id: &str,
     capability: &str,
 ) -> Option<LaunchComputeLinkage> {
-    let binding = compute_binding_for_capability(capability)?;
+    let normalized = capability
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['.', '-'], "_");
+    let binding = match normalized.as_str() {
+        "text_generation" => state
+            .provider_runtime
+            .active_inference_backend()
+            .and_then(|backend| compute_binding_for_backend_and_capability(backend, capability))?,
+        "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => {
+            compute_binding_for_backend_and_capability(LocalInferenceBackend::Ollama, capability)?
+        }
+        _ => return None,
+    };
     let session_started_at_ms = state.provider_runtime.inventory_session_started_at_ms?;
     let provider_id = provider_id_for_state(state);
     Some(LaunchComputeLinkage {
@@ -1476,7 +1588,10 @@ fn compute_linkage_for_request(
 }
 
 fn compute_linkage_for_active_job(job: &ActiveJobRecord) -> Option<LaunchComputeLinkage> {
-    let binding = compute_binding_for_capability(job.capability.as_str())?;
+    let binding = job
+        .compute_product_id
+        .as_deref()
+        .and_then(compute_binding_for_product_id)?;
     Some(LaunchComputeLinkage {
         product_id: binding.product_id,
         capacity_lot_id: job.capacity_lot_id.clone()?,
@@ -1506,12 +1621,30 @@ fn provider_inventory_evidence_refs(state: &RenderState) -> Vec<EvidenceRef> {
             model_name,
         ));
     }
+    if let Some(model_name) = state.provider_runtime.apple_fm.ready_model.as_deref() {
+        evidence.push(evidence_ref(
+            "attestation:model_version",
+            format!(
+                "oa://autopilot/provider/apple_foundation_models/models/{}",
+                canonical_kernel_id_component(model_name)
+            ),
+            model_name,
+        ));
+    }
     let base_url = state.ollama_execution.base_url.trim();
     if !base_url.is_empty() {
         evidence.push(evidence_ref(
             "execution_backend_ref",
             "oa://autopilot/provider/ollama/backend",
             base_url,
+        ));
+    }
+    let apple_base_url = state.apple_fm_execution.base_url.trim();
+    if !apple_base_url.is_empty() {
+        evidence.push(evidence_ref(
+            "execution_backend_ref",
+            "oa://autopilot/provider/apple_foundation_models/backend",
+            apple_base_url,
         ));
     }
     evidence
@@ -1612,8 +1745,8 @@ mod tests {
     use super::{
         KernelAuthorityMode, PendingSseEvent, ReceiptProjectionEnvelope,
         build_compute_product_request,
-        compute_binding_for_capability, compute_linkage_for_active_job, consume_sse_buffer,
-        delivery_proof_id_for_request, flush_pending_sse_event,
+        compute_binding_for_backend_and_capability, compute_linkage_for_active_job,
+        consume_sse_buffer, delivery_proof_id_for_request, flush_pending_sse_event,
         online_capacity_lot_id_for_binding, resolve_kernel_authority_mode,
         submission_evidence_refs,
     };
@@ -1621,6 +1754,7 @@ mod tests {
     use crate::economy_kernel_receipts::{
         PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
     };
+    use crate::state::provider_runtime::LocalInferenceBackend;
     use openagents_kernel_core::compute::ComputeFamily;
     use std::sync::mpsc;
 
@@ -1655,6 +1789,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
             execution_provenance: Some(crate::ollama_execution::OllamaExecutionProvenance {
+                backend: "ollama".to_string(),
                 requested_model: Some("llama3.2:latest".to_string()),
                 served_model: "llama3.2:latest".to_string(),
                 normalized_prompt_digest: "sha256:prompt".to_string(),
@@ -1801,23 +1936,47 @@ mod tests {
 
     #[test]
     fn compute_binding_maps_launch_capabilities_to_launch_products() {
-        let inference =
-            compute_binding_for_capability("text_generation").expect("inference binding");
+        let inference = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_generation",
+        )
+        .expect("inference binding");
         assert_eq!(inference.product_id, "ollama.text_generation");
         assert_eq!(inference.compute_family, ComputeFamily::Inference);
 
-        let embeddings =
-            compute_binding_for_capability("text.embeddings").expect("embedding binding");
+        let embeddings = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text.embeddings",
+        )
+        .expect("embedding binding");
         assert_eq!(embeddings.product_id, "ollama.embeddings");
         assert_eq!(embeddings.compute_family, ComputeFamily::Embeddings);
 
-        assert!(compute_binding_for_capability("gpu.h100").is_none());
+        let apple_inference = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::AppleFoundationModels,
+            "text_generation",
+        )
+        .expect("apple inference binding");
+        assert_eq!(
+            apple_inference.product_id,
+            "apple_foundation_models.text_generation"
+        );
+        assert_eq!(apple_inference.compute_family, ComputeFamily::Inference);
+
+        assert!(
+            compute_binding_for_backend_and_capability(LocalInferenceBackend::Ollama, "gpu.h100")
+                .is_none()
+        );
     }
 
     #[test]
     fn launch_compute_product_requests_are_provider_independent() {
         let request = build_compute_product_request(
-            compute_binding_for_capability("text_generation").expect("inference binding"),
+            compute_binding_for_backend_and_capability(
+                LocalInferenceBackend::Ollama,
+                "text_generation",
+            )
+            .expect("inference binding"),
         );
         assert_eq!(
             request.idempotency_key,
@@ -1827,6 +1986,33 @@ mod tests {
         assert_eq!(request.product.created_at_ms, super::LAUNCH_PRODUCT_CREATED_AT_MS);
         assert!(request.evidence.is_empty());
         assert_eq!(request.policy.approved_by, "openagents.compute.market");
+    }
+
+    #[test]
+    fn apple_launch_compute_product_request_uses_apple_backend_family() {
+        let request = build_compute_product_request(
+            compute_binding_for_backend_and_capability(
+                LocalInferenceBackend::AppleFoundationModels,
+                "text_generation",
+            )
+            .expect("apple inference binding"),
+        );
+        assert_eq!(
+            request.idempotency_key,
+            "desktop.compute_product:apple_foundation_models.text_generation"
+        );
+        assert_eq!(
+            request.product.product_id,
+            "apple_foundation_models.text_generation"
+        );
+        assert_eq!(
+            request
+                .product
+                .capability_envelope
+                .as_ref()
+                .and_then(|envelope| envelope.backend_family),
+            Some(openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels)
+        );
     }
 
     #[test]

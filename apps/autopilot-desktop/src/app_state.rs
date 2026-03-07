@@ -19,6 +19,9 @@ use crate::labor_orchestrator::{
     CodexLaborApprovalEvent, CodexLaborBinding, CodexLaborClaimState, CodexLaborSubmissionState,
     CodexLaborVerdictState, CodexRunClassification,
 };
+use crate::apple_fm_bridge::{
+    AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker,
+};
 use crate::ollama_execution::{
     OllamaExecutionCommand, OllamaExecutionProvenance, OllamaExecutionSnapshot,
     OllamaExecutionWorker,
@@ -5046,6 +5049,8 @@ pub struct RenderState {
     pub ac_lane_worker: AcLaneWorker,
     pub provider_nip90_lane: ProviderNip90LaneSnapshot,
     pub provider_nip90_lane_worker: ProviderNip90LaneWorker,
+    pub apple_fm_execution: AppleFmBridgeSnapshot,
+    pub apple_fm_execution_worker: AppleFmBridgeWorker,
     pub ollama_execution: OllamaExecutionSnapshot,
     pub ollama_execution_worker: OllamaExecutionWorker,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
@@ -5223,6 +5228,13 @@ impl RenderState {
         self.ollama_execution_worker.enqueue(command)
     }
 
+    pub fn queue_apple_fm_bridge_command(
+        &mut self,
+        command: AppleFmBridgeCommand,
+    ) -> Result<(), String> {
+        self.apple_fm_execution_worker.enqueue(command)
+    }
+
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
         let relays = self.settings.document.configured_relay_urls();
         if relays.is_empty() {
@@ -5286,10 +5298,17 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
-        if !self.provider_runtime.ollama.reachable {
-            blockers.push(ProviderBlocker::OllamaUnavailable);
-        } else if !self.provider_runtime.ollama.is_ready() {
-            blockers.push(ProviderBlocker::OllamaModelUnavailable);
+        if self.provider_runtime.active_inference_backend().is_none() {
+            if !self.provider_runtime.apple_fm.reachable {
+                blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
+            } else if !self.provider_runtime.apple_fm.is_ready() {
+                blockers.push(ProviderBlocker::AppleFoundationModelsModelUnavailable);
+            }
+            if !self.provider_runtime.ollama.reachable {
+                blockers.push(ProviderBlocker::OllamaUnavailable);
+            } else if !self.provider_runtime.ollama.is_ready() {
+                blockers.push(ProviderBlocker::OllamaModelUnavailable);
+            }
         }
         blockers
     }

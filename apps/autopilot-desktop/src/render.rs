@@ -21,6 +21,7 @@ use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
+use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
 use crate::ollama_execution::{OllamaExecutionSnapshot, OllamaExecutionWorker};
 use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
@@ -195,6 +196,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let skl_lane_worker = SklLaneWorker::spawn();
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
+        let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
         let ollama_execution_worker = OllamaExecutionWorker::spawn();
         let sync_apply_engine = match crate::sync_apply::SyncApplyEngine::load_or_new_default() {
             Ok(engine) => engine,
@@ -287,6 +289,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             ac_lane_worker,
             provider_nip90_lane: ProviderNip90LaneSnapshot::with_relays(initial_relay_urls),
             provider_nip90_lane_worker,
+            apple_fm_execution: AppleFmBridgeSnapshot::default(),
+            apple_fm_execution_worker,
             ollama_execution: OllamaExecutionSnapshot::default(),
             ollama_execution_worker,
             runtime_command_responses: Vec::new(),
@@ -352,6 +356,8 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         state.sync_chat_identities();
         let _ = state.sync_provider_nip90_lane_identity();
         let _ = state.sync_provider_nip90_lane_relays();
+        let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
+        let _ = state.queue_ollama_execution_command(crate::ollama_execution::OllamaExecutionCommand::Refresh);
         open_startup_panes(&mut state);
         Ok(state)
     })

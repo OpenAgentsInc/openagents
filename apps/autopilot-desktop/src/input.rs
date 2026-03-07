@@ -45,6 +45,7 @@ use crate::hotbar::{
     hotbar_slot_for_key, process_hotbar_clicks,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
+use crate::apple_fm_bridge::AppleFmBridgeCommand;
 use crate::ollama_execution::OllamaExecutionCommand;
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
@@ -122,6 +123,7 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
             let _ = state.spacetime_presence.register_offline();
             state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
             let _ = state.spark_worker.cancel_pending();
+            let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
             if let Some(mut process) = state.cast_control_process.take() {
                 let _ = process.child.kill();
                 let _ = process.child.wait();
@@ -2544,6 +2546,9 @@ pub(super) fn run_pane_hit_action(
                             duration.as_millis().min(i64::MAX as u128) as i64
                         }),
                 );
+                let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
+                let _ = state
+                    .queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
                 let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::Refresh);
                 let _ = state
                     .queue_ollama_execution_command(OllamaExecutionCommand::WarmConfiguredModel);
@@ -2592,6 +2597,7 @@ pub(super) fn run_pane_hit_action(
                 if state.active_job.inflight_job_count() == 0 {
                     state.provider_runtime.inventory_session_started_at_ms = None;
                 }
+                let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
                 let _ = state
                     .queue_ollama_execution_command(OllamaExecutionCommand::UnloadConfiguredModel);
             }
@@ -2724,11 +2730,14 @@ fn provider_blocker_detail(
     blocker: crate::app_state::ProviderBlocker,
     spark_wallet_error: Option<&str>,
     ollama_error: Option<&str>,
+    apple_fm_error: Option<&str>,
 ) -> String {
     let lane_error = match blocker {
         crate::app_state::ProviderBlocker::WalletError => spark_wallet_error,
         crate::app_state::ProviderBlocker::OllamaUnavailable
         | crate::app_state::ProviderBlocker::OllamaModelUnavailable => ollama_error,
+        crate::app_state::ProviderBlocker::AppleFoundationModelsUnavailable
+        | crate::app_state::ProviderBlocker::AppleFoundationModelsModelUnavailable => apple_fm_error,
         _ => None,
     };
 
@@ -2743,6 +2752,7 @@ fn format_provider_blockers_for_display(
     blockers: &[crate::app_state::ProviderBlocker],
     spark_wallet_error: Option<&str>,
     ollama_error: Option<&str>,
+    apple_fm_error: Option<&str>,
 ) -> Option<String> {
     if blockers.is_empty() {
         return None;
@@ -2755,7 +2765,12 @@ fn format_provider_blockers_for_display(
                 format!(
                     "{} ({})",
                     blocker.code(),
-                    provider_blocker_detail(*blocker, spark_wallet_error, ollama_error)
+                    provider_blocker_detail(
+                        *blocker,
+                        spark_wallet_error,
+                        ollama_error,
+                        apple_fm_error,
+                    )
                 )
             })
             .collect::<Vec<_>>()
@@ -2769,6 +2784,7 @@ fn provider_preflight_console_error(state: &crate::app_state::RenderState) -> Op
         blockers.as_slice(),
         state.spark_wallet.last_error.as_deref(),
         state.provider_runtime.ollama.last_error.as_deref(),
+        state.provider_runtime.apple_fm.last_error.as_deref(),
     )
     .map(|details| format!("Mission Control preflight blockers: {details}"))
 }
@@ -2779,6 +2795,7 @@ fn provider_go_online_block_reason(state: &crate::app_state::RenderState) -> Opt
         blockers.as_slice(),
         state.spark_wallet.last_error.as_deref(),
         state.provider_runtime.ollama.last_error.as_deref(),
+        state.provider_runtime.apple_fm.last_error.as_deref(),
     )
     .map(|details| format!("Cannot go online yet: {details}"))
 }
@@ -3217,6 +3234,7 @@ mod tests {
                 ProviderBlocker::OllamaUnavailable,
                 Some("wallet down"),
                 Some("No active job backend is available"),
+                None,
             ),
             "No active job backend is available"
         );
@@ -3225,11 +3243,12 @@ mod tests {
                 ProviderBlocker::WalletError,
                 Some("Spark wallet lane failed"),
                 Some("ignored"),
+                None,
             ),
             "Spark wallet lane failed"
         );
         assert_eq!(
-            provider_blocker_detail(ProviderBlocker::IdentityMissing, None, None),
+            provider_blocker_detail(ProviderBlocker::IdentityMissing, None, None, None),
             "Nostr identity is not ready"
         );
     }
@@ -3243,6 +3262,7 @@ mod tests {
             ],
             Some("Spark wallet lane failed"),
             Some("No active job backend is available"),
+            None,
         )
         .expect("blocker details");
 
@@ -3250,7 +3270,7 @@ mod tests {
             details,
             "WALLET_ERROR (Spark wallet lane failed); OLLAMA_UNAVAILABLE (No active job backend is available)"
         );
-        assert!(format_provider_blockers_for_display(&[], None, None).is_none());
+        assert!(format_provider_blockers_for_display(&[], None, None, None).is_none());
     }
 
     #[test]

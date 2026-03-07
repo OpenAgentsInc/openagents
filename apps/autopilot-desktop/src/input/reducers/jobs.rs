@@ -5,6 +5,10 @@ use crate::app_state::{
 use crate::codex_lane::{
     CodexLaneCommand, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
 };
+use crate::apple_fm_bridge::{
+    AppleFmBridgeCommand, AppleFmBridgeUpdate, AppleFmExecutionCompleted, AppleFmExecutionFailed,
+    AppleFmExecutionStarted, AppleFmGenerateJob,
+};
 use crate::ollama_execution::{
     OllamaExecutionCommand, OllamaExecutionCompleted, OllamaExecutionFailed, OllamaExecutionStarted,
 };
@@ -12,10 +16,12 @@ use crate::pane_system::{
     ActiveJobPaneAction, JobHistoryPaneAction, JobInboxPaneAction, PaneController,
 };
 use crate::provider_nip90_lane::{
-    ProviderNip90LaneCommand, ProviderNip90OllamaCapability, ProviderNip90PublishOutcome,
+    ProviderNip90ComputeCapability, ProviderNip90LaneCommand, ProviderNip90PublishOutcome,
     ProviderNip90PublishRole,
 };
-use crate::state::provider_runtime::ProviderOllamaRuntimeState;
+use crate::state::provider_runtime::{
+    LocalInferenceBackend, ProviderAppleFmRuntimeState, ProviderOllamaRuntimeState,
+};
 use nostr::nip90::{
     JobFeedback, JobResult, JobStatus, KIND_JOB_TEXT_GENERATION, create_job_feedback_event,
     create_job_result_event,
@@ -173,6 +179,23 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
                             state,
                             format!("failed to start local Ollama execution: {error}"),
                             "active_job.ollama_execution_start_failed",
+                            true,
+                        );
+                        return true;
+                    }
+                }
+            }
+            Some(ProviderExecutionBackend::AppleFoundationModels) => {
+                if state.active_job.execution_backend_request_id.is_some() {
+                    return false;
+                }
+                match queue_provider_apple_fm_execution_start(state) {
+                    Ok(()) => return true,
+                    Err(error) => {
+                        fail_active_job_execution(
+                            state,
+                            format!("failed to start Apple Foundation Models execution: {error}"),
+                            "active_job.apple_fm_execution_start_failed",
                             true,
                         );
                         return true;
@@ -493,18 +516,7 @@ pub(super) fn apply_active_job_ollama_update(
                 state.provider_runtime.last_authoritative_error_class =
                     Some(EarnFailureClass::Reconciliation);
             }
-            let _ = state.queue_provider_nip90_lane_command(
-                ProviderNip90LaneCommand::ConfigureOllamaCapability {
-                    capability: ProviderNip90OllamaCapability {
-                        reachable: state.ollama_execution.reachable,
-                        configured_model: state.ollama_execution.configured_model.clone(),
-                        ready_model: state.ollama_execution.ready_model.clone(),
-                        available_models: state.ollama_execution.available_models.clone(),
-                        loaded_models: state.ollama_execution.loaded_models.clone(),
-                        last_error: state.ollama_execution.last_error.clone(),
-                    },
-                },
-            );
+            sync_provider_nip90_compute_capability(state);
             super::provider_ingress::sync_provider_runtime_mode_from_provider_state(state);
             true
         }
@@ -517,6 +529,37 @@ pub(super) fn apply_active_job_ollama_update(
         crate::ollama_execution::OllamaExecutionUpdate::Failed(failed) => {
             apply_ollama_execution_failed(state, failed)
         }
+    }
+}
+
+pub(super) fn apply_active_job_apple_fm_update(
+    state: &mut RenderState,
+    update: AppleFmBridgeUpdate,
+) -> bool {
+    match update {
+        AppleFmBridgeUpdate::Snapshot(snapshot) => {
+            state.apple_fm_execution = *snapshot;
+            sync_provider_runtime_apple_fm_state(state);
+            if state.provider_runtime.inventory_session_started_at_ms.is_some()
+                && !matches!(state.provider_runtime.mode, ProviderMode::Offline)
+                && let Err(error) =
+                    crate::kernel_control::register_online_compute_inventory_with_kernel(state)
+            {
+                state.provider_runtime.last_error_detail = Some(error.clone());
+                state.provider_runtime.last_result =
+                    Some(format!("Kernel online inventory registration failed: {error}"));
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Reconciliation);
+            }
+            sync_provider_nip90_compute_capability(state);
+            super::provider_ingress::sync_provider_runtime_mode_from_provider_state(state);
+            true
+        }
+        AppleFmBridgeUpdate::Started(started) => apply_apple_fm_execution_started(state, started),
+        AppleFmBridgeUpdate::Completed(completed) => {
+            apply_apple_fm_execution_completed(state, completed)
+        }
+        AppleFmBridgeUpdate::Failed(failed) => apply_apple_fm_execution_failed(state, failed),
     }
 }
 
@@ -533,6 +576,76 @@ fn sync_provider_runtime_ollama_state(state: &mut RenderState) {
     state.provider_runtime.ollama.last_request_id = state.ollama_execution.last_request_id.clone();
     state.provider_runtime.ollama.last_metrics = state.ollama_execution.last_metrics.clone();
     state.provider_runtime.ollama.refreshed_at = state.ollama_execution.refreshed_at;
+}
+
+fn sync_provider_runtime_apple_fm_state(state: &mut RenderState) {
+    state.provider_runtime.apple_fm.reachable = state.apple_fm_execution.reachable;
+    state.provider_runtime.apple_fm.model_available = state.apple_fm_execution.model_available;
+    state.provider_runtime.apple_fm.ready_model = state.apple_fm_execution.ready_model.clone();
+    state.provider_runtime.apple_fm.available_models =
+        state.apple_fm_execution.available_models.clone();
+    state.provider_runtime.apple_fm.last_error = state.apple_fm_execution.last_error.clone();
+    state.provider_runtime.apple_fm.last_action = state.apple_fm_execution.last_action.clone();
+    state.provider_runtime.apple_fm.last_request_id =
+        state.apple_fm_execution.last_request_id.clone();
+    state.provider_runtime.apple_fm.last_metrics = state.apple_fm_execution.last_metrics.clone();
+    state.provider_runtime.apple_fm.refreshed_at = state.apple_fm_execution.refreshed_at;
+    state.provider_runtime.apple_fm.availability_message =
+        state.apple_fm_execution.availability_message.clone();
+    state.provider_runtime.apple_fm.bridge_status = state.apple_fm_execution.bridge_status.clone();
+}
+
+fn sync_provider_nip90_compute_capability(state: &mut RenderState) {
+    let capability = preferred_provider_compute_capability(state);
+    let _ = state.queue_provider_nip90_lane_command(
+        ProviderNip90LaneCommand::ConfigureComputeCapability { capability },
+    );
+}
+
+fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90ComputeCapability {
+    match state.provider_runtime.active_inference_backend() {
+        Some(LocalInferenceBackend::AppleFoundationModels) => {
+            provider_compute_capability_from_apple_fm(state)
+        }
+        Some(LocalInferenceBackend::Ollama) => provider_compute_capability_from_ollama(state),
+        None if state.provider_runtime.ollama.reachable
+            || state.provider_runtime.ollama.last_error.is_some()
+            || state.provider_runtime.ollama.configured_model.is_some() =>
+        {
+            provider_compute_capability_from_ollama(state)
+        }
+        None => provider_compute_capability_from_apple_fm(state),
+    }
+}
+
+fn provider_compute_capability_from_ollama(state: &RenderState) -> ProviderNip90ComputeCapability {
+    ProviderNip90ComputeCapability {
+        backend: "ollama".to_string(),
+        reachable: state.ollama_execution.reachable,
+        configured_model: state.ollama_execution.configured_model.clone(),
+        ready_model: state.ollama_execution.ready_model.clone(),
+        available_models: state.ollama_execution.available_models.clone(),
+        loaded_models: state.ollama_execution.loaded_models.clone(),
+        last_error: state.ollama_execution.last_error.clone(),
+    }
+}
+
+fn provider_compute_capability_from_apple_fm(
+    state: &RenderState,
+) -> ProviderNip90ComputeCapability {
+    ProviderNip90ComputeCapability {
+        backend: "apple_foundation_models".to_string(),
+        reachable: state.apple_fm_execution.reachable,
+        configured_model: None,
+        ready_model: state.apple_fm_execution.ready_model.clone(),
+        available_models: state.apple_fm_execution.available_models.clone(),
+        loaded_models: Vec::new(),
+        last_error: state
+            .apple_fm_execution
+            .last_error
+            .clone()
+            .or_else(|| state.apple_fm_execution.availability_message.clone()),
+    }
 }
 
 pub(super) fn run_active_job_action(state: &mut RenderState, action: ActiveJobPaneAction) -> bool {
@@ -723,6 +836,7 @@ fn set_active_job_action_error(state: &mut RenderState, error: impl Into<String>
 enum ProviderExecutionBackend {
     Codex,
     Ollama,
+    AppleFoundationModels,
 }
 
 fn provider_execution_backend_for_kind(request_kind: u16) -> ProviderExecutionBackend {
@@ -736,11 +850,16 @@ fn provider_execution_backend_for_kind(request_kind: u16) -> ProviderExecutionBa
 fn provider_execution_backend_for_active_job(
     state: &RenderState,
 ) -> Option<ProviderExecutionBackend> {
-    state
-        .active_job
-        .job
-        .as_ref()
-        .map(|job| provider_execution_backend_for_kind(job.request_kind))
+    let request_kind = state.active_job.job.as_ref()?.request_kind;
+    if request_kind == KIND_JOB_TEXT_GENERATION {
+        return match state.provider_runtime.active_inference_backend()? {
+            LocalInferenceBackend::Ollama => Some(ProviderExecutionBackend::Ollama),
+            LocalInferenceBackend::AppleFoundationModels => {
+                Some(ProviderExecutionBackend::AppleFoundationModels)
+            }
+        };
+    }
+    Some(provider_execution_backend_for_kind(request_kind))
 }
 
 fn queue_provider_execution_thread_start(state: &mut RenderState) -> Result<(), String> {
@@ -796,6 +915,31 @@ fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), 
     state
         .active_job
         .append_event(format!("queued local Ollama generation for {}", request_id));
+    Ok(())
+}
+
+fn queue_provider_apple_fm_execution_start(state: &mut RenderState) -> Result<(), String> {
+    let Some(job) = state.active_job.job.as_ref() else {
+        return Err("Cannot start Apple FM execution without an active job".to_string());
+    };
+    let request_id = job.request_id.clone();
+    let prompt = job
+        .execution_prompt
+        .clone()
+        .ok_or_else(|| "Active job is missing normalized prompt input".to_string())?;
+    let requested_model = job.requested_model.clone();
+    let ttl_seconds = job.ttl_seconds;
+    state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Generate(AppleFmGenerateJob {
+        request_id: request_id.clone(),
+        prompt,
+        requested_model,
+    }))?;
+    state.active_job.execution_backend_request_id = Some(request_id.clone());
+    state.active_job.execution_deadline_epoch_seconds =
+        Some(current_epoch_seconds().saturating_add(ttl_seconds));
+    state
+        .active_job
+        .append_event(format!("queued Apple Foundation Models generation for {request_id}"));
     Ok(())
 }
 
@@ -896,6 +1040,10 @@ fn active_job_matches_ollama_request(state: &RenderState, request_id: &str) -> b
     })
 }
 
+fn active_job_matches_apple_request(state: &RenderState, request_id: &str) -> bool {
+    active_job_matches_ollama_request(state, request_id)
+}
+
 fn store_execution_output(state: &mut RenderState, output: &str) {
     let trimmed = output.trim();
     if trimmed.is_empty() {
@@ -974,6 +1122,74 @@ fn apply_ollama_execution_failed(state: &mut RenderState, failed: OllamaExecutio
         state,
         format!("local Ollama execution failed: {}", failed.error),
         "active_job.ollama_execution_failed",
+        true,
+    );
+    true
+}
+
+fn apply_apple_fm_execution_started(
+    state: &mut RenderState,
+    started: AppleFmExecutionStarted,
+) -> bool {
+    if !active_job_matches_apple_request(state, started.request_id.as_str()) {
+        return false;
+    }
+    state.provider_runtime.last_result = Some(format!(
+        "Apple Foundation Models execution started request={} model={}",
+        started.request_id, started.model
+    ));
+    state.active_job.append_event(format!(
+        "Apple Foundation Models generation started with model {}",
+        started.model
+    ));
+    if let Err(error) =
+        transition_active_job_to_running(state, "active_job.apple_fm_execution_started")
+    {
+        fail_active_job_execution(
+            state,
+            format!("failed to transition Apple FM job to running: {error}"),
+            "active_job.apple_fm_running_transition_failed",
+            true,
+        );
+    }
+    true
+}
+
+fn apply_apple_fm_execution_completed(
+    state: &mut RenderState,
+    completed: AppleFmExecutionCompleted,
+) -> bool {
+    if !active_job_matches_apple_request(state, completed.request_id.as_str()) {
+        return false;
+    }
+    state.active_job.execution_backend_request_id = None;
+    state.active_job.execution_turn_completed = true;
+    store_execution_output(state, completed.output.as_str());
+    if let Some(job) = state.active_job.job.as_mut() {
+        job.execution_provenance = Some(completed.provenance.clone());
+    }
+    state.provider_runtime.last_result = Some(format!(
+        "Apple Foundation Models execution completed request={} model={}",
+        completed.request_id, completed.model
+    ));
+    state.active_job.append_event(format!(
+        "Apple Foundation Models generation completed model={} prompt_eval={} eval={}",
+        completed.model,
+        completed.metrics.prompt_eval_count.unwrap_or(0),
+        completed.metrics.eval_count.unwrap_or(0)
+    ));
+    true
+}
+
+fn apply_apple_fm_execution_failed(state: &mut RenderState, failed: AppleFmExecutionFailed) -> bool {
+    if !active_job_matches_apple_request(state, failed.request_id.as_str()) {
+        return false;
+    }
+    state.active_job.execution_backend_request_id = None;
+    fail_active_job_execution(
+        state,
+        format!("Apple Foundation Models execution failed: {}", failed.error),
+        "active_job.apple_fm_execution_failed",
         true,
     );
     true
@@ -1570,10 +1786,25 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
             request.ttl_seconds, MIN_PROVIDER_TTL_SECONDS
         ));
     }
-    if let Some(reason) =
-        ollama_request_accept_block_reason(&state.provider_runtime.ollama, request)
-    {
-        return Some(reason);
+    if request.request_kind == KIND_JOB_TEXT_GENERATION {
+        match state.provider_runtime.active_inference_backend() {
+            Some(LocalInferenceBackend::Ollama) => {
+                if let Some(reason) =
+                    ollama_request_accept_block_reason(&state.provider_runtime.ollama, request)
+                {
+                    return Some(reason);
+                }
+            }
+            Some(LocalInferenceBackend::AppleFoundationModels) => {
+                if let Some(reason) = apple_fm_request_accept_block_reason(
+                    &state.provider_runtime.apple_fm,
+                    request,
+                ) {
+                    return Some(reason);
+                }
+            }
+            None => {}
+        }
     }
 
     let provider_blockers = state.provider_blockers();
@@ -1704,6 +1935,63 @@ fn ollama_request_accept_block_reason(
     None
 }
 
+fn apple_fm_request_accept_block_reason(
+    apple_fm: &ProviderAppleFmRuntimeState,
+    request: &JobInboxRequest,
+) -> Option<String> {
+    if request.request_kind != KIND_JOB_TEXT_GENERATION {
+        return Some(format!(
+            "Unsupported request kind {}; Apple Foundation Models provider serves only kind 5050 text generation",
+            request.request_kind
+        ));
+    }
+    if request
+        .execution_prompt
+        .as_deref()
+        .map(str::trim)
+        .is_none_or(str::is_empty)
+    {
+        return Some("text-generation request missing prompt/text input".to_string());
+    }
+    if let Some(output_mime) = request.requested_output_mime.as_deref()
+        && !matches!(output_mime, "text/plain" | "text/markdown")
+    {
+        return Some(format!(
+            "Unsupported output MIME '{}'; provider currently serves text/plain or text/markdown",
+            output_mime
+        ));
+    }
+    if !apple_fm.reachable {
+        return Some(
+            apple_fm
+                .last_error
+                .clone()
+                .or_else(|| apple_fm.availability_message.clone())
+                .unwrap_or_else(|| "Apple Foundation Models backend is unavailable".to_string()),
+        );
+    }
+    if let Some(requested_model) = request.requested_model.as_deref() {
+        let serving_model = apple_fm.ready_model.as_deref().unwrap_or("apple-foundation-model");
+        if requested_model != serving_model {
+            return Some(format!(
+                "Requested Apple Foundation Models model '{}' is blocked by local policy; provider currently serves '{}'",
+                requested_model, serving_model
+            ));
+        }
+    } else if !apple_fm.is_ready() {
+        return Some(
+            apple_fm
+                .last_error
+                .clone()
+                .or_else(|| apple_fm.availability_message.clone())
+                .unwrap_or_else(|| {
+                    "Apple Foundation Models is not ready to serve inference".to_string()
+                }),
+        );
+    }
+    None
+}
+
 fn next_invalid_request_rejection_for(requests: &[JobInboxRequest]) -> Option<(String, String)> {
     requests.iter().find_map(|request| {
         if !matches!(request.decision, JobInboxDecision::Pending) {
@@ -1747,16 +2035,19 @@ fn next_auto_accept_request_id_for(
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderExecutionBackend, next_auto_accept_request_id_for,
-        next_invalid_request_rejection_for, ollama_request_accept_block_reason,
-        provider_execution_backend_for_kind, turn_completed_failed,
+        ProviderExecutionBackend, apple_fm_request_accept_block_reason,
+        next_auto_accept_request_id_for, next_invalid_request_rejection_for,
+        ollama_request_accept_block_reason, provider_execution_backend_for_kind,
+        turn_completed_failed,
         visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
     };
     use crate::ollama_execution::OllamaExecutionSnapshot;
-    use crate::state::provider_runtime::{ProviderMode, ProviderOllamaRuntimeState};
+    use crate::state::provider_runtime::{
+        ProviderAppleFmRuntimeState, ProviderMode, ProviderOllamaRuntimeState,
+    };
     use nostr::nip90::KIND_JOB_TEXT_GENERATION;
 
     fn fixture_request(
@@ -1801,6 +2092,22 @@ mod tests {
             last_request_id: None,
             last_metrics: None,
             refreshed_at: None,
+        }
+    }
+
+    fn fixture_apple_fm_runtime() -> ProviderAppleFmRuntimeState {
+        ProviderAppleFmRuntimeState {
+            reachable: true,
+            model_available: true,
+            ready_model: Some("apple-foundation-model".to_string()),
+            available_models: vec!["apple-foundation-model".to_string()],
+            last_error: None,
+            last_action: Some("Apple FM ready".to_string()),
+            last_request_id: None,
+            last_metrics: None,
+            refreshed_at: None,
+            availability_message: None,
+            bridge_status: Some("running".to_string()),
         }
     }
 
@@ -1951,6 +2258,25 @@ mod tests {
             ollama_request_accept_block_reason(&ollama, &request),
             Some(
                 "Unsupported output MIME 'application/json'; provider currently serves text/plain or text/markdown"
+                    .to_string()
+            )
+        );
+    }
+
+    #[test]
+    fn apple_fm_rejects_requested_model_mismatch() {
+        let apple_fm = fixture_apple_fm_runtime();
+        let mut request = fixture_request(
+            "req-apple-model",
+            JobInboxValidation::Valid,
+            JobInboxDecision::Pending,
+        );
+        request.requested_model = Some("llama3.2:latest".to_string());
+
+        assert_eq!(
+            apple_fm_request_accept_block_reason(&apple_fm, &request),
+            Some(
+                "Requested Apple Foundation Models model 'llama3.2:latest' is blocked by local policy; provider currently serves 'apple-foundation-model'"
                     .to_string()
             )
         );

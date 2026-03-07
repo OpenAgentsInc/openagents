@@ -676,6 +676,35 @@ fn paint_go_online_pane(
         },
         left_value_chunk_len,
     );
+    left_y = paint_wrapped_label_line(
+        paint,
+        left_card.origin.x + 12.0,
+        left_y,
+        "Apple FM",
+        if provider_runtime.apple_fm.is_ready() {
+            "ready"
+        } else if provider_runtime.apple_fm.reachable {
+            "degraded"
+        } else {
+            "offline"
+        },
+        left_value_chunk_len,
+    );
+    if let Some(model) = provider_runtime
+        .apple_fm
+        .ready_model
+        .as_deref()
+        .filter(|model| !model.trim().is_empty())
+    {
+        left_y = paint_wrapped_label_line(
+            paint,
+            left_card.origin.x + 12.0,
+            left_y,
+            "Apple model",
+            model,
+            left_value_chunk_len,
+        );
+    }
     if let Some(model) = provider_runtime
         .ollama
         .ready_model
@@ -687,7 +716,7 @@ fn paint_go_online_pane(
             paint,
             left_card.origin.x + 12.0,
             left_y,
-            "Model",
+            "Ollama model",
             model,
             left_value_chunk_len,
         );
@@ -1062,6 +1091,13 @@ fn paint_provider_status_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Active backend",
+        provider_runtime.execution_backend_label(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Ollama",
         if provider_runtime.ollama.is_ready() {
             "ready"
@@ -1075,7 +1111,20 @@ fn paint_provider_status_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Configured model",
+        "Apple FM",
+        if provider_runtime.apple_fm.is_ready() {
+            "ready"
+        } else if provider_runtime.apple_fm.reachable {
+            "degraded"
+        } else {
+            "offline"
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Ollama model",
         provider_runtime
             .ollama
             .configured_model
@@ -1088,7 +1137,26 @@ fn paint_provider_status_pane(
         y,
         "Serving model",
         provider_runtime
-            .ollama
+            .active_inference_backend()
+            .and_then(|backend| match backend {
+                crate::state::provider_runtime::LocalInferenceBackend::AppleFoundationModels => {
+                    provider_runtime.apple_fm.ready_model.as_deref()
+                }
+                crate::state::provider_runtime::LocalInferenceBackend::Ollama => provider_runtime
+                    .ollama
+                    .ready_model
+                    .as_deref()
+                    .or(provider_runtime.ollama.configured_model.as_deref()),
+            })
+            .unwrap_or("none"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Apple model",
+        provider_runtime
+            .apple_fm
             .ready_model
             .as_deref()
             .unwrap_or("none"),
@@ -1175,6 +1243,13 @@ fn paint_provider_status_pane(
     } else {
         "ready"
     };
+    let apple_fm_status = if provider_blockers.contains(&ProviderBlocker::AppleFoundationModelsUnavailable)
+        || provider_blockers.contains(&ProviderBlocker::AppleFoundationModelsModelUnavailable)
+    {
+        "degraded"
+    } else {
+        "ready"
+    };
     paint.scene.draw_text(paint.text.layout_mono(
         &format!("identity: {identity_status}"),
         Point::new(content_bounds.origin.x + 12.0, dep_y),
@@ -1191,6 +1266,13 @@ fn paint_provider_status_pane(
     dep_y += 14.0;
     paint.scene.draw_text(paint.text.layout_mono(
         &format!("ollama: {ollama_status}"),
+        Point::new(content_bounds.origin.x + 12.0, dep_y),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    dep_y += 14.0;
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format!("apple_fm: {apple_fm_status}"),
         Point::new(content_bounds.origin.x + 12.0, dep_y),
         10.0,
         theme::text::PRIMARY,
@@ -3851,6 +3933,16 @@ fn mission_control_blocker_detail(
                 .map(ToString::to_string)
                 .unwrap_or_else(|| blocker.detail().to_string())
         }
+        ProviderBlocker::AppleFoundationModelsUnavailable
+        | ProviderBlocker::AppleFoundationModelsModelUnavailable => provider_runtime
+            .apple_fm
+            .last_error
+            .as_deref()
+            .or(provider_runtime.apple_fm.availability_message.as_deref())
+            .map(str::trim)
+            .filter(|entry| !entry.is_empty())
+            .map(ToString::to_string)
+            .unwrap_or_else(|| blocker.detail().to_string()),
         _ => blocker.detail().to_string(),
     }
 }
