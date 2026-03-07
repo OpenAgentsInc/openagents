@@ -453,6 +453,8 @@ The first cut should be service-style and intentionally small:
 
 `pylon serve` plus `pylon status --json` is enough for the first real version. Daemon wrappers and service managers can come later.
 
+Standalone operator guidance now lives in `docs/pylon/README.md`, and the release gate for the standalone binary now lives in `docs/pylon/PYLON_VERIFICATION_MATRIX.md`. Those docs should be kept in sync with the actual CLI surface and should not claim packaging or backend coverage that has not been verified.
+
 This phase should be treated as the immediate follow-on ship target once the blocking substrate work is complete.
 
 ### Phase 3: Embed The Same Runtime In Autopilot
