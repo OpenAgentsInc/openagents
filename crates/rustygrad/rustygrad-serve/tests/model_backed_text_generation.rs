@@ -5,7 +5,8 @@ use rustygrad_provider::{
 };
 use rustygrad_serve::{
     ArtifactWordDecoder, CpuModelTextGenerationService, GenerationOptions, GenerationRequest,
-    ReferenceTextGenerationError, TerminationReason, TextGenerationExecutor,
+    ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, TerminationReason,
+    TextGenerationExecutor,
 };
 use tempfile::tempdir;
 
@@ -65,6 +66,9 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert_eq!(capability.weight_bundle.artifacts.len(), 1);
     assert_eq!(capability.kv_cache_mode, KvCacheMode::InMemory);
     assert_eq!(capability.batch_posture, BatchPosture::SingleRequestOnly);
+    let capability_json = serde_json::to_string_pretty(&capability)?;
+    assert!(capability_json.contains("\"model_revision\": \"v1\""));
+    assert!(capability_json.contains("\"weight_bundle\""));
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
     assert_eq!(receipt.model_id, ArtifactWordDecoder::MODEL_ID);
@@ -77,6 +81,8 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert_eq!(receipt.cache_tokens, 4);
     assert_eq!(receipt.termination, Some(TerminationReason::EndOfSequence));
     assert!(receipt.execution_plan_digest.is_some());
+    let receipt_json = serde_json::to_string_pretty(&receipt)?;
+    assert!(receipt_json.contains("\"weight_bundle\""));
 
     let follow_up = GenerationRequest::new_text(
         "gen-model-2",
@@ -114,4 +120,59 @@ fn model_backed_text_generation_service_reports_missing_artifact() {
         error,
         ReferenceTextGenerationError::Model(ModelLoadError::ArtifactRead { .. })
     ));
+}
+
+#[test]
+fn model_backed_text_generation_rejects_reference_descriptor_without_fallback()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let path = temp.path().join("wordpiece_decoder.safetensors");
+    ArtifactWordDecoder::write_default_safetensors_artifact(&path)?;
+
+    let mut service = CpuModelTextGenerationService::from_safetensors_artifact(&path)?;
+    let request = GenerationRequest::new_text(
+        "gen-model-bad-model",
+        ReferenceWordDecoder::new().descriptor().clone(),
+        None,
+        "hello",
+        GenerationOptions::greedy(2),
+    );
+
+    let error = service
+        .generate(&request)
+        .expect_err("reference model should not silently run");
+    assert!(matches!(
+        error,
+        ReferenceTextGenerationError::UnsupportedModel(model_id)
+            if model_id == ReferenceWordDecoder::MODEL_ID
+    ));
+    Ok(())
+}
+
+#[test]
+fn model_backed_text_generation_rejects_unknown_session() -> Result<(), Box<dyn std::error::Error>>
+{
+    let temp = tempdir()?;
+    let path = temp.path().join("wordpiece_decoder.safetensors");
+    ArtifactWordDecoder::write_default_safetensors_artifact(&path)?;
+
+    let mut service = CpuModelTextGenerationService::from_safetensors_artifact(&path)?;
+    let request = GenerationRequest::new_text(
+        "gen-model-missing-session",
+        service.model_descriptor().clone(),
+        Some(SessionId::new("sess-missing")),
+        "hello",
+        GenerationOptions::greedy(2),
+    );
+
+    let error = service
+        .generate(&request)
+        .expect_err("missing session should fail");
+    assert!(matches!(
+        error,
+        ReferenceTextGenerationError::Session(
+            rustygrad_serve::SessionStoreError::SessionNotFound(session_id)
+        ) if session_id == "sess-missing"
+    ));
+    Ok(())
 }

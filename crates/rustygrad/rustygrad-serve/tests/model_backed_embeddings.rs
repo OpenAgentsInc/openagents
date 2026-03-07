@@ -1,6 +1,7 @@
 use rustygrad_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
 use rustygrad_serve::{
     ByteProjectionEmbedder, CpuModelEmbeddingsService, EmbeddingRequest, EmbeddingsExecutor,
+    ModelEmbeddingsError, SmokeByteEmbedder,
 };
 use tempfile::tempdir;
 
@@ -59,6 +60,9 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
         rustygrad_serve::QuantizationMode::None
     );
     assert_eq!(capability.weight_bundle.artifacts.len(), 1);
+    let capability_json = serde_json::to_string_pretty(&capability)?;
+    assert!(capability_json.contains("\"model_revision\": \"v1\""));
+    assert!(capability_json.contains("\"weight_bundle\""));
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
     assert_eq!(receipt.model_family, ByteProjectionEmbedder::MODEL_FAMILY);
@@ -67,5 +71,70 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
     assert_eq!(receipt.output_dimensions, 8);
     assert_eq!(receipt.output_vector_count, 2);
     assert!(receipt.failure_reason.is_none());
+    let receipt_json = serde_json::to_string_pretty(&receipt)?;
+    assert!(receipt_json.contains("\"weight_bundle\""));
+    Ok(())
+}
+
+#[test]
+fn model_backed_embeddings_service_reports_missing_artifact() {
+    let error = CpuModelEmbeddingsService::from_safetensors_artifact(
+        "/tmp/definitely-missing-rustygrad-byte-projection.safetensors",
+    )
+    .expect_err("missing artifact should fail");
+
+    assert!(matches!(
+        error,
+        ModelEmbeddingsError::Model(rustygrad_serve::ModelLoadError::ArtifactRead { .. })
+    ));
+}
+
+#[test]
+fn model_backed_embeddings_reject_reference_descriptor_without_fallback()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let path = temp.path().join("byte_projection.safetensors");
+    ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
+
+    let mut service = CpuModelEmbeddingsService::from_safetensors_artifact(&path)?;
+    let request = EmbeddingRequest::new(
+        "req-model-bad-model",
+        SmokeByteEmbedder::new().descriptor().clone(),
+        vec![String::from("hello world")],
+    );
+
+    let error = service
+        .embed(&request)
+        .expect_err("wrong model should fail");
+    assert!(matches!(
+        error,
+        ModelEmbeddingsError::UnsupportedModel(model_id)
+            if model_id == SmokeByteEmbedder::MODEL_ID
+    ));
+    Ok(())
+}
+
+#[test]
+fn model_backed_embeddings_reject_wrong_product() -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let path = temp.path().join("byte_projection.safetensors");
+    ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
+
+    let mut service = CpuModelEmbeddingsService::from_safetensors_artifact(&path)?;
+    let mut request = EmbeddingRequest::new(
+        "req-model-bad-product",
+        service.model_descriptor().clone(),
+        vec![String::from("hello world")],
+    );
+    request.product_id = String::from("rustygrad.text_generation");
+
+    let error = service
+        .embed(&request)
+        .expect_err("wrong product should fail");
+    assert!(matches!(
+        error,
+        ModelEmbeddingsError::UnsupportedProduct(product_id)
+            if product_id == "rustygrad.text_generation"
+    ));
     Ok(())
 }

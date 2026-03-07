@@ -1155,6 +1155,9 @@ impl TextGenerationExecutor for CpuModelTextGenerationService {
     }
 }
 
+/// Honest CPU product alias for model-backed text generation.
+pub type CpuProductTextGenerationService = CpuModelTextGenerationService;
+
 fn run_generation_request<M>(
     backend: &mut CpuBackend,
     models: &InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
@@ -1575,6 +1578,9 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
         Ok(EmbeddingResponse::new(request, embeddings))
     }
 }
+
+/// Honest CPU product alias for model-backed embeddings.
+pub type CpuProductEmbeddingsService = CpuModelEmbeddingsService;
 
 fn build_embedding_graph(
     input_dimensions: usize,
