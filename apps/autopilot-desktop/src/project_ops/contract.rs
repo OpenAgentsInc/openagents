@@ -1,17 +1,19 @@
 use serde::{Deserialize, Serialize};
 
 use super::schema::{
-    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
-    ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+    ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
 };
 
 pub const PROJECT_OPS_WORK_ITEMS_STREAM_ID: &str = "stream.pm.work_items.v1";
 pub const PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID: &str = "stream.pm.activity_projection.v1";
 pub const PROJECT_OPS_CYCLES_STREAM_ID: &str = "stream.pm.cycles.v1";
 pub const PROJECT_OPS_SAVED_VIEWS_STREAM_ID: &str = "stream.pm.saved_views.v1";
+pub const PROJECT_OPS_PROJECTS_STREAM_ID: &str = "stream.pm.projects.v1";
 pub const PROJECT_OPS_TEAMS_STREAM_ID: &str = "stream.pm.teams.v1";
 pub const PROJECT_OPS_V1_CONTRACT_VERSION: &str = "project_ops.contract.v1";
 pub const PROJECT_OPS_PRIMARY_SOURCE_BADGE: &str = "source: stream.pm.work_items.v1";
+pub const PROJECT_OPS_PROJECT_SOURCE_BADGE: &str = "source: stream.pm.projects.v1";
 pub const PROJECT_OPS_TEAM_SOURCE_BADGE: &str = "source: stream.pm.teams.v1";
 pub const PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE: &str = "source: spacetime.sync.lifecycle";
 
@@ -54,12 +56,20 @@ pub fn step0_stream_specs() -> &'static [ProjectOpsStreamSpec] {
     &STEP0_STREAM_SPECS
 }
 
-const PHASE3_STREAM_SPECS: [ProjectOpsStreamSpec; 1] = [ProjectOpsStreamSpec {
-    stream_id: PROJECT_OPS_TEAMS_STREAM_ID,
-    purpose: "Team records, defaults, and scoped planning surfaces",
-    projection_payload: "Vec<ProjectOpsTeamRow>",
-    projection_responsibility: "Team-scoped defaults and planning context rendered from replay-safe local PM team projections under Phase 1 mirror/proxy semantics",
-}];
+const PHASE3_STREAM_SPECS: [ProjectOpsStreamSpec; 2] = [
+    ProjectOpsStreamSpec {
+        stream_id: PROJECT_OPS_PROJECTS_STREAM_ID,
+        purpose: "Project records, scoped backlogs, and project planning surfaces",
+        projection_payload: "Vec<ProjectOpsProjectRow>",
+        projection_responsibility: "Project-scoped defaults and planning context rendered from replay-safe local PM project projections under Phase 1 mirror/proxy semantics",
+    },
+    ProjectOpsStreamSpec {
+        stream_id: PROJECT_OPS_TEAMS_STREAM_ID,
+        purpose: "Team records, defaults, and scoped planning surfaces",
+        projection_payload: "Vec<ProjectOpsTeamRow>",
+        projection_responsibility: "Team-scoped defaults and planning context rendered from replay-safe local PM team projections under Phase 1 mirror/proxy semantics",
+    },
+];
 
 pub fn phase3_stream_specs() -> &'static [ProjectOpsStreamSpec] {
     &PHASE3_STREAM_SPECS
@@ -276,8 +286,8 @@ pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
                 entity_kind: ProjectOpsEntityKind::Project,
                 step0_required: false,
                 projection_only: false,
-                deferred_until_phase: Some(ProjectOpsDeliveryPhase::Phase3),
-                purpose: "Higher-level grouping for work items and cycles once the pilot proves it is needed",
+                deferred_until_phase: None,
+                purpose: "Higher-level grouping for work items, scoped backlogs, and project-aware planning surfaces",
             },
             ProjectOpsEntityContractSpec {
                 entity_kind: ProjectOpsEntityKind::AgentTask,
@@ -305,6 +315,7 @@ pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
                     "draft.priority",
                     "draft.assignee?",
                     "draft.team_key",
+                    "draft.project_id?",
                     "draft.cycle_id?",
                     "draft.parent_id?",
                     "draft.area_tags[]",
@@ -320,6 +331,7 @@ pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
                     "patch.title?",
                     "patch.description?",
                     "patch.priority?",
+                    "patch.project_id?",
                     "patch.due_at_unix_ms?",
                     "patch.area_tags[]?",
                 ],
@@ -463,13 +475,18 @@ pub fn project_ops_required_stream_grants() -> Vec<&'static str> {
 pub fn project_ops_phase1_sync_contract() -> ProjectOpsSyncContract {
     ProjectOpsSyncContract {
         current_rollout_phase: "phase_1_mirror_proxy",
-        local_truth_rule: "Project Ops visible state is sourced from replay-safe local PM work-item, cycle, saved-view, and team projection streams plus shared SyncApplyEngine checkpoints, not live PM reducers",
+        local_truth_rule: "Project Ops visible state is sourced from replay-safe local PM work-item, cycle, saved-view, team, and project projection streams plus shared SyncApplyEngine checkpoints, not live PM reducers",
         live_truth_rule: "Only sync lifecycle/bootstrap health may use spacetime.sync.lifecycle in Phase 1; live PM collaboration truth requires a later ADR-approved Phase 2 cutover",
         source_badges: vec![
             ProjectOpsSourceBadgeRule {
                 badge: PROJECT_OPS_PRIMARY_SOURCE_BADGE,
                 scope: "Project Ops pane list/detail state and work-item activity rendered from local PM projections",
                 truth_rule: "Use while Project Ops is reading replay-safe local PM projection documents keyed by canonical PM stream ids",
+            },
+            ProjectOpsSourceBadgeRule {
+                badge: PROJECT_OPS_PROJECT_SOURCE_BADGE,
+                scope: "Project Ops project selectors, scoped backlogs, and project planning surfaces rendered from local PM project projections",
+                truth_rule: "Use while Project Ops project state is reading replay-safe local PM project projection documents; do not label project rows as live Spacetime authority in Phase 1",
             },
             ProjectOpsSourceBadgeRule {
                 badge: PROJECT_OPS_TEAM_SOURCE_BADGE,
@@ -658,6 +675,7 @@ pub struct ProjectOpsWorkItemDraft {
     pub priority: ProjectOpsPriority,
     pub assignee: Option<String>,
     pub team_key: ProjectOpsTeamKey,
+    pub project_id: Option<ProjectOpsProjectId>,
     pub cycle_id: Option<ProjectOpsCycleId>,
     pub parent_id: Option<ProjectOpsWorkItemId>,
     pub area_tags: Vec<String>,
@@ -675,6 +693,7 @@ impl ProjectOpsWorkItemDraft {
             priority: self.priority,
             assignee: self.assignee.clone(),
             team_key: self.team_key.clone(),
+            project_id: self.project_id.clone(),
             cycle_id: self.cycle_id.clone(),
             parent_id: self.parent_id.clone(),
             area_tags: self.area_tags.clone(),
@@ -693,6 +712,7 @@ pub struct ProjectOpsEditWorkItemFieldsPatch {
     pub title: Option<String>,
     pub description: Option<String>,
     pub priority: Option<ProjectOpsPriority>,
+    pub project_id: Option<Option<ProjectOpsProjectId>>,
     pub due_at_unix_ms: Option<Option<u64>>,
     pub area_tags: Option<Vec<String>>,
 }
@@ -702,6 +722,7 @@ impl ProjectOpsEditWorkItemFieldsPatch {
         if self.title.is_none()
             && self.description.is_none()
             && self.priority.is_none()
+            && self.project_id.is_none()
             && self.due_at_unix_ms.is_none()
             && self.area_tags.is_none()
         {
@@ -1040,7 +1061,8 @@ impl ProjectOpsAcceptedEventEnvelope {
 mod tests {
     use super::{
         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
-        PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+        PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_PROJECTS_STREAM_ID,
+        PROJECT_OPS_PROJECT_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
         PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_TEAMS_STREAM_ID,
         PROJECT_OPS_TEAM_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
         PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
@@ -1054,8 +1076,8 @@ mod tests {
         step0_stream_specs,
     };
     use crate::project_ops::schema::{
-        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
-        ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+        ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
     };
 
     fn actor() -> ProjectOpsActor {
@@ -1077,6 +1099,10 @@ mod tests {
         ProjectOpsCycleId::new("2026-w10").expect("cycle id")
     }
 
+    fn project_id() -> ProjectOpsProjectId {
+        ProjectOpsProjectId::new("desktop-pm").expect("project id")
+    }
+
     fn draft() -> ProjectOpsWorkItemDraft {
         ProjectOpsWorkItemDraft {
             work_item_id: work_item_id(),
@@ -1086,6 +1112,7 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: Some("cdavid".to_string()),
             team_key: team_key(),
+            project_id: Some(project_id()),
             cycle_id: Some(cycle_id()),
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -1103,6 +1130,7 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: Some("cdavid".to_string()),
             team_key: team_key(),
+            project_id: Some(project_id()),
             cycle_id: Some(cycle_id()),
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -1144,17 +1172,25 @@ mod tests {
     }
 
     #[test]
-    fn phase3_stream_catalog_includes_team_projection() {
+    fn phase3_stream_catalog_includes_project_and_team_projections() {
         assert_eq!(
             phase3_stream_specs(),
-            &[super::ProjectOpsStreamSpec {
-                stream_id: PROJECT_OPS_TEAMS_STREAM_ID,
-                purpose: "Team records, defaults, and scoped planning surfaces",
-                projection_payload: "Vec<ProjectOpsTeamRow>",
-                projection_responsibility: "Team-scoped defaults and planning context rendered from replay-safe local PM team projections under Phase 1 mirror/proxy semantics",
-            }]
+            &[
+                super::ProjectOpsStreamSpec {
+                    stream_id: PROJECT_OPS_PROJECTS_STREAM_ID,
+                    purpose: "Project records, scoped backlogs, and project planning surfaces",
+                    projection_payload: "Vec<ProjectOpsProjectRow>",
+                    projection_responsibility: "Project-scoped defaults and planning context rendered from replay-safe local PM project projections under Phase 1 mirror/proxy semantics",
+                },
+                super::ProjectOpsStreamSpec {
+                    stream_id: PROJECT_OPS_TEAMS_STREAM_ID,
+                    purpose: "Team records, defaults, and scoped planning surfaces",
+                    projection_payload: "Vec<ProjectOpsTeamRow>",
+                    projection_responsibility: "Team-scoped defaults and planning context rendered from replay-safe local PM team projections under Phase 1 mirror/proxy semantics",
+                },
+            ]
         );
-        assert_eq!(project_ops_stream_specs().len(), 5);
+        assert_eq!(project_ops_stream_specs().len(), 6);
     }
 
     #[test]
@@ -1230,10 +1266,6 @@ mod tests {
                     ProjectOpsDeliveryPhase::Phase3
                 ),
                 (
-                    ProjectOpsEntityKind::Project,
-                    ProjectOpsDeliveryPhase::Phase3
-                ),
-                (
                     ProjectOpsEntityKind::AgentTask,
                     ProjectOpsDeliveryPhase::Phase4
                 ),
@@ -1253,17 +1285,21 @@ mod tests {
             contract.required_stream_grants,
             project_ops_required_stream_grants()
         );
-        assert_eq!(contract.source_badges.len(), 3);
+        assert_eq!(contract.source_badges.len(), 4);
         assert_eq!(
             contract.source_badges[0].badge,
             PROJECT_OPS_PRIMARY_SOURCE_BADGE
         );
         assert_eq!(
             contract.source_badges[1].badge,
-            PROJECT_OPS_TEAM_SOURCE_BADGE
+            PROJECT_OPS_PROJECT_SOURCE_BADGE
         );
         assert_eq!(
             contract.source_badges[2].badge,
+            PROJECT_OPS_TEAM_SOURCE_BADGE
+        );
+        assert_eq!(
+            contract.source_badges[3].badge,
             PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE
         );
         assert!(
@@ -1274,10 +1310,15 @@ mod tests {
         assert!(
             contract.source_badges[1]
                 .truth_rule
-                .contains("local PM team projection documents")
+                .contains("local PM project projection documents")
         );
         assert!(
             contract.source_badges[2]
+                .truth_rule
+                .contains("local PM team projection documents")
+        );
+        assert!(
+            contract.source_badges[3]
                 .truth_rule
                 .contains("do not label PM work-item values as live Spacetime authority")
         );
@@ -1407,6 +1448,7 @@ mod tests {
                 title: None,
                 description: None,
                 priority: None,
+                project_id: None,
                 due_at_unix_ms: None,
                 area_tags: None,
             },
@@ -1422,6 +1464,7 @@ mod tests {
                 title: None,
                 description: None,
                 priority: None,
+                project_id: None,
                 due_at_unix_ms: Some(Some(0)),
                 area_tags: None,
             },

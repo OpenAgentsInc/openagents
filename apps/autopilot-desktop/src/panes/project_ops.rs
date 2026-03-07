@@ -34,11 +34,12 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "{} | {} | view:{} | team:{} | presentation:{} | sort:{} | operator:{}",
+                "{} | {} | view:{} | team:{} | project:{} | presentation:{} | sort:{} | operator:{}",
                 state.source_badge,
                 state.load_state.label(),
                 state.active_saved_view,
                 state.active_team.title,
+                state.active_project.title,
                 state.presentation_mode.label(),
                 state.sort_preference.label(),
                 state.operator_label,
@@ -115,7 +116,7 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Search: {} | sort:{} | team:{}",
+                "Search: {} | sort:{} | team:{} | project:{}",
                 if state.search_query.trim().is_empty() {
                     "<empty>"
                 } else {
@@ -123,6 +124,7 @@ pub fn paint_project_ops_pane(
                 },
                 state.sort_preference.label(),
                 state.active_team.team_key.as_str(),
+                state.active_project.project_id.as_str(),
             )
             .as_str(),
             Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 18.0),
@@ -174,7 +176,7 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Teams ({}): {}",
+                "Teams ({}): {} | Projects ({}): {}",
                 state.available_teams.len(),
                 state
                     .available_teams
@@ -184,6 +186,19 @@ pub fn paint_project_ops_pane(
                             format!("{}*", team.title)
                         } else {
                             team.title.clone()
+                        }
+                    })
+                    .collect::<Vec<_>>()
+                    .join(", "),
+                state.available_projects.len(),
+                state
+                    .available_projects
+                    .iter()
+                    .map(|project| {
+                        if project.project_id == state.active_project.project_id {
+                            format!("{}*", project.title)
+                        } else {
+                            project.title.clone()
                         }
                     })
                     .collect::<Vec<_>>()
@@ -286,11 +301,12 @@ pub fn paint_project_ops_pane(
     detail_y += 18.0;
 
     let projection_counts = format!(
-        "Rows: work items={} | activity={} | cycles={} | views={} | teams={}",
+        "Rows: work items={} | activity={} | cycles={} | views={} | projects={} | teams={}",
         state.local_store.work_items.len(),
         state.local_store.activity_rows.len(),
         state.local_store.cycles.len(),
         state.local_store.saved_views.len(),
+        state.local_store.projects.len(),
         state.local_store.teams.len()
     );
     paint.scene.draw_text(paint.text.layout(
@@ -329,11 +345,12 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "PM sync: {} | lifecycle={} | {} | badge={} | team_badge={}",
+                "PM sync: {} | lifecycle={} | {} | badge={} | project_badge={} | team_badge={}",
                 sync.bootstrap_state,
                 sync.lifecycle_state.as_deref().unwrap_or("idle"),
                 replay_summary,
                 sync.source_badge,
+                state.project_source_badge,
                 state.team_source_badge,
             )
             .as_str(),
@@ -431,7 +448,7 @@ pub fn paint_project_ops_pane(
         ));
         detail_y += 18.0;
     }
-    for stream in sync.streams.iter().take(4) {
+    for stream in sync.streams.iter().take(6) {
         paint.scene.draw_text(
             paint.text.layout(
                 format!(
@@ -520,10 +537,15 @@ pub fn paint_project_ops_pane(
                     .unwrap_or("none")
             ),
             format!(
-                "Team: {} ({}) | Team view: {}",
+                "Team: {} ({}) | Project: {} ({})",
                 state.active_team.title,
                 selected_team,
-                state.active_team.default_saved_view_id
+                state.active_project.title,
+                detail_draft
+                    .project_id
+                    .as_ref()
+                    .map(|project_id| project_id.as_str())
+                    .unwrap_or("none")
             ),
             format!(
                 "Parent: {} | Due: {}",
@@ -571,13 +593,19 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Quick Create: title={} | team={} | priority={} | due={} | tags={} | desc={}",
+                "Quick Create: title={} | team={} | project={} | priority={} | due={} | tags={} | desc={}",
                 if state.quick_create_draft.title.is_empty() {
                     "<empty>"
                 } else {
                     state.quick_create_draft.title.as_str()
                 },
                 state.quick_create_draft.team_key.as_str(),
+                state
+                    .quick_create_draft
+                    .project_id
+                    .as_ref()
+                    .map(|project_id| project_id.as_str())
+                    .unwrap_or("none"),
                 state.quick_create_draft.priority.label(),
                 state
                     .quick_create_draft
@@ -687,6 +715,7 @@ fn compact_stream_label(stream_id: &str) -> &str {
         crate::project_ops::PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID => "activity",
         crate::project_ops::PROJECT_OPS_CYCLES_STREAM_ID => "cycles",
         crate::project_ops::PROJECT_OPS_SAVED_VIEWS_STREAM_ID => "saved_views",
+        crate::project_ops::PROJECT_OPS_PROJECTS_STREAM_ID => "projects",
         crate::project_ops::PROJECT_OPS_TEAMS_STREAM_ID => "teams",
         _ => stream_id,
     }
@@ -734,11 +763,15 @@ fn paint_list_presentation(list: Bounds, state: &ProjectOpsPaneState, paint: &mu
         paint.scene.draw_text(
             paint.text.layout(
                 format!(
-                    "{} | {} | {} | team:{} | {} | {}{}",
+                    "{} | {} | {} | team:{} | project:{} | {} | {}{}",
                     item.title,
                     item.status.label(),
                     item.priority.label(),
                     item.team_key.as_str(),
+                    item.project_id
+                        .as_ref()
+                        .map(|project_id| project_id.as_str())
+                        .unwrap_or("none"),
                     assignee,
                     cycle,
                     blocked

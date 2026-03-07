@@ -8,11 +8,13 @@ use crate::app_state::PaneLoadState;
 use crate::project_ops::contract::{
     project_ops_error, ProjectOpsAcceptedEventName, ProjectOpsErrorCode,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
-    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-    PROJECT_OPS_TEAMS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_PROJECTS_STREAM_ID,
+    PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_TEAMS_STREAM_ID,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 use crate::project_ops::schema::{
-    ProjectOpsCycleId, ProjectOpsTeamKey, ProjectOpsWorkItem, ProjectOpsWorkItemId,
+    ProjectOpsCycleId, ProjectOpsProjectId, ProjectOpsTeamKey, ProjectOpsWorkItem,
+    ProjectOpsWorkItemId,
 };
 use crate::project_ops::views::builtin_saved_view_specs;
 use crate::sync_apply::{StreamApplyDecision, SyncApplyEngine, SyncApplyPolicy};
@@ -23,6 +25,7 @@ const WORK_ITEMS_FILE_NAME: &str = "autopilot-pm-work-items-projection-v1.json";
 const ACTIVITY_FILE_NAME: &str = "autopilot-pm-activity-projection-v1.json";
 const CYCLES_FILE_NAME: &str = "autopilot-pm-cycles-v1.json";
 const SAVED_VIEWS_FILE_NAME: &str = "autopilot-pm-saved-views-v1.json";
+const PROJECTS_FILE_NAME: &str = "autopilot-pm-projects-v1.json";
 const TEAMS_FILE_NAME: &str = "autopilot-pm-teams-v1.json";
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -116,6 +119,49 @@ impl ProjectOpsSavedViewRow {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProjectOpsProjectRow {
+    pub project_id: ProjectOpsProjectId,
+    pub team_key: ProjectOpsTeamKey,
+    pub title: String,
+    pub summary: Option<String>,
+    pub default_saved_view_id: String,
+    pub default_cycle_id: Option<ProjectOpsCycleId>,
+    pub default_area_tags: Vec<String>,
+    pub is_default: bool,
+}
+
+impl ProjectOpsProjectRow {
+    pub fn validate(&self) -> Result<(), String> {
+        if self.title.trim().is_empty() {
+            return Err("project ops project title must not be empty".to_string());
+        }
+        if self
+            .summary
+            .as_deref()
+            .is_some_and(|summary| summary.trim().is_empty())
+        {
+            return Err("project ops project summary must not be blank when present".to_string());
+        }
+        if self.default_saved_view_id.trim().is_empty() {
+            return Err("project ops project default_saved_view_id must not be empty".to_string());
+        }
+        if self.default_area_tags.len() > 2 {
+            return Err(
+                "project ops project default_area_tags supports at most two values".to_string(),
+            );
+        }
+        if self
+            .default_area_tags
+            .iter()
+            .any(|tag| tag.trim().is_empty())
+        {
+            return Err("project ops project default_area_tags must not contain blanks".to_string());
+        }
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProjectOpsTeamRow {
     pub team_key: ProjectOpsTeamKey,
     pub title: String,
@@ -184,6 +230,13 @@ struct ProjectOpsSavedViewsProjectionDocumentV1 {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+struct ProjectOpsProjectsProjectionDocumentV1 {
+    schema_version: u16,
+    stream_id: String,
+    rows: Vec<ProjectOpsProjectRow>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
 struct ProjectOpsTeamsProjectionDocumentV1 {
     schema_version: u16,
     stream_id: String,
@@ -198,11 +251,13 @@ pub struct ProjectOpsProjectionStore {
     pub activity_rows: Vec<ProjectOpsActivityRow>,
     pub cycles: Vec<ProjectOpsCycleRow>,
     pub saved_views: Vec<ProjectOpsSavedViewRow>,
+    pub projects: Vec<ProjectOpsProjectRow>,
     pub teams: Vec<ProjectOpsTeamRow>,
     work_items_path: PathBuf,
     activity_path: PathBuf,
     cycles_path: PathBuf,
     saved_views_path: PathBuf,
+    projects_path: PathBuf,
     teams_path: PathBuf,
     checkpoint_path: PathBuf,
     checkpoints: Option<SyncApplyEngine>,
@@ -220,11 +275,13 @@ impl ProjectOpsProjectionStore {
             activity_rows: Vec::new(),
             cycles: Vec::new(),
             saved_views: Vec::new(),
+            projects: Vec::new(),
             teams: Vec::new(),
             work_items_path: PathBuf::new(),
             activity_path: PathBuf::new(),
             cycles_path: PathBuf::new(),
             saved_views_path: PathBuf::new(),
+            projects_path: PathBuf::new(),
             teams_path: PathBuf::new(),
             checkpoint_path: PathBuf::new(),
             checkpoints: None,
@@ -237,6 +294,7 @@ impl ProjectOpsProjectionStore {
             activity_projection_file_path(),
             cycles_projection_file_path(),
             saved_views_projection_file_path(),
+            projects_projection_file_path(),
             teams_projection_file_path(),
             SyncApplyEngine::default_checkpoint_path(),
         )
@@ -248,6 +306,7 @@ impl ProjectOpsProjectionStore {
         activity_path: PathBuf,
         cycles_path: PathBuf,
         saved_views_path: PathBuf,
+        projects_path: PathBuf,
         teams_path: PathBuf,
         checkpoint_path: PathBuf,
     ) -> Self {
@@ -256,6 +315,7 @@ impl ProjectOpsProjectionStore {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path,
         )
@@ -266,6 +326,7 @@ impl ProjectOpsProjectionStore {
         activity_path: PathBuf,
         cycles_path: PathBuf,
         saved_views_path: PathBuf,
+        projects_path: PathBuf,
         teams_path: PathBuf,
         checkpoint_path: PathBuf,
     ) -> Self {
@@ -274,6 +335,7 @@ impl ProjectOpsProjectionStore {
             activity_path.clone(),
             cycles_path.clone(),
             saved_views_path.clone(),
+            projects_path.clone(),
             teams_path.clone(),
             checkpoint_path.clone(),
         ) {
@@ -283,16 +345,18 @@ impl ProjectOpsProjectionStore {
                 activity_rows,
                 cycles,
                 saved_views,
+                projects,
                 teams,
                 bootstrapped,
             )) => {
                 let last_action = if bootstrapped.is_empty() {
                     Some(format!(
-                        "Loaded PM projection streams ({} work items / {} activity / {} cycles / {} views / {} teams)",
+                        "Loaded PM projection streams ({} work items / {} activity / {} cycles / {} views / {} projects / {} teams)",
                         work_items.len(),
                         activity_rows.len(),
                         cycles.len(),
                         saved_views.len(),
+                        projects.len(),
                         teams.len(),
                     ))
                 } else {
@@ -309,11 +373,13 @@ impl ProjectOpsProjectionStore {
                     activity_rows,
                     cycles,
                     saved_views,
+                    projects,
                     teams,
                     work_items_path,
                     activity_path,
                     cycles_path,
                     saved_views_path,
+                    projects_path,
                     teams_path,
                     checkpoint_path,
                     checkpoints: Some(checkpoints),
@@ -327,11 +393,13 @@ impl ProjectOpsProjectionStore {
                 activity_rows: Vec::new(),
                 cycles: Vec::new(),
                 saved_views: Vec::new(),
+                projects: Vec::new(),
                 teams: Vec::new(),
                 work_items_path,
                 activity_path,
                 cycles_path,
                 saved_views_path,
+                projects_path,
                 teams_path,
                 checkpoint_path,
                 checkpoints: None,
@@ -344,6 +412,7 @@ impl ProjectOpsProjectionStore {
         activity_path: PathBuf,
         cycles_path: PathBuf,
         saved_views_path: PathBuf,
+        projects_path: PathBuf,
         teams_path: PathBuf,
         checkpoint_path: PathBuf,
     ) -> Result<
@@ -353,6 +422,7 @@ impl ProjectOpsProjectionStore {
             Vec<ProjectOpsActivityRow>,
             Vec<ProjectOpsCycleRow>,
             Vec<ProjectOpsSavedViewRow>,
+            Vec<ProjectOpsProjectRow>,
             Vec<ProjectOpsTeamRow>,
             Vec<&'static str>,
         ),
@@ -373,6 +443,9 @@ impl ProjectOpsProjectionStore {
         }
         if checkpoints.ensure_stream_registered(PROJECT_OPS_SAVED_VIEWS_STREAM_ID)? {
             bootstrapped.push(PROJECT_OPS_SAVED_VIEWS_STREAM_ID);
+        }
+        if checkpoints.ensure_stream_registered(PROJECT_OPS_PROJECTS_STREAM_ID)? {
+            bootstrapped.push(PROJECT_OPS_PROJECTS_STREAM_ID);
         }
         if checkpoints.ensure_stream_registered(PROJECT_OPS_TEAMS_STREAM_ID)? {
             bootstrapped.push(PROJECT_OPS_TEAMS_STREAM_ID);
@@ -397,6 +470,14 @@ impl ProjectOpsProjectionStore {
         if saved_views_bootstrapped {
             bootstrapped.push(SAVED_VIEWS_FILE_NAME);
         }
+        let (projects, projects_bootstrapped) = load_or_bootstrap_projects(
+            projects_path.as_path(),
+            work_items.as_slice(),
+            cycles.as_slice(),
+        )?;
+        if projects_bootstrapped {
+            bootstrapped.push(PROJECTS_FILE_NAME);
+        }
         let (teams, teams_bootstrapped) =
             load_or_bootstrap_teams(teams_path.as_path(), work_items.as_slice(), cycles.as_slice())?;
         if teams_bootstrapped {
@@ -409,6 +490,7 @@ impl ProjectOpsProjectionStore {
             activity_rows,
             cycles,
             saved_views,
+            projects,
             teams,
             bootstrapped,
         ))
@@ -423,6 +505,25 @@ impl ProjectOpsProjectionStore {
             .iter()
             .find(|team| team.is_default)
             .or_else(|| self.teams.first())
+    }
+
+    pub fn default_project_for_team(
+        &self,
+        team_key: &ProjectOpsTeamKey,
+    ) -> Option<&ProjectOpsProjectRow> {
+        self.projects
+            .iter()
+            .find(|project| &project.team_key == team_key && project.is_default)
+            .or_else(|| self.projects.iter().find(|project| &project.team_key == team_key))
+    }
+
+    pub fn project_for_id(
+        &self,
+        project_id: &ProjectOpsProjectId,
+    ) -> Option<&ProjectOpsProjectRow> {
+        self.projects
+            .iter()
+            .find(|project| &project.project_id == project_id)
     }
 
     pub fn team_for_key(&self, team_key: &ProjectOpsTeamKey) -> Option<&ProjectOpsTeamRow> {
@@ -702,6 +803,57 @@ impl ProjectOpsProjectionStore {
         Ok(decision)
     }
 
+    pub fn apply_projects_projection(
+        &mut self,
+        seq: u64,
+        rows: Vec<ProjectOpsProjectRow>,
+    ) -> Result<StreamApplyDecision, String> {
+        for row in &rows {
+            row.validate()?;
+        }
+        let rows = normalize_projects(rows);
+        let decision = self.apply_stream_seq(PROJECT_OPS_PROJECTS_STREAM_ID, seq)?;
+        match &decision {
+            StreamApplyDecision::Applied { .. } => {
+                persist_projects(self.projects_path.as_path(), rows.as_slice())?;
+                self.projects = rows;
+                self.last_action = Some(format!(
+                    "Applied {} seq {} ({} rows)",
+                    PROJECT_OPS_PROJECTS_STREAM_ID,
+                    seq,
+                    self.projects.len()
+                ));
+                self.last_error = None;
+                self.load_state = PaneLoadState::Ready;
+            }
+            StreamApplyDecision::Duplicate { .. } => {
+                self.last_action = Some(format!(
+                    "Ignored duplicate {} seq {}",
+                    PROJECT_OPS_PROJECTS_STREAM_ID, seq
+                ));
+                self.last_error = None;
+                self.load_state = PaneLoadState::Ready;
+            }
+            StreamApplyDecision::OutOfOrder {
+                expected_seq,
+                received_seq,
+                ..
+            } => {
+                let message = format!(
+                    "Out-of-order {} apply: expected seq {}, received {}",
+                    PROJECT_OPS_PROJECTS_STREAM_ID, expected_seq, received_seq
+                );
+                self.last_action = Some("PM projection apply rejected".to_string());
+                self.last_error = Some(project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    message,
+                ));
+                self.load_state = PaneLoadState::Error;
+            }
+        }
+        Ok(decision)
+    }
+
     pub fn apply_teams_projection(
         &mut self,
         seq: u64,
@@ -829,6 +981,25 @@ impl ProjectOpsProjectionStore {
         ))
     }
 
+    pub fn upsert_project(&mut self, row: ProjectOpsProjectRow) -> Result<bool, String> {
+        row.validate()?;
+        let mut next_rows = self
+            .projects
+            .iter()
+            .filter(|project| project.project_id != row.project_id)
+            .cloned()
+            .collect::<Vec<_>>();
+        next_rows.push(row);
+        let seq = self
+            .checkpoint_for(PROJECT_OPS_PROJECTS_STREAM_ID)
+            .unwrap_or(0)
+            .saturating_add(1);
+        Ok(matches!(
+            self.apply_projects_projection(seq, next_rows)?,
+            StreamApplyDecision::Applied { .. }
+        ))
+    }
+
     pub fn remove_team(&mut self, team_key: &ProjectOpsTeamKey) -> Result<bool, String> {
         let next_rows = self
             .teams
@@ -891,11 +1062,20 @@ fn saved_views_projection_file_path() -> PathBuf {
     openagents_dir().join(SAVED_VIEWS_FILE_NAME)
 }
 
+fn projects_projection_file_path() -> PathBuf {
+    openagents_dir().join(PROJECTS_FILE_NAME)
+}
+
 fn teams_projection_file_path() -> PathBuf {
     openagents_dir().join(TEAMS_FILE_NAME)
 }
 
 fn normalize_work_items(mut rows: Vec<ProjectOpsWorkItem>) -> Vec<ProjectOpsWorkItem> {
+    for row in &mut rows {
+        if row.project_id.is_none() {
+            row.project_id = Some(default_project_id_for_work_item(row));
+        }
+    }
     rows.sort_by(|lhs, rhs| {
         rhs.updated_at_unix_ms
             .cmp(&lhs.updated_at_unix_ms)
@@ -941,6 +1121,36 @@ fn normalize_saved_views(mut rows: Vec<ProjectOpsSavedViewRow>) -> Vec<ProjectOp
     });
     let mut seen_ids = BTreeSet::new();
     rows.retain(|row| seen_ids.insert(row.view_id.clone()));
+    rows
+}
+
+fn normalize_projects(mut rows: Vec<ProjectOpsProjectRow>) -> Vec<ProjectOpsProjectRow> {
+    rows.sort_by(|lhs, rhs| {
+        lhs.team_key
+            .as_str()
+            .cmp(rhs.team_key.as_str())
+            .then_with(|| rhs.is_default.cmp(&lhs.is_default))
+            .then_with(|| lhs.title.cmp(&rhs.title))
+            .then_with(|| lhs.project_id.as_str().cmp(rhs.project_id.as_str()))
+    });
+    let mut seen_ids = BTreeSet::new();
+    rows.retain(|row| seen_ids.insert(row.project_id.as_str().to_string()));
+
+    let mut default_by_team = BTreeSet::new();
+    for row in &mut rows {
+        if row.is_default {
+            if !default_by_team.insert(row.team_key.as_str().to_string()) {
+                row.is_default = false;
+            }
+        }
+    }
+    let mut assigned_defaults = default_by_team;
+    for row in &mut rows {
+        if !assigned_defaults.contains(row.team_key.as_str()) {
+            row.is_default = true;
+            assigned_defaults.insert(row.team_key.as_str().to_string());
+        }
+    }
     rows
 }
 
@@ -1064,6 +1274,107 @@ fn bootstrap_team_rows(
         }
     }
     normalize_teams(rows)
+}
+
+fn bootstrap_project_rows(
+    work_items: &[ProjectOpsWorkItem],
+    cycles: &[ProjectOpsCycleRow],
+) -> Vec<ProjectOpsProjectRow> {
+    let active_cycle_id = cycles
+        .iter()
+        .find(|cycle| cycle.is_active)
+        .map(|cycle| cycle.cycle_id.clone());
+    let mut grouped_ids = work_items
+        .iter()
+        .map(|item| {
+            item.project_id
+                .clone()
+                .unwrap_or_else(|| default_project_id_for_work_item(item))
+        })
+        .collect::<Vec<_>>();
+    if grouped_ids.is_empty() {
+        grouped_ids.push(ProjectOpsProjectId::new("desktop-pm").expect("static project id"));
+    }
+    grouped_ids.sort_by(|lhs, rhs| lhs.as_str().cmp(rhs.as_str()));
+    grouped_ids.dedup_by(|lhs, rhs| lhs.as_str() == rhs.as_str());
+
+    let mut rows = grouped_ids
+        .into_iter()
+        .map(|project_id| {
+            let project_items = work_items
+                .iter()
+                .filter(|item| {
+                    item.project_id
+                        .clone()
+                        .unwrap_or_else(|| default_project_id_for_work_item(item))
+                        == project_id
+                })
+                .collect::<Vec<_>>();
+            let team_key = project_items
+                .first()
+                .map(|item| item.team_key.clone())
+                .unwrap_or_else(|| ProjectOpsTeamKey::new("desktop").expect("static team key"));
+            let active_count = project_items
+                .iter()
+                .filter(|item| !item.status.is_terminal())
+                .count();
+            let default_cycle_id = active_cycle_id.clone().or_else(|| {
+                project_items
+                    .iter()
+                    .find_map(|item| item.cycle_id.clone())
+            });
+            let default_saved_view_id = if project_items.iter().any(|item| item.is_blocked()) {
+                "blocked"
+            } else if default_cycle_id.is_some() {
+                "current-cycle"
+            } else {
+                "backlog"
+            };
+            let default_area_tags = project_items
+                .iter()
+                .find_map(|item| {
+                    (!item.area_tags.is_empty()).then(|| {
+                        item.area_tags
+                            .iter()
+                            .take(2)
+                            .cloned()
+                            .collect::<Vec<_>>()
+                    })
+                })
+                .unwrap_or_else(|| vec!["pm".to_string()]);
+            ProjectOpsProjectRow {
+                title: humanize_team_title(project_id.as_str()),
+                summary: Some(format!(
+                    "{} active items / {} total items",
+                    active_count,
+                    project_items.len()
+                )),
+                team_key: team_key.clone(),
+                default_saved_view_id: default_saved_view_id.to_string(),
+                default_cycle_id,
+                default_area_tags,
+                is_default: project_id.as_str() == format!("{}-pm", team_key.as_str()),
+                project_id,
+            }
+        })
+        .collect::<Vec<_>>();
+    if !rows.iter().any(|row| row.is_default) {
+        if let Some(first) = rows.first_mut() {
+            first.is_default = true;
+        }
+    }
+    normalize_projects(rows)
+}
+
+fn default_project_id_for_work_item(item: &ProjectOpsWorkItem) -> ProjectOpsProjectId {
+    let suffix = item
+        .area_tags
+        .first()
+        .map(String::as_str)
+        .filter(|tag| !tag.trim().is_empty())
+        .unwrap_or("general");
+    ProjectOpsProjectId::new(format!("{}-{}", item.team_key.as_str(), suffix))
+        .expect("generated project id")
 }
 
 fn humanize_team_title(team_key: &str) -> String {
@@ -1286,6 +1597,62 @@ fn load_or_bootstrap_saved_views(
     Ok((normalized, false))
 }
 
+fn persist_projects(path: &Path, rows: &[ProjectOpsProjectRow]) -> Result<(), String> {
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("Failed to create PM projects projection dir: {error}"))?;
+    }
+    let document = ProjectOpsProjectsProjectionDocumentV1 {
+        schema_version: PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
+        stream_id: PROJECT_OPS_PROJECTS_STREAM_ID.to_string(),
+        rows: normalize_projects(rows.to_vec()),
+    };
+    let payload = serde_json::to_string_pretty(&document)
+        .map_err(|error| format!("Failed to encode PM projects projection: {error}"))?;
+    let temp_path = path.with_extension("tmp");
+    fs::write(temp_path.as_path(), payload)
+        .map_err(|error| format!("Failed to write PM projects projection temp file: {error}"))?;
+    fs::rename(temp_path.as_path(), path)
+        .map_err(|error| format!("Failed to persist PM projects projection: {error}"))?;
+    Ok(())
+}
+
+fn load_or_bootstrap_projects(
+    path: &Path,
+    work_items: &[ProjectOpsWorkItem],
+    cycles: &[ProjectOpsCycleRow],
+) -> Result<(Vec<ProjectOpsProjectRow>, bool), String> {
+    let raw = match fs::read_to_string(path) {
+        Ok(raw) => raw,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+            let rows = bootstrap_project_rows(work_items, cycles);
+            persist_projects(path, rows.as_slice())?;
+            return Ok((rows, true));
+        }
+        Err(error) => return Err(format!("Failed to read PM projects projection: {error}")),
+    };
+    let document = serde_json::from_str::<ProjectOpsProjectsProjectionDocumentV1>(&raw)
+        .map_err(|error| format!("Failed to parse PM projects projection: {error}"))?;
+    if document.schema_version != PROJECT_OPS_PROJECTION_SCHEMA_VERSION {
+        return Err(format!(
+            "Unsupported PM projects schema version: {}",
+            document.schema_version
+        ));
+    }
+    if document.stream_id != PROJECT_OPS_PROJECTS_STREAM_ID {
+        return Err(format!(
+            "Unsupported PM projects stream id: {}",
+            document.stream_id
+        ));
+    }
+    for row in &document.rows {
+        row.validate()?;
+    }
+    let normalized = normalize_projects(document.rows);
+    persist_projects(path, normalized.as_slice())?;
+    Ok((normalized, false))
+}
+
 fn persist_teams(path: &Path, rows: &[ProjectOpsTeamRow]) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent)
@@ -1350,17 +1717,19 @@ mod tests {
 
     use super::{
         ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore,
-        ProjectOpsSavedViewRow, ProjectOpsTeamRow, PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
+        ProjectOpsProjectRow, ProjectOpsSavedViewRow, ProjectOpsTeamRow,
+        PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
     };
     use crate::app_state::PaneLoadState;
     use crate::project_ops::contract::{
         ProjectOpsAcceptedEventName, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-        PROJECT_OPS_TEAMS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_PROJECTS_STREAM_ID,
+        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_TEAMS_STREAM_ID,
+        PROJECT_OPS_WORK_ITEMS_STREAM_ID,
     };
     use crate::project_ops::schema::{
-        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
-        ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+        ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
     };
     use crate::sync_apply::StreamApplyDecision;
 
@@ -1380,6 +1749,7 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: Some("cdavid".to_string()),
             team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
+            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project id")),
             cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -1436,12 +1806,26 @@ mod tests {
         }
     }
 
+    fn sample_project_row() -> ProjectOpsProjectRow {
+        ProjectOpsProjectRow {
+            project_id: ProjectOpsProjectId::new("ops-pm").expect("project id"),
+            team_key: ProjectOpsTeamKey::new("ops").expect("team key"),
+            title: "Ops PM".to_string(),
+            summary: Some("1 active items / 1 total items".to_string()),
+            default_saved_view_id: "current-cycle".to_string(),
+            default_cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
+            default_area_tags: vec!["ops".to_string()],
+            is_default: false,
+        }
+    }
+
     #[test]
     fn bootstraps_projection_docs_and_checkpoint_rows() {
         let work_items_path = unique_temp_path("work-items");
         let activity_path = unique_temp_path("activity");
         let cycles_path = unique_temp_path("cycles");
         let saved_views_path = unique_temp_path("saved-views");
+        let projects_path = unique_temp_path("projects");
         let teams_path = unique_temp_path("teams");
         let checkpoint_path = unique_temp_path("checkpoints");
 
@@ -1450,6 +1834,7 @@ mod tests {
             activity_path.clone(),
             cycles_path.clone(),
             saved_views_path.clone(),
+            projects_path.clone(),
             teams_path.clone(),
             checkpoint_path,
         );
@@ -1467,8 +1852,10 @@ mod tests {
             store.checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID),
             Some(0)
         );
+        assert_eq!(store.checkpoint_for(PROJECT_OPS_PROJECTS_STREAM_ID), Some(0));
         assert_eq!(store.checkpoint_for(PROJECT_OPS_TEAMS_STREAM_ID), Some(0));
         assert_eq!(store.saved_views.len(), 5);
+        assert_eq!(store.projects.len(), 1);
         assert_eq!(store.teams.len(), 1);
 
         for (path, stream_id) in [
@@ -1476,6 +1863,7 @@ mod tests {
             (&activity_path, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID),
             (&cycles_path, PROJECT_OPS_CYCLES_STREAM_ID),
             (&saved_views_path, PROJECT_OPS_SAVED_VIEWS_STREAM_ID),
+            (&projects_path, PROJECT_OPS_PROJECTS_STREAM_ID),
             (&teams_path, PROJECT_OPS_TEAMS_STREAM_ID),
         ] {
             let raw = std::fs::read_to_string(path).expect("projection doc should exist");
@@ -1497,6 +1885,7 @@ mod tests {
         let activity_path = unique_temp_path("unsupported-activity");
         let cycles_path = unique_temp_path("unsupported-cycles");
         let saved_views_path = unique_temp_path("unsupported-saved-views");
+        let projects_path = unique_temp_path("unsupported-projects");
         let teams_path = unique_temp_path("unsupported-teams");
         let checkpoint_path = unique_temp_path("unsupported-checkpoints");
 
@@ -1519,6 +1908,7 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path,
         );
@@ -1539,6 +1929,7 @@ mod tests {
         let activity_path = unique_temp_path("persist-activity");
         let cycles_path = unique_temp_path("persist-cycles");
         let saved_views_path = unique_temp_path("persist-saved-views");
+        let projects_path = unique_temp_path("persist-projects");
         let teams_path = unique_temp_path("persist-teams");
         let checkpoint_path = unique_temp_path("persist-checkpoints");
 
@@ -1547,6 +1938,7 @@ mod tests {
             activity_path.clone(),
             cycles_path.clone(),
             saved_views_path.clone(),
+            projects_path.clone(),
             teams_path.clone(),
             checkpoint_path.clone(),
         );
@@ -1576,6 +1968,9 @@ mod tests {
             StreamApplyDecision::Applied { .. }
         ));
         assert!(store
+            .upsert_project(sample_project_row())
+            .expect("project row should upsert"));
+        assert!(store
             .upsert_team(sample_team_row())
             .expect("team row should upsert"));
 
@@ -1584,6 +1979,7 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path,
         );
@@ -1591,6 +1987,7 @@ mod tests {
         assert_eq!(reloaded.activity_rows.len(), 1);
         assert_eq!(reloaded.cycles.len(), 1);
         assert_eq!(reloaded.saved_views.len(), 6);
+        assert_eq!(reloaded.projects.len(), 2);
         assert_eq!(reloaded.teams.len(), 2);
         assert_eq!(
             reloaded.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID),
@@ -1608,6 +2005,7 @@ mod tests {
             reloaded.checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID),
             Some(1)
         );
+        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_PROJECTS_STREAM_ID), Some(1));
         assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_TEAMS_STREAM_ID), Some(1));
     }
 
@@ -1617,6 +2015,7 @@ mod tests {
         let activity_path = unique_temp_path("dupe-activity");
         let cycles_path = unique_temp_path("dupe-cycles");
         let saved_views_path = unique_temp_path("dupe-saved-views");
+        let projects_path = unique_temp_path("dupe-projects");
         let teams_path = unique_temp_path("dupe-teams");
         let checkpoint_path = unique_temp_path("dupe-checkpoints");
 
@@ -1625,6 +2024,7 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path,
         );
@@ -1660,6 +2060,7 @@ mod tests {
         let activity_path = unique_temp_path("recover-activity");
         let cycles_path = unique_temp_path("recover-cycles");
         let saved_views_path = unique_temp_path("recover-saved-views");
+        let projects_path = unique_temp_path("recover-projects");
         let teams_path = unique_temp_path("recover-teams");
         let checkpoint_path = unique_temp_path("recover-checkpoints");
 
@@ -1668,6 +2069,7 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path.clone(),
         );
@@ -1699,6 +2101,7 @@ mod tests {
             unique_temp_path("recover-activity-reload-unused"),
             unique_temp_path("recover-cycles-reload-unused"),
             unique_temp_path("recover-saved-views-reload-unused"),
+            unique_temp_path("recover-projects-reload-unused"),
             unique_temp_path("recover-teams-reload-unused"),
             checkpoint_path,
         );

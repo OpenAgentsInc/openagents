@@ -1,6 +1,7 @@
 use super::projection::ProjectOpsCycleRow;
 use super::schema::{
-    ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem, ProjectOpsWorkItemStatus,
+    ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey, ProjectOpsWorkItem,
+    ProjectOpsWorkItemStatus,
 };
 use serde::{Deserialize, Serialize};
 
@@ -240,6 +241,7 @@ struct ProjectOpsSearchQuery {
     assignee_filters: Vec<ProjectOpsAssigneeFilter>,
     priority_filters: Vec<ProjectOpsPriorityFilter>,
     cycle_filters: Vec<ProjectOpsCycleFilter>,
+    project_filters: Vec<ProjectOpsProjectFilter>,
     team_filters: Vec<ProjectOpsTeamFilter>,
     blocked_filters: Vec<bool>,
     tag_filters: Vec<String>,
@@ -272,6 +274,10 @@ enum ProjectOpsCycleFilter {
 
 struct ProjectOpsTeamFilter {
     team_key: ProjectOpsTeamKey,
+}
+
+struct ProjectOpsProjectFilter {
+    project_id: ProjectOpsProjectId,
 }
 
 fn parse_search_query(search_query: &str) -> ProjectOpsSearchQuery {
@@ -329,6 +335,17 @@ fn parse_search_query(search_query: &str) -> ProjectOpsSearchQuery {
                     .cycle_filters
                     .push(parse_cycle_filter(normalized_value.as_str()));
                 parsed.chips.push(format!("cycle:{normalized_value}"));
+            }
+            "project" => {
+                if let Ok(project_id) = ProjectOpsProjectId::new(normalized_value.clone()) {
+                    parsed.project_filters.push(ProjectOpsProjectFilter { project_id });
+                    parsed.chips.push(format!("project:{normalized_value}"));
+                } else {
+                    parsed.text_terms.push(token.to_ascii_lowercase());
+                    parsed
+                        .chips
+                        .push(format!("search:{}", token.to_ascii_lowercase()));
+                }
             }
             "team" => {
                 if let Ok(team_key) = ProjectOpsTeamKey::new(normalized_value.clone()) {
@@ -416,6 +433,14 @@ fn matches_search(
     {
         return false;
     }
+    if !query.project_filters.is_empty()
+        && !query
+            .project_filters
+            .iter()
+            .any(|filter| item.project_id.as_ref() == Some(&filter.project_id))
+    {
+        return false;
+    }
     if !query.team_filters.is_empty()
         && !query
             .team_filters
@@ -463,6 +488,11 @@ fn matches_text_term(item: &ProjectOpsWorkItem, query: &str) -> bool {
             .as_ref()
             .map(|cycle_id| cycle_id.as_str().to_ascii_lowercase().contains(query))
             .unwrap_or(false)
+        || item
+            .project_id
+            .as_ref()
+            .map(|project_id| project_id.as_str().to_ascii_lowercase().contains(query))
+            .unwrap_or(false)
         || item.team_key.as_str().to_ascii_lowercase().contains(query)
         || item
             .area_tags
@@ -471,11 +501,11 @@ fn matches_text_term(item: &ProjectOpsWorkItem, query: &str) -> bool {
 }
 
 fn normalize_query_value(value: &str) -> String {
-    value.trim().to_ascii_lowercase().replace('-', "_")
+    value.trim().to_ascii_lowercase()
 }
 
 fn parse_status_filter(value: &str) -> Option<ProjectOpsStatusFilter> {
-    match value {
+    match value.replace('-', "_").as_str() {
         "active" => Some(ProjectOpsStatusFilter::Active),
         "backlog" => Some(ProjectOpsStatusFilter::Exact(
             ProjectOpsWorkItemStatus::Backlog,
@@ -537,7 +567,7 @@ fn matches_assignee_filter(
 fn parse_priority_filter(value: &str) -> Option<ProjectOpsPriorityFilter> {
     use super::schema::ProjectOpsPriority;
 
-    match value {
+    match value.replace('-', "_").as_str() {
         "urgent" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::Urgent)),
         "high" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::High)),
         "medium" => Some(ProjectOpsPriorityFilter::Exact(ProjectOpsPriority::Medium)),
@@ -554,7 +584,7 @@ fn matches_priority_filter(item: &ProjectOpsWorkItem, filter: ProjectOpsPriority
 }
 
 fn parse_cycle_filter(value: &str) -> ProjectOpsCycleFilter {
-    match value {
+    match value.replace('-', "_").as_str() {
         "active" => ProjectOpsCycleFilter::Active,
         "none" => ProjectOpsCycleFilter::None,
         _ => ProjectOpsCycleFilter::Exact(value.to_string()),
@@ -591,7 +621,7 @@ fn parse_bool_filter(value: &str) -> Option<bool> {
 }
 
 fn parse_sort_preference(value: &str) -> Option<ProjectOpsSortPreference> {
-    match value {
+    match value.replace('-', "_").as_str() {
         "updated_desc" => Some(ProjectOpsSortPreference::UpdatedDesc),
         "updated_asc" => Some(ProjectOpsSortPreference::UpdatedAsc),
         "priority_desc" => Some(ProjectOpsSortPreference::PriorityDesc),
@@ -675,8 +705,8 @@ mod tests {
     };
     use crate::project_ops::projection::ProjectOpsCycleRow;
     use crate::project_ops::schema::{
-        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
-        ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+        ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
     };
 
     fn work_item(
@@ -696,6 +726,7 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: assignee.map(ToString::to_string),
             team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
+            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project id")),
             cycle_id: cycle_id.map(|cycle_id| ProjectOpsCycleId::new(cycle_id).expect("cycle id")),
             parent_id: None,
             area_tags: vec!["pm".to_string()],

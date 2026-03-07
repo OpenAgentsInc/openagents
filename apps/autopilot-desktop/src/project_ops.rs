@@ -24,7 +24,8 @@ pub use contract::{
     ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityContractSpec, ProjectOpsEntityKind,
     ProjectOpsErrorCode, ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
-    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_PROJECTS_STREAM_ID,
+    PROJECT_OPS_PROJECT_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
     PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_TEAMS_STREAM_ID,
     PROJECT_OPS_TEAM_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
     PROJECT_OPS_WORK_ITEMS_STREAM_ID,
@@ -32,14 +33,15 @@ pub use contract::{
 
 #[allow(unused_imports)]
 pub use schema::{
-    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
-    ProjectOpsWorkItemId, ProjectOpsWorkItemStatus, PROJECT_OPS_STEP0_SCHEMA_VERSION,
+    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+    ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+    PROJECT_OPS_STEP0_SCHEMA_VERSION,
 };
 
 #[allow(unused_imports)]
 pub use projection::{
-    ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
-    ProjectOpsTeamRow, PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
+    ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectRow, ProjectOpsProjectionStore,
+    ProjectOpsSavedViewRow, ProjectOpsTeamRow, PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
 };
 
 #[allow(unused_imports)]
@@ -193,6 +195,8 @@ pub struct ProjectOpsPaneState {
     pub operator_label: String,
     pub active_team: ProjectOpsTeamRow,
     pub available_teams: Vec<ProjectOpsTeamRow>,
+    pub active_project: ProjectOpsProjectRow,
+    pub available_projects: Vec<ProjectOpsProjectRow>,
     pub active_saved_view_id: String,
     pub active_saved_view: String,
     pub search_query: String,
@@ -216,6 +220,7 @@ pub struct ProjectOpsPaneState {
     pub pilot_metrics: ProjectOpsPilotMetricsState,
     pub preferences: ProjectOpsPreferencesState,
     pub source_badge: String,
+    pub project_source_badge: String,
     pub team_source_badge: String,
     pub summary: String,
     pub status_note: String,
@@ -254,6 +259,7 @@ impl Default for ProjectOpsPaneState {
         }
         let operator_label = current_operator_label();
         let active_team = resolve_active_team(&local_store, None);
+        let active_project = resolve_active_project(&local_store, &active_team.team_key, None);
         let search_query = preferences.search_query.clone();
         let sort_preference = preferences.sort_preference;
         let (
@@ -270,6 +276,7 @@ impl Default for ProjectOpsPaneState {
             derive_project_ops_view_state(
                 &local_store,
                 &active_team.team_key,
+                &active_project.project_id,
                 active_saved_view_id.as_str(),
                 operator_label.as_str(),
                 search_query.as_str(),
@@ -299,19 +306,21 @@ impl Default for ProjectOpsPaneState {
                     local_store.last_action.clone(),
                     local_store.source_badge(),
                     format!(
-                        "PM projections ready with {} total work items, {} visible in {}, {} activity rows, {} cycles, {} saved views, and {} teams (active team: {}) (schema v{}).",
+                        "PM projections ready with {} total work items, {} visible in {}, {} activity rows, {} cycles, {} saved views, {} projects, and {} teams (active team: {} / active project: {}) (schema v{}).",
                         local_store.work_items.len(),
                         visible_work_items.len(),
                         active_saved_view,
                         local_store.activity_rows.len(),
                         local_store.cycles.len(),
                         local_store.saved_views.len(),
+                        local_store.projects.len(),
                         local_store.teams.len(),
                         active_team.title,
+                        active_project.title,
                         PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
                     ),
                     format!(
-                        "Step 0 schema v{} and PM contract {} are frozen with workflow {} and priorities {} across {} entities, {} commands, {} accepted events, and {} canonical PM streams. PM streams are registered as {}, {}, {}, {}, and {} with local projection documents, shared checkpoint rows, source badge {}, team badge {}, sync badge {}, and a reserved grant set of {} streams for later bootstrap wiring.",
+                        "Step 0 schema v{} and PM contract {} are frozen with workflow {} and priorities {} across {} entities, {} commands, {} accepted events, and {} canonical PM streams. PM streams are registered as {}, {}, {}, {}, {}, and {} with local projection documents, shared checkpoint rows, source badge {}, project badge {}, team badge {}, sync badge {}, and a reserved grant set of {} streams for later bootstrap wiring.",
                         PROJECT_OPS_STEP0_SCHEMA_VERSION,
                         PROJECT_OPS_V1_CONTRACT_VERSION,
                         ProjectOpsWorkItemStatus::workflow_summary(),
@@ -324,8 +333,10 @@ impl Default for ProjectOpsPaneState {
                         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
                         PROJECT_OPS_CYCLES_STREAM_ID,
                         PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+                        PROJECT_OPS_PROJECTS_STREAM_ID,
                         PROJECT_OPS_TEAMS_STREAM_ID,
                         PROJECT_OPS_PRIMARY_SOURCE_BADGE,
+                        PROJECT_OPS_PROJECT_SOURCE_BADGE,
                         PROJECT_OPS_TEAM_SOURCE_BADGE,
                         PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE,
                         sync_contract.required_stream_grants.len(),
@@ -360,6 +371,7 @@ impl Default for ProjectOpsPaneState {
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
         let board_lanes = project_board_lanes(visible_work_items.as_slice());
+        let available_projects = projects_for_team(&local_store, &active_team.team_key);
 
         let mut state = Self {
             load_state,
@@ -369,6 +381,8 @@ impl Default for ProjectOpsPaneState {
             operator_label,
             active_team,
             available_teams: local_store.teams.clone(),
+            active_project,
+            available_projects,
             active_saved_view_id,
             active_saved_view,
             search_query,
@@ -392,6 +406,7 @@ impl Default for ProjectOpsPaneState {
             pilot_metrics,
             preferences,
             source_badge,
+            project_source_badge: PROJECT_OPS_PROJECT_SOURCE_BADGE.to_string(),
             team_source_badge: PROJECT_OPS_TEAM_SOURCE_BADGE.to_string(),
             summary,
             status_note,
@@ -431,6 +446,7 @@ impl ProjectOpsPaneState {
         let search_query = preferences.search_query.clone();
         let sort_preference = preferences.sort_preference;
         let active_team = resolve_active_team(&local_store, None);
+        let active_project = resolve_active_project(&local_store, &active_team.team_key, None);
         let (
             active_saved_view,
             active_filter_chips,
@@ -444,6 +460,7 @@ impl ProjectOpsPaneState {
         ) = derive_project_ops_view_state(
             &local_store,
             &active_team.team_key,
+            &active_project.project_id,
             active_saved_view_id.as_str(),
             operator_label,
             search_query.as_str(),
@@ -460,6 +477,7 @@ impl ProjectOpsPaneState {
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
         let board_lanes = project_board_lanes(visible_work_items.as_slice());
+        let available_projects = projects_for_team(&local_store, &active_team.team_key);
         let mut state = Self {
             load_state: local_store.load_state,
             last_error: local_store.last_error.clone(),
@@ -468,6 +486,8 @@ impl ProjectOpsPaneState {
             operator_label: operator_label.to_string(),
             active_team,
             available_teams: local_store.teams.clone(),
+            active_project,
+            available_projects,
             active_saved_view_id,
             active_saved_view,
             search_query,
@@ -491,6 +511,7 @@ impl ProjectOpsPaneState {
             pilot_metrics: ProjectOpsPilotMetricsState::disabled(),
             preferences,
             source_badge: local_store.source_badge(),
+            project_source_badge: PROJECT_OPS_PROJECT_SOURCE_BADGE.to_string(),
             team_source_badge: PROJECT_OPS_TEAM_SOURCE_BADGE.to_string(),
             summary: "Test PM pane".to_string(),
             status_note: "Test PM pane".to_string(),
@@ -561,14 +582,50 @@ impl ProjectOpsPaneState {
         let previous_default_view_id = self.active_team.default_saved_view_id.clone();
         self.active_team = next_team;
         self.available_teams = self.local_store.teams.clone();
+        self.available_projects = projects_for_team(&self.local_store, &self.active_team.team_key);
+        self.active_project = resolve_active_project(&self.local_store, &self.active_team.team_key, None);
         if self.active_saved_view_id == PROJECT_OPS_DEFAULT_VIEW_ID
             || self.active_saved_view_id == previous_default_view_id
         {
-            self.active_saved_view_id = self.active_team.default_saved_view_id.clone();
+            self.active_saved_view_id = self.active_project.default_saved_view_id.clone();
         }
         self.apply_active_team_defaults(true);
         self.refresh_derived_view_state();
-        self.last_action = Some(format!("Project Ops team -> {}", self.active_team.title));
+        self.last_action = Some(format!(
+            "Project Ops team -> {} / project -> {}",
+            self.active_team.title, self.active_project.title
+        ));
+        true
+    }
+
+    pub fn set_active_project(&mut self, project_id: &str) -> bool {
+        let normalized = project_id.trim();
+        if normalized.is_empty() || self.active_project.project_id.as_str() == normalized {
+            return false;
+        }
+        let Some(next_project) = self
+            .local_store
+            .projects
+            .iter()
+            .find(|project| {
+                project.team_key == self.active_team.team_key
+                    && project.project_id.as_str() == normalized
+            })
+            .cloned()
+        else {
+            return false;
+        };
+        let previous_default_view_id = self.active_project.default_saved_view_id.clone();
+        self.active_project = next_project;
+        self.available_projects = projects_for_team(&self.local_store, &self.active_team.team_key);
+        if self.active_saved_view_id == PROJECT_OPS_DEFAULT_VIEW_ID
+            || self.active_saved_view_id == previous_default_view_id
+        {
+            self.active_saved_view_id = self.active_project.default_saved_view_id.clone();
+        }
+        self.apply_active_project_defaults(true);
+        self.refresh_derived_view_state();
+        self.last_action = Some(format!("Project Ops project -> {}", self.active_project.title));
         true
     }
 
@@ -832,6 +889,12 @@ impl ProjectOpsPaneState {
     fn refresh_derived_view_state(&mut self) {
         self.available_teams = self.local_store.teams.clone();
         self.active_team = resolve_active_team(&self.local_store, Some(&self.active_team.team_key));
+        self.available_projects = projects_for_team(&self.local_store, &self.active_team.team_key);
+        self.active_project = resolve_active_project(
+            &self.local_store,
+            &self.active_team.team_key,
+            Some(&self.active_project.project_id),
+        );
         let (
             active_saved_view,
             active_filter_chips,
@@ -845,6 +908,7 @@ impl ProjectOpsPaneState {
         ) = derive_project_ops_view_state(
             &self.local_store,
             &self.active_team.team_key,
+            &self.active_project.project_id,
             self.active_saved_view_id.as_str(),
             self.operator_label.as_str(),
             self.search_query.as_str(),
@@ -1099,6 +1163,7 @@ impl ProjectOpsPaneState {
         self.refresh_derived_view_state();
         let _ = self.pilot_metrics.record_command("CreateWorkItem");
         self.quick_create_draft = ProjectOpsQuickCreateDraft::default();
+        self.apply_active_team_defaults(true);
         self.detail_save_status = Some("Quick create applied".to_string());
         match result {
             ProjectOpsCommandResult::Applied(result) => {
@@ -1161,6 +1226,7 @@ impl ProjectOpsPaneState {
         if detail_draft.title != current.title
             || detail_draft.description != current.description
             || detail_draft.priority != current.priority
+            || detail_draft.project_id != current.project_id
             || detail_draft.due_at_unix_ms != current.due_at_unix_ms
             || detail_draft.area_tags != current.area_tags
         {
@@ -1174,6 +1240,8 @@ impl ProjectOpsPaneState {
                             .then(|| detail_draft.description.clone()),
                         priority: (detail_draft.priority != current.priority)
                             .then_some(detail_draft.priority),
+                        project_id: (detail_draft.project_id != current.project_id)
+                            .then(|| detail_draft.project_id.clone()),
                         due_at_unix_ms: (detail_draft.due_at_unix_ms != current.due_at_unix_ms)
                             .then_some(detail_draft.due_at_unix_ms),
                         area_tags: (detail_draft.area_tags != current.area_tags)
@@ -1496,6 +1564,7 @@ impl ProjectOpsPaneState {
     fn snapshot_current_view_query(&self) -> String {
         let mut parts = Vec::new();
         parts.push(format!("team:{}", self.active_team.team_key.as_str()));
+        parts.push(format!("project:{}", self.active_project.project_id.as_str()));
         if let Some(saved_view_query) = self.active_saved_view_query() {
             parts.push(saved_view_query);
         }
@@ -1549,13 +1618,32 @@ impl ProjectOpsPaneState {
 
     fn apply_active_team_defaults(&mut self, force_area_tags: bool) {
         self.quick_create_draft.team_key = self.active_team.team_key.clone();
+        self.quick_create_draft.project_id = Some(self.active_project.project_id.clone());
         if force_area_tags
             || (self.quick_create_draft.title.is_empty() && self.quick_create_draft.description.is_empty())
         {
-            self.quick_create_draft.area_tags = if self.active_team.default_area_tags.is_empty() {
+            self.quick_create_draft.area_tags = if self.active_project.default_area_tags.is_empty() {
+                if self.active_team.default_area_tags.is_empty() {
+                    vec!["pm".to_string()]
+                } else {
+                    self.active_team.default_area_tags.clone()
+                }
+            } else {
+                self.active_project.default_area_tags.clone()
+            };
+        }
+    }
+
+    fn apply_active_project_defaults(&mut self, force_area_tags: bool) {
+        self.quick_create_draft.team_key = self.active_team.team_key.clone();
+        self.quick_create_draft.project_id = Some(self.active_project.project_id.clone());
+        if force_area_tags
+            || (self.quick_create_draft.title.is_empty() && self.quick_create_draft.description.is_empty())
+        {
+            self.quick_create_draft.area_tags = if self.active_project.default_area_tags.is_empty() {
                 vec!["pm".to_string()]
             } else {
-                self.active_team.default_area_tags.clone()
+                self.active_project.default_area_tags.clone()
             };
         }
     }
@@ -1564,6 +1652,7 @@ impl ProjectOpsPaneState {
 fn derive_project_ops_view_state(
     local_store: &ProjectOpsProjectionStore,
     active_team_key: &ProjectOpsTeamKey,
+    active_project_id: &ProjectOpsProjectId,
     active_saved_view_id: &str,
     operator_label: &str,
     search_query: &str,
@@ -1590,7 +1679,10 @@ fn derive_project_ops_view_state(
         .map(|view| view.title.clone())
         .or_else(|| view_title_for_id(active_saved_view_id).map(ToString::to_string))
         .unwrap_or_else(|| "Saved View".to_string());
-    let mut effective_search_parts = vec![format!("team:{}", active_team_key.as_str())];
+    let mut effective_search_parts = vec![
+        format!("team:{}", active_team_key.as_str()),
+        format!("project:{}", active_project_id.as_str()),
+    ];
     if let Some(saved_view) = active_saved_view_row.as_ref() {
         if !saved_view.query.trim().is_empty() {
             effective_search_parts.push(saved_view.query.trim().to_string());
@@ -1606,6 +1698,7 @@ fn derive_project_ops_view_state(
         .unwrap_or_else(|| filter_chips_for_view(active_saved_view_id, ""));
     active_filter_chips.extend(query_filter_chips(search_query));
     active_filter_chips.push(format!("team:{}", active_team_key.as_str()));
+    active_filter_chips.push(format!("project:{}", active_project_id.as_str()));
     dedupe_filter_chips(&mut active_filter_chips);
     let visible_work_items = filter_work_items_for_view(
         local_store.work_items.as_slice(),
@@ -1705,6 +1798,46 @@ fn resolve_active_team(
     }
 }
 
+fn projects_for_team(
+    local_store: &ProjectOpsProjectionStore,
+    team_key: &ProjectOpsTeamKey,
+) -> Vec<ProjectOpsProjectRow> {
+    local_store
+        .projects
+        .iter()
+        .filter(|project| &project.team_key == team_key)
+        .cloned()
+        .collect()
+}
+
+fn resolve_active_project(
+    local_store: &ProjectOpsProjectionStore,
+    team_key: &ProjectOpsTeamKey,
+    requested_project_id: Option<&ProjectOpsProjectId>,
+) -> ProjectOpsProjectRow {
+    if let Some(requested_project_id) = requested_project_id {
+        if let Some(project) = local_store.project_for_id(requested_project_id) {
+            if &project.team_key == team_key {
+                return project.clone();
+            }
+        }
+    }
+    if let Some(default_project) = local_store.default_project_for_team(team_key) {
+        return default_project.clone();
+    }
+    ProjectOpsProjectRow {
+        project_id: ProjectOpsProjectId::new(format!("{}-pm", team_key.as_str()))
+            .expect("static project id"),
+        team_key: team_key.clone(),
+        title: format!("{} PM", resolve_active_team(local_store, Some(team_key)).title),
+        summary: Some("0 active items / 0 total items".to_string()),
+        default_saved_view_id: PROJECT_OPS_DEFAULT_VIEW_ID.to_string(),
+        default_cycle_id: None,
+        default_area_tags: vec!["pm".to_string()],
+        is_default: true,
+    }
+}
+
 fn dedupe_filter_chips(chips: &mut Vec<String>) {
     let mut seen = BTreeSet::new();
     chips.retain(|chip| seen.insert(chip.clone()));
@@ -1740,7 +1873,8 @@ mod tests {
         ProjectOpsPreferencesState, ProjectOpsPresentationMode, ProjectOpsService,
         ProjectOpsSortPreference, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
         PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
-        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_TEAMS_STREAM_ID,
+        PROJECT_OPS_PROJECTS_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+        PROJECT_OPS_TEAMS_STREAM_ID,
         PROJECT_OPS_WORK_ITEMS_STREAM_ID,
     };
     use crate::project_ops::contract::{
@@ -1751,11 +1885,12 @@ mod tests {
         ProjectOpsWorkItemDraft,
     };
     use crate::project_ops::projection::{
-        ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore, ProjectOpsTeamRow,
+        ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectRow,
+        ProjectOpsProjectionStore, ProjectOpsTeamRow,
     };
     use crate::project_ops::schema::{
-        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
-        ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+        ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
     };
 
     static UNIQUE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -1786,6 +1921,7 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: assignee.map(ToString::to_string),
             team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
+            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project id")),
             cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -1878,6 +2014,7 @@ mod tests {
         let activity_path = unique_temp_path("activity");
         let cycles_path = unique_temp_path("cycles");
         let saved_views_path = unique_temp_path("saved-views");
+        let projects_path = unique_temp_path("projects");
         let teams_path = unique_temp_path("teams");
         let checkpoint_path = unique_temp_path("checkpoints");
         let mut store = ProjectOpsProjectionStore::from_paths_for_tests(
@@ -1885,6 +2022,7 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path,
         );
@@ -1898,6 +2036,7 @@ mod tests {
         activity_path: PathBuf,
         cycles_path: PathBuf,
         saved_views_path: PathBuf,
+        projects_path: PathBuf,
         teams_path: PathBuf,
         checkpoint_path: PathBuf,
     }
@@ -1909,6 +2048,7 @@ mod tests {
                 activity_path: unique_temp_path(&format!("{tag}-activity")),
                 cycles_path: unique_temp_path(&format!("{tag}-cycles")),
                 saved_views_path: unique_temp_path(&format!("{tag}-saved-views")),
+                projects_path: unique_temp_path(&format!("{tag}-projects")),
                 teams_path: unique_temp_path(&format!("{tag}-teams")),
                 checkpoint_path: unique_temp_path(&format!("{tag}-checkpoints")),
             }
@@ -1920,6 +2060,7 @@ mod tests {
                 self.activity_path.clone(),
                 self.cycles_path.clone(),
                 self.saved_views_path.clone(),
+                self.projects_path.clone(),
                 self.teams_path.clone(),
                 self.checkpoint_path.clone(),
             )
@@ -1973,9 +2114,12 @@ mod tests {
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
     struct ProjectOpsGoldenSnapshot {
         source_badge: String,
+        project_source_badge: String,
         team_source_badge: String,
         active_team_key: String,
         active_team_title: String,
+        active_project_id: String,
+        active_project_title: String,
         active_saved_view: String,
         selected_work_item_id: Option<String>,
         checkpoints: BTreeMap<String, u64>,
@@ -2041,6 +2185,7 @@ mod tests {
             priority,
             assignee: assignee.map(ToString::to_string),
             team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
+            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project id")),
             cycle_id: None,
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -2145,6 +2290,7 @@ mod tests {
                                 .to_string(),
                         ),
                         priority: Some(ProjectOpsPriority::Urgent),
+                        project_id: None,
                         due_at_unix_ms: Some(Some(1_762_500_000_000)),
                         area_tags: Some(vec!["pm".to_string(), "sync".to_string()]),
                     },
@@ -2179,6 +2325,7 @@ mod tests {
             PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
             PROJECT_OPS_CYCLES_STREAM_ID,
             PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+            PROJECT_OPS_PROJECTS_STREAM_ID,
             PROJECT_OPS_TEAMS_STREAM_ID,
         ] {
             checkpoints.insert(
@@ -2188,9 +2335,12 @@ mod tests {
         }
         ProjectOpsGoldenSnapshot {
             source_badge: pane.source_badge,
+            project_source_badge: pane.project_source_badge,
             team_source_badge: pane.team_source_badge,
             active_team_key: pane.active_team.team_key.as_str().to_string(),
             active_team_title: pane.active_team.title.clone(),
+            active_project_id: pane.active_project.project_id.as_str().to_string(),
+            active_project_title: pane.active_project.title.clone(),
             active_saved_view: pane.active_saved_view,
             selected_work_item_id: pane
                 .selected_work_item_id
@@ -2337,12 +2487,25 @@ mod tests {
                 is_default: false,
             })
             .expect("team row should upsert");
+        store
+            .upsert_project(ProjectOpsProjectRow {
+                project_id: ProjectOpsProjectId::new("ops-ops").expect("project id"),
+                team_key: ProjectOpsTeamKey::new("ops").expect("team key"),
+                title: "Ops Ops".to_string(),
+                summary: Some("1 active items / 1 total items".to_string()),
+                default_saved_view_id: PROJECT_OPS_BLOCKED_VIEW_ID.to_string(),
+                default_cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
+                default_area_tags: vec!["ops".to_string()],
+                is_default: true,
+            })
+            .expect("project row should upsert");
         let mut next_rows = store.work_items.clone();
         let target = next_rows
             .iter_mut()
             .find(|item| item.work_item_id.as_str() == "wi-2")
             .expect("wi-2 should exist");
         target.team_key = ProjectOpsTeamKey::new("ops").expect("team key");
+        target.project_id = Some(ProjectOpsProjectId::new("ops-ops").expect("project id"));
         target.area_tags = vec!["ops".to_string()];
         let next_seq = store
             .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
@@ -2358,6 +2521,7 @@ mod tests {
 
         assert!(pane.set_active_team("ops"));
         assert_eq!(pane.active_team.team_key.as_str(), "ops");
+        assert_eq!(pane.active_project.project_id.as_str(), "ops-ops");
         assert_eq!(pane.active_saved_view_id, PROJECT_OPS_BLOCKED_VIEW_ID);
         assert_eq!(
             pane.visible_work_items
@@ -2367,8 +2531,13 @@ mod tests {
             vec!["wi-2"]
         );
         assert_eq!(pane.quick_create_draft.team_key.as_str(), "ops");
+        assert_eq!(
+            pane.quick_create_draft.project_id.as_ref().map(|id| id.as_str()),
+            Some("ops-ops")
+        );
         assert_eq!(pane.quick_create_draft.area_tags, vec!["ops".to_string()]);
         assert!(pane.active_filter_chips.iter().any(|chip| chip == "team:ops"));
+        assert!(pane.active_filter_chips.iter().any(|chip| chip == "project:ops-ops"));
     }
 
     #[test]
@@ -2377,6 +2546,7 @@ mod tests {
         let activity_path = unique_temp_path("sync-activity");
         let cycles_path = unique_temp_path("sync-cycles");
         let saved_views_path = unique_temp_path("sync-saved-views");
+        let projects_path = unique_temp_path("sync-projects");
         let teams_path = unique_temp_path("sync-teams");
         let checkpoint_path = unique_temp_path("sync-checkpoints");
 
@@ -2385,6 +2555,7 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path.clone(),
         );
@@ -2483,6 +2654,7 @@ mod tests {
                 PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID.to_string(),
                 PROJECT_OPS_CYCLES_STREAM_ID.to_string(),
                 PROJECT_OPS_SAVED_VIEWS_STREAM_ID.to_string(),
+                PROJECT_OPS_PROJECTS_STREAM_ID.to_string(),
                 PROJECT_OPS_TEAMS_STREAM_ID.to_string(),
             ]
         );
