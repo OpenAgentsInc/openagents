@@ -10,10 +10,10 @@ use openagents_provider_substrate::{
     ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent, ProviderIdentityMetadata,
     ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry, ProviderMode,
     ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderReceiptSummary,
-    ProviderRecentJob, ProviderRuntimeStatusSnapshot,
+    ProviderRecentJob, ProviderRuntimeStatusSnapshot, ProviderSnapshotParts,
     ProviderSandboxDetectionConfig, ProviderSandboxProfileSpec, ProviderStatusResponse,
-    derive_provider_products, detect_sandbox_supply, provider_runtime_state_label,
-    validate_provider_control_action,
+    assemble_provider_persisted_snapshot, derive_provider_products, detect_sandbox_supply,
+    provider_runtime_state_label, validate_provider_control_action,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -863,7 +863,7 @@ fn build_snapshot_from_availability(
         .unwrap_or_else(default_earnings_summary);
     earnings.online_uptime_seconds = runtime.online_uptime_seconds;
 
-    ProviderPersistedSnapshot {
+    assemble_provider_persisted_snapshot(ProviderSnapshotParts {
         captured_at_ms,
         config_metadata: vec![
             ProviderJsonEntry {
@@ -898,7 +898,7 @@ fn build_snapshot_from_availability(
             .unwrap_or_default(),
         health_events: build_health_events(products.as_slice(), runtime_error.as_deref()),
         earnings: Some(earnings),
-    }
+    })
 }
 
 fn derive_runtime_snapshot(
@@ -1027,7 +1027,7 @@ fn build_unconfigured_snapshot(
         execution_backend_label: "not configured".to_string(),
         provider_blocker_codes: vec!["CONFIG_MISSING".to_string(), "IDENTITY_MISSING".to_string()],
     };
-    ProviderPersistedSnapshot {
+    assemble_provider_persisted_snapshot(ProviderSnapshotParts {
         captured_at_ms: now_epoch_ms(),
         config_metadata: config
             .map(|config| {
@@ -1052,7 +1052,7 @@ fn build_unconfigured_snapshot(
             .unwrap_or_default(),
         health_events: build_health_events(&[], Some(detail)),
         earnings: Some(default_earnings_summary()),
-    }
+    })
 }
 
 fn build_error_snapshot(

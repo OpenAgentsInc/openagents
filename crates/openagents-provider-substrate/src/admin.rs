@@ -272,6 +272,39 @@ pub struct ProviderPersistedSnapshot {
     pub earnings: Option<ProviderEarningsSummary>,
 }
 
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct ProviderSnapshotParts {
+    pub captured_at_ms: i64,
+    pub config_metadata: Vec<ProviderJsonEntry>,
+    pub identity: Option<ProviderIdentityMetadata>,
+    pub runtime: ProviderRuntimeStatusSnapshot,
+    pub availability: ProviderAvailability,
+    pub inventory_rows: Vec<ProviderInventoryRow>,
+    pub recent_jobs: Vec<ProviderRecentJob>,
+    pub receipts: Vec<ProviderReceiptSummary>,
+    pub payouts: Vec<ProviderPayoutSummary>,
+    pub health_events: Vec<ProviderHealthEvent>,
+    pub earnings: Option<ProviderEarningsSummary>,
+}
+
+pub fn assemble_provider_persisted_snapshot(
+    parts: ProviderSnapshotParts,
+) -> ProviderPersistedSnapshot {
+    ProviderPersistedSnapshot {
+        captured_at_ms: parts.captured_at_ms,
+        config_metadata: parts.config_metadata,
+        identity: parts.identity,
+        runtime: parts.runtime,
+        availability: parts.availability,
+        inventory_rows: parts.inventory_rows,
+        recent_jobs: parts.recent_jobs,
+        receipts: parts.receipts,
+        payouts: parts.payouts,
+        health_events: parts.health_events,
+        earnings: parts.earnings,
+    }
+}
+
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 pub struct ProviderStatusResponse {
     pub listen_addr: Option<String>,
@@ -1348,7 +1381,7 @@ mod tests {
         ProviderEarningsSummary, ProviderHealthEvent, ProviderIdentityMetadata, ProviderJsonEntry,
         ProviderPayoutSummary, ProviderPersistedSnapshot, ProviderPersistenceStore,
         ProviderReceiptSummary, ProviderRecentJob, ProviderRuntimeStatusSnapshot,
-        ProviderStatusResponse,
+        ProviderSnapshotParts, ProviderStatusResponse, assemble_provider_persisted_snapshot,
     };
     use crate::{
         ProviderAvailability, ProviderBackendHealth, ProviderComputeProduct, ProviderInventoryRow,
@@ -1377,7 +1410,7 @@ mod tests {
     }
 
     fn sample_snapshot() -> ProviderPersistedSnapshot {
-        ProviderPersistedSnapshot {
+        assemble_provider_persisted_snapshot(ProviderSnapshotParts {
             captured_at_ms: 1_762_300_000_000,
             config_metadata: vec![ProviderJsonEntry {
                 key: "relay_urls".to_string(),
@@ -1533,7 +1566,31 @@ mod tests {
                 payout_success_ratio_bps: Some(10_000),
                 avg_wallet_confirmation_latency_seconds: Some(3),
             }),
-        }
+        })
+    }
+
+    #[test]
+    fn assembled_snapshot_preserves_linked_recent_jobs_and_receipts() {
+        let snapshot = sample_snapshot();
+
+        assert_eq!(
+            snapshot
+                .recent_jobs
+                .first()
+                .and_then(|job| job.delivery_proof_id.as_deref()),
+            Some("proof-1")
+        );
+        assert_eq!(
+            snapshot
+                .receipts
+                .first()
+                .and_then(|receipt| receipt.work_unit_id.as_deref()),
+            Some("work-unit-1")
+        );
+        assert_eq!(
+            snapshot.earnings.as_ref().map(|earnings| earnings.lifetime_sats),
+            Some(420)
+        );
     }
 
     #[test]
