@@ -105,7 +105,8 @@ pub fn paint_project_ops_pane(
     ));
 
     let checkpoint_status = format!(
-        "Checkpoints: wi={:?} act={:?} cyc={:?} view={:?}",
+        "Checkpoints: max={} wi={:?} act={:?} cyc={:?} view={:?}",
+        state.local_store.max_checkpoint_seq(),
         state
             .local_store
             .checkpoint_for(crate::project_ops::PROJECT_OPS_WORK_ITEMS_STREAM_ID),
