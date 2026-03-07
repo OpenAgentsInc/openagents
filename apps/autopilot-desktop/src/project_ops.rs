@@ -1,7 +1,15 @@
 use crate::app_state::PaneLoadState;
 
+pub mod schema;
+
 pub const PROJECT_OPS_FEATURE_ENV: &str = "OPENAGENTS_ENABLE_PROJECT_OPS";
 pub const PROJECT_OPS_SOURCE_BADGE: &str = "source: local";
+
+#[allow(unused_imports)]
+pub use schema::{
+    PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority,
+    ProjectOpsTeamKey, ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+};
 
 pub fn project_ops_enabled_from_env() -> bool {
     std::env::var(PROJECT_OPS_FEATURE_ENV)
@@ -33,10 +41,15 @@ impl Default for ProjectOpsPaneState {
             (
                 PaneLoadState::Ready,
                 Some("Project Ops shell ready behind project_ops feature gate".to_string()),
-                "Native PM shell reserved for Step 0 work-item and cycle dogfooding."
-                    .to_string(),
-                "Step 0 stream-backed work-item flows are not wired yet. This shell exists so the pane, command palette, and feature gate are real before the PM stream model lands."
-                    .to_string(),
+                format!(
+                    "Native PM shell reserved for Step 0 work-item and cycle dogfooding (schema v{}).",
+                    PROJECT_OPS_STEP0_SCHEMA_VERSION
+                ),
+                format!(
+                    "Step 0 schema is frozen with workflow {} and priorities {}. Stream-backed work-item flows are not wired yet; this shell exists so the pane, command palette, and feature gate are real before the PM stream model lands.",
+                    ProjectOpsWorkItemStatus::workflow_summary(),
+                    ProjectOpsPriority::summary()
+                ),
             )
         } else {
             (
@@ -63,4 +76,3 @@ impl Default for ProjectOpsPaneState {
         }
     }
 }
-
