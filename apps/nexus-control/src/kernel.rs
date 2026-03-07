@@ -1,6 +1,7 @@
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
     AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
+    CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
     CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CorrectComputeIndexRequest,
     CorrectComputeIndexResponse, CreateAccessGrantRequest, CreateAccessGrantResponse,
     CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
@@ -57,6 +58,11 @@ use std::path::PathBuf;
 
 const SNAPSHOT_WINDOW_MS: i64 = 86_400_000;
 const COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION: u32 = 1;
+const FUTURE_CASH_MIN_INDEX_QUALITY_SCORE: f64 = 0.50;
+const FUTURE_CASH_MAX_PAPER_TO_PHYSICAL_RATIO: f64 = 2.0;
+const FUTURE_CASH_MIN_DELIVERABLE_COVERAGE_RATIO: f64 = 0.5;
+const FUTURE_CASH_MAX_BUYER_CONCENTRATION_SHARE: f64 = 0.80;
+const FUTURE_CASH_INITIAL_MARGIN_BPS: u64 = 2_000;
 
 #[derive(Debug, Clone)]
 pub struct KernelMutationContext {
@@ -488,6 +494,12 @@ pub struct ComputeMarketMetrics {
     pub compute_index_thin_windows_24h: u64,
     pub compute_index_settlement_eligible_24h: u64,
     pub compute_index_quality_score_24h: f64,
+    pub compute_future_cash_instruments_active: u64,
+    pub compute_future_cash_open_interest: u64,
+    pub compute_future_cash_cash_settlements_24h: u64,
+    pub compute_future_cash_cash_flow_24h: u64,
+    pub compute_paper_to_physical_ratio: f64,
+    pub compute_deliverable_coverage_ratio: f64,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -1545,6 +1557,106 @@ impl KernelState {
         })
     }
 
+    fn resolve_active_compute_index(&self, index_id: &str) -> Option<ComputeIndex> {
+        let mut current_id = index_id.to_string();
+        let mut visited = BTreeSet::new();
+        loop {
+            if !visited.insert(current_id.clone()) {
+                return None;
+            }
+            let current = self.compute_indices.get(current_id.as_str())?;
+            if current.index.status == ComputeIndexStatus::Published {
+                return Some(current.index.clone());
+            }
+            let next = self
+                .compute_indices
+                .values()
+                .filter(|record| {
+                    record.index.corrected_from_index_id.as_deref() == Some(current_id.as_str())
+                        && record.index.status == ComputeIndexStatus::Published
+                })
+                .max_by(|lhs, rhs| lhs.index.published_at_ms.cmp(&rhs.index.published_at_ms))?;
+            current_id = next.index.index_id.clone();
+        }
+    }
+
+    fn compute_deliverable_physical_quantity(&self, product_id: &str) -> u64 {
+        self.capacity_lots
+            .values()
+            .filter(|record| {
+                record.lot.product_id == product_id
+                    && matches!(
+                        record.lot.status,
+                        CapacityLotStatus::Open
+                            | CapacityLotStatus::Reserved
+                            | CapacityLotStatus::Delivering
+                    )
+            })
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.lot.quantity)
+            })
+    }
+
+    fn compute_future_cash_open_interest(
+        &self,
+        product_id: &str,
+        exclude_instrument_id: Option<&str>,
+    ) -> u64 {
+        self.capacity_instruments
+            .values()
+            .filter(|record| {
+                record.instrument.product_id == product_id
+                    && record.instrument.kind
+                        == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+                    && matches!(
+                        record.instrument.status,
+                        CapacityInstrumentStatus::Open
+                            | CapacityInstrumentStatus::Active
+                            | CapacityInstrumentStatus::CashSettling
+                    )
+                    && exclude_instrument_id
+                        .is_none_or(|excluded| record.instrument.instrument_id != excluded)
+            })
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.instrument.quantity)
+            })
+    }
+
+    fn compute_future_cash_buyer_share(
+        &self,
+        product_id: &str,
+        buyer_id: &str,
+        additional_quantity: u64,
+        exclude_instrument_id: Option<&str>,
+    ) -> f64 {
+        let existing_total =
+            self.compute_future_cash_open_interest(product_id, exclude_instrument_id);
+        let buyer_total = self
+            .capacity_instruments
+            .values()
+            .filter(|record| {
+                record.instrument.product_id == product_id
+                    && record.instrument.kind
+                        == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+                    && matches!(
+                        record.instrument.status,
+                        CapacityInstrumentStatus::Open
+                            | CapacityInstrumentStatus::Active
+                            | CapacityInstrumentStatus::CashSettling
+                    )
+                    && record.instrument.buyer_id.as_deref() == Some(buyer_id)
+                    && exclude_instrument_id
+                        .is_none_or(|excluded| record.instrument.instrument_id != excluded)
+            })
+            .fold(additional_quantity, |total, record| {
+                total.saturating_add(record.instrument.quantity)
+            });
+        ratio(
+            buyer_total,
+            existing_total.saturating_add(additional_quantity).max(1),
+        )
+    }
+
     pub fn create_capacity_instrument(
         &mut self,
         context: &KernelMutationContext,
@@ -1628,6 +1740,84 @@ impl KernelState {
                 return Err("forward_capacity_settlement_mode_invalid".to_string());
             }
         }
+        let future_cash_reference_index = if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+        {
+            if lot_record.is_some() {
+                return Err("future_cash_capacity_lot_not_allowed".to_string());
+            }
+            if req.instrument.settlement_mode
+                != openagents_kernel_core::compute::ComputeSettlementMode::Cash
+            {
+                return Err("future_cash_settlement_mode_invalid".to_string());
+            }
+            if req.instrument.delivery_start_ms <= req.instrument.created_at_ms {
+                return Err("future_cash_window_not_future".to_string());
+            }
+            let buyer_id = req
+                .instrument
+                .buyer_id
+                .as_deref()
+                .ok_or_else(|| "future_cash_buyer_required".to_string())?;
+            let strike_price = req
+                .instrument
+                .fixed_price
+                .as_ref()
+                .ok_or_else(|| "future_cash_strike_price_missing".to_string())?;
+            let reference_index_id = req
+                .instrument
+                .reference_index_id
+                .as_deref()
+                .ok_or_else(|| "future_cash_reference_index_required".to_string())?;
+            let reference_index = self
+                .resolve_active_compute_index(reference_index_id)
+                .ok_or_else(|| "compute_index_not_found".to_string())?;
+            if reference_index.product_id != product_id {
+                return Err("compute_product_reference_index_mismatch".to_string());
+            }
+            if !compute_index_settlement_eligible(&reference_index) {
+                return Err("future_cash_index_quality_too_low".to_string());
+            }
+            let settlement_price = reference_index
+                .reference_price
+                .as_ref()
+                .ok_or_else(|| "compute_index_reference_price_missing".to_string())?;
+            if !money_assets_match(strike_price, settlement_price)
+                || !money_units_match(strike_price, settlement_price)
+            {
+                return Err("future_cash_strike_asset_mismatch".to_string());
+            }
+            let deliverable_physical_quantity =
+                self.compute_deliverable_physical_quantity(product_id.as_str());
+            let open_interest_after = self
+                .compute_future_cash_open_interest(product_id.as_str(), None)
+                .saturating_add(req.instrument.quantity);
+            let paper_to_physical_ratio =
+                ratio(open_interest_after, deliverable_physical_quantity.max(1));
+            let deliverable_coverage_ratio =
+                ratio(deliverable_physical_quantity, open_interest_after.max(1));
+            if paper_to_physical_ratio > FUTURE_CASH_MAX_PAPER_TO_PHYSICAL_RATIO {
+                return Err("future_cash_paper_to_physical_limit".to_string());
+            }
+            if deliverable_coverage_ratio < FUTURE_CASH_MIN_DELIVERABLE_COVERAGE_RATIO {
+                return Err("future_cash_deliverable_coverage_limit".to_string());
+            }
+            if self.compute_future_cash_open_interest(product_id.as_str(), None) > 0
+                && self.compute_future_cash_buyer_share(
+                    product_id.as_str(),
+                    buyer_id,
+                    req.instrument.quantity,
+                    None,
+                ) > FUTURE_CASH_MAX_BUYER_CONCENTRATION_SHARE
+            {
+                return Err("future_cash_concentration_limit".to_string());
+            }
+            req.instrument.reference_index_id = Some(reference_index.index_id.clone());
+            req.instrument.status = CapacityInstrumentStatus::Active;
+            Some(reference_index)
+        } else {
+            None
+        };
         let metadata = ensure_metadata_object(&mut req.instrument.metadata)?;
         metadata.insert(
             "committed_capability_envelope".to_string(),
@@ -1668,6 +1858,67 @@ impl KernelState {
             metadata.insert(
                 "remedy_profile".to_string(),
                 Value::String(forward_remedy_profile(product_id.as_str()).to_string()),
+            );
+        }
+        if let Some(reference_index) = future_cash_reference_index.as_ref() {
+            let strike_price = req
+                .instrument
+                .fixed_price
+                .as_ref()
+                .ok_or_else(|| "future_cash_strike_price_missing".to_string())?;
+            let deliverable_physical_quantity =
+                self.compute_deliverable_physical_quantity(product_id.as_str());
+            let open_interest_after = self
+                .compute_future_cash_open_interest(product_id.as_str(), None)
+                .saturating_add(req.instrument.quantity);
+            let paper_to_physical_ratio =
+                ratio(open_interest_after, deliverable_physical_quantity.max(1));
+            let deliverable_coverage_ratio =
+                ratio(deliverable_physical_quantity, open_interest_after.max(1));
+            let collateral_required =
+                future_cash_collateral_required(strike_price, req.instrument.quantity);
+            metadata.insert(
+                "market_phase".to_string(),
+                Value::String("future_cash".to_string()),
+            );
+            metadata.insert(
+                "hedge_contract".to_string(),
+                json!({
+                    "contract_unit": product_record.product.capacity_unit,
+                    "quantity": req.instrument.quantity,
+                    "margin_mode": "bounded_initial_margin",
+                    "reference_index_id": reference_index.index_id,
+                }),
+            );
+            metadata.insert(
+                "collateral_posture".to_string(),
+                serde_json::to_value(&collateral_required)
+                    .map_err(|error| format!("future_cash_collateral_encode_failed: {error}"))?,
+            );
+            metadata.insert(
+                "breaker_snapshot".to_string(),
+                json!({
+                    "index_quality_score": compute_index_quality_score(reference_index),
+                    "settlement_eligible": compute_index_settlement_eligible(reference_index),
+                    "paper_to_physical_ratio": paper_to_physical_ratio,
+                    "deliverable_coverage_ratio": deliverable_coverage_ratio,
+                    "buyer_concentration_share": self.compute_future_cash_buyer_share(
+                        product_id.as_str(),
+                        req.instrument.buyer_id.as_deref().unwrap_or_default(),
+                        req.instrument.quantity,
+                        None,
+                    ),
+                }),
+            );
+            metadata.insert(
+                "settlement_guardrails".to_string(),
+                json!({
+                    "min_index_quality_score": FUTURE_CASH_MIN_INDEX_QUALITY_SCORE,
+                    "max_paper_to_physical_ratio": FUTURE_CASH_MAX_PAPER_TO_PHYSICAL_RATIO,
+                    "min_deliverable_coverage_ratio": FUTURE_CASH_MIN_DELIVERABLE_COVERAGE_RATIO,
+                    "max_buyer_concentration_share": FUTURE_CASH_MAX_BUYER_CONCENTRATION_SHARE,
+                    "initial_margin_bps": FUTURE_CASH_INITIAL_MARGIN_BPS,
+                }),
             );
         }
         req.policy = normalized_policy(req.policy, context);
@@ -1946,6 +2197,259 @@ impl KernelState {
         }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
         let snapshot_event = self.refresh_snapshot_for(req.closed_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
+    pub fn cash_settle_capacity_instrument(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CashSettleCapacityInstrumentRequest,
+    ) -> Result<MutationResult<CashSettleCapacityInstrumentResponse>, String> {
+        let instrument_id =
+            normalize_required(req.instrument_id.as_str(), "capacity_instrument_id_missing")?;
+        let Some(existing_record) = self
+            .capacity_instruments
+            .get(instrument_id.as_str())
+            .cloned()
+        else {
+            return Err("capacity_instrument_not_found".to_string());
+        };
+        if existing_record.instrument.kind
+            != openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+            || existing_record.instrument.settlement_mode
+                != openagents_kernel_core::compute::ComputeSettlementMode::Cash
+        {
+            return Err("capacity_instrument_not_cash_settleable".to_string());
+        }
+        req.instrument_id.clone_from(&instrument_id);
+        req.settled_at_ms = normalize_created_at_ms(req.settled_at_ms, context.now_unix_ms);
+        if req.settled_at_ms < existing_record.instrument.delivery_end_ms {
+            return Err("future_cash_settlement_window_open".to_string());
+        }
+        let settlement_index_id = normalize_required(
+            req.settlement_index_id
+                .as_deref()
+                .or(existing_record.instrument.reference_index_id.as_deref())
+                .unwrap_or_default(),
+            "future_cash_reference_index_required",
+        )?;
+        let settlement_index = self
+            .resolve_active_compute_index(settlement_index_id.as_str())
+            .ok_or_else(|| "compute_index_not_found".to_string())?;
+        if settlement_index.product_id != existing_record.instrument.product_id {
+            return Err("compute_product_reference_index_mismatch".to_string());
+        }
+        if !compute_index_settlement_eligible(&settlement_index) {
+            return Err("future_cash_index_quality_too_low".to_string());
+        }
+        let settlement_price = settlement_index
+            .reference_price
+            .clone()
+            .ok_or_else(|| "compute_index_reference_price_missing".to_string())?;
+        let strike_price = existing_record
+            .instrument
+            .fixed_price
+            .clone()
+            .ok_or_else(|| "future_cash_strike_price_missing".to_string())?;
+        if !money_assets_match(&settlement_price, &strike_price)
+            || !money_units_match(&settlement_price, &strike_price)
+        {
+            return Err("future_cash_strike_asset_mismatch".to_string());
+        }
+
+        let quantity = existing_record.instrument.quantity;
+        let strike_total = money_amount_value(&strike_price).saturating_mul(quantity);
+        let settlement_total = money_amount_value(&settlement_price).saturating_mul(quantity);
+        let cash_delta = settlement_total as i128 - strike_total as i128;
+        let mut cash_flow = settlement_price.clone();
+        set_money_amount(
+            &mut cash_flow,
+            u64::try_from(cash_delta.unsigned_abs()).unwrap_or(u64::MAX),
+        );
+        let collateral_required = existing_record
+            .instrument
+            .metadata
+            .get("collateral_posture")
+            .cloned()
+            .map(|value| {
+                serde_json::from_value::<Money>(value)
+                    .map_err(|error| format!("future_cash_collateral_decode_failed: {error}"))
+            })
+            .transpose()?
+            .unwrap_or_else(|| future_cash_collateral_required(&strike_price, quantity));
+        let collateral_required_value = money_amount_value(&collateral_required);
+        let collateral_consumed_value =
+            collateral_required_value.min(money_amount_value(&cash_flow));
+        let collateral_shortfall_value =
+            money_amount_value(&cash_flow).saturating_sub(collateral_required_value);
+        let collateral_consumed = (collateral_consumed_value > 0).then(|| {
+            let mut money = collateral_required.clone();
+            set_money_amount(&mut money, collateral_consumed_value);
+            money
+        });
+        let collateral_shortfall = (collateral_shortfall_value > 0).then(|| {
+            let mut money = collateral_required.clone();
+            set_money_amount(&mut money, collateral_shortfall_value);
+            money
+        });
+        let (payer_id, payee_id) = match cash_delta.cmp(&0) {
+            std::cmp::Ordering::Greater => (
+                existing_record.instrument.provider_id.clone(),
+                existing_record.instrument.buyer_id.clone(),
+            ),
+            std::cmp::Ordering::Less => (
+                existing_record.instrument.buyer_id.clone(),
+                existing_record.instrument.provider_id.clone(),
+            ),
+            std::cmp::Ordering::Equal => (None, None),
+        };
+        let mut settled_instrument = existing_record.instrument.clone();
+        {
+            let metadata = ensure_metadata_object(&mut settled_instrument.metadata)?;
+            metadata.insert(
+                "cash_settlement".to_string(),
+                json!({
+                    "settled_at_ms": req.settled_at_ms,
+                    "settlement_index_id": settlement_index.index_id,
+                    "settlement_price": settlement_price,
+                    "cash_flow": cash_flow,
+                    "payer_id": payer_id,
+                    "payee_id": payee_id,
+                    "collateral_required": collateral_required,
+                    "collateral_consumed": collateral_consumed,
+                    "collateral_shortfall": collateral_shortfall,
+                }),
+            );
+        }
+        if collateral_shortfall.is_some() {
+            settled_instrument.status = CapacityInstrumentStatus::Defaulted;
+            settled_instrument.closure_reason = Some(CapacityInstrumentClosureReason::Defaulted);
+            settled_instrument.non_delivery_reason = None;
+            settled_instrument.settlement_failure_reason =
+                Some(ComputeSettlementFailureReason::AdjudicationRequired);
+            settled_instrument.lifecycle_reason_detail =
+                Some("cash settlement exceeded posted hedge collateral".to_string());
+        } else {
+            settled_instrument.status = CapacityInstrumentStatus::Settled;
+            settled_instrument.closure_reason = Some(CapacityInstrumentClosureReason::Filled);
+            settled_instrument.non_delivery_reason = None;
+            settled_instrument.settlement_failure_reason = None;
+            settled_instrument.lifecycle_reason_detail = None;
+        }
+
+        req.policy = normalized_policy(req.policy, context);
+        let request_hash = request_hash(&req)?;
+        let Some(product_record) = self
+            .compute_products
+            .get(existing_record.instrument.product_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_product_not_found".to_string());
+        };
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(existing_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some(index_record) = self.compute_indices.get(settlement_index.index_id.as_str()) {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(index_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+        let settlement_payload = json!({
+            "instrument_id": instrument_id.clone(),
+            "settlement_index_id": settlement_index.index_id,
+            "settlement_price": settlement_price,
+            "cash_flow": cash_flow,
+            "payer_id": payer_id,
+            "payee_id": payee_id,
+            "collateral_required": collateral_required,
+            "collateral_consumed": collateral_consumed,
+            "collateral_shortfall": collateral_shortfall,
+        });
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.instrument.cash_settle".to_string(),
+                created_at_ms: req.settled_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: settlement_payload,
+                outputs_payload: json!({
+                    "instrument_id": instrument_id.clone(),
+                    "settlement_index_id": settlement_index.index_id,
+                    "status": settled_instrument.status,
+                    "closure_reason": settled_instrument
+                        .closure_reason
+                        .map(|reason| reason.label().to_string()),
+                    "settlement_failure_reason": settled_instrument
+                        .settlement_failure_reason
+                        .map(|reason| reason.label().to_string()),
+                    "payer_id": payer_id,
+                    "payee_id": payee_id,
+                    "cash_flow": cash_flow,
+                    "collateral_shortfall": collateral_shortfall,
+                    "product_receipt_id": product_record.receipt_id,
+                    "instrument_receipt_id": existing_record.receipt_id,
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.instrument.cash_settle",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CashSettleCapacityInstrumentResponse {
+            instrument: settled_instrument.clone(),
+            settlement_index_id: settlement_index.index_id.clone(),
+            settlement_price: Some(settlement_price),
+            cash_flow: Some(cash_flow),
+            payer_id: payer_id.clone(),
+            payee_id: payee_id.clone(),
+            collateral_consumed,
+            collateral_shortfall,
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+        self.capacity_instruments.insert(
+            instrument_id,
+            CapacityInstrumentRecord {
+                instrument: settled_instrument,
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.settled_at_ms)?;
         Ok(MutationResult {
             response,
             receipt_event: Some(receipt_event),
@@ -2980,6 +3484,59 @@ impl KernelState {
                     && record.index.published_at_ms <= as_of_ms
             })
             .collect::<Vec<_>>();
+        let future_cash_active = self
+            .capacity_instruments
+            .values()
+            .filter(|record| {
+                record.instrument.kind
+                    == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+                    && matches!(
+                        record.instrument.status,
+                        CapacityInstrumentStatus::Open
+                            | CapacityInstrumentStatus::Active
+                            | CapacityInstrumentStatus::CashSettling
+                    )
+            })
+            .collect::<Vec<_>>();
+        let future_cash_cash_settled = self
+            .capacity_instruments
+            .values()
+            .filter(|record| {
+                record.instrument.kind
+                    == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+                    && matches!(
+                        record.instrument.status,
+                        CapacityInstrumentStatus::Settled | CapacityInstrumentStatus::Defaulted
+                    )
+                    && record
+                        .instrument
+                        .metadata
+                        .get("cash_settlement")
+                        .and_then(Value::as_object)
+                        .and_then(|settlement| settlement.get("settled_at_ms"))
+                        .and_then(Value::as_i64)
+                        .is_some_and(|settled_at_ms| {
+                            settled_at_ms >= window_start_ms && settled_at_ms <= as_of_ms
+                        })
+            })
+            .collect::<Vec<_>>();
+        let deliverable_physical_quantity = self
+            .capacity_lots
+            .values()
+            .filter(|record| {
+                matches!(
+                    record.lot.status,
+                    CapacityLotStatus::Open
+                        | CapacityLotStatus::Reserved
+                        | CapacityLotStatus::Delivering
+                )
+            })
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.lot.quantity)
+            });
+        let future_cash_open_interest = future_cash_active.iter().fold(0u64, |total, record| {
+            total.saturating_add(record.instrument.quantity)
+        });
         let quality_sum = index_window.iter().fold(0.0, |total, record| {
             total
                 + record
@@ -3074,6 +3631,34 @@ impl KernelState {
             } else {
                 quality_sum / index_window.len() as f64
             },
+            compute_future_cash_instruments_active: future_cash_active.len() as u64,
+            compute_future_cash_open_interest: future_cash_open_interest,
+            compute_future_cash_cash_settlements_24h: future_cash_cash_settled.len() as u64,
+            compute_future_cash_cash_flow_24h: future_cash_cash_settled.iter().fold(
+                0u64,
+                |total, record| {
+                    total.saturating_add(
+                        record
+                            .instrument
+                            .metadata
+                            .get("cash_settlement")
+                            .and_then(Value::as_object)
+                            .and_then(|settlement| settlement.get("cash_flow"))
+                            .cloned()
+                            .and_then(|value| serde_json::from_value::<Money>(value).ok())
+                            .as_ref()
+                            .map_or(0, money_amount_value),
+                    )
+                },
+            ),
+            compute_paper_to_physical_ratio: ratio(
+                future_cash_open_interest,
+                deliverable_physical_quantity.max(1),
+            ),
+            compute_deliverable_coverage_ratio: ratio(
+                deliverable_physical_quantity,
+                future_cash_open_interest.max(1),
+            ),
         }
     }
 
@@ -5743,6 +6328,38 @@ fn weighted_reference_price(observations: &[ComputeIndexObservation]) -> Option<
     Some(money)
 }
 
+fn compute_index_quality_score(index: &ComputeIndex) -> f64 {
+    index
+        .metadata
+        .get("quality")
+        .and_then(Value::as_object)
+        .and_then(|quality| quality.get("score"))
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0)
+}
+
+fn compute_index_settlement_eligible(index: &ComputeIndex) -> bool {
+    index
+        .metadata
+        .get("governance")
+        .and_then(Value::as_object)
+        .and_then(|governance| governance.get("settlement_eligible"))
+        .and_then(Value::as_bool)
+        .unwrap_or(false)
+        && compute_index_quality_score(index) >= FUTURE_CASH_MIN_INDEX_QUALITY_SCORE
+}
+
+fn future_cash_collateral_required(strike_price: &Money, quantity: u64) -> Money {
+    let mut collateral = strike_price.clone();
+    let per_unit = money_amount_value(strike_price);
+    let total = per_unit
+        .saturating_mul(quantity)
+        .saturating_mul(FUTURE_CASH_INITIAL_MARGIN_BPS)
+        / 10_000;
+    set_money_amount(&mut collateral, total);
+    collateral
+}
+
 fn backend_family_label(
     value: openagents_kernel_core::compute::ComputeBackendFamily,
 ) -> &'static str {
@@ -5964,6 +6581,14 @@ fn build_snapshot(
         compute_index_settlement_eligible_24h: compute_metrics
             .compute_index_settlement_eligible_24h,
         compute_index_quality_score_24h: compute_metrics.compute_index_quality_score_24h,
+        compute_future_cash_instruments_active: compute_metrics
+            .compute_future_cash_instruments_active,
+        compute_future_cash_open_interest: compute_metrics.compute_future_cash_open_interest,
+        compute_future_cash_cash_settlements_24h: compute_metrics
+            .compute_future_cash_cash_settlements_24h,
+        compute_future_cash_cash_flow_24h: compute_metrics.compute_future_cash_cash_flow_24h,
+        compute_paper_to_physical_ratio: compute_metrics.compute_paper_to_physical_ratio,
+        compute_deliverable_coverage_ratio: compute_metrics.compute_deliverable_coverage_ratio,
         liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
         liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
         liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
@@ -6005,11 +6630,11 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 
 #[cfg(test)]
 mod tests {
-    use super::{KernelMutationContext, KernelState, floor_to_minute_utc};
+    use super::{KernelMutationContext, KernelState, floor_to_minute_utc, money_amount_value};
     use openagents_kernel_core::authority::{
-        CloseCapacityInstrumentRequest, CorrectComputeIndexRequest,
-        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
-        PublishComputeIndexRequest, RecordDeliveryProofRequest,
+        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        CorrectComputeIndexRequest, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
+        CreateComputeProductRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
     };
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
@@ -6232,6 +6857,62 @@ mod tests {
                 corrected_from_index_id: None,
                 metadata: json!({"source": "test"}),
             },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn future_cash_instrument_request(
+        reference_index_id: &str,
+        created_at_ms: i64,
+        strike_sats_per_unit: u64,
+        quantity: u64,
+    ) -> CreateCapacityInstrumentRequest {
+        CreateCapacityInstrumentRequest {
+            idempotency_key: "idemp.compute.instrument.future_cash.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument: CapacityInstrument {
+                instrument_id: "instrument.compute.future_cash.alpha".to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                capacity_lot_id: None,
+                buyer_id: Some("buyer.hedge.alpha".to_string()),
+                provider_id: Some("provider.hedge.alpha".to_string()),
+                delivery_start_ms: created_at_ms + 30_000,
+                delivery_end_ms: created_at_ms + 60_000,
+                quantity,
+                fixed_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(strike_sats_per_unit),
+                }),
+                reference_index_id: Some(reference_index_id.to_string()),
+                kind: CapacityInstrumentKind::FutureCash,
+                settlement_mode: ComputeSettlementMode::Cash,
+                created_at_ms,
+                status: CapacityInstrumentStatus::Open,
+                closure_reason: None,
+                non_delivery_reason: None,
+                settlement_failure_reason: None,
+                lifecycle_reason_detail: None,
+                metadata: json!({}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn cash_settle_request(
+        instrument_id: &str,
+        settled_at_ms: i64,
+    ) -> CashSettleCapacityInstrumentRequest {
+        CashSettleCapacityInstrumentRequest {
+            idempotency_key: "idemp.compute.instrument.future_cash.settle.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument_id: instrument_id.to_string(),
+            settled_at_ms,
+            settlement_index_id: None,
+            metadata: json!({}),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -6576,6 +7257,370 @@ mod tests {
         assert_eq!(metrics.compute_index_corrections_24h, 1);
         assert_eq!(metrics.compute_index_thin_windows_24h, 1);
         assert_eq!(metrics.compute_index_settlement_eligible_24h, 1);
+    }
+
+    #[test]
+    fn future_cash_instrument_requires_settlement_eligible_index() {
+        let created_at_ms = 1_762_000_450_000u64;
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(
+                &fixture_context(created_at_ms),
+                compute_product_request(created_at_ms as i64),
+            )
+            .expect("create compute product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create capacity lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create capacity instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record delivery proof");
+        kernel
+            .publish_compute_index(
+                &fixture_context(created_at_ms + 4_000),
+                compute_index_request(created_at_ms as i64 + 4_000),
+            )
+            .expect("publish thin compute index");
+
+        let error = kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 5_000),
+                future_cash_instrument_request(
+                    "index.compute.alpha",
+                    created_at_ms as i64 + 5_000,
+                    5,
+                    10,
+                ),
+            )
+            .expect_err("thin index should block futures issuance");
+        assert_eq!(error, "future_cash_index_quality_too_low");
+    }
+
+    #[test]
+    fn future_cash_settlement_follows_corrected_index_and_updates_metrics() {
+        let created_at_ms = 1_762_000_500_000u64;
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(
+                &fixture_context(created_at_ms),
+                compute_product_request(created_at_ms as i64),
+            )
+            .expect("create compute product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create first capacity lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create first capacity instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record first delivery proof");
+        kernel
+            .publish_compute_index(
+                &fixture_context(created_at_ms + 4_000),
+                compute_index_request(created_at_ms as i64 + 4_000),
+            )
+            .expect("publish first compute index");
+
+        let mut second_lot = capacity_lot_request(created_at_ms as i64 + 1_500);
+        second_lot.idempotency_key = "idemp.compute.lot.beta".to_string();
+        second_lot.lot.capacity_lot_id = "lot.compute.beta".to_string();
+        second_lot.lot.provider_id = "provider.beta".to_string();
+        kernel
+            .create_capacity_lot(&fixture_context(created_at_ms + 1_500), second_lot)
+            .expect("create second capacity lot");
+        let mut second_instrument = capacity_instrument_request(created_at_ms as i64 + 5_000);
+        second_instrument.idempotency_key = "idemp.compute.instrument.beta".to_string();
+        second_instrument.instrument.instrument_id = "instrument.compute.beta".to_string();
+        second_instrument.instrument.capacity_lot_id = Some("lot.compute.beta".to_string());
+        second_instrument.instrument.provider_id = Some("provider.beta".to_string());
+        second_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_800),
+        });
+        kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 5_000), second_instrument)
+            .expect("create second capacity instrument");
+        let mut second_delivery = delivery_proof_request(created_at_ms as i64 + 3_500);
+        second_delivery.idempotency_key = "idemp.compute.delivery.beta".to_string();
+        second_delivery.delivery_proof.delivery_proof_id = "delivery.compute.beta".to_string();
+        second_delivery.delivery_proof.capacity_lot_id = "lot.compute.beta".to_string();
+        second_delivery.delivery_proof.instrument_id = Some("instrument.compute.beta".to_string());
+        kernel
+            .record_delivery_proof(&fixture_context(created_at_ms + 6_000), second_delivery)
+            .expect("record second delivery proof");
+        let corrected_index = kernel
+            .correct_compute_index(
+                &fixture_context(created_at_ms + 7_000),
+                CorrectComputeIndexRequest {
+                    idempotency_key: "idemp.compute.index.correct.future_cash".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    superseded_index_id: "index.compute.alpha".to_string(),
+                    corrected_index: ComputeIndex {
+                        index_id: "index.compute.alpha.v2".to_string(),
+                        product_id: "ollama.text_generation".to_string(),
+                        observation_window_start_ms: 0,
+                        observation_window_end_ms: 0,
+                        published_at_ms: created_at_ms as i64 + 7_000,
+                        observation_count: 0,
+                        total_accepted_quantity: 0,
+                        reference_price: None,
+                        methodology: None,
+                        status: ComputeIndexStatus::Published,
+                        correction_reason: Some(ComputeIndexCorrectionReason::LateObservation),
+                        corrected_from_index_id: Some("index.compute.alpha".to_string()),
+                        metadata: json!({}),
+                    },
+                    correction_reason: ComputeIndexCorrectionReason::LateObservation,
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("correct compute index");
+        assert_eq!(
+            corrected_index
+                .response
+                .corrected_index
+                .corrected_from_index_id
+                .as_deref(),
+            Some("index.compute.alpha")
+        );
+
+        let future_cash = kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 8_000),
+                future_cash_instrument_request(
+                    "index.compute.alpha",
+                    created_at_ms as i64 + 8_000,
+                    5,
+                    10,
+                ),
+            )
+            .expect("create future cash instrument");
+        assert_eq!(
+            future_cash.response.instrument.kind,
+            CapacityInstrumentKind::FutureCash
+        );
+        assert_eq!(
+            future_cash
+                .response
+                .instrument
+                .reference_index_id
+                .as_deref(),
+            Some("index.compute.alpha.v2")
+        );
+        let metrics_after_issue = kernel.compute_market_metrics(created_at_ms as i64 + 8_500);
+        assert_eq!(
+            metrics_after_issue.compute_future_cash_instruments_active,
+            1
+        );
+        assert_eq!(metrics_after_issue.compute_future_cash_open_interest, 10);
+
+        let settlement = kernel
+            .cash_settle_capacity_instrument(
+                &fixture_context(created_at_ms + 70_000),
+                cash_settle_request(
+                    "instrument.compute.future_cash.alpha",
+                    created_at_ms as i64 + 70_000,
+                ),
+            )
+            .expect("cash settle future instrument");
+        assert_eq!(
+            settlement.response.receipt.receipt_type,
+            "kernel.compute.instrument.cash_settle.v1"
+        );
+        assert_eq!(
+            settlement.response.settlement_index_id,
+            "index.compute.alpha.v2"
+        );
+        assert_eq!(
+            settlement.response.instrument.status,
+            CapacityInstrumentStatus::Settled
+        );
+        assert_eq!(
+            settlement.response.payer_id.as_deref(),
+            Some("provider.hedge.alpha")
+        );
+        assert_eq!(
+            settlement.response.payee_id.as_deref(),
+            Some("buyer.hedge.alpha")
+        );
+        assert_eq!(
+            settlement
+                .response
+                .cash_flow
+                .as_ref()
+                .map(money_amount_value),
+            Some(10)
+        );
+        let metrics_after_settlement = kernel.compute_market_metrics(created_at_ms as i64 + 70_000);
+        assert_eq!(
+            metrics_after_settlement.compute_future_cash_instruments_active,
+            0
+        );
+        assert_eq!(
+            metrics_after_settlement.compute_future_cash_open_interest,
+            0
+        );
+        assert_eq!(
+            metrics_after_settlement.compute_future_cash_cash_settlements_24h,
+            1
+        );
+        assert_eq!(
+            metrics_after_settlement.compute_future_cash_cash_flow_24h,
+            10
+        );
+    }
+
+    #[test]
+    fn future_cash_settlement_defaults_on_collateral_shortfall() {
+        let created_at_ms = 1_762_000_550_000u64;
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(
+                &fixture_context(created_at_ms),
+                compute_product_request(created_at_ms as i64),
+            )
+            .expect("create compute product");
+        kernel
+            .create_capacity_lot(
+                &fixture_context(created_at_ms + 1_000),
+                capacity_lot_request(created_at_ms as i64 + 1_000),
+            )
+            .expect("create first lot");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 2_000),
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("create first instrument");
+        kernel
+            .record_delivery_proof(
+                &fixture_context(created_at_ms + 3_000),
+                delivery_proof_request(created_at_ms as i64 + 3_000),
+            )
+            .expect("record first delivery");
+        kernel
+            .publish_compute_index(
+                &fixture_context(created_at_ms + 4_000),
+                compute_index_request(created_at_ms as i64 + 4_000),
+            )
+            .expect("publish first index");
+        let mut second_lot = capacity_lot_request(created_at_ms as i64 + 1_500);
+        second_lot.idempotency_key = "idemp.compute.lot.beta".to_string();
+        second_lot.lot.capacity_lot_id = "lot.compute.beta".to_string();
+        second_lot.lot.provider_id = "provider.beta".to_string();
+        kernel
+            .create_capacity_lot(&fixture_context(created_at_ms + 1_500), second_lot)
+            .expect("create second lot");
+        let mut second_instrument = capacity_instrument_request(created_at_ms as i64 + 5_000);
+        second_instrument.idempotency_key = "idemp.compute.instrument.beta".to_string();
+        second_instrument.instrument.instrument_id = "instrument.compute.beta".to_string();
+        second_instrument.instrument.capacity_lot_id = Some("lot.compute.beta".to_string());
+        second_instrument.instrument.provider_id = Some("provider.beta".to_string());
+        second_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_800),
+        });
+        kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 5_000), second_instrument)
+            .expect("create second instrument");
+        let mut second_delivery = delivery_proof_request(created_at_ms as i64 + 3_500);
+        second_delivery.idempotency_key = "idemp.compute.delivery.beta".to_string();
+        second_delivery.delivery_proof.delivery_proof_id = "delivery.compute.beta".to_string();
+        second_delivery.delivery_proof.capacity_lot_id = "lot.compute.beta".to_string();
+        second_delivery.delivery_proof.instrument_id = Some("instrument.compute.beta".to_string());
+        kernel
+            .record_delivery_proof(&fixture_context(created_at_ms + 6_000), second_delivery)
+            .expect("record second delivery");
+        kernel
+            .correct_compute_index(
+                &fixture_context(created_at_ms + 7_000),
+                CorrectComputeIndexRequest {
+                    idempotency_key: "idemp.compute.index.correct.future_cash".to_string(),
+                    trace: TraceContext::default(),
+                    policy: PolicyContext::default(),
+                    superseded_index_id: "index.compute.alpha".to_string(),
+                    corrected_index: ComputeIndex {
+                        index_id: "index.compute.alpha.v2".to_string(),
+                        product_id: "ollama.text_generation".to_string(),
+                        observation_window_start_ms: 0,
+                        observation_window_end_ms: 0,
+                        published_at_ms: created_at_ms as i64 + 7_000,
+                        observation_count: 0,
+                        total_accepted_quantity: 0,
+                        reference_price: None,
+                        methodology: None,
+                        status: ComputeIndexStatus::Published,
+                        correction_reason: Some(ComputeIndexCorrectionReason::LateObservation),
+                        corrected_from_index_id: Some("index.compute.alpha".to_string()),
+                        metadata: json!({}),
+                    },
+                    correction_reason: ComputeIndexCorrectionReason::LateObservation,
+                    evidence: Vec::new(),
+                    hints: ReceiptHints::default(),
+                },
+            )
+            .expect("correct compute index");
+        kernel
+            .create_capacity_instrument(
+                &fixture_context(created_at_ms + 8_000),
+                future_cash_instrument_request(
+                    "index.compute.alpha",
+                    created_at_ms as i64 + 8_000,
+                    1,
+                    10,
+                ),
+            )
+            .expect("create future cash instrument");
+
+        let settlement = kernel
+            .cash_settle_capacity_instrument(
+                &fixture_context(created_at_ms + 70_000),
+                cash_settle_request(
+                    "instrument.compute.future_cash.alpha",
+                    created_at_ms as i64 + 70_000,
+                ),
+            )
+            .expect("cash settle future instrument");
+        assert_eq!(
+            settlement.response.instrument.status,
+            CapacityInstrumentStatus::Defaulted
+        );
+        assert_eq!(
+            settlement.response.instrument.settlement_failure_reason,
+            Some(ComputeSettlementFailureReason::AdjudicationRequired)
+        );
+        assert_eq!(
+            settlement
+                .response
+                .collateral_shortfall
+                .as_ref()
+                .map(money_amount_value),
+            Some(48)
+        );
     }
 
     #[test]

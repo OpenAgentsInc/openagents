@@ -187,6 +187,18 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub compute_index_quality_score_24h: f64,
     #[serde(default)]
+    pub compute_future_cash_instruments_active: u64,
+    #[serde(default)]
+    pub compute_future_cash_open_interest: u64,
+    #[serde(default)]
+    pub compute_future_cash_cash_settlements_24h: u64,
+    #[serde(default)]
+    pub compute_future_cash_cash_flow_24h: u64,
+    #[serde(default)]
+    pub compute_paper_to_physical_ratio: f64,
+    #[serde(default)]
+    pub compute_deliverable_coverage_ratio: f64,
+    #[serde(default)]
     pub liquidity_quotes_active: u64,
     #[serde(default)]
     pub liquidity_route_plans_active: u64,

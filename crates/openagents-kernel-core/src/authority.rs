@@ -44,6 +44,10 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: CloseCapacityInstrumentRequest,
     ) -> Result<CloseCapacityInstrumentResponse>;
+    async fn cash_settle_capacity_instrument(
+        &self,
+        req: CashSettleCapacityInstrumentRequest,
+    ) -> Result<CashSettleCapacityInstrumentResponse>;
     async fn record_delivery_proof(
         &self,
         req: RecordDeliveryProofRequest,
@@ -311,6 +315,42 @@ pub struct CloseCapacityInstrumentRequest {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct CloseCapacityInstrumentResponse {
     pub instrument: CapacityInstrument,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CashSettleCapacityInstrumentRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub instrument_id: String,
+    pub settled_at_ms: i64,
+    #[serde(default)]
+    pub settlement_index_id: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CashSettleCapacityInstrumentResponse {
+    pub instrument: CapacityInstrument,
+    pub settlement_index_id: String,
+    #[serde(default)]
+    pub settlement_price: Option<crate::receipts::Money>,
+    #[serde(default)]
+    pub cash_flow: Option<crate::receipts::Money>,
+    #[serde(default)]
+    pub payer_id: Option<String>,
+    #[serde(default)]
+    pub payee_id: Option<String>,
+    #[serde(default)]
+    pub collateral_consumed: Option<crate::receipts::Money>,
+    #[serde(default)]
+    pub collateral_shortfall: Option<crate::receipts::Money>,
     pub receipt: Receipt,
 }
 
@@ -860,6 +900,20 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::CloseCapacityInstrumentResponse =
             self.post_json(path.as_str(), &wire).await?;
         compute_contracts::close_capacity_instrument_response_from_proto(&response)
+    }
+
+    async fn cash_settle_capacity_instrument(
+        &self,
+        req: CashSettleCapacityInstrumentRequest,
+    ) -> Result<CashSettleCapacityInstrumentResponse> {
+        let path = format!(
+            "/v1/kernel/compute/instruments/{}/cash_settle",
+            req.instrument_id.trim()
+        );
+        let wire = compute_contracts::cash_settle_capacity_instrument_request_to_proto(&req)?;
+        let response: proto_compute::CashSettleCapacityInstrumentResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::cash_settle_capacity_instrument_response_from_proto(&response)
     }
 
     async fn record_delivery_proof(
