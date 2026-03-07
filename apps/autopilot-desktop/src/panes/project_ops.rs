@@ -128,9 +128,9 @@ pub fn paint_project_ops_pane(
     ));
 
     let next_steps = [
-        "Next: Step 0 command reducer and apply loop",
         "Next: built-in saved views and toolbar",
-        "Next: detail editor and activity timeline",
+        "Next: detail editor and quick-create flow",
+        "Next: activity timeline and pane-state handling",
     ];
     for (index, line) in next_steps.iter().enumerate() {
         paint.scene.draw_text(paint.text.layout(

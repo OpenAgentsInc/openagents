@@ -3,6 +3,7 @@ use crate::app_state::PaneLoadState;
 pub mod contract;
 pub mod projection;
 pub mod schema;
+pub mod service;
 
 pub const PROJECT_OPS_FEATURE_ENV: &str = "OPENAGENTS_ENABLE_PROJECT_OPS";
 pub const PROJECT_OPS_SOURCE_BADGE: &str = "source: local";
@@ -28,6 +29,9 @@ pub use projection::{
     ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
     PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
 };
+
+#[allow(unused_imports)]
+pub use service::{ProjectOpsCommandApplyResult, ProjectOpsCommandResult, ProjectOpsService};
 
 pub fn project_ops_enabled_from_env() -> bool {
     std::env::var(PROJECT_OPS_FEATURE_ENV)
@@ -77,7 +81,7 @@ impl Default for ProjectOpsPaneState {
                         PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
                     ),
                     format!(
-                        "Step 0 schema is frozen with workflow {} and priorities {}. PM streams are registered as {}, {}, {}, and {} with local projection documents and shared checkpoint rows ready for replay-safe apply.",
+                        "Step 0 schema is frozen with workflow {} and priorities {}. PM streams are registered as {}, {}, {}, and {} with local projection documents, shared checkpoint rows, and a deterministic reducer/service loop ready for replay-safe apply.",
                         ProjectOpsWorkItemStatus::workflow_summary(),
                         ProjectOpsPriority::summary(),
                         PROJECT_OPS_WORK_ITEMS_STREAM_ID,
