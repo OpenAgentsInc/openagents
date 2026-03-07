@@ -3,14 +3,14 @@
 use std::collections::BTreeMap;
 
 use rustygrad_backend_cpu::CpuBackend;
-use rustygrad_compiler::{compile_graph, CompileError};
+use rustygrad_compiler::{CompileError, compile_graph};
 use rustygrad_core::{DType, Device, Shape, TensorId};
 use rustygrad_ir::{Graph, GraphBuilder, GraphError};
 pub use rustygrad_models::{
-    ActivationFunction, DecoderAttentionConfig, DecoderBlockConfig, DecoderConfig,
-    DecoderFeedForwardConfig, DecoderFixtureWeights, DecoderModelDescriptor, DecoderWeightLoader,
-    EmbeddingModelDescriptor, EmbeddingNormalization, EmbeddingWeights, ByteProjectionEmbedder,
-    FixtureDecoderLoader, FixtureWordTokenizer, ModelDescriptor, ModelLoadError,
+    ActivationFunction, ArtifactWordDecoder, ByteProjectionEmbedder, DecoderAttentionConfig,
+    DecoderBlockConfig, DecoderConfig, DecoderFeedForwardConfig, DecoderFixtureWeights,
+    DecoderModelDescriptor, DecoderWeightLoader, EmbeddingModelDescriptor, EmbeddingNormalization,
+    EmbeddingWeights, FixtureDecoderLoader, FixtureWordTokenizer, ModelDescriptor, ModelLoadError,
     ReferenceWordDecoder, SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary,
     TokenizerBoundary, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
@@ -348,6 +348,40 @@ impl GenerationModelHandle for ReferenceWordDecoder {
     }
 }
 
+trait WordDecoderExecutionModel: Clone {
+    fn descriptor(&self) -> &DecoderModelDescriptor;
+    fn tokenizer(&self) -> &FixtureWordTokenizer;
+    fn weights(&self) -> &DecoderFixtureWeights;
+}
+
+impl WordDecoderExecutionModel for ReferenceWordDecoder {
+    fn descriptor(&self) -> &DecoderModelDescriptor {
+        self.descriptor()
+    }
+
+    fn tokenizer(&self) -> &FixtureWordTokenizer {
+        self.tokenizer()
+    }
+
+    fn weights(&self) -> &DecoderFixtureWeights {
+        self.weights()
+    }
+}
+
+impl WordDecoderExecutionModel for ArtifactWordDecoder {
+    fn descriptor(&self) -> &DecoderModelDescriptor {
+        self.descriptor()
+    }
+
+    fn tokenizer(&self) -> &FixtureWordTokenizer {
+        self.tokenizer()
+    }
+
+    fn weights(&self) -> &DecoderFixtureWeights {
+        self.weights()
+    }
+}
+
 /// In-memory registry of loaded generation models.
 #[derive(Clone, Debug, Default)]
 pub struct InMemoryGenerationModelRegistry<M> {
@@ -562,7 +596,9 @@ pub enum SessionStoreError {
     #[error("generation session `{0}` was not found")]
     SessionNotFound(String),
     /// The caller attempted to use a session with the wrong model.
-    #[error("generation session `{session_id}` expects model `{expected_model}` but got `{actual_model}`")]
+    #[error(
+        "generation session `{session_id}` expects model `{expected_model}` but got `{actual_model}`"
+    )]
     ModelMismatch {
         /// Session identifier.
         session_id: String,
@@ -573,7 +609,9 @@ pub enum SessionStoreError {
     },
     /// The caller attempted to replace a session cache with incompatible
     /// geometry.
-    #[error("generation session `{session_id}` cache geometry mismatch: expected max_context={expected_max_context} width={expected_width}, actual max_context={actual_max_context} width={actual_width}")]
+    #[error(
+        "generation session `{session_id}` cache geometry mismatch: expected max_context={expected_max_context} width={expected_width}, actual max_context={actual_max_context} width={actual_width}"
+    )]
     CacheGeometryMismatch {
         /// Session identifier.
         session_id: String,
@@ -781,6 +819,9 @@ pub enum ReferenceTextGenerationError {
         /// Session KV width.
         kv_width: usize,
     },
+    /// Loading or validating a model artifact failed.
+    #[error(transparent)]
+    Model(#[from] ModelLoadError),
     /// The compiler rejected the reference graph.
     #[error(transparent)]
     Compile(#[from] CompileError),
@@ -807,10 +848,10 @@ struct GenerationStepOutput {
     logits: Vec<f32>,
 }
 
-/// Loaded CPU-backed reference generation model.
+/// Loaded CPU-backed generation model.
 #[derive(Clone, Debug)]
-pub struct CpuReferenceGenerationModel {
-    model: ReferenceWordDecoder,
+struct CpuWordGenerationModel<M> {
+    model: M,
     graph: Graph,
     token_input_id: TensorId,
     position_input_id: TensorId,
@@ -820,9 +861,12 @@ pub struct CpuReferenceGenerationModel {
     plan_digest: String,
 }
 
-impl CpuReferenceGenerationModel {
-    /// Loads and compiles the reference decoder model.
-    pub fn new(model: ReferenceWordDecoder) -> Result<Self, ReferenceTextGenerationError> {
+impl<M> CpuWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
+    /// Loads and compiles a decoder model.
+    fn new(model: M) -> Result<Self, ReferenceTextGenerationError> {
         let (
             graph,
             token_input_id,
@@ -830,7 +874,7 @@ impl CpuReferenceGenerationModel {
             context_input_id,
             hidden_output_id,
             logits_output_id,
-        ) = build_reference_generation_graph(&model)?;
+        ) = build_generation_graph(&model)?;
         let plan_digest = compile_graph(&graph)?.stable_digest();
         Ok(Self {
             model,
@@ -844,15 +888,15 @@ impl CpuReferenceGenerationModel {
         })
     }
 
-    /// Returns the underlying reference model.
+    /// Returns the underlying generation model.
     #[must_use]
-    pub fn model(&self) -> &ReferenceWordDecoder {
+    fn model(&self) -> &M {
         &self.model
     }
 
     /// Returns the stable compiled-plan digest.
     #[must_use]
-    pub fn plan_digest(&self) -> &str {
+    fn plan_digest(&self) -> &str {
         self.plan_digest.as_str()
     }
 
@@ -920,11 +964,20 @@ impl CpuReferenceGenerationModel {
     }
 }
 
-impl GenerationModelHandle for CpuReferenceGenerationModel {
+impl<M> GenerationModelHandle for CpuWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
     fn descriptor(&self) -> &DecoderModelDescriptor {
         self.model.descriptor()
     }
 }
+
+/// Reference-model alias for the phase-1 text-generation path.
+type CpuReferenceGenerationModel = CpuWordGenerationModel<ReferenceWordDecoder>;
+
+/// Artifact-backed model alias for the first model-backed text-generation path.
+type CpuModelGenerationModel = CpuWordGenerationModel<ArtifactWordDecoder>;
 
 /// CPU-backed deterministic text-generation reference service.
 #[derive(Clone, Debug)]
@@ -950,8 +1003,9 @@ impl CpuReferenceTextGenerationService {
     pub fn load_model(
         &mut self,
         model: ReferenceWordDecoder,
-    ) -> Result<Option<CpuReferenceGenerationModel>, ReferenceTextGenerationError> {
-        Ok(self.models.load(CpuReferenceGenerationModel::new(model)?))
+    ) -> Result<(), ReferenceTextGenerationError> {
+        self.models.load(CpuReferenceGenerationModel::new(model)?);
+        Ok(())
     }
 
     /// Returns the default reference model descriptor.
@@ -963,16 +1017,11 @@ impl CpuReferenceTextGenerationService {
             .descriptor()
     }
 
-    /// Returns a loaded model by ID.
-    #[must_use]
-    pub fn loaded_model(&self, model_id: &str) -> Option<&CpuReferenceGenerationModel> {
-        self.models.active(model_id)
-    }
-
     /// Returns the compiled plan digest for a loaded model.
     #[must_use]
     pub fn plan_digest(&self, model_id: &str) -> Option<&str> {
-        self.loaded_model(model_id)
+        self.models
+            .active(model_id)
             .map(CpuReferenceGenerationModel::plan_digest)
     }
 
@@ -1015,116 +1064,213 @@ impl TextGenerationExecutor for CpuReferenceTextGenerationService {
     type Error = ReferenceTextGenerationError;
 
     fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
-        if request.product_id != TEXT_GENERATION_PRODUCT_ID {
-            return Err(ReferenceTextGenerationError::UnsupportedProduct(
-                request.product_id.clone(),
-            ));
-        }
-
-        let loaded_model = self
-            .models
-            .active(request.model.model.model_id.as_str())
-            .ok_or_else(|| {
-                ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
-            })?
-            .clone();
-        if loaded_model.descriptor() != &request.model {
-            return Err(ReferenceTextGenerationError::UnsupportedModel(
-                request.model.model.model_id.clone(),
-            ));
-        }
-
-        let prompt_tokens = match &request.prompt {
-            GenerationInput::Text(text) => loaded_model
-                .model()
-                .tokenizer()
-                .encode_with_special_tokens(text, true, false),
-            GenerationInput::Tokens(tokens) => tokens.clone(),
-        };
-        if prompt_tokens.is_empty() {
-            return Err(ReferenceTextGenerationError::EmptyPrompt);
-        }
-
-        let hidden_size = loaded_model.descriptor().config.hidden_size;
-        let mut cache = if let Some(session_id) = &request.session_id {
-            if request.reset_session {
-                self.sessions.reset(session_id)?;
-            }
-            self.sessions.cache(session_id)?.clone()
-        } else {
-            InMemoryKvCache::new(
-                loaded_model.descriptor().config.max_context,
-                loaded_model.descriptor().config.hidden_size,
-            )
-        };
-        if cache.width() != hidden_size {
-            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
-                hidden_size,
-                kv_width: cache.width(),
-            });
-        }
-
-        let mut last_logits = Vec::new();
-        for token in prompt_tokens.as_slice() {
-            let context = mean_cache_value(&cache, hidden_size);
-            let step =
-                loaded_model.execute_step(&mut self.backend, *token, cache.len(), &context)?;
-            cache.append(*token, step.hidden.clone(), step.hidden)?;
-            last_logits = step.logits;
-        }
-
-        let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
-        let mut generated_tokens = Vec::new();
-        let termination = loop {
-            if generated_tokens.len() >= request.options.max_output_tokens {
-                break TerminationReason::MaxOutputTokens;
-            }
-            if cache.len() >= cache.max_context() {
-                break TerminationReason::ContextLimit;
-            }
-
-            let next_token = select_argmax(&last_logits)
-                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
-            if next_token == eos_id {
-                break TerminationReason::EndOfSequence;
-            }
-
-            generated_tokens.push(next_token);
-            let context = mean_cache_value(&cache, hidden_size);
-            let step =
-                loaded_model.execute_step(&mut self.backend, next_token, cache.len(), &context)?;
-            cache.append(next_token, step.hidden.clone(), step.hidden)?;
-            last_logits = step.logits;
-        };
-
-        if let Some(session_id) = &request.session_id {
-            self.sessions.replace_cache(
-                session_id,
-                request.model.model.model_id.as_str(),
-                cache.clone(),
-            )?;
-        }
-
-        let generated = TokenSequence::new(generated_tokens);
-        let text = loaded_model
-            .model()
-            .tokenizer()
-            .decode(generated.as_slice());
-        Ok(GenerationResponse::new(
-            request,
-            request.session_id.clone(),
-            generated,
-            text,
-            prompt_tokens.len(),
-            cache.len(),
-            termination,
-        ))
+        run_generation_request(&mut self.backend, &self.models, &mut self.sessions, request)
     }
 }
 
-fn build_reference_generation_graph(
-    model: &ReferenceWordDecoder,
-) -> Result<(Graph, TensorId, TensorId, TensorId, TensorId, TensorId), GraphError> {
+/// CPU-backed model-backed text-generation service.
+#[derive(Clone, Debug)]
+pub struct CpuModelTextGenerationService {
+    backend: CpuBackend,
+    models: InMemoryGenerationModelRegistry<CpuModelGenerationModel>,
+    sessions: InMemoryGenerationSessionStore,
+}
+
+impl CpuModelTextGenerationService {
+    /// Creates a service with the artifact-backed decoder loaded from a local safetensors file.
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, ReferenceTextGenerationError> {
+        let mut service = Self {
+            backend: CpuBackend::new(),
+            models: InMemoryGenerationModelRegistry::new(),
+            sessions: InMemoryGenerationSessionStore::new(),
+        };
+        service.load_model(ArtifactWordDecoder::from_safetensors_artifact(path)?)?;
+        Ok(service)
+    }
+
+    /// Loads or replaces an artifact-backed decoder model.
+    pub fn load_model(
+        &mut self,
+        model: ArtifactWordDecoder,
+    ) -> Result<(), ReferenceTextGenerationError> {
+        self.models.load(CpuModelGenerationModel::new(model)?);
+        Ok(())
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
+        self.models
+            .active(ArtifactWordDecoder::MODEL_ID)
+            .expect("artifact-backed decoder loaded")
+            .descriptor()
+    }
+
+    /// Returns the compiled plan digest for the loaded model.
+    #[must_use]
+    pub fn plan_digest(&self, model_id: &str) -> Option<&str> {
+        self.models
+            .active(model_id)
+            .map(CpuModelGenerationModel::plan_digest)
+    }
+
+    /// Creates a reusable generation session for the provided model ID.
+    pub fn create_session(
+        &mut self,
+        model_id: &str,
+    ) -> Result<GenerationSession, ReferenceTextGenerationError> {
+        let model = self
+            .models
+            .active(model_id)
+            .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
+        Ok(self.sessions.create(model.descriptor()))
+    }
+
+    /// Resets an existing session.
+    pub fn reset_session(
+        &mut self,
+        session_id: &SessionId,
+    ) -> Result<GenerationSession, ReferenceTextGenerationError> {
+        Ok(self.sessions.reset(session_id)?)
+    }
+
+    /// Closes an existing session.
+    pub fn close_session(
+        &mut self,
+        session_id: &SessionId,
+    ) -> Result<GenerationSession, ReferenceTextGenerationError> {
+        Ok(self.sessions.close(session_id)?)
+    }
+}
+
+impl TextGenerationExecutor for CpuModelTextGenerationService {
+    type Error = ReferenceTextGenerationError;
+
+    fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
+        run_generation_request(&mut self.backend, &self.models, &mut self.sessions, request)
+    }
+}
+
+fn run_generation_request<M>(
+    backend: &mut CpuBackend,
+    models: &InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
+    sessions: &mut InMemoryGenerationSessionStore,
+    request: &GenerationRequest,
+) -> Result<GenerationResponse, ReferenceTextGenerationError>
+where
+    M: WordDecoderExecutionModel,
+{
+    if request.product_id != TEXT_GENERATION_PRODUCT_ID {
+        return Err(ReferenceTextGenerationError::UnsupportedProduct(
+            request.product_id.clone(),
+        ));
+    }
+
+    let loaded_model = models
+        .active(request.model.model.model_id.as_str())
+        .ok_or_else(|| {
+            ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
+        })?
+        .clone();
+    if loaded_model.descriptor() != &request.model {
+        return Err(ReferenceTextGenerationError::UnsupportedModel(
+            request.model.model.model_id.clone(),
+        ));
+    }
+
+    let prompt_tokens = match &request.prompt {
+        GenerationInput::Text(text) => loaded_model
+            .model()
+            .tokenizer()
+            .encode_with_special_tokens(text, true, false),
+        GenerationInput::Tokens(tokens) => tokens.clone(),
+    };
+    if prompt_tokens.is_empty() {
+        return Err(ReferenceTextGenerationError::EmptyPrompt);
+    }
+
+    let hidden_size = loaded_model.descriptor().config.hidden_size;
+    let mut cache = if let Some(session_id) = &request.session_id {
+        if request.reset_session {
+            sessions.reset(session_id)?;
+        }
+        sessions.cache(session_id)?.clone()
+    } else {
+        InMemoryKvCache::new(
+            loaded_model.descriptor().config.max_context,
+            loaded_model.descriptor().config.hidden_size,
+        )
+    };
+    if cache.width() != hidden_size {
+        return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+            hidden_size,
+            kv_width: cache.width(),
+        });
+    }
+
+    let mut last_logits = Vec::new();
+    for token in prompt_tokens.as_slice() {
+        let context = mean_cache_value(&cache, hidden_size);
+        let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+        cache.append(*token, step.hidden.clone(), step.hidden)?;
+        last_logits = step.logits;
+    }
+
+    let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
+    let mut generated_tokens = Vec::new();
+    let termination = loop {
+        if generated_tokens.len() >= request.options.max_output_tokens {
+            break TerminationReason::MaxOutputTokens;
+        }
+        if cache.len() >= cache.max_context() {
+            break TerminationReason::ContextLimit;
+        }
+
+        let next_token = select_argmax(&last_logits)
+            .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+        if next_token == eos_id {
+            break TerminationReason::EndOfSequence;
+        }
+
+        generated_tokens.push(next_token);
+        let context = mean_cache_value(&cache, hidden_size);
+        let step = loaded_model.execute_step(backend, next_token, cache.len(), &context)?;
+        cache.append(next_token, step.hidden.clone(), step.hidden)?;
+        last_logits = step.logits;
+    };
+
+    if let Some(session_id) = &request.session_id {
+        sessions.replace_cache(
+            session_id,
+            request.model.model.model_id.as_str(),
+            cache.clone(),
+        )?;
+    }
+
+    let generated = TokenSequence::new(generated_tokens);
+    let text = loaded_model
+        .model()
+        .tokenizer()
+        .decode(generated.as_slice());
+    Ok(GenerationResponse::new(
+        request,
+        request.session_id.clone(),
+        generated,
+        text,
+        prompt_tokens.len(),
+        cache.len(),
+        termination,
+    ))
+}
+
+fn build_generation_graph<M>(
+    model: &M,
+) -> Result<(Graph, TensorId, TensorId, TensorId, TensorId, TensorId), GraphError>
+where
+    M: WordDecoderExecutionModel,
+{
     let descriptor = model.descriptor();
     let config = &descriptor.config;
     let weights = model.weights();
@@ -1354,7 +1500,9 @@ pub struct CpuModelEmbeddingsService {
 
 impl CpuModelEmbeddingsService {
     /// Loads the first model-backed embeddings family from a local safetensors artifact.
-    pub fn from_safetensors_artifact(path: impl AsRef<std::path::Path>) -> Result<Self, ModelEmbeddingsError> {
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, ModelEmbeddingsError> {
         let model = ByteProjectionEmbedder::from_safetensors_artifact(path)?;
         let input_shape = Shape::new(vec![1, model.input_dimensions()]);
         let (graph, input_id, output_id) = build_embedding_graph(
@@ -1439,10 +1587,7 @@ fn build_embedding_graph(
         Shape::new(vec![input_dimensions, output_dimensions]),
         projection.to_vec(),
     )?;
-    let bias = builder.constant_f32(
-        Shape::new(vec![1, output_dimensions]),
-        bias.to_vec(),
-    )?;
+    let bias = builder.constant_f32(Shape::new(vec![1, output_dimensions]), bias.to_vec())?;
     let projected = builder.matmul(&input, &weights)?;
     let shifted = builder.add(&projected, &bias)?;
     let output_id = shifted.id();
@@ -1460,7 +1605,10 @@ fn execute_embedding_graph(
     features: Vec<f32>,
 ) -> Result<Vec<f32>, RuntimeError> {
     let mut runtime_inputs = BTreeMap::new();
-    runtime_inputs.insert(input_id, backend.input_buffer(input_shape.clone(), features)?);
+    runtime_inputs.insert(
+        input_id,
+        backend.input_buffer(input_shape.clone(), features)?,
+    );
     let result = backend.compile_and_execute(graph, &runtime_inputs)?;
     let Some(output) = result.outputs.get(&output_id) else {
         return Err(RuntimeError::Backend(String::from(
@@ -1721,15 +1869,17 @@ mod tests {
         assert_eq!(first.output.text, "open agents");
         assert_eq!(first.termination, TerminationReason::EndOfSequence);
         assert_eq!(first.usage.input_tokens, 2);
-        assert!(service
-            .plan_digest(ReferenceWordDecoder::MODEL_ID)
-            .is_some());
+        assert!(
+            service
+                .plan_digest(ReferenceWordDecoder::MODEL_ID)
+                .is_some()
+        );
         Ok(())
     }
 
     #[test]
-    fn cpu_reference_text_generation_reuses_and_resets_sessions(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn cpu_reference_text_generation_reuses_and_resets_sessions()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut service = CpuReferenceTextGenerationService::new()?;
         let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
 

@@ -8,7 +8,7 @@ use std::{
 };
 
 use rustygrad_core::{DType, QuantizationMode, Shape};
-use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType, SafeTensors};
+use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -117,11 +117,7 @@ impl EmbeddingWeights {
     ) -> Result<Self, ModelLoadError> {
         Ok(Self {
             metadata: bundle.metadata().clone(),
-            projection: load_tensor_values(
-                &bundle,
-                "projection",
-                &[input_dimensions, dimensions],
-            )?,
+            projection: load_tensor_values(&bundle, "projection", &[input_dimensions, dimensions])?,
             bias: load_tensor_values(&bundle, "bias", &[dimensions])?,
         })
     }
@@ -649,12 +645,11 @@ impl SafeTensorsWeightBundleLoader {
         bytes: &[u8],
         artifact: WeightArtifactMetadata,
     ) -> Result<LoadedWeightBundle, ModelLoadError> {
-        let tensors = SafeTensors::deserialize(bytes).map_err(|error| {
-            ModelLoadError::ArtifactFormat {
+        let tensors =
+            SafeTensors::deserialize(bytes).map_err(|error| ModelLoadError::ArtifactFormat {
                 format: String::from("safetensors"),
                 message: error.to_string(),
-            }
-        })?;
+            })?;
         let mut names = tensors.names();
         names.sort_unstable();
 
@@ -666,10 +661,12 @@ impl SafeTensorsWeightBundleLoader {
             if name.ends_with("__scale") {
                 continue;
             }
-            let tensor = tensors.tensor(name).map_err(|error| ModelLoadError::ArtifactFormat {
-                format: String::from("safetensors"),
-                message: error.to_string(),
-            })?;
+            let tensor = tensors
+                .tensor(name)
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?;
             let (dtype, quantization, values) = match tensor.dtype() {
                 SafeTensorsDType::F32 => (
                     DType::F32,
@@ -929,10 +926,7 @@ pub trait DecoderWeightLoader {
     type Error;
 
     /// Loads weights for the provided descriptor.
-    fn load(
-        &self,
-        descriptor: &DecoderModelDescriptor,
-    ) -> Result<DecoderWeights, Self::Error>;
+    fn load(&self, descriptor: &DecoderModelDescriptor) -> Result<DecoderWeights, Self::Error>;
 }
 
 /// Programmatic loader for the phase-1 reference decoder weights.
@@ -942,10 +936,7 @@ pub struct FixtureDecoderLoader;
 impl DecoderWeightLoader for FixtureDecoderLoader {
     type Error = ModelLoadError;
 
-    fn load(
-        &self,
-        descriptor: &DecoderModelDescriptor,
-    ) -> Result<DecoderWeights, Self::Error> {
+    fn load(&self, descriptor: &DecoderModelDescriptor) -> Result<DecoderWeights, Self::Error> {
         if descriptor.model.model_id != ReferenceWordDecoder::MODEL_ID {
             return Err(ModelLoadError::UnsupportedModel(
                 descriptor.model.model_id.clone(),
@@ -1053,6 +1044,136 @@ impl ReferenceWordDecoder {
     }
 }
 
+/// Artifact-backed wordpiece decoder family built on the phase-1 tiny architecture.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ArtifactWordDecoder {
+    descriptor: DecoderModelDescriptor,
+    tokenizer: FixtureWordTokenizer,
+    weights: DecoderWeights,
+}
+
+impl ArtifactWordDecoder {
+    /// Stable model identifier for the first supported model-backed generation path.
+    pub const MODEL_ID: &str = "wordpiece-decoder-v1";
+    /// Stable model family for the first supported model-backed generation path.
+    pub const MODEL_FAMILY: &str = "wordpiece_decoder";
+
+    /// Writes the default local safetensors artifact for the model family.
+    pub fn write_default_safetensors_artifact(path: &Path) -> Result<(), ModelLoadError> {
+        let reference = ReferenceWordDecoder::new();
+        let token_embedding_bytes = encode_f32_bytes(reference.weights().token_embedding());
+        let position_embedding_bytes = encode_f32_bytes(reference.weights().position_embedding());
+        let context_projection_bytes = encode_f32_bytes(reference.weights().context_projection());
+        let lm_head_bytes = encode_f32_bytes(reference.weights().lm_head());
+        let lm_bias_bytes = encode_f32_bytes(reference.weights().lm_bias());
+
+        let config = &reference.descriptor().config;
+        let tensors = vec![
+            (
+                "token_embedding",
+                TensorView::new(
+                    SafeTensorsDType::F32,
+                    vec![config.vocab_size, config.hidden_size],
+                    token_embedding_bytes.as_slice(),
+                )
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?,
+            ),
+            (
+                "position_embedding",
+                TensorView::new(
+                    SafeTensorsDType::F32,
+                    vec![config.max_context, config.hidden_size],
+                    position_embedding_bytes.as_slice(),
+                )
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?,
+            ),
+            (
+                "context_projection",
+                TensorView::new(
+                    SafeTensorsDType::F32,
+                    vec![config.hidden_size, config.hidden_size],
+                    context_projection_bytes.as_slice(),
+                )
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?,
+            ),
+            (
+                "lm_head",
+                TensorView::new(
+                    SafeTensorsDType::F32,
+                    vec![config.hidden_size, config.vocab_size],
+                    lm_head_bytes.as_slice(),
+                )
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?,
+            ),
+            (
+                "lm_bias",
+                TensorView::new(
+                    SafeTensorsDType::F32,
+                    vec![config.vocab_size],
+                    lm_bias_bytes.as_slice(),
+                )
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?,
+            ),
+        ];
+        serialize_to_file(tensors, None, path).map_err(|error| ModelLoadError::ArtifactWrite {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })
+    }
+
+    /// Loads the decoder family from a local safetensors artifact.
+    pub fn from_safetensors_artifact(path: impl AsRef<Path>) -> Result<Self, ModelLoadError> {
+        let tokenizer = FixtureWordTokenizer::new();
+        let config = reference_decoder_config(tokenizer.vocabulary().len());
+        let bundle = SafeTensorsWeightBundleLoader.load_path(path.as_ref())?;
+        let descriptor = DecoderModelDescriptor::new(
+            ModelDescriptor::new(Self::MODEL_ID, Self::MODEL_FAMILY, "v1"),
+            config,
+            "fixture_wordpiece",
+            bundle.metadata().clone(),
+        );
+        let weights = SafeTensorsDecoderLoader::new(path.as_ref()).load(&descriptor)?;
+        Ok(Self {
+            descriptor,
+            tokenizer,
+            weights,
+        })
+    }
+
+    /// Returns the public decoder descriptor.
+    #[must_use]
+    pub fn descriptor(&self) -> &DecoderModelDescriptor {
+        &self.descriptor
+    }
+
+    /// Returns the tokenizer used by the decoder.
+    #[must_use]
+    pub fn tokenizer(&self) -> &FixtureWordTokenizer {
+        &self.tokenizer
+    }
+
+    /// Returns the loaded decoder weights.
+    #[must_use]
+    pub fn weights(&self) -> &DecoderWeights {
+        &self.weights
+    }
+}
+
 /// Deterministic embeddings smoke model used for the phase-0 end-to-end flow.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SmokeByteEmbedder {
@@ -1077,7 +1198,8 @@ impl SmokeByteEmbedder {
         let input_dimensions = 16;
         let dimensions = 8;
         let (projection, bias) = build_byte_projection_parameters(input_dimensions, dimensions);
-        let weights = build_embedding_fixture_weights(input_dimensions, dimensions, &projection, &bias);
+        let weights =
+            build_embedding_fixture_weights(input_dimensions, dimensions, &projection, &bias);
         let descriptor = EmbeddingModelDescriptor::new(
             ModelDescriptor::new(Self::MODEL_ID, "smoke", "v0"),
             dimensions,
@@ -1236,7 +1358,10 @@ fn normalize_piece(piece: &str) -> String {
         .to_ascii_lowercase()
 }
 
-fn build_byte_projection_parameters(input_dimensions: usize, dimensions: usize) -> (Vec<f32>, Vec<f32>) {
+fn build_byte_projection_parameters(
+    input_dimensions: usize,
+    dimensions: usize,
+) -> (Vec<f32>, Vec<f32>) {
     let projection = (0..input_dimensions)
         .flat_map(|row| {
             (0..dimensions).map(move |column| {
@@ -1260,7 +1385,8 @@ fn build_embedding_fixture_weights(
     projection: &[f32],
     bias: &[f32],
 ) -> EmbeddingWeights {
-    let metadata = build_embedding_weight_bundle_metadata(input_dimensions, dimensions, projection, bias);
+    let metadata =
+        build_embedding_weight_bundle_metadata(input_dimensions, dimensions, projection, bias);
     EmbeddingWeights {
         metadata,
         projection: projection.to_vec(),
@@ -1275,11 +1401,7 @@ fn build_embedding_weight_bundle_metadata(
     bias: &[f32],
 ) -> WeightBundleMetadata {
     let tensors = vec![
-        WeightTensorMetadata::new(
-            "bias",
-            Shape::new(vec![dimensions]),
-            DType::F32,
-        ),
+        WeightTensorMetadata::new("bias", Shape::new(vec![dimensions]), DType::F32),
         WeightTensorMetadata::new(
             "projection",
             Shape::new(vec![input_dimensions, dimensions]),
@@ -1527,7 +1649,10 @@ fn validate_loaded_bundle(
     }
 
     for expected in &descriptor.weights.tensors {
-        let Some(actual) = loaded.tensors.iter().find(|candidate| candidate.name == expected.name)
+        let Some(actual) = loaded
+            .tensors
+            .iter()
+            .find(|candidate| candidate.name == expected.name)
         else {
             return Err(ModelLoadError::MissingTensor(expected.name.clone()));
         };
@@ -1613,7 +1738,7 @@ mod tests {
     use std::{collections::BTreeMap, path::Path};
 
     use rustygrad_core::{DType, QuantizationMode};
-    use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType};
+    use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
     use tempfile::tempdir;
 
     use super::{
@@ -1640,7 +1765,10 @@ mod tests {
             model.descriptor().model.model_id,
             SmokeByteEmbedder::MODEL_ID
         );
-        assert_eq!(model.descriptor().weights.quantization, QuantizationMode::None);
+        assert_eq!(
+            model.descriptor().weights.quantization,
+            QuantizationMode::None
+        );
     }
 
     #[test]
@@ -1673,7 +1801,10 @@ mod tests {
             WeightFormat::ProgrammaticFixture
         );
         assert_eq!(model.descriptor().weights.source, WeightSource::Fixture);
-        assert_eq!(model.descriptor().weights.quantization, QuantizationMode::None);
+        assert_eq!(
+            model.descriptor().weights.quantization,
+            QuantizationMode::None
+        );
         assert_eq!(model.descriptor().weights.tensors.len(), 5);
         assert!(model.descriptor().weights.artifacts.is_empty());
     }
@@ -1706,8 +1837,8 @@ mod tests {
     }
 
     #[test]
-    fn safetensors_bundle_loader_reports_external_artifact_metadata(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn safetensors_bundle_loader_reports_external_artifact_metadata()
+    -> Result<(), Box<dyn std::error::Error>> {
         let model = ReferenceWordDecoder::new();
         let temp = tempdir()?;
         let path = temp.path().join("reference_decoder.safetensors");
@@ -1717,8 +1848,14 @@ mod tests {
         assert_eq!(bundle.metadata().format, WeightFormat::SafeTensors);
         assert_eq!(bundle.metadata().source, WeightSource::ExternalArtifact);
         assert_eq!(bundle.metadata().artifacts.len(), 1);
-        assert_eq!(bundle.metadata().artifacts[0].name, "reference_decoder.safetensors");
-        assert_eq!(bundle.metadata().tensors, model.descriptor().weights.tensors);
+        assert_eq!(
+            bundle.metadata().artifacts[0].name,
+            "reference_decoder.safetensors"
+        );
+        assert_eq!(
+            bundle.metadata().tensors,
+            model.descriptor().weights.tensors
+        );
         assert_eq!(bundle.metadata().digest, model.descriptor().weights.digest);
 
         let Some(tensor) = bundle.tensor("lm_bias") else {
@@ -1729,8 +1866,8 @@ mod tests {
     }
 
     #[test]
-    fn safetensors_decoder_loader_reads_reference_weights(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn safetensors_decoder_loader_reads_reference_weights() -> Result<(), Box<dyn std::error::Error>>
+    {
         let model = ReferenceWordDecoder::new();
         let temp = tempdir()?;
         let path = temp.path().join("reference_decoder.safetensors");
@@ -1751,8 +1888,8 @@ mod tests {
     }
 
     #[test]
-    fn safetensors_loader_reports_and_dequantizes_int8_weights(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn safetensors_loader_reports_and_dequantizes_int8_weights()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let path = temp.path().join("quantized.safetensors");
         let tensors = BTreeMap::from([
@@ -1768,30 +1905,81 @@ mod tests {
         serialize_to_file(tensors, None, &path)?;
 
         let bundle = SafeTensorsWeightBundleLoader.load_path(&path)?;
-        assert_eq!(bundle.metadata().quantization, QuantizationMode::Int8Symmetric);
+        assert_eq!(
+            bundle.metadata().quantization,
+            QuantizationMode::Int8Symmetric
+        );
         let Some(tensor) = bundle.tensor("projection") else {
             return Err("missing projection tensor".into());
         };
         assert_eq!(tensor.metadata().dtype, DType::I8);
-        assert_eq!(tensor.metadata().quantization, QuantizationMode::Int8Symmetric);
+        assert_eq!(
+            tensor.metadata().quantization,
+            QuantizationMode::Int8Symmetric
+        );
         assert_eq!(tensor.values(), &[0.5, -0.5, 1.0, -1.0]);
         Ok(())
     }
 
     #[test]
-    fn byte_projection_embedder_loads_from_artifact(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn byte_projection_embedder_loads_from_artifact() -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let path = temp.path().join("byte_projection.safetensors");
         ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
         let model = ByteProjectionEmbedder::from_safetensors_artifact(&path)?;
 
-        assert_eq!(model.descriptor().model.model_id, ByteProjectionEmbedder::MODEL_ID);
-        assert_eq!(model.descriptor().model.family, ByteProjectionEmbedder::MODEL_FAMILY);
+        assert_eq!(
+            model.descriptor().model.model_id,
+            ByteProjectionEmbedder::MODEL_ID
+        );
+        assert_eq!(
+            model.descriptor().model.family,
+            ByteProjectionEmbedder::MODEL_FAMILY
+        );
         assert_eq!(model.descriptor().weights.format, WeightFormat::SafeTensors);
-        assert_eq!(model.descriptor().weights.source, WeightSource::ExternalArtifact);
-        assert_eq!(model.descriptor().weights.artifacts[0].name, "byte_projection.safetensors");
-        assert_eq!(model.descriptor().normalization, super::EmbeddingNormalization::UnitLength);
+        assert_eq!(
+            model.descriptor().weights.source,
+            WeightSource::ExternalArtifact
+        );
+        assert_eq!(
+            model.descriptor().weights.artifacts[0].name,
+            "byte_projection.safetensors"
+        );
+        assert_eq!(
+            model.descriptor().normalization,
+            super::EmbeddingNormalization::UnitLength
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn artifact_word_decoder_loads_from_artifact() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("wordpiece_decoder.safetensors");
+        super::ArtifactWordDecoder::write_default_safetensors_artifact(&path)?;
+        let model = super::ArtifactWordDecoder::from_safetensors_artifact(&path)?;
+
+        assert_eq!(
+            model.descriptor().model.model_id,
+            super::ArtifactWordDecoder::MODEL_ID
+        );
+        assert_eq!(
+            model.descriptor().model.family,
+            super::ArtifactWordDecoder::MODEL_FAMILY
+        );
+        assert_eq!(model.descriptor().weights.format, WeightFormat::SafeTensors);
+        assert_eq!(
+            model.descriptor().weights.source,
+            WeightSource::ExternalArtifact
+        );
+        assert_eq!(
+            model.descriptor().weights.artifacts[0].name,
+            "wordpiece_decoder.safetensors"
+        );
+        assert_eq!(
+            model.tokenizer().decode(&[FixtureWordTokenizer::OPEN_ID]),
+            "open"
+        );
         Ok(())
     }
 
@@ -1810,7 +1998,10 @@ mod tests {
         );
         tensors.insert(
             String::from("lm_bias"),
-            tensor_view(vec![descriptor.config.vocab_size], reference.weights().lm_bias())?,
+            tensor_view(
+                vec![descriptor.config.vocab_size],
+                reference.weights().lm_bias(),
+            )?,
         );
         tensors.insert(
             String::from("lm_head"),
