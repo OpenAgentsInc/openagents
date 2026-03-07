@@ -3678,7 +3678,7 @@ fn paint_job_history_pane(
                 .with_corner_radius(6.0),
         );
         let row_line = format!(
-            "{} {} src:{} ts:{} scope:{} tick:{} set:{} def:{} {} {}",
+            "{} {} src:{} ts:{} scope:{} tick:{} set:{} def:{} proof:{} qty:{}/{} var:{} rej:{} {} {}",
             row.job_id,
             row.status.label(),
             row.demand_source.label(),
@@ -3687,6 +3687,15 @@ fn paint_job_history_pane(
             row.sa_tick_result_event_id.as_deref().unwrap_or("none"),
             row.ac_settlement_event_id.as_deref().unwrap_or("none"),
             row.ac_default_event_id.as_deref().unwrap_or("none"),
+            row.delivery_proof_status_label.as_deref().unwrap_or("none"),
+            row.delivery_accepted_quantity.unwrap_or(0),
+            row.delivery_metered_quantity.unwrap_or(0),
+            row.delivery_variance_reason_label
+                .as_deref()
+                .unwrap_or("none"),
+            row.delivery_rejection_reason_label
+                .as_deref()
+                .unwrap_or("none"),
             row.result_hash,
             row.payment_pointer
         );

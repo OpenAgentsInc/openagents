@@ -7191,10 +7191,7 @@ fn ollama_execution_receipt_tags(
         return BTreeMap::new();
     };
 
-    let mut tags = BTreeMap::from([(
-        "execution.backend".to_string(),
-        provenance.backend.clone(),
-    )]);
+    let mut tags = BTreeMap::from([("execution.backend".to_string(), provenance.backend.clone())]);
     if let Some(requested_model) = provenance.requested_model.as_deref() {
         tags.insert(
             "execution.model.requested".to_string(),
@@ -10550,6 +10547,13 @@ mod tests {
             ac_envelope_event_id: Some("ac-env-1".to_string()),
             ac_settlement_event_id: Some("fb-evt".to_string()),
             ac_default_event_id: None,
+            delivery_proof_id: Some("delivery.req-123".to_string()),
+            delivery_metering_rule_id: Some("meter.ollama.inference.v1".to_string()),
+            delivery_proof_status_label: Some("accepted".to_string()),
+            delivery_metered_quantity: Some(1),
+            delivery_accepted_quantity: Some(1),
+            delivery_variance_reason_label: None,
+            delivery_rejection_reason_label: None,
             payout_sats: 42,
             result_hash: "sha256:abc".to_string(),
             payment_pointer: payment_pointer.to_string(),
@@ -10581,9 +10585,17 @@ mod tests {
             ac_settlement_event_id: Some("fb-evt".to_string()),
             ac_default_event_id: None,
             compute_product_id: Some("ollama.text_generation".to_string()),
-            capacity_lot_id: Some("lot.online.npub1abc.ollama.text_generation.1762000000000".to_string()),
+            capacity_lot_id: Some(
+                "lot.online.npub1abc.ollama.text_generation.1762000000000".to_string(),
+            ),
             capacity_instrument_id: Some("instrument.req-123".to_string()),
             delivery_proof_id: Some("delivery.req-123".to_string()),
+            delivery_metering_rule_id: Some("meter.ollama.inference.v1".to_string()),
+            delivery_proof_status_label: Some("accepted".to_string()),
+            delivery_metered_quantity: Some(1),
+            delivery_accepted_quantity: Some(1),
+            delivery_variance_reason_label: None,
+            delivery_rejection_reason_label: None,
             quoted_price_sats: 42,
             ttl_seconds: 120,
             stage: JobLifecycleStage::Paid,
