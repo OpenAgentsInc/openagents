@@ -6,9 +6,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::app_state::PaneLoadState;
 use crate::project_ops::contract::{
-    ProjectOpsAcceptedEventName, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-    PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_PRIMARY_SOURCE_BADGE,
-    PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    project_ops_error, ProjectOpsAcceptedEventName, ProjectOpsErrorCode,
+    PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
+    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 use crate::project_ops::schema::{ProjectOpsCycleId, ProjectOpsWorkItem, ProjectOpsWorkItemId};
 use crate::project_ops::views::builtin_saved_view_specs;
@@ -348,7 +349,12 @@ impl ProjectOpsProjectionStore {
         let checkpoints = self
             .checkpoints
             .as_mut()
-            .ok_or_else(|| format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()))?;
+            .ok_or_else(|| {
+                project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()),
+                )
+            })?;
         checkpoints.rewind_stream(stream_id, seq)?;
         self.last_error = None;
         self.last_action = Some(format!("Rewound {stream_id} checkpoint to seq {seq}"));
@@ -360,7 +366,12 @@ impl ProjectOpsProjectionStore {
         let checkpoints = self
             .checkpoints
             .as_mut()
-            .ok_or_else(|| format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()))?;
+            .ok_or_else(|| {
+                project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()),
+                )
+            })?;
         let adopted = checkpoints.adopt_checkpoint_if_newer(stream_id, seq)?;
         self.last_error = None;
         self.last_action = Some(if adopted {
@@ -413,7 +424,10 @@ impl ProjectOpsProjectionStore {
                     PROJECT_OPS_WORK_ITEMS_STREAM_ID, expected_seq, received_seq
                 );
                 self.last_action = Some("PM projection apply rejected".to_string());
-                self.last_error = Some(message);
+                self.last_error = Some(project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    message,
+                ));
                 self.load_state = PaneLoadState::Error;
             }
         }
@@ -461,7 +475,10 @@ impl ProjectOpsProjectionStore {
                     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, expected_seq, received_seq
                 );
                 self.last_action = Some("PM projection apply rejected".to_string());
-                self.last_error = Some(message);
+                self.last_error = Some(project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    message,
+                ));
                 self.load_state = PaneLoadState::Error;
             }
         }
@@ -509,7 +526,10 @@ impl ProjectOpsProjectionStore {
                     PROJECT_OPS_CYCLES_STREAM_ID, expected_seq, received_seq
                 );
                 self.last_action = Some("PM projection apply rejected".to_string());
-                self.last_error = Some(message);
+                self.last_error = Some(project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    message,
+                ));
                 self.load_state = PaneLoadState::Error;
             }
         }
@@ -557,7 +577,10 @@ impl ProjectOpsProjectionStore {
                     PROJECT_OPS_SAVED_VIEWS_STREAM_ID, expected_seq, received_seq
                 );
                 self.last_action = Some("PM projection apply rejected".to_string());
-                self.last_error = Some(message);
+                self.last_error = Some(project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    message,
+                ));
                 self.load_state = PaneLoadState::Error;
             }
         }
@@ -572,7 +595,12 @@ impl ProjectOpsProjectionStore {
         let checkpoints = self
             .checkpoints
             .as_mut()
-            .ok_or_else(|| format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()))?;
+            .ok_or_else(|| {
+                project_ops_error(
+                    ProjectOpsErrorCode::CheckpointConflict,
+                    format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()),
+                )
+            })?;
         checkpoints.apply_seq(stream_id, seq)
     }
 }
@@ -1086,7 +1114,10 @@ mod tests {
             store
                 .last_error
                 .as_deref()
-                .is_some_and(|error| error.contains("Out-of-order"))
+                .is_some_and(|error| {
+                    error.contains("project_ops.checkpoint_conflict:")
+                        && error.contains("Out-of-order")
+                })
         );
         assert_eq!(store.work_items.len(), 1);
     }

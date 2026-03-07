@@ -14,13 +14,14 @@ pub const PROJECT_OPS_SOURCE_BADGE: &str = contract::PROJECT_OPS_PRIMARY_SOURCE_
 #[allow(unused_imports)]
 pub use contract::{
     project_ops_phase1_sync_contract, project_ops_required_stream_grants,
-    project_ops_v1_contract_manifest, step0_stream_specs, ProjectOpsAcceptedEvent,
+    project_ops_v1_contract_manifest, step0_stream_specs, project_ops_error,
+    ProjectOpsAcceptedEvent,
     ProjectOpsAcceptedEventContractSpec, ProjectOpsAcceptedEventEnvelope,
     ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCheckpointRule, ProjectOpsCommand,
     ProjectOpsCommandContractSpec, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
     ProjectOpsCommandName, ProjectOpsContractManifest, ProjectOpsDeliveryPhase,
     ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityContractSpec, ProjectOpsEntityKind,
-    ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract,
+    ProjectOpsErrorCode, ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
     PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
     PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
@@ -489,7 +490,9 @@ impl ProjectOpsPaneState {
         if !self.feature_enabled {
             return Ok(None);
         }
-        self.quick_create_draft.validate()?;
+        self.quick_create_draft
+            .validate()
+            .map_err(|error| project_ops_error(ProjectOpsErrorCode::InvalidCommand, error))?;
         let issued_at_unix_ms = now_unix_ms();
         let work_item_id = next_work_item_id(self.local_store.work_items.as_slice())?;
         let command = ProjectOpsCommandEnvelope {
@@ -535,9 +538,12 @@ impl ProjectOpsPaneState {
             .find(|item| item.work_item_id == detail_draft.work_item_id)
             .cloned()
         else {
-            return Err(format!(
-                "selected work item {} no longer exists",
-                detail_draft.work_item_id.as_str()
+            return Err(project_ops_error(
+                ProjectOpsErrorCode::WorkItemMissing,
+                format!(
+                    "selected work item {} no longer exists",
+                    detail_draft.work_item_id.as_str()
+                ),
             ));
         };
         let issued_at_unix_ms = now_unix_ms();

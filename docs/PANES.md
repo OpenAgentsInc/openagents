@@ -28,6 +28,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Current shell shows feature-gate state, active default view, reserved PM stream grants, and the staged follow-up path for work items, cycles, and replay-safe projections.
   - Primary pane badge is `source: stream.pm.work_items.v1` because visible list/detail state comes from local replay-safe PM projection documents keyed by canonical PM stream ids.
   - PM sync/bootstrap diagnostics inside the pane may use `source: spacetime.sync.lifecycle`, but PM work-item values must not be labeled as live Spacetime authority during Phase 1.
+  - Operator-visible PM rejection and recovery messages use stable `project_ops.*` error-code prefixes so invalid transitions, dependency failures, archived mutations, and checkpoint conflicts stay legible.
   - Action: read-only shell for now.
 - `Codex Account`
   - Account auth and rate-limit controls (`account/read`, login start/cancel, logout, rate limits read).

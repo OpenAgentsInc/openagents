@@ -110,6 +110,7 @@ pub struct ProjectOpsContractManifest {
     pub commands: Vec<ProjectOpsCommandContractSpec>,
     pub accepted_events: Vec<ProjectOpsAcceptedEventContractSpec>,
     pub streams: Vec<ProjectOpsStreamSpec>,
+    pub error_codes: Vec<ProjectOpsErrorCode>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
@@ -136,6 +137,54 @@ pub struct ProjectOpsSyncContract {
     pub source_badges: Vec<ProjectOpsSourceBadgeRule>,
     pub required_stream_grants: Vec<&'static str>,
     pub checkpoint_rules: Vec<ProjectOpsCheckpointRule>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectOpsErrorCode {
+    InvalidCommand,
+    DuplicateCommand,
+    WorkItemExists,
+    WorkItemMissing,
+    InvalidTransition,
+    DependencyMissing,
+    ArchivedMutation,
+    NoopMutation,
+    CheckpointConflict,
+}
+
+impl ProjectOpsErrorCode {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::InvalidCommand => "invalid_command",
+            Self::DuplicateCommand => "duplicate_command",
+            Self::WorkItemExists => "work_item_exists",
+            Self::WorkItemMissing => "work_item_missing",
+            Self::InvalidTransition => "invalid_transition",
+            Self::DependencyMissing => "dependency_missing",
+            Self::ArchivedMutation => "archived_mutation",
+            Self::NoopMutation => "noop_mutation",
+            Self::CheckpointConflict => "checkpoint_conflict",
+        }
+    }
+
+    pub const fn all() -> &'static [Self] {
+        &[
+            Self::InvalidCommand,
+            Self::DuplicateCommand,
+            Self::WorkItemExists,
+            Self::WorkItemMissing,
+            Self::InvalidTransition,
+            Self::DependencyMissing,
+            Self::ArchivedMutation,
+            Self::NoopMutation,
+            Self::CheckpointConflict,
+        ]
+    }
+}
+
+pub fn project_ops_error(code: ProjectOpsErrorCode, message: impl AsRef<str>) -> String {
+    format!("project_ops.{}: {}", code.label(), message.as_ref())
 }
 
 const COMMAND_ENVELOPE_FIELDS: [&str; 4] = [
@@ -381,6 +430,7 @@ pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
             },
         ],
         streams: step0_stream_specs().to_vec(),
+        error_codes: ProjectOpsErrorCode::all().to_vec(),
     }
 }
 
@@ -959,7 +1009,8 @@ mod tests {
         ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsActor,
         ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCommandName,
         ProjectOpsCreateWorkItem, ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFields,
-        ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityKind, ProjectOpsSetBlockedReason,
+        ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityKind, ProjectOpsErrorCode,
+        ProjectOpsSetBlockedReason,
         ProjectOpsWorkItemArchived, ProjectOpsWorkItemAssigned, ProjectOpsWorkItemDraft,
         ProjectOpsWorkItemRef, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
         PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_PRIMARY_SOURCE_BADGE,
@@ -1087,6 +1138,7 @@ mod tests {
             ProjectOpsAcceptedEventName::all().len()
         );
         assert_eq!(manifest.streams, step0_stream_specs().to_vec());
+        assert_eq!(manifest.error_codes, ProjectOpsErrorCode::all().to_vec());
     }
 
     #[test]
