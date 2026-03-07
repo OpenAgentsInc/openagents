@@ -9,19 +9,22 @@ pub mod service;
 pub mod views;
 
 pub const PROJECT_OPS_FEATURE_ENV: &str = "OPENAGENTS_ENABLE_PROJECT_OPS";
-pub const PROJECT_OPS_SOURCE_BADGE: &str = "source: local";
+pub const PROJECT_OPS_SOURCE_BADGE: &str = contract::PROJECT_OPS_PRIMARY_SOURCE_BADGE;
 
 #[allow(unused_imports)]
 pub use contract::{
+    project_ops_phase1_sync_contract, project_ops_required_stream_grants,
     project_ops_v1_contract_manifest, step0_stream_specs, ProjectOpsAcceptedEvent,
     ProjectOpsAcceptedEventContractSpec, ProjectOpsAcceptedEventEnvelope,
-    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCommand,
+    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCheckpointRule, ProjectOpsCommand,
     ProjectOpsCommandContractSpec, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
     ProjectOpsCommandName, ProjectOpsContractManifest, ProjectOpsDeliveryPhase,
     ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityContractSpec, ProjectOpsEntityKind,
-    ProjectOpsStreamSpec, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-    PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-    PROJECT_OPS_V1_CONTRACT_VERSION, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract,
+    PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
+    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+    PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 
 #[allow(unused_imports)]
@@ -150,6 +153,7 @@ impl Default for ProjectOpsPaneState {
             )
         };
         let contract_manifest = project_ops_v1_contract_manifest();
+        let sync_contract = project_ops_phase1_sync_contract();
         let (load_state, last_error, last_action, source_badge, summary, status_note) =
             if feature_enabled {
                 (
@@ -168,7 +172,7 @@ impl Default for ProjectOpsPaneState {
                         PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
                     ),
                     format!(
-                        "Step 0 schema v{} and PM contract {} are frozen with workflow {} and priorities {} across {} entities, {} commands, {} accepted events, and {} canonical PM streams. PM streams are registered as {}, {}, {}, and {} with local projection documents, shared checkpoint rows, and a deterministic reducer/service loop ready for replay-safe apply.",
+                        "Step 0 schema v{} and PM contract {} are frozen with workflow {} and priorities {} across {} entities, {} commands, {} accepted events, and {} canonical PM streams. PM streams are registered as {}, {}, {}, and {} with local projection documents, shared checkpoint rows, source badge {}, sync badge {}, and a reserved grant set of {} streams for later bootstrap wiring.",
                         PROJECT_OPS_STEP0_SCHEMA_VERSION,
                         PROJECT_OPS_V1_CONTRACT_VERSION,
                         ProjectOpsWorkItemStatus::workflow_summary(),
@@ -181,6 +185,9 @@ impl Default for ProjectOpsPaneState {
                         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
                         PROJECT_OPS_CYCLES_STREAM_ID,
                         PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+                        PROJECT_OPS_PRIMARY_SOURCE_BADGE,
+                        PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE,
+                        sync_contract.required_stream_grants.len(),
                     ),
                 )
             } else {

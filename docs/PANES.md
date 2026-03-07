@@ -25,7 +25,9 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 - `Project Ops`
   - Native PM shell reserved for the Step 0 project-management slice.
   - Hidden by default behind `OPENAGENTS_ENABLE_PROJECT_OPS=1` until the PM stream-backed thin slice is ready.
-  - Current shell shows feature-gate state, active default view, and the staged follow-up path for work items, cycles, and replay-safe projections.
+  - Current shell shows feature-gate state, active default view, reserved PM stream grants, and the staged follow-up path for work items, cycles, and replay-safe projections.
+  - Primary pane badge is `source: stream.pm.work_items.v1` because visible list/detail state comes from local replay-safe PM projection documents keyed by canonical PM stream ids.
+  - PM sync/bootstrap diagnostics inside the pane may use `source: spacetime.sync.lifecycle`, but PM work-item values must not be labeled as live Spacetime authority during Phase 1.
   - Action: read-only shell for now.
 - `Codex Account`
   - Account auth and rate-limit controls (`account/read`, login start/cancel, logout, rate limits read).
@@ -202,7 +204,7 @@ Badge semantics:
 Current pane badge mapping:
 
 - `Autopilot Chat`: `source: local`
-- `Project Ops`: `source: local`
+- `Project Ops`: `source: stream.pm.work_items.v1`
 - `Codex Account`: `source: codex`
 - `Codex Models`: `source: codex`
 - `Codex Config`: `source: codex`

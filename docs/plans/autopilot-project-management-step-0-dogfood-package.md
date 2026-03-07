@@ -450,6 +450,30 @@ Step 0 is not the live collaboration cutover, but it must stay aligned with it:
 - Source badges must not imply live Spacetime authority before it exists.
 - If remote checkpoints are later hydrated for PM streams, local Step 0 behavior must remain deterministic and restart-safe.
 
+### 4.7 Phase 1 badge, grant, and checkpoint rules
+
+Use these exact truth rules in Step 0 and Phase 1:
+
+- Primary pane badge
+  - `source: stream.pm.work_items.v1`
+  - use for visible PM list/detail state coming from local PM projection documents
+- Sync/bootstrap diagnostics badge
+  - `source: spacetime.sync.lifecycle`
+  - use only for sync lifecycle, grant failures, checkpoint hydration, and rebootstrap diagnostics
+- Reserved PM stream grants for later bootstrap wiring
+  - `stream.pm.work_items.v1`
+  - `stream.pm.activity_projection.v1`
+  - `stream.pm.cycles.v1`
+  - `stream.pm.saved_views.v1`
+- Checkpoint rules
+  - duplicate `seq <= checkpoint` is dropped
+  - out-of-order delivery requires explicit rebootstrap or checkpoint rewind
+  - stale cursor resumes from `max(local_checkpoint, remote_head - stale_clamp_window)`
+  - remote checkpoint adoption only happens when it moves the local checkpoint forward
+- Live-vs-local truth
+  - PM work-item values stay local/replay-safe in Phase 1.
+  - Live remote PM reducers/subscriptions are later work only after ADR approval.
+
 ---
 
 ## 5. Pilot operating rules
