@@ -13,31 +13,30 @@ pub const PROJECT_OPS_SOURCE_BADGE: &str = contract::PROJECT_OPS_PRIMARY_SOURCE_
 
 #[allow(unused_imports)]
 pub use contract::{
-    project_ops_phase1_sync_contract, project_ops_required_stream_grants,
-    project_ops_v1_contract_manifest, step0_stream_specs, project_ops_error,
-    ProjectOpsAcceptedEvent,
-    ProjectOpsAcceptedEventContractSpec, ProjectOpsAcceptedEventEnvelope,
-    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCheckpointRule, ProjectOpsCommand,
-    ProjectOpsCommandContractSpec, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
-    ProjectOpsCommandName, ProjectOpsContractManifest, ProjectOpsDeliveryPhase,
-    ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityContractSpec, ProjectOpsEntityKind,
-    ProjectOpsErrorCode, ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
     PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
     PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
-    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventContractSpec,
+    ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsActor,
+    ProjectOpsCheckpointRule, ProjectOpsCommand, ProjectOpsCommandContractSpec,
+    ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCommandName,
+    ProjectOpsContractManifest, ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFieldsPatch,
+    ProjectOpsEntityContractSpec, ProjectOpsEntityKind, ProjectOpsErrorCode,
+    ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract, project_ops_error,
+    project_ops_phase1_sync_contract, project_ops_required_stream_grants,
+    project_ops_v1_contract_manifest, step0_stream_specs,
 };
 
 #[allow(unused_imports)]
 pub use schema::{
-    PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority,
-    ProjectOpsTeamKey, ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+    PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey,
+    ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
 };
 
 #[allow(unused_imports)]
 pub use projection::{
-    ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
-    PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
+    PROJECT_OPS_PROJECTION_SCHEMA_VERSION, ProjectOpsActivityRow, ProjectOpsCycleRow,
+    ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
 };
 
 #[allow(unused_imports)]
@@ -47,15 +46,15 @@ pub use editor::{ProjectOpsDetailDraft, ProjectOpsQuickCreateDraft};
 pub use service::{ProjectOpsCommandApplyResult, ProjectOpsCommandResult, ProjectOpsService};
 
 #[allow(unused_imports)]
-pub use pilot::{ProjectOpsPilotMetricsState, PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION};
+pub use pilot::{PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION, ProjectOpsPilotMetricsState};
 
 #[allow(unused_imports)]
 pub use views::{
-    builtin_saved_view_specs, current_operator_label, empty_state_copy_for_view,
-    filter_chips_for_view, filter_work_items_for_view, view_title_for_id,
-    ProjectOpsBuiltinSavedViewSpec, PROJECT_OPS_BLOCKED_VIEW_ID,
-    PROJECT_OPS_CURRENT_CYCLE_VIEW_ID, PROJECT_OPS_DEFAULT_VIEW_ID,
+    PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CURRENT_CYCLE_VIEW_ID, PROJECT_OPS_DEFAULT_VIEW_ID,
     PROJECT_OPS_MY_WORK_VIEW_ID, PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID,
+    ProjectOpsBuiltinSavedViewSpec, builtin_saved_view_specs, current_operator_label,
+    empty_state_copy_for_view, filter_chips_for_view, filter_work_items_for_view,
+    view_title_for_id,
 };
 
 pub fn project_ops_enabled_from_env() -> bool {
@@ -68,6 +67,65 @@ pub fn project_ops_enabled_from_env() -> bool {
             )
         })
         .unwrap_or(false)
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectOpsSyncStreamStatus {
+    pub stream_id: String,
+    pub granted: bool,
+    pub checkpoint_seq: u64,
+    pub resume_cursor_seq: u64,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct ProjectOpsSyncDiagnostics {
+    pub source_badge: String,
+    pub bootstrap_state: String,
+    pub bootstrap_note: Option<String>,
+    pub bootstrap_error: Option<String>,
+    pub lifecycle_state: Option<String>,
+    pub last_disconnect_reason: Option<String>,
+    pub stale_cursor_recovery_required: bool,
+    pub replay_cursor_seq: Option<u64>,
+    pub replay_target_seq: Option<u64>,
+    pub required_stream_grants: Vec<String>,
+    pub granted_stream_grants: Vec<String>,
+    pub missing_stream_grants: Vec<String>,
+    pub streams: Vec<ProjectOpsSyncStreamStatus>,
+}
+
+impl Default for ProjectOpsSyncDiagnostics {
+    fn default() -> Self {
+        Self {
+            source_badge: PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE.to_string(),
+            bootstrap_state: "idle".to_string(),
+            bootstrap_note: None,
+            bootstrap_error: None,
+            lifecycle_state: None,
+            last_disconnect_reason: None,
+            stale_cursor_recovery_required: false,
+            replay_cursor_seq: None,
+            replay_target_seq: None,
+            required_stream_grants: project_ops_required_stream_grants()
+                .into_iter()
+                .map(ToString::to_string)
+                .collect(),
+            granted_stream_grants: Vec::new(),
+            missing_stream_grants: project_ops_required_stream_grants()
+                .into_iter()
+                .map(ToString::to_string)
+                .collect(),
+            streams: project_ops_required_stream_grants()
+                .into_iter()
+                .map(|stream_id| ProjectOpsSyncStreamStatus {
+                    stream_id: stream_id.to_string(),
+                    granted: false,
+                    checkpoint_seq: 0,
+                    resume_cursor_seq: 0,
+                })
+                .collect(),
+        }
+    }
 }
 
 pub struct ProjectOpsPaneState {
@@ -94,6 +152,7 @@ pub struct ProjectOpsPaneState {
     pub source_badge: String,
     pub summary: String,
     pub status_note: String,
+    pub sync_diagnostics: ProjectOpsSyncDiagnostics,
     pub local_store: ProjectOpsProjectionStore,
 }
 
@@ -207,7 +266,8 @@ impl Default for ProjectOpsPaneState {
             };
 
         let last_action = last_action.or_else(|| {
-            feature_enabled.then(|| "Project Ops shell ready behind project_ops feature gate".to_string())
+            feature_enabled
+                .then(|| "Project Ops shell ready behind project_ops feature gate".to_string())
         });
         let detail_draft = selected_work_item_id
             .as_ref()
@@ -219,7 +279,7 @@ impl Default for ProjectOpsPaneState {
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
 
-        Self {
+        let mut state = Self {
             load_state,
             last_error,
             last_action,
@@ -243,8 +303,13 @@ impl Default for ProjectOpsPaneState {
             source_badge,
             summary,
             status_note,
+            sync_diagnostics: ProjectOpsSyncDiagnostics::default(),
             local_store,
+        };
+        if feature_enabled {
+            state.sync_runtime_contract_state(None, None, &[], None);
         }
+        state
     }
 }
 
@@ -282,7 +347,7 @@ impl ProjectOpsPaneState {
                     .cloned()
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
-        Self {
+        let mut state = Self {
             load_state: local_store.load_state,
             last_error: local_store.last_error.clone(),
             last_action: local_store.last_action.clone(),
@@ -306,8 +371,11 @@ impl ProjectOpsPaneState {
             source_badge: local_store.source_badge(),
             summary: "Test PM pane".to_string(),
             status_note: "Test PM pane".to_string(),
+            sync_diagnostics: ProjectOpsSyncDiagnostics::default(),
             local_store,
-        }
+        };
+        state.sync_runtime_contract_state(None, None, &[], None);
+        state
     }
 
     pub fn selected_work_item(&self) -> Option<&ProjectOpsWorkItem> {
@@ -324,7 +392,9 @@ impl ProjectOpsPaneState {
         }
         self.active_saved_view_id = normalized.to_string();
         self.refresh_derived_view_state();
-        let _ = self.pilot_metrics.record_view(self.active_saved_view_id.as_str());
+        let _ = self
+            .pilot_metrics
+            .record_view(self.active_saved_view_id.as_str());
         self.last_action = Some(format!("Project Ops view -> {}", self.active_saved_view));
         true
     }
@@ -409,7 +479,105 @@ impl ProjectOpsPaneState {
         self.available_saved_views = available_saved_views;
         self.load_state = self.local_store.load_state;
         self.last_error = self.local_store.last_error.clone();
+        self.refresh_sync_diagnostic_stream_rows();
         self.sync_detail_draft_from_selection();
+    }
+
+    pub fn sync_runtime_contract_state(
+        &mut self,
+        sync_bootstrap_note: Option<&str>,
+        sync_bootstrap_error: Option<&str>,
+        granted_stream_grants: &[String],
+        sync_lifecycle_snapshot: Option<&crate::sync_lifecycle::RuntimeSyncHealthSnapshot>,
+    ) {
+        if !self.feature_enabled {
+            return;
+        }
+        if let Err(error) = self.local_store.reload_shared_checkpoints() {
+            self.sync_diagnostics.bootstrap_state = "checkpoint_error".to_string();
+            self.sync_diagnostics.bootstrap_error = Some(error);
+            return;
+        }
+
+        self.sync_diagnostics.bootstrap_note = sync_bootstrap_note.map(ToString::to_string);
+        self.sync_diagnostics.bootstrap_error = sync_bootstrap_error.map(ToString::to_string);
+        self.sync_diagnostics.lifecycle_state =
+            sync_lifecycle_snapshot.map(|snapshot| snapshot.state.as_str().to_string());
+        self.sync_diagnostics.last_disconnect_reason =
+            sync_lifecycle_snapshot.and_then(|snapshot| {
+                snapshot
+                    .last_disconnect_reason
+                    .map(|reason| reason.as_str().to_string())
+            });
+        self.sync_diagnostics.stale_cursor_recovery_required =
+            sync_lifecycle_snapshot.is_some_and(|snapshot| {
+                snapshot.last_disconnect_reason
+                    == Some(crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor)
+            });
+        self.sync_diagnostics.replay_cursor_seq =
+            sync_lifecycle_snapshot.and_then(|snapshot| snapshot.replay_cursor_seq);
+        self.sync_diagnostics.replay_target_seq =
+            sync_lifecycle_snapshot.and_then(|snapshot| snapshot.replay_target_seq);
+        self.sync_diagnostics.granted_stream_grants = granted_stream_grants
+            .iter()
+            .filter(|grant| {
+                project_ops_required_stream_grants()
+                    .into_iter()
+                    .any(|stream_id| {
+                        crate::sync_bootstrap::stream_grant_allows(grant.as_str(), stream_id)
+                    })
+            })
+            .cloned()
+            .collect();
+        self.sync_diagnostics.missing_stream_grants = project_ops_required_stream_grants()
+            .into_iter()
+            .filter(|stream_id| {
+                !granted_stream_grants.iter().any(|grant| {
+                    crate::sync_bootstrap::stream_grant_allows(grant.as_str(), stream_id)
+                })
+            })
+            .map(ToString::to_string)
+            .collect();
+
+        self.sync_diagnostics.bootstrap_state = if sync_bootstrap_error.is_some() {
+            "bootstrap_error".to_string()
+        } else if self.sync_diagnostics.stale_cursor_recovery_required {
+            "stale_cursor_recovery_required".to_string()
+        } else if sync_bootstrap_note.is_some_and(|note| note.contains("disabled")) {
+            "sync_disabled".to_string()
+        } else if !granted_stream_grants.is_empty()
+            && !self.sync_diagnostics.missing_stream_grants.is_empty()
+        {
+            "missing_grants".to_string()
+        } else if let Some(snapshot) = sync_lifecycle_snapshot {
+            snapshot.state.as_str().to_string()
+        } else {
+            "idle".to_string()
+        };
+
+        self.refresh_sync_diagnostic_stream_rows();
+    }
+
+    fn refresh_sync_diagnostic_stream_rows(&mut self) {
+        self.sync_diagnostics.streams = project_ops_required_stream_grants()
+            .into_iter()
+            .map(|stream_id| {
+                let checkpoint_seq = self.local_store.checkpoint_for(stream_id).unwrap_or(0);
+                ProjectOpsSyncStreamStatus {
+                    stream_id: stream_id.to_string(),
+                    granted: self
+                        .sync_diagnostics
+                        .granted_stream_grants
+                        .iter()
+                        .any(|grant| crate::sync_bootstrap::stream_grant_allows(grant, stream_id)),
+                    checkpoint_seq,
+                    resume_cursor_seq: self
+                        .local_store
+                        .resume_cursor_for_stream(stream_id, Some(checkpoint_seq))
+                        .unwrap_or(checkpoint_seq),
+                }
+            })
+            .collect();
     }
 
     pub fn set_quick_create_title(&mut self, title: &str) {
@@ -506,7 +674,9 @@ impl ProjectOpsPaneState {
                 actor_label: Some(self.operator_label.clone()),
             },
             command: ProjectOpsCommand::CreateWorkItem(contract::ProjectOpsCreateWorkItem {
-                draft: self.quick_create_draft.to_work_item_draft(work_item_id.clone()),
+                draft: self
+                    .quick_create_draft
+                    .to_work_item_draft(work_item_id.clone()),
             }),
         };
         let result = ProjectOpsService::apply_command_to_store(&mut self.local_store, command)?;
@@ -675,7 +845,9 @@ impl ProjectOpsPaneState {
             .iter()
             .map(String::as_str)
             .collect::<Vec<_>>();
-        let _ = self.pilot_metrics.record_commands(command_labels.as_slice());
+        let _ = self
+            .pilot_metrics
+            .record_commands(command_labels.as_slice());
         self.detail_save_status = Some(if applied_any {
             "Detail changes applied".to_string()
         } else {
@@ -757,7 +929,10 @@ fn derive_project_ops_view_state(
                 active_saved_view
             ))
         } else {
-            Some(format!("Selected item {} no longer exists.", selected.as_str()))
+            Some(format!(
+                "Selected item {} no longer exists.",
+                selected.as_str()
+            ))
         }
     });
     let selected_work_item_id = selected_work_item_id
@@ -767,7 +942,11 @@ fn derive_project_ops_view_state(
                 .iter()
                 .any(|item| item.work_item_id == *selected)
         })
-        .or_else(|| visible_work_items.first().map(|item| item.work_item_id.clone()));
+        .or_else(|| {
+            visible_work_items
+                .first()
+                .map(|item| item.work_item_id.clone())
+        });
     let empty_state_copy = empty_state_copy_for_view(active_saved_view_id).to_string();
     let visible_activity_rows = selected_work_item_id
         .as_ref()
@@ -826,16 +1005,17 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use super::{
-        ProjectOpsPaneState, ProjectOpsPilotMetricsState, ProjectOpsService,
         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_BLOCKED_VIEW_ID,
         PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
-        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsPaneState,
+        ProjectOpsPilotMetricsState, ProjectOpsService, project_ops_required_stream_grants,
     };
     use crate::project_ops::contract::{
-        ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsChangeWorkItemStatus,
-        ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCreateWorkItem,
-        ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch, ProjectOpsSetBlockedReason,
-        ProjectOpsSetWorkItemCycle, ProjectOpsWorkItemDraft,
+        ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName,
+        ProjectOpsChangeWorkItemStatus, ProjectOpsCommand, ProjectOpsCommandEnvelope,
+        ProjectOpsCommandId, ProjectOpsCreateWorkItem, ProjectOpsEditWorkItemFields,
+        ProjectOpsEditWorkItemFieldsPatch, ProjectOpsSetBlockedReason, ProjectOpsSetWorkItemCycle,
+        ProjectOpsWorkItemDraft,
     };
     use crate::project_ops::projection::{
         ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore,
@@ -852,8 +1032,9 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos());
         let counter = UNIQUE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir()
-            .join(format!("openagents-project-ops-pane-{name}-{nanos}-{counter}.json"))
+        std::env::temp_dir().join(format!(
+            "openagents-project-ops-pane-{name}-{nanos}-{counter}.json"
+        ))
     }
 
     fn work_item(
@@ -911,7 +1092,13 @@ mod tests {
             .apply_work_items_projection(
                 1,
                 vec![
-                    work_item("wi-1", ProjectOpsWorkItemStatus::Todo, Some("cdavid"), None, 10),
+                    work_item(
+                        "wi-1",
+                        ProjectOpsWorkItemStatus::Todo,
+                        Some("cdavid"),
+                        None,
+                        10,
+                    ),
                     work_item(
                         "wi-2",
                         ProjectOpsWorkItemStatus::InProgress,
@@ -919,7 +1106,13 @@ mod tests {
                         Some("Waiting on upstream"),
                         30,
                     ),
-                    work_item("wi-3", ProjectOpsWorkItemStatus::Done, Some("cdavid"), None, 20),
+                    work_item(
+                        "wi-3",
+                        ProjectOpsWorkItemStatus::Done,
+                        Some("cdavid"),
+                        None,
+                        20,
+                    ),
                 ],
             )
             .expect("work item projection should apply");
@@ -1044,11 +1237,7 @@ mod tests {
         format!("{root}/tests/goldens/project_ops_stream_projection_snapshot.json")
     }
 
-    fn assert_or_write_pm_fixture(
-        path: &str,
-        snapshot: &ProjectOpsGoldenSnapshot,
-        label: &str,
-    ) {
+    fn assert_or_write_pm_fixture(path: &str, snapshot: &ProjectOpsGoldenSnapshot, label: &str) {
         let actual_json =
             serde_json::to_string_pretty(snapshot).expect("PM golden snapshot should serialize");
         if std::env::var("PROJECT_OPS_UPDATE_GOLDENS").as_deref() == Ok("1") {
@@ -1261,26 +1450,35 @@ mod tests {
                     priority: item.priority.label().to_string(),
                     assignee: item.assignee.clone(),
                     blocked_reason: item.blocked_reason.clone(),
-                    cycle_id: item.cycle_id.as_ref().map(|cycle_id| cycle_id.as_str().to_string()),
+                    cycle_id: item
+                        .cycle_id
+                        .as_ref()
+                        .map(|cycle_id| cycle_id.as_str().to_string()),
                     updated_at_unix_ms: item.updated_at_unix_ms,
                 })
                 .collect(),
-            detail: pane.detail_draft.as_ref().map(|detail| ProjectOpsGoldenDetail {
-                work_item_id: detail.work_item_id.as_str().to_string(),
-                title: detail.title.clone(),
-                description: detail.description.clone(),
-                status: detail.status.label().to_string(),
-                priority: detail.priority.label().to_string(),
-                assignee: detail.assignee.clone(),
-                cycle_id: detail.cycle_id.as_ref().map(|cycle_id| cycle_id.as_str().to_string()),
-                parent_id: detail
-                    .parent_id
-                    .as_ref()
-                    .map(|parent_id| parent_id.as_str().to_string()),
-                blocked_reason: detail.blocked_reason.clone(),
-                created_at_unix_ms: detail.created_at_unix_ms,
-                updated_at_unix_ms: detail.updated_at_unix_ms,
-            }),
+            detail: pane
+                .detail_draft
+                .as_ref()
+                .map(|detail| ProjectOpsGoldenDetail {
+                    work_item_id: detail.work_item_id.as_str().to_string(),
+                    title: detail.title.clone(),
+                    description: detail.description.clone(),
+                    status: detail.status.label().to_string(),
+                    priority: detail.priority.label().to_string(),
+                    assignee: detail.assignee.clone(),
+                    cycle_id: detail
+                        .cycle_id
+                        .as_ref()
+                        .map(|cycle_id| cycle_id.as_str().to_string()),
+                    parent_id: detail
+                        .parent_id
+                        .as_ref()
+                        .map(|parent_id| parent_id.as_str().to_string()),
+                    blocked_reason: detail.blocked_reason.clone(),
+                    created_at_unix_ms: detail.created_at_unix_ms,
+                    updated_at_unix_ms: detail.updated_at_unix_ms,
+                }),
             activity_rows: pane
                 .visible_activity_rows
                 .iter()
@@ -1307,7 +1505,9 @@ mod tests {
             vec!["wi-2", "wi-1"]
         );
         assert_eq!(
-            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            pane.selected_work_item_id
+                .as_ref()
+                .map(|item| item.as_str()),
             Some("wi-2")
         );
         assert_eq!(
@@ -1322,7 +1522,9 @@ mod tests {
         let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
         assert!(pane.move_selection(1));
         assert_eq!(
-            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            pane.selected_work_item_id
+                .as_ref()
+                .map(|item| item.as_str()),
             Some("wi-1")
         );
         assert!(!pane.move_selection(1));
@@ -1337,7 +1539,9 @@ mod tests {
             vec!["wi-2"]
         );
         assert_eq!(
-            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            pane.selected_work_item_id
+                .as_ref()
+                .map(|item| item.as_str()),
             Some("wi-2")
         );
 
@@ -1345,6 +1549,120 @@ mod tests {
         assert!(pane.visible_work_items.is_empty());
         assert!(pane.selected_work_item_id.is_none());
         assert_eq!(pane.empty_state_copy, "No blocked work.");
+    }
+
+    #[test]
+    fn sync_runtime_contract_state_mirrors_pm_grants_and_shared_checkpoints() {
+        let work_items_path = unique_temp_path("sync-work-items");
+        let activity_path = unique_temp_path("sync-activity");
+        let cycles_path = unique_temp_path("sync-cycles");
+        let saved_views_path = unique_temp_path("sync-saved-views");
+        let checkpoint_path = unique_temp_path("sync-checkpoints");
+
+        let store = ProjectOpsProjectionStore::from_paths_for_tests(
+            work_items_path,
+            activity_path,
+            cycles_path,
+            saved_views_path,
+            checkpoint_path.clone(),
+        );
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(store, "cdavid");
+        let mut shared = crate::sync_apply::SyncApplyEngine::load_or_new(
+            checkpoint_path,
+            crate::sync_apply::SyncApplyPolicy::default(),
+        )
+        .expect("shared checkpoint engine should initialize");
+        for stream_id in project_ops_required_stream_grants() {
+            shared
+                .ensure_stream_registered(stream_id)
+                .expect("PM stream should register");
+        }
+        shared
+            .adopt_checkpoint_if_newer(PROJECT_OPS_WORK_ITEMS_STREAM_ID, 7)
+            .expect("work item checkpoint should adopt");
+        shared
+            .adopt_checkpoint_if_newer(PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, 5)
+            .expect("activity checkpoint should adopt");
+        shared
+            .adopt_checkpoint_if_newer(PROJECT_OPS_CYCLES_STREAM_ID, 3)
+            .expect("cycle checkpoint should adopt");
+
+        let mut lifecycle = crate::sync_lifecycle::RuntimeSyncLifecycleManager::default();
+        let worker_id = "desktopw:sync";
+        lifecycle.mark_connecting(worker_id);
+        lifecycle.mark_replay_bootstrap(worker_id, 5, Some(7));
+        lifecycle.mark_live(worker_id, Some(120));
+        let snapshot = lifecycle.snapshot(worker_id);
+
+        pane.sync_runtime_contract_state(
+            Some("Minted sync token and hydrated 3 remote checkpoints"),
+            None,
+            &["stream.pm.*".to_string()],
+            snapshot.as_ref(),
+        );
+
+        assert_eq!(pane.sync_diagnostics.bootstrap_state, "live");
+        assert!(
+            pane.sync_diagnostics.missing_stream_grants.is_empty(),
+            "wildcard PM grant should satisfy all PM streams"
+        );
+        assert_eq!(
+            pane.local_store
+                .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID),
+            Some(7)
+        );
+        assert_eq!(
+            pane.sync_diagnostics
+                .streams
+                .iter()
+                .find(|stream| stream.stream_id == PROJECT_OPS_WORK_ITEMS_STREAM_ID)
+                .map(|stream| (
+                    stream.granted,
+                    stream.checkpoint_seq,
+                    stream.resume_cursor_seq
+                )),
+            Some((true, 7, 7))
+        );
+    }
+
+    #[test]
+    fn sync_runtime_contract_state_keeps_missing_grants_and_stale_cursor_explicit() {
+        let pane_store = sample_store();
+        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(pane_store, "cdavid");
+        let mut lifecycle = crate::sync_lifecycle::RuntimeSyncLifecycleManager::default();
+        let worker_id = "desktopw:sync";
+        lifecycle.mark_connecting(worker_id);
+        let _ = lifecycle.mark_disconnect(
+            worker_id,
+            crate::sync_lifecycle::RuntimeSyncDisconnectReason::StaleCursor,
+            Some("stale_cursor; replay bootstrap required".to_string()),
+        );
+        let snapshot = lifecycle.snapshot(worker_id);
+
+        pane.sync_runtime_contract_state(
+            Some("Minted sync token without the full PM grant set"),
+            None,
+            &["stream.pm.work_items.v1".to_string()],
+            snapshot.as_ref(),
+        );
+
+        assert_eq!(
+            pane.sync_diagnostics.bootstrap_state,
+            "stale_cursor_recovery_required"
+        );
+        assert!(pane.sync_diagnostics.stale_cursor_recovery_required);
+        assert_eq!(
+            pane.sync_diagnostics.last_disconnect_reason.as_deref(),
+            Some("stale_cursor")
+        );
+        assert_eq!(
+            pane.sync_diagnostics.missing_stream_grants,
+            vec![
+                PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID.to_string(),
+                PROJECT_OPS_CYCLES_STREAM_ID.to_string(),
+                PROJECT_OPS_SAVED_VIEWS_STREAM_ID.to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -1363,10 +1681,14 @@ mod tests {
             pane.local_store
                 .work_items
                 .iter()
-                .any(|item| item.work_item_id == created_id && item.status == ProjectOpsWorkItemStatus::Backlog)
+                .any(|item| item.work_item_id == created_id
+                    && item.status == ProjectOpsWorkItemStatus::Backlog)
         );
         assert_eq!(pane.quick_create_draft.title, "");
-        assert_eq!(pane.detail_save_status.as_deref(), Some("Quick create applied"));
+        assert_eq!(
+            pane.detail_save_status.as_deref(),
+            Some("Quick create applied")
+        );
     }
 
     #[test]
@@ -1379,7 +1701,10 @@ mod tests {
         pane.set_detail_assignee(Some("teammate"));
         pane.set_detail_blocked_reason(Some("Waiting on design"));
 
-        assert!(pane.apply_detail_draft().expect("detail apply should succeed"));
+        assert!(
+            pane.apply_detail_draft()
+                .expect("detail apply should succeed")
+        );
 
         let updated = pane
             .local_store
@@ -1393,7 +1718,10 @@ mod tests {
         assert_eq!(updated.priority, ProjectOpsPriority::Urgent);
         assert_eq!(updated.assignee.as_deref(), Some("teammate"));
         assert_eq!(updated.blocked_reason.as_deref(), Some("Waiting on design"));
-        assert_eq!(pane.detail_save_status.as_deref(), Some("Detail changes applied"));
+        assert_eq!(
+            pane.detail_save_status.as_deref(),
+            Some("Detail changes applied")
+        );
     }
 
     #[test]
@@ -1410,7 +1738,9 @@ mod tests {
 
         assert!(pane.set_search_query("wi-1"));
         assert_eq!(
-            pane.selected_work_item_id.as_ref().map(|item| item.as_str()),
+            pane.selected_work_item_id
+                .as_ref()
+                .map(|item| item.as_str()),
             Some("wi-1")
         );
         assert!(
@@ -1431,17 +1761,18 @@ mod tests {
     fn scripted_pilot_cycle_records_command_and_view_usage() {
         let metrics_path = unique_temp_path("pilot-metrics");
         let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
-        pane.pilot_metrics = ProjectOpsPilotMetricsState::from_metrics_path_for_tests(
-            metrics_path.clone(),
-        )
-        .expect("pilot metrics should initialize");
-        pane
-            .pilot_metrics
+        pane.pilot_metrics =
+            ProjectOpsPilotMetricsState::from_metrics_path_for_tests(metrics_path.clone())
+                .expect("pilot metrics should initialize");
+        pane.pilot_metrics
             .record_view(pane.active_saved_view_id.as_str())
             .expect("default view should record");
 
         pane.edit_detail_title("Pilot cycle edit");
-        assert!(pane.apply_detail_draft().expect("detail apply should succeed"));
+        assert!(
+            pane.apply_detail_draft()
+                .expect("detail apply should succeed")
+        );
 
         pane.set_quick_create_title("Pilot cycle task");
         pane.set_quick_create_description("Created during scripted pilot cycle");
@@ -1458,8 +1789,14 @@ mod tests {
 
         let restored = ProjectOpsPilotMetricsState::from_metrics_path_for_tests(metrics_path)
             .expect("pilot metrics should reload");
-        assert_eq!(restored.view_counts.get(PROJECT_OPS_MY_WORK_VIEW_ID), Some(&1));
-        assert_eq!(restored.view_counts.get(PROJECT_OPS_BLOCKED_VIEW_ID), Some(&1));
+        assert_eq!(
+            restored.view_counts.get(PROJECT_OPS_MY_WORK_VIEW_ID),
+            Some(&1)
+        );
+        assert_eq!(
+            restored.view_counts.get(PROJECT_OPS_BLOCKED_VIEW_ID),
+            Some(&1)
+        );
         assert_eq!(restored.command_counts.get("CreateWorkItem"), Some(&1));
         assert_eq!(restored.command_counts.get("EditWorkItemFields"), Some(&1));
         assert_eq!(

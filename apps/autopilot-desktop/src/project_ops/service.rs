@@ -1,8 +1,8 @@
 use super::contract::{
-    project_ops_error, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
-    ProjectOpsActor, ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
-    ProjectOpsEditWorkItemFieldsPatch, ProjectOpsErrorCode,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope, ProjectOpsActor, ProjectOpsCommand,
+    ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsEditWorkItemFieldsPatch,
+    ProjectOpsErrorCode, project_ops_error,
 };
 use super::projection::{ProjectOpsActivityRow, ProjectOpsProjectionStore};
 use super::schema::{ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus};
@@ -60,6 +60,7 @@ impl ProjectOpsService {
         envelope
             .validate()
             .map_err(|error| project_ops_error(ProjectOpsErrorCode::InvalidCommand, error))?;
+        self.projections.reload_shared_checkpoints()?;
         if self.command_already_applied(&envelope.command_id) {
             return Ok(ProjectOpsCommandResult::DuplicateCommand {
                 command_id: envelope.command_id,
@@ -88,23 +89,24 @@ impl ProjectOpsService {
 
         self.projections
             .apply_work_items_projection(work_items_seq, next_work_items)?;
-        self.projections
-            .apply_activity_projection(activity_seq, push_activity_row(
-                self.projections.activity_rows.clone(),
-                activity_row,
-            ))?;
+        self.projections.apply_activity_projection(
+            activity_seq,
+            push_activity_row(self.projections.activity_rows.clone(), activity_row),
+        )?;
 
-        Ok(ProjectOpsCommandResult::Applied(ProjectOpsCommandApplyResult {
-            work_item_id,
-            accepted_events: vec![ProjectOpsAcceptedEventEnvelope {
-                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID.to_string(),
-                seq: work_items_seq,
-                command_id: envelope.command_id,
-                emitted_at_unix_ms: envelope.issued_at_unix_ms,
-                actor: envelope.actor,
-                event: accepted_event,
-            }],
-        }))
+        Ok(ProjectOpsCommandResult::Applied(
+            ProjectOpsCommandApplyResult {
+                work_item_id,
+                accepted_events: vec![ProjectOpsAcceptedEventEnvelope {
+                    stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID.to_string(),
+                    seq: work_items_seq,
+                    command_id: envelope.command_id,
+                    emitted_at_unix_ms: envelope.issued_at_unix_ms,
+                    actor: envelope.actor,
+                    event: accepted_event,
+                }],
+            },
+        ))
     }
 
     fn command_already_applied(&self, command_id: &ProjectOpsCommandId) -> bool {
@@ -118,7 +120,14 @@ impl ProjectOpsService {
         &self,
         envelope: &ProjectOpsCommandEnvelope,
         command: ProjectOpsCommand,
-    ) -> Result<(ProjectOpsWorkItemId, Vec<ProjectOpsWorkItem>, ProjectOpsAcceptedEvent), String> {
+    ) -> Result<
+        (
+            ProjectOpsWorkItemId,
+            Vec<ProjectOpsWorkItem>,
+            ProjectOpsAcceptedEvent,
+        ),
+        String,
+    > {
         let mut work_items = self.projections.work_items.clone();
         match command {
             ProjectOpsCommand::CreateWorkItem(command) => {
@@ -553,7 +562,11 @@ fn work_item_id_for_event(event: &ProjectOpsAcceptedEvent) -> ProjectOpsWorkItem
 fn activity_summary_for_event(event: &ProjectOpsAcceptedEvent) -> String {
     match event {
         ProjectOpsAcceptedEvent::WorkItemCreated { work_item } => {
-            format!("Created {} ({})", work_item.work_item_id.as_str(), work_item.title)
+            format!(
+                "Created {} ({})",
+                work_item.work_item_id.as_str(),
+                work_item.title
+            )
         }
         ProjectOpsAcceptedEvent::WorkItemFieldsEdited(event) => {
             format!("Edited fields on {}", event.work_item_id.as_str())
@@ -712,11 +725,11 @@ mod tests {
 
     use super::{ProjectOpsCommandResult, ProjectOpsService};
     use crate::project_ops::contract::{
+        PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
         ProjectOpsActor, ProjectOpsAssignWorkItem, ProjectOpsChangeWorkItemStatus,
-        ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCreateWorkItem,
-        ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch, ProjectOpsSetWorkItemCycle,
-        ProjectOpsWorkItemDraft, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-        PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
+        ProjectOpsCreateWorkItem, ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch,
+        ProjectOpsSetWorkItemCycle, ProjectOpsWorkItemDraft,
     };
     use crate::project_ops::projection::{ProjectOpsCycleRow, ProjectOpsProjectionStore};
     use crate::project_ops::schema::{
@@ -731,8 +744,9 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos());
         let counter = UNIQUE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir()
-            .join(format!("openagents-project-ops-service-{name}-{nanos}-{counter}.json"))
+        std::env::temp_dir().join(format!(
+            "openagents-project-ops-service-{name}-{nanos}-{counter}.json"
+        ))
     }
 
     fn actor() -> ProjectOpsActor {
@@ -742,7 +756,11 @@ mod tests {
         }
     }
 
-    fn command_envelope(command_id: &str, issued_at_unix_ms: u64, command: ProjectOpsCommand) -> ProjectOpsCommandEnvelope {
+    fn command_envelope(
+        command_id: &str,
+        issued_at_unix_ms: u64,
+        command: ProjectOpsCommand,
+    ) -> ProjectOpsCommandEnvelope {
         ProjectOpsCommandEnvelope {
             command_id: ProjectOpsCommandId::new(command_id).expect("command id"),
             issued_at_unix_ms,
@@ -801,7 +819,9 @@ mod tests {
                 draft: draft(ProjectOpsWorkItemStatus::Backlog),
             }),
         );
-        let result = service.apply_command(create).expect("create should succeed");
+        let result = service
+            .apply_command(create)
+            .expect("create should succeed");
         let ProjectOpsCommandResult::Applied(result) = result else {
             panic!("expected applied result");
         };
@@ -840,8 +860,66 @@ mod tests {
             panic!("expected applied edit");
         };
         assert_eq!(result.accepted_events.len(), 1);
-        assert_eq!(service.projections.work_items[0].title, "Ship deterministic PM reducer");
+        assert_eq!(
+            service.projections.work_items[0].title,
+            "Ship deterministic PM reducer"
+        );
         assert_eq!(service.projections.activity_rows.len(), 2);
+    }
+
+    #[test]
+    fn apply_command_reloads_shared_checkpoints_before_assigning_seq() {
+        let work_items_path = unique_temp_path("reload-work-items");
+        let activity_path = unique_temp_path("reload-activity");
+        let cycles_path = unique_temp_path("reload-cycles");
+        let saved_views_path = unique_temp_path("reload-saved-views");
+        let checkpoint_path = unique_temp_path("reload-checkpoints");
+        let store = ProjectOpsProjectionStore::from_paths_for_tests(
+            work_items_path,
+            activity_path,
+            cycles_path,
+            saved_views_path,
+            checkpoint_path.clone(),
+        );
+        let mut external = crate::sync_apply::SyncApplyEngine::load_or_new(
+            checkpoint_path,
+            crate::sync_apply::SyncApplyPolicy::default(),
+        )
+        .expect("external checkpoint engine should initialize");
+        external
+            .adopt_checkpoint_if_newer(PROJECT_OPS_WORK_ITEMS_STREAM_ID, 4)
+            .expect("work item checkpoint should adopt");
+        external
+            .adopt_checkpoint_if_newer(PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, 8)
+            .expect("activity checkpoint should adopt");
+
+        let mut service = ProjectOpsService::from_projection_store(store);
+        let result = service
+            .apply_command(command_envelope(
+                "cmd-reload",
+                1_762_000_000_000,
+                ProjectOpsCommand::CreateWorkItem(ProjectOpsCreateWorkItem {
+                    draft: draft(ProjectOpsWorkItemStatus::Backlog),
+                }),
+            ))
+            .expect("create should succeed with reloaded checkpoints");
+
+        let ProjectOpsCommandResult::Applied(result) = result else {
+            panic!("expected applied result");
+        };
+        assert_eq!(result.accepted_events[0].seq, 5);
+        assert_eq!(
+            service
+                .projections
+                .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID),
+            Some(5)
+        );
+        assert_eq!(
+            service
+                .projections
+                .checkpoint_for(PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID),
+            Some(9)
+        );
     }
 
     #[test]
@@ -896,7 +974,9 @@ mod tests {
                 draft: draft(ProjectOpsWorkItemStatus::Backlog),
             }),
         );
-        let _ = service.apply_command(create.clone()).expect("first apply should succeed");
+        let _ = service
+            .apply_command(create.clone())
+            .expect("first apply should succeed");
         let duplicate = service
             .apply_command(create)
             .expect("duplicate command should be handled");
@@ -958,7 +1038,10 @@ mod tests {
             .expect("existing cycle should allow assignment");
         assert!(matches!(result, ProjectOpsCommandResult::Applied(_)));
         assert_eq!(
-            service.projections.work_items[0].cycle_id.as_ref().map(|cycle| cycle.as_str()),
+            service.projections.work_items[0]
+                .cycle_id
+                .as_ref()
+                .map(|cycle| cycle.as_str()),
             Some("2026-w10")
         );
     }
