@@ -2,7 +2,7 @@ use crate::compute::{
     CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
     CapacityLotStatus, CapacityNonDeliveryReason, ComputeIndex, ComputeIndexCorrectionReason,
     ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof,
-    DeliveryProofStatus,
+    DeliveryProofStatus, StructuredCapacityInstrument, StructuredCapacityInstrumentStatus,
 };
 use crate::compute_contracts;
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
@@ -48,6 +48,14 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: CashSettleCapacityInstrumentRequest,
     ) -> Result<CashSettleCapacityInstrumentResponse>;
+    async fn create_structured_capacity_instrument(
+        &self,
+        req: CreateStructuredCapacityInstrumentRequest,
+    ) -> Result<CreateStructuredCapacityInstrumentResponse>;
+    async fn close_structured_capacity_instrument(
+        &self,
+        req: CloseStructuredCapacityInstrumentRequest,
+    ) -> Result<CloseStructuredCapacityInstrumentResponse>;
     async fn record_delivery_proof(
         &self,
         req: RecordDeliveryProofRequest,
@@ -78,6 +86,15 @@ pub trait KernelAuthority: Send + Sync {
         status: Option<CapacityInstrumentStatus>,
     ) -> Result<Vec<CapacityInstrument>>;
     async fn get_capacity_instrument(&self, instrument_id: &str) -> Result<CapacityInstrument>;
+    async fn list_structured_capacity_instruments(
+        &self,
+        product_id: Option<&str>,
+        status: Option<StructuredCapacityInstrumentStatus>,
+    ) -> Result<Vec<StructuredCapacityInstrument>>;
+    async fn get_structured_capacity_instrument(
+        &self,
+        structured_instrument_id: &str,
+    ) -> Result<StructuredCapacityInstrument>;
     async fn list_delivery_proofs(
         &self,
         capacity_lot_id: Option<&str>,
@@ -351,6 +368,54 @@ pub struct CashSettleCapacityInstrumentResponse {
     pub collateral_consumed: Option<crate::receipts::Money>,
     #[serde(default)]
     pub collateral_shortfall: Option<crate::receipts::Money>,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateStructuredCapacityInstrumentRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub structured_instrument: StructuredCapacityInstrument,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CreateStructuredCapacityInstrumentResponse {
+    pub structured_instrument: StructuredCapacityInstrument,
+    #[serde(default)]
+    pub legs: Vec<CapacityInstrument>,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CloseStructuredCapacityInstrumentRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub structured_instrument_id: String,
+    pub status: StructuredCapacityInstrumentStatus,
+    pub closed_at_ms: i64,
+    #[serde(default)]
+    pub propagate_to_open_legs: bool,
+    #[serde(default)]
+    pub lifecycle_reason_detail: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CloseStructuredCapacityInstrumentResponse {
+    pub structured_instrument: StructuredCapacityInstrument,
+    #[serde(default)]
+    pub legs: Vec<CapacityInstrument>,
     pub receipt: Receipt,
 }
 
@@ -916,6 +981,31 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         compute_contracts::cash_settle_capacity_instrument_response_from_proto(&response)
     }
 
+    async fn create_structured_capacity_instrument(
+        &self,
+        req: CreateStructuredCapacityInstrumentRequest,
+    ) -> Result<CreateStructuredCapacityInstrumentResponse> {
+        let wire = compute_contracts::create_structured_capacity_instrument_request_to_proto(&req)?;
+        let response: proto_compute::CreateStructuredCapacityInstrumentResponse = self
+            .post_json("/v1/kernel/compute/structured_instruments", &wire)
+            .await?;
+        compute_contracts::create_structured_capacity_instrument_response_from_proto(&response)
+    }
+
+    async fn close_structured_capacity_instrument(
+        &self,
+        req: CloseStructuredCapacityInstrumentRequest,
+    ) -> Result<CloseStructuredCapacityInstrumentResponse> {
+        let path = format!(
+            "/v1/kernel/compute/structured_instruments/{}/close",
+            req.structured_instrument_id.trim()
+        );
+        let wire = compute_contracts::close_structured_capacity_instrument_request_to_proto(&req)?;
+        let response: proto_compute::CloseStructuredCapacityInstrumentResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::close_structured_capacity_instrument_response_from_proto(&response)
+    }
+
     async fn record_delivery_proof(
         &self,
         req: RecordDeliveryProofRequest,
@@ -1021,6 +1111,33 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         let response: proto_compute::GetCapacityInstrumentResponse =
             self.get_json(path.as_str()).await?;
         compute_contracts::get_capacity_instrument_response_from_proto(&response)
+    }
+
+    async fn list_structured_capacity_instruments(
+        &self,
+        product_id: Option<&str>,
+        status: Option<StructuredCapacityInstrumentStatus>,
+    ) -> Result<Vec<StructuredCapacityInstrument>> {
+        let path = join_query_pairs(
+            "/v1/kernel/compute/structured_instruments",
+            &[
+                ("product_id", product_id.map(ToOwned::to_owned)),
+                ("status", status.map(|value| value.label().to_string())),
+            ],
+        );
+        let response: proto_compute::ListStructuredCapacityInstrumentsResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::list_structured_capacity_instruments_response_from_proto(&response)
+    }
+
+    async fn get_structured_capacity_instrument(
+        &self,
+        structured_instrument_id: &str,
+    ) -> Result<StructuredCapacityInstrument> {
+        let path = format!("/v1/kernel/compute/structured_instruments/{structured_instrument_id}");
+        let response: proto_compute::GetStructuredCapacityInstrumentResponse =
+            self.get_json(path.as_str()).await?;
+        compute_contracts::get_structured_capacity_instrument_response_from_proto(&response)
     }
 
     async fn list_delivery_proofs(

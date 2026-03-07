@@ -139,6 +139,73 @@ impl CapacityInstrumentStatus {
     }
 }
 
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuredCapacityInstrumentKind {
+    #[default]
+    Reservation,
+    Swap,
+    Strip,
+}
+
+impl StructuredCapacityInstrumentKind {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Reservation => "reservation",
+            Self::Swap => "swap",
+            Self::Strip => "strip",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuredCapacityInstrumentStatus {
+    #[default]
+    Open,
+    Active,
+    PartiallyClosed,
+    Settled,
+    Defaulted,
+    Cancelled,
+    Expired,
+}
+
+impl StructuredCapacityInstrumentStatus {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Open => "open",
+            Self::Active => "active",
+            Self::PartiallyClosed => "partially_closed",
+            Self::Settled => "settled",
+            Self::Defaulted => "defaulted",
+            Self::Cancelled => "cancelled",
+            Self::Expired => "expired",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum StructuredCapacityLegRole {
+    #[default]
+    ReservationRight,
+    SwapPay,
+    SwapReceive,
+    StripSegment,
+}
+
+impl StructuredCapacityLegRole {
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::ReservationRight => "reservation_right",
+            Self::SwapPay => "swap_pay",
+            Self::SwapReceive => "swap_receive",
+            Self::StripSegment => "strip_segment",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeBackendFamily {
@@ -457,6 +524,38 @@ pub struct CapacityInstrument {
     pub settlement_failure_reason: Option<ComputeSettlementFailureReason>,
     #[serde(default)]
     pub lifecycle_reason_detail: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct StructuredCapacityLeg {
+    pub instrument_id: String,
+    #[serde(default)]
+    pub role: StructuredCapacityLegRole,
+    #[serde(default)]
+    pub leg_order: u32,
+    #[serde(default)]
+    pub metadata: Value,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
+pub struct StructuredCapacityInstrument {
+    pub structured_instrument_id: String,
+    pub product_id: String,
+    #[serde(default)]
+    pub buyer_id: Option<String>,
+    #[serde(default)]
+    pub provider_id: Option<String>,
+    #[serde(default)]
+    pub kind: StructuredCapacityInstrumentKind,
+    pub created_at_ms: i64,
+    #[serde(default)]
+    pub status: StructuredCapacityInstrumentStatus,
+    #[serde(default)]
+    pub lifecycle_reason_detail: Option<String>,
+    #[serde(default)]
+    pub legs: Vec<StructuredCapacityLeg>,
     #[serde(default)]
     pub metadata: Value,
 }

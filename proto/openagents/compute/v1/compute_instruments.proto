@@ -26,6 +26,32 @@ enum CapacityInstrumentStatus {
   CAPACITY_INSTRUMENT_STATUS_EXPIRED = 8;
 }
 
+enum StructuredCapacityInstrumentKind {
+  STRUCTURED_CAPACITY_INSTRUMENT_KIND_UNSPECIFIED = 0;
+  STRUCTURED_CAPACITY_INSTRUMENT_KIND_RESERVATION = 1;
+  STRUCTURED_CAPACITY_INSTRUMENT_KIND_SWAP = 2;
+  STRUCTURED_CAPACITY_INSTRUMENT_KIND_STRIP = 3;
+}
+
+enum StructuredCapacityInstrumentStatus {
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_UNSPECIFIED = 0;
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_OPEN = 1;
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_ACTIVE = 2;
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_PARTIALLY_CLOSED = 3;
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_SETTLED = 4;
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_DEFAULTED = 5;
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_CANCELLED = 6;
+  STRUCTURED_CAPACITY_INSTRUMENT_STATUS_EXPIRED = 7;
+}
+
+enum StructuredCapacityLegRole {
+  STRUCTURED_CAPACITY_LEG_ROLE_UNSPECIFIED = 0;
+  STRUCTURED_CAPACITY_LEG_ROLE_RESERVATION_RIGHT = 1;
+  STRUCTURED_CAPACITY_LEG_ROLE_SWAP_PAY = 2;
+  STRUCTURED_CAPACITY_LEG_ROLE_SWAP_RECEIVE = 3;
+  STRUCTURED_CAPACITY_LEG_ROLE_STRIP_SEGMENT = 4;
+}
+
 enum CapacityInstrumentClosureReason {
   CAPACITY_INSTRUMENT_CLOSURE_REASON_UNSPECIFIED = 0;
   CAPACITY_INSTRUMENT_CLOSURE_REASON_FILLED = 1;
@@ -73,6 +99,26 @@ message CapacityInstrument {
   ComputeSettlementFailureReason settlement_failure_reason = 17;
   optional string lifecycle_reason_detail = 18;
   string metadata_json = 19;
+}
+
+message StructuredCapacityLeg {
+  string instrument_id = 1;
+  StructuredCapacityLegRole role = 2;
+  uint32 leg_order = 3;
+  string metadata_json = 4;
+}
+
+message StructuredCapacityInstrument {
+  string structured_instrument_id = 1;
+  string product_id = 2;
+  optional string buyer_id = 3;
+  optional string provider_id = 4;
+  StructuredCapacityInstrumentKind kind = 5;
+  int64 created_at_ms = 6;
+  StructuredCapacityInstrumentStatus status = 7;
+  optional string lifecycle_reason_detail = 8;
+  repeated StructuredCapacityLeg legs = 9;
+  string metadata_json = 10;
 }
 
 message CreateCapacityInstrumentRequest {
@@ -150,4 +196,56 @@ message CashSettleCapacityInstrumentResponse {
   optional openagents.common.v1.Money collateral_consumed = 7;
   optional openagents.common.v1.Money collateral_shortfall = 8;
   openagents.economy.v1.Receipt receipt = 9;
+}
+
+message CreateStructuredCapacityInstrumentRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  StructuredCapacityInstrument structured_instrument = 4;
+  repeated openagents.common.v1.EvidenceRef evidence = 5;
+  openagents.economy.v1.ReceiptHints hints = 6;
+}
+
+message CreateStructuredCapacityInstrumentResponse {
+  StructuredCapacityInstrument structured_instrument = 1;
+  repeated CapacityInstrument legs = 2;
+  openagents.economy.v1.Receipt receipt = 3;
+}
+
+message ListStructuredCapacityInstrumentsRequest {
+  optional string product_id = 1;
+  StructuredCapacityInstrumentStatus status = 2;
+}
+
+message ListStructuredCapacityInstrumentsResponse {
+  repeated StructuredCapacityInstrument structured_instruments = 1;
+}
+
+message GetStructuredCapacityInstrumentRequest {
+  string structured_instrument_id = 1;
+}
+
+message GetStructuredCapacityInstrumentResponse {
+  StructuredCapacityInstrument structured_instrument = 1;
+}
+
+message CloseStructuredCapacityInstrumentRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string structured_instrument_id = 4;
+  StructuredCapacityInstrumentStatus status = 5;
+  int64 closed_at_ms = 6;
+  bool propagate_to_open_legs = 7;
+  optional string lifecycle_reason_detail = 8;
+  string metadata_json = 9;
+  repeated openagents.common.v1.EvidenceRef evidence = 10;
+  openagents.economy.v1.ReceiptHints hints = 11;
+}
+
+message CloseStructuredCapacityInstrumentResponse {
+  StructuredCapacityInstrument structured_instrument = 1;
+  repeated CapacityInstrument legs = 2;
+  openagents.economy.v1.Receipt receipt = 3;
 }
