@@ -1,4 +1,17 @@
-Yes. The clean extension is:
+# Pylon Sandbox Execution Extension
+
+Status: proposed  
+Date: 2026-03-07
+
+This note complements `docs/pylon/PYLON_PLAN.md`.
+
+Current alignment:
+
+- current repo-wide compute-market launch scope under `#3116` remains `inference` and `embeddings`
+- `sandbox_execution` is the next planned compute-family extension for `Pylon`
+- the extension is valid only if it stays bounded, receiptable, and clearly distinct from Labor
+
+The clean extension is:
 
 **Pylon should support sandbox execution as a first-class compute family, not as a backdoor into labor or raw host access.**
 
@@ -10,7 +23,7 @@ Define compute as:
 
 > **machine-verifiable execution capacity offered under explicit capability, sandbox, and settlement constraints**
 
-Then your first live compute families become:
+Then the Pylon compute-family model becomes:
 
 * `inference`
 * `embeddings`
@@ -58,15 +71,15 @@ A good rule:
 
 ## Summary
 
-This spec extends Pylon from a narrow inference/embedding connector into a broader standalone provider binary for the OpenAgents Compute Market.
+This spec extends Pylon from a narrow inference and embedding connector into a broader standalone provider binary for the OpenAgents Compute Market.
 
-Pylon still remains a **narrow provider connector**, but it now supports three launch compute families:
+Pylon still remains a **narrow provider connector**, but the planned compute-family model becomes:
 
 * `inference`
 * `embeddings`
 * `sandbox_execution`
 
-The new `sandbox_execution` family allows providers to sell bounded machine execution inside declared sandbox profiles. It does **not** turn Pylon into a host-mode agent platform, a labor marketplace, or arbitrary host access broker.
+The current repo-wide launch tranche still remains `inference` and `embeddings`. The new `sandbox_execution` family is the next explicit extension and allows providers to sell bounded machine execution inside declared sandbox profiles. It does **not** turn Pylon into a host-mode agent platform, a labor marketplace, or arbitrary host access broker.
 
 The purpose of this extension is to let any compatible machine contribute:
 
@@ -86,7 +99,7 @@ The correct framing is still:
 
 The market is still the **OpenAgents Compute Market**.
 
-The compute families now become:
+The broader Pylon compute-family model becomes:
 
 * `inference`
 * `embeddings`
@@ -430,7 +443,7 @@ Core framing
 
 Update the compute-family model
 
-The first live compute families should now be:
+The compute-family model should become:
 
 - inference
 - embeddings
@@ -446,7 +459,7 @@ Important boundary:
 
 Required spec updates
 
-1. Add `sandbox_execution` as a first-class compute family everywhere the current plan only references inference and embeddings.
+1. Add `sandbox_execution` as the next first-class compute family in the Pylon plan while keeping the current repo-wide launch scope honest.
 
 2. Define sandbox execution as:
 - bounded machine execution
