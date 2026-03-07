@@ -248,15 +248,103 @@ pub fn paint_project_ops_pane(
         theme::text::PRIMARY,
     ));
 
+    if let Some(detail_draft) = state.detail_draft.as_ref() {
+        let detail_lines = [
+            format!("Title: {}", detail_draft.title),
+            format!("Description: {}", detail_draft.description),
+            format!(
+                "Status: {} | Priority: {}",
+                detail_draft.status.label(),
+                detail_draft.priority.label()
+            ),
+            format!(
+                "Assignee: {} | Cycle: {}",
+                detail_draft.assignee.as_deref().unwrap_or("unassigned"),
+                detail_draft
+                    .cycle_id
+                    .as_ref()
+                    .map(|cycle_id| cycle_id.as_str())
+                    .unwrap_or("none")
+            ),
+            format!(
+                "Parent: {} | Blocked: {}",
+                detail_draft
+                    .parent_id
+                    .as_ref()
+                    .map(|parent_id| parent_id.as_str())
+                    .unwrap_or("none"),
+                detail_draft
+                    .blocked_reason
+                    .as_deref()
+                    .unwrap_or("none")
+            ),
+            format!(
+                "Created: {} | Updated: {} | Dirty: {}",
+                detail_draft.created_at_unix_ms,
+                detail_draft.updated_at_unix_ms,
+                if detail_draft.dirty { "yes" } else { "no" }
+            ),
+        ];
+        for (index, line) in detail_lines.iter().enumerate() {
+            paint.scene.draw_text(paint.text.layout(
+                line.as_str(),
+                Point::new(detail.origin.x + 12.0, detail.origin.y + 168.0 + index as f32 * 18.0),
+                10.5,
+                theme::text::PRIMARY,
+            ));
+        }
+    } else {
+        paint.scene.draw_text(paint.text.layout(
+            "Select a work item to load the detail editor.",
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 170.0),
+            10.5,
+            theme::text::SECONDARY,
+        ));
+    }
+
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Quick Create: title={} | priority={} | desc={}",
+            if state.quick_create_draft.title.is_empty() {
+                "<empty>"
+            } else {
+                state.quick_create_draft.title.as_str()
+            },
+            state.quick_create_draft.priority.label(),
+            if state.quick_create_draft.description.is_empty() {
+                "<empty>"
+            } else {
+                state.quick_create_draft.description.as_str()
+            }
+        )
+        .as_str(),
+        Point::new(detail.origin.x + 12.0, detail.max_y() - 58.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Save Status: {}",
+            state
+                .detail_save_status
+                .as_deref()
+                .unwrap_or("no save applied yet")
+        )
+        .as_str(),
+        Point::new(detail.origin.x + 12.0, detail.max_y() - 40.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
     let next_steps = [
-        "Next: detail editor and quick-create flow",
         "Next: activity timeline and pane-state handling",
         "Next: keyboard and command-palette view switching",
+        "Next: tighten quick-create and editor input wiring",
     ];
     for (index, line) in next_steps.iter().enumerate() {
         paint.scene.draw_text(paint.text.layout(
             line,
-            Point::new(detail.origin.x + 12.0, detail.origin.y + 176.0 + index as f32 * 18.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 286.0 + index as f32 * 18.0),
             11.0,
             theme::text::PRIMARY,
         ));

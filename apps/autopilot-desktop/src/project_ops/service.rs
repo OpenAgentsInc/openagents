@@ -31,9 +31,25 @@ impl Default for ProjectOpsService {
 }
 
 impl ProjectOpsService {
-    #[cfg(test)]
-    fn from_projection_store(projections: ProjectOpsProjectionStore) -> Self {
+    pub fn from_projection_store(projections: ProjectOpsProjectionStore) -> Self {
         Self { projections }
+    }
+
+    pub fn into_projection_store(self) -> ProjectOpsProjectionStore {
+        self.projections
+    }
+
+    pub fn apply_command_to_store(
+        projections: &mut ProjectOpsProjectionStore,
+        envelope: ProjectOpsCommandEnvelope,
+    ) -> Result<ProjectOpsCommandResult, String> {
+        let mut service = Self::from_projection_store(std::mem::replace(
+            projections,
+            ProjectOpsProjectionStore::disabled(),
+        ));
+        let result = service.apply_command(envelope);
+        *projections = service.into_projection_store();
+        result
     }
 
     pub fn apply_command(
