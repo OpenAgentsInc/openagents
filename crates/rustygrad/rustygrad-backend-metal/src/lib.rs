@@ -84,6 +84,7 @@ impl fmt::Debug for MetalBuffer {
             .field("byte_len", &self.byte_len)
             .field("storage_mode", &self.storage_mode)
             .field("host_visible", &self.host_visible)
+            .field("platform", &"<metal platform buffer>")
             .finish()
     }
 }
@@ -263,7 +264,7 @@ fn classify_support(family: FamilySupport) -> DeviceSupportTier {
 }
 
 enum MetalBackendState {
-    Available(AvailableMetalBackend),
+    Available(Box<AvailableMetalBackend>),
     Unavailable(RuntimeHealth),
 }
 
@@ -292,10 +293,10 @@ impl MetalBackend {
             Ok(platform_backend) => {
                 let descriptor = platform_backend.descriptor().clone();
                 Self {
-                    state: MetalBackendState::Available(AvailableMetalBackend {
+                    state: MetalBackendState::Available(Box::new(AvailableMetalBackend {
                         descriptor,
                         platform: platform_backend,
-                    }),
+                    })),
                 }
             }
             Err(health) => Self {
