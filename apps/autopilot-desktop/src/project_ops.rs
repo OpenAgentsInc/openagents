@@ -13,12 +13,15 @@ pub const PROJECT_OPS_SOURCE_BADGE: &str = "source: local";
 
 #[allow(unused_imports)]
 pub use contract::{
-    step0_stream_specs, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
-    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCommand, ProjectOpsCommandEnvelope,
-    ProjectOpsCommandId, ProjectOpsCommandName, ProjectOpsEditWorkItemFieldsPatch,
+    project_ops_v1_contract_manifest, step0_stream_specs, ProjectOpsAcceptedEvent,
+    ProjectOpsAcceptedEventContractSpec, ProjectOpsAcceptedEventEnvelope,
+    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCommand,
+    ProjectOpsCommandContractSpec, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
+    ProjectOpsCommandName, ProjectOpsContractManifest, ProjectOpsDeliveryPhase,
+    ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityContractSpec, ProjectOpsEntityKind,
     ProjectOpsStreamSpec, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
     PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    PROJECT_OPS_V1_CONTRACT_VERSION, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 
 #[allow(unused_imports)]
@@ -146,6 +149,7 @@ impl Default for ProjectOpsPaneState {
                 Vec::new(),
             )
         };
+        let contract_manifest = project_ops_v1_contract_manifest();
         let (load_state, last_error, last_action, source_badge, summary, status_note) =
             if feature_enabled {
                 (
@@ -164,9 +168,15 @@ impl Default for ProjectOpsPaneState {
                         PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
                     ),
                     format!(
-                        "Step 0 schema is frozen with workflow {} and priorities {}. PM streams are registered as {}, {}, {}, and {} with local projection documents, shared checkpoint rows, and a deterministic reducer/service loop ready for replay-safe apply.",
+                        "Step 0 schema v{} and PM contract {} are frozen with workflow {} and priorities {} across {} entities, {} commands, {} accepted events, and {} canonical PM streams. PM streams are registered as {}, {}, {}, and {} with local projection documents, shared checkpoint rows, and a deterministic reducer/service loop ready for replay-safe apply.",
+                        PROJECT_OPS_STEP0_SCHEMA_VERSION,
+                        PROJECT_OPS_V1_CONTRACT_VERSION,
                         ProjectOpsWorkItemStatus::workflow_summary(),
                         ProjectOpsPriority::summary(),
+                        contract_manifest.entities.len(),
+                        contract_manifest.commands.len(),
+                        contract_manifest.accepted_events.len(),
+                        contract_manifest.streams.len(),
                         PROJECT_OPS_WORK_ITEMS_STREAM_ID,
                         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
                         PROJECT_OPS_CYCLES_STREAM_ID,

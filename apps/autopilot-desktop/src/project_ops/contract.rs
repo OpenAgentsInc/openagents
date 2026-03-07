@@ -9,34 +9,351 @@ pub const PROJECT_OPS_WORK_ITEMS_STREAM_ID: &str = "stream.pm.work_items.v1";
 pub const PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID: &str = "stream.pm.activity_projection.v1";
 pub const PROJECT_OPS_CYCLES_STREAM_ID: &str = "stream.pm.cycles.v1";
 pub const PROJECT_OPS_SAVED_VIEWS_STREAM_ID: &str = "stream.pm.saved_views.v1";
+pub const PROJECT_OPS_V1_CONTRACT_VERSION: &str = "project_ops.contract.v1";
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 pub struct ProjectOpsStreamSpec {
     pub stream_id: &'static str,
     pub purpose: &'static str,
+    pub projection_payload: &'static str,
+    pub projection_responsibility: &'static str,
 }
 
 const STEP0_STREAM_SPECS: [ProjectOpsStreamSpec; 4] = [
     ProjectOpsStreamSpec {
         stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
         purpose: "Current work-item state and list projection",
+        projection_payload: "Vec<ProjectOpsWorkItem>",
+        projection_responsibility: "Visible work-item list/detail truth for the native PM pane under Phase 1 local replay semantics",
     },
     ProjectOpsStreamSpec {
         stream_id: PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
         purpose: "Human-readable item history and state-change feed",
+        projection_payload: "Vec<ProjectOpsActivityRow>",
+        projection_responsibility: "Human-readable state-change history derived from accepted PM events; not money or payout authority",
     },
     ProjectOpsStreamSpec {
         stream_id: PROJECT_OPS_CYCLES_STREAM_ID,
         purpose: "Active cycle definitions and summaries",
+        projection_payload: "Vec<ProjectOpsCycleRow>",
+        projection_responsibility: "Cycle definitions and current-cycle summaries used by list filters and assignment validation",
     },
     ProjectOpsStreamSpec {
         stream_id: PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
         purpose: "Built-in and user-defined saved views",
+        projection_payload: "Vec<ProjectOpsSavedViewRow>",
+        projection_responsibility: "Built-in and user-authored PM view definitions used by toolbar, search, and list context",
     },
 ];
 
 pub fn step0_stream_specs() -> &'static [ProjectOpsStreamSpec] {
     &STEP0_STREAM_SPECS
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectOpsDeliveryPhase {
+    Step0,
+    Phase3,
+    Phase4,
+    Phase5,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ProjectOpsEntityKind {
+    WorkItem,
+    Cycle,
+    SavedView,
+    ActivityEvent,
+    Comment,
+    Team,
+    Project,
+    AgentTask,
+    Bounty,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectOpsEntityContractSpec {
+    pub entity_kind: ProjectOpsEntityKind,
+    pub step0_required: bool,
+    pub projection_only: bool,
+    pub deferred_until_phase: Option<ProjectOpsDeliveryPhase>,
+    pub purpose: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectOpsCommandContractSpec {
+    pub command_name: ProjectOpsCommandName,
+    pub payload_shape: Vec<&'static str>,
+    pub accepted_events: Vec<ProjectOpsAcceptedEventName>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectOpsAcceptedEventContractSpec {
+    pub event_name: ProjectOpsAcceptedEventName,
+    pub payload_shape: Vec<&'static str>,
+    pub stream_id: &'static str,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct ProjectOpsContractManifest {
+    pub contract_version: &'static str,
+    pub step0_schema_version: u16,
+    pub command_envelope_fields: Vec<&'static str>,
+    pub accepted_event_envelope_fields: Vec<&'static str>,
+    pub workflow: Vec<ProjectOpsWorkItemStatus>,
+    pub priorities: Vec<ProjectOpsPriority>,
+    pub entities: Vec<ProjectOpsEntityContractSpec>,
+    pub commands: Vec<ProjectOpsCommandContractSpec>,
+    pub accepted_events: Vec<ProjectOpsAcceptedEventContractSpec>,
+    pub streams: Vec<ProjectOpsStreamSpec>,
+}
+
+const COMMAND_ENVELOPE_FIELDS: [&str; 4] = [
+    "command_id",
+    "issued_at_unix_ms",
+    "actor.actor_id|actor.actor_label",
+    "command",
+];
+
+const ACCEPTED_EVENT_ENVELOPE_FIELDS: [&str; 5] = [
+    "stream_id",
+    "seq",
+    "command_id",
+    "emitted_at_unix_ms",
+    "actor.actor_id|actor.actor_label",
+];
+
+pub fn project_ops_v1_contract_manifest() -> ProjectOpsContractManifest {
+    ProjectOpsContractManifest {
+        contract_version: PROJECT_OPS_V1_CONTRACT_VERSION,
+        step0_schema_version: super::schema::PROJECT_OPS_STEP0_SCHEMA_VERSION,
+        command_envelope_fields: COMMAND_ENVELOPE_FIELDS.to_vec(),
+        accepted_event_envelope_fields: ACCEPTED_EVENT_ENVELOPE_FIELDS.to_vec(),
+        workflow: ProjectOpsWorkItemStatus::workflow().to_vec(),
+        priorities: ProjectOpsPriority::all().to_vec(),
+        entities: vec![
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::WorkItem,
+                step0_required: true,
+                projection_only: false,
+                deferred_until_phase: None,
+                purpose: "Primary planning and execution record owned by the native PM command/event loop",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::Cycle,
+                step0_required: true,
+                projection_only: false,
+                deferred_until_phase: None,
+                purpose: "Timeboxed commitment bucket used for current-cycle filtering and assignment",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::SavedView,
+                step0_required: true,
+                projection_only: false,
+                deferred_until_phase: None,
+                purpose: "Reusable toolbar/list context definitions for built-in and user-authored PM views",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::ActivityEvent,
+                step0_required: true,
+                projection_only: true,
+                deferred_until_phase: None,
+                purpose: "Human-readable PM history derived from accepted events and used by the activity timeline",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::Comment,
+                step0_required: false,
+                projection_only: false,
+                deferred_until_phase: Some(ProjectOpsDeliveryPhase::Phase3),
+                purpose: "Append-only collaborative discussion records; deferred until multi-user PM is earned",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::Team,
+                step0_required: false,
+                projection_only: false,
+                deferred_until_phase: Some(ProjectOpsDeliveryPhase::Phase3),
+                purpose: "Shared planning scope and defaults across multiple operators or sub-groups",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::Project,
+                step0_required: false,
+                projection_only: false,
+                deferred_until_phase: Some(ProjectOpsDeliveryPhase::Phase3),
+                purpose: "Higher-level grouping for work items and cycles once the pilot proves it is needed",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::AgentTask,
+                step0_required: false,
+                projection_only: false,
+                deferred_until_phase: Some(ProjectOpsDeliveryPhase::Phase4),
+                purpose: "Execution-oriented task records that connect PM items to local agent/task runtimes",
+            },
+            ProjectOpsEntityContractSpec {
+                entity_kind: ProjectOpsEntityKind::Bounty,
+                step0_required: false,
+                projection_only: false,
+                deferred_until_phase: Some(ProjectOpsDeliveryPhase::Phase5),
+                purpose: "Non-authoritative PM reference to funding and payout-related workflows; money truth stays elsewhere",
+            },
+        ],
+        commands: vec![
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::CreateWorkItem,
+                payload_shape: vec![
+                    "draft.work_item_id",
+                    "draft.title",
+                    "draft.description",
+                    "draft.status",
+                    "draft.priority",
+                    "draft.assignee?",
+                    "draft.team_key",
+                    "draft.cycle_id?",
+                    "draft.parent_id?",
+                    "draft.area_tags[]",
+                    "draft.blocked_reason?",
+                    "draft.due_at_unix_ms?",
+                ],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemCreated],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::EditWorkItemFields,
+                payload_shape: vec![
+                    "work_item_id",
+                    "patch.title?",
+                    "patch.description?",
+                    "patch.priority?",
+                    "patch.due_at_unix_ms?",
+                    "patch.area_tags[]?",
+                ],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemFieldsEdited],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::ChangeWorkItemStatus,
+                payload_shape: vec!["work_item_id", "status"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemStatusChanged],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::AssignWorkItem,
+                payload_shape: vec!["work_item_id", "assignee"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemAssigned],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::ClearAssignee,
+                payload_shape: vec!["work_item_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemAssigneeCleared],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::SetWorkItemCycle,
+                payload_shape: vec!["work_item_id", "cycle_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemCycleSet],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::ClearWorkItemCycle,
+                payload_shape: vec!["work_item_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemCycleCleared],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::SetBlockedReason,
+                payload_shape: vec!["work_item_id", "blocked_reason"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemBlocked],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::ClearBlockedReason,
+                payload_shape: vec!["work_item_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemUnblocked],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::SetParentWorkItem,
+                payload_shape: vec!["work_item_id", "parent_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemParentSet],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::ClearParentWorkItem,
+                payload_shape: vec!["work_item_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemParentCleared],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::ArchiveWorkItem,
+                payload_shape: vec!["work_item_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemArchived],
+            },
+            ProjectOpsCommandContractSpec {
+                command_name: ProjectOpsCommandName::UnarchiveWorkItem,
+                payload_shape: vec!["work_item_id"],
+                accepted_events: vec![ProjectOpsAcceptedEventName::WorkItemUnarchived],
+            },
+        ],
+        accepted_events: vec![
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemCreated,
+                payload_shape: vec!["work_item"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemFieldsEdited,
+                payload_shape: vec!["work_item_id", "patch"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemStatusChanged,
+                payload_shape: vec!["work_item_id", "status"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemAssigned,
+                payload_shape: vec!["work_item_id", "assignee"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemAssigneeCleared,
+                payload_shape: vec!["work_item_id"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemCycleSet,
+                payload_shape: vec!["work_item_id", "cycle_id"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemCycleCleared,
+                payload_shape: vec!["work_item_id"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemBlocked,
+                payload_shape: vec!["work_item_id", "blocked_reason"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemUnblocked,
+                payload_shape: vec!["work_item_id"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemParentSet,
+                payload_shape: vec!["work_item_id", "parent_id"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemParentCleared,
+                payload_shape: vec!["work_item_id"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemArchived,
+                payload_shape: vec!["work_item_id", "archived_at_unix_ms"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+            ProjectOpsAcceptedEventContractSpec {
+                event_name: ProjectOpsAcceptedEventName::WorkItemUnarchived,
+                payload_shape: vec!["work_item_id"],
+                stream_id: PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            },
+        ],
+        streams: step0_stream_specs().to_vec(),
+    }
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -571,14 +888,15 @@ impl ProjectOpsAcceptedEventEnvelope {
 #[cfg(test)]
 mod tests {
     use super::{
-        step0_stream_specs, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
-        ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCommand, ProjectOpsCommandEnvelope,
-        ProjectOpsCommandId, ProjectOpsCommandName, ProjectOpsCreateWorkItem,
-        ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch, ProjectOpsSetBlockedReason,
+        project_ops_v1_contract_manifest, step0_stream_specs, ProjectOpsAcceptedEvent,
+        ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsActor,
+        ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCommandName,
+        ProjectOpsCreateWorkItem, ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFields,
+        ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityKind, ProjectOpsSetBlockedReason,
         ProjectOpsWorkItemArchived, ProjectOpsWorkItemAssigned, ProjectOpsWorkItemDraft,
         ProjectOpsWorkItemRef, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
         PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-        PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        PROJECT_OPS_V1_CONTRACT_VERSION, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
     };
     use crate::project_ops::schema::{
         ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
@@ -666,6 +984,75 @@ mod tests {
                     PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
                     "Built-in and user-defined saved views"
                 ),
+            ]
+        );
+    }
+
+    #[test]
+    fn v1_contract_manifest_freezes_entities_commands_events_and_streams() {
+        let manifest = project_ops_v1_contract_manifest();
+        assert_eq!(manifest.contract_version, PROJECT_OPS_V1_CONTRACT_VERSION);
+        assert_eq!(
+            manifest.command_envelope_fields,
+            vec![
+                "command_id",
+                "issued_at_unix_ms",
+                "actor.actor_id|actor.actor_label",
+                "command",
+            ]
+        );
+        assert_eq!(
+            manifest.accepted_event_envelope_fields,
+            vec![
+                "stream_id",
+                "seq",
+                "command_id",
+                "emitted_at_unix_ms",
+                "actor.actor_id|actor.actor_label",
+            ]
+        );
+        assert_eq!(manifest.workflow, ProjectOpsWorkItemStatus::workflow().to_vec());
+        assert_eq!(manifest.priorities, ProjectOpsPriority::all().to_vec());
+        assert_eq!(manifest.commands.len(), ProjectOpsCommandName::all().len());
+        assert_eq!(
+            manifest.accepted_events.len(),
+            ProjectOpsAcceptedEventName::all().len()
+        );
+        assert_eq!(manifest.streams, step0_stream_specs().to_vec());
+    }
+
+    #[test]
+    fn v1_contract_manifest_keeps_step0_entities_and_deferred_placeholders() {
+        let manifest = project_ops_v1_contract_manifest();
+        let step0_entities = manifest
+            .entities
+            .iter()
+            .filter(|entity| entity.step0_required)
+            .map(|entity| entity.entity_kind)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            step0_entities,
+            vec![
+                ProjectOpsEntityKind::WorkItem,
+                ProjectOpsEntityKind::Cycle,
+                ProjectOpsEntityKind::SavedView,
+                ProjectOpsEntityKind::ActivityEvent,
+            ]
+        );
+
+        let deferred = manifest
+            .entities
+            .iter()
+            .filter_map(|entity| entity.deferred_until_phase.map(|phase| (entity.entity_kind, phase)))
+            .collect::<Vec<_>>();
+        assert_eq!(
+            deferred,
+            vec![
+                (ProjectOpsEntityKind::Comment, ProjectOpsDeliveryPhase::Phase3),
+                (ProjectOpsEntityKind::Team, ProjectOpsDeliveryPhase::Phase3),
+                (ProjectOpsEntityKind::Project, ProjectOpsDeliveryPhase::Phase3),
+                (ProjectOpsEntityKind::AgentTask, ProjectOpsDeliveryPhase::Phase4),
+                (ProjectOpsEntityKind::Bounty, ProjectOpsDeliveryPhase::Phase5),
             ]
         );
     }
