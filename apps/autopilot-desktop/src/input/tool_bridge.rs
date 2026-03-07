@@ -29,7 +29,7 @@ use crate::openagents_dynamic_tools::{
     OPENAGENTS_TOOL_TREASURY_CONVERT, OPENAGENTS_TOOL_TREASURY_RECEIPT,
     OPENAGENTS_TOOL_TREASURY_TRANSFER, OPENAGENTS_TOOL_WALLET_CHECK,
 };
-use crate::pane_registry::{pane_spec, pane_spec_by_command_id, pane_specs};
+use crate::pane_registry::{enabled_pane_specs, pane_spec, pane_spec_by_command_id};
 use crate::pane_system::{
     ActiveJobPaneAction, ActivityFeedPaneAction, AgentProfileStatePaneAction,
     AgentScheduleTickPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction,
@@ -1626,8 +1626,7 @@ fn goal_policy_for_turn<'a>(
 }
 
 fn execute_pane_list(state: &RenderState) -> ToolBridgeResultEnvelope {
-    let registered = pane_specs()
-        .iter()
+    let registered = enabled_pane_specs()
         .filter(|spec| spec.kind != PaneKind::Empty)
         .map(|spec| {
             json!({
@@ -1969,6 +1968,7 @@ fn pane_action_to_hit_action(
     };
 
     match kind {
+        PaneKind::ProjectOps => unsupported(),
         PaneKind::AutopilotChat => match action {
             "send" | "submit" => Ok(PaneHitAction::ChatSend),
             "refresh_threads" => Ok(PaneHitAction::ChatRefreshThreads),
@@ -5446,8 +5446,7 @@ fn pane_resolution_error(code: &str, pane_ref: &str) -> ToolBridgeResultEnvelope
         format!("Could not resolve pane reference '{}'", pane_ref),
         json!({
             "pane": pane_ref,
-            "supported_panes": pane_specs()
-                .iter()
+            "supported_panes": enabled_pane_specs()
                 .filter(|spec| spec.kind != PaneKind::Empty)
                 .map(|spec| {
                     json!({
@@ -5480,8 +5479,7 @@ fn resolve_pane_kind_for_runtime(raw: &str) -> Option<PaneKind> {
         return None;
     }
 
-    pane_specs()
-        .iter()
+    enabled_pane_specs()
         .filter(|spec| spec.kind != PaneKind::Empty)
         .find_map(|spec| {
             let title_key = normalize_key(spec.title);
@@ -5506,6 +5504,7 @@ fn resolve_pane_kind_for_runtime(raw: &str) -> Option<PaneKind> {
 fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
     match kind {
         PaneKind::AutopilotChat => &["chat", "autopilot_chat", "autopilot", "codex"],
+        PaneKind::ProjectOps => &["project_ops", "projectops", "pm", "project_management"],
         PaneKind::Calculator => &["calculator", "calc"],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
@@ -5522,6 +5521,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
     match kind {
         PaneKind::Empty => "pane",
         PaneKind::AutopilotChat => "autopilot_chat",
+        PaneKind::ProjectOps => "project_ops",
         PaneKind::CodexAccount => "codex_account",
         PaneKind::CodexModels => "codex_models",
         PaneKind::CodexConfig => "codex_config",

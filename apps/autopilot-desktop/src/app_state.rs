@@ -50,6 +50,7 @@ pub use app_state_domains::*;
 pub use chat_projection::*;
 pub use credentials_state::CredentialsState;
 pub use direct_messages::*;
+pub use crate::project_ops::ProjectOpsPaneState;
 
 pub const WINDOW_TITLE: &str = "Autopilot";
 pub const WINDOW_WIDTH: f64 = 1280.0;
@@ -73,6 +74,7 @@ impl Default for App {
 pub enum PaneKind {
     Empty,
     AutopilotChat,
+    ProjectOps,
     CodexAccount,
     CodexModels,
     CodexConfig,
@@ -4943,6 +4945,7 @@ impl NostrSecretState {
 }
 
 impl_pane_status_access!(
+    ProjectOpsPaneState,
     CodexAccountPaneState,
     CodexModelsPaneState,
     CodexConfigPaneState,
@@ -5012,6 +5015,7 @@ pub struct RenderState {
     pub chat_inputs: ChatPaneInputs,
     pub calculator_inputs: CalculatorPaneInputs,
     pub autopilot_chat: AutopilotChatState,
+    pub project_ops: ProjectOpsPaneState,
     pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,
     pub codex_account: CodexAccountPaneState,
     pub codex_models: CodexModelsPaneState,

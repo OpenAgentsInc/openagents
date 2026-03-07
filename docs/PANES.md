@@ -22,6 +22,11 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
 - `Autopilot Chat`
   - Chat-first pane with thread rail, transcript, composer input, and per-message status (`queued`, `running`, `done`, `error`).
   - Action: send prompt to local Autopilot lane.
+- `Project Ops`
+  - Native PM shell reserved for the Step 0 project-management slice.
+  - Hidden by default behind `OPENAGENTS_ENABLE_PROJECT_OPS=1` until the PM stream-backed thin slice is ready.
+  - Current shell shows feature-gate state, active default view, and the staged follow-up path for work items, cycles, and replay-safe projections.
+  - Action: read-only shell for now.
 - `Codex Account`
   - Account auth and rate-limit controls (`account/read`, login start/cancel, logout, rate limits read).
 - `Codex Models`
@@ -197,6 +202,7 @@ Badge semantics:
 Current pane badge mapping:
 
 - `Autopilot Chat`: `source: local`
+- `Project Ops`: `source: local`
 - `Codex Account`: `source: codex`
 - `Codex Models`: `source: codex`
 - `Codex Config`: `source: codex`
