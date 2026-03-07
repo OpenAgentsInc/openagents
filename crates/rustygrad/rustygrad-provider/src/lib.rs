@@ -307,34 +307,6 @@ pub struct TextGenerationCapabilityEnvelope {
 }
 
 impl TextGenerationCapabilityEnvelope {
-    /// Creates a capability envelope for a generation model.
-    #[must_use]
-    pub fn generation(
-        runtime_backend: impl Into<String>,
-        model_id: impl Into<String>,
-        model_family: impl Into<String>,
-        model_revision: impl Into<String>,
-        weight_bundle: WeightBundleEvidence,
-        max_context: usize,
-        kv_cache_mode: KvCacheMode,
-        batch_posture: BatchPosture,
-        readiness: ProviderReadiness,
-    ) -> Self {
-        Self {
-            backend_family: String::from(BACKEND_FAMILY),
-            product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
-            runtime_backend: runtime_backend.into(),
-            model_id: model_id.into(),
-            model_family: model_family.into(),
-            model_revision: model_revision.into(),
-            weight_bundle,
-            max_context,
-            kv_cache_mode,
-            batch_posture,
-            readiness,
-        }
-    }
-
     /// Creates a capability envelope from a decoder model descriptor.
     #[must_use]
     pub fn from_decoder_model(
@@ -344,17 +316,19 @@ impl TextGenerationCapabilityEnvelope {
         batch_posture: BatchPosture,
         readiness: ProviderReadiness,
     ) -> Self {
-        Self::generation(
-            runtime_backend,
-            model.model.model_id.clone(),
-            model.model.family.clone(),
-            model.model.revision.clone(),
-            WeightBundleEvidence::from_metadata(&model.weights),
-            model.config.max_context,
+        Self {
+            backend_family: String::from(BACKEND_FAMILY),
+            product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
+            runtime_backend: runtime_backend.into(),
+            model_id: model.model.model_id.clone(),
+            model_family: model.model.family.clone(),
+            model_revision: model.model.revision.clone(),
+            weight_bundle: WeightBundleEvidence::from_metadata(&model.weights),
+            max_context: model.config.max_context,
             kv_cache_mode,
             batch_posture,
             readiness,
-        )
+        }
     }
 }
 
