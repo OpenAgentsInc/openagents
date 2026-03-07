@@ -33,10 +33,11 @@ pub fn paint_project_ops_pane(
     ));
     paint.scene.draw_text(paint.text.layout(
         format!(
-            "{} | {} | view:{}",
+            "{} | {} | view:{} | operator:{}",
             state.source_badge,
             state.load_state.label(),
-            state.active_saved_view
+            state.active_saved_view,
+            state.operator_label,
         )
         .as_str(),
         Point::new(header.origin.x + 12.0, header.origin.y + 58.0),
@@ -56,25 +57,130 @@ pub fn paint_project_ops_pane(
             .with_corner_radius(8.0),
     );
 
+    let toolbar = Bounds::new(
+        shell.origin.x + 12.0,
+        shell.origin.y + 12.0,
+        shell.size.width - 24.0,
+        92.0,
+    );
+    paint.scene.draw_quad(
+        Quad::new(toolbar)
+            .with_background(theme::bg::ELEVATED)
+            .with_corner_radius(8.0),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        "Toolbar",
+        Point::new(toolbar.origin.x + 12.0, toolbar.origin.y + 14.0),
+        13.0,
+        theme::text::PRIMARY,
+    ));
+
+    let mut chip_x = toolbar.origin.x + 12.0;
+    let mut chip_y = toolbar.origin.y + 34.0;
+    for view in &state.available_saved_views {
+        let chip_width = (view.title.len() as f32 * 7.0 + 26.0).max(82.0);
+        if chip_x + chip_width > toolbar.max_x() - 12.0 {
+            chip_x = toolbar.origin.x + 12.0;
+            chip_y += 22.0;
+        }
+        let chip_bounds = Bounds::new(chip_x, chip_y, chip_width, 18.0);
+        let active = view.view_id == state.active_saved_view_id;
+        paint.scene.draw_quad(
+            Quad::new(chip_bounds)
+                .with_background(if active {
+                    theme::bg::APP
+                } else {
+                    theme::bg::HOVER
+                })
+                .with_corner_radius(9.0),
+        );
+        paint.scene.draw_text(paint.text.layout(
+            view.title.as_str(),
+            Point::new(chip_bounds.origin.x + 8.0, chip_bounds.origin.y + 12.0),
+            10.0,
+            if active {
+                theme::text::PRIMARY
+            } else {
+                theme::text::SECONDARY
+            },
+        ));
+        chip_x += chip_width + 8.0;
+    }
+
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Search: {}",
+            if state.search_query.trim().is_empty() {
+                "<empty>"
+            } else {
+                state.search_query.as_str()
+            }
+        )
+        .as_str(),
+        Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 18.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Filters ({}) : {}",
+            state.active_filter_chips.len(),
+            if state.active_filter_chips.is_empty() {
+                "none".to_string()
+            } else {
+                state.active_filter_chips.join(", ")
+            }
+        )
+        .as_str(),
+        Point::new(toolbar.origin.x + 180.0, toolbar.max_y() - 18.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+
+    let content = Bounds::new(
+        shell.origin.x + 12.0,
+        toolbar.max_y() + 12.0,
+        shell.size.width - 24.0,
+        shell.size.height - toolbar.size.height - 36.0,
+    );
+    let list_width = (content.size.width * 0.56).max(220.0);
+    let list = Bounds::new(content.origin.x, content.origin.y, list_width, content.size.height);
+    let detail = Bounds::new(
+        list.max_x() + 12.0,
+        content.origin.y,
+        (content.max_x() - list.max_x() - 12.0).max(140.0),
+        content.size.height,
+    );
+    paint.scene.draw_quad(
+        Quad::new(list)
+            .with_background(theme::bg::ELEVATED)
+            .with_corner_radius(8.0),
+    );
+    paint.scene.draw_quad(
+        Quad::new(detail)
+            .with_background(theme::bg::ELEVATED)
+            .with_corner_radius(8.0),
+    );
+
     let status_color = match state.load_state {
         PaneLoadState::Loading => theme::status::WARNING,
         PaneLoadState::Ready => theme::status::SUCCESS,
         PaneLoadState::Error => theme::status::ERROR,
     };
     paint.scene.draw_quad(
-        Quad::new(Bounds::new(shell.origin.x + 12.0, shell.origin.y + 14.0, 10.0, 10.0))
+        Quad::new(Bounds::new(detail.origin.x + 12.0, detail.origin.y + 14.0, 10.0, 10.0))
             .with_background(status_color)
             .with_corner_radius(5.0),
     );
     paint.scene.draw_text(paint.text.layout(
-        "Shell Status",
-        Point::new(shell.origin.x + 30.0, shell.origin.y + 12.0),
+        "Project Ops Detail",
+        Point::new(detail.origin.x + 30.0, detail.origin.y + 12.0),
         13.0,
         theme::text::PRIMARY,
     ));
     paint.scene.draw_text(paint.text.layout(
         state.status_note.as_str(),
-        Point::new(shell.origin.x + 12.0, shell.origin.y + 38.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 38.0),
         11.0,
         theme::text::SECONDARY,
     ));
@@ -85,7 +191,7 @@ pub fn paint_project_ops_pane(
         .unwrap_or("Project Ops idle");
     paint.scene.draw_text(paint.text.layout(
         format!("Last action: {action}").as_str(),
-        Point::new(shell.origin.x + 12.0, shell.origin.y + 86.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 84.0),
         11.0,
         theme::text::MUTED,
     ));
@@ -99,7 +205,7 @@ pub fn paint_project_ops_pane(
     );
     paint.scene.draw_text(paint.text.layout(
         projection_counts.as_str(),
-        Point::new(shell.origin.x + 12.0, shell.origin.y + 104.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 104.0),
         11.0,
         theme::text::PRIMARY,
     ));
@@ -122,29 +228,90 @@ pub fn paint_project_ops_pane(
     );
     paint.scene.draw_text(paint.text.layout(
         checkpoint_status.as_str(),
-        Point::new(shell.origin.x + 12.0, shell.origin.y + 124.0),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 124.0),
         11.0,
         theme::text::MUTED,
     ));
 
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Selected: {}",
+            state
+                .selected_work_item_id
+                .as_ref()
+                .map(|id| id.as_str())
+                .unwrap_or("<none>")
+        )
+        .as_str(),
+        Point::new(detail.origin.x + 12.0, detail.origin.y + 148.0),
+        11.0,
+        theme::text::PRIMARY,
+    ));
+
     let next_steps = [
-        "Next: built-in saved views and toolbar",
         "Next: detail editor and quick-create flow",
         "Next: activity timeline and pane-state handling",
+        "Next: keyboard and command-palette view switching",
     ];
     for (index, line) in next_steps.iter().enumerate() {
         paint.scene.draw_text(paint.text.layout(
             line,
-            Point::new(shell.origin.x + 12.0, shell.origin.y + 156.0 + index as f32 * 18.0),
+            Point::new(detail.origin.x + 12.0, detail.origin.y + 176.0 + index as f32 * 18.0),
             11.0,
             theme::text::PRIMARY,
         ));
     }
 
+    paint.scene.draw_text(paint.text.layout(
+        format!(
+            "Visible in {} ({})",
+            state.active_saved_view,
+            state.visible_work_items.len()
+        )
+        .as_str(),
+        Point::new(list.origin.x + 12.0, list.origin.y + 16.0),
+        13.0,
+        theme::text::PRIMARY,
+    ));
+    if state.visible_work_items.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            state.empty_state_copy.as_str(),
+            Point::new(list.origin.x + 12.0, list.origin.y + 40.0),
+            11.0,
+            theme::text::SECONDARY,
+        ));
+    } else {
+        for (index, item) in state.visible_work_items.iter().take(8).enumerate() {
+            let row_y = list.origin.y + 40.0 + index as f32 * 22.0;
+            let assignee = item.assignee.as_deref().unwrap_or("unassigned");
+            let cycle = item
+                .cycle_id
+                .as_ref()
+                .map(|cycle| cycle.as_str())
+                .unwrap_or("no-cycle");
+            let blocked = if item.is_blocked() { " blocked" } else { "" };
+            paint.scene.draw_text(paint.text.layout(
+                format!(
+                    "{} | {} | {} | {} | {}{}",
+                    item.title,
+                    item.status.label(),
+                    item.priority.label(),
+                    assignee,
+                    cycle,
+                    blocked
+                )
+                .as_str(),
+                Point::new(list.origin.x + 12.0, row_y),
+                10.5,
+                theme::text::PRIMARY,
+            ));
+        }
+    }
+
     if let Some(error) = state.last_error.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             format!("Error: {error}").as_str(),
-            Point::new(shell.origin.x + 12.0, shell.max_y() - 22.0),
+            Point::new(detail.origin.x + 12.0, detail.max_y() - 22.0),
             10.0,
             theme::status::ERROR,
         ));
