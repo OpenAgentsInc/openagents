@@ -28,6 +28,7 @@ mod pane_renderer;
 mod pane_system;
 mod panes;
 mod project_ops;
+mod provider_admin;
 mod provider_nip90_lane;
 mod render;
 mod runtime_lanes;
