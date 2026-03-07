@@ -34,6 +34,10 @@ That means the market does not stop at "a machine ran." It terminates only when 
 - the verdict
 - the settlement or remedy path
 
+## Boundary With Compute
+
+Labor begins where a provider is asked to interpret or solve an open-ended objective rather than execute a bounded declared runtime contract. If the request is `run this bounded thing in this declared sandbox`, that belongs in Compute. If the request is `figure out what to do and do it`, that belongs in Labor. Ambiguous requests should not be silently coerced into a compute-shaped contract.
+
 ## Current implementation status
 
 - `implemented`: starter authority flows in `openagents-kernel-core` and `apps/nexus-control` for work units, contracts, submissions, and verdict finalization, currently exercised by the compute-provider earn flow
