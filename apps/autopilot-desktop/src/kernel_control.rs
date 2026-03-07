@@ -1,6 +1,11 @@
 use crate::app_state::{ActiveJobRecord, JobInboxDecision, RenderState};
-use crate::state::provider_runtime::LocalInferenceBackend;
 use crate::state::job_inbox::JobInboxRequest;
+use crate::state::operations::{
+    AcceptedSpotComputeOrder, SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate,
+    SpotComputeRfqDraft,
+};
+use crate::state::provider_runtime::LocalInferenceBackend;
+use crate::state::provider_runtime::{ProviderInventoryProductToggleTarget, ProviderInventoryRow};
 use openagents_kernel_core::authority::{
     CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
     CreateContractRequest, CreateWorkUnitRequest, FinalizeVerdictRequest,
@@ -8,11 +13,12 @@ use openagents_kernel_core::authority::{
     canonical_kernel_endpoint,
 };
 use openagents_kernel_core::compute::{
-    COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument, CapacityInstrumentKind,
-    CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityReserveState,
-    ApplePlatformCapability, ComputeBackendFamily, ComputeCapabilityEnvelope,
-    ComputeExecutionKind, ComputeFamily, ComputeProduct, ComputeProductStatus,
+    ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
+    CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
+    CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeExecutionKind,
+    ComputeFamily, ComputeHostCapability, ComputeProduct, ComputeProductStatus,
     ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+    launch_compute_product_spec,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::labor::{
@@ -279,6 +285,25 @@ pub(crate) fn register_online_compute_inventory_with_kernel(
     Ok(())
 }
 
+pub(crate) fn refresh_provider_inventory_rows(state: &mut RenderState) -> bool {
+    let rows = build_provider_inventory_rows(state);
+    let changed = state.provider_runtime.inventory_rows != rows;
+    if changed {
+        state.provider_runtime.inventory_rows = rows;
+    }
+    state.provider_runtime.inventory_last_error = None;
+    state.provider_runtime.inventory_last_action = Some(format!(
+        "Materialized {} launch inventory row{}",
+        state.provider_runtime.inventory_rows.len(),
+        if state.provider_runtime.inventory_rows.len() == 1 {
+            ""
+        } else {
+            "s"
+        }
+    ));
+    changed
+}
+
 pub(crate) fn submit_active_job_output(state: &mut RenderState) -> Result<String, String> {
     let Some(job) = state.active_job.job.as_ref().cloned() else {
         return Err("no active job selected".to_string());
@@ -302,10 +327,9 @@ pub(crate) fn finalize_paid_active_job(state: &mut RenderState) -> Result<String
     let delivery_proof_request = build_delivery_proof_request(state, &job)?;
     let delivery_proof_receipt =
         run_kernel_call(client.record_delivery_proof(delivery_proof_request))?.receipt;
-    state.earn_kernel_receipts.apply_authoritative_receipt(
-        delivery_proof_receipt,
-        "kernel.authority.delivery_proof",
-    );
+    state
+        .earn_kernel_receipts
+        .apply_authoritative_receipt(delivery_proof_receipt, "kernel.authority.delivery_proof");
 
     let verdict_request = build_finalize_verdict_request(state, &job);
     let receipt = run_kernel_call(client.finalize_verdict(verdict_request))?.receipt;
@@ -320,9 +344,11 @@ pub(crate) fn attach_compute_linkage_to_active_job(
     state: &mut RenderState,
     request: &JobInboxRequest,
 ) {
-    let Some(linkage) =
-        compute_linkage_for_request(state, request.request_id.as_str(), request.capability.as_str())
-    else {
+    let Some(linkage) = compute_linkage_for_request(
+        state,
+        request.request_id.as_str(),
+        request.capability.as_str(),
+    ) else {
         return;
     };
     let Some(job) = state.active_job.job.as_mut() else {
@@ -335,6 +361,76 @@ pub(crate) fn attach_compute_linkage_to_active_job(
     job.capacity_lot_id = Some(linkage.capacity_lot_id);
     job.capacity_instrument_id = Some(linkage.capacity_instrument_id);
     job.delivery_proof_id = Some(linkage.delivery_proof_id);
+}
+
+fn build_provider_inventory_rows(state: &RenderState) -> Vec<ProviderInventoryRow> {
+    ProviderInventoryProductToggleTarget::all()
+        .into_iter()
+        .map(|target| build_provider_inventory_row(state, target))
+        .collect()
+}
+
+fn build_provider_inventory_row(
+    state: &RenderState,
+    target: ProviderInventoryProductToggleTarget,
+) -> ProviderInventoryRow {
+    let enabled = state
+        .provider_runtime
+        .inventory_controls
+        .is_advertised(target);
+    let backend_ready = provider_inventory_backend_ready(state, target);
+    let eligible = enabled && backend_ready;
+    let total_quantity = if eligible
+        && state
+            .provider_runtime
+            .inventory_session_started_at_ms
+            .is_some()
+        && matches!(
+            state.provider_runtime.mode,
+            crate::app_state::ProviderMode::Online | crate::app_state::ProviderMode::Degraded
+        ) {
+        ONLINE_INVENTORY_QUANTITY
+    } else {
+        0
+    };
+    let reserved_quantity = if provider_inventory_active_job_matches(state, target)
+        && state
+            .active_job
+            .job
+            .as_ref()
+            .is_some_and(|job| !job.stage.is_terminal())
+    {
+        1
+    } else {
+        0
+    };
+    let available_quantity = total_quantity.saturating_sub(reserved_quantity);
+    let capacity_lot_id = state
+        .provider_runtime
+        .inventory_session_started_at_ms
+        .filter(|_| eligible)
+        .map(|session_started_at_ms| {
+            online_capacity_lot_id_for_binding(
+                provider_id_for_state(state).as_str(),
+                target.product_id(),
+                session_started_at_ms,
+            )
+        });
+    ProviderInventoryRow {
+        target,
+        enabled,
+        backend_ready,
+        eligible,
+        capability_summary: provider_inventory_capability_summary(state, target),
+        source_badge: provider_inventory_source_badge(state, target, eligible).to_string(),
+        capacity_lot_id,
+        total_quantity,
+        reserved_quantity,
+        available_quantity,
+        delivery_state: provider_inventory_delivery_state(state, target).to_string(),
+        price_floor_sats: target.default_price_floor_sats(),
+        terms_label: target.terms_label().to_string(),
+    }
 }
 
 fn current_authority_mode(state: &RenderState) -> KernelAuthorityMode {
@@ -361,7 +457,9 @@ struct LaunchComputeLinkage {
     compute_family: ComputeFamily,
 }
 
-fn remote_authority_client_for_state(state: &RenderState) -> Result<HttpKernelAuthorityClient, String> {
+fn remote_authority_client_for_state(
+    state: &RenderState,
+) -> Result<HttpKernelAuthorityClient, String> {
     match current_authority_mode(state) {
         KernelAuthorityMode::Unavailable => Err(
             "kernel authority unavailable: hosted control endpoint is not configured".to_string(),
@@ -401,9 +499,209 @@ where
         .map_err(|error| format!("kernel authority call failed: {error}"))
 }
 
+pub(crate) fn request_spot_compute_quotes(
+    state: &RenderState,
+    rfq: &SpotComputeRfqDraft,
+) -> Result<Vec<SpotComputeQuoteCandidate>, String> {
+    let client = remote_authority_client_for_state(state)?;
+    let products =
+        run_kernel_call(client.list_compute_products(Some(ComputeProductStatus::Active)))?;
+    let lots = run_kernel_call(client.list_capacity_lots(None, None))?;
+    let instruments = run_kernel_call(client.list_capacity_instruments(None, None, None))?;
+    Ok(build_spot_compute_quotes_from_market(
+        rfq,
+        products.as_slice(),
+        lots.as_slice(),
+        instruments.as_slice(),
+    ))
+}
+
+pub(crate) fn accept_spot_compute_quote(
+    state: &mut RenderState,
+    rfq: &SpotComputeRfqDraft,
+    quote: &SpotComputeQuoteCandidate,
+) -> Result<AcceptedSpotComputeOrder, String> {
+    let client = remote_authority_client_for_state(state)?;
+    let created_at_ms = current_epoch_ms();
+    let delivery_window_ms = (rfq.window_minutes as i64)
+        .saturating_mul(60_000)
+        .max(60_000);
+    let delivery_start_ms = created_at_ms;
+    let delivery_end_ms = created_at_ms.saturating_add(delivery_window_ms);
+    let request = CreateCapacityInstrumentRequest {
+        idempotency_key: format!(
+            "desktop.buy.compute_spot:{}:{}",
+            canonical_kernel_id_component(rfq.rfq_id.as_str()),
+            canonical_kernel_id_component(quote.capacity_lot_id.as_str())
+        ),
+        trace: TraceContext {
+            session_id: Some("desktop.compute.spot".to_string()),
+            trajectory_hash: Some(format!(
+                "traj:{}:{}",
+                canonical_kernel_id_component(rfq.rfq_id.as_str()),
+                canonical_kernel_id_component(quote.quote_id.as_str())
+            )),
+            job_hash: Some(rfq.rfq_id.clone()),
+            run_id: Some(format!(
+                "spot:{}",
+                canonical_kernel_id_component(quote.quote_id.as_str())
+            )),
+            work_unit_id: None,
+            contract_id: None,
+            claim_id: None,
+        },
+        policy: kernel_policy_context(state),
+        instrument: CapacityInstrument {
+            instrument_id: format!(
+                "instrument.buy.{}.{}",
+                canonical_kernel_id_component(rfq.rfq_id.as_str()),
+                canonical_kernel_id_component(quote.capacity_lot_id.as_str())
+            ),
+            product_id: quote.product_id.clone(),
+            capacity_lot_id: Some(quote.capacity_lot_id.clone()),
+            buyer_id: Some(provider_id_for_state(state)),
+            provider_id: Some(quote.provider_id.clone()),
+            delivery_start_ms,
+            delivery_end_ms,
+            quantity: quote.requested_quantity,
+            fixed_price: Some(btc_sats_money(quote.price_sats)),
+            reference_index_id: None,
+            kind: CapacityInstrumentKind::Spot,
+            settlement_mode: ComputeSettlementMode::Physical,
+            created_at_ms,
+            status: CapacityInstrumentStatus::Active,
+            metadata: json!({
+                "rfq_id": rfq.rfq_id,
+                "quote_id": quote.quote_id,
+                "compute_family": quote.compute_family_label(),
+                "backend_family": quote.backend_label(),
+                "source_badge": quote.source_badge,
+                "terms_label": quote.terms_label,
+            }),
+        },
+        evidence: vec![
+            evidence_ref(
+                "spot_rfq_ref",
+                format!("oa://autopilot/compute/rfq/{}", rfq.rfq_id),
+                rfq.summary().as_str(),
+            ),
+            evidence_ref(
+                "capacity_lot_ref",
+                format!("oa://kernel/compute/lots/{}", quote.capacity_lot_id),
+                quote.capacity_lot_id.as_str(),
+            ),
+        ],
+        hints: receipt_hints_for_notional(quote.price_sats),
+    };
+    let response = run_kernel_call(client.create_capacity_instrument(request))?;
+    state
+        .earn_kernel_receipts
+        .apply_authoritative_receipt(response.receipt, "kernel.authority.capacity_instrument.buy");
+    let instrument_id = response.instrument.instrument_id.clone();
+    let accepted_at_epoch_seconds = (created_at_ms / 1_000).max(0) as u64;
+    Ok(AcceptedSpotComputeOrder {
+        order_id: format!(
+            "spot-order-{}",
+            canonical_kernel_id_component(quote.quote_id.as_str())
+        ),
+        rfq_id: rfq.rfq_id.clone(),
+        quote_id: quote.quote_id.clone(),
+        instrument_id,
+        product_id: quote.product_id.clone(),
+        capacity_lot_id: quote.capacity_lot_id.clone(),
+        provider_id: quote.provider_id.clone(),
+        backend_family: quote.backend_family,
+        compute_family: quote.compute_family,
+        quantity: quote.requested_quantity,
+        price_sats: quote.price_sats,
+        delivery_window_label: quote.delivery_window_label.clone(),
+        authority_status: "spot-accepted".to_string(),
+        accepted_at_epoch_seconds,
+    })
+}
+
+fn build_spot_compute_quotes_from_market(
+    rfq: &SpotComputeRfqDraft,
+    products: &[ComputeProduct],
+    lots: &[CapacityLot],
+    instruments: &[CapacityInstrument],
+) -> Vec<SpotComputeQuoteCandidate> {
+    let mut quotes = Vec::new();
+    for product in products {
+        let Some(spec) = launch_compute_product_spec(product.product_id.as_str()) else {
+            continue;
+        };
+        if spec.compute_family != rfq.compute_family {
+            continue;
+        }
+        let Some(envelope) = product.capability_envelope.as_ref() else {
+            continue;
+        };
+        if !spot_rfq_matches_envelope(rfq, envelope) {
+            continue;
+        }
+        for lot in lots
+            .iter()
+            .filter(|lot| lot.product_id == product.product_id)
+        {
+            if !spot_lot_is_quotable(rfq, lot) {
+                continue;
+            }
+            let reserved_quantity =
+                reserved_quantity_for_lot(instruments, lot.capacity_lot_id.as_str());
+            let available_quantity = lot.quantity.saturating_sub(reserved_quantity);
+            if available_quantity < rfq.quantity {
+                continue;
+            }
+            let price_sats = lot
+                .min_unit_price
+                .as_ref()
+                .and_then(money_as_sats)
+                .unwrap_or_else(|| price_floor_sats_for_product_id(product.product_id.as_str()))
+                .saturating_mul(rfq.quantity);
+            if price_sats > rfq.max_price_sats {
+                continue;
+            }
+            quotes.push(SpotComputeQuoteCandidate {
+                quote_id: format!(
+                    "quote.{}.{}",
+                    canonical_kernel_id_component(rfq.rfq_id.as_str()),
+                    canonical_kernel_id_component(lot.capacity_lot_id.as_str())
+                ),
+                rfq_id: rfq.rfq_id.clone(),
+                product_id: product.product_id.clone(),
+                capacity_lot_id: lot.capacity_lot_id.clone(),
+                provider_id: lot.provider_id.clone(),
+                backend_family: spec.backend_family,
+                compute_family: spec.compute_family,
+                available_quantity,
+                requested_quantity: rfq.quantity,
+                price_sats,
+                delivery_window_label: format!(
+                    "{}m inside lot {}..{}",
+                    rfq.window_minutes, lot.delivery_start_ms, lot.delivery_end_ms
+                ),
+                capability_summary: capability_summary_for_product(product),
+                source_badge: quote_source_badge(product, lot).to_string(),
+                terms_label: quote_terms_label(product, lot).to_string(),
+            });
+        }
+    }
+    quotes.sort_by(|left, right| {
+        left.price_sats
+            .cmp(&right.price_sats)
+            .then_with(|| left.product_id.cmp(&right.product_id))
+            .then_with(|| left.capacity_lot_id.cmp(&right.capacity_lot_id))
+    });
+    quotes
+}
+
 fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchComputeBinding> {
     let mut bindings = Vec::new();
     if state.provider_runtime.apple_fm.is_ready()
+        && state.provider_runtime.product_enabled(
+            ProviderInventoryProductToggleTarget::AppleFoundationModelsInference.product_id(),
+        )
         && let Some(binding) = compute_binding_for_backend_and_capability(
             LocalInferenceBackend::AppleFoundationModels,
             "text_generation",
@@ -412,6 +710,9 @@ fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchCompute
         bindings.push(binding);
     }
     if state.provider_runtime.ollama.is_ready()
+        && state
+            .provider_runtime
+            .product_enabled(ProviderInventoryProductToggleTarget::OllamaInference.product_id())
         && let Some(binding) = compute_binding_for_backend_and_capability(
             LocalInferenceBackend::Ollama,
             "text_generation",
@@ -420,6 +721,9 @@ fn online_inventory_bindings_for_state(state: &RenderState) -> Vec<LaunchCompute
         bindings.push(binding);
     }
     if state.provider_runtime.ollama.is_ready()
+        && state
+            .provider_runtime
+            .product_enabled(ProviderInventoryProductToggleTarget::OllamaEmbeddings.product_id())
         && let Some(binding) = compute_binding_for_backend_and_capability(
             LocalInferenceBackend::Ollama,
             "text_embeddings",
@@ -447,10 +751,9 @@ fn ensure_launch_compute_product_registered(
     let compute_product_request = build_compute_product_request(binding);
     let compute_product_receipt =
         run_kernel_call(client.create_compute_product(compute_product_request))?.receipt;
-    state.earn_kernel_receipts.apply_authoritative_receipt(
-        compute_product_receipt,
-        "kernel.authority.compute_product",
-    );
+    state
+        .earn_kernel_receipts
+        .apply_authoritative_receipt(compute_product_receipt, "kernel.authority.compute_product");
     Ok(())
 }
 
@@ -462,10 +765,9 @@ fn ensure_online_capacity_lot_registered(
     let capacity_lot_request = build_online_capacity_lot_request(state, binding)?;
     let capacity_lot_receipt =
         run_kernel_call(client.create_capacity_lot(capacity_lot_request))?.receipt;
-    state.earn_kernel_receipts.apply_authoritative_receipt(
-        capacity_lot_receipt,
-        "kernel.authority.capacity_lot",
-    );
+    state
+        .earn_kernel_receipts
+        .apply_authoritative_receipt(capacity_lot_receipt, "kernel.authority.capacity_lot");
     Ok(())
 }
 
@@ -938,7 +1240,9 @@ fn build_online_capacity_lot_request(
             delivery_start_ms,
             delivery_end_ms,
             quantity: ONLINE_INVENTORY_QUANTITY,
-            min_unit_price: None,
+            min_unit_price: Some(btc_sats_money(price_floor_sats_for_product_id(
+                binding.product_id,
+            ))),
             region_hint: Some("local".to_string()),
             attestation_posture: Some("desktop.local.best_effort".to_string()),
             reserve_state: CapacityReserveState::Available,
@@ -949,8 +1253,11 @@ fn build_online_capacity_lot_request(
                 "compute_family": compute_family_label(binding.compute_family),
                 "provider_id": provider_id,
                 "session_started_at_ms": session_started_at_ms,
-                "ready_model": state.provider_runtime.ollama.ready_model.clone(),
-                "configured_model": state.provider_runtime.ollama.configured_model.clone(),
+                "ready_model": ready_model_for_binding(state, binding),
+                "configured_model": configured_model_for_binding(state, binding),
+                "source_badge": "desktop.go_online",
+                "terms_label": terms_label_for_product_id(binding.product_id),
+                "price_floor_sats": price_floor_sats_for_product_id(binding.product_id),
             }),
         },
         evidence: provider_inventory_evidence_refs(state),
@@ -962,9 +1269,11 @@ fn build_capacity_instrument_request(
     state: &RenderState,
     request: &JobInboxRequest,
 ) -> Result<CreateCapacityInstrumentRequest, String> {
-    let Some(linkage) =
-        compute_linkage_for_request(state, request.request_id.as_str(), request.capability.as_str())
-    else {
+    let Some(linkage) = compute_linkage_for_request(
+        state,
+        request.request_id.as_str(),
+        request.capability.as_str(),
+    ) else {
         return Err(format!(
             "unsupported compute capability for canonicalization: {}",
             request.capability
@@ -1012,11 +1321,9 @@ fn build_delivery_proof_request(
     state: &RenderState,
     job: &ActiveJobRecord,
 ) -> Result<RecordDeliveryProofRequest, String> {
-    let Some(linkage) = compute_linkage_for_active_job(job)
-        .or_else(|| {
-            compute_linkage_for_request(state, job.request_id.as_str(), job.capability.as_str())
-        })
-    else {
+    let Some(linkage) = compute_linkage_for_active_job(job).or_else(|| {
+        compute_linkage_for_request(state, job.request_id.as_str(), job.capability.as_str())
+    }) else {
         return Err(format!(
             "unsupported compute capability for canonicalization: {}",
             job.capability
@@ -1092,8 +1399,11 @@ fn build_work_unit_request(
     request: &JobInboxRequest,
 ) -> CreateWorkUnitRequest {
     let work_unit_id = work_unit_id_for_request(request.request_id.as_str());
-    let compute_linkage =
-        compute_linkage_for_request(state, request.request_id.as_str(), request.capability.as_str());
+    let compute_linkage = compute_linkage_for_request(
+        state,
+        request.request_id.as_str(),
+        request.capability.as_str(),
+    );
     CreateWorkUnitRequest {
         idempotency_key: format!("desktop.accept.work_unit:{}", request.request_id),
         trace: trace_context_for_request(request, true),
@@ -1137,8 +1447,11 @@ fn build_work_unit_request(
 }
 
 fn build_contract_request(state: &RenderState, request: &JobInboxRequest) -> CreateContractRequest {
-    let compute_linkage =
-        compute_linkage_for_request(state, request.request_id.as_str(), request.capability.as_str());
+    let compute_linkage = compute_linkage_for_request(
+        state,
+        request.request_id.as_str(),
+        request.capability.as_str(),
+    );
     CreateContractRequest {
         idempotency_key: format!("desktop.accept.contract:{}", request.request_id),
         trace: trace_context_for_request(request, false),
@@ -1187,8 +1500,9 @@ fn build_submit_output_request(state: &RenderState, job: &ActiveJobRecord) -> Su
         .map(str::trim)
         .filter(|value| !value.is_empty())
         .unwrap_or("provider execution completed without explicit output");
-    let compute_linkage = compute_linkage_for_active_job(job)
-        .or_else(|| compute_linkage_for_request(state, job.request_id.as_str(), job.capability.as_str()));
+    let compute_linkage = compute_linkage_for_active_job(job).or_else(|| {
+        compute_linkage_for_request(state, job.request_id.as_str(), job.capability.as_str())
+    });
     SubmitOutputRequest {
         idempotency_key: format!("desktop.submit.output:{}", job.request_id),
         trace: trace_context_for_job(job),
@@ -1252,8 +1566,9 @@ fn build_finalize_verdict_request(
     } else {
         SettlementStatus::Pending
     };
-    let compute_linkage = compute_linkage_for_active_job(job)
-        .or_else(|| compute_linkage_for_request(state, job.request_id.as_str(), job.capability.as_str()));
+    let compute_linkage = compute_linkage_for_active_job(job).or_else(|| {
+        compute_linkage_for_request(state, job.request_id.as_str(), job.capability.as_str())
+    });
     FinalizeVerdictRequest {
         idempotency_key: format!("desktop.finalize.verdict:{}", job.request_id),
         trace: trace_context_for_job(job),
@@ -1489,11 +1804,11 @@ fn compute_binding_for_backend_and_capability(
             LocalInferenceBackend::Ollama,
             "embedding" | "embeddings" | "text_embedding" | "text_embeddings",
         ) => Some(LaunchComputeBinding {
-                product_id: "ollama.embeddings",
-                backend_family: ComputeBackendFamily::Ollama,
-                compute_family: ComputeFamily::Embeddings,
-                model_policy: "ollama.embeddings.launch",
-            }),
+            product_id: "ollama.embeddings",
+            backend_family: ComputeBackendFamily::Ollama,
+            compute_family: ComputeFamily::Embeddings,
+            model_policy: "ollama.embeddings.launch",
+        }),
         (LocalInferenceBackend::AppleFoundationModels, "text_generation") => {
             Some(LaunchComputeBinding {
                 product_id: "apple_foundation_models.text_generation",
@@ -1534,10 +1849,29 @@ fn selected_launch_compute_binding_for_request(
         .to_ascii_lowercase()
         .replace(['.', '-'], "_");
     match normalized.as_str() {
-        "text_generation" => state
-            .provider_runtime
-            .active_inference_backend()
-            .and_then(|backend| compute_binding_for_backend_and_capability(backend, "text_generation")),
+        "text_generation" => {
+            let candidate_backends = [
+                LocalInferenceBackend::AppleFoundationModels,
+                LocalInferenceBackend::Ollama,
+            ];
+            candidate_backends.into_iter().find_map(|backend| {
+                let backend_ready = match backend {
+                    LocalInferenceBackend::AppleFoundationModels => {
+                        state.provider_runtime.apple_fm.is_ready()
+                    }
+                    LocalInferenceBackend::Ollama => state.provider_runtime.ollama.is_ready(),
+                };
+                if !backend_ready {
+                    return None;
+                }
+                let binding =
+                    compute_binding_for_backend_and_capability(backend, "text_generation")?;
+                state
+                    .provider_runtime
+                    .product_enabled(binding.product_id)
+                    .then_some(binding)
+            })
+        }
         "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => state
             .provider_runtime
             .ollama
@@ -1548,7 +1882,8 @@ fn selected_launch_compute_binding_for_request(
                     "text_embeddings",
                 )
             })
-            .flatten(),
+            .flatten()
+            .filter(|binding| state.provider_runtime.product_enabled(binding.product_id)),
         _ => None,
     }
 }
@@ -1658,10 +1993,391 @@ fn provider_id_for_state(state: &RenderState) -> String {
         .unwrap_or_else(|| "autopilot.desktop".to_string())
 }
 
+fn provider_inventory_backend_ready(
+    state: &RenderState,
+    target: ProviderInventoryProductToggleTarget,
+) -> bool {
+    match target {
+        ProviderInventoryProductToggleTarget::OllamaInference
+        | ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
+            state.provider_runtime.ollama.is_ready()
+        }
+        ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
+            state.provider_runtime.apple_fm.is_ready()
+        }
+    }
+}
+
+fn provider_inventory_active_job_matches(
+    state: &RenderState,
+    target: ProviderInventoryProductToggleTarget,
+) -> bool {
+    state
+        .active_job
+        .job
+        .as_ref()
+        .and_then(|job| {
+            job.compute_product_id
+                .as_deref()
+                .map(str::to_string)
+                .or_else(|| {
+                    compute_linkage_for_request(
+                        state,
+                        job.request_id.as_str(),
+                        job.capability.as_str(),
+                    )
+                    .map(|linkage| linkage.product_id.to_string())
+                })
+        })
+        .is_some_and(|product_id| product_id == target.product_id())
+}
+
+fn provider_inventory_source_badge(
+    state: &RenderState,
+    target: ProviderInventoryProductToggleTarget,
+    eligible: bool,
+) -> &'static str {
+    if !state
+        .provider_runtime
+        .inventory_controls
+        .is_advertised(target)
+    {
+        "disabled.local_policy"
+    } else if eligible
+        && state
+            .provider_runtime
+            .inventory_session_started_at_ms
+            .is_some()
+        && matches!(
+            state.provider_runtime.mode,
+            crate::app_state::ProviderMode::Online | crate::app_state::ProviderMode::Degraded
+        )
+    {
+        "desktop.go_online"
+    } else {
+        "desktop.local_preview"
+    }
+}
+
+fn provider_inventory_delivery_state(
+    state: &RenderState,
+    target: ProviderInventoryProductToggleTarget,
+) -> &'static str {
+    if !state
+        .provider_runtime
+        .inventory_controls
+        .is_advertised(target)
+    {
+        return "disabled";
+    }
+    if !provider_inventory_backend_ready(state, target) {
+        return "backend_unavailable";
+    }
+    if let Some(job) = state.active_job.job.as_ref()
+        && provider_inventory_active_job_matches(state, target)
+    {
+        return job.stage.label();
+    }
+    if matches!(
+        state.provider_runtime.mode,
+        crate::app_state::ProviderMode::Offline
+    ) {
+        "offline"
+    } else {
+        "idle"
+    }
+}
+
+fn provider_inventory_capability_summary(
+    state: &RenderState,
+    target: ProviderInventoryProductToggleTarget,
+) -> String {
+    let base_summary = target.capability_summary();
+    match target {
+        ProviderInventoryProductToggleTarget::OllamaInference
+        | ProviderInventoryProductToggleTarget::OllamaEmbeddings => {
+            let ready_model = state
+                .provider_runtime
+                .ollama
+                .ready_model
+                .as_deref()
+                .unwrap_or("none");
+            let configured_model = state
+                .provider_runtime
+                .ollama
+                .configured_model
+                .as_deref()
+                .unwrap_or("none");
+            let latency_ms = state
+                .provider_runtime
+                .ollama
+                .last_metrics
+                .as_ref()
+                .and_then(|metrics| metrics.total_duration_ns)
+                .map(|duration_ns| duration_ns / 1_000_000);
+            format!(
+                "{base_summary} model={ready_model} configured_model={configured_model} latency_ms_p50={}",
+                latency_ms
+                    .map(|value| value.to_string())
+                    .unwrap_or_else(|| "n/a".to_string())
+            )
+        }
+        ProviderInventoryProductToggleTarget::AppleFoundationModelsInference => {
+            let ready_model = state
+                .provider_runtime
+                .apple_fm
+                .ready_model
+                .as_deref()
+                .unwrap_or("none");
+            let availability = state
+                .provider_runtime
+                .apple_fm
+                .availability_message
+                .as_deref()
+                .unwrap_or("ready");
+            format!("{base_summary} model={ready_model} platform_gate={availability}")
+        }
+    }
+}
+
+fn spot_rfq_matches_envelope(
+    rfq: &SpotComputeRfqDraft,
+    envelope: &ComputeCapabilityEnvelope,
+) -> bool {
+    if envelope.compute_family != Some(rfq.compute_family) {
+        return false;
+    }
+    if let Some(preferred_backend) = rfq.preferred_backend
+        && envelope.backend_family != Some(preferred_backend)
+    {
+        return false;
+    }
+    spot_rfq_matches_host_capability(
+        &rfq.capability_constraints,
+        envelope.host_capability.as_ref(),
+    ) && spot_rfq_matches_model_constraints(&rfq.capability_constraints, envelope)
+        && rfq
+            .capability_constraints
+            .max_latency_ms
+            .is_none_or(|max_latency_ms| {
+                envelope
+                    .latency_ms_p50
+                    .is_some_and(|latency_ms| latency_ms <= max_latency_ms)
+            })
+        && rfq
+            .capability_constraints
+            .min_throughput_per_minute
+            .is_none_or(|min_throughput| {
+                envelope
+                    .throughput_per_minute
+                    .is_some_and(|throughput| throughput >= min_throughput)
+            })
+}
+
+fn spot_rfq_matches_host_capability(
+    constraints: &SpotComputeCapabilityConstraints,
+    host_capability: Option<&ComputeHostCapability>,
+) -> bool {
+    if constraints.accelerator_vendor.is_none()
+        && constraints.accelerator_family.is_none()
+        && constraints.min_memory_gb.is_none()
+    {
+        return true;
+    }
+    let Some(host_capability) = host_capability else {
+        return false;
+    };
+    if let Some(expected_vendor) = constraints.accelerator_vendor.as_deref()
+        && host_capability.accelerator_vendor.as_deref() != Some(expected_vendor)
+    {
+        return false;
+    }
+    if let Some(expected_family) = constraints.accelerator_family.as_deref()
+        && host_capability.accelerator_family.as_deref() != Some(expected_family)
+    {
+        return false;
+    }
+    if let Some(min_memory_gb) = constraints.min_memory_gb
+        && host_capability
+            .memory_gb
+            .is_none_or(|memory_gb| memory_gb < min_memory_gb)
+    {
+        return false;
+    }
+    true
+}
+
+fn spot_rfq_matches_model_constraints(
+    constraints: &SpotComputeCapabilityConstraints,
+    envelope: &ComputeCapabilityEnvelope,
+) -> bool {
+    if let Some(model_policy) = constraints.model_policy.as_deref()
+        && envelope.model_policy.as_deref() != Some(model_policy)
+    {
+        return false;
+    }
+    if let Some(model_family) = constraints.model_family.as_deref()
+        && envelope.model_family.as_deref() != Some(model_family)
+    {
+        return false;
+    }
+    true
+}
+
+fn spot_lot_is_quotable(rfq: &SpotComputeRfqDraft, lot: &CapacityLot) -> bool {
+    if matches!(
+        lot.status,
+        CapacityLotStatus::Cancelled | CapacityLotStatus::Expired | CapacityLotStatus::Delivered
+    ) {
+        return false;
+    }
+    let now_ms = current_epoch_ms();
+    if lot.offer_expires_at_ms < now_ms {
+        return false;
+    }
+    let requested_end_ms =
+        now_ms.saturating_add((rfq.window_minutes as i64).saturating_mul(60_000));
+    requested_end_ms <= lot.delivery_end_ms
+}
+
+fn reserved_quantity_for_lot(instruments: &[CapacityInstrument], capacity_lot_id: &str) -> u64 {
+    instruments
+        .iter()
+        .filter(|instrument| instrument.capacity_lot_id.as_deref() == Some(capacity_lot_id))
+        .filter(|instrument| {
+            !matches!(
+                instrument.status,
+                CapacityInstrumentStatus::Settled
+                    | CapacityInstrumentStatus::Defaulted
+                    | CapacityInstrumentStatus::Cancelled
+                    | CapacityInstrumentStatus::Expired
+            )
+        })
+        .map(|instrument| instrument.quantity)
+        .sum()
+}
+
+fn money_as_sats(money: &Money) -> Option<u64> {
+    if money.asset != Asset::Btc {
+        return None;
+    }
+    match money.amount {
+        MoneyAmount::AmountSats(value) => Some(value),
+        MoneyAmount::AmountMsats(value) => Some(value.saturating_add(999) / 1000),
+    }
+}
+
+fn quote_source_badge(product: &ComputeProduct, lot: &CapacityLot) -> String {
+    lot.metadata
+        .get("source_badge")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| {
+            lot.metadata
+                .get("source")
+                .and_then(serde_json::Value::as_str)
+        })
+        .or_else(|| {
+            product
+                .metadata
+                .get("source")
+                .and_then(serde_json::Value::as_str)
+        })
+        .unwrap_or("kernel.authority")
+        .to_string()
+}
+
+fn quote_terms_label(product: &ComputeProduct, lot: &CapacityLot) -> String {
+    lot.metadata
+        .get("terms_label")
+        .and_then(serde_json::Value::as_str)
+        .or_else(|| product.sla_terms_ref.as_deref())
+        .unwrap_or("spot session / local best effort")
+        .to_string()
+}
+
+fn capability_summary_for_product(product: &ComputeProduct) -> String {
+    let Some(spec) = launch_compute_product_spec(product.product_id.as_str()) else {
+        return "unsupported_launch_product".to_string();
+    };
+    let envelope = product.capability_envelope.as_ref();
+    let model_policy = envelope
+        .and_then(|envelope| envelope.model_policy.as_deref())
+        .unwrap_or("none");
+    let model_family = envelope
+        .and_then(|envelope| envelope.model_family.as_deref())
+        .unwrap_or("none");
+    let latency_ms = envelope
+        .and_then(|envelope| envelope.latency_ms_p50)
+        .map(|latency| latency.to_string())
+        .unwrap_or_else(|| "n/a".to_string());
+    let host_summary = envelope
+        .and_then(|envelope| envelope.host_capability.as_ref())
+        .map(|host_capability| {
+            format!(
+                " accelerator_vendor={} accelerator_family={} memory_gb={}",
+                host_capability
+                    .accelerator_vendor
+                    .as_deref()
+                    .unwrap_or("n/a"),
+                host_capability
+                    .accelerator_family
+                    .as_deref()
+                    .unwrap_or("n/a"),
+                host_capability
+                    .memory_gb
+                    .map(|memory| memory.to_string())
+                    .unwrap_or_else(|| "n/a".to_string())
+            )
+        })
+        .unwrap_or_default();
+    format!(
+        "backend={:?} family={} model_policy={} model_family={} latency_ms_p50={}{}",
+        spec.backend_family,
+        compute_family_label(spec.compute_family),
+        model_policy,
+        model_family,
+        latency_ms,
+        host_summary
+    )
+}
+
 fn compute_family_label(compute_family: ComputeFamily) -> &'static str {
     match compute_family {
         ComputeFamily::Inference => "inference",
         ComputeFamily::Embeddings => "embeddings",
+    }
+}
+
+fn price_floor_sats_for_product_id(product_id: &str) -> u64 {
+    ProviderInventoryProductToggleTarget::for_product_id(product_id)
+        .map(ProviderInventoryProductToggleTarget::default_price_floor_sats)
+        .unwrap_or(0)
+}
+
+fn terms_label_for_product_id(product_id: &str) -> &'static str {
+    ProviderInventoryProductToggleTarget::for_product_id(product_id)
+        .map(ProviderInventoryProductToggleTarget::terms_label)
+        .unwrap_or("spot session / local best effort")
+}
+
+fn ready_model_for_binding(state: &RenderState, binding: LaunchComputeBinding) -> Option<String> {
+    match binding.backend_family {
+        ComputeBackendFamily::Ollama => state.provider_runtime.ollama.ready_model.clone(),
+        ComputeBackendFamily::AppleFoundationModels => {
+            state.provider_runtime.apple_fm.ready_model.clone()
+        }
+    }
+}
+
+fn configured_model_for_binding(
+    state: &RenderState,
+    binding: LaunchComputeBinding,
+) -> Option<String> {
+    match binding.backend_family {
+        ComputeBackendFamily::Ollama => state.provider_runtime.ollama.configured_model.clone(),
+        ComputeBackendFamily::AppleFoundationModels => {
+            state.provider_runtime.apple_fm.ready_model.clone()
+        }
     }
 }
 
@@ -1744,18 +2460,26 @@ pub(crate) fn reset_request_decision_after_kernel_error(
 mod tests {
     use super::{
         KernelAuthorityMode, PendingSseEvent, ReceiptProjectionEnvelope,
-        build_compute_product_request,
+        build_compute_product_request, build_spot_compute_quotes_from_market,
         compute_binding_for_backend_and_capability, compute_linkage_for_active_job,
         consume_sse_buffer, delivery_proof_id_for_request, flush_pending_sse_event,
         online_capacity_lot_id_for_binding, resolve_kernel_authority_mode,
         submission_evidence_refs,
     };
     use crate::app_state::{ActiveJobRecord, JobDemandSource, JobLifecycleStage};
+    use crate::app_state::{SpotComputeCapabilityConstraints, SpotComputeRfqDraft};
     use crate::economy_kernel_receipts::{
         PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
     };
     use crate::state::provider_runtime::LocalInferenceBackend;
-    use openagents_kernel_core::compute::ComputeFamily;
+    use openagents_kernel_core::compute::{
+        CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
+        CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
+        ComputeExecutionKind, ComputeFamily, ComputeProduct, ComputeProductStatus,
+        ComputeSettlementMode, OllamaRuntimeCapability,
+    };
+    use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
+    use serde_json::json;
     use std::sync::mpsc;
 
     fn fixture_receipt() -> crate::economy_kernel_receipts::Receipt {
@@ -1824,6 +2548,78 @@ mod tests {
             payment_id: None,
             failure_reason: None,
             events: Vec::new(),
+        }
+    }
+
+    fn fixture_compute_product(product_id: &str, compute_family: ComputeFamily) -> ComputeProduct {
+        ComputeProduct {
+            product_id: product_id.to_string(),
+            resource_class: "compute".to_string(),
+            capacity_unit: "request".to_string(),
+            window_spec: "session".to_string(),
+            region_spec: vec!["local".to_string()],
+            performance_band: Some("desktop-local".to_string()),
+            sla_terms_ref: Some("sla.autopilot.best_effort".to_string()),
+            cost_proof_required: false,
+            attestation_required: false,
+            settlement_mode: ComputeSettlementMode::Physical,
+            index_eligible: false,
+            status: ComputeProductStatus::Active,
+            version: "v1".to_string(),
+            created_at_ms: 1_762_000_000_000,
+            taxonomy_version: Some(
+                openagents_kernel_core::compute::COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string(),
+            ),
+            capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::Ollama),
+                execution_kind: Some(ComputeExecutionKind::LocalInference),
+                compute_family: Some(compute_family),
+                model_policy: Some(product_id.to_string()),
+                model_family: Some("nomic-embed-text".to_string()),
+                host_capability: None,
+                apple_platform: None,
+                ollama_runtime: Some(OllamaRuntimeCapability {
+                    runtime_ready: Some(true),
+                    model_name: Some("nomic-embed-text".to_string()),
+                    quantization: Some("q4_k_m".to_string()),
+                }),
+                latency_ms_p50: Some(240),
+                throughput_per_minute: Some(4000),
+                concurrency_limit: Some(2),
+            }),
+            metadata: json!({
+                "source": "desktop.go_online",
+                "source_badge": "desktop.go_online",
+                "terms_label": "spot session / local best effort"
+            }),
+        }
+    }
+
+    fn fixture_capacity_lot(
+        product_id: &str,
+        quantity: u64,
+        min_unit_price_sats: u64,
+    ) -> CapacityLot {
+        CapacityLot {
+            capacity_lot_id: format!("lot.online.provider.{}", product_id.replace(':', "_")),
+            product_id: product_id.to_string(),
+            provider_id: "npub1provider".to_string(),
+            delivery_start_ms: 0,
+            delivery_end_ms: i64::MAX / 4,
+            quantity,
+            min_unit_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(min_unit_price_sats),
+            }),
+            region_hint: Some("local".to_string()),
+            attestation_posture: Some("desktop.local.best_effort".to_string()),
+            reserve_state: CapacityReserveState::Available,
+            offer_expires_at_ms: i64::MAX / 4,
+            status: CapacityLotStatus::Open,
+            metadata: json!({
+                "source_badge": "desktop.go_online",
+                "terms_label": "spot session / local best effort"
+            }),
         }
     }
 
@@ -1983,7 +2779,10 @@ mod tests {
             "desktop.compute_product:ollama.text_generation"
         );
         assert_eq!(request.product.product_id, "ollama.text_generation");
-        assert_eq!(request.product.created_at_ms, super::LAUNCH_PRODUCT_CREATED_AT_MS);
+        assert_eq!(
+            request.product.created_at_ms,
+            super::LAUNCH_PRODUCT_CREATED_AT_MS
+        );
         assert!(request.evidence.is_empty());
         assert_eq!(request.policy.approved_by, "openagents.compute.market");
     }
@@ -2030,9 +2829,8 @@ mod tests {
 
     #[test]
     fn compute_linkage_uses_active_job_inventory_and_request_instrument_ids() {
-        let linkage =
-            compute_linkage_for_active_job(&fixture_active_job_with_ollama_provenance())
-                .expect("linkage");
+        let linkage = compute_linkage_for_active_job(&fixture_active_job_with_ollama_provenance())
+            .expect("linkage");
         assert_eq!(linkage.product_id, "ollama.text_generation");
         assert_eq!(
             linkage.capacity_lot_id,
@@ -2043,5 +2841,50 @@ mod tests {
             linkage.delivery_proof_id,
             delivery_proof_id_for_request("req-ollama-001")
         );
+    }
+
+    #[test]
+    fn spot_quotes_only_return_matching_launch_family_and_available_supply() {
+        let rfq = SpotComputeRfqDraft {
+            rfq_id: "rfq-1".to_string(),
+            compute_family: ComputeFamily::Embeddings,
+            preferred_backend: Some(ComputeBackendFamily::Ollama),
+            quantity: 2,
+            window_minutes: 15,
+            max_price_sats: 30,
+            capability_constraints: SpotComputeCapabilityConstraints::default(),
+        };
+        let products = vec![
+            fixture_compute_product("ollama.embeddings", ComputeFamily::Embeddings),
+            fixture_compute_product("ollama.text_generation", ComputeFamily::Inference),
+        ];
+        let lots = vec![
+            fixture_capacity_lot("ollama.embeddings", 4, 8),
+            fixture_capacity_lot("ollama.text_generation", 4, 21),
+        ];
+        let instruments = vec![CapacityInstrument {
+            instrument_id: "instrument.active.1".to_string(),
+            product_id: "ollama.embeddings".to_string(),
+            capacity_lot_id: Some(lots[0].capacity_lot_id.clone()),
+            buyer_id: Some("npub1buyer".to_string()),
+            provider_id: Some("npub1provider".to_string()),
+            delivery_start_ms: 0,
+            delivery_end_ms: 1,
+            quantity: 1,
+            fixed_price: None,
+            reference_index_id: None,
+            kind: openagents_kernel_core::compute::CapacityInstrumentKind::Spot,
+            settlement_mode: ComputeSettlementMode::Physical,
+            created_at_ms: 0,
+            status: CapacityInstrumentStatus::Active,
+            metadata: json!({}),
+        }];
+
+        let quotes = build_spot_compute_quotes_from_market(&rfq, &products, &lots, &instruments);
+        assert_eq!(quotes.len(), 1);
+        assert_eq!(quotes[0].product_id, "ollama.embeddings");
+        assert_eq!(quotes[0].requested_quantity, 2);
+        assert_eq!(quotes[0].available_quantity, 3);
+        assert_eq!(quotes[0].price_sats, 16);
     }
 }

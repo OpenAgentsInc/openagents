@@ -5272,66 +5272,276 @@ pub(super) fn run_network_requests_action(
     action: NetworkRequestsPaneAction,
 ) -> bool {
     match action {
-        NetworkRequestsPaneAction::SubmitRequest => {
-            let request_type = state
-                .network_requests_inputs
-                .request_type
-                .get_value()
-                .trim()
-                .to_string();
-            let payload = state
-                .network_requests_inputs
-                .payload
-                .get_value()
-                .trim()
-                .to_string();
-            let skill_scope_id =
-                normalize_optional_text(state.network_requests_inputs.skill_scope_id.get_value());
-            let credit_envelope_ref = normalize_optional_text(
+        NetworkRequestsPaneAction::RequestQuotes => {
+            let rfq = match build_spot_compute_rfq_from_inputs(state) {
+                Ok(rfq) => rfq,
+                Err(error) => {
+                    state.network_requests.clear_spot_quotes_with_error(error);
+                    return true;
+                }
+            };
+            match crate::kernel_control::request_spot_compute_quotes(state, &rfq) {
+                Ok(quotes) => {
+                    state
+                        .network_requests
+                        .replace_spot_quotes(rfq.clone(), quotes);
+                    state.provider_runtime.last_result =
+                        Some(format!("loaded compute quotes for {}", rfq.summary()));
+                }
+                Err(error) => {
+                    state
+                        .network_requests
+                        .clear_spot_quotes_with_error(error.clone());
+                    state.provider_runtime.last_error_detail = Some(error.clone());
+                    state.provider_runtime.last_result =
+                        Some(format!("compute quote request failed: {error}"));
+                }
+            }
+            true
+        }
+        NetworkRequestsPaneAction::AcceptSelectedQuote => {
+            let Some(rfq) = state.network_requests.last_spot_rfq.clone() else {
                 state
-                    .network_requests_inputs
-                    .credit_envelope_ref
-                    .get_value(),
-            );
-            let budget_sats = match parse_positive_amount_str(
-                state.network_requests_inputs.budget_sats.get_value(),
-                "Budget sats",
-            ) {
-                Ok(value) => value,
-                Err(error) => {
-                    state.network_requests.last_error = Some(error);
-                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
-                    return true;
-                }
+                    .network_requests
+                    .clear_spot_quotes_with_error("Load quotes before accepting terms");
+                return true;
             };
-            let timeout_seconds = match parse_positive_amount_str(
-                state.network_requests_inputs.timeout_seconds.get_value(),
-                "Timeout seconds",
-            ) {
-                Ok(value) => value,
-                Err(error) => {
-                    state.network_requests.last_error = Some(error);
-                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
-                    return true;
-                }
+            let Some(quote) = state.network_requests.selected_spot_quote().cloned() else {
+                state
+                    .network_requests
+                    .clear_spot_quotes_with_error("Select a quote before accepting terms");
+                return true;
             };
-            let target_provider_pubkeys = extract_target_provider_pubkeys(payload.as_str());
-            if let Err(error) = submit_signed_network_request(
-                state,
-                request_type,
-                payload,
-                skill_scope_id,
-                credit_envelope_ref,
-                budget_sats,
-                timeout_seconds,
-                target_provider_pubkeys,
-            ) {
-                state.network_requests.last_error = Some(error);
+            match crate::kernel_control::accept_spot_compute_quote(state, &rfq, &quote) {
+                Ok(order) => {
+                    let instrument_id = order.instrument_id.clone();
+                    let quote_id = order.quote_id.clone();
+                    state.network_requests.record_spot_order_acceptance(order);
+                    state.provider_runtime.last_result = Some(format!(
+                        "accepted compute quote {} -> {}",
+                        quote_id, instrument_id
+                    ));
+                }
+                Err(error) => {
+                    state.network_requests.last_error = Some(error.clone());
+                    state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
+                    state.provider_runtime.last_error_detail = Some(error.clone());
+                    state.provider_runtime.last_result =
+                        Some(format!("compute quote acceptance failed: {error}"));
+                }
+            }
+            true
+        }
+        NetworkRequestsPaneAction::SelectQuote(index) => {
+            if !state.network_requests.select_spot_quote_by_index(index) {
+                state.network_requests.last_error =
+                    Some("Selected compute quote no longer exists".to_string());
                 state.network_requests.load_state = crate::app_state::PaneLoadState::Error;
             }
             true
         }
     }
+}
+
+pub(super) fn run_provider_status_action(
+    state: &mut crate::app_state::RenderState,
+    action: ProviderStatusPaneAction,
+) -> bool {
+    match action {
+        ProviderStatusPaneAction::ToggleInventory(target) => {
+            let enabled = state.provider_runtime.toggle_inventory_target(target);
+            let mode_note = if matches!(
+                state.provider_runtime.mode,
+                crate::app_state::ProviderMode::Online | crate::app_state::ProviderMode::Degraded
+            ) {
+                "local admission updated now; disabled supply remains listed until the next session because lot cancellation receipts are not implemented yet"
+            } else {
+                "applies on next Go Online session"
+            };
+            state.provider_runtime.inventory_last_action = Some(format!(
+                "{} {} ({mode_note})",
+                target.display_label(),
+                if enabled { "enabled" } else { "disabled" }
+            ));
+            state.provider_runtime.last_result =
+                state.provider_runtime.inventory_last_action.clone();
+            if enabled
+                && matches!(
+                    state.provider_runtime.mode,
+                    crate::app_state::ProviderMode::Online
+                        | crate::app_state::ProviderMode::Degraded
+                )
+                && let Err(error) =
+                    crate::kernel_control::register_online_compute_inventory_with_kernel(state)
+            {
+                state.provider_runtime.inventory_last_error = Some(error.clone());
+                state.provider_runtime.last_error_detail = Some(error.clone());
+                state.provider_runtime.last_result = Some(format!(
+                    "inventory enable failed for {}: {error}",
+                    target.product_id()
+                ));
+            }
+            let _ = crate::kernel_control::refresh_provider_inventory_rows(state);
+            true
+        }
+    }
+}
+
+fn build_spot_compute_rfq_from_inputs(
+    state: &mut crate::app_state::RenderState,
+) -> Result<crate::app_state::SpotComputeRfqDraft, String> {
+    use openagents_kernel_core::compute::{ComputeBackendFamily, ComputeFamily};
+
+    let compute_family = match state
+        .network_requests_inputs
+        .compute_family
+        .get_value()
+        .trim()
+        .to_ascii_lowercase()
+        .replace(['.', '-'], "_")
+        .as_str()
+    {
+        "inference" | "text_generation" | "text_generation_request" => ComputeFamily::Inference,
+        "embedding" | "embeddings" | "text_embedding" | "text_embeddings" => {
+            ComputeFamily::Embeddings
+        }
+        other => {
+            return Err(format!(
+                "Compute family must be inference or embeddings, got {other}"
+            ));
+        }
+    };
+    let preferred_backend = match normalize_optional_text(
+        state.network_requests_inputs.preferred_backend.get_value(),
+    ) {
+        Some(value) => match value
+            .trim()
+            .to_ascii_lowercase()
+            .replace(['.', '-'], "_")
+            .as_str()
+        {
+            "ollama" => Some(ComputeBackendFamily::Ollama),
+            "apple_foundation_models" | "apple_fm" | "apple_foundation" => {
+                Some(ComputeBackendFamily::AppleFoundationModels)
+            }
+            other => {
+                return Err(format!(
+                    "Preferred backend must be ollama, apple_foundation_models, or empty, got {other}"
+                ));
+            }
+        },
+        None => None,
+    };
+    let quantity = parse_positive_amount_str(
+        state.network_requests_inputs.quantity.get_value(),
+        "Requested quantity",
+    )?;
+    let window_minutes = parse_positive_amount_str(
+        state.network_requests_inputs.window_minutes.get_value(),
+        "Delivery window minutes",
+    )?;
+    let max_price_sats = parse_positive_amount_str(
+        state.network_requests_inputs.max_price_sats.get_value(),
+        "Max price sats",
+    )?;
+    let capability_constraints = parse_spot_compute_capability_constraints(
+        state
+            .network_requests_inputs
+            .capability_constraints
+            .get_value(),
+    )?;
+    Ok(crate::app_state::SpotComputeRfqDraft {
+        rfq_id: format!("rfq-{}", current_epoch_seconds()),
+        compute_family,
+        preferred_backend,
+        quantity,
+        window_minutes,
+        max_price_sats,
+        capability_constraints,
+    })
+}
+
+fn parse_spot_compute_capability_constraints(
+    raw: &str,
+) -> Result<crate::app_state::SpotComputeCapabilityConstraints, String> {
+    let normalized = raw.trim();
+    if normalized.is_empty() {
+        return Ok(crate::app_state::SpotComputeCapabilityConstraints::default());
+    }
+    if normalized.starts_with('{') {
+        let value: serde_json::Value = serde_json::from_str(normalized)
+            .map_err(|error| format!("Capability constraints JSON is invalid: {error}"))?;
+        let object = value
+            .as_object()
+            .ok_or_else(|| "Capability constraints JSON must be an object".to_string())?;
+        return capability_constraints_from_pairs(
+            object
+                .iter()
+                .map(|(key, value)| {
+                    (
+                        key.to_string(),
+                        value
+                            .as_str()
+                            .map(ToString::to_string)
+                            .unwrap_or_else(|| value.to_string()),
+                    )
+                })
+                .collect::<Vec<_>>()
+                .as_slice(),
+        );
+    }
+    let pairs = normalized
+        .split(',')
+        .filter_map(|entry| {
+            let mut segments = entry.splitn(2, '=');
+            let key = segments.next()?.trim();
+            let value = segments.next()?.trim();
+            (!key.is_empty() && !value.is_empty()).then(|| (key.to_string(), value.to_string()))
+        })
+        .collect::<Vec<_>>();
+    capability_constraints_from_pairs(pairs.as_slice())
+}
+
+fn capability_constraints_from_pairs(
+    pairs: &[(String, String)],
+) -> Result<crate::app_state::SpotComputeCapabilityConstraints, String> {
+    let mut constraints = crate::app_state::SpotComputeCapabilityConstraints::default();
+    for (key, value) in pairs {
+        match key.trim() {
+            "accelerator_vendor" => constraints.accelerator_vendor = Some(value.trim().to_string()),
+            "accelerator_family" => constraints.accelerator_family = Some(value.trim().to_string()),
+            "min_memory_gb" => {
+                constraints.min_memory_gb = Some(
+                    value
+                        .trim()
+                        .parse::<u32>()
+                        .map_err(|error| format!("min_memory_gb must be an integer: {error}"))?,
+                );
+            }
+            "max_latency_ms" => {
+                constraints.max_latency_ms = Some(
+                    value
+                        .trim()
+                        .parse::<u32>()
+                        .map_err(|error| format!("max_latency_ms must be an integer: {error}"))?,
+                );
+            }
+            "min_throughput_per_minute" => {
+                constraints.min_throughput_per_minute =
+                    Some(value.trim().parse::<u32>().map_err(|error| {
+                        format!("min_throughput_per_minute must be an integer: {error}")
+                    })?);
+            }
+            "model_policy" => constraints.model_policy = Some(value.trim().to_string()),
+            "model_family" => constraints.model_family = Some(value.trim().to_string()),
+            other => {
+                return Err(format!(
+                    "Unsupported capability constraint key {other}. Supported keys: accelerator_vendor, accelerator_family, min_memory_gb, max_latency_ms, min_throughput_per_minute, model_policy, model_family"
+                ));
+            }
+        }
+    }
+    Ok(constraints)
 }
 
 fn submit_signed_network_request(

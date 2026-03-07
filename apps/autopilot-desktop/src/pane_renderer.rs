@@ -7,9 +7,8 @@ use crate::app_state::{
     CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
     CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
     EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProjectOpsPaneState,
-    ProviderBlocker,
+    JobLifecycleStage, NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind,
+    PaneLoadState, PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker,
     ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
     SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
     SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
@@ -34,22 +33,24 @@ use crate::pane_system::{
     job_history_prev_page_button_bounds, job_history_search_input_bounds,
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, network_requests_budget_input_bounds,
-    network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
+    job_inbox_visible_row_count, network_requests_accept_button_bounds,
+    network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
     network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
     network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
-    pane_content_bounds, reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
-    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
-    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
+    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
+    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
+    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
+    settings_provider_queue_input_bounds, settings_relay_input_bounds,
+    settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
-    chat as chat_pane, codex as codex_pane, credit as credit_pane,
-    project_ops as project_ops_pane,
+    chat as chat_pane, codex as codex_pane, credit as credit_pane, project_ops as project_ops_pane,
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
@@ -1019,7 +1020,91 @@ fn paint_provider_status_pane(
     let heartbeat_age = provider_runtime
         .heartbeat_age_seconds(now)
         .map_or_else(|| "n/a".to_string(), |age| age.to_string());
-    let mut y = content_bounds.origin.y + 12.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Launch inventory controls",
+        Point::new(
+            content_bounds.origin.x + 12.0,
+            content_bounds.origin.y + 12.0,
+        ),
+        11.0,
+        theme::text::MUTED,
+    ));
+    for (row_index, target) in crate::app_state::ProviderInventoryProductToggleTarget::all()
+        .iter()
+        .enumerate()
+    {
+        let button_bounds = provider_inventory_toggle_button_bounds(content_bounds, row_index);
+        let enabled = provider_runtime.inventory_controls.is_advertised(*target);
+        let button_label = if enabled {
+            format!("Disable {}", target.display_label())
+        } else {
+            format!("Enable {}", target.display_label())
+        };
+        paint_action_button(button_bounds, button_label.as_str(), paint);
+    }
+
+    let inventory_heading_y = content_bounds.origin.y + 136.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Live launch inventory",
+        Point::new(content_bounds.origin.x + 12.0, inventory_heading_y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    let mut inventory_y = inventory_heading_y + 18.0;
+    for row in provider_runtime.inventory_rows.iter().take(3) {
+        let line = format!(
+            "{} [{}] backend_ready={} lot={} open={} reserved={} available={} delivery={} floor={} terms={} source={}",
+            row.target.display_label(),
+            if row.enabled { "enabled" } else { "disabled" },
+            if row.backend_ready { "yes" } else { "no" },
+            row.capacity_lot_id.as_deref().unwrap_or("n/a"),
+            row.total_quantity,
+            row.reserved_quantity,
+            row.available_quantity,
+            row.delivery_state,
+            format_sats_amount(row.price_floor_sats),
+            row.terms_label,
+            row.source_badge,
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            &line,
+            Point::new(content_bounds.origin.x + 12.0, inventory_y),
+            10.0,
+            if row.eligible {
+                theme::text::PRIMARY
+            } else {
+                theme::text::MUTED
+            },
+        ));
+        inventory_y += 14.0;
+        paint.scene.draw_text(paint.text.layout_mono(
+            row.capability_summary.as_str(),
+            Point::new(content_bounds.origin.x + 12.0, inventory_y),
+            9.0,
+            theme::text::MUTED,
+        ));
+        inventory_y += 18.0;
+    }
+    if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            action,
+            Point::new(content_bounds.origin.x + 12.0, inventory_y),
+            10.0,
+            theme::text::MUTED,
+        ));
+        inventory_y += 16.0;
+    }
+    if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
+        paint.scene.draw_text(paint.text.layout(
+            error,
+            Point::new(content_bounds.origin.x + 12.0, inventory_y),
+            10.0,
+            theme::status::ERROR,
+        ));
+        inventory_y += 16.0;
+    }
+
+    let mut y = inventory_y + 10.0;
     y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
@@ -1243,7 +1328,8 @@ fn paint_provider_status_pane(
     } else {
         "ready"
     };
-    let apple_fm_status = if provider_blockers.contains(&ProviderBlocker::AppleFoundationModelsUnavailable)
+    let apple_fm_status = if provider_blockers
+        .contains(&ProviderBlocker::AppleFoundationModelsUnavailable)
         || provider_blockers.contains(&ProviderBlocker::AppleFoundationModelsModelUnavailable)
     {
         "degraded"
@@ -1713,7 +1799,7 @@ fn paint_network_requests_pane(
     network_requests_inputs: &mut NetworkRequestsPaneInputs,
     paint: &mut PaintContext,
 ) {
-    paint_source_badge(content_bounds, "runtime", paint);
+    paint_source_badge(content_bounds, "compute.authority", paint);
 
     let request_type_bounds = network_requests_type_input_bounds(content_bounds);
     let payload_bounds = network_requests_payload_input_bounds(content_bounds);
@@ -1722,46 +1808,50 @@ fn paint_network_requests_pane(
     let budget_bounds = network_requests_budget_input_bounds(content_bounds);
     let timeout_bounds = network_requests_timeout_input_bounds(content_bounds);
     let submit_bounds = network_requests_submit_button_bounds(content_bounds);
+    let accept_bounds = network_requests_accept_button_bounds(content_bounds);
 
     network_requests_inputs
-        .request_type
+        .compute_family
         .set_max_width(request_type_bounds.size.width);
     network_requests_inputs
-        .payload
+        .preferred_backend
         .set_max_width(payload_bounds.size.width);
     network_requests_inputs
-        .skill_scope_id
+        .capability_constraints
         .set_max_width(skill_scope_bounds.size.width);
     network_requests_inputs
-        .credit_envelope_ref
+        .quantity
         .set_max_width(envelope_bounds.size.width);
     network_requests_inputs
-        .budget_sats
+        .window_minutes
         .set_max_width(budget_bounds.size.width);
     network_requests_inputs
-        .timeout_seconds
+        .max_price_sats
         .set_max_width(timeout_bounds.size.width);
 
     network_requests_inputs
-        .request_type
+        .compute_family
         .paint(request_type_bounds, paint);
-    network_requests_inputs.payload.paint(payload_bounds, paint);
     network_requests_inputs
-        .skill_scope_id
+        .preferred_backend
+        .paint(payload_bounds, paint);
+    network_requests_inputs
+        .capability_constraints
         .paint(skill_scope_bounds, paint);
     network_requests_inputs
-        .credit_envelope_ref
+        .quantity
         .paint(envelope_bounds, paint);
     network_requests_inputs
-        .budget_sats
+        .window_minutes
         .paint(budget_bounds, paint);
     network_requests_inputs
-        .timeout_seconds
+        .max_price_sats
         .paint(timeout_bounds, paint);
-    paint_primary_button(submit_bounds, "Submit request", paint);
+    paint_primary_button(submit_bounds, "Request quotes", paint);
+    paint_action_button(accept_bounds, "Accept selected quote", paint);
 
     paint.scene.draw_text(paint.text.layout(
-        "Request type",
+        "Compute family",
         Point::new(
             request_type_bounds.origin.x,
             request_type_bounds.origin.y - 12.0,
@@ -1770,19 +1860,19 @@ fn paint_network_requests_pane(
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Payload",
+        "Preferred backend",
         Point::new(payload_bounds.origin.x, payload_bounds.origin.y - 12.0),
         10.0,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Budget (₿)",
+        "Delivery window (m)",
         Point::new(budget_bounds.origin.x, budget_bounds.origin.y - 12.0),
         10.0,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Skill scope id",
+        "Capability envelope constraints",
         Point::new(
             skill_scope_bounds.origin.x,
             skill_scope_bounds.origin.y - 12.0,
@@ -1791,13 +1881,13 @@ fn paint_network_requests_pane(
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Credit envelope ref",
+        "Requested quantity",
         Point::new(envelope_bounds.origin.x, envelope_bounds.origin.y - 12.0),
         10.0,
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Timeout (s)",
+        "Max price (sats)",
         Point::new(timeout_bounds.origin.x, timeout_bounds.origin.y - 12.0),
         10.0,
         theme::text::MUTED,
@@ -1806,100 +1896,130 @@ fn paint_network_requests_pane(
     let y = paint_state_summary(
         paint,
         content_bounds.origin.x + 12.0,
-        submit_bounds.max_y() + 12.0,
+        accept_bounds.max_y() + 12.0,
         network_requests.load_state,
         &format!("State: {}", network_requests.load_state.label()),
         network_requests.last_action.as_deref(),
         network_requests.last_error.as_deref(),
     );
+    let mut detail_y = y;
+    if let Some(rfq) = network_requests.last_spot_rfq.as_ref() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            &format!("RFQ: {}", rfq.summary()),
+            Point::new(content_bounds.origin.x + 12.0, detail_y),
+            9.0,
+            theme::text::MUTED,
+        ));
+        detail_y += 18.0;
+    }
 
-    if network_requests.submitted.is_empty() {
+    paint.scene.draw_text(paint.text.layout(
+        "Available spot quotes",
+        Point::new(content_bounds.origin.x + 12.0, detail_y),
+        11.0,
+        theme::text::MUTED,
+    ));
+
+    if network_requests.spot_quote_candidates.is_empty() {
         paint.scene.draw_text(paint.text.layout(
-            "No network requests submitted yet.",
-            Point::new(content_bounds.origin.x + 12.0, y),
+            "No compute quotes loaded yet.",
+            Point::new(content_bounds.origin.x + 12.0, detail_y + 18.0),
             11.0,
             theme::text::MUTED,
         ));
-        return;
+    } else {
+        let visible_rows =
+            network_requests_visible_quote_count(network_requests.spot_quote_candidates.len());
+        for row_index in 0..visible_rows {
+            let quote = &network_requests.spot_quote_candidates[row_index];
+            let row_bounds = network_requests_quote_row_bounds(content_bounds, row_index);
+            let selected =
+                network_requests.selected_spot_quote_id.as_deref() == Some(quote.quote_id.as_str());
+            paint.scene.draw_quad(
+                Quad::new(row_bounds)
+                    .with_background(if selected {
+                        theme::bg::SURFACE
+                    } else {
+                        theme::bg::APP.with_alpha(0.78)
+                    })
+                    .with_border(
+                        if selected {
+                            theme::accent::PRIMARY
+                        } else {
+                            theme::border::DEFAULT
+                        },
+                        1.0,
+                    )
+                    .with_corner_radius(6.0),
+            );
+            let summary = format!(
+                "{} family={} backend={} provider={} lot={} qty={}/{} price={} terms={} source={}",
+                quote.product_id,
+                quote.compute_family_label(),
+                quote.backend_label(),
+                quote.provider_id,
+                quote.capacity_lot_id,
+                quote.requested_quantity,
+                quote.available_quantity,
+                format_sats_amount(quote.price_sats),
+                quote.terms_label,
+                quote.source_badge,
+            );
+            paint.scene.draw_text(paint.text.layout_mono(
+                &summary,
+                Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 7.0),
+                9.0,
+                theme::text::PRIMARY,
+            ));
+            paint.scene.draw_text(paint.text.layout_mono(
+                quote.capability_summary.as_str(),
+                Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 18.0),
+                8.5,
+                theme::text::MUTED,
+            ));
+        }
     }
 
-    for (idx, request) in network_requests.submitted.iter().take(6).enumerate() {
-        let row_bounds = Bounds::new(
-            content_bounds.origin.x + 12.0,
-            y + idx as f32 * 34.0,
-            (content_bounds.size.width - 24.0).max(220.0),
-            30.0,
-        );
-        paint.scene.draw_quad(
-            Quad::new(row_bounds)
-                .with_background(theme::bg::APP.with_alpha(0.78))
-                .with_border(theme::border::DEFAULT, 1.0)
-                .with_corner_radius(6.0),
-        );
-        let status_color = match request.status {
-            NetworkRequestStatus::Submitted => theme::accent::PRIMARY,
-            NetworkRequestStatus::Streaming => theme::status::SUCCESS,
-            NetworkRequestStatus::Processing => theme::accent::SECONDARY,
-            NetworkRequestStatus::PaymentRequired => theme::status::WARNING,
-            NetworkRequestStatus::ResultReceived => theme::status::SUCCESS,
-            NetworkRequestStatus::Paid => theme::status::SUCCESS,
-            NetworkRequestStatus::Completed => theme::status::SUCCESS,
-            NetworkRequestStatus::Failed => theme::status::ERROR,
-        };
-        let summary = format!(
-            "{} {} resolution:{} targets:{} scope:{} env:{} budget:{} timeout:{}s stream:{} published:{} feedback:{} result:{} provider:{} winner:{} winner_event:{} duplicates:{} loser_feedback:{} payment:{} required_at:{} sent_at:{} failed_at:{} pay_error:{} [{}|{}|{}|{}]",
-            request.request_id,
-            request.request_type,
-            request.resolution_mode.label(),
-            if request.target_provider_pubkeys.is_empty() {
-                "any".to_string()
-            } else {
-                request.target_provider_pubkeys.join(",")
-            },
-            request.skill_scope_id.as_deref().unwrap_or("none"),
-            request.credit_envelope_ref.as_deref().unwrap_or("none"),
-            format_sats_amount(request.budget_sats),
-            request.timeout_seconds,
-            request.response_stream_id,
-            request
-                .published_request_event_id
-                .as_deref()
-                .unwrap_or("n/a"),
-            request.last_feedback_status.as_deref().unwrap_or("none"),
-            request.last_result_event_id.as_deref().unwrap_or("none"),
-            request.last_provider_pubkey.as_deref().unwrap_or("none"),
-            request.winning_provider_pubkey.as_deref().unwrap_or("none"),
-            request.winning_result_event_id.as_deref().unwrap_or("none"),
-            request.duplicate_outcomes.len(),
-            request.resolution_feedbacks.len(),
-            request.last_payment_pointer.as_deref().unwrap_or("none"),
-            request
-                .payment_required_at_epoch_seconds
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "none".to_string()),
-            request
-                .payment_sent_at_epoch_seconds
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "none".to_string()),
-            request
-                .payment_failed_at_epoch_seconds
-                .map(|value| value.to_string())
-                .unwrap_or_else(|| "none".to_string()),
-            request.payment_error.as_deref().unwrap_or("none"),
-            request.status.label(),
-            request.authority_status.as_deref().unwrap_or("pending"),
-            request.authority_event_id.as_deref().unwrap_or("event:n/a"),
-            request
-                .authority_error_class
-                .as_deref()
-                .unwrap_or("error:n/a")
-        );
-        paint.scene.draw_text(paint.text.layout_mono(
-            &summary,
-            Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 9.0),
+    let accepted_heading_y = network_requests_quote_row_bounds(content_bounds, 4).max_y() + 18.0;
+    paint.scene.draw_text(paint.text.layout(
+        "Accepted spot orders",
+        Point::new(content_bounds.origin.x + 12.0, accepted_heading_y),
+        11.0,
+        theme::text::MUTED,
+    ));
+    if network_requests.accepted_spot_orders.is_empty() {
+        paint.scene.draw_text(paint.text.layout(
+            "No compute orders accepted yet.",
+            Point::new(content_bounds.origin.x + 12.0, accepted_heading_y + 18.0),
             10.0,
-            status_color,
+            theme::text::MUTED,
         ));
+    } else {
+        for (idx, order) in network_requests
+            .accepted_spot_orders
+            .iter()
+            .take(3)
+            .enumerate()
+        {
+            paint.scene.draw_text(paint.text.layout_mono(
+                &format!(
+                    "{} -> {} {} provider={} qty={} price={} at={}",
+                    order.quote_id,
+                    order.instrument_id,
+                    order.product_id,
+                    order.provider_id,
+                    order.quantity,
+                    format_sats_amount(order.price_sats),
+                    order.accepted_at_epoch_seconds
+                ),
+                Point::new(
+                    content_bounds.origin.x + 12.0,
+                    accepted_heading_y + 18.0 + idx as f32 * 14.0,
+                ),
+                9.0,
+                theme::text::PRIMARY,
+            ));
+        }
     }
 }
 
