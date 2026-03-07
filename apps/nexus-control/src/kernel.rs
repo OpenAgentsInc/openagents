@@ -52,7 +52,9 @@ use openagents_kernel_core::risk::{
     CoverageBinding, CoverageBindingStatus, CoverageOffer, CoverageOfferStatus, PredictionPosition,
     PredictionPositionStatus, RiskClaim, RiskClaimStatus, RiskSignal, RiskSignalStatus,
 };
-use openagents_kernel_core::snapshots::EconomySnapshot;
+use openagents_kernel_core::snapshots::{
+    ComputeBreakerStatusRow, ComputeRolloutGateRow, ComputeTruthLabelRow, EconomySnapshot,
+};
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
@@ -67,6 +69,33 @@ const FUTURE_CASH_MAX_PAPER_TO_PHYSICAL_RATIO: f64 = 2.0;
 const FUTURE_CASH_MIN_DELIVERABLE_COVERAGE_RATIO: f64 = 0.5;
 const FUTURE_CASH_MAX_BUYER_CONCENTRATION_SHARE: f64 = 0.80;
 const FUTURE_CASH_INITIAL_MARGIN_BPS: u64 = 2_000;
+const COMPUTE_PROVIDER_CONCENTRATION_GUARDED_HHI: f64 = 0.35;
+const COMPUTE_PROVIDER_CONCENTRATION_TRIPPED_HHI: f64 = 0.60;
+const COMPUTE_DELIVERY_REJECTION_GUARDED_RATE: f64 = 0.10;
+const COMPUTE_DELIVERY_REJECTION_TRIPPED_RATE: f64 = 0.25;
+
+#[derive(Debug, Clone)]
+pub struct ComputeRuntimePolicy {
+    pub enable_forward_physical: bool,
+    pub enable_future_cash: bool,
+    pub enable_structured_products: bool,
+    pub enable_reconciliation_diagnostics: bool,
+    pub policy_bundle_id: String,
+    pub policy_version: String,
+}
+
+impl Default for ComputeRuntimePolicy {
+    fn default() -> Self {
+        Self {
+            enable_forward_physical: true,
+            enable_future_cash: true,
+            enable_structured_products: true,
+            enable_reconciliation_diagnostics: true,
+            policy_bundle_id: "policy.compute.market.default".to_string(),
+            policy_version: "1".to_string(),
+        }
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct KernelMutationContext {
@@ -317,6 +346,7 @@ pub struct KernelState {
     next_projection_seq: u64,
     persistence_path: Option<PathBuf>,
     last_persistence_error: Option<String>,
+    compute_runtime_policy: ComputeRuntimePolicy,
 }
 
 #[derive(Debug, Clone)]
@@ -500,19 +530,45 @@ pub struct ComputeMarketMetrics {
     pub compute_capacity_lots_open: u64,
     pub compute_capacity_lots_delivering: u64,
     pub compute_instruments_active: u64,
+    pub compute_inventory_quantity_open: u64,
+    pub compute_inventory_quantity_reserved: u64,
+    pub compute_inventory_quantity_delivering: u64,
     pub compute_delivery_proofs_24h: u64,
     pub compute_delivery_quantity_24h: u64,
+    pub compute_delivery_rejections_24h: u64,
+    pub compute_delivery_variances_24h: u64,
+    pub compute_delivery_accept_rate_24h: f64,
+    pub compute_fill_ratio_24h: f64,
+    pub compute_priced_instruments_24h: u64,
     pub compute_indices_published_24h: u64,
     pub compute_index_corrections_24h: u64,
     pub compute_index_thin_windows_24h: u64,
     pub compute_index_settlement_eligible_24h: u64,
     pub compute_index_quality_score_24h: f64,
+    pub compute_active_provider_count: u64,
+    pub compute_provider_concentration_hhi: f64,
+    pub compute_forward_physical_instruments_active: u64,
+    pub compute_forward_physical_open_quantity: u64,
+    pub compute_forward_physical_defaults_24h: u64,
     pub compute_future_cash_instruments_active: u64,
     pub compute_future_cash_open_interest: u64,
     pub compute_future_cash_cash_settlements_24h: u64,
     pub compute_future_cash_cash_flow_24h: u64,
+    pub compute_future_cash_defaults_24h: u64,
+    pub compute_future_cash_collateral_shortfall_24h: u64,
+    pub compute_structured_instruments_active: u64,
+    pub compute_structured_instruments_closed_24h: u64,
+    pub compute_max_buyer_concentration_share: f64,
     pub compute_paper_to_physical_ratio: f64,
     pub compute_deliverable_coverage_ratio: f64,
+    pub compute_breakers_tripped: u64,
+    pub compute_breakers_guarded: u64,
+    pub compute_breaker_states: Vec<ComputeBreakerStatusRow>,
+    pub compute_rollout_gates: Vec<ComputeRolloutGateRow>,
+    pub compute_truth_labels: Vec<ComputeTruthLabelRow>,
+    pub compute_reconciliation_gap_24h: u64,
+    pub compute_policy_bundle_id: String,
+    pub compute_policy_version: String,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -859,6 +915,10 @@ impl KernelState {
         };
         state.load_persisted_compute_authority_state();
         state
+    }
+
+    pub fn set_compute_runtime_policy(&mut self, policy: ComputeRuntimePolicy) {
+        self.compute_runtime_policy = policy;
     }
 
     pub fn list_compute_products(
@@ -2187,6 +2247,24 @@ impl KernelState {
             .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
         if req.instrument.kind
             == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+            && !self.compute_runtime_policy.enable_forward_physical
+        {
+            return Err("compute_forward_physical_disabled".to_string());
+        }
+        if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::FutureCash
+            && !self.compute_runtime_policy.enable_future_cash
+        {
+            return Err("compute_future_cash_disabled".to_string());
+        }
+        if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::Reservation
+            && !self.compute_runtime_policy.enable_structured_products
+        {
+            return Err("compute_structured_products_disabled".to_string());
+        }
+        if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
         {
             if lot_record.is_none() {
                 return Err("forward_capacity_lot_required".to_string());
@@ -3008,6 +3086,9 @@ impl KernelState {
         context: &KernelMutationContext,
         mut req: CreateStructuredCapacityInstrumentRequest,
     ) -> Result<MutationResult<CreateStructuredCapacityInstrumentResponse>, String> {
+        if !self.compute_runtime_policy.enable_structured_products {
+            return Err("compute_structured_products_disabled".to_string());
+        }
         req.structured_instrument.created_at_ms =
             normalize_created_at_ms(req.structured_instrument.created_at_ms, context.now_unix_ms);
         let (product_record, leg_records) =
@@ -4383,6 +4464,14 @@ impl KernelState {
 
     pub fn compute_market_metrics(&self, as_of_ms: i64) -> ComputeMarketMetrics {
         let window_start_ms = as_of_ms.saturating_sub(SNAPSHOT_WINDOW_MS);
+        let delivery_window = self
+            .delivery_proofs
+            .values()
+            .filter(|record| {
+                record.delivery_proof.created_at_ms >= window_start_ms
+                    && record.delivery_proof.created_at_ms <= as_of_ms
+            })
+            .collect::<Vec<_>>();
         let index_window = self
             .compute_indices
             .values()
@@ -4403,6 +4492,32 @@ impl KernelState {
                             | CapacityInstrumentStatus::Active
                             | CapacityInstrumentStatus::CashSettling
                     )
+            })
+            .collect::<Vec<_>>();
+        let forward_physical_active = self
+            .capacity_instruments
+            .values()
+            .filter(|record| {
+                record.instrument.kind
+                    == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+                    && capacity_instrument_status_is_live(record.instrument.status)
+            })
+            .collect::<Vec<_>>();
+        let forward_physical_defaulted = self
+            .capacity_instruments
+            .values()
+            .filter(|record| {
+                record.instrument.kind
+                    == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+                    && record.instrument.status == CapacityInstrumentStatus::Defaulted
+                    && record
+                        .instrument
+                        .metadata
+                        .get("closed_at_ms")
+                        .and_then(Value::as_i64)
+                        .is_some_and(|closed_at_ms| {
+                            closed_at_ms >= window_start_ms && closed_at_ms <= as_of_ms
+                        })
             })
             .collect::<Vec<_>>();
         let future_cash_cash_settled = self
@@ -4427,6 +4542,15 @@ impl KernelState {
                         })
             })
             .collect::<Vec<_>>();
+        let structured_materialized = self
+            .structured_capacity_instruments
+            .values()
+            .filter_map(|record| {
+                self.materialize_structured_capacity_instrument(record)
+                    .ok()
+                    .map(|structured_instrument| (record, structured_instrument))
+            })
+            .collect::<Vec<_>>();
         let deliverable_physical_quantity = self
             .capacity_lots
             .values()
@@ -4441,9 +4565,34 @@ impl KernelState {
             .fold(0u64, |total, record| {
                 total.saturating_add(record.lot.quantity)
             });
+        let inventory_quantity_open = self
+            .capacity_lots
+            .values()
+            .filter(|record| record.lot.status == CapacityLotStatus::Open)
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.lot.quantity)
+            });
+        let inventory_quantity_reserved = self
+            .capacity_lots
+            .values()
+            .filter(|record| record.lot.status == CapacityLotStatus::Reserved)
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.lot.quantity)
+            });
+        let inventory_quantity_delivering = self
+            .capacity_lots
+            .values()
+            .filter(|record| record.lot.status == CapacityLotStatus::Delivering)
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.lot.quantity)
+            });
         let future_cash_open_interest = future_cash_active.iter().fold(0u64, |total, record| {
             total.saturating_add(record.instrument.quantity)
         });
+        let forward_physical_open_quantity =
+            forward_physical_active.iter().fold(0u64, |total, record| {
+                total.saturating_add(record.instrument.quantity)
+            });
         let quality_sum = index_window.iter().fold(0.0, |total, record| {
             total
                 + record
@@ -4455,6 +4604,283 @@ impl KernelState {
                     .and_then(Value::as_f64)
                     .unwrap_or(0.0)
         });
+        let delivery_rejections_24h = delivery_window
+            .iter()
+            .filter(|record| record.delivery_proof.status == DeliveryProofStatus::Rejected)
+            .count() as u64;
+        let delivery_variances_24h = delivery_window
+            .iter()
+            .filter(|record| record.delivery_proof.variance_reason.is_some())
+            .count() as u64;
+        let delivery_quantity_24h = delivery_window.iter().fold(0u64, |total, record| {
+            total.saturating_add(record.delivery_proof.accepted_quantity)
+        });
+        let metered_quantity_24h = delivery_window.iter().fold(0u64, |total, record| {
+            total.saturating_add(record.delivery_proof.metered_quantity)
+        });
+        let delivery_accept_rate_24h = ratio(
+            delivery_window
+                .iter()
+                .filter(|record| record.delivery_proof.status == DeliveryProofStatus::Accepted)
+                .count() as u64,
+            delivery_window.len() as u64,
+        );
+        let fill_ratio_24h = ratio(delivery_quantity_24h, metered_quantity_24h.max(1));
+        let priced_instruments_24h = self
+            .capacity_instruments
+            .values()
+            .filter(|record| {
+                record.instrument.created_at_ms >= window_start_ms
+                    && record.instrument.created_at_ms <= as_of_ms
+                    && (record.instrument.fixed_price.is_some()
+                        || record.instrument.reference_index_id.is_some())
+            })
+            .count() as u64;
+        let mut provider_quantities = BTreeMap::<String, u64>::new();
+        for lot in self.capacity_lots.values().filter(|record| {
+            matches!(
+                record.lot.status,
+                CapacityLotStatus::Open
+                    | CapacityLotStatus::Reserved
+                    | CapacityLotStatus::Delivering
+            )
+        }) {
+            *provider_quantities
+                .entry(lot.lot.provider_id.clone())
+                .or_default() = provider_quantities
+                .get(lot.lot.provider_id.as_str())
+                .copied()
+                .unwrap_or(0)
+                .saturating_add(lot.lot.quantity);
+        }
+        let provider_total_quantity = provider_quantities.values().copied().sum::<u64>().max(1);
+        let provider_concentration_hhi =
+            provider_quantities.values().fold(0.0, |total, quantity| {
+                let share = *quantity as f64 / provider_total_quantity as f64;
+                total + share * share
+            });
+        let max_buyer_concentration_share = {
+            let mut buyer_quantities = BTreeMap::<String, u64>::new();
+            for record in &future_cash_active {
+                if let Some(buyer_id) = record.instrument.buyer_id.as_deref() {
+                    *buyer_quantities.entry(buyer_id.to_string()).or_default() = buyer_quantities
+                        .get(buyer_id)
+                        .copied()
+                        .unwrap_or(0)
+                        .saturating_add(record.instrument.quantity);
+                }
+            }
+            buyer_quantities
+                .values()
+                .map(|quantity| ratio(*quantity, future_cash_open_interest.max(1)))
+                .fold(0.0, f64::max)
+        };
+        let future_cash_defaults_24h = future_cash_cash_settled
+            .iter()
+            .filter(|record| record.instrument.status == CapacityInstrumentStatus::Defaulted)
+            .count() as u64;
+        let future_cash_collateral_shortfall_24h =
+            future_cash_cash_settled.iter().fold(0u64, |total, record| {
+                total.saturating_add(
+                    record
+                        .instrument
+                        .metadata
+                        .get("cash_settlement")
+                        .and_then(Value::as_object)
+                        .and_then(|settlement| settlement.get("collateral_shortfall"))
+                        .cloned()
+                        .and_then(|value| serde_json::from_value::<Money>(value).ok())
+                        .as_ref()
+                        .map_or(0, money_amount_value),
+                )
+            });
+        let structured_instruments_active = structured_materialized
+            .iter()
+            .filter(|(_, structured_instrument)| {
+                matches!(
+                    structured_instrument.status,
+                    StructuredCapacityInstrumentStatus::Open
+                        | StructuredCapacityInstrumentStatus::Active
+                        | StructuredCapacityInstrumentStatus::PartiallyClosed
+                )
+            })
+            .count() as u64;
+        let structured_instruments_closed_24h = structured_materialized
+            .iter()
+            .filter(|(_, structured_instrument)| {
+                structured_instrument
+                    .metadata
+                    .get("closed_at_ms")
+                    .and_then(Value::as_i64)
+                    .is_some_and(|closed_at_ms| {
+                        closed_at_ms >= window_start_ms && closed_at_ms <= as_of_ms
+                    })
+                    && structured_capacity_status_is_terminal(structured_instrument.status)
+            })
+            .count() as u64;
+        let metadata_has_compute_link = |metadata: &Value| -> bool {
+            metadata
+                .as_object()
+                .map(|object| {
+                    object.contains_key("compute_product_id")
+                        || object.contains_key("compute_capacity_lot_id")
+                        || object.contains_key("compute_instrument_id")
+                        || object.contains_key("compute_linkage")
+                        || object.contains_key("delivery_proof_id")
+                })
+                .unwrap_or(false)
+        };
+        let legacy_jobs_24h = self
+            .work_units
+            .values()
+            .filter(|record| {
+                record.work_unit.created_at_ms >= window_start_ms
+                    && record.work_unit.created_at_ms <= as_of_ms
+                    && !metadata_has_compute_link(&record.work_unit.metadata)
+            })
+            .count() as u64;
+        let transitional_jobs_24h = self
+            .work_units
+            .values()
+            .filter(|record| {
+                record.work_unit.created_at_ms >= window_start_ms
+                    && record.work_unit.created_at_ms <= as_of_ms
+                    && metadata_has_compute_link(&record.work_unit.metadata)
+            })
+            .count() as u64;
+        let canonical_trades_24h = delivery_window
+            .iter()
+            .filter(|record| record.delivery_proof.status == DeliveryProofStatus::Accepted)
+            .count() as u64;
+        let settled_verdicts_24h = self
+            .verdicts
+            .values()
+            .filter(|verdict| {
+                verdict.created_at_ms >= window_start_ms
+                    && verdict.created_at_ms <= as_of_ms
+                    && verdict.settlement_status == SettlementStatus::Settled
+            })
+            .count() as u64;
+        let compute_reconciliation_gap_24h = canonical_trades_24h.abs_diff(settled_verdicts_24h);
+        let compute_truth_labels = if self
+            .compute_runtime_policy
+            .enable_reconciliation_diagnostics
+        {
+            vec![
+                ComputeTruthLabelRow {
+                    truth_label: "legacy".to_string(),
+                    count_24h: legacy_jobs_24h,
+                },
+                ComputeTruthLabelRow {
+                    truth_label: "transitional".to_string(),
+                    count_24h: transitional_jobs_24h,
+                },
+                ComputeTruthLabelRow {
+                    truth_label: "canonical".to_string(),
+                    count_24h: canonical_trades_24h,
+                },
+            ]
+        } else {
+            Vec::new()
+        };
+        let compute_rollout_gates = vec![
+            ComputeRolloutGateRow {
+                gate_id: "forward_physical".to_string(),
+                enabled: self.compute_runtime_policy.enable_forward_physical,
+                stage: "phase_5".to_string(),
+                description: "Forward physical capacity sales".to_string(),
+            },
+            ComputeRolloutGateRow {
+                gate_id: "future_cash".to_string(),
+                enabled: self.compute_runtime_policy.enable_future_cash,
+                stage: "phase_7".to_string(),
+                description: "Cash-settled hedge issuance and settlement".to_string(),
+            },
+            ComputeRolloutGateRow {
+                gate_id: "structured_products".to_string(),
+                enabled: self.compute_runtime_policy.enable_structured_products,
+                stage: "phase_8".to_string(),
+                description: "Reservation rights, swaps, and strips".to_string(),
+            },
+            ComputeRolloutGateRow {
+                gate_id: "reconciliation_diagnostics".to_string(),
+                enabled: self
+                    .compute_runtime_policy
+                    .enable_reconciliation_diagnostics,
+                stage: "migration".to_string(),
+                description: "Legacy, transitional, and canonical truth diagnostics".to_string(),
+            },
+        ];
+        let delivery_rejection_rate = ratio(delivery_rejections_24h, delivery_window.len() as u64);
+        let compute_index_quality_score_24h = if index_window.is_empty() {
+            0.0
+        } else {
+            quality_sum / index_window.len() as f64
+        };
+        let compute_breaker_states = vec![
+            breaker_row(
+                "future_cash.paper_to_physical",
+                FUTURE_CASH_MAX_PAPER_TO_PHYSICAL_RATIO,
+                ratio(
+                    future_cash_open_interest,
+                    deliverable_physical_quantity.max(1),
+                ),
+                "halt new future cash issuance when paper exposure outruns deliverable depth",
+                true,
+                1.5,
+            ),
+            breaker_row(
+                "future_cash.deliverable_coverage",
+                FUTURE_CASH_MIN_DELIVERABLE_COVERAGE_RATIO,
+                ratio(
+                    deliverable_physical_quantity,
+                    future_cash_open_interest.max(1),
+                ),
+                "narrow or halt future cash issuance until physical coverage recovers",
+                false,
+                0.75,
+            ),
+            breaker_row(
+                "future_cash.index_quality",
+                FUTURE_CASH_MIN_INDEX_QUALITY_SCORE,
+                compute_index_quality_score_24h,
+                "disable settlement-sensitive issuance until governed indices improve",
+                false,
+                0.65,
+            ),
+            breaker_row(
+                "future_cash.buyer_concentration",
+                FUTURE_CASH_MAX_BUYER_CONCENTRATION_SHARE,
+                max_buyer_concentration_share,
+                "cap marginal hedge issuance to concentrated buyers",
+                true,
+                0.60,
+            ),
+            breaker_row(
+                "provider_concentration",
+                COMPUTE_PROVIDER_CONCENTRATION_TRIPPED_HHI,
+                provider_concentration_hhi,
+                "review provider concentration before widening launch products",
+                true,
+                COMPUTE_PROVIDER_CONCENTRATION_GUARDED_HHI,
+            ),
+            breaker_row(
+                "delivery_rejection_rate",
+                COMPUTE_DELIVERY_REJECTION_TRIPPED_RATE,
+                delivery_rejection_rate,
+                "pause advanced compute issuance while delivery integrity degrades",
+                true,
+                COMPUTE_DELIVERY_REJECTION_GUARDED_RATE,
+            ),
+        ];
+        let compute_breakers_tripped = compute_breaker_states
+            .iter()
+            .filter(|row| row.state == "tripped")
+            .count() as u64;
+        let compute_breakers_guarded = compute_breaker_states
+            .iter()
+            .filter(|row| row.state == "guarded")
+            .count() as u64;
         ComputeMarketMetrics {
             compute_products_active: self
                 .compute_products
@@ -4474,34 +4900,18 @@ impl KernelState {
             compute_instruments_active: self
                 .capacity_instruments
                 .values()
-                .filter(|record| {
-                    matches!(
-                        record.instrument.status,
-                        CapacityInstrumentStatus::Open
-                            | CapacityInstrumentStatus::Active
-                            | CapacityInstrumentStatus::Delivering
-                            | CapacityInstrumentStatus::CashSettling
-                    )
-                })
+                .filter(|record| capacity_instrument_status_is_live(record.instrument.status))
                 .count() as u64,
-            compute_delivery_proofs_24h: self
-                .delivery_proofs
-                .values()
-                .filter(|record| {
-                    record.delivery_proof.created_at_ms >= window_start_ms
-                        && record.delivery_proof.created_at_ms <= as_of_ms
-                })
-                .count() as u64,
-            compute_delivery_quantity_24h: self
-                .delivery_proofs
-                .values()
-                .filter(|record| {
-                    record.delivery_proof.created_at_ms >= window_start_ms
-                        && record.delivery_proof.created_at_ms <= as_of_ms
-                })
-                .fold(0u64, |total, record| {
-                    total.saturating_add(record.delivery_proof.accepted_quantity)
-                }),
+            compute_inventory_quantity_open: inventory_quantity_open,
+            compute_inventory_quantity_reserved: inventory_quantity_reserved,
+            compute_inventory_quantity_delivering: inventory_quantity_delivering,
+            compute_delivery_proofs_24h: delivery_window.len() as u64,
+            compute_delivery_quantity_24h: delivery_quantity_24h,
+            compute_delivery_rejections_24h: delivery_rejections_24h,
+            compute_delivery_variances_24h: delivery_variances_24h,
+            compute_delivery_accept_rate_24h: delivery_accept_rate_24h,
+            compute_fill_ratio_24h: fill_ratio_24h,
+            compute_priced_instruments_24h: priced_instruments_24h,
             compute_indices_published_24h: index_window.len() as u64,
             compute_index_corrections_24h: index_window
                 .iter()
@@ -4533,11 +4943,12 @@ impl KernelState {
                         .unwrap_or(false)
                 })
                 .count() as u64,
-            compute_index_quality_score_24h: if index_window.is_empty() {
-                0.0
-            } else {
-                quality_sum / index_window.len() as f64
-            },
+            compute_index_quality_score_24h,
+            compute_active_provider_count: provider_quantities.len() as u64,
+            compute_provider_concentration_hhi: provider_concentration_hhi,
+            compute_forward_physical_instruments_active: forward_physical_active.len() as u64,
+            compute_forward_physical_open_quantity: forward_physical_open_quantity,
+            compute_forward_physical_defaults_24h: forward_physical_defaulted.len() as u64,
             compute_future_cash_instruments_active: future_cash_active.len() as u64,
             compute_future_cash_open_interest: future_cash_open_interest,
             compute_future_cash_cash_settlements_24h: future_cash_cash_settled.len() as u64,
@@ -4558,6 +4969,11 @@ impl KernelState {
                     )
                 },
             ),
+            compute_future_cash_defaults_24h: future_cash_defaults_24h,
+            compute_future_cash_collateral_shortfall_24h: future_cash_collateral_shortfall_24h,
+            compute_structured_instruments_active: structured_instruments_active,
+            compute_structured_instruments_closed_24h: structured_instruments_closed_24h,
+            compute_max_buyer_concentration_share: max_buyer_concentration_share,
             compute_paper_to_physical_ratio: ratio(
                 future_cash_open_interest,
                 deliverable_physical_quantity.max(1),
@@ -4566,6 +4982,14 @@ impl KernelState {
                 deliverable_physical_quantity,
                 future_cash_open_interest.max(1),
             ),
+            compute_breakers_tripped,
+            compute_breakers_guarded,
+            compute_breaker_states,
+            compute_rollout_gates,
+            compute_truth_labels,
+            compute_reconciliation_gap_24h,
+            compute_policy_bundle_id: self.compute_runtime_policy.policy_bundle_id.clone(),
+            compute_policy_version: self.compute_runtime_policy.policy_version.clone(),
         }
     }
 
@@ -7267,6 +7691,69 @@ fn future_cash_collateral_required(strike_price: &Money, quantity: u64) -> Money
     collateral
 }
 
+fn breaker_row(
+    breaker_id: &str,
+    threshold: f64,
+    observed_value: f64,
+    action: &str,
+    higher_is_worse: bool,
+    guarded_threshold: f64,
+) -> ComputeBreakerStatusRow {
+    let (state, reason) = if higher_is_worse {
+        if observed_value >= threshold {
+            (
+                "tripped",
+                format!(
+                    "observed value {:.4} exceeded threshold {:.4}",
+                    observed_value, threshold
+                ),
+            )
+        } else if observed_value >= guarded_threshold {
+            (
+                "guarded",
+                format!(
+                    "observed value {:.4} is approaching threshold {:.4}",
+                    observed_value, threshold
+                ),
+            )
+        } else {
+            (
+                "clear",
+                format!("observed value {:.4} is within policy", observed_value),
+            )
+        }
+    } else if observed_value <= threshold {
+        (
+            "tripped",
+            format!(
+                "observed value {:.4} fell below threshold {:.4}",
+                observed_value, threshold
+            ),
+        )
+    } else if observed_value <= guarded_threshold {
+        (
+            "guarded",
+            format!(
+                "observed value {:.4} is approaching floor {:.4}",
+                observed_value, threshold
+            ),
+        )
+    } else {
+        (
+            "clear",
+            format!("observed value {:.4} is within policy", observed_value),
+        )
+    };
+    ComputeBreakerStatusRow {
+        breaker_id: breaker_id.to_string(),
+        state: state.to_string(),
+        reason,
+        threshold,
+        observed_value,
+        action: action.to_string(),
+    }
+}
+
 fn backend_family_label(
     value: openagents_kernel_core::compute::ComputeBackendFamily,
 ) -> &'static str {
@@ -7480,22 +7967,56 @@ fn build_snapshot(
         compute_capacity_lots_open: compute_metrics.compute_capacity_lots_open,
         compute_capacity_lots_delivering: compute_metrics.compute_capacity_lots_delivering,
         compute_instruments_active: compute_metrics.compute_instruments_active,
+        compute_inventory_quantity_open: compute_metrics.compute_inventory_quantity_open,
+        compute_inventory_quantity_reserved: compute_metrics.compute_inventory_quantity_reserved,
+        compute_inventory_quantity_delivering: compute_metrics
+            .compute_inventory_quantity_delivering,
         compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
+        compute_delivery_rejections_24h: compute_metrics.compute_delivery_rejections_24h,
+        compute_delivery_variances_24h: compute_metrics.compute_delivery_variances_24h,
+        compute_delivery_accept_rate_24h: compute_metrics.compute_delivery_accept_rate_24h,
+        compute_fill_ratio_24h: compute_metrics.compute_fill_ratio_24h,
+        compute_priced_instruments_24h: compute_metrics.compute_priced_instruments_24h,
         compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
         compute_index_corrections_24h: compute_metrics.compute_index_corrections_24h,
         compute_index_thin_windows_24h: compute_metrics.compute_index_thin_windows_24h,
         compute_index_settlement_eligible_24h: compute_metrics
             .compute_index_settlement_eligible_24h,
         compute_index_quality_score_24h: compute_metrics.compute_index_quality_score_24h,
+        compute_active_provider_count: compute_metrics.compute_active_provider_count,
+        compute_provider_concentration_hhi: compute_metrics.compute_provider_concentration_hhi,
+        compute_forward_physical_instruments_active: compute_metrics
+            .compute_forward_physical_instruments_active,
+        compute_forward_physical_open_quantity: compute_metrics
+            .compute_forward_physical_open_quantity,
+        compute_forward_physical_defaults_24h: compute_metrics
+            .compute_forward_physical_defaults_24h,
         compute_future_cash_instruments_active: compute_metrics
             .compute_future_cash_instruments_active,
         compute_future_cash_open_interest: compute_metrics.compute_future_cash_open_interest,
         compute_future_cash_cash_settlements_24h: compute_metrics
             .compute_future_cash_cash_settlements_24h,
         compute_future_cash_cash_flow_24h: compute_metrics.compute_future_cash_cash_flow_24h,
+        compute_future_cash_defaults_24h: compute_metrics.compute_future_cash_defaults_24h,
+        compute_future_cash_collateral_shortfall_24h: compute_metrics
+            .compute_future_cash_collateral_shortfall_24h,
+        compute_structured_instruments_active: compute_metrics
+            .compute_structured_instruments_active,
+        compute_structured_instruments_closed_24h: compute_metrics
+            .compute_structured_instruments_closed_24h,
+        compute_max_buyer_concentration_share: compute_metrics
+            .compute_max_buyer_concentration_share,
         compute_paper_to_physical_ratio: compute_metrics.compute_paper_to_physical_ratio,
         compute_deliverable_coverage_ratio: compute_metrics.compute_deliverable_coverage_ratio,
+        compute_breakers_tripped: compute_metrics.compute_breakers_tripped,
+        compute_breakers_guarded: compute_metrics.compute_breakers_guarded,
+        compute_breaker_states: compute_metrics.compute_breaker_states.clone(),
+        compute_rollout_gates: compute_metrics.compute_rollout_gates.clone(),
+        compute_truth_labels: compute_metrics.compute_truth_labels.clone(),
+        compute_reconciliation_gap_24h: compute_metrics.compute_reconciliation_gap_24h,
+        compute_policy_bundle_id: compute_metrics.compute_policy_bundle_id.clone(),
+        compute_policy_version: compute_metrics.compute_policy_version.clone(),
         liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
         liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
         liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
@@ -8796,6 +9317,10 @@ mod tests {
                 .as_deref()
                 .is_some_and(|detail| detail.contains("promised"))
         );
+        let metrics = kernel.compute_market_metrics(created_at_ms as i64 + 5_000);
+        assert_eq!(metrics.compute_delivery_proofs_24h, 1);
+        assert_eq!(metrics.compute_delivery_variances_24h, 1);
+        assert_eq!(metrics.compute_delivery_rejections_24h, 0);
     }
 
     #[test]
@@ -8887,6 +9412,9 @@ mod tests {
                 .and_then(serde_json::Value::as_str),
             Some("forward_physical")
         );
+        let metrics = kernel.compute_market_metrics(created_at_ms as i64 + 5_000);
+        assert_eq!(metrics.compute_forward_physical_instruments_active, 1);
+        assert_eq!(metrics.compute_forward_physical_open_quantity, 256);
     }
 
     #[test]
