@@ -115,7 +115,7 @@ mod tests {
     use rustygrad_core::{DType, Device, Shape};
     use rustygrad_ir::GraphBuilder;
 
-    use super::{compile_graph, CompileError};
+    use super::{CompileError, compile_graph};
 
     #[test]
     fn compile_graph_preserves_deterministic_digest() -> Result<(), CompileError> {

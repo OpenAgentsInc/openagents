@@ -21,13 +21,34 @@ pub struct CpuBuffer {
 }
 
 impl CpuBuffer {
-    /// Builds a buffer from `f32` values.
+    /// Builds a buffer from contiguous logical `f32` values.
     pub fn from_f32(spec: TensorSpec, data: impl Into<Vec<f32>>) -> Result<Self, RuntimeError> {
         let data = data.into();
         let expected = spec.element_count();
         if expected != data.len() {
             return Err(RuntimeError::Backend(format!(
                 "buffer length mismatch: expected {expected}, actual {}",
+                data.len()
+            )));
+        }
+        if !spec.layout().is_contiguous() || spec.layout().offset() != 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "from_f32 requires a contiguous zero-offset tensor spec",
+            )));
+        }
+        Ok(Self { spec, data })
+    }
+
+    /// Builds a buffer from explicit backing storage.
+    pub fn from_storage_f32(
+        spec: TensorSpec,
+        data: impl Into<Vec<f32>>,
+    ) -> Result<Self, RuntimeError> {
+        let data = data.into();
+        let expected = spec.storage_size();
+        if expected > data.len() {
+            return Err(RuntimeError::Backend(format!(
+                "storage length mismatch: required at least {expected}, actual {}",
                 data.len()
             )));
         }
@@ -44,14 +65,37 @@ impl CpuBuffer {
     pub fn zeros(spec: &TensorSpec) -> Self {
         Self {
             spec: spec.clone(),
-            data: vec![0.0; spec.element_count()],
+            data: vec![0.0; spec.storage_size()],
         }
     }
 
-    /// Returns the underlying data.
+    /// Returns the raw backing storage.
     #[must_use]
     pub fn as_f32_slice(&self) -> &[f32] {
         self.data.as_slice()
+    }
+
+    /// Returns logical values in row-major order.
+    #[must_use]
+    pub fn logical_values(&self) -> Vec<f32> {
+        let mut output = Vec::with_capacity(self.spec.element_count());
+        for_each_index(self.spec.shape(), |index| {
+            output.push(self.data[self.storage_index(index)]);
+        });
+        output
+    }
+
+    fn storage_index(&self, logical_index: &[usize]) -> usize {
+        self.spec.layout().offset()
+            + logical_index
+                .iter()
+                .zip(self.spec.layout().strides().iter())
+                .map(|(index, stride)| index * stride)
+                .sum::<usize>()
+    }
+
+    fn view_of(source: &CpuBuffer, spec: TensorSpec) -> Result<Self, RuntimeError> {
+        Self::from_storage_f32(spec, source.data.clone())
     }
 }
 
@@ -87,7 +131,8 @@ impl CpuBackend {
         graph: &Graph,
         inputs: &BTreeMap<TensorId, CpuBuffer>,
     ) -> Result<ExecutionResult<CpuBuffer>, RuntimeError> {
-        let plan = compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let plan =
+            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
         self.execute(&plan, inputs)
     }
 
@@ -113,41 +158,37 @@ impl CpuBackend {
             ExecutionOp::Constant { data } => CpuBuffer::from_tensor_data(step.spec.clone(), data)?,
             ExecutionOp::Add => {
                 let (left, right) = self.binary_inputs(step, values)?;
-                CpuBuffer::from_f32(
-                    step.spec.clone(),
-                    left.as_f32_slice()
-                        .iter()
-                        .zip(right.as_f32_slice())
-                        .map(|(lhs, rhs)| lhs + rhs)
-                        .collect::<Vec<_>>(),
-                )?
+                let output = left
+                    .logical_values()
+                    .into_iter()
+                    .zip(right.logical_values())
+                    .map(|(lhs, rhs)| lhs + rhs)
+                    .collect::<Vec<_>>();
+                CpuBuffer::from_f32(step.spec.clone(), output)?
             }
             ExecutionOp::Mul => {
                 let (left, right) = self.binary_inputs(step, values)?;
-                CpuBuffer::from_f32(
-                    step.spec.clone(),
-                    left.as_f32_slice()
-                        .iter()
-                        .zip(right.as_f32_slice())
-                        .map(|(lhs, rhs)| lhs * rhs)
-                        .collect::<Vec<_>>(),
-                )?
+                let output = left
+                    .logical_values()
+                    .into_iter()
+                    .zip(right.logical_values())
+                    .map(|(lhs, rhs)| lhs * rhs)
+                    .collect::<Vec<_>>();
+                CpuBuffer::from_f32(step.spec.clone(), output)?
             }
             ExecutionOp::Matmul => self.matmul(step, values)?,
             ExecutionOp::Reshape => {
-                let source = self
-                    .input(step, values, 0)?
-                    .as_f32_slice()
-                    .to_vec();
+                let source = self.input(step, values, 0)?.logical_values();
                 CpuBuffer::from_f32(step.spec.clone(), source)?
             }
-            ExecutionOp::ReduceSum => {
-                let source = self.input(step, values, 0)?;
-                CpuBuffer::from_f32(
-                    step.spec.clone(),
-                    vec![source.as_f32_slice().iter().copied().sum()],
-                )?
+            ExecutionOp::Permute { .. }
+            | ExecutionOp::Slice { .. }
+            | ExecutionOp::Select { .. }
+            | ExecutionOp::Expand { .. } => {
+                CpuBuffer::view_of(self.input(step, values, 0)?, step.spec.clone())?
             }
+            ExecutionOp::Concat { axis } => self.concat(step, values, *axis)?,
+            ExecutionOp::ReduceSum { axis } => self.reduce_sum(step, values, *axis)?,
         };
 
         values.insert(step.output, buffer);
@@ -197,8 +238,8 @@ impl CpuBackend {
         let k = left_shape[1];
         let n = right_shape[1];
         let mut output = vec![0.0; m * n];
-        let left_values = left.as_f32_slice();
-        let right_values = right.as_f32_slice();
+        let left_values = left.logical_values();
+        let right_values = right.logical_values();
 
         for row in 0..m {
             for col in 0..n {
@@ -212,6 +253,60 @@ impl CpuBackend {
             }
         }
 
+        CpuBuffer::from_f32(step.spec.clone(), output)
+    }
+
+    fn concat(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        axis: usize,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        let input_buffers = step
+            .inputs
+            .iter()
+            .map(|tensor_id| {
+                values
+                    .get(tensor_id)
+                    .cloned()
+                    .ok_or(RuntimeError::MissingInput(*tensor_id))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let output_dims = step.spec.shape().dims();
+        let inner = product(&output_dims[axis + 1..]);
+        let outer = product(&output_dims[..axis]);
+        let mut output = Vec::with_capacity(step.spec.element_count());
+
+        let logical_inputs = input_buffers
+            .iter()
+            .map(CpuBuffer::logical_values)
+            .collect::<Vec<_>>();
+
+        for outer_index in 0..outer {
+            for (buffer, logical) in input_buffers.iter().zip(logical_inputs.iter()) {
+                let axis_len = buffer.spec().shape().dims()[axis];
+                let chunk = axis_len * inner;
+                let start = outer_index * chunk;
+                output.extend_from_slice(&logical[start..start + chunk]);
+            }
+        }
+
+        CpuBuffer::from_f32(step.spec.clone(), output)
+    }
+
+    fn reduce_sum(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        axis: Option<usize>,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        let input = self.input(step, values, 0)?;
+        let logical = input.logical_values();
+        let output = match axis {
+            None => vec![logical.iter().copied().sum()],
+            Some(axis) => reduce_sum_axis(&logical, input.spec().shape().dims(), axis)?,
+        };
         CpuBuffer::from_f32(step.spec.clone(), output)
     }
 }
@@ -276,6 +371,65 @@ impl ExecutionBackend for CpuBackend {
     }
 }
 
+fn reduce_sum_axis(logical: &[f32], dims: &[usize], axis: usize) -> Result<Vec<f32>, RuntimeError> {
+    if axis >= dims.len() {
+        return Err(RuntimeError::Backend(format!(
+            "reduce axis {axis} out of range for rank {}",
+            dims.len()
+        )));
+    }
+
+    let outer = product(&dims[..axis]);
+    let axis_len = dims[axis];
+    let inner = product(&dims[axis + 1..]);
+    let mut output = vec![0.0; outer * inner];
+    for outer_index in 0..outer {
+        for inner_index in 0..inner {
+            let mut sum = 0.0;
+            for axis_index in 0..axis_len {
+                let source_index = ((outer_index * axis_len) + axis_index) * inner + inner_index;
+                sum += logical[source_index];
+            }
+            output[(outer_index * inner) + inner_index] = sum;
+        }
+    }
+    Ok(output)
+}
+
+fn product(dims: &[usize]) -> usize {
+    if dims.is_empty() {
+        1
+    } else {
+        dims.iter().product()
+    }
+}
+
+fn for_each_index(shape: &Shape, mut f: impl FnMut(&[usize])) {
+    if shape.rank() == 0 {
+        f(&[]);
+        return;
+    }
+
+    let dims = shape.dims();
+    let mut index = vec![0; dims.len()];
+    loop {
+        f(&index);
+
+        let mut axis = dims.len();
+        while axis > 0 {
+            axis -= 1;
+            index[axis] += 1;
+            if index[axis] < dims[axis] {
+                break;
+            }
+            index[axis] = 0;
+            if axis == 0 {
+                return;
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use std::collections::BTreeMap;
@@ -315,7 +469,10 @@ mod tests {
 
         let mut backend = CpuBackend::new();
         let mut inputs = BTreeMap::new();
-        inputs.insert(input.id(), backend.input_buffer(Shape::new(vec![2, 2]), vec![1.0, 0.0, 0.0, 1.0])?);
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![2, 2]), vec![1.0, 0.0, 0.0, 1.0])?,
+        );
 
         let result = backend.compile_and_execute(&graph, &inputs)?;
         let Some(output) = result.outputs.get(&shifted.id()) else {
@@ -348,6 +505,45 @@ mod tests {
             return Err(RuntimeError::Backend(String::from("missing output")));
         };
         assert_eq!(output.as_f32_slice(), &[10.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_backend_executes_layout_views_and_axis_reduction() -> Result<(), RuntimeError> {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
+        let permuted = builder
+            .permute(&input, vec![1, 0])
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let sliced = builder
+            .slice(&permuted, 0, 1, 3)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let selected = builder
+            .select(&sliced, 1, 0)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let expanded = builder
+            .expand(&selected, Shape::new(vec![2, 2]))
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let concatenated = builder
+            .concat(&[expanded.clone(), expanded], 0)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let reduced = builder
+            .reduce_sum_axis(&concatenated, 0)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![reduced.clone()]);
+
+        let mut backend = CpuBackend::new();
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![2, 3]), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let Some(output) = result.outputs.get(&reduced.id()) else {
+            return Err(RuntimeError::Backend(String::from("missing output")));
+        };
+        assert_eq!(output.as_f32_slice(), &[8.0, 12.0]);
         Ok(())
     }
 
