@@ -2,6 +2,8 @@ use crate::receipts::Money;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
+pub const COMPUTE_LAUNCH_TAXONOMY_VERSION: &str = "compute.launch.v1";
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "snake_case")]
 pub enum ComputeSettlementMode {
@@ -81,6 +83,92 @@ pub enum CapacityInstrumentStatus {
     Expired,
 }
 
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeBackendFamily {
+    Ollama,
+    AppleFoundationModels,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeExecutionKind {
+    LocalInference,
+}
+
+#[derive(Clone, Copy, Debug, Serialize, Deserialize, Eq, PartialEq)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeFamily {
+    Inference,
+    Embeddings,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeHostCapability {
+    #[serde(default)]
+    pub accelerator_vendor: Option<String>,
+    #[serde(default)]
+    pub accelerator_family: Option<String>,
+    #[serde(default)]
+    pub memory_gb: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ApplePlatformCapability {
+    #[serde(default)]
+    pub apple_silicon_required: bool,
+    #[serde(default)]
+    pub apple_intelligence_required: bool,
+    #[serde(default)]
+    pub apple_intelligence_available: Option<bool>,
+    #[serde(default)]
+    pub minimum_macos_version: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct OllamaRuntimeCapability {
+    #[serde(default)]
+    pub runtime_ready: Option<bool>,
+    #[serde(default)]
+    pub model_name: Option<String>,
+    #[serde(default)]
+    pub quantization: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, Eq, PartialEq)]
+pub struct ComputeCapabilityEnvelope {
+    #[serde(default)]
+    pub backend_family: Option<ComputeBackendFamily>,
+    #[serde(default)]
+    pub execution_kind: Option<ComputeExecutionKind>,
+    #[serde(default)]
+    pub compute_family: Option<ComputeFamily>,
+    #[serde(default)]
+    pub model_policy: Option<String>,
+    #[serde(default)]
+    pub model_family: Option<String>,
+    #[serde(default)]
+    pub host_capability: Option<ComputeHostCapability>,
+    #[serde(default)]
+    pub apple_platform: Option<ApplePlatformCapability>,
+    #[serde(default)]
+    pub ollama_runtime: Option<OllamaRuntimeCapability>,
+    #[serde(default)]
+    pub latency_ms_p50: Option<u32>,
+    #[serde(default)]
+    pub throughput_per_minute: Option<u32>,
+    #[serde(default)]
+    pub concurrency_limit: Option<u32>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LaunchComputeProductSpec {
+    pub product_id: &'static str,
+    pub backend_family: ComputeBackendFamily,
+    pub execution_kind: ComputeExecutionKind,
+    pub compute_family: ComputeFamily,
+}
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
 pub struct ComputeProduct {
     pub product_id: String,
@@ -104,6 +192,10 @@ pub struct ComputeProduct {
     pub status: ComputeProductStatus,
     pub version: String,
     pub created_at_ms: i64,
+    #[serde(default)]
+    pub taxonomy_version: Option<String>,
+    #[serde(default)]
+    pub capability_envelope: Option<ComputeCapabilityEnvelope>,
     #[serde(default)]
     pub metadata: Value,
 }
@@ -204,4 +296,212 @@ pub struct CapacityInstrument {
     pub status: CapacityInstrumentStatus,
     #[serde(default)]
     pub metadata: Value,
+}
+
+pub fn launch_compute_product_spec(product_id: &str) -> Option<LaunchComputeProductSpec> {
+    match product_id {
+        "ollama.text_generation" => Some(LaunchComputeProductSpec {
+            product_id: "ollama.text_generation",
+            backend_family: ComputeBackendFamily::Ollama,
+            execution_kind: ComputeExecutionKind::LocalInference,
+            compute_family: ComputeFamily::Inference,
+        }),
+        "ollama.embeddings" => Some(LaunchComputeProductSpec {
+            product_id: "ollama.embeddings",
+            backend_family: ComputeBackendFamily::Ollama,
+            execution_kind: ComputeExecutionKind::LocalInference,
+            compute_family: ComputeFamily::Embeddings,
+        }),
+        "apple_foundation_models.text_generation" => Some(LaunchComputeProductSpec {
+            product_id: "apple_foundation_models.text_generation",
+            backend_family: ComputeBackendFamily::AppleFoundationModels,
+            execution_kind: ComputeExecutionKind::LocalInference,
+            compute_family: ComputeFamily::Inference,
+        }),
+        _ => None,
+    }
+}
+
+pub fn validate_launch_compute_product(
+    product: &ComputeProduct,
+) -> Result<LaunchComputeProductSpec, String> {
+    if product.resource_class.trim() != "compute" {
+        return Err("compute_product_resource_class_invalid".to_string());
+    }
+    if product.capacity_unit.trim().is_empty() {
+        return Err("compute_product_capacity_unit_missing".to_string());
+    }
+    if product.window_spec.trim().is_empty() {
+        return Err("compute_product_window_spec_missing".to_string());
+    }
+
+    let Some(taxonomy_version) = product.taxonomy_version.as_deref() else {
+        return Err("compute_product_launch_taxonomy_version_missing".to_string());
+    };
+    if taxonomy_version != COMPUTE_LAUNCH_TAXONOMY_VERSION {
+        return Err("compute_product_launch_taxonomy_version_invalid".to_string());
+    }
+
+    let Some(spec) = launch_compute_product_spec(product.product_id.as_str()) else {
+        return Err("compute_product_launch_product_id_unsupported".to_string());
+    };
+    let Some(envelope) = product.capability_envelope.as_ref() else {
+        return Err("compute_product_capability_envelope_missing".to_string());
+    };
+
+    match envelope.backend_family {
+        Some(value) if value == spec.backend_family => {}
+        Some(_) => return Err("compute_product_backend_family_mismatch".to_string()),
+        None => return Err("compute_product_backend_family_missing".to_string()),
+    }
+    match envelope.execution_kind {
+        Some(value) if value == spec.execution_kind => {}
+        Some(_) => return Err("compute_product_execution_kind_invalid".to_string()),
+        None => return Err("compute_product_execution_kind_missing".to_string()),
+    }
+    match envelope.compute_family {
+        Some(value) if value == spec.compute_family => {}
+        Some(_) => return Err("compute_product_compute_family_mismatch".to_string()),
+        None => return Err("compute_product_compute_family_missing".to_string()),
+    }
+
+    let has_model_identity = envelope
+        .model_family
+        .as_deref()
+        .is_some_and(|value| !value.trim().is_empty())
+        || envelope
+            .model_policy
+            .as_deref()
+            .is_some_and(|value| !value.trim().is_empty());
+    if !has_model_identity {
+        return Err("compute_product_model_identity_missing".to_string());
+    }
+
+    if let Some(host_capability) = envelope.host_capability.as_ref() {
+        if host_capability.accelerator_family.is_some()
+            && host_capability
+                .accelerator_vendor
+                .as_deref()
+                .is_none_or(|value| value.trim().is_empty())
+        {
+            return Err("compute_product_host_accelerator_vendor_missing".to_string());
+        }
+        if host_capability.memory_gb == Some(0) {
+            return Err("compute_product_host_memory_gb_invalid".to_string());
+        }
+    }
+
+    match spec.backend_family {
+        ComputeBackendFamily::Ollama => {
+            if envelope.ollama_runtime.is_none() {
+                return Err("compute_product_ollama_runtime_missing".to_string());
+            }
+        }
+        ComputeBackendFamily::AppleFoundationModels => {
+            let Some(apple_platform) = envelope.apple_platform.as_ref() else {
+                return Err("compute_product_apple_platform_gates_missing".to_string());
+            };
+            if !apple_platform.apple_silicon_required {
+                return Err("compute_product_apple_silicon_requirement_missing".to_string());
+            }
+        }
+    }
+
+    Ok(spec)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, ComputeBackendFamily,
+        ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
+        ComputeProduct, ComputeProductStatus, ComputeSettlementMode, OllamaRuntimeCapability,
+        validate_launch_compute_product,
+    };
+    use serde_json::json;
+
+    fn launch_product(product_id: &str) -> ComputeProduct {
+        ComputeProduct {
+            product_id: product_id.to_string(),
+            resource_class: "compute".to_string(),
+            capacity_unit: "request".to_string(),
+            window_spec: "1h".to_string(),
+            region_spec: vec!["global".to_string()],
+            performance_band: Some("balanced".to_string()),
+            sla_terms_ref: Some("sla.compute.launch".to_string()),
+            cost_proof_required: false,
+            attestation_required: false,
+            settlement_mode: ComputeSettlementMode::Physical,
+            index_eligible: true,
+            status: ComputeProductStatus::Active,
+            version: "v1".to_string(),
+            created_at_ms: 1_700_000_000_000,
+            taxonomy_version: Some(COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string()),
+            capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::Ollama),
+                execution_kind: Some(ComputeExecutionKind::LocalInference),
+                compute_family: Some(ComputeFamily::Inference),
+                model_policy: Some("text-generation".to_string()),
+                model_family: Some("llama3.3".to_string()),
+                host_capability: Some(ComputeHostCapability {
+                    accelerator_vendor: Some("nvidia".to_string()),
+                    accelerator_family: Some("h100".to_string()),
+                    memory_gb: Some(80),
+                }),
+                apple_platform: None,
+                ollama_runtime: Some(OllamaRuntimeCapability {
+                    runtime_ready: Some(true),
+                    model_name: Some("llama3.3".to_string()),
+                    quantization: Some("q4_k_m".to_string()),
+                }),
+                latency_ms_p50: Some(400),
+                throughput_per_minute: Some(1_200),
+                concurrency_limit: Some(2),
+            }),
+            metadata: json!({
+                "summary": "Launch compute product"
+            }),
+        }
+    }
+
+    #[test]
+    fn validates_launch_ollama_product() {
+        let product = launch_product("ollama.text_generation");
+        let spec =
+            validate_launch_compute_product(&product).expect("launch product should validate");
+        assert_eq!(spec.product_id, "ollama.text_generation");
+        assert_eq!(spec.backend_family, ComputeBackendFamily::Ollama);
+        assert_eq!(spec.compute_family, ComputeFamily::Inference);
+    }
+
+    #[test]
+    fn rejects_apple_embeddings_product() {
+        let mut product = launch_product("apple_foundation_models.text_generation");
+        product.product_id = "apple_foundation_models.embeddings".to_string();
+        product.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::AppleFoundationModels),
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            compute_family: Some(ComputeFamily::Embeddings),
+            model_policy: Some("embeddings".to_string()),
+            model_family: Some("apple.foundation".to_string()),
+            host_capability: Some(ComputeHostCapability {
+                accelerator_vendor: Some("apple".to_string()),
+                accelerator_family: Some("m4_max".to_string()),
+                memory_gb: Some(64),
+            }),
+            apple_platform: Some(ApplePlatformCapability {
+                apple_silicon_required: true,
+                apple_intelligence_required: true,
+                apple_intelligence_available: Some(true),
+                minimum_macos_version: Some("15.1".to_string()),
+            }),
+            ollama_runtime: None,
+            latency_ms_p50: Some(150),
+            throughput_per_minute: Some(600),
+            concurrency_limit: Some(1),
+        });
+        let err = validate_launch_compute_product(&product)
+            .expect_err("apple embeddings should be rejected");
+        assert_eq!(err, "compute_product_launch_product_id_unsupported");
+    }
 }

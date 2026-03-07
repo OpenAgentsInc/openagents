@@ -20,6 +20,7 @@ use openagents_kernel_core::authority::{
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
     CapacityReserveState, ComputeIndex, ComputeProduct, ComputeProductStatus, DeliveryProof,
+    validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -886,6 +887,7 @@ impl KernelState {
         req.product.product_id.clone_from(&product_id);
         req.product.created_at_ms =
             normalize_created_at_ms(req.product.created_at_ms, context.now_unix_ms);
+        validate_launch_compute_product(&req.product)?;
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
         let product_payload = serde_json::to_value(&req.product)

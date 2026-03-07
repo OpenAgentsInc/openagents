@@ -2494,6 +2494,25 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "capacity_instrument_id_missing"
         | "delivery_proof_id_missing"
         | "compute_index_id_missing"
+        | "compute_product_resource_class_invalid"
+        | "compute_product_capacity_unit_missing"
+        | "compute_product_window_spec_missing"
+        | "compute_product_launch_taxonomy_version_missing"
+        | "compute_product_launch_taxonomy_version_invalid"
+        | "compute_product_launch_product_id_unsupported"
+        | "compute_product_capability_envelope_missing"
+        | "compute_product_backend_family_missing"
+        | "compute_product_backend_family_mismatch"
+        | "compute_product_execution_kind_missing"
+        | "compute_product_execution_kind_invalid"
+        | "compute_product_compute_family_missing"
+        | "compute_product_compute_family_mismatch"
+        | "compute_product_model_identity_missing"
+        | "compute_product_host_accelerator_vendor_missing"
+        | "compute_product_host_memory_gb_invalid"
+        | "compute_product_ollama_runtime_missing"
+        | "compute_product_apple_platform_gates_missing"
+        | "compute_product_apple_silicon_requirement_missing"
         | "capacity_lot_window_invalid"
         | "capacity_instrument_window_invalid"
         | "compute_index_window_invalid"
@@ -3216,9 +3235,12 @@ mod tests {
         SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
-        CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
-        CapacityLotStatus, CapacityReserveState, ComputeIndex, ComputeIndexStatus, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
+        ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
+        CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
+        CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
+        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeIndex,
+        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementMode,
+        DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
     };
     use openagents_kernel_core::data::{
         AccessGrant, AccessGrantStatus, DataAsset, DataAssetStatus, DeliveryBundle,
@@ -3486,21 +3508,43 @@ mod tests {
             policy: kernel_policy(),
             product: ComputeProduct {
                 product_id: product_id.to_string(),
-                resource_class: "gpu.h100".to_string(),
-                capacity_unit: "gpu_hour".to_string(),
+                resource_class: "compute".to_string(),
+                capacity_unit: "request".to_string(),
                 window_spec: "1h".to_string(),
-                region_spec: vec!["us-central1".to_string()],
-                performance_band: Some("sxm".to_string()),
-                sla_terms_ref: Some("sla.compute.standard".to_string()),
-                cost_proof_required: true,
-                attestation_required: true,
+                region_spec: vec!["global".to_string()],
+                performance_band: Some("balanced".to_string()),
+                sla_terms_ref: Some("sla.compute.launch".to_string()),
+                cost_proof_required: false,
+                attestation_required: false,
                 settlement_mode: ComputeSettlementMode::Physical,
                 index_eligible: true,
                 status: ComputeProductStatus::Active,
                 version: "v1".to_string(),
                 created_at_ms,
+                taxonomy_version: Some(COMPUTE_LAUNCH_TAXONOMY_VERSION.to_string()),
+                capability_envelope: Some(ComputeCapabilityEnvelope {
+                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    execution_kind: Some(ComputeExecutionKind::LocalInference),
+                    compute_family: Some(ComputeFamily::Inference),
+                    model_policy: Some("text-generation".to_string()),
+                    model_family: Some("llama3.3".to_string()),
+                    host_capability: Some(ComputeHostCapability {
+                        accelerator_vendor: Some("nvidia".to_string()),
+                        accelerator_family: Some("h100".to_string()),
+                        memory_gb: Some(80),
+                    }),
+                    apple_platform: None,
+                    ollama_runtime: Some(OllamaRuntimeCapability {
+                        runtime_ready: Some(true),
+                        model_name: Some("llama3.3".to_string()),
+                        quantization: Some("q4_k_m".to_string()),
+                    }),
+                    latency_ms_p50: Some(400),
+                    throughput_per_minute: Some(1_200),
+                    concurrency_limit: Some(2),
+                }),
                 metadata: json!({
-                    "summary": "Standardized H100 hourly lot."
+                    "summary": "Standardized launch compute product."
                 }),
             },
             evidence: Vec::new(),
@@ -4997,7 +5041,7 @@ mod tests {
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&compute_product_request(
-                        "product.compute.alpha",
+                        "ollama.text_generation",
                         "idemp.compute.product.alpha",
                         created_at_ms,
                     ))?))?,
@@ -5020,7 +5064,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&capacity_lot_request(
                         "lot.compute.alpha",
-                        "product.compute.alpha",
+                        "ollama.text_generation",
                         "idemp.compute.lot.alpha",
                         created_at_ms + 1_000,
                     ))?))?,
@@ -5044,7 +5088,7 @@ mod tests {
                     .body(Body::from(serde_json::to_vec(
                         &capacity_instrument_request(
                             "instrument.compute.alpha",
-                            "product.compute.alpha",
+                            "ollama.text_generation",
                             "lot.compute.alpha",
                             "idemp.compute.instrument.alpha",
                             created_at_ms + 2_000,
@@ -5070,7 +5114,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&delivery_proof_request(
                         "delivery.compute.alpha",
-                        "product.compute.alpha",
+                        "ollama.text_generation",
                         "lot.compute.alpha",
                         "instrument.compute.alpha",
                         "idemp.compute.delivery.alpha",
@@ -5095,7 +5139,7 @@ mod tests {
                     .header("content-type", "application/json")
                     .body(Body::from(serde_json::to_vec(&compute_index_request(
                         "index.compute.alpha",
-                        "product.compute.alpha",
+                        "ollama.text_generation",
                         "idemp.compute.index.alpha",
                         created_at_ms + 4_000,
                     ))?))?,
@@ -5161,6 +5205,86 @@ mod tests {
                 .any(|receipt| { receipt.receipt_type == "kernel.compute.delivery.recorded" })
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compute_product_creation_rejects_raw_accelerator_identity() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let mut request = compute_product_request(
+            "gpu.h100",
+            "idemp.compute.product.invalid-raw-hardware",
+            super::now_unix_ms() as i64,
+        );
+        request.product.resource_class = "gpu.h100".to_string();
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request)?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = response_json(response).await?;
+        assert_eq!(body["reason"], "compute_product_resource_class_invalid");
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compute_product_creation_rejects_apple_embeddings_launch_claim() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let mut request = compute_product_request(
+            "apple_foundation_models.embeddings",
+            "idemp.compute.product.invalid-apple-embeddings",
+            super::now_unix_ms() as i64,
+        );
+        request.product.capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::AppleFoundationModels),
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            compute_family: Some(ComputeFamily::Embeddings),
+            model_policy: Some("embeddings".to_string()),
+            model_family: Some("apple.foundation".to_string()),
+            host_capability: Some(ComputeHostCapability {
+                accelerator_vendor: Some("apple".to_string()),
+                accelerator_family: Some("m4_max".to_string()),
+                memory_gb: Some(64),
+            }),
+            apple_platform: Some(ApplePlatformCapability {
+                apple_silicon_required: true,
+                apple_intelligence_required: true,
+                apple_intelligence_available: Some(true),
+                minimum_macos_version: Some("15.1".to_string()),
+            }),
+            ollama_runtime: None,
+            latency_ms_p50: Some(150),
+            throughput_per_minute: Some(600),
+            concurrency_limit: Some(1),
+        });
+
+        let response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&request)?))?,
+            )
+            .await?;
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body: serde_json::Value = response_json(response).await?;
+        assert_eq!(
+            body["reason"],
+            "compute_product_launch_product_id_unsupported"
+        );
         Ok(())
     }
 
