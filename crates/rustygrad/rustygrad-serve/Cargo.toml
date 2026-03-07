@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 rustygrad-backend-cpu = { path = "../rustygrad-backend-cpu" }
+rustygrad-backend-metal = { path = "../rustygrad-backend-metal" }
 rustygrad-compiler = { path = "../rustygrad-compiler" }
 rustygrad-core = { path = "../rustygrad-core" }
 rustygrad-ir = { path = "../rustygrad-ir" }
@@ -25,6 +26,5 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
-rustygrad-backend-metal = { path = "../rustygrad-backend-metal" }
 rustygrad-provider = { path = "../rustygrad-provider" }
 tempfile = "3"

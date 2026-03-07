@@ -3,7 +3,8 @@
 use std::collections::BTreeMap;
 
 use rustygrad_backend_cpu::CpuBackend;
-use rustygrad_compiler::{CompileError, compile_graph};
+use rustygrad_backend_metal::{MetalBackend, EMBEDDINGS_SUPPORTED_OPS};
+use rustygrad_compiler::{compile_graph, CompileError};
 pub use rustygrad_core::QuantizationMode;
 use rustygrad_core::{DType, Device, Shape, TensorId};
 use rustygrad_ir::{Graph, GraphBuilder, GraphError};
@@ -16,7 +17,7 @@ pub use rustygrad_models::{
     TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
     WeightTensorMetadata,
 };
-use rustygrad_runtime::RuntimeError;
+use rustygrad_runtime::{BackendSelection, DeviceDiscovery, HealthStatus, RuntimeError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -1408,6 +1409,37 @@ pub enum ModelEmbeddingsError {
     Runtime(#[from] RuntimeError),
 }
 
+/// Metal-backed embeddings execution error.
+#[derive(Debug, Error)]
+pub enum MetalEmbeddingsError {
+    /// The request targeted the wrong product.
+    #[error("unsupported product id `{0}`")]
+    UnsupportedProduct(String),
+    /// The request targeted the wrong model.
+    #[error("unsupported model `{0}`")]
+    UnsupportedModel(String),
+    /// The request carried no inputs.
+    #[error("embedding request must contain at least one input")]
+    EmptyInputBatch,
+    /// Metal is not available for the requested product path on this machine.
+    #[error("metal backend unavailable ({status:?}): {message}")]
+    BackendUnavailable {
+        /// Honest backend status.
+        status: HealthStatus,
+        /// Plain-text reason.
+        message: String,
+    },
+    /// Loading or validating the model failed.
+    #[error(transparent)]
+    Model(#[from] ModelLoadError),
+    /// Graph construction failed.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// Metal runtime execution failed.
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+}
+
 /// CPU-backed embeddings smoke service.
 #[derive(Clone, Debug)]
 pub struct SmokeEmbeddingsService {
@@ -1425,6 +1457,7 @@ impl SmokeEmbeddingsService {
         let model = SmokeByteEmbedder::new();
         let input_shape = Shape::new(vec![1, model.input_dimensions()]);
         let (graph, input_id, output_id) = build_embedding_graph(
+            Device::cpu(),
             model.input_dimensions(),
             model.descriptor().dimensions,
             model.projection(),
@@ -1448,7 +1481,7 @@ impl SmokeEmbeddingsService {
     }
 
     fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, SmokeEmbeddingsError> {
-        execute_embedding_graph(
+        execute_cpu_embedding_graph(
             &mut self.backend,
             &self.graph,
             self.input_id,
@@ -1509,6 +1542,7 @@ impl CpuModelEmbeddingsService {
         let model = ByteProjectionEmbedder::from_safetensors_artifact(path)?;
         let input_shape = Shape::new(vec![1, model.input_dimensions()]);
         let (graph, input_id, output_id) = build_embedding_graph(
+            Device::cpu(),
             model.input_dimensions(),
             model.descriptor().dimensions,
             model.weights().projection(),
@@ -1532,7 +1566,7 @@ impl CpuModelEmbeddingsService {
     }
 
     fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, ModelEmbeddingsError> {
-        let values = execute_embedding_graph(
+        let values = execute_cpu_embedding_graph(
             &mut self.backend,
             &self.graph,
             self.input_id,
@@ -1580,14 +1614,133 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
 /// Honest CPU product alias for model-backed embeddings.
 pub type CpuProductEmbeddingsService = CpuModelEmbeddingsService;
 
+/// Metal-backed embeddings service for the supported model-backed product path.
+///
+/// Text generation remains CPU-only today; this service exists only for the
+/// first accelerated `rustygrad.embeddings` milestone.
+pub struct MetalModelEmbeddingsService {
+    backend: MetalBackend,
+    backend_selection: BackendSelection,
+    model: ByteProjectionEmbedder,
+    graph: Graph,
+    input_shape: Shape,
+    input_id: TensorId,
+    output_id: TensorId,
+}
+
+impl MetalModelEmbeddingsService {
+    /// Loads the first model-backed embeddings family on Metal when the local
+    /// machine exposes a genuinely supported Metal execution device.
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, MetalEmbeddingsError> {
+        let backend = MetalBackend::new();
+        let backend_selection = backend
+            .backend_selection(EMBEDDINGS_SUPPORTED_OPS)
+            .map_err(|error| MetalEmbeddingsError::BackendUnavailable {
+                status: backend.health().status,
+                message: error.to_string(),
+            })?;
+        let selected_device = backend_selection
+            .selected_device
+            .as_ref()
+            .map(|device| device.device.clone())
+            .ok_or_else(|| MetalEmbeddingsError::BackendUnavailable {
+                status: backend.health().status,
+                message: String::from("metal backend selected no execution device"),
+            })?;
+
+        let model = ByteProjectionEmbedder::from_safetensors_artifact(path)?;
+        let input_shape = Shape::new(vec![1, model.input_dimensions()]);
+        let (graph, input_id, output_id) = build_embedding_graph(
+            selected_device,
+            model.input_dimensions(),
+            model.descriptor().dimensions,
+            model.weights().projection(),
+            model.weights().bias(),
+            input_shape.clone(),
+        )?;
+        Ok(Self {
+            backend,
+            backend_selection,
+            model,
+            graph,
+            input_shape,
+            input_id,
+            output_id,
+        })
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &EmbeddingModelDescriptor {
+        self.model.descriptor()
+    }
+
+    /// Returns truthful backend-selection data for the loaded Metal product.
+    #[must_use]
+    pub fn backend_selection(&self) -> &BackendSelection {
+        &self.backend_selection
+    }
+
+    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, MetalEmbeddingsError> {
+        let values = execute_metal_embedding_graph(
+            &mut self.backend,
+            &self.graph,
+            self.input_id,
+            self.output_id,
+            &self.input_shape,
+            self.model.featurize(input),
+        )?;
+        Ok(normalize_embedding(
+            values,
+            self.model.descriptor().normalization,
+        ))
+    }
+}
+
+impl EmbeddingsExecutor for MetalModelEmbeddingsService {
+    type Error = MetalEmbeddingsError;
+
+    fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        if request.product_id != EMBEDDINGS_PRODUCT_ID {
+            return Err(MetalEmbeddingsError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+        if request.model != *self.model.descriptor() {
+            return Err(MetalEmbeddingsError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+        if request.inputs.is_empty() {
+            return Err(MetalEmbeddingsError::EmptyInputBatch);
+        }
+
+        let mut embeddings = Vec::with_capacity(request.inputs.len());
+        for (index, input) in request.inputs.iter().enumerate() {
+            embeddings.push(EmbeddingVector {
+                index,
+                values: self.embed_one(input)?,
+            });
+        }
+
+        Ok(EmbeddingResponse::new(request, embeddings))
+    }
+}
+
+/// Honest Metal product alias for model-backed embeddings.
+pub type MetalProductEmbeddingsService = MetalModelEmbeddingsService;
+
 fn build_embedding_graph(
+    device: Device,
     input_dimensions: usize,
     output_dimensions: usize,
     projection: &[f32],
     bias: &[f32],
     input_shape: Shape,
 ) -> Result<(Graph, TensorId, TensorId), GraphError> {
-    let mut builder = GraphBuilder::new(Device::cpu());
+    let mut builder = GraphBuilder::new(device);
     let input = builder.input("features", input_shape, DType::F32);
     let weights = builder.constant_f32(
         Shape::new(vec![input_dimensions, output_dimensions]),
@@ -1602,7 +1755,7 @@ fn build_embedding_graph(
     Ok((graph, input_id, output_id))
 }
 
-fn execute_embedding_graph(
+fn execute_cpu_embedding_graph(
     backend: &mut CpuBackend,
     graph: &Graph,
     input_id: TensorId,
@@ -1622,6 +1775,28 @@ fn execute_embedding_graph(
         )));
     };
     Ok(output.as_f32_slice().to_vec())
+}
+
+fn execute_metal_embedding_graph(
+    backend: &mut MetalBackend,
+    graph: &Graph,
+    input_id: TensorId,
+    output_id: TensorId,
+    input_shape: &Shape,
+    features: Vec<f32>,
+) -> Result<Vec<f32>, RuntimeError> {
+    let mut runtime_inputs = BTreeMap::new();
+    runtime_inputs.insert(
+        input_id,
+        backend.input_buffer(input_shape.clone(), features)?,
+    );
+    let result = backend.compile_and_execute(graph, &runtime_inputs)?;
+    let Some(output) = result.outputs.get(&output_id) else {
+        return Err(RuntimeError::Backend(String::from(
+            "missing embedding output",
+        )));
+    };
+    output.read_f32()
 }
 
 fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) -> Vec<f32> {
@@ -1875,17 +2050,15 @@ mod tests {
         assert_eq!(first.output.text, "open agents");
         assert_eq!(first.termination, TerminationReason::EndOfSequence);
         assert_eq!(first.usage.input_tokens, 2);
-        assert!(
-            service
-                .plan_digest(ReferenceWordDecoder::MODEL_ID)
-                .is_some()
-        );
+        assert!(service
+            .plan_digest(ReferenceWordDecoder::MODEL_ID)
+            .is_some());
         Ok(())
     }
 
     #[test]
-    fn cpu_reference_text_generation_reuses_and_resets_sessions()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn cpu_reference_text_generation_reuses_and_resets_sessions(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let mut service = CpuReferenceTextGenerationService::new()?;
         let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
 
