@@ -20,6 +20,15 @@ pub enum ProviderSandboxRuntimeKind {
 }
 
 impl ProviderSandboxRuntimeKind {
+    pub const fn id(self) -> &'static str {
+        match self {
+            Self::Container => "container",
+            Self::Python => "python",
+            Self::Node => "node",
+            Self::Posix => "posix",
+        }
+    }
+
     pub const fn label(self) -> &'static str {
         match self {
             Self::Container => "container runtime",
@@ -69,6 +78,15 @@ pub enum ProviderSandboxExecutionClass {
 }
 
 impl ProviderSandboxExecutionClass {
+    pub const fn all() -> [Self; 4] {
+        [
+            Self::ContainerExec,
+            Self::PythonExec,
+            Self::NodeExec,
+            Self::PosixExec,
+        ]
+    }
+
     pub const fn product_id(self) -> &'static str {
         match self {
             Self::ContainerExec => "sandbox.container.exec",
@@ -271,6 +289,42 @@ impl ProviderSandboxAvailability {
             first.filesystem_mode,
             first.timeout_limit_s
         ))
+    }
+
+    pub fn detected_runtime_kinds(&self) -> Vec<ProviderSandboxRuntimeKind> {
+        ProviderSandboxRuntimeKind::all()
+            .into_iter()
+            .filter(|runtime_kind| {
+                self.runtimes
+                    .iter()
+                    .any(|runtime| runtime.runtime_kind == *runtime_kind && runtime.detected)
+            })
+            .collect()
+    }
+
+    pub fn ready_runtime_kinds(&self) -> Vec<ProviderSandboxRuntimeKind> {
+        ProviderSandboxRuntimeKind::all()
+            .into_iter()
+            .filter(|runtime_kind| {
+                self.runtimes
+                    .iter()
+                    .any(|runtime| runtime.runtime_kind == *runtime_kind && runtime.ready)
+            })
+            .collect()
+    }
+
+    pub fn declared_execution_classes(&self) -> Vec<ProviderSandboxExecutionClass> {
+        ProviderSandboxExecutionClass::all()
+            .into_iter()
+            .filter(|execution_class| self.has_declared_execution_class(*execution_class))
+            .collect()
+    }
+
+    pub fn ready_execution_classes(&self) -> Vec<ProviderSandboxExecutionClass> {
+        ProviderSandboxExecutionClass::all()
+            .into_iter()
+            .filter(|execution_class| self.backend_ready_for_class(*execution_class))
+            .collect()
     }
 }
 

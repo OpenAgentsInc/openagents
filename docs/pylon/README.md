@@ -64,6 +64,7 @@ Inspect provider truth:
 ```bash
 cargo run -p pylon -- backends
 cargo run -p pylon -- products
+cargo run -p pylon -- sandbox
 cargo run -p pylon -- inventory
 cargo run -p pylon -- jobs
 cargo run -p pylon -- earnings
@@ -90,6 +91,7 @@ Important:
 - `pylon serve` does not implicitly force the node online.
 - lifecycle is explicit; use `pylon online` / `offline` / `pause` / `resume`
 - status should show `unconfigured`, `ready`, `online`, `paused`, `draining`, `degraded`, `offline`, or `error` truthfully
+- when sandbox supply is declared, `status`, `backends`, `sandbox`, `jobs`, and `receipts` should surface execution classes, profile IDs, termination reasons, and failure reasons without inventing a separate sandbox-only provider model
 
 ## Config and Paths
 
@@ -124,6 +126,7 @@ The generated config currently includes:
 2. set desired mode explicitly with `pylon online` or `pylon offline`
 3. run `pylon serve` under a local service manager
 4. use `pylon status`, `backends`, `products`, `inventory`, `jobs`, `earnings`, and `receipts` for observability
+5. use `pylon sandbox` when you need the declared runtime/profile view for bounded `sandbox_execution`
 
 ### `systemd` example
 
@@ -162,9 +165,10 @@ Those materials cover:
 
 - backend detection
 - launch-product derivation
+- sandbox runtime/profile detection and declared execution classes
 - lifecycle transitions
 - restart and replay expectations
 - local observability surfaces
-- receipt and earnings visibility
+- receipt and earnings visibility, including sandbox failure and termination detail
 - Autopilot parity checks
 - rollout and launch-truth gates

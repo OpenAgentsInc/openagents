@@ -29,10 +29,12 @@ If any release note, marketing text, or operator doc violates one of those state
 | Unconfigured truth | `cargo run -p pylon -- status` before init | reports `unconfigured` |
 | Backend visibility | `cargo run -p pylon -- backends --json` | returns backend entries for `ollama` and `apple_foundation_models` with explicit health states |
 | Launch products | `cargo run -p pylon -- products --json` | shows launch products only; no `apple_foundation_models.embeddings` |
+| Sandbox status truth | `cargo run -p pylon -- status` on a node with declared sandbox profiles | status includes sandbox execution classes, profile IDs, and scan/runtime errors when relevant |
+| Sandbox runtime/profile view | `cargo run -p pylon -- sandbox --json` | returns declared runtimes/profiles, ready execution classes, and profile digests |
 | Inventory | `cargo run -p pylon -- inventory` | shows inventory rows with capability summaries and explicit eligibility |
-| Jobs | `cargo run -p pylon -- jobs` | shows recent jobs or an empty truthful list |
+| Jobs | `cargo run -p pylon -- jobs` | shows recent jobs or an empty truthful list, including sandbox family/profile/failure detail when present |
 | Earnings | `cargo run -p pylon -- earnings` | shows earnings summary or explicit none-state |
-| Receipts | `cargo run -p pylon -- receipts` | shows receipt summaries or an empty truthful list |
+| Receipts | `cargo run -p pylon -- receipts` | shows receipt summaries or an empty truthful list, including sandbox profile/termination/failure detail when present |
 | Online transition | `cargo run -p pylon -- online` | desired mode becomes `online`; unhealthy supply becomes `degraded`, not falsely healthy |
 | Pause/resume | `cargo run -p pylon -- pause` then `resume` | transitions are explicit and truthful |
 | Offline transition | `cargo run -p pylon -- offline` | desired mode becomes `offline` |
@@ -57,6 +59,15 @@ scripts/lint/workspace-dependency-drift-check.sh
 scripts/pylon/verify_standalone.sh
 ```
 
+Sandbox-specific evidence that should remain green:
+
+```bash
+cargo test -p openagents-provider-substrate sandbox_execution::tests::policy_rejection_is_receipted -- --nocapture
+cargo test -p openagents-provider-substrate sandbox_execution::tests::local_subprocess_success_emits_receipt_and_artifacts -- --nocapture
+cargo test -p pylon sandbox_reports_surface_profiles_status_and_failures -- --nocapture
+cargo test -p autopilot-desktop snapshot_signature_changes_when_sandbox_truth_changes -- --nocapture
+```
+
 ## Operational Smoke Path
 
 The minimum operator smoke path is:
@@ -66,6 +77,7 @@ cargo run -p pylon -- status
 cargo run -p pylon -- init
 cargo run -p pylon -- backends --json
 cargo run -p pylon -- products
+cargo run -p pylon -- sandbox
 cargo run -p pylon -- inventory
 cargo run -p pylon -- online
 cargo run -p pylon -- pause
@@ -102,12 +114,14 @@ Pre-release:
 - verify `Pylon` still reads as a provider connector, not a monolithic local runtime
 - verify lifecycle remains explicit and not hidden behind `serve`
 - verify backend-health and product surfaces distinguish healthy vs degraded vs unsupported vs misconfigured vs disabled states plainly
+- verify sandbox status, backend, job, and receipt surfaces expose declared execution classes, profile IDs, and failure detail truthfully
 
 Release candidate:
 
 - run the full repo-level checks above
 - run the standalone smoke path on at least one Ollama-capable machine
 - run the standalone smoke path on at least one Apple FM-capable machine if Apple FM is part of the candidate
+- run the sandbox-specific evidence commands on at least one machine with declared sandbox profiles
 - confirm persisted status, jobs, earnings, and receipts survive a restart
 
 Launch approval:
@@ -121,4 +135,5 @@ Post-launch:
 - monitor operator reports for lifecycle-control confusion
 - monitor backend-state misclassification
 - monitor discrepancies between `Autopilot` and standalone `Pylon` snapshot truth
+- monitor sandbox runtime/profile misclassification and missing failure/termination detail in job and receipt views
 - update this matrix before broadening launch claims

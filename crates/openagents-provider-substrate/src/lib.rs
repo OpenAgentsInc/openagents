@@ -251,6 +251,14 @@ pub enum ProviderComputeProduct {
     SandboxPosixExec,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct ProviderProductDescriptor {
+    pub product_id: String,
+    pub compute_family: String,
+    pub backend_family: String,
+    pub sandbox_execution_class: Option<String>,
+}
+
 impl ProviderComputeProduct {
     pub const fn all() -> [Self; 7] {
         [
@@ -318,6 +326,18 @@ impl ProviderComputeProduct {
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
             | Self::SandboxPosixExec => "sandbox_execution",
+        }
+    }
+
+    pub const fn sandbox_execution_class(self) -> Option<ProviderSandboxExecutionClass> {
+        match self {
+            Self::SandboxContainerExec => Some(ProviderSandboxExecutionClass::ContainerExec),
+            Self::SandboxPythonExec => Some(ProviderSandboxExecutionClass::PythonExec),
+            Self::SandboxNodeExec => Some(ProviderSandboxExecutionClass::NodeExec),
+            Self::SandboxPosixExec => Some(ProviderSandboxExecutionClass::PosixExec),
+            Self::OllamaInference
+            | Self::OllamaEmbeddings
+            | Self::AppleFoundationModelsInference => None,
         }
     }
 
@@ -434,6 +454,21 @@ impl ProviderComputeProduct {
             _ => None,
         }
     }
+
+    pub fn descriptor(self) -> ProviderProductDescriptor {
+        ProviderProductDescriptor {
+            product_id: self.product_id().to_string(),
+            compute_family: self.compute_family_label().to_string(),
+            backend_family: self.backend_label().to_string(),
+            sandbox_execution_class: self
+                .sandbox_execution_class()
+                .map(|execution_class| execution_class.product_id().to_string()),
+        }
+    }
+}
+
+pub fn describe_provider_product_id(product_id: &str) -> Option<ProviderProductDescriptor> {
+    ProviderComputeProduct::for_product_id(product_id).map(ProviderComputeProduct::descriptor)
 }
 
 #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -629,7 +664,7 @@ mod tests {
         ProviderLifecycleInput, ProviderLifecycleTransition, ProviderMode,
         ProviderSandboxAvailability, ProviderSandboxDetectionConfig,
         ProviderSandboxExecutionClass, ProviderSandboxProfileSpec, detect_sandbox_supply,
-        derive_provider_lifecycle, derive_provider_products,
+        describe_provider_product_id, derive_provider_lifecycle, derive_provider_products,
     };
 
     fn ensure(
@@ -725,6 +760,41 @@ mod tests {
             products[2]
                 .capability_summary
                 .contains("platform_gate=apple_intelligence_disabled")
+        );
+    }
+
+    #[test]
+    fn product_descriptor_preserves_launch_and_sandbox_taxonomy() {
+        let embeddings = describe_provider_product_id("ollama.embeddings");
+        assert_eq!(
+            embeddings.as_ref().map(|descriptor| descriptor.compute_family.as_str()),
+            Some("embeddings")
+        );
+        assert_eq!(
+            embeddings.as_ref().map(|descriptor| descriptor.backend_family.as_str()),
+            Some("ollama")
+        );
+        assert_eq!(
+            embeddings
+                .as_ref()
+                .and_then(|descriptor| descriptor.sandbox_execution_class.as_deref()),
+            None
+        );
+
+        let sandbox = describe_provider_product_id("sandbox.python.exec");
+        assert_eq!(
+            sandbox.as_ref().map(|descriptor| descriptor.compute_family.as_str()),
+            Some("sandbox_execution")
+        );
+        assert_eq!(
+            sandbox.as_ref().map(|descriptor| descriptor.backend_family.as_str()),
+            Some("sandbox")
+        );
+        assert_eq!(
+            sandbox
+                .as_ref()
+                .and_then(|descriptor| descriptor.sandbox_execution_class.as_deref()),
+            Some("sandbox.python.exec")
         );
     }
 

@@ -6,7 +6,7 @@ use openagents_provider_substrate::{
     ProviderDesiredMode, ProviderEarningsSummary, ProviderHealthEvent, ProviderIdentityMetadata,
     ProviderJsonEntry, ProviderPayoutSummary, ProviderPersistedSnapshot, ProviderReceiptSummary,
     ProviderRecentJob, ProviderRuntimeStatusSnapshot, ProviderSnapshotParts,
-    assemble_provider_persisted_snapshot,
+    assemble_provider_persisted_snapshot, describe_provider_product_id,
 };
 use serde_json::json;
 
@@ -229,12 +229,24 @@ fn recent_jobs_for_state(state: &RenderState) -> Vec<ProviderRecentJob> {
 }
 
 fn recent_job_from_row(row: &JobHistoryReceiptRow) -> ProviderRecentJob {
+    let product_id = infer_product_id_for_history_row(row);
+    let descriptor = product_id
+        .as_deref()
+        .and_then(describe_provider_product_id);
     ProviderRecentJob {
         job_id: row.job_id.clone(),
         request_id: Some(infer_request_id_from_job_id(row.job_id.as_str())),
         status: row.status.label().to_string(),
         demand_source: row.demand_source.label().to_string(),
-        product_id: infer_product_id_for_history_row(row),
+        product_id,
+        compute_family: descriptor.as_ref().map(|descriptor| descriptor.compute_family.clone()),
+        backend_family: descriptor.as_ref().map(|descriptor| descriptor.backend_family.clone()),
+        sandbox_execution_class: descriptor
+            .as_ref()
+            .and_then(|descriptor| descriptor.sandbox_execution_class.clone()),
+        sandbox_profile_id: None,
+        sandbox_profile_digest: None,
+        sandbox_termination_reason: None,
         completed_at_epoch_seconds: row.completed_at_epoch_seconds,
         payout_sats: row.payout_sats,
         payment_pointer: row.payment_pointer.clone(),
@@ -274,7 +286,14 @@ fn receipt_summary(receipt: &Receipt) -> ProviderReceiptSummary {
         receipt_type: receipt.receipt_type.clone(),
         created_at_ms: receipt.created_at_ms,
         canonical_hash: receipt.canonical_hash.clone(),
+        compute_family: None,
+        backend_family: None,
+        sandbox_execution_class: None,
+        sandbox_profile_id: None,
+        sandbox_profile_digest: None,
+        sandbox_termination_reason: None,
         reason_code: receipt.hints.reason_code.clone(),
+        failure_reason: None,
         severity: receipt.hints.severity.map(|severity| severity.label().to_string()),
         notional_sats: receipt.hints.notional.as_ref().and_then(money_sats),
         liability_premium_sats: receipt.hints.liability_premium.as_ref().and_then(money_sats),
@@ -474,6 +493,8 @@ mod tests {
     use crate::ollama_execution::OllamaExecutionProvenance;
     use openagents_provider_substrate::{
         ProviderAvailability, ProviderPersistedSnapshot, ProviderRuntimeStatusSnapshot,
+        ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,
+        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
     };
 
     #[test]
@@ -545,6 +566,77 @@ mod tests {
         };
 
         assert_eq!(
+            snapshot_signature(&first).ok(),
+            snapshot_signature(&second).ok()
+        );
+    }
+
+    #[test]
+    fn snapshot_signature_changes_when_sandbox_truth_changes() {
+        let mut first = ProviderPersistedSnapshot {
+            captured_at_ms: 100,
+            config_metadata: Vec::new(),
+            identity: None,
+            runtime: ProviderRuntimeStatusSnapshot::default(),
+            availability: ProviderAvailability {
+                sandbox: ProviderSandboxAvailability {
+                    runtimes: vec![ProviderSandboxRuntimeHealth {
+                        runtime_kind: ProviderSandboxRuntimeKind::Python,
+                        detected: true,
+                        ready: true,
+                        binary_name: Some("python3".to_string()),
+                        binary_path: Some("/usr/bin/python3".to_string()),
+                        runtime_version: Some("Python 3.11.8".to_string()),
+                        supported_execution_classes: vec![
+                            ProviderSandboxExecutionClass::PythonExec,
+                        ],
+                        last_error: None,
+                    }],
+                    profiles: vec![ProviderSandboxProfile {
+                        profile_id: "python-batch".to_string(),
+                        profile_digest: "sha256:profile-a".to_string(),
+                        execution_class: ProviderSandboxExecutionClass::PythonExec,
+                        runtime_family: "python3".to_string(),
+                        runtime_version: "Python 3.11.8".to_string(),
+                        sandbox_engine: "local_subprocess".to_string(),
+                        os_family: "linux".to_string(),
+                        arch: "x86_64".to_string(),
+                        cpu_limit: 2,
+                        memory_limit_mb: 2048,
+                        disk_limit_mb: 4096,
+                        timeout_limit_s: 120,
+                        network_mode: "none".to_string(),
+                        filesystem_mode: "workspace_only".to_string(),
+                        workspace_mode: "ephemeral".to_string(),
+                        artifact_output_mode: "declared_paths_only".to_string(),
+                        secrets_mode: "none".to_string(),
+                        allowed_binaries: vec!["python3".to_string()],
+                        toolchain_inventory: vec!["python3".to_string()],
+                        container_image: None,
+                        runtime_image_digest: None,
+                        accelerator_policy: None,
+                        runtime_kind: ProviderSandboxRuntimeKind::Python,
+                        runtime_ready: true,
+                        runtime_binary_path: Some("/usr/bin/python3".to_string()),
+                        capability_summary: "backend=sandbox execution=sandbox.python.exec family=sandbox_execution profile_id=python-batch".to_string(),
+                    }],
+                    last_scan_error: None,
+                },
+                ..ProviderAvailability::default()
+            },
+            inventory_rows: Vec::new(),
+            recent_jobs: Vec::new(),
+            receipts: Vec::new(),
+            payouts: Vec::new(),
+            health_events: Vec::new(),
+            earnings: None,
+        };
+        let mut second = first.clone();
+        second.availability.sandbox.profiles[0].profile_digest = "sha256:profile-b".to_string();
+        first.captured_at_ms = 100;
+        second.captured_at_ms = 200;
+
+        assert_ne!(
             snapshot_signature(&first).ok(),
             snapshot_signature(&second).ok()
         );
