@@ -1,4 +1,5 @@
 use crate::authority::{
+    CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
     CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CorrectComputeIndexRequest,
     CorrectComputeIndexResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
     CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
@@ -1565,6 +1566,104 @@ pub fn close_capacity_instrument_response_from_proto(
     })
 }
 
+pub fn cash_settle_capacity_instrument_request_to_proto(
+    request: &CashSettleCapacityInstrumentRequest,
+) -> Result<proto_compute::CashSettleCapacityInstrumentRequest> {
+    Ok(proto_compute::CashSettleCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        instrument_id: request.instrument_id.clone(),
+        settled_at_ms: request.settled_at_ms,
+        settlement_index_id: request.settlement_index_id.clone(),
+        metadata_json: json_value_to_string(&request.metadata)?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn cash_settle_capacity_instrument_request_from_proto(
+    request: &proto_compute::CashSettleCapacityInstrumentRequest,
+) -> Result<CashSettleCapacityInstrumentRequest> {
+    Ok(CashSettleCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        instrument_id: request.instrument_id.clone(),
+        settled_at_ms: request.settled_at_ms,
+        settlement_index_id: request.settlement_index_id.clone(),
+        metadata: json_string_to_value(request.metadata_json.as_str())?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn cash_settle_capacity_instrument_response_to_proto(
+    response: &CashSettleCapacityInstrumentResponse,
+) -> Result<proto_compute::CashSettleCapacityInstrumentResponse> {
+    Ok(proto_compute::CashSettleCapacityInstrumentResponse {
+        instrument: Some(capacity_instrument_to_proto(&response.instrument)?),
+        settlement_index_id: response.settlement_index_id.clone(),
+        settlement_price: response.settlement_price.as_ref().map(money_to_proto),
+        cash_flow: response.cash_flow.as_ref().map(money_to_proto),
+        payer_id: response.payer_id.clone(),
+        payee_id: response.payee_id.clone(),
+        collateral_consumed: response.collateral_consumed.as_ref().map(money_to_proto),
+        collateral_shortfall: response.collateral_shortfall.as_ref().map(money_to_proto),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn cash_settle_capacity_instrument_response_from_proto(
+    response: &proto_compute::CashSettleCapacityInstrumentResponse,
+) -> Result<CashSettleCapacityInstrumentResponse> {
+    Ok(CashSettleCapacityInstrumentResponse {
+        instrument: capacity_instrument_from_proto(
+            response
+                .instrument
+                .as_ref()
+                .ok_or_else(|| missing("instrument"))?,
+        )?,
+        settlement_index_id: response.settlement_index_id.clone(),
+        settlement_price: response
+            .settlement_price
+            .as_ref()
+            .map(money_from_proto)
+            .transpose()?,
+        cash_flow: response
+            .cash_flow
+            .as_ref()
+            .map(money_from_proto)
+            .transpose()?,
+        payer_id: response.payer_id.clone(),
+        payee_id: response.payee_id.clone(),
+        collateral_consumed: response
+            .collateral_consumed
+            .as_ref()
+            .map(money_from_proto)
+            .transpose()?,
+        collateral_shortfall: response
+            .collateral_shortfall
+            .as_ref()
+            .map(money_from_proto)
+            .transpose()?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
 pub fn record_delivery_proof_request_to_proto(
     request: &RecordDeliveryProofRequest,
 ) -> Result<proto_compute::RecordDeliveryProofRequest> {
@@ -1958,17 +2057,22 @@ pub fn get_compute_index_response_from_proto(
 mod tests {
     use super::{
         capacity_instrument_from_proto, capacity_instrument_to_proto, capacity_lot_from_proto,
-        capacity_lot_to_proto, close_capacity_instrument_request_from_proto,
-        close_capacity_instrument_request_to_proto, close_capacity_instrument_response_from_proto,
-        close_capacity_instrument_response_to_proto, compute_index_from_proto,
-        compute_index_to_proto, compute_product_from_proto, compute_product_to_proto,
-        correct_compute_index_request_from_proto, correct_compute_index_request_to_proto,
-        correct_compute_index_response_from_proto, correct_compute_index_response_to_proto,
-        delivery_proof_from_proto, delivery_proof_to_proto, get_compute_index_response_from_proto,
+        capacity_lot_to_proto, cash_settle_capacity_instrument_request_from_proto,
+        cash_settle_capacity_instrument_request_to_proto,
+        cash_settle_capacity_instrument_response_from_proto,
+        cash_settle_capacity_instrument_response_to_proto,
+        close_capacity_instrument_request_from_proto, close_capacity_instrument_request_to_proto,
+        close_capacity_instrument_response_from_proto, close_capacity_instrument_response_to_proto,
+        compute_index_from_proto, compute_index_to_proto, compute_product_from_proto,
+        compute_product_to_proto, correct_compute_index_request_from_proto,
+        correct_compute_index_request_to_proto, correct_compute_index_response_from_proto,
+        correct_compute_index_response_to_proto, delivery_proof_from_proto,
+        delivery_proof_to_proto, get_compute_index_response_from_proto,
         get_compute_index_response_to_proto, list_compute_products_response_from_proto,
         list_compute_products_response_to_proto,
     };
     use crate::authority::{
+        CashSettleCapacityInstrumentRequest, CashSettleCapacityInstrumentResponse,
         CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
         CorrectComputeIndexRequest, CorrectComputeIndexResponse,
     };
@@ -1981,7 +2085,9 @@ mod tests {
         ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
         OllamaRuntimeCapability,
     };
-    use crate::receipts::{PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext};
+    use crate::receipts::{
+        Asset, Money, MoneyAmount, PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext,
+    };
     use serde_json::json;
 
     fn compute_product_fixture() -> ComputeProduct {
@@ -2297,6 +2403,73 @@ mod tests {
             &correct_compute_index_response_to_proto(&response).expect("correct response proto"),
         )
         .expect("correct response roundtrip");
+        assert_eq!(response_roundtrip, response);
+    }
+
+    #[test]
+    fn cash_settle_capacity_instrument_proto_roundtrip_preserves_settlement_fields() {
+        let request = CashSettleCapacityInstrumentRequest {
+            idempotency_key: "cash-settle-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument_id: "instrument.compute.future.alpha".to_string(),
+            settled_at_ms: 1_700_000_123_000,
+            settlement_index_id: Some("index.compute.alpha.v2".to_string()),
+            metadata: json!({"source": "test"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        };
+        let request_roundtrip = cash_settle_capacity_instrument_request_from_proto(
+            &cash_settle_capacity_instrument_request_to_proto(&request)
+                .expect("cash settle request proto"),
+        )
+        .expect("cash settle request roundtrip");
+        assert_eq!(request_roundtrip, request);
+
+        let response = CashSettleCapacityInstrumentResponse {
+            instrument: CapacityInstrument {
+                kind: CapacityInstrumentKind::FutureCash,
+                settlement_mode: ComputeSettlementMode::Cash,
+                status: CapacityInstrumentStatus::Settled,
+                reference_index_id: Some("index.compute.alpha.v2".to_string()),
+                ..capacity_instrument_fixture()
+            },
+            settlement_index_id: "index.compute.alpha.v2".to_string(),
+            settlement_price: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(6),
+            }),
+            cash_flow: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(10),
+            }),
+            payer_id: Some("provider.hedge.alpha".to_string()),
+            payee_id: Some("buyer.hedge.alpha".to_string()),
+            collateral_consumed: Some(Money {
+                asset: Asset::Btc,
+                amount: MoneyAmount::AmountSats(10),
+            }),
+            collateral_shortfall: None,
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.cash_settle.alpha",
+                "kernel.compute.instrument.cash_settle.v1",
+                1_700_000_123_000,
+                "cash-settle-1",
+                TraceContext::default(),
+                PolicyContext {
+                    policy_bundle_id: "policy.compute.test".to_string(),
+                    policy_version: "1".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .build()
+            .expect("cash settle receipt"),
+        };
+        let response_roundtrip = cash_settle_capacity_instrument_response_from_proto(
+            &cash_settle_capacity_instrument_response_to_proto(&response)
+                .expect("cash settle response proto"),
+        )
+        .expect("cash settle response roundtrip");
         assert_eq!(response_roundtrip, response);
     }
 }

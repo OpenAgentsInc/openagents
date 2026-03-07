@@ -127,3 +127,27 @@ message CloseCapacityInstrumentResponse {
   CapacityInstrument instrument = 1;
   openagents.economy.v1.Receipt receipt = 2;
 }
+
+message CashSettleCapacityInstrumentRequest {
+  string idempotency_key = 1;
+  openagents.common.v1.TraceContext trace = 2;
+  openagents.common.v1.PolicyContext policy = 3;
+  string instrument_id = 4;
+  int64 settled_at_ms = 5;
+  optional string settlement_index_id = 6;
+  string metadata_json = 7;
+  repeated openagents.common.v1.EvidenceRef evidence = 8;
+  openagents.economy.v1.ReceiptHints hints = 9;
+}
+
+message CashSettleCapacityInstrumentResponse {
+  CapacityInstrument instrument = 1;
+  string settlement_index_id = 2;
+  optional openagents.common.v1.Money settlement_price = 3;
+  optional openagents.common.v1.Money cash_flow = 4;
+  optional string payer_id = 5;
+  optional string payee_id = 6;
+  optional openagents.common.v1.Money collateral_consumed = 7;
+  optional openagents.common.v1.Money collateral_shortfall = 8;
+  openagents.economy.v1.Receipt receipt = 9;
+}

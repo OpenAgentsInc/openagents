@@ -674,6 +674,10 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             post(close_kernel_capacity_instrument),
         )
         .route(
+            "/v1/kernel/compute/instruments/{instrument_id}/cash_settle",
+            post(cash_settle_kernel_capacity_instrument),
+        )
+        .route(
             "/v1/kernel/compute/lots/{lot_id}/delivery_proofs",
             get(list_kernel_delivery_proofs).post(record_kernel_delivery_proof),
         )
@@ -2097,6 +2101,51 @@ async fn close_kernel_capacity_instrument(
     Ok(Json(response))
 }
 
+async fn cash_settle_kernel_capacity_instrument(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(instrument_id): Path<String>,
+    Json(request): Json<proto_compute::CashSettleCapacityInstrumentRequest>,
+) -> Result<Json<proto_compute::CashSettleCapacityInstrumentResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let mut request =
+        compute_contracts::cash_settle_capacity_instrument_request_from_proto(&request)
+            .map_err(kernel_contract_error)?;
+    let instrument_id = normalize_required_field(instrument_id.as_str(), "instrument_id_missing")?;
+    if !request.instrument_id.trim().is_empty() && request.instrument_id != instrument_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_capacity_instrument_id_mismatch".to_string(),
+        });
+    }
+    request.instrument_id = instrument_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .cash_settle_capacity_instrument(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.instrument.cash_settled",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response =
+        compute_contracts::cash_settle_capacity_instrument_response_to_proto(&result.response)
+            .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
 async fn record_kernel_delivery_proof(
     State(state): State<AppState>,
     headers: HeaderMap,
@@ -2872,12 +2921,21 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "kernel_risk_claim_id_mismatch"
         | "compute_product_capacity_lot_mismatch"
         | "compute_product_capacity_instrument_mismatch"
+        | "compute_product_reference_index_mismatch"
         | "capacity_lot_instrument_mismatch"
         | "compute_product_not_index_eligible"
         | "compute_index_window_already_published"
         | "compute_index_already_superseded"
         | "compute_index_correction_requires_new_index_id"
         | "compute_index_id_conflict"
+        | "capacity_instrument_not_cash_settleable"
+        | "future_cash_index_quality_too_low"
+        | "future_cash_paper_to_physical_limit"
+        | "future_cash_deliverable_coverage_limit"
+        | "future_cash_concentration_limit"
+        | "future_cash_strike_asset_mismatch"
+        | "compute_index_reference_price_missing"
+        | "future_cash_settlement_window_open"
         | "data_asset_provider_mismatch"
         | "access_grant_consumer_mismatch"
         | "access_grant_already_revoked"
@@ -2920,6 +2978,12 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "compute_product_apple_silicon_requirement_missing"
         | "capacity_lot_window_invalid"
         | "capacity_instrument_window_invalid"
+        | "future_cash_capacity_lot_not_allowed"
+        | "future_cash_settlement_mode_invalid"
+        | "future_cash_window_not_future"
+        | "future_cash_buyer_required"
+        | "future_cash_strike_price_missing"
+        | "future_cash_reference_index_required"
         | "compute_index_window_invalid"
         | "data_asset_id_missing"
         | "data_asset_provider_id_missing"
@@ -3460,6 +3524,14 @@ fn runtime_snapshot(
         compute_index_settlement_eligible_24h: compute_metrics
             .compute_index_settlement_eligible_24h,
         compute_index_quality_score_24h: compute_metrics.compute_index_quality_score_24h,
+        compute_future_cash_instruments_active: compute_metrics
+            .compute_future_cash_instruments_active,
+        compute_future_cash_open_interest: compute_metrics.compute_future_cash_open_interest,
+        compute_future_cash_cash_settlements_24h: compute_metrics
+            .compute_future_cash_cash_settlements_24h,
+        compute_future_cash_cash_flow_24h: compute_metrics.compute_future_cash_cash_flow_24h,
+        compute_paper_to_physical_ratio: compute_metrics.compute_paper_to_physical_ratio,
+        compute_deliverable_coverage_ratio: compute_metrics.compute_deliverable_coverage_ratio,
         liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
         liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
         liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
@@ -3636,10 +3708,11 @@ mod tests {
     use openagents_kernel_core::authority::{
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
         AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-        CloseCapacityInstrumentRequest, CorrectComputeIndexRequest, CreateAccessGrantRequest,
-        CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
-        CreateComputeProductRequest, CreateContractRequest, CreateContractResponse,
-        CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+        CashSettleCapacityInstrumentRequest, CloseCapacityInstrumentRequest,
+        CorrectComputeIndexRequest, CreateAccessGrantRequest, CreateAccessGrantResponse,
+        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
+        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
         CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
         CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
         ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
@@ -4203,6 +4276,65 @@ mod tests {
         }
     }
 
+    fn future_cash_instrument_request(
+        instrument_id: &str,
+        reference_index_id: &str,
+        idempotency_key: &str,
+        created_at_ms: i64,
+        strike_sats_per_unit: u64,
+        quantity: u64,
+    ) -> CreateCapacityInstrumentRequest {
+        CreateCapacityInstrumentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            instrument: CapacityInstrument {
+                instrument_id: instrument_id.to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                capacity_lot_id: None,
+                buyer_id: Some("buyer.hedge.alpha".to_string()),
+                provider_id: Some("provider.hedge.alpha".to_string()),
+                delivery_start_ms: created_at_ms + 30_000,
+                delivery_end_ms: created_at_ms + 60_000,
+                quantity,
+                fixed_price: Some(Money {
+                    asset: Asset::Btc,
+                    amount: MoneyAmount::AmountSats(strike_sats_per_unit),
+                }),
+                reference_index_id: Some(reference_index_id.to_string()),
+                kind: CapacityInstrumentKind::FutureCash,
+                settlement_mode: ComputeSettlementMode::Cash,
+                created_at_ms,
+                status: CapacityInstrumentStatus::Open,
+                closure_reason: None,
+                non_delivery_reason: None,
+                settlement_failure_reason: None,
+                lifecycle_reason_detail: None,
+                metadata: json!({}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn cash_settle_capacity_instrument_request(
+        instrument_id: &str,
+        idempotency_key: &str,
+        settled_at_ms: i64,
+    ) -> CashSettleCapacityInstrumentRequest {
+        CashSettleCapacityInstrumentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            instrument_id: instrument_id.to_string(),
+            settled_at_ms,
+            settlement_index_id: None,
+            metadata: json!({}),
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
     fn compute_product_wire_request(
         product_id: &str,
         idempotency_key: &str,
@@ -4310,6 +4442,17 @@ mod tests {
             correction_reason,
         ))
         .expect("correct compute index wire request")
+    }
+
+    fn cash_settle_capacity_instrument_wire_request(
+        instrument_id: &str,
+        idempotency_key: &str,
+        settled_at_ms: i64,
+    ) -> proto_compute::CashSettleCapacityInstrumentRequest {
+        compute_contracts::cash_settle_capacity_instrument_request_to_proto(
+            &cash_settle_capacity_instrument_request(instrument_id, idempotency_key, settled_at_ms),
+        )
+        .expect("cash settle capacity instrument wire request")
     }
 
     fn data_asset_request(
@@ -6210,6 +6353,270 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn future_cash_route_settles_and_updates_stats() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = (super::now_unix_ms() as i64).saturating_sub(120_000);
+
+        for request in [
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/products")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(
+                    &compute_product_wire_request(
+                        "ollama.text_generation",
+                        "idemp.compute.product.future-cash",
+                        created_at_ms,
+                    ),
+                )?))?,
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/lots")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
+                    "lot.compute.future-cash.alpha",
+                    "ollama.text_generation",
+                    "idemp.compute.lot.future-cash.alpha",
+                    created_at_ms + 1_000,
+                ))?))?,
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/instruments")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(
+                    &capacity_instrument_wire_request(
+                        "instrument.compute.future-cash.alpha",
+                        "ollama.text_generation",
+                        "lot.compute.future-cash.alpha",
+                        "idemp.compute.instrument.future-cash.alpha",
+                        created_at_ms + 2_000,
+                    ),
+                )?))?,
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/lots/lot.compute.future-cash.alpha/delivery_proofs")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(
+                    &delivery_proof_wire_request(
+                        "delivery.compute.future-cash.alpha",
+                        "ollama.text_generation",
+                        "lot.compute.future-cash.alpha",
+                        "instrument.compute.future-cash.alpha",
+                        "idemp.compute.delivery.future-cash.alpha",
+                        created_at_ms + 3_000,
+                    ),
+                )?))?,
+            Request::builder()
+                .method("POST")
+                .uri("/v1/kernel/compute/indices")
+                .header("authorization", authorization(&session))
+                .header("content-type", "application/json")
+                .body(Body::from(serde_json::to_vec(
+                    &compute_index_wire_request(
+                        "index.compute.future-cash",
+                        "ollama.text_generation",
+                        "idemp.compute.index.future-cash.publish",
+                        created_at_ms + 4_000,
+                    ),
+                )?))?,
+        ] {
+            let response = app.clone().oneshot(request).await?;
+            assert_eq!(response.status(), StatusCode::OK);
+        }
+
+        let mut second_lot = capacity_lot_request(
+            "lot.compute.future-cash.beta",
+            "ollama.text_generation",
+            "idemp.compute.lot.future-cash.beta",
+            created_at_ms + 1_500,
+        );
+        second_lot.lot.provider_id = "desktop-provider.beta".to_string();
+        let second_lot_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::create_capacity_lot_request_to_proto(&second_lot)?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_lot_response.status(), StatusCode::OK);
+
+        let mut second_instrument = capacity_instrument_request(
+            "instrument.compute.future-cash.beta",
+            "ollama.text_generation",
+            "lot.compute.future-cash.beta",
+            "idemp.compute.instrument.future-cash.beta",
+            created_at_ms + 5_000,
+        );
+        second_instrument.instrument.provider_id = Some("desktop-provider.beta".to_string());
+        second_instrument.instrument.fixed_price = Some(Money {
+            asset: Asset::Btc,
+            amount: MoneyAmount::AmountSats(1_800),
+        });
+        let second_instrument_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::create_capacity_instrument_request_to_proto(
+                            &second_instrument,
+                        )?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_instrument_response.status(), StatusCode::OK);
+
+        let mut second_delivery = delivery_proof_request(
+            "delivery.compute.future-cash.beta",
+            "ollama.text_generation",
+            "lot.compute.future-cash.beta",
+            "instrument.compute.future-cash.beta",
+            "idemp.compute.delivery.future-cash.beta",
+            created_at_ms + 3_500,
+        );
+        second_delivery.delivery_proof.created_at_ms = created_at_ms + 3_500;
+        let second_delivery_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots/lot.compute.future-cash.beta/delivery_proofs")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::record_delivery_proof_request_to_proto(
+                            &second_delivery,
+                        )?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(second_delivery_response.status(), StatusCode::OK);
+
+        let corrected_index = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/indices/index.compute.future-cash/correct")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &correct_compute_index_wire_request(
+                            "index.compute.future-cash",
+                            "index.compute.future-cash.v2",
+                            "idemp.compute.index.future-cash.correct",
+                            created_at_ms + 7_000,
+                            ComputeIndexCorrectionReason::LateObservation,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(corrected_index.status(), StatusCode::OK);
+
+        let future_cash = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::create_capacity_instrument_request_to_proto(
+                            &future_cash_instrument_request(
+                                "instrument.compute.future_cash.route",
+                                "index.compute.future-cash",
+                                "idemp.compute.instrument.future-cash.route",
+                                created_at_ms + 8_000,
+                                150,
+                                10,
+                            ),
+                        )?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(future_cash.status(), StatusCode::OK);
+        let future_cash_payload =
+            compute_contracts::create_capacity_instrument_response_from_proto(
+                &response_json::<proto_compute::CreateCapacityInstrumentResponse>(future_cash)
+                    .await?,
+            )?;
+        assert_eq!(
+            future_cash_payload.instrument.reference_index_id.as_deref(),
+            Some("index.compute.future-cash.v2")
+        );
+
+        let settlement = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments/instrument.compute.future_cash.route/cash_settle")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &cash_settle_capacity_instrument_wire_request(
+                            "instrument.compute.future_cash.route",
+                            "idemp.compute.instrument.future-cash.route.settle",
+                            created_at_ms + 70_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(settlement.status(), StatusCode::OK);
+        let settlement_payload =
+            compute_contracts::cash_settle_capacity_instrument_response_from_proto(
+                &response_json::<proto_compute::CashSettleCapacityInstrumentResponse>(settlement)
+                    .await?,
+            )?;
+        assert_eq!(
+            settlement_payload.instrument.status,
+            CapacityInstrumentStatus::Settled
+        );
+        assert_eq!(
+            settlement_payload
+                .cash_flow
+                .as_ref()
+                .map(|money| match money.amount {
+                    MoneyAmount::AmountSats(value) | MoneyAmount::AmountMsats(value) => value,
+                }),
+            Some(150)
+        );
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.compute_future_cash_instruments_active, 0);
+        assert_eq!(stats.compute_future_cash_open_interest, 0);
+        assert_eq!(stats.compute_future_cash_cash_settlements_24h, 1);
+        assert_eq!(stats.compute_future_cash_cash_flow_24h, 150);
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn compute_read_models_reload_after_restart_when_kernel_state_is_persisted() -> Result<()>
     {
         let kernel_state_path = std::env::temp_dir().join(format!(
@@ -6591,6 +6998,50 @@ mod tests {
             Some("index.compute.client")
         );
         assert!(corrected_index.corrected_index.reference_price.is_some());
+
+        let future_cash = client
+            .create_capacity_instrument(future_cash_instrument_request(
+                "instrument.compute.client.future",
+                "index.compute.client",
+                "idemp.compute.client.instrument.future",
+                created_at_ms + 8_000,
+                150,
+                10,
+            ))
+            .await?;
+        assert_eq!(
+            future_cash.instrument.kind,
+            CapacityInstrumentKind::FutureCash
+        );
+        assert_eq!(
+            future_cash.instrument.reference_index_id.as_deref(),
+            Some("index.compute.client.v2")
+        );
+
+        let future_settlement = client
+            .cash_settle_capacity_instrument(cash_settle_capacity_instrument_request(
+                "instrument.compute.client.future",
+                "idemp.compute.client.instrument.future.settle",
+                created_at_ms + 70_000,
+            ))
+            .await?;
+        assert_eq!(
+            future_settlement.instrument.status,
+            CapacityInstrumentStatus::Settled
+        );
+        assert_eq!(
+            future_settlement.settlement_index_id,
+            "index.compute.client.v2"
+        );
+        assert_eq!(
+            future_settlement
+                .cash_flow
+                .as_ref()
+                .map(|money| match money.amount {
+                    MoneyAmount::AmountSats(value) | MoneyAmount::AmountMsats(value) => value,
+                }),
+            Some(150)
+        );
 
         let listed_products = client
             .list_compute_products(Some(ComputeProductStatus::Active))
