@@ -36,6 +36,9 @@ pub fn set_desired_mode(state: &mut RenderState, desired_mode: ProviderDesiredMo
 
 pub fn pump_runtime(state: &mut RenderState) -> bool {
     let mut changed = false;
+    if state.provider_runtime.refresh_sandbox_supply_if_due() {
+        changed = true;
+    }
     if drain_runtime_updates(state) {
         changed = true;
     }
@@ -372,6 +375,19 @@ fn health_events_for_state(state: &RenderState, captured_at_ms: i64) -> Vec<Prov
             detail: error.to_string(),
             source: "apple_foundation_models".to_string(),
         });
+    }
+
+    for runtime in &state.provider_runtime.sandbox.runtimes {
+        if let Some(error) = runtime.last_error.as_deref() {
+            events.push(ProviderHealthEvent {
+                event_id: format!("sandbox_runtime_error:{:?}", runtime.runtime_kind),
+                occurred_at_ms: captured_at_ms,
+                severity: "warn".to_string(),
+                code: "SANDBOX_RUNTIME_ERROR".to_string(),
+                detail: error.to_string(),
+                source: "sandbox_runtime".to_string(),
+            });
+        }
     }
 
     if let Some(error) = state.spark_wallet.last_error.as_deref() {
