@@ -12,3 +12,9 @@ workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+rustygrad-core = { path = "../rustygrad-core" }
+rustygrad-ir = { path = "../rustygrad-ir" }
+serde = { workspace = true }
+thiserror = { workspace = true }
