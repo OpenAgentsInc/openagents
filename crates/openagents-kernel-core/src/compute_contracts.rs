@@ -1,15 +1,18 @@
 use crate::authority::{
+    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse,
     CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse, CreateCapacityLotRequest,
     CreateCapacityLotResponse, CreateComputeProductRequest, CreateComputeProductResponse,
     PublishComputeIndexRequest, PublishComputeIndexResponse, RecordDeliveryProofRequest,
     RecordDeliveryProofResponse,
 };
 use crate::compute::{
-    ApplePlatformCapability, CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus,
-    CapacityLot, CapacityLotStatus, CapacityReserveState, ComputeBackendFamily,
+    ApplePlatformCapability, CapacityInstrument, CapacityInstrumentClosureReason,
+    CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
+    CapacityNonDeliveryReason, CapacityReserveState, ComputeBackendFamily,
     ComputeCapabilityEnvelope, ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily,
-    ComputeIndex, ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementMode,
-    DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
+    ComputeIndex, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
+    ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
+    DeliveryRejectionReason, OllamaRuntimeCapability,
 };
 use crate::receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
@@ -308,7 +311,7 @@ fn hints_to_proto(hints: &ReceiptHints) -> proto_economy::ReceiptHints {
             .achieved_verification_tier
             .map(verification_tier_to_proto)
             .unwrap_or(proto_common::VerificationTier::Unspecified as i32),
-        verification_correlated: hints.verification_correlated.unwrap_or(false),
+        verification_correlated: hints.verification_correlated,
         provenance_grade: hints
             .provenance_grade
             .map(provenance_grade_to_proto)
@@ -334,7 +337,7 @@ fn hints_from_proto(hints: &proto_economy::ReceiptHints) -> Result<ReceiptHints>
         achieved_verification_tier: (hints.achieved_verification_tier
             != proto_common::VerificationTier::Unspecified as i32)
             .then(|| verification_tier_from_proto(hints.achieved_verification_tier)),
-        verification_correlated: Some(hints.verification_correlated),
+        verification_correlated: hints.verification_correlated,
         provenance_grade: (hints.provenance_grade
             != proto_common::ProvenanceGrade::Unspecified as i32)
             .then(|| provenance_grade_from_proto(hints.provenance_grade)),
@@ -630,6 +633,139 @@ fn capacity_instrument_status_from_proto(value: i32) -> CapacityInstrumentStatus
         proto_compute::CapacityInstrumentStatus::Expired => CapacityInstrumentStatus::Expired,
         proto_compute::CapacityInstrumentStatus::Unspecified
         | proto_compute::CapacityInstrumentStatus::Open => CapacityInstrumentStatus::Open,
+    }
+}
+
+fn capacity_instrument_closure_reason_to_proto(value: CapacityInstrumentClosureReason) -> i32 {
+    match value {
+        CapacityInstrumentClosureReason::Filled => {
+            proto_compute::CapacityInstrumentClosureReason::Filled as i32
+        }
+        CapacityInstrumentClosureReason::BuyerCancelled => {
+            proto_compute::CapacityInstrumentClosureReason::BuyerCancelled as i32
+        }
+        CapacityInstrumentClosureReason::ProviderCancelled => {
+            proto_compute::CapacityInstrumentClosureReason::ProviderCancelled as i32
+        }
+        CapacityInstrumentClosureReason::Curtailed => {
+            proto_compute::CapacityInstrumentClosureReason::Curtailed as i32
+        }
+        CapacityInstrumentClosureReason::Expired => {
+            proto_compute::CapacityInstrumentClosureReason::Expired as i32
+        }
+        CapacityInstrumentClosureReason::Defaulted => {
+            proto_compute::CapacityInstrumentClosureReason::Defaulted as i32
+        }
+    }
+}
+
+fn capacity_instrument_closure_reason_from_proto(
+    value: i32,
+) -> Option<CapacityInstrumentClosureReason> {
+    match proto_compute::CapacityInstrumentClosureReason::try_from(value)
+        .unwrap_or(proto_compute::CapacityInstrumentClosureReason::Unspecified)
+    {
+        proto_compute::CapacityInstrumentClosureReason::Filled => {
+            Some(CapacityInstrumentClosureReason::Filled)
+        }
+        proto_compute::CapacityInstrumentClosureReason::BuyerCancelled => {
+            Some(CapacityInstrumentClosureReason::BuyerCancelled)
+        }
+        proto_compute::CapacityInstrumentClosureReason::ProviderCancelled => {
+            Some(CapacityInstrumentClosureReason::ProviderCancelled)
+        }
+        proto_compute::CapacityInstrumentClosureReason::Curtailed => {
+            Some(CapacityInstrumentClosureReason::Curtailed)
+        }
+        proto_compute::CapacityInstrumentClosureReason::Expired => {
+            Some(CapacityInstrumentClosureReason::Expired)
+        }
+        proto_compute::CapacityInstrumentClosureReason::Defaulted => {
+            Some(CapacityInstrumentClosureReason::Defaulted)
+        }
+        proto_compute::CapacityInstrumentClosureReason::Unspecified => None,
+    }
+}
+
+fn capacity_non_delivery_reason_to_proto(value: CapacityNonDeliveryReason) -> i32 {
+    match value {
+        CapacityNonDeliveryReason::ProviderOffline => {
+            proto_compute::CapacityNonDeliveryReason::ProviderOffline as i32
+        }
+        CapacityNonDeliveryReason::CapabilityMismatch => {
+            proto_compute::CapacityNonDeliveryReason::CapabilityMismatch as i32
+        }
+        CapacityNonDeliveryReason::PolicyBlocked => {
+            proto_compute::CapacityNonDeliveryReason::PolicyBlocked as i32
+        }
+        CapacityNonDeliveryReason::MissedWindow => {
+            proto_compute::CapacityNonDeliveryReason::MissedWindow as i32
+        }
+    }
+}
+
+fn capacity_non_delivery_reason_from_proto(value: i32) -> Option<CapacityNonDeliveryReason> {
+    match proto_compute::CapacityNonDeliveryReason::try_from(value)
+        .unwrap_or(proto_compute::CapacityNonDeliveryReason::Unspecified)
+    {
+        proto_compute::CapacityNonDeliveryReason::ProviderOffline => {
+            Some(CapacityNonDeliveryReason::ProviderOffline)
+        }
+        proto_compute::CapacityNonDeliveryReason::CapabilityMismatch => {
+            Some(CapacityNonDeliveryReason::CapabilityMismatch)
+        }
+        proto_compute::CapacityNonDeliveryReason::PolicyBlocked => {
+            Some(CapacityNonDeliveryReason::PolicyBlocked)
+        }
+        proto_compute::CapacityNonDeliveryReason::MissedWindow => {
+            Some(CapacityNonDeliveryReason::MissedWindow)
+        }
+        proto_compute::CapacityNonDeliveryReason::Unspecified => None,
+    }
+}
+
+fn compute_settlement_failure_reason_to_proto(value: ComputeSettlementFailureReason) -> i32 {
+    match value {
+        ComputeSettlementFailureReason::PaymentTimeout => {
+            proto_compute::ComputeSettlementFailureReason::PaymentTimeout as i32
+        }
+        ComputeSettlementFailureReason::ReceiptRejected => {
+            proto_compute::ComputeSettlementFailureReason::ReceiptRejected as i32
+        }
+        ComputeSettlementFailureReason::NonDelivery => {
+            proto_compute::ComputeSettlementFailureReason::NonDelivery as i32
+        }
+        ComputeSettlementFailureReason::CostAttestationMissing => {
+            proto_compute::ComputeSettlementFailureReason::CostAttestationMissing as i32
+        }
+        ComputeSettlementFailureReason::AdjudicationRequired => {
+            proto_compute::ComputeSettlementFailureReason::AdjudicationRequired as i32
+        }
+    }
+}
+
+fn compute_settlement_failure_reason_from_proto(
+    value: i32,
+) -> Option<ComputeSettlementFailureReason> {
+    match proto_compute::ComputeSettlementFailureReason::try_from(value)
+        .unwrap_or(proto_compute::ComputeSettlementFailureReason::Unspecified)
+    {
+        proto_compute::ComputeSettlementFailureReason::PaymentTimeout => {
+            Some(ComputeSettlementFailureReason::PaymentTimeout)
+        }
+        proto_compute::ComputeSettlementFailureReason::ReceiptRejected => {
+            Some(ComputeSettlementFailureReason::ReceiptRejected)
+        }
+        proto_compute::ComputeSettlementFailureReason::NonDelivery => {
+            Some(ComputeSettlementFailureReason::NonDelivery)
+        }
+        proto_compute::ComputeSettlementFailureReason::CostAttestationMissing => {
+            Some(ComputeSettlementFailureReason::CostAttestationMissing)
+        }
+        proto_compute::ComputeSettlementFailureReason::AdjudicationRequired => {
+            Some(ComputeSettlementFailureReason::AdjudicationRequired)
+        }
+        proto_compute::ComputeSettlementFailureReason::Unspecified => None,
     }
 }
 
@@ -957,11 +1093,19 @@ pub fn capacity_instrument_to_proto(
         settlement_mode: settlement_mode_to_proto(instrument.settlement_mode),
         created_at_ms: instrument.created_at_ms,
         status: capacity_instrument_status_to_proto(instrument.status),
-        closure_reason: proto_compute::CapacityInstrumentClosureReason::Unspecified as i32,
-        non_delivery_reason: proto_compute::CapacityNonDeliveryReason::Unspecified as i32,
-        settlement_failure_reason: proto_compute::ComputeSettlementFailureReason::Unspecified
-            as i32,
-        lifecycle_reason_detail: None,
+        closure_reason: instrument
+            .closure_reason
+            .map(capacity_instrument_closure_reason_to_proto)
+            .unwrap_or(proto_compute::CapacityInstrumentClosureReason::Unspecified as i32),
+        non_delivery_reason: instrument
+            .non_delivery_reason
+            .map(capacity_non_delivery_reason_to_proto)
+            .unwrap_or(proto_compute::CapacityNonDeliveryReason::Unspecified as i32),
+        settlement_failure_reason: instrument
+            .settlement_failure_reason
+            .map(compute_settlement_failure_reason_to_proto)
+            .unwrap_or(proto_compute::ComputeSettlementFailureReason::Unspecified as i32),
+        lifecycle_reason_detail: instrument.lifecycle_reason_detail.clone(),
         metadata_json: json_value_to_string(&instrument.metadata)?,
     })
 }
@@ -988,6 +1132,14 @@ pub fn capacity_instrument_from_proto(
         settlement_mode: settlement_mode_from_proto(instrument.settlement_mode),
         created_at_ms: instrument.created_at_ms,
         status: capacity_instrument_status_from_proto(instrument.status),
+        closure_reason: capacity_instrument_closure_reason_from_proto(instrument.closure_reason),
+        non_delivery_reason: capacity_non_delivery_reason_from_proto(
+            instrument.non_delivery_reason,
+        ),
+        settlement_failure_reason: compute_settlement_failure_reason_from_proto(
+            instrument.settlement_failure_reason,
+        ),
+        lifecycle_reason_detail: instrument.lifecycle_reason_detail.clone(),
         metadata: json_string_to_value(instrument.metadata_json.as_str())?,
     })
 }
@@ -1269,6 +1421,93 @@ pub fn create_capacity_instrument_response_from_proto(
     response: &proto_compute::CreateCapacityInstrumentResponse,
 ) -> Result<CreateCapacityInstrumentResponse> {
     Ok(CreateCapacityInstrumentResponse {
+        instrument: capacity_instrument_from_proto(
+            response
+                .instrument
+                .as_ref()
+                .ok_or_else(|| missing("instrument"))?,
+        )?,
+        receipt: receipt_from_proto(
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
+        )?,
+    })
+}
+
+pub fn close_capacity_instrument_request_to_proto(
+    request: &CloseCapacityInstrumentRequest,
+) -> Result<proto_compute::CloseCapacityInstrumentRequest> {
+    Ok(proto_compute::CloseCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: Some(trace_to_proto(&request.trace)),
+        policy: Some(policy_to_proto(&request.policy)),
+        instrument_id: request.instrument_id.clone(),
+        status: capacity_instrument_status_to_proto(request.status),
+        closed_at_ms: request.closed_at_ms,
+        closure_reason: request
+            .closure_reason
+            .map(capacity_instrument_closure_reason_to_proto)
+            .unwrap_or(proto_compute::CapacityInstrumentClosureReason::Unspecified as i32),
+        non_delivery_reason: request
+            .non_delivery_reason
+            .map(capacity_non_delivery_reason_to_proto)
+            .unwrap_or(proto_compute::CapacityNonDeliveryReason::Unspecified as i32),
+        settlement_failure_reason: request
+            .settlement_failure_reason
+            .map(compute_settlement_failure_reason_to_proto)
+            .unwrap_or(proto_compute::ComputeSettlementFailureReason::Unspecified as i32),
+        lifecycle_reason_detail: request.lifecycle_reason_detail.clone(),
+        metadata_json: json_value_to_string(&request.metadata)?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_to_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: Some(hints_to_proto(&request.hints)),
+    })
+}
+
+pub fn close_capacity_instrument_request_from_proto(
+    request: &proto_compute::CloseCapacityInstrumentRequest,
+) -> Result<CloseCapacityInstrumentRequest> {
+    Ok(CloseCapacityInstrumentRequest {
+        idempotency_key: request.idempotency_key.clone(),
+        trace: trace_from_proto(request.trace.as_ref().ok_or_else(|| missing("trace"))?),
+        policy: policy_from_proto(request.policy.as_ref().ok_or_else(|| missing("policy"))?),
+        instrument_id: request.instrument_id.clone(),
+        status: capacity_instrument_status_from_proto(request.status),
+        closed_at_ms: request.closed_at_ms,
+        closure_reason: capacity_instrument_closure_reason_from_proto(request.closure_reason),
+        non_delivery_reason: capacity_non_delivery_reason_from_proto(request.non_delivery_reason),
+        settlement_failure_reason: compute_settlement_failure_reason_from_proto(
+            request.settlement_failure_reason,
+        ),
+        lifecycle_reason_detail: request.lifecycle_reason_detail.clone(),
+        metadata: json_string_to_value(request.metadata_json.as_str())?,
+        evidence: request
+            .evidence
+            .iter()
+            .map(evidence_from_proto)
+            .collect::<Result<Vec<_>>>()?,
+        hints: hints_from_proto(request.hints.as_ref().ok_or_else(|| missing("hints"))?)?,
+    })
+}
+
+pub fn close_capacity_instrument_response_to_proto(
+    response: &CloseCapacityInstrumentResponse,
+) -> Result<proto_compute::CloseCapacityInstrumentResponse> {
+    Ok(proto_compute::CloseCapacityInstrumentResponse {
+        instrument: Some(capacity_instrument_to_proto(&response.instrument)?),
+        receipt: Some(receipt_to_proto(&response.receipt)?),
+    })
+}
+
+pub fn close_capacity_instrument_response_from_proto(
+    response: &proto_compute::CloseCapacityInstrumentResponse,
+) -> Result<CloseCapacityInstrumentResponse> {
+    Ok(CloseCapacityInstrumentResponse {
         instrument: capacity_instrument_from_proto(
             response
                 .instrument
@@ -1598,19 +1837,24 @@ pub fn get_compute_index_response_from_proto(
 mod tests {
     use super::{
         capacity_instrument_from_proto, capacity_instrument_to_proto, capacity_lot_from_proto,
-        capacity_lot_to_proto, compute_index_from_proto, compute_index_to_proto,
-        compute_product_from_proto, compute_product_to_proto, delivery_proof_from_proto,
-        delivery_proof_to_proto, get_compute_index_response_from_proto,
+        capacity_lot_to_proto, close_capacity_instrument_request_from_proto,
+        close_capacity_instrument_request_to_proto, close_capacity_instrument_response_from_proto,
+        close_capacity_instrument_response_to_proto, compute_index_from_proto,
+        compute_index_to_proto, compute_product_from_proto, compute_product_to_proto,
+        delivery_proof_from_proto, delivery_proof_to_proto, get_compute_index_response_from_proto,
         get_compute_index_response_to_proto, list_compute_products_response_from_proto,
         list_compute_products_response_to_proto,
     };
+    use crate::authority::{CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse};
     use crate::compute::{
-        CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
-        CapacityLotStatus, CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
+        CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
+        CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
+        CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementMode,
-        DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
+        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
     };
+    use crate::receipts::{PolicyContext, ReceiptBuilder, ReceiptHints, TraceContext};
     use serde_json::json;
 
     fn compute_product_fixture() -> ComputeProduct {
@@ -1685,6 +1929,10 @@ mod tests {
             settlement_mode: ComputeSettlementMode::Physical,
             created_at_ms: 1_700_000_001_000,
             status: CapacityInstrumentStatus::Active,
+            closure_reason: Some(CapacityInstrumentClosureReason::Filled),
+            non_delivery_reason: None,
+            settlement_failure_reason: Some(ComputeSettlementFailureReason::ReceiptRejected),
+            lifecycle_reason_detail: Some("forward leg assigned to delivery".to_string()),
             metadata: json!({"bound_job": "req.alpha"}),
         }
     }
@@ -1809,5 +2057,64 @@ mod tests {
         )
         .expect("index response roundtrip");
         assert_eq!(index_roundtrip, index);
+    }
+
+    #[test]
+    fn close_capacity_instrument_proto_roundtrip_preserves_remedy_fields() {
+        let request = CloseCapacityInstrumentRequest {
+            idempotency_key: "close-forward-1".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument_id: "instrument.compute.alpha".to_string(),
+            status: CapacityInstrumentStatus::Defaulted,
+            closed_at_ms: 1_700_000_123_000,
+            closure_reason: Some(CapacityInstrumentClosureReason::Defaulted),
+            non_delivery_reason: Some(CapacityNonDeliveryReason::ProviderOffline),
+            settlement_failure_reason: Some(ComputeSettlementFailureReason::NonDelivery),
+            lifecycle_reason_detail: Some("provider missed committed future window".to_string()),
+            metadata: json!({"remedy_profile": "forward_default.v1"}),
+            evidence: Vec::new(),
+            hints: ReceiptHints {
+                verification_correlated: Some(false),
+                ..ReceiptHints::default()
+            },
+        };
+        let request_roundtrip = close_capacity_instrument_request_from_proto(
+            &close_capacity_instrument_request_to_proto(&request).expect("close request proto"),
+        )
+        .expect("close request roundtrip");
+        assert_eq!(request_roundtrip, request);
+
+        let response = CloseCapacityInstrumentResponse {
+            instrument: CapacityInstrument {
+                status: CapacityInstrumentStatus::Defaulted,
+                closure_reason: Some(CapacityInstrumentClosureReason::Defaulted),
+                non_delivery_reason: Some(CapacityNonDeliveryReason::ProviderOffline),
+                settlement_failure_reason: Some(ComputeSettlementFailureReason::NonDelivery),
+                lifecycle_reason_detail: Some(
+                    "provider missed committed future window".to_string(),
+                ),
+                ..capacity_instrument_fixture()
+            },
+            receipt: ReceiptBuilder::new(
+                "receipt.compute.close.alpha",
+                "kernel.compute.instrument.close.v1",
+                1_700_000_123_000,
+                "close-forward-1",
+                TraceContext::default(),
+                PolicyContext {
+                    policy_bundle_id: "policy.compute.test".to_string(),
+                    policy_version: "1".to_string(),
+                    approved_by: "test".to_string(),
+                },
+            )
+            .build()
+            .expect("close receipt"),
+        };
+        let response_roundtrip = close_capacity_instrument_response_from_proto(
+            &close_capacity_instrument_response_to_proto(&response).expect("close response proto"),
+        )
+        .expect("close response roundtrip");
+        assert_eq!(response_roundtrip, response);
     }
 }

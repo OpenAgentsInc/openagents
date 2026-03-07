@@ -35,15 +35,15 @@ use crate::pane_system::{
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
     job_inbox_visible_row_count, network_requests_accept_button_bounds,
     network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
-    network_requests_payload_input_bounds, network_requests_quote_row_bounds,
-    network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-    network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-    network_requests_visible_quote_count, nostr_copy_secret_button_bounds,
-    nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
-    provider_inventory_toggle_button_bounds, reciprocal_loop_reset_button_bounds,
-    reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-    settings_provider_queue_input_bounds, settings_relay_input_bounds,
-    settings_reset_button_bounds, settings_save_button_bounds,
+    network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
+    network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
+    network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+    network_requests_type_input_bounds, network_requests_visible_quote_count,
+    nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds, nostr_reveal_button_bounds,
+    pane_content_bounds, provider_inventory_toggle_button_bounds,
+    reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+    reciprocal_loop_stop_button_bounds, settings_provider_queue_input_bounds,
+    settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
     settings_wallet_default_input_bounds, starter_jobs_complete_button_bounds,
     starter_jobs_kill_switch_button_bounds, starter_jobs_row_bounds,
     starter_jobs_visible_row_count, sync_health_rebootstrap_button_bounds,
@@ -1084,6 +1084,26 @@ fn paint_provider_status_pane(
             theme::text::MUTED,
         ));
         inventory_y += 18.0;
+        if let Some(forward_lot_id) = row.forward_capacity_lot_id.as_deref() {
+            let forward_line = format!(
+                "forward lot={} open={} reserved={} available={} window={} terms={}",
+                forward_lot_id,
+                row.forward_total_quantity,
+                row.forward_reserved_quantity,
+                row.forward_available_quantity,
+                row.forward_delivery_window_label
+                    .as_deref()
+                    .unwrap_or("n/a"),
+                row.forward_terms_label.as_deref().unwrap_or("n/a"),
+            );
+            paint.scene.draw_text(paint.text.layout_mono(
+                &forward_line,
+                Point::new(content_bounds.origin.x + 12.0, inventory_y),
+                9.0,
+                theme::text::MUTED,
+            ));
+            inventory_y += 18.0;
+        }
     }
     if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
         paint.scene.draw_text(paint.text.layout(
@@ -1805,8 +1825,9 @@ fn paint_network_requests_pane(
     let payload_bounds = network_requests_payload_input_bounds(content_bounds);
     let skill_scope_bounds = network_requests_skill_scope_input_bounds(content_bounds);
     let envelope_bounds = network_requests_credit_envelope_input_bounds(content_bounds);
-    let budget_bounds = network_requests_budget_input_bounds(content_bounds);
-    let timeout_bounds = network_requests_timeout_input_bounds(content_bounds);
+    let start_delay_bounds = network_requests_budget_input_bounds(content_bounds);
+    let window_bounds = network_requests_timeout_input_bounds(content_bounds);
+    let max_price_bounds = network_requests_max_price_input_bounds(content_bounds);
     let submit_bounds = network_requests_submit_button_bounds(content_bounds);
     let accept_bounds = network_requests_accept_button_bounds(content_bounds);
 
@@ -1823,11 +1844,14 @@ fn paint_network_requests_pane(
         .quantity
         .set_max_width(envelope_bounds.size.width);
     network_requests_inputs
+        .delivery_start_minutes
+        .set_max_width(start_delay_bounds.size.width);
+    network_requests_inputs
         .window_minutes
-        .set_max_width(budget_bounds.size.width);
+        .set_max_width(window_bounds.size.width);
     network_requests_inputs
         .max_price_sats
-        .set_max_width(timeout_bounds.size.width);
+        .set_max_width(max_price_bounds.size.width);
 
     network_requests_inputs
         .compute_family
@@ -1842,11 +1866,14 @@ fn paint_network_requests_pane(
         .quantity
         .paint(envelope_bounds, paint);
     network_requests_inputs
+        .delivery_start_minutes
+        .paint(start_delay_bounds, paint);
+    network_requests_inputs
         .window_minutes
-        .paint(budget_bounds, paint);
+        .paint(window_bounds, paint);
     network_requests_inputs
         .max_price_sats
-        .paint(timeout_bounds, paint);
+        .paint(max_price_bounds, paint);
     paint_primary_button(submit_bounds, "Request quotes", paint);
     paint_action_button(accept_bounds, "Accept selected quote", paint);
 
@@ -1866,8 +1893,11 @@ fn paint_network_requests_pane(
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
-        "Delivery window (m)",
-        Point::new(budget_bounds.origin.x, budget_bounds.origin.y - 12.0),
+        "Delivery start in (m)",
+        Point::new(
+            start_delay_bounds.origin.x,
+            start_delay_bounds.origin.y - 12.0,
+        ),
         10.0,
         theme::text::MUTED,
     ));
@@ -1887,8 +1917,14 @@ fn paint_network_requests_pane(
         theme::text::MUTED,
     ));
     paint.scene.draw_text(paint.text.layout(
+        "Delivery window (m)",
+        Point::new(window_bounds.origin.x, window_bounds.origin.y - 12.0),
+        10.0,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout(
         "Max price (sats)",
-        Point::new(timeout_bounds.origin.x, timeout_bounds.origin.y - 12.0),
+        Point::new(max_price_bounds.origin.x, max_price_bounds.origin.y - 12.0),
         10.0,
         theme::text::MUTED,
     ));
@@ -1898,127 +1934,265 @@ fn paint_network_requests_pane(
         content_bounds.origin.x + 12.0,
         accept_bounds.max_y() + 12.0,
         network_requests.load_state,
-        &format!("State: {}", network_requests.load_state.label()),
+        &format!(
+            "State: {} / mode: {}",
+            network_requests.load_state.label(),
+            network_requests.quote_mode.label()
+        ),
         network_requests.last_action.as_deref(),
         network_requests.last_error.as_deref(),
     );
     let mut detail_y = y;
-    if let Some(rfq) = network_requests.last_spot_rfq.as_ref() {
-        paint.scene.draw_text(paint.text.layout_mono(
-            &format!("RFQ: {}", rfq.summary()),
-            Point::new(content_bounds.origin.x + 12.0, detail_y),
-            9.0,
-            theme::text::MUTED,
-        ));
-        detail_y += 18.0;
-    }
+    match network_requests.quote_mode {
+        crate::app_state::ComputeQuoteMode::Spot => {
+            if let Some(rfq) = network_requests.last_spot_rfq.as_ref() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!("RFQ: {}", rfq.summary()),
+                    Point::new(content_bounds.origin.x + 12.0, detail_y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                detail_y += 18.0;
+            }
 
-    paint.scene.draw_text(paint.text.layout(
-        "Available spot quotes",
-        Point::new(content_bounds.origin.x + 12.0, detail_y),
-        11.0,
-        theme::text::MUTED,
-    ));
-
-    if network_requests.spot_quote_candidates.is_empty() {
-        paint.scene.draw_text(paint.text.layout(
-            "No compute quotes loaded yet.",
-            Point::new(content_bounds.origin.x + 12.0, detail_y + 18.0),
-            11.0,
-            theme::text::MUTED,
-        ));
-    } else {
-        let visible_rows =
-            network_requests_visible_quote_count(network_requests.spot_quote_candidates.len());
-        for row_index in 0..visible_rows {
-            let quote = &network_requests.spot_quote_candidates[row_index];
-            let row_bounds = network_requests_quote_row_bounds(content_bounds, row_index);
-            let selected =
-                network_requests.selected_spot_quote_id.as_deref() == Some(quote.quote_id.as_str());
-            paint.scene.draw_quad(
-                Quad::new(row_bounds)
-                    .with_background(if selected {
-                        theme::bg::SURFACE
-                    } else {
-                        theme::bg::APP.with_alpha(0.78)
-                    })
-                    .with_border(
-                        if selected {
-                            theme::accent::PRIMARY
-                        } else {
-                            theme::border::DEFAULT
-                        },
-                        1.0,
-                    )
-                    .with_corner_radius(6.0),
-            );
-            let summary = format!(
-                "{} family={} backend={} provider={} lot={} qty={}/{} price={} terms={} source={}",
-                quote.product_id,
-                quote.compute_family_label(),
-                quote.backend_label(),
-                quote.provider_id,
-                quote.capacity_lot_id,
-                quote.requested_quantity,
-                quote.available_quantity,
-                format_sats_amount(quote.price_sats),
-                quote.terms_label,
-                quote.source_badge,
-            );
-            paint.scene.draw_text(paint.text.layout_mono(
-                &summary,
-                Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 7.0),
-                9.0,
-                theme::text::PRIMARY,
-            ));
-            paint.scene.draw_text(paint.text.layout_mono(
-                quote.capability_summary.as_str(),
-                Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 18.0),
-                8.5,
+            paint.scene.draw_text(paint.text.layout(
+                "Available spot quotes",
+                Point::new(content_bounds.origin.x + 12.0, detail_y),
+                11.0,
                 theme::text::MUTED,
             ));
-        }
-    }
 
-    let accepted_heading_y = network_requests_quote_row_bounds(content_bounds, 4).max_y() + 18.0;
-    paint.scene.draw_text(paint.text.layout(
-        "Accepted spot orders",
-        Point::new(content_bounds.origin.x + 12.0, accepted_heading_y),
-        11.0,
-        theme::text::MUTED,
-    ));
-    if network_requests.accepted_spot_orders.is_empty() {
-        paint.scene.draw_text(paint.text.layout(
-            "No compute orders accepted yet.",
-            Point::new(content_bounds.origin.x + 12.0, accepted_heading_y + 18.0),
-            10.0,
-            theme::text::MUTED,
-        ));
-    } else {
-        for (idx, order) in network_requests
-            .accepted_spot_orders
-            .iter()
-            .take(3)
-            .enumerate()
-        {
-            paint.scene.draw_text(paint.text.layout_mono(
-                &format!(
-                    "{} -> {} {} provider={} qty={} price={} at={}",
-                    order.quote_id,
-                    order.instrument_id,
-                    order.product_id,
-                    order.provider_id,
-                    order.quantity,
-                    format_sats_amount(order.price_sats),
-                    order.accepted_at_epoch_seconds
-                ),
-                Point::new(
-                    content_bounds.origin.x + 12.0,
-                    accepted_heading_y + 18.0 + idx as f32 * 14.0,
-                ),
-                9.0,
-                theme::text::PRIMARY,
+            if network_requests.spot_quote_candidates.is_empty() {
+                paint.scene.draw_text(paint.text.layout(
+                    "No compute quotes loaded yet.",
+                    Point::new(content_bounds.origin.x + 12.0, detail_y + 18.0),
+                    11.0,
+                    theme::text::MUTED,
+                ));
+            } else {
+                let visible_rows = network_requests_visible_quote_count(
+                    network_requests.spot_quote_candidates.len(),
+                );
+                for row_index in 0..visible_rows {
+                    let quote = &network_requests.spot_quote_candidates[row_index];
+                    let row_bounds = network_requests_quote_row_bounds(content_bounds, row_index);
+                    let selected = network_requests.selected_spot_quote_id.as_deref()
+                        == Some(quote.quote_id.as_str());
+                    paint.scene.draw_quad(
+                        Quad::new(row_bounds)
+                            .with_background(if selected {
+                                theme::bg::SURFACE
+                            } else {
+                                theme::bg::APP.with_alpha(0.78)
+                            })
+                            .with_border(
+                                if selected {
+                                    theme::accent::PRIMARY
+                                } else {
+                                    theme::border::DEFAULT
+                                },
+                                1.0,
+                            )
+                            .with_corner_radius(6.0),
+                    );
+                    let summary = format!(
+                        "{} family={} backend={} provider={} lot={} qty={}/{} price={} terms={} source={}",
+                        quote.product_id,
+                        quote.compute_family_label(),
+                        quote.backend_label(),
+                        quote.provider_id,
+                        quote.capacity_lot_id,
+                        quote.requested_quantity,
+                        quote.available_quantity,
+                        format_sats_amount(quote.price_sats),
+                        quote.terms_label,
+                        quote.source_badge,
+                    );
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &summary,
+                        Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 7.0),
+                        9.0,
+                        theme::text::PRIMARY,
+                    ));
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        quote.capability_summary.as_str(),
+                        Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 18.0),
+                        8.5,
+                        theme::text::MUTED,
+                    ));
+                }
+            }
+
+            let accepted_heading_y =
+                network_requests_quote_row_bounds(content_bounds, 4).max_y() + 18.0;
+            paint.scene.draw_text(paint.text.layout(
+                "Accepted spot orders",
+                Point::new(content_bounds.origin.x + 12.0, accepted_heading_y),
+                11.0,
+                theme::text::MUTED,
             ));
+            if network_requests.accepted_spot_orders.is_empty() {
+                paint.scene.draw_text(paint.text.layout(
+                    "No compute orders accepted yet.",
+                    Point::new(content_bounds.origin.x + 12.0, accepted_heading_y + 18.0),
+                    10.0,
+                    theme::text::MUTED,
+                ));
+            } else {
+                for (idx, order) in network_requests
+                    .accepted_spot_orders
+                    .iter()
+                    .take(3)
+                    .enumerate()
+                {
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &format!(
+                            "{} -> {} {} provider={} qty={} price={} at={}",
+                            order.quote_id,
+                            order.instrument_id,
+                            order.product_id,
+                            order.provider_id,
+                            order.quantity,
+                            format_sats_amount(order.price_sats),
+                            order.accepted_at_epoch_seconds
+                        ),
+                        Point::new(
+                            content_bounds.origin.x + 12.0,
+                            accepted_heading_y + 18.0 + idx as f32 * 14.0,
+                        ),
+                        9.0,
+                        theme::text::PRIMARY,
+                    ));
+                }
+            }
+        }
+        crate::app_state::ComputeQuoteMode::ForwardPhysical => {
+            if let Some(rfq) = network_requests.last_forward_rfq.as_ref() {
+                paint.scene.draw_text(paint.text.layout_mono(
+                    &format!("RFQ: {}", rfq.summary()),
+                    Point::new(content_bounds.origin.x + 12.0, detail_y),
+                    9.0,
+                    theme::text::MUTED,
+                ));
+                detail_y += 18.0;
+            }
+
+            paint.scene.draw_text(paint.text.layout(
+                "Available forward quotes",
+                Point::new(content_bounds.origin.x + 12.0, detail_y),
+                11.0,
+                theme::text::MUTED,
+            ));
+
+            if network_requests.forward_quote_candidates.is_empty() {
+                paint.scene.draw_text(paint.text.layout(
+                    "No forward compute quotes loaded yet.",
+                    Point::new(content_bounds.origin.x + 12.0, detail_y + 18.0),
+                    11.0,
+                    theme::text::MUTED,
+                ));
+            } else {
+                let visible_rows = network_requests_visible_quote_count(
+                    network_requests.forward_quote_candidates.len(),
+                );
+                for row_index in 0..visible_rows {
+                    let quote = &network_requests.forward_quote_candidates[row_index];
+                    let row_bounds = network_requests_quote_row_bounds(content_bounds, row_index);
+                    let selected = network_requests.selected_forward_quote_id.as_deref()
+                        == Some(quote.quote_id.as_str());
+                    paint.scene.draw_quad(
+                        Quad::new(row_bounds)
+                            .with_background(if selected {
+                                theme::bg::SURFACE
+                            } else {
+                                theme::bg::APP.with_alpha(0.78)
+                            })
+                            .with_border(
+                                if selected {
+                                    theme::accent::PRIMARY
+                                } else {
+                                    theme::border::DEFAULT
+                                },
+                                1.0,
+                            )
+                            .with_corner_radius(6.0),
+                    );
+                    let summary = format!(
+                        "{} family={} backend={} provider={} lot={} qty={}/{} price={} window={} terms={}",
+                        quote.product_id,
+                        quote.compute_family_label(),
+                        quote.backend_label(),
+                        quote.provider_id,
+                        quote.capacity_lot_id,
+                        quote.requested_quantity,
+                        quote.available_quantity,
+                        format_sats_amount(quote.price_sats),
+                        quote.delivery_window_label,
+                        quote.terms_label,
+                    );
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &summary,
+                        Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 7.0),
+                        9.0,
+                        theme::text::PRIMARY,
+                    ));
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &format!(
+                            "{} | collateral={} | remedy={}",
+                            quote.capability_summary,
+                            quote.collateral_summary,
+                            quote.remedy_summary
+                        ),
+                        Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 18.0),
+                        8.5,
+                        theme::text::MUTED,
+                    ));
+                }
+            }
+
+            let accepted_heading_y =
+                network_requests_quote_row_bounds(content_bounds, 4).max_y() + 18.0;
+            paint.scene.draw_text(paint.text.layout(
+                "Accepted forward orders",
+                Point::new(content_bounds.origin.x + 12.0, accepted_heading_y),
+                11.0,
+                theme::text::MUTED,
+            ));
+            if network_requests.accepted_forward_orders.is_empty() {
+                paint.scene.draw_text(paint.text.layout(
+                    "No forward compute orders accepted yet.",
+                    Point::new(content_bounds.origin.x + 12.0, accepted_heading_y + 18.0),
+                    10.0,
+                    theme::text::MUTED,
+                ));
+            } else {
+                for (idx, order) in network_requests
+                    .accepted_forward_orders
+                    .iter()
+                    .take(3)
+                    .enumerate()
+                {
+                    paint.scene.draw_text(paint.text.layout_mono(
+                        &format!(
+                            "{} -> {} {} provider={} qty={} price={} window={} remedy={}",
+                            order.quote_id,
+                            order.instrument_id,
+                            order.product_id,
+                            order.provider_id,
+                            order.quantity,
+                            format_sats_amount(order.price_sats),
+                            order.delivery_window_label,
+                            order.remedy_summary
+                        ),
+                        Point::new(
+                            content_bounds.origin.x + 12.0,
+                            accepted_heading_y + 18.0 + idx as f32 * 14.0,
+                        ),
+                        9.0,
+                        theme::text::PRIMARY,
+                    ));
+                }
+            }
         }
     }
 }

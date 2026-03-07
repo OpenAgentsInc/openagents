@@ -1,8 +1,9 @@
-use crate::compute_contracts;
 use crate::compute::{
-    CapacityInstrument, CapacityLot, ComputeIndex, ComputeProduct, DeliveryProof,
-    CapacityInstrumentStatus, CapacityLotStatus, ComputeProductStatus, DeliveryProofStatus,
+    CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
+    CapacityLotStatus, CapacityNonDeliveryReason, ComputeIndex, ComputeProduct,
+    ComputeProductStatus, ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus,
 };
+use crate::compute_contracts;
 use crate::data::{AccessGrant, DataAsset, DeliveryBundle, RevocationReceipt};
 use crate::labor::{ClaimHook, Contract, SettlementLink, Submission, Verdict, WorkUnit};
 use crate::liquidity::{Envelope, Quote, ReservePartition, RoutePlan, SettlementIntent};
@@ -38,6 +39,10 @@ pub trait KernelAuthority: Send + Sync {
         &self,
         req: CreateCapacityInstrumentRequest,
     ) -> Result<CreateCapacityInstrumentResponse>;
+    async fn close_capacity_instrument(
+        &self,
+        req: CloseCapacityInstrumentRequest,
+    ) -> Result<CloseCapacityInstrumentResponse>;
     async fn record_delivery_proof(
         &self,
         req: RecordDeliveryProofRequest,
@@ -270,6 +275,36 @@ pub struct CreateCapacityInstrumentRequest {
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct CreateCapacityInstrumentResponse {
+    pub instrument: CapacityInstrument,
+    pub receipt: Receipt,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CloseCapacityInstrumentRequest {
+    pub idempotency_key: String,
+    pub trace: TraceContext,
+    pub policy: PolicyContext,
+    pub instrument_id: String,
+    pub status: CapacityInstrumentStatus,
+    pub closed_at_ms: i64,
+    #[serde(default)]
+    pub closure_reason: Option<CapacityInstrumentClosureReason>,
+    #[serde(default)]
+    pub non_delivery_reason: Option<CapacityNonDeliveryReason>,
+    #[serde(default)]
+    pub settlement_failure_reason: Option<ComputeSettlementFailureReason>,
+    #[serde(default)]
+    pub lifecycle_reason_detail: Option<String>,
+    #[serde(default)]
+    pub metadata: Value,
+    #[serde(default)]
+    pub evidence: Vec<EvidenceRef>,
+    #[serde(default)]
+    pub hints: ReceiptHints,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct CloseCapacityInstrumentResponse {
     pub instrument: CapacityInstrument,
     pub receipt: Receipt,
 }
@@ -781,9 +816,24 @@ impl KernelAuthority for HttpKernelAuthorityClient {
         req: CreateCapacityInstrumentRequest,
     ) -> Result<CreateCapacityInstrumentResponse> {
         let wire = compute_contracts::create_capacity_instrument_request_to_proto(&req)?;
-        let response: proto_compute::CreateCapacityInstrumentResponse =
-            self.post_json("/v1/kernel/compute/instruments", &wire).await?;
+        let response: proto_compute::CreateCapacityInstrumentResponse = self
+            .post_json("/v1/kernel/compute/instruments", &wire)
+            .await?;
         compute_contracts::create_capacity_instrument_response_from_proto(&response)
+    }
+
+    async fn close_capacity_instrument(
+        &self,
+        req: CloseCapacityInstrumentRequest,
+    ) -> Result<CloseCapacityInstrumentResponse> {
+        let path = format!(
+            "/v1/kernel/compute/instruments/{}/close",
+            req.instrument_id.trim()
+        );
+        let wire = compute_contracts::close_capacity_instrument_request_to_proto(&req)?;
+        let response: proto_compute::CloseCapacityInstrumentResponse =
+            self.post_json(path.as_str(), &wire).await?;
+        compute_contracts::close_capacity_instrument_response_from_proto(&response)
     }
 
     async fn record_delivery_proof(
@@ -825,7 +875,8 @@ impl KernelAuthority for HttpKernelAuthorityClient {
 
     async fn get_compute_product(&self, product_id: &str) -> Result<ComputeProduct> {
         let path = format!("/v1/kernel/compute/products/{product_id}");
-        let response: proto_compute::GetComputeProductResponse = self.get_json(path.as_str()).await?;
+        let response: proto_compute::GetComputeProductResponse =
+            self.get_json(path.as_str()).await?;
         compute_contracts::get_compute_product_response_from_proto(&response)
     }
 

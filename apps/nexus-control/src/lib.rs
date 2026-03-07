@@ -670,6 +670,10 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             get(get_kernel_capacity_instrument),
         )
         .route(
+            "/v1/kernel/compute/instruments/{instrument_id}/close",
+            post(close_kernel_capacity_instrument),
+        )
+        .route(
             "/v1/kernel/compute/lots/{lot_id}/delivery_proofs",
             get(list_kernel_delivery_proofs).post(record_kernel_delivery_proof),
         )
@@ -2043,6 +2047,49 @@ async fn create_kernel_capacity_instrument(
     let response =
         compute_contracts::create_capacity_instrument_response_to_proto(&result.response)
             .map_err(kernel_contract_error)?;
+    Ok(Json(response))
+}
+
+async fn close_kernel_capacity_instrument(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(instrument_id): Path<String>,
+    Json(request): Json<proto_compute::CloseCapacityInstrumentRequest>,
+) -> Result<Json<proto_compute::CloseCapacityInstrumentResponse>, ApiError> {
+    let session = authenticate_session(&state, &headers)?;
+    let mut request = compute_contracts::close_capacity_instrument_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
+    let instrument_id = normalize_required_field(instrument_id.as_str(), "instrument_id_missing")?;
+    if !request.instrument_id.trim().is_empty() && request.instrument_id != instrument_id {
+        return Err(ApiError {
+            status: StatusCode::CONFLICT,
+            error: "conflict",
+            reason: "kernel_capacity_instrument_id_mismatch".to_string(),
+        });
+    }
+    request.instrument_id = instrument_id;
+    let now = now_unix_ms();
+    let result = {
+        let mut store = state.store.write().map_err(|_| ApiError {
+            status: StatusCode::INTERNAL_SERVER_ERROR,
+            error: "internal_error",
+            reason: "session_store_poisoned".to_string(),
+        })?;
+        store
+            .kernel
+            .close_capacity_instrument(&kernel_mutation_context(&session, now), request)
+            .map_err(kernel_api_error)?
+    };
+    record_kernel_mutation_observability(
+        &state,
+        &session,
+        now,
+        "kernel.compute.instrument.closed",
+        result.receipt_event.clone(),
+        result.snapshot_event.clone(),
+    );
+    let response = compute_contracts::close_capacity_instrument_response_to_proto(&result.response)
+        .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -3539,28 +3586,30 @@ mod tests {
     use openagents_kernel_core::authority::{
         AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
         AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-        CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
-        CreateCapacityLotRequest, CreateComputeProductRequest, CreateContractRequest,
-        CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
-        CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
-        CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
-        ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
-        FinalizeVerdictResponse, HttpKernelAuthorityClient, IssueDeliveryBundleRequest,
-        IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse,
-        KernelAuthority, PlaceCoverageOfferRequest, PlaceCoverageOfferResponse,
-        PublishComputeIndexRequest, PublishRiskSignalRequest, PublishRiskSignalResponse,
-        RecordDeliveryProofRequest, RegisterDataAssetRequest, RegisterDataAssetResponse,
-        RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
-        ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
-        SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
+        CloseCapacityInstrumentRequest, CreateAccessGrantRequest, CreateAccessGrantResponse,
+        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
+        CreateContractRequest, CreateContractResponse, CreateLiquidityQuoteRequest,
+        CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+        CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
+        CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
+        ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
+        HttpKernelAuthorityClient, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
+        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, KernelAuthority,
+        PlaceCoverageOfferRequest, PlaceCoverageOfferResponse, PublishComputeIndexRequest,
+        PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
+        RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
+        RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
+        RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
+        SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
     };
     use openagents_kernel_core::compute::{
         ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
-        CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
-        CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeExecutionKind, ComputeFamily, ComputeHostCapability, ComputeIndex,
-        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementMode,
-        DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+        CapacityInstrumentClosureReason, CapacityInstrumentKind, CapacityInstrumentStatus,
+        CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState,
+        ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily,
+        ComputeHostCapability, ComputeIndex, ComputeIndexStatus, ComputeProduct,
+        ComputeProductStatus, ComputeSettlementFailureReason, ComputeSettlementMode, DeliveryProof,
+        DeliveryProofStatus, OllamaRuntimeCapability,
     };
     use openagents_kernel_core::compute_contracts;
     use openagents_kernel_core::data::{
@@ -3928,7 +3977,7 @@ mod tests {
                 buyer_id: Some("buyer.compute.alpha".to_string()),
                 provider_id: Some("desktop-provider.alpha".to_string()),
                 delivery_start_ms: created_at_ms + 60_000,
-                delivery_end_ms: created_at_ms + 3_660_000,
+                delivery_end_ms: created_at_ms + 3_000_000,
                 quantity: 10,
                 fixed_price: Some(Money {
                     asset: Asset::Btc,
@@ -3939,10 +3988,41 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::Physical,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Active,
+                closure_reason: None,
+                non_delivery_reason: None,
+                settlement_failure_reason: None,
+                lifecycle_reason_detail: None,
                 metadata: json!({
                     "desk": "forward-physical"
                 }),
             },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn close_capacity_instrument_request(
+        instrument_id: &str,
+        idempotency_key: &str,
+        closed_at_ms: i64,
+    ) -> CloseCapacityInstrumentRequest {
+        CloseCapacityInstrumentRequest {
+            idempotency_key: idempotency_key.to_string(),
+            trace: TraceContext::default(),
+            policy: kernel_policy(),
+            instrument_id: instrument_id.to_string(),
+            status: CapacityInstrumentStatus::Defaulted,
+            closed_at_ms,
+            closure_reason: Some(CapacityInstrumentClosureReason::Defaulted),
+            non_delivery_reason: Some(CapacityNonDeliveryReason::ProviderOffline),
+            settlement_failure_reason: Some(ComputeSettlementFailureReason::NonDelivery),
+            lifecycle_reason_detail: Some(
+                "provider went offline before the forward window".to_string(),
+            ),
+            metadata: json!({
+                "requested_by": "buyer.alpha",
+                "remedy_profile": "forward_physical.inference.v1"
+            }),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -4081,6 +4161,17 @@ mod tests {
             ),
         )
         .expect("capacity instrument wire request")
+    }
+
+    fn close_capacity_instrument_wire_request(
+        instrument_id: &str,
+        idempotency_key: &str,
+        closed_at_ms: i64,
+    ) -> proto_compute::CloseCapacityInstrumentRequest {
+        compute_contracts::close_capacity_instrument_request_to_proto(
+            &close_capacity_instrument_request(instrument_id, idempotency_key, closed_at_ms),
+        )
+        .expect("close capacity instrument wire request")
     }
 
     fn delivery_proof_wire_request(
@@ -5648,6 +5739,103 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn compute_close_instrument_route_emits_remedy_receipt() -> Result<()> {
+        let app = build_router(test_config()?);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = super::now_unix_ms() as i64;
+
+        let product = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_product_wire_request(
+                            "ollama.text_generation",
+                            "idemp.compute.product.close-route",
+                            created_at_ms,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(product.status(), StatusCode::OK);
+
+        let lot = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&capacity_lot_wire_request(
+                        "lot.compute.close-route",
+                        "ollama.text_generation",
+                        "idemp.compute.lot.close-route",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(lot.status(), StatusCode::OK);
+
+        let instrument = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &capacity_instrument_wire_request(
+                            "instrument.compute.close-route",
+                            "ollama.text_generation",
+                            "lot.compute.close-route",
+                            "idemp.compute.instrument.close-route",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(instrument.status(), StatusCode::OK);
+
+        let closed = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments/instrument.compute.close-route/close")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &close_capacity_instrument_wire_request(
+                            "instrument.compute.close-route",
+                            "idemp.compute.instrument.close-route.close",
+                            created_at_ms + 3_000,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(closed.status(), StatusCode::OK);
+        let closed_payload = compute_contracts::close_capacity_instrument_response_from_proto(
+            &response_json::<proto_compute::CloseCapacityInstrumentResponse>(closed).await?,
+        )?;
+        assert_eq!(
+            closed_payload.receipt.receipt_type,
+            "kernel.compute.instrument.close.v1"
+        );
+        assert_eq!(
+            closed_payload.instrument.closure_reason,
+            Some(CapacityInstrumentClosureReason::Defaulted)
+        );
+
+        Ok(())
+    }
+
+    #[tokio::test]
     async fn compute_read_models_reload_after_restart_when_kernel_state_is_persisted() -> Result<()>
     {
         let kernel_state_path = std::env::temp_dir().join(format!(
@@ -6031,6 +6219,26 @@ mod tests {
 
         let fetched_index = client.get_compute_index("index.compute.client").await?;
         assert_eq!(fetched_index.index_id, "index.compute.client");
+
+        let closed = client
+            .close_capacity_instrument(close_capacity_instrument_request(
+                "instrument.compute.client",
+                "idemp.compute.client.instrument.close",
+                created_at_ms + 5_000,
+            ))
+            .await?;
+        assert_eq!(
+            closed.instrument.status,
+            CapacityInstrumentStatus::Defaulted
+        );
+        assert_eq!(
+            closed.instrument.closure_reason,
+            Some(CapacityInstrumentClosureReason::Defaulted)
+        );
+        assert_eq!(
+            closed.instrument.non_delivery_reason,
+            Some(CapacityNonDeliveryReason::ProviderOffline)
+        );
 
         server.abort();
         Ok(())

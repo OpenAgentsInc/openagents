@@ -111,6 +111,7 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.network_requests_inputs.preferred_backend.blur();
     state.network_requests_inputs.capability_constraints.blur();
     state.network_requests_inputs.quantity.blur();
+    state.network_requests_inputs.delivery_start_minutes.blur();
     state.network_requests_inputs.window_minutes.blur();
     state.network_requests_inputs.max_price_sats.blur();
     state.settings_inputs.relay_url.blur();
@@ -1097,6 +1098,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     || network_requests_credit_envelope_input_bounds(content_bounds).contains(point)
                     || network_requests_budget_input_bounds(content_bounds).contains(point)
                     || network_requests_timeout_input_bounds(content_bounds).contains(point)
+                    || network_requests_max_price_input_bounds(content_bounds).contains(point)
                 {
                     return CursorIcon::Text;
                 }
@@ -1833,13 +1835,23 @@ pub fn network_requests_timeout_input_bounds(content_bounds: Bounds) -> Bounds {
     )
 }
 
-pub fn network_requests_submit_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn network_requests_max_price_input_bounds(content_bounds: Bounds) -> Bounds {
     let timeout = network_requests_timeout_input_bounds(content_bounds);
     Bounds::new(
         timeout.max_x() + JOB_INBOX_BUTTON_GAP,
         timeout.origin.y,
-        (content_bounds.max_x() - timeout.max_x() - CHAT_PAD - JOB_INBOX_BUTTON_GAP).max(140.0),
+        timeout.size.width,
         timeout.size.height,
+    )
+}
+
+pub fn network_requests_submit_button_bounds(content_bounds: Bounds) -> Bounds {
+    let max_price = network_requests_max_price_input_bounds(content_bounds);
+    Bounds::new(
+        max_price.max_x() + JOB_INBOX_BUTTON_GAP,
+        max_price.origin.y,
+        (content_bounds.max_x() - max_price.max_x() - CHAT_PAD - JOB_INBOX_BUTTON_GAP).max(140.0),
+        max_price.size.height,
     )
 }
 
@@ -3589,7 +3601,7 @@ fn pane_hit_action_for_pane(
                 ))
             } else {
                 let visible_rows = network_requests_visible_quote_count(
-                    state.network_requests.spot_quote_candidates.len(),
+                    state.network_requests.active_quote_count(),
                 );
                 for row_index in 0..visible_rows {
                     if network_requests_quote_row_bounds(content_bounds, row_index).contains(point)
@@ -4382,7 +4394,7 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
-        .window_minutes
+        .delivery_start_minutes
         .event(
             event,
             network_requests_budget_input_bounds(content_bounds),
@@ -4391,10 +4403,19 @@ pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &In
         .is_handled();
     handled |= state
         .network_requests_inputs
-        .max_price_sats
+        .window_minutes
         .event(
             event,
             network_requests_timeout_input_bounds(content_bounds),
+            &mut state.event_context,
+        )
+        .is_handled();
+    handled |= state
+        .network_requests_inputs
+        .max_price_sats
+        .event(
+            event,
+            network_requests_max_price_input_bounds(content_bounds),
             &mut state.event_context,
         )
         .is_handled();
@@ -4583,16 +4604,17 @@ mod tests {
         job_history_search_input_bounds, job_history_status_button_bounds,
         job_history_time_button_bounds, job_inbox_accept_button_bounds,
         job_inbox_reject_button_bounds, job_inbox_row_bounds, network_requests_budget_input_bounds,
-        network_requests_credit_envelope_input_bounds, network_requests_payload_input_bounds,
-        network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
-        network_requests_timeout_input_bounds, network_requests_type_input_bounds,
-        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
-        nostr_reveal_button_bounds, pane_content_bounds, reciprocal_loop_reset_button_bounds,
-        reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
-        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
-        relay_connections_retry_button_bounds, relay_connections_row_bounds,
-        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
-        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
+        network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
+        network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
+        network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
+        network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
+        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
+        reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
+        reciprocal_loop_stop_button_bounds, relay_connections_add_button_bounds,
+        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
+        relay_connections_row_bounds, relay_connections_url_input_bounds,
+        settings_provider_queue_input_bounds, settings_relay_input_bounds,
+        settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -4812,6 +4834,7 @@ mod tests {
         let envelope = network_requests_credit_envelope_input_bounds(content);
         let budget = network_requests_budget_input_bounds(content);
         let timeout = network_requests_timeout_input_bounds(content);
+        let max_price = network_requests_max_price_input_bounds(content);
         let submit = network_requests_submit_button_bounds(content);
 
         assert!(request_type.max_y() < payload.min_y());
@@ -4819,7 +4842,8 @@ mod tests {
         assert!(scope.max_y() < envelope.min_y());
         assert!(envelope.max_y() < budget.min_y());
         assert!(budget.max_x() < timeout.min_x());
-        assert!(timeout.max_x() < submit.min_x());
+        assert!(timeout.max_x() < max_price.min_x());
+        assert!(max_price.max_x() < submit.min_x());
     }
 
     #[test]

@@ -200,6 +200,17 @@ impl ProviderInventoryProductToggleTarget {
         }
     }
 
+    pub const fn forward_terms_label(self) -> &'static str {
+        match self {
+            Self::OllamaInference | Self::OllamaEmbeddings => {
+                "forward physical / committed local window"
+            }
+            Self::AppleFoundationModelsInference => {
+                "forward physical / Apple gated committed window"
+            }
+        }
+    }
+
     pub const fn default_price_floor_sats(self) -> u64 {
         match self {
             Self::OllamaInference => 21,
@@ -233,6 +244,12 @@ pub struct ProviderInventoryRow {
     pub delivery_state: String,
     pub price_floor_sats: u64,
     pub terms_label: String,
+    pub forward_capacity_lot_id: Option<String>,
+    pub forward_delivery_window_label: Option<String>,
+    pub forward_total_quantity: u64,
+    pub forward_reserved_quantity: u64,
+    pub forward_available_quantity: u64,
+    pub forward_terms_label: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

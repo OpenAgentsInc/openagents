@@ -25,6 +25,10 @@ pub(super) fn network_requests_inputs_focused(state: &crate::app_state::RenderSt
             .capability_constraints
             .is_focused()
         || state.network_requests_inputs.quantity.is_focused()
+        || state
+            .network_requests_inputs
+            .delivery_start_minutes
+            .is_focused()
         || state.network_requests_inputs.window_minutes.is_focused()
         || state.network_requests_inputs.max_price_sats.is_focused()
 }
@@ -68,6 +72,7 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.network_requests_inputs.preferred_backend.blur();
     state.network_requests_inputs.capability_constraints.blur();
     state.network_requests_inputs.quantity.blur();
+    state.network_requests_inputs.delivery_start_minutes.blur();
     state.network_requests_inputs.window_minutes.blur();
     state.network_requests_inputs.max_price_sats.blur();
     state.settings_inputs.relay_url.blur();

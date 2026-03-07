@@ -1,27 +1,29 @@
 use openagents_kernel_core::authority::{
     AcceptAccessGrantRequest, AcceptAccessGrantResponse, AdjustReservePartitionRequest,
     AdjustReservePartitionResponse, BindCoverageRequest, BindCoverageResponse,
-    CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
-    CreateCapacityInstrumentResponse, CreateCapacityLotRequest, CreateCapacityLotResponse,
-    CreateComputeProductRequest, CreateComputeProductResponse, CreateContractRequest,
-    CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
-    CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
-    CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
-    ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
-    FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
-    IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
-    PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishComputeIndexResponse,
-    PublishRiskSignalRequest, PublishRiskSignalResponse, RecordDeliveryProofRequest,
-    RecordDeliveryProofResponse, RegisterDataAssetRequest, RegisterDataAssetResponse,
-    RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
-    ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
-    SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
+    CloseCapacityInstrumentRequest, CloseCapacityInstrumentResponse, CreateAccessGrantRequest,
+    CreateAccessGrantResponse, CreateCapacityInstrumentRequest, CreateCapacityInstrumentResponse,
+    CreateCapacityLotRequest, CreateCapacityLotResponse, CreateComputeProductRequest,
+    CreateComputeProductResponse, CreateContractRequest, CreateContractResponse,
+    CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse, CreatePredictionPositionRequest,
+    CreatePredictionPositionResponse, CreateRiskClaimRequest, CreateRiskClaimResponse,
+    CreateWorkUnitRequest, CreateWorkUnitResponse, ExecuteSettlementIntentRequest,
+    ExecuteSettlementIntentResponse, FinalizeVerdictRequest, FinalizeVerdictResponse,
+    IssueDeliveryBundleRequest, IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest,
+    IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest, PlaceCoverageOfferResponse,
+    PublishComputeIndexRequest, PublishComputeIndexResponse, PublishRiskSignalRequest,
+    PublishRiskSignalResponse, RecordDeliveryProofRequest, RecordDeliveryProofResponse,
+    RegisterDataAssetRequest, RegisterDataAssetResponse, RegisterReservePartitionRequest,
+    RegisterReservePartitionResponse, ResolveRiskClaimRequest, ResolveRiskClaimResponse,
+    RevokeAccessGrantRequest, RevokeAccessGrantResponse, SelectRoutePlanRequest,
+    SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
 use openagents_kernel_core::compute::{
-    CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
-    CapacityReserveState, ComputeCapabilityEnvelope, ComputeDeliveryVarianceReason, ComputeIndex,
-    ComputeProduct, ComputeProductStatus, DeliveryProof, DeliveryProofStatus,
-    DeliveryRejectionReason, validate_launch_compute_product,
+    CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentStatus, CapacityLot,
+    CapacityLotStatus, CapacityNonDeliveryReason, CapacityReserveState, ComputeCapabilityEnvelope,
+    ComputeDeliveryVarianceReason, ComputeIndex, ComputeProduct, ComputeProductStatus,
+    ComputeSettlementFailureReason, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+    validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -601,6 +603,89 @@ fn append_delivery_proof_evidence(evidence: &mut Vec<EvidenceRef>, proof: &Deliv
             format!("oa://kernel/compute/rejection/{}", proof.delivery_proof_id),
             sha256_prefixed_text(rejection_reason.label()),
         ));
+    }
+}
+
+fn ensure_metadata_object(
+    metadata: &mut Value,
+) -> Result<&mut serde_json::Map<String, Value>, String> {
+    if metadata.is_null() {
+        *metadata = json!({});
+    }
+    metadata
+        .as_object_mut()
+        .ok_or_else(|| "compute_metadata_object_missing".to_string())
+}
+
+fn reserved_quantity_for_lot(
+    instruments: &HashMap<String, CapacityInstrumentRecord>,
+    capacity_lot_id: &str,
+) -> u64 {
+    instruments
+        .values()
+        .filter(|record| record.instrument.capacity_lot_id.as_deref() == Some(capacity_lot_id))
+        .filter(|record| {
+            matches!(
+                record.instrument.status,
+                CapacityInstrumentStatus::Open
+                    | CapacityInstrumentStatus::Active
+                    | CapacityInstrumentStatus::Delivering
+                    | CapacityInstrumentStatus::CashSettling
+            )
+        })
+        .fold(0u64, |total, record| {
+            total.saturating_add(record.instrument.quantity)
+        })
+}
+
+fn default_closure_reason_for_status(
+    status: CapacityInstrumentStatus,
+) -> Option<CapacityInstrumentClosureReason> {
+    match status {
+        CapacityInstrumentStatus::Settled => Some(CapacityInstrumentClosureReason::Filled),
+        CapacityInstrumentStatus::Defaulted => Some(CapacityInstrumentClosureReason::Defaulted),
+        CapacityInstrumentStatus::Expired => Some(CapacityInstrumentClosureReason::Expired),
+        CapacityInstrumentStatus::Cancelled => {
+            Some(CapacityInstrumentClosureReason::BuyerCancelled)
+        }
+        CapacityInstrumentStatus::Open
+        | CapacityInstrumentStatus::Active
+        | CapacityInstrumentStatus::Delivering
+        | CapacityInstrumentStatus::CashSettling => None,
+    }
+}
+
+fn infer_non_delivery_reason_from_rejection(
+    reason: Option<DeliveryRejectionReason>,
+    detail: Option<&str>,
+) -> CapacityNonDeliveryReason {
+    match reason {
+        Some(DeliveryRejectionReason::RuntimeIdentityMismatch)
+        | Some(DeliveryRejectionReason::NonConformingDelivery) => {
+            CapacityNonDeliveryReason::CapabilityMismatch
+        }
+        Some(DeliveryRejectionReason::AttestationMissing)
+        | Some(DeliveryRejectionReason::CostProofMissing) => {
+            CapacityNonDeliveryReason::PolicyBlocked
+        }
+        None => {
+            if detail
+                .map(|value| value.to_ascii_lowercase().contains("window"))
+                .unwrap_or(false)
+            {
+                CapacityNonDeliveryReason::MissedWindow
+            } else {
+                CapacityNonDeliveryReason::CapabilityMismatch
+            }
+        }
+    }
+}
+
+fn forward_remedy_profile(product_id: &str) -> &'static str {
+    match product_id {
+        "ollama.embeddings" => "forward_physical.embeddings.v1",
+        "apple_foundation_models.text_generation" => "forward_physical.apple_fm.v1",
+        _ => "forward_physical.inference.v1",
     }
 }
 
@@ -1465,11 +1550,89 @@ impl KernelState {
         req.instrument.product_id.clone_from(&product_id);
         req.instrument.created_at_ms =
             normalize_created_at_ms(req.instrument.created_at_ms, context.now_unix_ms);
+        if req.instrument.quantity == 0 {
+            return Err("capacity_instrument_quantity_invalid".to_string());
+        }
         if req.instrument.delivery_end_ms <= req.instrument.delivery_start_ms {
             return Err("capacity_instrument_window_invalid".to_string());
         }
         if let Some((capacity_lot_id, _)) = lot_record.as_ref() {
             req.instrument.capacity_lot_id = Some(capacity_lot_id.clone());
+        }
+        if let Some((capacity_lot_id, lot_record)) = lot_record.as_ref() {
+            if req.instrument.delivery_start_ms < lot_record.lot.delivery_start_ms
+                || req.instrument.delivery_end_ms > lot_record.lot.delivery_end_ms
+            {
+                return Err("capacity_instrument_window_outside_lot".to_string());
+            }
+            let reserved_quantity =
+                reserved_quantity_for_lot(&self.capacity_instruments, capacity_lot_id.as_str());
+            let available_quantity = lot_record.lot.quantity.saturating_sub(reserved_quantity);
+            if req.instrument.quantity > available_quantity {
+                return Err("capacity_lot_quantity_unavailable".to_string());
+            }
+        }
+        let committed_capability_envelope = product_record
+            .product
+            .capability_envelope
+            .clone()
+            .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
+        if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+        {
+            if lot_record.is_none() {
+                return Err("forward_capacity_lot_required".to_string());
+            }
+            if req.instrument.delivery_start_ms <= req.instrument.created_at_ms {
+                return Err("forward_capacity_window_not_future".to_string());
+            }
+            if req.instrument.settlement_mode
+                != openagents_kernel_core::compute::ComputeSettlementMode::Physical
+            {
+                return Err("forward_capacity_settlement_mode_invalid".to_string());
+            }
+        }
+        let metadata = ensure_metadata_object(&mut req.instrument.metadata)?;
+        metadata.insert(
+            "committed_capability_envelope".to_string(),
+            serde_json::to_value(&committed_capability_envelope).map_err(|error| {
+                format!("capacity_instrument_capability_commit_encode_failed: {error}")
+            })?,
+        );
+        if req.instrument.kind
+            == openagents_kernel_core::compute::CapacityInstrumentKind::ForwardPhysical
+        {
+            metadata.insert(
+                "market_phase".to_string(),
+                Value::String("forward_physical".to_string()),
+            );
+            metadata.insert(
+                "delivery_assignment_mode".to_string(),
+                Value::String("future_entitlement".to_string()),
+            );
+            metadata.insert(
+                "substitution_policy".to_string(),
+                json!({
+                    "backend_family": "must_match",
+                    "compute_family": "must_match",
+                    "capability_envelope": "committed_snapshot_controls",
+                    "model_policy": "explicit_variance_or_reject",
+                    "host_capability": "must_satisfy_committed_constraints",
+                }),
+            );
+            metadata.insert(
+                "bond_posture".to_string(),
+                json!({
+                    "provider_bond_required": true,
+                    "bond_mode": "performance_bond",
+                    "buyer_prepay_required": false,
+                    "remedy_profile": forward_remedy_profile(product_id.as_str()),
+                }),
+            );
+            metadata.insert(
+                "remedy_profile".to_string(),
+                Value::String(forward_remedy_profile(product_id.as_str()).to_string()),
+            );
         }
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
@@ -1558,6 +1721,202 @@ impl KernelState {
         })
     }
 
+    pub fn close_capacity_instrument(
+        &mut self,
+        context: &KernelMutationContext,
+        mut req: CloseCapacityInstrumentRequest,
+    ) -> Result<MutationResult<CloseCapacityInstrumentResponse>, String> {
+        let instrument_id =
+            normalize_required(req.instrument_id.as_str(), "capacity_instrument_id_missing")?;
+        let Some(existing_record) = self
+            .capacity_instruments
+            .get(instrument_id.as_str())
+            .cloned()
+        else {
+            return Err("capacity_instrument_not_found".to_string());
+        };
+        if !matches!(
+            req.status,
+            CapacityInstrumentStatus::Settled
+                | CapacityInstrumentStatus::Defaulted
+                | CapacityInstrumentStatus::Cancelled
+                | CapacityInstrumentStatus::Expired
+        ) {
+            return Err("capacity_instrument_close_status_invalid".to_string());
+        }
+        req.instrument_id.clone_from(&instrument_id);
+        req.closed_at_ms = normalize_created_at_ms(req.closed_at_ms, context.now_unix_ms);
+        req.closure_reason = req
+            .closure_reason
+            .or_else(|| default_closure_reason_for_status(req.status));
+        if req.status == CapacityInstrumentStatus::Defaulted {
+            if req.non_delivery_reason.is_none() {
+                req.non_delivery_reason = Some(CapacityNonDeliveryReason::MissedWindow);
+            }
+            if req.settlement_failure_reason.is_none() {
+                req.settlement_failure_reason = Some(ComputeSettlementFailureReason::NonDelivery);
+            }
+        }
+        req.policy = normalized_policy(req.policy, context);
+
+        let Some(product_record) = self
+            .compute_products
+            .get(existing_record.instrument.product_id.as_str())
+            .cloned()
+        else {
+            return Err("compute_product_not_found".to_string());
+        };
+        let lot_record = existing_record
+            .instrument
+            .capacity_lot_id
+            .as_deref()
+            .and_then(|capacity_lot_id| self.capacity_lots.get(capacity_lot_id).cloned());
+
+        let mut closed_instrument = existing_record.instrument.clone();
+        closed_instrument.status = req.status;
+        closed_instrument.closure_reason = req.closure_reason;
+        closed_instrument.non_delivery_reason = req.non_delivery_reason;
+        closed_instrument.settlement_failure_reason = req.settlement_failure_reason;
+        closed_instrument
+            .lifecycle_reason_detail
+            .clone_from(&req.lifecycle_reason_detail);
+        {
+            let metadata = ensure_metadata_object(&mut closed_instrument.metadata)?;
+            metadata.insert(
+                "closed_at_ms".to_string(),
+                Value::Number(req.closed_at_ms.into()),
+            );
+            metadata.insert(
+                "closure_reason".to_string(),
+                req.closure_reason.map_or(Value::Null, |reason| {
+                    Value::String(reason.label().to_string())
+                }),
+            );
+            metadata.insert(
+                "non_delivery_reason".to_string(),
+                req.non_delivery_reason.map_or(Value::Null, |reason| {
+                    Value::String(reason.label().to_string())
+                }),
+            );
+            metadata.insert(
+                "settlement_failure_reason".to_string(),
+                req.settlement_failure_reason.map_or(Value::Null, |reason| {
+                    Value::String(reason.label().to_string())
+                }),
+            );
+            metadata.insert(
+                "lifecycle_reason_detail".to_string(),
+                req.lifecycle_reason_detail
+                    .clone()
+                    .map_or(Value::Null, Value::String),
+            );
+            if req.metadata.is_object() {
+                metadata.insert("close_request".to_string(), req.metadata.clone());
+            }
+        }
+
+        let request_hash = request_hash(&req)?;
+        let mut evidence = req.evidence.clone();
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(existing_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        push_receipt_evidence(
+            &mut evidence,
+            self.receipt_store
+                .get_receipt(product_record.receipt_id.as_str())
+                .as_ref(),
+        );
+        if let Some(lot_record) = lot_record.as_ref() {
+            push_receipt_evidence(
+                &mut evidence,
+                self.receipt_store
+                    .get_receipt(lot_record.receipt_id.as_str())
+                    .as_ref(),
+            );
+        }
+
+        let close_payload = serde_json::to_value(&closed_instrument)
+            .map_err(|error| format!("kernel_capacity_instrument_close_encode_failed: {error}"))?;
+        let receipt = build_receipt(
+            context,
+            &req.idempotency_key,
+            KernelReceiptSpec {
+                action: "kernel.compute.instrument.close".to_string(),
+                created_at_ms: req.closed_at_ms,
+                trace: req.trace.clone(),
+                policy: req.policy.clone(),
+                inputs_payload: close_payload,
+                outputs_payload: json!({
+                    "instrument_id": instrument_id.clone(),
+                    "status": closed_instrument.status,
+                    "closure_reason": closed_instrument
+                        .closure_reason
+                        .map(|reason| reason.label().to_string()),
+                    "non_delivery_reason": closed_instrument
+                        .non_delivery_reason
+                        .map(|reason| reason.label().to_string()),
+                    "settlement_failure_reason": closed_instrument
+                        .settlement_failure_reason
+                        .map(|reason| reason.label().to_string()),
+                    "lifecycle_reason_detail": closed_instrument.lifecycle_reason_detail.clone(),
+                    "product_receipt_id": product_record.receipt_id.clone(),
+                    "capacity_lot_receipt_id": lot_record.as_ref().map(|record| record.receipt_id.clone()),
+                    "instrument_receipt_id": existing_record.receipt_id.clone(),
+                }),
+                evidence,
+                hints: req.hints.clone(),
+            },
+        )?;
+        let put_result = self.receipt_store.put_receipt(
+            "kernel.compute.instrument.close",
+            context.caller_id.as_str(),
+            req.idempotency_key.as_str(),
+            request_hash.as_str(),
+            receipt,
+        );
+        let response = CloseCapacityInstrumentResponse {
+            instrument: closed_instrument.clone(),
+            receipt: match put_result {
+                Ok(ref result) => result.receipt.clone(),
+                Err(ref error) => return Err(receipt_store_reason(error).to_string()),
+            },
+        };
+        let put_result = put_result.map_err(|error| receipt_store_reason(&error).to_string())?;
+        if put_result.replayed {
+            return Ok(MutationResult {
+                response,
+                receipt_event: None,
+                snapshot_event: None,
+            });
+        }
+
+        self.capacity_instruments.insert(
+            instrument_id,
+            CapacityInstrumentRecord {
+                instrument: closed_instrument.clone(),
+                receipt_id: put_result.receipt.receipt_id.clone(),
+            },
+        );
+        if let Some(capacity_lot_id) = closed_instrument.capacity_lot_id.as_deref()
+            && let Some((reserve_state, status)) =
+                self.recompute_capacity_lot_state(capacity_lot_id)
+            && let Some(lot_record) = self.capacity_lots.get_mut(capacity_lot_id)
+        {
+            lot_record.lot.reserve_state = reserve_state;
+            lot_record.lot.status = status;
+        }
+        let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
+        let snapshot_event = self.refresh_snapshot_for(req.closed_at_ms)?;
+        Ok(MutationResult {
+            response,
+            receipt_event: Some(receipt_event),
+            snapshot_event: Some(snapshot_event),
+        })
+    }
+
     fn canonicalize_delivery_proof(
         &self,
         proof: &mut DeliveryProof,
@@ -1567,9 +1926,20 @@ impl KernelState {
     ) -> Result<(), String> {
         let spec = validate_launch_compute_product(product)
             .map_err(|reason| format!("compute_product_invalid:{reason}"))?;
-        let promised_capability_envelope = product
-            .capability_envelope
-            .clone()
+        let promised_capability_envelope = instrument
+            .and_then(|instrument| {
+                instrument
+                    .metadata
+                    .get("committed_capability_envelope")
+                    .cloned()
+            })
+            .map(|value| {
+                serde_json::from_value::<ComputeCapabilityEnvelope>(value).map_err(|error| {
+                    format!("capacity_instrument_committed_capability_decode_failed: {error}")
+                })
+            })
+            .transpose()?
+            .or_else(|| product.capability_envelope.clone())
             .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
         let metering_rule_id = match product.product_id.as_str() {
             "ollama.text_generation" => "meter.ollama.inference.v1",
@@ -1967,11 +2337,33 @@ impl KernelState {
             instrument_record.instrument.status = if req.delivery_proof.status
                 == DeliveryProofStatus::Rejected
             {
+                instrument_record.instrument.closure_reason =
+                    Some(CapacityInstrumentClosureReason::Defaulted);
+                instrument_record.instrument.non_delivery_reason =
+                    Some(infer_non_delivery_reason_from_rejection(
+                        req.delivery_proof.rejection_reason,
+                        req.delivery_proof.variance_reason_detail.as_deref(),
+                    ));
+                instrument_record.instrument.settlement_failure_reason =
+                    Some(ComputeSettlementFailureReason::NonDelivery);
+                instrument_record
+                    .instrument
+                    .lifecycle_reason_detail
+                    .clone_from(&req.delivery_proof.variance_reason_detail);
                 CapacityInstrumentStatus::Defaulted
             } else if req.delivery_proof.accepted_quantity >= instrument_record.instrument.quantity
             {
+                instrument_record.instrument.closure_reason =
+                    Some(CapacityInstrumentClosureReason::Filled);
+                instrument_record.instrument.non_delivery_reason = None;
+                instrument_record.instrument.settlement_failure_reason = None;
+                instrument_record.instrument.lifecycle_reason_detail = None;
                 CapacityInstrumentStatus::Settled
             } else {
+                instrument_record.instrument.closure_reason = None;
+                instrument_record.instrument.non_delivery_reason = None;
+                instrument_record.instrument.settlement_failure_reason = None;
+                instrument_record.instrument.lifecycle_reason_detail = None;
                 CapacityInstrumentStatus::Delivering
             };
         }
@@ -5045,15 +5437,17 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
 mod tests {
     use super::{KernelMutationContext, KernelState, floor_to_minute_utc};
     use openagents_kernel_core::authority::{
-        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
-        PublishComputeIndexRequest, RecordDeliveryProofRequest,
+        CloseCapacityInstrumentRequest, CreateCapacityInstrumentRequest, CreateCapacityLotRequest,
+        CreateComputeProductRequest, PublishComputeIndexRequest, RecordDeliveryProofRequest,
     };
     use openagents_kernel_core::compute::{
-        CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
-        CapacityLotStatus, CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
+        CapacityInstrument, CapacityInstrumentClosureReason, CapacityInstrumentKind,
+        CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityNonDeliveryReason,
+        CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
         ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
-        ComputeProduct, ComputeProductStatus, ComputeSettlementMode, DeliveryProof,
-        DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
+        ComputeProduct, ComputeProductStatus, ComputeSettlementFailureReason,
+        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason,
+        OllamaRuntimeCapability,
     };
     use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext};
     use serde_json::json;
@@ -5157,7 +5551,7 @@ mod tests {
                 buyer_id: Some("buyer.alpha".to_string()),
                 provider_id: Some("provider.alpha".to_string()),
                 delivery_start_ms: created_at_ms,
-                delivery_end_ms: created_at_ms + 60_000,
+                delivery_end_ms: created_at_ms + 30_000,
                 quantity: 256,
                 fixed_price: None,
                 reference_index_id: None,
@@ -5165,6 +5559,10 @@ mod tests {
                 settlement_mode: ComputeSettlementMode::Physical,
                 created_at_ms,
                 status: CapacityInstrumentStatus::Active,
+                closure_reason: None,
+                non_delivery_reason: None,
+                settlement_failure_reason: None,
+                lifecycle_reason_detail: None,
                 metadata: json!({"source": "test"}),
             },
             evidence: Vec::new(),
@@ -5213,6 +5611,26 @@ mod tests {
                 }),
                 metadata: json!({"source": "test"}),
             },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn close_capacity_instrument_request(closed_at_ms: i64) -> CloseCapacityInstrumentRequest {
+        CloseCapacityInstrumentRequest {
+            idempotency_key: "idemp.compute.instrument.close.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument_id: "instrument.compute.alpha".to_string(),
+            status: CapacityInstrumentStatus::Defaulted,
+            closed_at_ms,
+            closure_reason: Some(CapacityInstrumentClosureReason::Defaulted),
+            non_delivery_reason: Some(CapacityNonDeliveryReason::ProviderOffline),
+            settlement_failure_reason: Some(ComputeSettlementFailureReason::NonDelivery),
+            lifecycle_reason_detail: Some(
+                "provider went offline before committed window".to_string(),
+            ),
+            metadata: json!({"requested_by": "test"}),
             evidence: Vec::new(),
             hints: ReceiptHints::default(),
         }
@@ -5416,6 +5834,97 @@ mod tests {
                 .variance_reason_detail
                 .as_deref()
                 .is_some_and(|detail| detail.contains("promised"))
+        );
+    }
+
+    #[test]
+    fn close_capacity_instrument_records_explicit_remedy_fields() {
+        let created_at_ms = 1_762_000_350_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let response = kernel
+            .close_capacity_instrument(
+                &fixture_context(created_at_ms + 4_000),
+                close_capacity_instrument_request(created_at_ms as i64 + 4_000),
+            )
+            .expect("close capacity instrument");
+        assert_eq!(
+            response.response.instrument.status,
+            CapacityInstrumentStatus::Defaulted
+        );
+        assert_eq!(
+            response.response.instrument.closure_reason,
+            Some(CapacityInstrumentClosureReason::Defaulted)
+        );
+        assert_eq!(
+            response.response.instrument.non_delivery_reason,
+            Some(CapacityNonDeliveryReason::ProviderOffline)
+        );
+        assert_eq!(
+            response.response.instrument.settlement_failure_reason,
+            Some(ComputeSettlementFailureReason::NonDelivery)
+        );
+        assert_eq!(
+            response.response.receipt.receipt_type,
+            "kernel.compute.instrument.close.v1"
+        );
+    }
+
+    #[test]
+    fn forward_instrument_commits_capability_snapshot_for_later_delivery() {
+        let created_at_ms = 1_762_000_360_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(
+                &context,
+                capacity_lot_request(created_at_ms as i64 + 21_600_000),
+            )
+            .expect("lot");
+        let mut instrument_request = capacity_instrument_request(created_at_ms as i64 + 1_000);
+        instrument_request.idempotency_key = "idemp.compute.instrument.forward".to_string();
+        instrument_request.instrument.kind = CapacityInstrumentKind::ForwardPhysical;
+        instrument_request.instrument.delivery_start_ms = created_at_ms as i64 + 21_610_000;
+        instrument_request.instrument.delivery_end_ms = created_at_ms as i64 + 21_640_000;
+        instrument_request.instrument.created_at_ms = created_at_ms as i64 + 1_000;
+        kernel
+            .create_capacity_instrument(&fixture_context(created_at_ms + 1_000), instrument_request)
+            .expect("forward instrument");
+
+        let instrument = kernel
+            .get_capacity_instrument("instrument.compute.alpha")
+            .expect("instrument");
+        let committed = instrument
+            .metadata
+            .get("committed_capability_envelope")
+            .expect("committed capability envelope")
+            .clone();
+        let committed: ComputeCapabilityEnvelope =
+            serde_json::from_value(committed).expect("decode committed capability");
+        assert_eq!(committed.backend_family, Some(ComputeBackendFamily::Ollama));
+        assert_eq!(committed.compute_family, Some(ComputeFamily::Inference));
+        assert_eq!(
+            instrument
+                .metadata
+                .get("market_phase")
+                .and_then(serde_json::Value::as_str),
+            Some("forward_physical")
         );
     }
 }
