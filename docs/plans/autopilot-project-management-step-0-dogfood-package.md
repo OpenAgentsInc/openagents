@@ -517,6 +517,36 @@ At the end of the pilot cycle, answer:
 
 Only proven answers should shape later phases.
 
+### 5.5 Pilot-driven simplifications and rejection rules
+
+The pilot did not justify reopening these yet:
+
+- rich `Team` or `Project` entities
+- comments, mentions, notifications
+- estimates, story points, custom fields, or custom workflow states
+- multi-assignee ownership
+- money-authoritative bounty or payout logic inside PM
+
+Stable Step 0 and Phase 1 rejection codes:
+
+- `project_ops.invalid_command`
+- `project_ops.work_item_exists`
+- `project_ops.work_item_missing`
+- `project_ops.invalid_transition`
+- `project_ops.dependency_missing`
+- `project_ops.archived_mutation`
+- `project_ops.noop_mutation`
+- `project_ops.checkpoint_conflict`
+
+Required rejection cases to preserve:
+
+- same-status change rejects as no-op
+- blocked is not a workflow state
+- archived items reject mutation until unarchived
+- missing cycle or parent references reject clearly
+- self-parenting rejects clearly
+- out-of-order projection apply surfaces a checkpoint conflict instead of silently rewriting state
+
 ---
 
 ## 6. Test matrix

@@ -453,6 +453,49 @@ Turn Step 0 learnings into a stable PM contract and define the exact Spacetime c
    - invalid transition fixtures
    - parity evidence requirements for later live cutover
 
+7. **Stable rejection taxonomy and pilot simplifications.**
+   - document canonical `project_ops.*` rejection codes
+   - keep invalid transitions explicit
+   - record which fields/entities the pilot did not justify so they stay deferred
+
+### Phase 1 invalid transitions and pilot-pruned scope
+
+Keep the Phase 1 rejection surface narrow and explicit:
+
+- `project_ops.invalid_command`
+  - malformed envelope/payload, self-parenting, blank required values, or illegal patch shape
+- `project_ops.work_item_exists`
+  - create rejected because the work-item id already exists
+- `project_ops.work_item_missing`
+  - mutation rejected because the targeted work item no longer exists
+- `project_ops.invalid_transition`
+  - workflow transition is not in the canonical state machine
+- `project_ops.dependency_missing`
+  - cycle or parent reference is missing from the current PM projection state
+- `project_ops.archived_mutation`
+  - mutation attempted against an archived work item without unarchiving first
+- `project_ops.noop_mutation`
+  - mutation would not change state (same status, same assignee, same blocked reason, etc.)
+- `project_ops.checkpoint_conflict`
+  - projection apply/checkpoint state is out of order and requires rebootstrap or rewind
+
+Invalid transition rules that remain explicit in v1:
+
+- same-status changes are rejected as no-op
+- blocked is a flag/reason, not a workflow status
+- archived work items may only be unarchived, not edited in place
+- cycle assignment requires an existing cycle projection row
+- parent assignment requires an existing work item and forbids self-parenting
+- archive and completion remain separate concerns
+
+Pilot-driven simplifications that stay deferred:
+
+- no rich Team or Project entities in v1
+- no comments, mentions, or notifications in v1
+- no estimates, story points, or custom workflow states
+- no multi-assignee model
+- no bounty or payout authority in PM
+
 ### Exit criteria
 
 - The reducer/event model can be implemented and tested without reopening product-shape debates.

@@ -1,6 +1,7 @@
 use super::contract::{
-    ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope, ProjectOpsActor, ProjectOpsCommand,
-    ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsEditWorkItemFieldsPatch,
+    project_ops_error, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventEnvelope,
+    ProjectOpsActor, ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
+    ProjectOpsEditWorkItemFieldsPatch, ProjectOpsErrorCode,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 use super::projection::{ProjectOpsActivityRow, ProjectOpsProjectionStore};
@@ -56,7 +57,9 @@ impl ProjectOpsService {
         &mut self,
         envelope: ProjectOpsCommandEnvelope,
     ) -> Result<ProjectOpsCommandResult, String> {
-        envelope.validate()?;
+        envelope
+            .validate()
+            .map_err(|error| project_ops_error(ProjectOpsErrorCode::InvalidCommand, error))?;
         if self.command_already_applied(&envelope.command_id) {
             return Ok(ProjectOpsCommandResult::DuplicateCommand {
                 command_id: envelope.command_id,
@@ -123,9 +126,12 @@ impl ProjectOpsService {
                     .iter()
                     .any(|existing| existing.work_item_id == command.draft.work_item_id)
                 {
-                    return Err(format!(
-                        "work item {} already exists",
-                        command.draft.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::WorkItemExists,
+                        format!(
+                            "work item {} already exists",
+                            command.draft.work_item_id.as_str()
+                        ),
                     ));
                 }
                 let work_item_id = command.draft.work_item_id.clone();
@@ -146,7 +152,9 @@ impl ProjectOpsService {
                     updated_at_unix_ms: envelope.issued_at_unix_ms,
                     archived_at_unix_ms: None,
                 };
-                work_item.validate()?;
+                work_item.validate().map_err(|error| {
+                    project_ops_error(ProjectOpsErrorCode::InvalidCommand, error)
+                })?;
                 work_items.push(work_item.clone());
                 Ok((
                     work_item_id,
@@ -161,13 +169,18 @@ impl ProjectOpsService {
                 let mut next = current.clone();
                 apply_edit_patch(&mut next, &command.patch)?;
                 if next == *current {
-                    return Err(format!(
-                        "work item {} edit patch did not change any fields",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} edit patch did not change any fields",
+                            command.work_item_id.as_str()
+                        ),
                     ));
                 }
                 next.updated_at_unix_ms = envelope.issued_at_unix_ms;
-                next.validate()?;
+                next.validate().map_err(|error| {
+                    project_ops_error(ProjectOpsErrorCode::InvalidCommand, error)
+                })?;
                 work_items[index] = next;
                 Ok((
                     command.work_item_id.clone(),
@@ -205,10 +218,13 @@ impl ProjectOpsService {
                 let current = &work_items[index];
                 reject_archived_mutation(current, "assign work item")?;
                 if current.assignee.as_deref() == Some(command.assignee.as_str()) {
-                    return Err(format!(
-                        "work item {} is already assigned to {}",
-                        command.work_item_id.as_str(),
-                        command.assignee
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} is already assigned to {}",
+                            command.work_item_id.as_str(),
+                            command.assignee
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -231,9 +247,12 @@ impl ProjectOpsService {
                 let current = &work_items[index];
                 reject_archived_mutation(current, "clear assignee")?;
                 if current.assignee.is_none() {
-                    return Err(format!(
-                        "work item {} does not have an assignee",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} does not have an assignee",
+                            command.work_item_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -256,16 +275,22 @@ impl ProjectOpsService {
                     .iter()
                     .any(|cycle| cycle.cycle_id == command.cycle_id)
                 {
-                    return Err(format!(
-                        "cycle {} does not exist in the PM cycles projection",
-                        command.cycle_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::DependencyMissing,
+                        format!(
+                            "cycle {} does not exist in the PM cycles projection",
+                            command.cycle_id.as_str()
+                        ),
                     ));
                 }
                 if current.cycle_id.as_ref() == Some(&command.cycle_id) {
-                    return Err(format!(
-                        "work item {} is already in cycle {}",
-                        command.work_item_id.as_str(),
-                        command.cycle_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} is already in cycle {}",
+                            command.work_item_id.as_str(),
+                            command.cycle_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -288,9 +313,12 @@ impl ProjectOpsService {
                 let current = &work_items[index];
                 reject_archived_mutation(current, "clear cycle")?;
                 if current.cycle_id.is_none() {
-                    return Err(format!(
-                        "work item {} does not have a cycle",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} does not have a cycle",
+                            command.work_item_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -308,9 +336,12 @@ impl ProjectOpsService {
                 let current = &work_items[index];
                 reject_archived_mutation(current, "set blocked reason")?;
                 if current.blocked_reason.as_deref() == Some(command.blocked_reason.as_str()) {
-                    return Err(format!(
-                        "work item {} already has that blocked reason",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} already has that blocked reason",
+                            command.work_item_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -333,9 +364,9 @@ impl ProjectOpsService {
                 let current = &work_items[index];
                 reject_archived_mutation(current, "clear blocked reason")?;
                 if current.blocked_reason.is_none() {
-                    return Err(format!(
-                        "work item {} is not blocked",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!("work item {} is not blocked", command.work_item_id.as_str()),
                     ));
                 }
                 let mut next = current.clone();
@@ -353,22 +384,31 @@ impl ProjectOpsService {
                 let current = &work_items[index];
                 reject_archived_mutation(current, "set parent")?;
                 if command.work_item_id == command.parent_id {
-                    return Err("work item cannot be its own parent".to_string());
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::InvalidCommand,
+                        "work item cannot be its own parent",
+                    ));
                 }
                 if !work_items
                     .iter()
                     .any(|item| item.work_item_id == command.parent_id)
                 {
-                    return Err(format!(
-                        "parent work item {} does not exist",
-                        command.parent_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::DependencyMissing,
+                        format!(
+                            "parent work item {} does not exist",
+                            command.parent_id.as_str()
+                        ),
                     ));
                 }
                 if current.parent_id.as_ref() == Some(&command.parent_id) {
-                    return Err(format!(
-                        "work item {} already has parent {}",
-                        command.work_item_id.as_str(),
-                        command.parent_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} already has parent {}",
+                            command.work_item_id.as_str(),
+                            command.parent_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -391,9 +431,12 @@ impl ProjectOpsService {
                 let current = &work_items[index];
                 reject_archived_mutation(current, "clear parent")?;
                 if current.parent_id.is_none() {
-                    return Err(format!(
-                        "work item {} does not have a parent",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} does not have a parent",
+                            command.work_item_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -410,9 +453,12 @@ impl ProjectOpsService {
                 let index = find_work_item_index(work_items.as_slice(), &command.work_item_id)?;
                 let current = &work_items[index];
                 if current.archived_at_unix_ms.is_some() {
-                    return Err(format!(
-                        "work item {} is already archived",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::ArchivedMutation,
+                        format!(
+                            "work item {} is already archived",
+                            command.work_item_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -434,9 +480,12 @@ impl ProjectOpsService {
                 let index = find_work_item_index(work_items.as_slice(), &command.work_item_id)?;
                 let current = &work_items[index];
                 if current.archived_at_unix_ms.is_none() {
-                    return Err(format!(
-                        "work item {} is not archived",
-                        command.work_item_id.as_str()
+                    return Err(project_ops_error(
+                        ProjectOpsErrorCode::NoopMutation,
+                        format!(
+                            "work item {} is not archived",
+                            command.work_item_id.as_str()
+                        ),
                     ));
                 }
                 let mut next = current.clone();
@@ -565,10 +614,13 @@ fn actor_display_label(actor: &ProjectOpsActor) -> String {
 
 fn reject_archived_mutation(work_item: &ProjectOpsWorkItem, action: &str) -> Result<(), String> {
     if work_item.archived_at_unix_ms.is_some() {
-        return Err(format!(
-            "cannot {} archived work item {}",
-            action,
-            work_item.work_item_id.as_str()
+        return Err(project_ops_error(
+            ProjectOpsErrorCode::ArchivedMutation,
+            format!(
+                "cannot {} archived work item {}",
+                action,
+                work_item.work_item_id.as_str()
+            ),
         ));
     }
     Ok(())
@@ -581,14 +633,21 @@ fn find_work_item_index(
     work_items
         .iter()
         .position(|item| &item.work_item_id == work_item_id)
-        .ok_or_else(|| format!("work item {} does not exist", work_item_id.as_str()))
+        .ok_or_else(|| {
+            project_ops_error(
+                ProjectOpsErrorCode::WorkItemMissing,
+                format!("work item {} does not exist", work_item_id.as_str()),
+            )
+        })
 }
 
 fn apply_edit_patch(
     work_item: &mut ProjectOpsWorkItem,
     patch: &ProjectOpsEditWorkItemFieldsPatch,
 ) -> Result<(), String> {
-    patch.validate()?;
+    patch
+        .validate()
+        .map_err(|error| project_ops_error(ProjectOpsErrorCode::InvalidCommand, error))?;
     if let Some(title) = patch.title.as_ref() {
         work_item.title = title.clone();
     }
@@ -612,16 +671,22 @@ fn validate_status_transition(
     target: ProjectOpsWorkItemStatus,
 ) -> Result<(), String> {
     if current == target {
-        return Err(format!("work item is already in status {}", target.label()));
+        return Err(project_ops_error(
+            ProjectOpsErrorCode::NoopMutation,
+            format!("work item is already in status {}", target.label()),
+        ));
     }
     let allowed = allowed_status_targets(current);
     if allowed.contains(&target) {
         return Ok(());
     }
-    Err(format!(
-        "invalid status transition: {} -> {}",
-        current.label(),
-        target.label()
+    Err(project_ops_error(
+        ProjectOpsErrorCode::InvalidTransition,
+        format!(
+            "invalid status transition: {} -> {}",
+            current.label(),
+            target.label()
+        ),
     ))
 }
 
@@ -803,6 +868,7 @@ mod tests {
                 }),
             ))
             .expect_err("backlog -> done should reject");
+        assert!(error.contains("project_ops.invalid_transition:"));
         assert!(error.contains("invalid status transition"));
 
         let error = service
@@ -816,6 +882,7 @@ mod tests {
                 }),
             ))
             .expect_err("missing work item should reject");
+        assert!(error.contains("project_ops.work_item_missing:"));
         assert!(error.contains("does not exist"));
     }
 
@@ -867,6 +934,7 @@ mod tests {
                 }),
             ))
             .expect_err("missing cycle should reject");
+        assert!(error.contains("project_ops.dependency_missing:"));
         assert!(error.contains("does not exist in the PM cycles projection"));
 
         assert!(matches!(
@@ -893,5 +961,71 @@ mod tests {
             service.projections.work_items[0].cycle_id.as_ref().map(|cycle| cycle.as_str()),
             Some("2026-w10")
         );
+    }
+
+    #[test]
+    fn archived_and_noop_rejections_use_stable_error_codes() {
+        let mut service = service();
+        let _ = service
+            .apply_command(command_envelope(
+                "cmd-1",
+                1_762_000_000_000,
+                ProjectOpsCommand::CreateWorkItem(ProjectOpsCreateWorkItem {
+                    draft: draft(ProjectOpsWorkItemStatus::Todo),
+                }),
+            ))
+            .expect("create should succeed");
+        let _ = service
+            .apply_command(command_envelope(
+                "cmd-2",
+                1_762_000_050_000,
+                ProjectOpsCommand::ArchiveWorkItem(
+                    crate::project_ops::contract::ProjectOpsWorkItemRef {
+                        work_item_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-1")
+                            .expect("work item id"),
+                    },
+                ),
+            ))
+            .expect("archive should succeed");
+
+        let archived_error = service
+            .apply_command(command_envelope(
+                "cmd-3",
+                1_762_000_100_000,
+                ProjectOpsCommand::ChangeWorkItemStatus(ProjectOpsChangeWorkItemStatus {
+                    work_item_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-1")
+                        .expect("work item id"),
+                    status: ProjectOpsWorkItemStatus::InProgress,
+                }),
+            ))
+            .expect_err("archived mutation should reject");
+        assert!(archived_error.contains("project_ops.archived_mutation:"));
+
+        let noop_error = service
+            .apply_command(command_envelope(
+                "cmd-4",
+                1_762_000_150_000,
+                ProjectOpsCommand::UnarchiveWorkItem(
+                    crate::project_ops::contract::ProjectOpsWorkItemRef {
+                        work_item_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-1")
+                            .expect("work item id"),
+                    },
+                ),
+            ))
+            .expect("unarchive should succeed");
+        assert!(matches!(noop_error, ProjectOpsCommandResult::Applied(_)));
+
+        let noop_error = service
+            .apply_command(command_envelope(
+                "cmd-5",
+                1_762_000_200_000,
+                ProjectOpsCommand::ChangeWorkItemStatus(ProjectOpsChangeWorkItemStatus {
+                    work_item_id: crate::project_ops::schema::ProjectOpsWorkItemId::new("wi-1")
+                        .expect("work item id"),
+                    status: ProjectOpsWorkItemStatus::Todo,
+                }),
+            ))
+            .expect_err("same status should reject");
+        assert!(noop_error.contains("project_ops.noop_mutation:"));
     }
 }
