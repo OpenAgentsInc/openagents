@@ -11,6 +11,7 @@ use crate::project_ops::contract::{
     PROJECT_OPS_WORK_ITEMS_STREAM_ID,
 };
 use crate::project_ops::schema::{ProjectOpsCycleId, ProjectOpsWorkItem, ProjectOpsWorkItemId};
+use crate::project_ops::views::builtin_saved_view_specs;
 use crate::sync_apply::{StreamApplyDecision, SyncApplyEngine, SyncApplyPolicy};
 
 pub const PROJECT_OPS_PROJECTION_SCHEMA_VERSION: u16 = 1;
@@ -634,6 +635,9 @@ fn normalize_cycles(mut rows: Vec<ProjectOpsCycleRow>) -> Vec<ProjectOpsCycleRow
 }
 
 fn normalize_saved_views(mut rows: Vec<ProjectOpsSavedViewRow>) -> Vec<ProjectOpsSavedViewRow> {
+    for spec in builtin_saved_view_rows() {
+        rows.push(spec);
+    }
     rows.sort_by(|lhs, rhs| {
         rhs.built_in
             .cmp(&lhs.built_in)
@@ -643,6 +647,19 @@ fn normalize_saved_views(mut rows: Vec<ProjectOpsSavedViewRow>) -> Vec<ProjectOp
     let mut seen_ids = BTreeSet::new();
     rows.retain(|row| seen_ids.insert(row.view_id.clone()));
     rows
+}
+
+fn builtin_saved_view_rows() -> Vec<ProjectOpsSavedViewRow> {
+    builtin_saved_view_specs()
+        .iter()
+        .map(|spec| ProjectOpsSavedViewRow {
+            view_id: spec.view_id.to_string(),
+            title: spec.title.to_string(),
+            query: spec.query.to_string(),
+            filters: spec.filters.iter().map(|filter| (*filter).to_string()).collect(),
+            built_in: true,
+        })
+        .collect()
 }
 
 fn persist_work_items(path: &Path, rows: &[ProjectOpsWorkItem]) -> Result<(), String> {
@@ -818,8 +835,9 @@ fn load_or_bootstrap_saved_views(
     let raw = match fs::read_to_string(path) {
         Ok(raw) => raw,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
-            persist_saved_views(path, &[])?;
-            return Ok((Vec::new(), true));
+            let rows = builtin_saved_view_rows();
+            persist_saved_views(path, rows.as_slice())?;
+            return Ok((normalize_saved_views(rows), true));
         }
         Err(error) => return Err(format!("Failed to read PM saved views projection: {error}")),
     };
@@ -840,7 +858,9 @@ fn load_or_bootstrap_saved_views(
     for row in &document.rows {
         row.validate()?;
     }
-    Ok((normalize_saved_views(document.rows), false))
+    let normalized = normalize_saved_views(document.rows);
+    persist_saved_views(path, normalized.as_slice())?;
+    Ok((normalized, false))
 }
 
 #[cfg(test)]
@@ -917,11 +937,11 @@ mod tests {
 
     fn sample_saved_view_row() -> ProjectOpsSavedViewRow {
         ProjectOpsSavedViewRow {
-            view_id: "my-work".to_string(),
-            title: "My Work".to_string(),
-            query: "assignee:me".to_string(),
-            filters: vec!["assignee:me".to_string(), "status:todo".to_string()],
-            built_in: true,
+            view_id: "focus".to_string(),
+            title: "Focus".to_string(),
+            query: "priority:high".to_string(),
+            filters: vec!["priority:high".to_string(), "status:active".to_string()],
+            built_in: false,
         }
     }
 
@@ -948,6 +968,7 @@ mod tests {
         );
         assert_eq!(store.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(0));
         assert_eq!(store.checkpoint_for(PROJECT_OPS_SAVED_VIEWS_STREAM_ID), Some(0));
+        assert_eq!(store.saved_views.len(), 5);
 
         for (path, stream_id) in [
             (&work_items_path, PROJECT_OPS_WORK_ITEMS_STREAM_ID),
@@ -1016,7 +1037,7 @@ mod tests {
         assert_eq!(reloaded.work_items.len(), 1);
         assert_eq!(reloaded.activity_rows.len(), 1);
         assert_eq!(reloaded.cycles.len(), 1);
-        assert_eq!(reloaded.saved_views.len(), 1);
+        assert_eq!(reloaded.saved_views.len(), 6);
         assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID), Some(1));
         assert_eq!(
             reloaded.checkpoint_for(PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID),
