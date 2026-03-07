@@ -956,7 +956,8 @@ impl AutopilotChatState {
     pub fn active_managed_chat_local_member(&self) -> Option<&ManagedChatMemberProjection> {
         let group = self.active_managed_chat_group()?;
         let local_pubkey = self.managed_chat_local_pubkey()?;
-        group.members
+        group
+            .members
             .iter()
             .find(|member| member.pubkey == local_pubkey)
     }

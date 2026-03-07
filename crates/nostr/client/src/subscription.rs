@@ -3,8 +3,7 @@
 use crate::error::{ClientError, Result};
 use nostr::Event;
 use nostr::nip77::{
-    Bound, NegClose, NegOpen, NegentropyMessage, Range, Record, calculate_fingerprint,
-    sort_records,
+    Bound, NegClose, NegOpen, NegentropyMessage, Range, Record, calculate_fingerprint, sort_records,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -127,8 +126,8 @@ impl Subscription {
         local_records: &[Record],
     ) -> nostr::nip77::Result<GapRecoveryPlan> {
         let req_payload = build_req_payload(self);
-        let use_negentropy = matches!(capability, RelayGapRecoveryCapability::Negentropy)
-            && self.filters.len() == 1;
+        let use_negentropy =
+            matches!(capability, RelayGapRecoveryCapability::Negentropy) && self.filters.len() == 1;
         if !use_negentropy {
             return Ok(GapRecoveryPlan {
                 transport: GapRecoveryTransport::ReqEoseOnly,
@@ -142,14 +141,15 @@ impl Subscription {
         sort_records(&mut records);
         let ids = records.iter().map(|record| record.id).collect::<Vec<_>>();
         let fingerprint = calculate_fingerprint(&ids);
-        let message = NegentropyMessage::new(vec![Range::fingerprint(
-            Bound::infinity(),
-            fingerprint,
-        )]);
+        let message =
+            NegentropyMessage::new(vec![Range::fingerprint(Bound::infinity(), fingerprint)]);
         let neg_subscription_id = format!("neg-{}", self.id);
-        let neg_open =
-            NegOpen::new(neg_subscription_id.clone(), self.filters[0].clone(), &message)?
-                .to_json();
+        let neg_open = NegOpen::new(
+            neg_subscription_id.clone(),
+            self.filters[0].clone(),
+            &message,
+        )?
+        .to_json();
         let neg_close = NegClose::new(neg_subscription_id).to_json();
         Ok(GapRecoveryPlan {
             transport: GapRecoveryTransport::NegentropyReqFallback,
@@ -219,10 +219,7 @@ mod tests {
             vec![json!({"kinds":[42]}), json!({"kinds":[39000]})],
         );
         let ambiguous = multi_filter
-            .build_gap_recovery_plan(
-                RelayGapRecoveryCapability::Negentropy,
-                &[record(10, 0x01)],
-            )
+            .build_gap_recovery_plan(RelayGapRecoveryCapability::Negentropy, &[record(10, 0x01)])
             .expect("multi-filter fallback");
         assert_eq!(ambiguous.transport, GapRecoveryTransport::ReqEoseOnly);
         assert!(ambiguous.neg_open_payload.is_none());

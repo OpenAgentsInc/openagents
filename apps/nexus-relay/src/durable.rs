@@ -676,7 +676,11 @@ mod tests {
             body["software"],
             "https://git.sr.ht/~gheartsfield/nostr-rs-relay"
         );
-        assert!(body["version"].as_str().is_some_and(|value| !value.is_empty()));
+        assert!(
+            body["version"]
+                .as_str()
+                .is_some_and(|value| !value.is_empty())
+        );
         assert_eq!(body["supported_nips"].as_array().map(Vec::len), Some(12));
         assert_eq!(body["limitation"]["payment_required"], false);
         assert_eq!(body["limitation"]["restricted_writes"], false);

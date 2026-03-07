@@ -31,6 +31,5 @@ pub use relay::{
     RelayMessage,
 };
 pub use subscription::{
-    EventCallback, GapRecoveryPlan, GapRecoveryTransport, RelayGapRecoveryCapability,
-    Subscription,
+    EventCallback, GapRecoveryPlan, GapRecoveryTransport, RelayGapRecoveryCapability, Subscription,
 };

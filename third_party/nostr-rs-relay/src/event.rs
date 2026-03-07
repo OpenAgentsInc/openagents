@@ -8,6 +8,7 @@ use crate::error::Result;
 use crate::event::EventWrapper::WrappedAuth;
 use crate::event::EventWrapper::WrappedEvent;
 use crate::nip05;
+use crate::subscription::TagOperand;
 use crate::utils::unix_time;
 use bitcoin_hashes::{sha256, Hash};
 use lazy_static::lazy_static;
@@ -19,7 +20,6 @@ use std::collections::HashMap;
 use std::collections::HashSet;
 use std::str::FromStr;
 use tracing::{debug, info};
-use crate::subscription::TagOperand;
 
 lazy_static! {
     /// Secp256k1 verification instance.
@@ -65,8 +65,8 @@ type Tag = Vec<Vec<String>>;
 
 /// Deserializer that ensures we always have a [`Tag`].
 fn tag_from_string<'de, D>(deserializer: D) -> Result<Tag, D::Error>
-    where
-        D: Deserializer<'de>,
+where
+    D: Deserializer<'de>,
 {
     let opt = Option::deserialize(deserializer)?;
     Ok(opt.unwrap_or_default())
@@ -415,12 +415,10 @@ impl Event {
         match &self.tagidx {
             // check if this is indexable tagname
             Some(idx) => match idx.get(&tagname) {
-                Some(valset) => {
-                    match &check {
-                        TagOperand::And(v) => valset.intersection(v).count() == v.len(),
-                        TagOperand::Or(v) => valset.intersection(v).count() > 0
-                    }
-                }
+                Some(valset) => match &check {
+                    TagOperand::And(v) => valset.intersection(v).count() == v.len(),
+                    TagOperand::Or(v) => valset.intersection(v).count() > 0,
+                },
                 None => false,
             },
             None => false,
@@ -467,8 +465,10 @@ mod tests {
     #[test]
     fn empty_event_tag_match() {
         let event = Event::simple_event();
-        assert!(!event
-            .generic_tag_val_intersect('e', &TagOperand::Or(HashSet::from(["foo".to_owned(), "bar".to_owned()]))));
+        assert!(!event.generic_tag_val_intersect(
+            'e',
+            &TagOperand::Or(HashSet::from(["foo".to_owned(), "bar".to_owned()]))
+        ));
     }
 
     #[test]
@@ -476,12 +476,10 @@ mod tests {
         let mut event = Event::simple_event();
         event.tags = vec![vec!["e".to_owned(), "foo".to_owned()]];
         event.build_index();
-        assert!(
-            event.generic_tag_val_intersect(
-                'e',
-                &TagOperand::Or(HashSet::from(["foo".to_owned(), "bar".to_owned()])),
-            )
-        );
+        assert!(event.generic_tag_val_intersect(
+            'e',
+            &TagOperand::Or(HashSet::from(["foo".to_owned(), "bar".to_owned()])),
+        ));
     }
 
     #[test]
