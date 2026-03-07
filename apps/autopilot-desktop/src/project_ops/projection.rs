@@ -331,6 +331,46 @@ impl ProjectOpsProjectionStore {
             .and_then(|checkpoints| checkpoints.checkpoint_for(stream_id))
     }
 
+    pub fn max_checkpoint_seq(&self) -> u64 {
+        self.checkpoints
+            .as_ref()
+            .map_or(0, SyncApplyEngine::max_checkpoint_seq)
+    }
+
+    pub fn resume_cursor_for_stream(&self, stream_id: &str, remote_head_seq: Option<u64>) -> Option<u64> {
+        self.checkpoints
+            .as_ref()
+            .map(|checkpoints| checkpoints.resume_cursor_for_stream(stream_id, remote_head_seq))
+    }
+
+    pub fn rewind_stream_checkpoint(&mut self, stream_id: &str, seq: u64) -> Result<(), String> {
+        let checkpoints = self
+            .checkpoints
+            .as_mut()
+            .ok_or_else(|| format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()))?;
+        checkpoints.rewind_stream(stream_id, seq)?;
+        self.last_error = None;
+        self.last_action = Some(format!("Rewound {stream_id} checkpoint to seq {seq}"));
+        self.load_state = PaneLoadState::Ready;
+        Ok(())
+    }
+
+    pub fn adopt_remote_checkpoint(&mut self, stream_id: &str, seq: u64) -> Result<bool, String> {
+        let checkpoints = self
+            .checkpoints
+            .as_mut()
+            .ok_or_else(|| format!("PM checkpoints unavailable for {}", self.checkpoint_path.display()))?;
+        let adopted = checkpoints.adopt_checkpoint_if_newer(stream_id, seq)?;
+        self.last_error = None;
+        self.last_action = Some(if adopted {
+            format!("Adopted remote {stream_id} checkpoint seq {seq}")
+        } else {
+            format!("Ignored stale remote {stream_id} checkpoint seq {seq}")
+        });
+        self.load_state = PaneLoadState::Ready;
+        Ok(adopted)
+    }
+
     pub fn apply_work_items_projection(
         &mut self,
         seq: u64,
@@ -1028,5 +1068,56 @@ mod tests {
                 .is_some_and(|error| error.contains("Out-of-order"))
         );
         assert_eq!(store.work_items.len(), 1);
+    }
+
+    #[test]
+    fn checkpoint_recovery_helpers_match_sync_apply_contract() {
+        let work_items_path = unique_temp_path("recover-work-items");
+        let activity_path = unique_temp_path("recover-activity");
+        let cycles_path = unique_temp_path("recover-cycles");
+        let saved_views_path = unique_temp_path("recover-saved-views");
+        let checkpoint_path = unique_temp_path("recover-checkpoints");
+
+        let mut store = ProjectOpsProjectionStore::from_paths_for_tests(
+            work_items_path,
+            activity_path,
+            cycles_path,
+            saved_views_path,
+            checkpoint_path.clone(),
+        );
+
+        assert!(matches!(
+            store
+                .apply_work_items_projection(1, vec![sample_work_item()])
+                .expect("first PM seq should apply"),
+            StreamApplyDecision::Applied { .. }
+        ));
+        assert_eq!(store.max_checkpoint_seq(), 1);
+        assert_eq!(
+            store.resume_cursor_for_stream(PROJECT_OPS_WORK_ITEMS_STREAM_ID, Some(20_000)),
+            Some(10_000)
+        );
+
+        assert!(
+            store
+                .adopt_remote_checkpoint(PROJECT_OPS_CYCLES_STREAM_ID, 4)
+                .expect("remote checkpoint should adopt")
+        );
+        assert_eq!(store.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(4));
+
+        store
+            .rewind_stream_checkpoint(PROJECT_OPS_CYCLES_STREAM_ID, 2)
+            .expect("rewind should persist");
+        assert_eq!(store.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(2));
+
+        let reloaded = ProjectOpsProjectionStore::from_paths_for_tests(
+            unique_temp_path("recover-work-items-reload-unused"),
+            unique_temp_path("recover-activity-reload-unused"),
+            unique_temp_path("recover-cycles-reload-unused"),
+            unique_temp_path("recover-saved-views-reload-unused"),
+            checkpoint_path,
+        );
+        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID), Some(1));
+        assert_eq!(reloaded.checkpoint_for(PROJECT_OPS_CYCLES_STREAM_ID), Some(2));
     }
 }
