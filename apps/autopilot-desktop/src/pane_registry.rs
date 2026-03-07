@@ -52,14 +52,25 @@ pub fn pane_spec(kind: PaneKind) -> &'static PaneSpec {
         .unwrap_or(&PANE_SPECS[0])
 }
 
-pub fn pane_spec_by_command_id(command_id: &str) -> Option<&'static PaneSpec> {
+pub fn pane_kind_enabled(kind: PaneKind) -> bool {
+    match kind {
+        PaneKind::ProjectOps => crate::project_ops::project_ops_enabled_from_env(),
+        _ => true,
+    }
+}
+
+pub fn enabled_pane_specs() -> impl Iterator<Item = &'static PaneSpec> {
     pane_specs()
         .iter()
-        .find(|spec| spec.command.is_some_and(|command| command.id == command_id))
+        .filter(|spec| pane_kind_enabled(spec.kind))
+}
+
+pub fn pane_spec_by_command_id(command_id: &str) -> Option<&'static PaneSpec> {
+    enabled_pane_specs().find(|spec| spec.command.is_some_and(|command| command.id == command_id))
 }
 
 pub fn pane_kind_for_hotbar_slot(slot: u8) -> Option<PaneKind> {
-    pane_specs().iter().find_map(|spec| {
+    enabled_pane_specs().find_map(|spec| {
         spec.hotbar
             .filter(|hotbar| hotbar.slot == slot)
             .map(|_| spec.kind)
@@ -67,20 +78,17 @@ pub fn pane_kind_for_hotbar_slot(slot: u8) -> Option<PaneKind> {
 }
 
 pub fn pane_spec_for_hotbar_slot(slot: u8) -> Option<&'static PaneSpec> {
-    pane_specs()
-        .iter()
-        .find(|spec| spec.hotbar.is_some_and(|hotbar| hotbar.slot == slot))
+    enabled_pane_specs().find(|spec| spec.hotbar.is_some_and(|hotbar| hotbar.slot == slot))
 }
 
 pub fn startup_pane_kinds() -> Vec<PaneKind> {
-    pane_specs()
-        .iter()
+    enabled_pane_specs()
         .filter(|spec| spec.startup)
         .map(|spec| spec.kind)
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 38] = [
+const PANE_SPECS: [PaneSpec; 39] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -110,6 +118,21 @@ const PANE_SPECS: [PaneSpec; 38] = [
             tooltip: "Autopilot Chat",
             shortcut: None,
         }),
+    },
+    PaneSpec {
+        kind: PaneKind::ProjectOps,
+        title: "Project Ops",
+        default_width: 980.0,
+        default_height: 560.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.project_ops",
+            label: "Project Ops",
+            description: "Open the native PM shell behind the project_ops feature gate",
+            keybinding: None,
+        }),
+        hotbar: None,
     },
     PaneSpec {
         kind: PaneKind::CodexAccount,
@@ -666,7 +689,8 @@ const PANE_SPECS: [PaneSpec; 38] = [
 #[cfg(test)]
 mod tests {
     use super::{
-        pane_kind_for_hotbar_slot, pane_spec, pane_spec_by_command_id, pane_specs,
+        enabled_pane_specs, pane_kind_enabled, pane_kind_for_hotbar_slot, pane_spec,
+        pane_spec_by_command_id, pane_specs,
         startup_pane_kinds,
     };
     use crate::app_state::PaneKind;
@@ -683,7 +707,12 @@ mod tests {
                     "duplicate command id {}",
                     command.id
                 );
-                assert!(pane_spec_by_command_id(command.id).is_some());
+                assert_eq!(
+                    pane_spec_by_command_id(command.id).is_some(),
+                    pane_kind_enabled(spec.kind),
+                    "command id {} visibility should match pane feature gate",
+                    command.id
+                );
             }
             if let Some(hotbar) = spec.hotbar {
                 assert!(
@@ -733,6 +762,19 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn project_ops_command_is_hidden_when_feature_gate_is_disabled() {
+        assert!(
+            !pane_kind_enabled(PaneKind::ProjectOps),
+            "project ops feature gate should be off by default in tests"
+        );
+        assert!(pane_spec_by_command_id("pane.project_ops").is_none());
+        assert!(
+            !enabled_pane_specs().any(|spec| spec.kind == PaneKind::ProjectOps),
+            "disabled project ops pane should not appear in enabled pane iteration"
+        );
     }
 
     #[test]

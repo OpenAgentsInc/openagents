@@ -1532,6 +1532,7 @@ fn mirror_ui_error(channel: &'static str, value: Option<&str>) {
 fn mirror_ui_errors_to_console(state: &crate::app_state::RenderState) {
     let provider_preflight_error = provider_preflight_console_error(state);
     mirror_ui_error("autopilot.chat", state.autopilot_chat.last_error.as_deref());
+    mirror_ui_error("project.ops", state.project_ops.last_error.as_deref());
     mirror_ui_error("cad.demo", state.cad_demo.last_error.as_deref());
     mirror_ui_error("spark.wallet", state.spark_wallet.last_error.as_deref());
     mirror_ui_error("codex.account", state.codex_account.last_error.as_deref());

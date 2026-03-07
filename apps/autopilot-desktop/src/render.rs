@@ -22,7 +22,7 @@ use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::ollama_execution::{OllamaExecutionSnapshot, OllamaExecutionWorker};
-use crate::pane_registry::{pane_specs, startup_pane_kinds};
+use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
     PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
@@ -264,6 +264,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             calculator_inputs: crate::app_state::CalculatorPaneInputs::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
+            project_ops: crate::project_ops::ProjectOpsPaneState::default(),
             chat_transcript_selection_drag: None,
             codex_account: crate::app_state::CodexAccountPaneState::default(),
             codex_models: crate::app_state::CodexModelsPaneState::default(),
@@ -955,6 +956,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             state.nostr_identity_error.as_deref(),
             &state.nostr_secret_state,
             &state.autopilot_chat,
+            &state.project_ops,
             &state.spacetime_presence_snapshot,
             &state.codex_account,
             &state.codex_models,
@@ -1266,8 +1268,7 @@ pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
 }
 
 fn command_registry() -> Vec<Command> {
-    let mut commands: Vec<Command> = pane_specs()
-        .iter()
+    let mut commands: Vec<Command> = enabled_pane_specs()
         .filter_map(|spec| {
             let command = spec.command?;
             let mut entry = Command::new(command.id, command.label)
@@ -1297,7 +1298,7 @@ fn command_registry() -> Vec<Command> {
 mod tests {
     use super::{command_registry, wallet_balance_chip_bounds_for_logical};
     use crate::app_state::PaneKind;
-    use crate::pane_registry::{pane_spec_by_command_id, pane_specs, startup_pane_kinds};
+    use crate::pane_registry::{enabled_pane_specs, pane_spec_by_command_id, startup_pane_kinds};
     use crate::pane_system::cad_palette_command_specs;
     use std::collections::BTreeSet;
     use wgpui::Size;
@@ -1308,8 +1309,7 @@ mod tests {
         let command_ids: BTreeSet<&str> =
             commands.iter().map(|command| command.id.as_str()).collect();
 
-        let pane_command_ids: BTreeSet<&str> = pane_specs()
-            .iter()
+        let pane_command_ids: BTreeSet<&str> = enabled_pane_specs()
             .filter_map(|spec| spec.command.map(|command| command.id))
             .collect();
         let cad_command_ids: BTreeSet<&str> = cad_palette_command_specs()
@@ -1434,6 +1434,7 @@ mod tests {
         let startup = startup_pane_kinds();
         assert_eq!(startup, vec![PaneKind::GoOnline]);
         assert!(!startup.contains(&PaneKind::AutopilotChat));
+        assert!(!startup.contains(&PaneKind::ProjectOps));
         assert!(!startup.contains(&PaneKind::CadDemo));
         assert!(!startup.contains(&PaneKind::SparkWallet));
         assert!(!startup.contains(&PaneKind::Empty));

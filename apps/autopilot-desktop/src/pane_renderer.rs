@@ -8,7 +8,8 @@ use crate::app_state::{
     CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
     EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
     JobLifecycleStage, NetworkRequestStatus, NetworkRequestsPaneInputs, NetworkRequestsState,
-    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProviderBlocker,
+    NostrSecretState, PaneKind, PaneLoadState, PayInvoicePaneInputs, ProjectOpsPaneState,
+    ProviderBlocker,
     ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
     SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
     SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
@@ -48,6 +49,7 @@ use crate::pane_system::{
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
     chat as chat_pane, codex as codex_pane, credit as credit_pane,
+    project_ops as project_ops_pane,
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
@@ -72,6 +74,7 @@ impl PaneRenderer {
         nostr_identity_error: Option<&str>,
         nostr_secret_state: &NostrSecretState,
         autopilot_chat: &AutopilotChatState,
+        project_ops: &ProjectOpsPaneState,
         spacetime_presence: &crate::spacetime_presence::SpacetimePresenceSnapshot,
         codex_account: &CodexAccountPaneState,
         codex_models: &CodexModelsPaneState,
@@ -158,6 +161,9 @@ impl PaneRenderer {
                         chat_inputs,
                         paint,
                     );
+                }
+                PaneKind::ProjectOps => {
+                    project_ops_pane::paint_project_ops_pane(content_bounds, project_ops, paint);
                 }
                 PaneKind::Calculator => {
                     calculator_pane::paint(content_bounds, calculator_inputs, paint);

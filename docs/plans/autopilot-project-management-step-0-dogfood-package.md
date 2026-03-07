@@ -2,7 +2,7 @@
 
 **Status:** Ready for implementation
 **Scope:** Step 0 only — native internal dogfood slice inside `apps/autopilot-desktop`
-**Goal:** Let one internal team manage a real cycle in a native PM surface without depending on an external tracker.
+**Goal:** Let one internal team manage a real cycle in a native PM surface using canonical PM stream ids, local projection caches, and the repo's existing replay/checkpoint discipline.
 
 ---
 
@@ -13,7 +13,8 @@
 Step 0 is the smallest native PM subsystem that is still worth dogfooding:
 
 - one feature-gated `Project Ops` pane
-- one local authoritative store
+- one local set of PM projection documents
+- one shared checkpoint path using the existing sync apply engine
 - one work-item model
 - one active internal pilot team
 - one real cycle of use
@@ -29,7 +30,8 @@ Its job is not to solve all project management. Its job is to prove that the nat
 ### What Step 0 is not
 
 - not a full collaboration suite
-- not a network sync project
+- not a live multi-user Spacetime cutover
+- not a separate bespoke PM database
 - not an agent runner
 - not a payout system
 - not a permissions/governance project
@@ -123,7 +125,7 @@ Every mutating command should include:
 
 ### 2.5 Required events
 
-Step 0 authoritative events:
+Step 0 explicit accepted events:
 
 - `WorkItemCreated`
 - `WorkItemFieldsEdited`
@@ -140,6 +142,24 @@ Step 0 authoritative events:
 - `WorkItemUnarchived`
 
 If one accepted user action causes more than one logical state change, emit multiple explicit events rather than hiding changes inside a generic blob.
+
+### 2.6 Step 0 PM stream catalog
+
+Step 0 should use these canonical stream ids:
+
+| Stream id | Purpose |
+| --- | --- |
+| `stream.pm.work_items.v1` | Current work-item state and list projection |
+| `stream.pm.activity_projection.v1` | Human-readable item history and state-change feed |
+| `stream.pm.cycles.v1` | Active cycle definitions and summaries |
+| `stream.pm.saved_views.v1` | Built-in and user-defined saved views |
+
+These stream ids should appear in:
+
+- projection documents
+- source badges where appropriate
+- checkpoint rows
+- later stream grants when live sync is introduced
 
 ---
 
@@ -176,13 +196,14 @@ Must show:
 - active saved view
 - active cycle indicator if one exists
 - quick-create entry point
+- truthful source badge for the active PM surface
 
 Must support these states:
 
 - loading initial snapshot
 - ready with selected view
 - empty with no work items
-- recoverable store/projection error
+- recoverable projection or apply error
 
 #### Top toolbar
 
@@ -325,11 +346,11 @@ Step 0 should also support one custom saved view per pilot user.
 Every Step 0 pane region should have defined behavior for:
 
 - loading
-  - waiting on initial store open or projection rebuild
+  - waiting on initial projection load or rebuild
 - empty
   - no items match the current view/filter
 - error
-  - store open failure, projection failure, or rejected save
+  - projection load failure, apply failure, or rejected save
 - stale selection
   - selected item was archived or filtered out
 
@@ -352,38 +373,58 @@ Expected behavior:
 
 ## 4. Persistence and replay contract
 
-### 4.1 Authoritative storage
+### 4.1 Local storage shape
 
-Use a local durable store with:
+Step 0 should persist local PM state as projection documents, not as a bespoke PM relational store:
 
-- append-only PM event history
-- projected current-state tables
-- projection metadata
+- `autopilot-pm-work-items-projection-v1.json`
+- `autopilot-pm-activity-projection-v1.json`
+- `autopilot-pm-cycles-v1.json`
+- `autopilot-pm-saved-views-v1.json`
+
+Each projection document should include:
+
+- `schema_version`
+- `stream_id`
+- normalized projection rows or snapshot payload
+
+Checkpoint progress should use the existing shared sync checkpoint file managed by `SyncApplyEngine`.
+
+### 4.2 Step 0 write path
 
 The write path is:
 
-1. UI issues command.
-2. Service validates command.
-3. Service appends one or more events.
-4. Projections update in deterministic sequence order.
-5. UI re-renders from projections.
+1. UI issues PM command.
+2. PM service validates command.
+3. PM service emits one or more explicit accepted PM events.
+4. PM projection documents update in deterministic stream order.
+5. Shared checkpoint state advances per PM stream.
+6. UI re-renders from projections.
 
-### 4.2 Replay behavior
+The Step 0 implementation should mirror current Spacetime contracts as closely as practical:
+
+- explicit stream ids
+- ordered per-stream sequence numbers
+- duplicate command handling via idempotency
+- deterministic replay behavior
+
+### 4.3 Replay behavior
 
 On app launch:
 
-1. Open the PM store.
-2. Detect projection version.
-3. Rebuild stale projections from `pm_events` if needed.
-4. Publish a ready snapshot to the pane.
+1. Load PM projection documents.
+2. Load shared checkpoints.
+3. Validate `schema_version` and `stream_id`.
+4. Rebuild stale or invalid PM projections if needed.
+5. Publish a ready snapshot to the pane.
 
 Rebuild rules:
 
-- same event stream must produce the same projected state
+- the same accepted event stream must produce the same projected state
 - duplicate command IDs must not duplicate state changes
-- partial projection failure must be recoverable by replay
+- partial projection failure must be recoverable by replay or rebuild
 
-### 4.3 Projection requirements
+### 4.4 Projection requirements
 
 Step 0 requires these projections:
 
@@ -393,11 +434,21 @@ Step 0 requires these projections:
 - saved-view projection
 - cycle summary projection
 
-### 4.4 Migration rules
+### 4.5 Migration rules
 
 - Never rewrite old PM events in place.
 - Projection schema may change across migrations.
 - Event payloads may version forward, but replay of older versions must remain explicit and test-covered.
+- Stream ids must stay stable unless a deliberate versioned cutover is performed.
+
+### 4.6 Live Spacetime alignment
+
+Step 0 is not the live collaboration cutover, but it must stay aligned with it:
+
+- PM stream ids should be reusable later as stream grants.
+- PM sequence and checkpoint behavior should match the repo's existing apply engine expectations.
+- Source badges must not imply live Spacetime authority before it exists.
+- If remote checkpoints are later hydrated for PM streams, local Step 0 behavior must remain deterministic and restart-safe.
 
 ---
 
@@ -438,9 +489,9 @@ At the end of the pilot cycle, answer:
 2. Which fields were ignored?
 3. Which status transitions were confusing?
 4. Which missing features actually slowed the team down?
-5. Did restart/replay behavior ever undermine trust?
+5. Did replay, rebuild, or checkpoint behavior ever undermine trust?
 
-Only proven answers should shape Phase 1 and Phase 2.
+Only proven answers should shape later phases.
 
 ---
 
@@ -449,18 +500,21 @@ Only proven answers should shape Phase 1 and Phase 2.
 | Layer | What must be tested |
 | --- | --- |
 | reducer | valid transitions, invalid transitions, idempotency, blocked semantics |
-| persistence | event append, projection catch-up, rebuild from zero, migration behavior |
+| persistence | projection persist/load, rebuild from zero, migration behavior |
+| checkpointing | duplicate handling, out-of-order detection, checkpoint advance, restart reload |
 | pane state | create/edit flows, selection behavior, dirty-state handling |
 | search/filter | built-in views, text search, blocked filter, cycle filter |
-| recovery | restart with unapplied events, duplicate command replay, corrupted projection rebuild |
+| recovery | restart with stale projections, duplicate command replay, corrupted projection rebuild |
 
 Minimum regression set:
 
 - creating a work item yields a visible list row and detail view
 - status changes appear in both current state and activity timeline
 - blocked items surface in the blocked view
-- replay from a clean store reproduces the same visible state
+- replay from a clean state reproduces the same visible state
 - archive/unarchive does not lose event history
+- duplicate commands do not duplicate projection state
+- checkpoint reload after restart preserves per-stream progress
 
 ---
 
@@ -468,16 +522,17 @@ Minimum regression set:
 
 1. Add `project_ops` feature gate and pane entry point.
 2. Create `project_ops` module structure in `apps/autopilot-desktop`.
-3. Define Step 0 entity, command, and event types.
-4. Add local store migrations and projection metadata.
-5. Implement reducer/service layer.
-6. Implement quick-create flow.
-7. Implement list and detail projections.
-8. Implement built-in saved views.
-9. Implement activity timeline projection.
-10. Add replay/rebuild regression tests.
-11. Enable for pilot users only.
-12. Run one real cycle and capture friction.
+3. Define Step 0 entity, command, event, and stream-id types.
+4. Add PM projection documents and persistence helpers.
+5. Integrate PM sequence/checkpoint behavior with the shared apply engine.
+6. Implement reducer/service layer.
+7. Implement quick-create flow.
+8. Implement list and detail projections.
+9. Implement built-in saved views.
+10. Implement activity timeline projection.
+11. Add replay/rebuild regression tests.
+12. Enable for pilot users only.
+13. Run one real cycle and capture friction.
 
 ---
 
@@ -487,13 +542,35 @@ Step 0 is successful if:
 
 - one team completes one real cycle in the native pane
 - the team can identify active, blocked, and completed work without side-channel tracking
-- state survives restart and replay without ambiguity
+- visible state survives restart and replay without ambiguity
+- the PM pane uses canonical stream ids and shared checkpoint discipline
 - the missing features list is short and concrete
 
 Do not move to broad Phase 2 build-out if:
 
-- replay behavior is still untrustworthy
+- replay or rebuild behavior is still untrustworthy
 - the pane is materially slower than the team's current habit loop
+- the stream/checkpoint contract is still unstable
 - the pilot reveals that the schema is still too speculative
 
 The correct output of Step 0 is not "more features". The correct output is a trusted thin slice plus a short list of earned follow-ups.
+
+---
+
+## 9. Suggested GitHub issues for this plan
+
+This Step 0 package maps to the following GitHub issues. The broader full-implementation backlog lives in `docs/plans/autopilot-project-management-implementation-plan.md`.
+
+| Suggested issue title | Summary |
+| --- | --- |
+| `[PM P0] Add project_ops feature gate and pane shell` | Register the `Project Ops` pane behind a default-off feature gate so it can be developed without changing the default MVP experience. |
+| `[PM P0] Define Step 0 work-item schema and workflow enums` | Add the first work-item domain model, workflow enum set, blocked semantics, priority model, and field constraints described in this plan. |
+| `[PM P0] Define Step 0 PM commands, events, and stream ids` | Implement the authoritative command/event types and canonical PM stream ids, including `command_id`, timestamps, actor metadata, and explicit event names. |
+| `[PM P0] Add local PM projection documents and stream persistence` | Create the persisted PM projection documents for work items, activity, cycles, and saved views with stable `schema_version` and `stream_id` contracts. |
+| `[PM P0] Integrate PM with sync_apply_engine checkpoints` | Reuse the shared checkpoint engine for PM streams so restart recovery, duplicate handling, and out-of-order detection match the rest of the app. |
+| `[PM P0] Implement PM reducer/service loop` | Build the mutation path that validates commands, emits explicit events, updates projections, and rejects invalid transitions clearly. |
+| `[PM P0] Build built-in saved views and search/filter toolbar` | Add My Work, Current Cycle, Blocked, Backlog, and Recently Updated plus the toolbar used to switch views and search. |
+| `[PM P0] Implement work-item list projection and selection behavior` | Build the left-column list with stable sorting, row selection, view-specific empty states, and keyboard-friendly navigation. |
+| `[PM P0] Implement work-item detail editor and quick-create flow` | Add the primary editing surfaces for title, description, status, priority, assignee, cycle, parent, and blocked reason. |
+| `[PM P0] Implement activity timeline and pane-state handling` | Show create/edit/status/assignment/block/archive history as human-readable events for the selected work item and make load/error states predictable. |
+| `[PM P0] Add pilot instrumentation and run one internal PM cycle` | Record command counts, view usage, rebuild/checkpoint timing, and qualitative friction so later phases only promote features the pilot earned. |

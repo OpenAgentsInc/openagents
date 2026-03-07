@@ -1132,6 +1132,7 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                 }
             }
             PaneKind::Empty
+            | PaneKind::ProjectOps
             | PaneKind::CodexAccount
             | PaneKind::CodexModels
             | PaneKind::CodexConfig
@@ -3233,6 +3234,7 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::ProjectOps => None,
         PaneKind::AutopilotChat => {
             if state.autopilot_chat.chat_has_browseable_content() {
                 let workspace_count = chat_visible_workspace_row_count(
