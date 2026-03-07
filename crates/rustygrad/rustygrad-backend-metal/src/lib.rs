@@ -24,6 +24,7 @@ impl MetalBackend {
     }
 
     /// Returns the current discovery report for the local machine.
+    #[allow(clippy::result_large_err)]
     pub fn discovery_report(&self) -> Result<MetalDiscoveryReport, RuntimeError> {
         platform::discovery_report()
     }
@@ -246,6 +247,7 @@ mod platform {
 
     use super::MetalDiscoveryReport;
 
+    #[allow(clippy::result_large_err)]
     pub(super) fn discovery_report() -> Result<MetalDiscoveryReport, rustygrad_runtime::RuntimeError>
     {
         Ok(MetalDiscoveryReport {
