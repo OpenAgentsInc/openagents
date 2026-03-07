@@ -146,8 +146,9 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Presentation: {} | {}",
+                "Presentation: {} | bulk={} | {}",
                 state.presentation_mode.label(),
+                state.bulk_selected_work_item_ids.len(),
                 if let Some(drag) = state.board_drag_state.as_ref() {
                     format!(
                         "drag={} from {}",
@@ -238,6 +239,23 @@ pub fn paint_project_ops_pane(
         theme::text::MUTED,
     ));
     detail_y += 20.0;
+    paint.scene.draw_text(
+        paint.text.layout(
+            format!(
+                "Bulk: {} selected | {}",
+                state.bulk_selected_work_item_ids.len(),
+                state
+                    .bulk_action_status
+                    .as_deref()
+                    .unwrap_or("no bulk action applied")
+            )
+            .as_str(),
+            Point::new(detail.origin.x + 12.0, detail_y),
+            10.0,
+            theme::text::MUTED,
+        ),
+    );
+    detail_y += 18.0;
 
     let projection_counts = format!(
         "Rows: work items={} | activity={} | cycles={} | views={}",
