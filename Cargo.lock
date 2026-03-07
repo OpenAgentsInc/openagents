@@ -6959,6 +6959,10 @@ dependencies = [
 [[package]]
 name = "rustygrad-backend-amd-kfd"
 version = "0.1.0"
+dependencies = [
+ "rustygrad-core",
+ "rustygrad-runtime",
+]
 
 [[package]]
 name = "rustygrad-backend-amd-userspace"
