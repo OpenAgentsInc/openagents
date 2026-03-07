@@ -482,6 +482,17 @@ pub(super) fn apply_active_job_ollama_update(
         crate::ollama_execution::OllamaExecutionUpdate::Snapshot(snapshot) => {
             state.ollama_execution = *snapshot;
             sync_provider_runtime_ollama_state(state);
+            if state.provider_runtime.inventory_session_started_at_ms.is_some()
+                && !matches!(state.provider_runtime.mode, ProviderMode::Offline)
+                && let Err(error) =
+                    crate::kernel_control::register_online_compute_inventory_with_kernel(state)
+            {
+                state.provider_runtime.last_error_detail = Some(error.clone());
+                state.provider_runtime.last_result =
+                    Some(format!("Kernel online inventory registration failed: {error}"));
+                state.provider_runtime.last_authoritative_error_class =
+                    Some(EarnFailureClass::Reconciliation);
+            }
             let _ = state.queue_provider_nip90_lane_command(
                 ProviderNip90LaneCommand::ConfigureOllamaCapability {
                     capability: ProviderNip90OllamaCapability {
@@ -1434,6 +1445,7 @@ fn accept_request_by_id(
         request_id
     ));
     state.active_job.start_from_request(&selected_request);
+    crate::kernel_control::attach_compute_linkage_to_active_job(state, &selected_request);
     state
         .active_job
         .append_event("provisioned authoritative kernel work unit and contract");
