@@ -92,7 +92,8 @@ pub struct ProviderNip90LaneSnapshot {
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
-pub struct ProviderNip90OllamaCapability {
+pub struct ProviderNip90ComputeCapability {
+    pub backend: String,
     pub reachable: bool,
     pub configured_model: Option<String>,
     pub ready_model: Option<String>,
@@ -101,9 +102,14 @@ pub struct ProviderNip90OllamaCapability {
     pub last_error: Option<String>,
 }
 
-impl ProviderNip90OllamaCapability {
+impl ProviderNip90ComputeCapability {
     pub fn is_ready(&self) -> bool {
         self.reachable && self.ready_model.is_some()
+    }
+
+    pub fn backend_or_default(&self) -> &str {
+        let backend = self.backend.trim();
+        if backend.is_empty() { "unknown" } else { backend }
     }
 }
 
@@ -141,8 +147,8 @@ pub enum ProviderNip90LaneCommand {
     ConfigureIdentity {
         identity: Option<ProviderNip90AuthIdentity>,
     },
-    ConfigureOllamaCapability {
-        capability: ProviderNip90OllamaCapability,
+    ConfigureComputeCapability {
+        capability: ProviderNip90ComputeCapability,
     },
     ConfigureRelays {
         relays: Vec<String>,
@@ -282,7 +288,7 @@ struct ProviderNip90LaneState {
     wants_online: bool,
     pool: Option<Arc<RelayPool>>,
     auth_identity: Option<ProviderNip90AuthIdentity>,
-    ollama_capability: ProviderNip90OllamaCapability,
+    compute_capability: ProviderNip90ComputeCapability,
     handler_publication_state: HandlerPublicationState,
     next_handler_publish_retry_at: Option<Instant>,
     tracked_buyer_request_ids: Vec<String>,
@@ -358,7 +364,7 @@ fn run_lane_loop(
         wants_online: false,
         pool: None,
         auth_identity: None,
-        ollama_capability: ProviderNip90OllamaCapability::default(),
+        compute_capability: ProviderNip90ComputeCapability::default(),
         handler_publication_state: HandlerPublicationState::None,
         next_handler_publish_retry_at: None,
         tracked_buyer_request_ids: Vec::new(),
@@ -377,7 +383,7 @@ fn run_lane_loop(
             Ok(command) => {
                 match command {
                     ProviderNip90LaneCommand::ConfigureIdentity { .. }
-                    | ProviderNip90LaneCommand::ConfigureOllamaCapability { .. }
+                    | ProviderNip90LaneCommand::ConfigureComputeCapability { .. }
                     | ProviderNip90LaneCommand::ConfigureRelays { .. }
                     | ProviderNip90LaneCommand::SetOnline { .. }
                     | ProviderNip90LaneCommand::TrackBuyerRequestIds { .. } => {
@@ -533,32 +539,34 @@ fn handle_command(
             }
             refresh_relay_health_snapshot(runtime, state);
         }
-        ProviderNip90LaneCommand::ConfigureOllamaCapability { capability } => {
-            if capability == state.ollama_capability {
+        ProviderNip90LaneCommand::ConfigureComputeCapability { capability } => {
+            if capability == state.compute_capability {
                 return;
             }
-            let was_ready = state.ollama_capability.is_ready();
+            let was_ready = state.compute_capability.is_ready();
             let is_ready = capability.is_ready();
+            let backend = capability.backend_or_default().replace('_', " ");
             let status = if is_ready {
                 format!(
-                    "Ollama capability ready for model '{}'",
+                    "{} capability ready for model '{}'",
+                    backend,
                     capability.ready_model.as_deref().unwrap_or("unknown")
                 )
             } else {
                 capability
                     .last_error
                     .clone()
-                    .unwrap_or_else(|| "Ollama capability unavailable".to_string())
+                    .unwrap_or_else(|| format!("{backend} capability unavailable"))
             };
-            state.ollama_capability = capability;
+            state.compute_capability = capability;
             state.handler_publication_state = HandlerPublicationState::None;
             state.next_handler_publish_retry_at = None;
             state.snapshot.last_action = Some(if is_ready {
                 status
             } else if was_ready {
-                format!("Ollama capability degraded: {status}")
+                format!("{backend} capability degraded: {status}")
             } else {
-                format!("Ollama capability pending: {status}")
+                format!("{backend} capability pending: {status}")
             });
             refresh_relay_health_snapshot(runtime, state);
         }
@@ -1091,7 +1099,7 @@ fn maybe_publish_handler_info(
         return;
     };
 
-    let desired_publication = if state.ollama_capability.is_ready() {
+    let desired_publication = if state.compute_capability.is_ready() {
         HandlerPublicationState::Healthy
     } else {
         HandlerPublicationState::Disabled
@@ -1909,18 +1917,18 @@ fn build_provider_handler_event(
     let content = serde_json::json!({
         "name": HANDLER_METADATA_NAME,
         "about": HANDLER_METADATA_ABOUT,
-        "backend": "ollama",
+        "backend": state.compute_capability.backend_or_default(),
         "status": if publication_state == HandlerPublicationState::Healthy {
             HANDLER_STATUS_HEALTHY
         } else {
             HANDLER_STATUS_DEGRADED
         },
         "serving_model": state
-            .ollama_capability
+            .compute_capability
             .ready_model
             .as_deref()
-            .or(state.ollama_capability.configured_model.as_deref()),
-        "last_error": state.ollama_capability.last_error.clone(),
+            .or(state.compute_capability.configured_model.as_deref()),
+        "last_error": state.compute_capability.last_error.clone(),
     })
     .to_string();
     let template = EventTemplate {
@@ -2034,7 +2042,7 @@ fn normalize_relays(relays: Vec<String>) -> Vec<String> {
 mod tests {
     use super::{
         ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand,
-        ProviderNip90LaneUpdate, ProviderNip90LaneWorker, ProviderNip90OllamaCapability,
+        ProviderNip90ComputeCapability, ProviderNip90LaneUpdate, ProviderNip90LaneWorker,
         ProviderNip90PublishRole, ProviderNip90RelayStatus, event_to_buyer_response_event,
         event_to_inbox_request, execution_input_from_request,
     };
@@ -2070,13 +2078,26 @@ mod tests {
         }
     }
 
-    fn fixture_ollama_capability() -> ProviderNip90OllamaCapability {
-        ProviderNip90OllamaCapability {
+    fn fixture_ollama_capability() -> ProviderNip90ComputeCapability {
+        ProviderNip90ComputeCapability {
+            backend: "ollama".to_string(),
             reachable: true,
             configured_model: Some("llama3.2:latest".to_string()),
             ready_model: Some("llama3.2:latest".to_string()),
             available_models: vec!["llama3.2:latest".to_string()],
             loaded_models: vec!["llama3.2:latest".to_string()],
+            last_error: None,
+        }
+    }
+
+    fn fixture_apple_fm_capability() -> ProviderNip90ComputeCapability {
+        ProviderNip90ComputeCapability {
+            backend: "apple_foundation_models".to_string(),
+            reachable: true,
+            configured_model: None,
+            ready_model: Some("apple-foundation-model".to_string()),
+            available_models: vec!["apple-foundation-model".to_string()],
+            loaded_models: Vec::new(),
             last_error: None,
         }
     }
@@ -2606,7 +2627,7 @@ mod tests {
             })
             .expect("queue identity command");
         worker
-            .enqueue(ProviderNip90LaneCommand::ConfigureOllamaCapability {
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
                 capability: fixture_ollama_capability(),
             })
             .expect("queue ollama capability command");
@@ -2656,8 +2677,68 @@ mod tests {
         let metadata: serde_json::Value =
             serde_json::from_str(published.content.as_str()).expect("parse handler metadata");
         assert_eq!(metadata["name"], "Autopilot");
+        assert_eq!(metadata["backend"], "ollama");
         assert_eq!(metadata["status"], "healthy");
         assert_eq!(metadata["serving_model"], "llama3.2:latest");
+
+        let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
+        relay_task.abort();
+    }
+
+    #[test]
+    fn worker_publishes_apple_fm_handler_info_when_online_with_identity() {
+        let runtime = tokio::runtime::Builder::new_multi_thread()
+            .worker_threads(2)
+            .enable_all()
+            .build()
+            .expect("build tokio runtime for relay harness");
+        let (relay_url, relay_task, published_rx) =
+            runtime.block_on(spawn_mock_relay_for_publish());
+
+        let mut worker = ProviderNip90LaneWorker::spawn(vec![relay_url]);
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureIdentity {
+                identity: Some(fixture_auth_identity()),
+            })
+            .expect("queue identity command");
+        worker
+            .enqueue(ProviderNip90LaneCommand::ConfigureComputeCapability {
+                capability: fixture_apple_fm_capability(),
+            })
+            .expect("queue apple fm capability command");
+        worker
+            .enqueue(ProviderNip90LaneCommand::SetOnline { online: true })
+            .expect("queue online command");
+
+        let publish_deadline = Instant::now() + Duration::from_secs(4);
+        let mut capability_outcome_seen = false;
+        while Instant::now() < publish_deadline {
+            for update in worker.drain_updates() {
+                if let ProviderNip90LaneUpdate::PublishOutcome(outcome) = update
+                    && outcome.role == ProviderNip90PublishRole::Capability
+                {
+                    assert!(outcome.accepted_relays >= 1);
+                    capability_outcome_seen = true;
+                }
+            }
+            if capability_outcome_seen {
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        assert!(
+            capability_outcome_seen,
+            "expected capability publish outcome after going online"
+        );
+        let published = published_rx
+            .recv_timeout(Duration::from_secs(2))
+            .expect("relay should receive handler event");
+        let metadata: serde_json::Value =
+            serde_json::from_str(published.content.as_str()).expect("parse handler metadata");
+        assert_eq!(metadata["backend"], "apple_foundation_models");
+        assert_eq!(metadata["serving_model"], "apple-foundation-model");
+        assert_eq!(metadata["status"], "healthy");
 
         let _ = worker.enqueue(ProviderNip90LaneCommand::SetOnline { online: false });
         relay_task.abort();

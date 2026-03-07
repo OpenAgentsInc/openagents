@@ -8,6 +8,7 @@ use crate::provider_nip90_lane::{
     ProviderNip90PublishRole, ProviderNip90RelayStatus,
 };
 use crate::spark_wallet::SparkWalletCommand;
+use crate::state::provider_runtime::LocalInferenceBackend;
 use crate::state::job_inbox::{JobInboxNetworkRequest, JobInboxValidation};
 use crate::state::operations::{BuyerResolutionAction, BuyerResolutionReason};
 use nostr::nip90::{JobFeedback, JobStatus, create_job_feedback_event};
@@ -53,12 +54,6 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
     let now = std::time::Instant::now();
     let provider_was_offline = state.provider_runtime.mode == ProviderMode::Offline;
     let relay_error = state.provider_nip90_lane.last_error.clone();
-    let ollama_error = state
-        .provider_runtime
-        .ollama
-        .last_error
-        .clone()
-        .or_else(|| state.ollama_execution.last_error.clone());
 
     if provider_was_offline && state.provider_nip90_lane.mode != ProviderNip90LaneMode::Online {
         state.provider_runtime.mode = ProviderMode::Offline;
@@ -87,28 +82,31 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
         return;
     }
 
-    if !state.provider_runtime.ollama.reachable {
+    let Some(active_backend) = state.provider_runtime.active_inference_backend() else {
         state.provider_runtime.mode = ProviderMode::Degraded;
-        state.provider_runtime.degraded_reason_code = Some("OLLAMA_UNAVAILABLE".to_string());
-        state.provider_runtime.last_error_detail =
-            Some(ollama_error.unwrap_or_else(|| "Local Ollama backend is unavailable".to_string()));
-        state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
-        state.provider_runtime.last_result = state.provider_runtime.ollama.last_action.clone();
-        state.provider_runtime.mode_changed_at = now;
-        return;
-    }
-
-    if !state.provider_runtime.ollama.is_ready() {
-        state.provider_runtime.mode = ProviderMode::Degraded;
-        state.provider_runtime.degraded_reason_code = Some("OLLAMA_MODEL_UNAVAILABLE".to_string());
+        state.provider_runtime.degraded_reason_code =
+            Some("INFERENCE_BACKEND_UNAVAILABLE".to_string());
         state.provider_runtime.last_error_detail = Some(
-            ollama_error.unwrap_or_else(|| "No local Ollama serving model is ready".to_string()),
+            state
+                .provider_runtime
+                .apple_fm
+                .last_error
+                .clone()
+                .or_else(|| state.provider_runtime.apple_fm.availability_message.clone())
+                .or_else(|| state.provider_runtime.ollama.last_error.clone())
+                .or_else(|| state.ollama_execution.last_error.clone())
+                .unwrap_or_else(|| "No local inference backend is ready".to_string()),
         );
         state.provider_runtime.last_authoritative_error_class = Some(EarnFailureClass::Execution);
-        state.provider_runtime.last_result = state.provider_runtime.ollama.last_action.clone();
+        state.provider_runtime.last_result = state
+            .provider_runtime
+            .apple_fm
+            .last_action
+            .clone()
+            .or_else(|| state.provider_runtime.ollama.last_action.clone());
         state.provider_runtime.mode_changed_at = now;
         return;
-    }
+    };
 
     if state.provider_runtime.mode != ProviderMode::Offline {
         state.provider_runtime.mode = ProviderMode::Online;
@@ -124,7 +122,12 @@ pub(super) fn sync_provider_runtime_mode_from_provider_state(state: &mut RenderS
             .provider_nip90_lane
             .last_action
             .clone()
-            .or_else(|| state.provider_runtime.ollama.last_action.clone());
+            .or_else(|| match active_backend {
+                LocalInferenceBackend::AppleFoundationModels => {
+                    state.provider_runtime.apple_fm.last_action.clone()
+                }
+                LocalInferenceBackend::Ollama => state.provider_runtime.ollama.last_action.clone(),
+            });
         state.provider_runtime.mode_changed_at = now;
     }
 }

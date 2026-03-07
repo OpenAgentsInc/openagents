@@ -72,6 +72,7 @@ pub struct OllamaExecutionMetrics {
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OllamaExecutionProvenance {
+    pub backend: String,
     pub requested_model: Option<String>,
     pub served_model: String,
     pub normalized_prompt_digest: String,
@@ -88,7 +89,7 @@ pub struct OllamaExecutionProvenance {
 impl OllamaExecutionProvenance {
     pub fn receipt_payload(&self) -> Value {
         json!({
-            "backend": "ollama",
+            "backend": self.backend,
             "requested_model": self.requested_model,
             "served_model": self.served_model,
             "normalized_prompt_digest": self.normalized_prompt_digest,
@@ -435,6 +436,7 @@ impl OllamaExecutionState {
                         .map(|duration_ns| duration_ns == 0)
                 };
                 let provenance = OllamaExecutionProvenance {
+                    backend: "ollama".to_string(),
                     requested_model: job.requested_model.clone(),
                     served_model: model.clone(),
                     normalized_prompt_digest: sha256_prefixed_text(normalized_prompt.as_str()),

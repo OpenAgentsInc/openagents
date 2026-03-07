@@ -8,6 +8,7 @@
 )]
 
 mod app_state;
+mod apple_fm_bridge;
 mod bitcoin_display;
 mod cad_rebuild_worker;
 mod chat_spacetime;

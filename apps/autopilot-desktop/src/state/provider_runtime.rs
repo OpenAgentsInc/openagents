@@ -9,6 +9,12 @@ use std::time::Instant;
 use crate::ollama_execution::OllamaExecutionMetrics;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalInferenceBackend {
+    Ollama,
+    AppleFoundationModels,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderMode {
     Offline,
     Connecting,
@@ -35,6 +41,8 @@ pub enum ProviderBlocker {
     CreditLaneUnavailable,
     OllamaUnavailable,
     OllamaModelUnavailable,
+    AppleFoundationModelsUnavailable,
+    AppleFoundationModelsModelUnavailable,
 }
 
 impl ProviderBlocker {
@@ -46,6 +54,8 @@ impl ProviderBlocker {
             Self::CreditLaneUnavailable => "AC_CREDIT_UNAVAILABLE",
             Self::OllamaUnavailable => "OLLAMA_UNAVAILABLE",
             Self::OllamaModelUnavailable => "OLLAMA_MODEL_UNAVAILABLE",
+            Self::AppleFoundationModelsUnavailable => "APPLE_FM_UNAVAILABLE",
+            Self::AppleFoundationModelsModelUnavailable => "APPLE_FM_MODEL_UNAVAILABLE",
         }
     }
 
@@ -57,6 +67,12 @@ impl ProviderBlocker {
             Self::CreditLaneUnavailable => "AC credit lane is not available",
             Self::OllamaUnavailable => "Local Ollama backend is unavailable",
             Self::OllamaModelUnavailable => "No local Ollama serving model is ready",
+            Self::AppleFoundationModelsUnavailable => {
+                "Apple Foundation Models backend is unavailable"
+            }
+            Self::AppleFoundationModelsModelUnavailable => {
+                "Apple Foundation Models is not ready to serve inference"
+            }
         }
     }
 }
@@ -100,6 +116,27 @@ impl ProviderOllamaRuntimeState {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct ProviderAppleFmRuntimeState {
+    pub reachable: bool,
+    pub model_available: bool,
+    pub ready_model: Option<String>,
+    pub available_models: Vec<String>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub last_request_id: Option<String>,
+    pub last_metrics: Option<OllamaExecutionMetrics>,
+    pub refreshed_at: Option<Instant>,
+    pub availability_message: Option<String>,
+    pub bridge_status: Option<String>,
+}
+
+impl ProviderAppleFmRuntimeState {
+    pub fn is_ready(&self) -> bool {
+        self.reachable && self.model_available && self.ready_model.is_some()
+    }
+}
+
 pub struct ProviderRuntimeState {
     pub mode: ProviderMode,
     pub mode_changed_at: Instant,
@@ -117,6 +154,7 @@ pub struct ProviderRuntimeState {
     pub last_authoritative_event_id: Option<String>,
     pub last_authoritative_error_class: Option<EarnFailureClass>,
     pub ollama: ProviderOllamaRuntimeState,
+    pub apple_fm: ProviderAppleFmRuntimeState,
 }
 
 impl Default for ProviderRuntimeState {
@@ -139,6 +177,7 @@ impl Default for ProviderRuntimeState {
             last_authoritative_event_id: None,
             last_authoritative_error_class: None,
             ollama: ProviderOllamaRuntimeState::default(),
+            apple_fm: ProviderAppleFmRuntimeState::default(),
         }
     }
 }
@@ -148,8 +187,29 @@ impl ProviderRuntimeState {
         "compute"
     }
 
-    pub const fn execution_backend_label(&self) -> &'static str {
-        "local Ollama runtime"
+    pub const fn backend_label(backend: LocalInferenceBackend) -> &'static str {
+        match backend {
+            LocalInferenceBackend::Ollama => "local Ollama runtime",
+            LocalInferenceBackend::AppleFoundationModels => {
+                "Apple Foundation Models bridge"
+            }
+        }
+    }
+
+    pub fn active_inference_backend(&self) -> Option<LocalInferenceBackend> {
+        if self.apple_fm.is_ready() {
+            Some(LocalInferenceBackend::AppleFoundationModels)
+        } else if self.ollama.is_ready() {
+            Some(LocalInferenceBackend::Ollama)
+        } else {
+            None
+        }
+    }
+
+    pub fn execution_backend_label(&self) -> &'static str {
+        self.active_inference_backend()
+            .map(Self::backend_label)
+            .unwrap_or("no active inference backend")
     }
 
     pub const fn control_authority_label(&self, backend_authoritative: bool) -> &'static str {
@@ -183,14 +243,14 @@ impl ProviderRuntimeState {
 
 #[cfg(test)]
 mod tests {
-    use super::ProviderRuntimeState;
+    use super::{LocalInferenceBackend, ProviderRuntimeState};
 
     #[test]
     fn provider_runtime_truth_labels_distinguish_control_and_projection() {
         let runtime = ProviderRuntimeState::default();
 
         assert_eq!(runtime.execution_lane_label(), "compute");
-        assert_eq!(runtime.execution_backend_label(), "local Ollama runtime");
+        assert_eq!(runtime.execution_backend_label(), "no active inference backend");
         assert_eq!(runtime.control_authority_label(false), "local only");
         assert_eq!(
             runtime.control_authority_label(true),
@@ -201,5 +261,20 @@ mod tests {
             "projected / non-authoritative"
         );
         assert_eq!(runtime.settlement_truth_label(), "wallet-authoritative");
+    }
+
+    #[test]
+    fn apple_backend_wins_when_ready() {
+        let mut runtime = ProviderRuntimeState::default();
+        runtime.ollama.reachable = true;
+        runtime.ollama.ready_model = Some("llama3.2:latest".to_string());
+        runtime.apple_fm.reachable = true;
+        runtime.apple_fm.model_available = true;
+        runtime.apple_fm.ready_model = Some("apple-foundation-model".to_string());
+
+        assert_eq!(
+            runtime.active_inference_backend(),
+            Some(LocalInferenceBackend::AppleFoundationModels)
+        );
     }
 }

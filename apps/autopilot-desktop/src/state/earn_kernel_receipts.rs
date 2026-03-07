@@ -7191,7 +7191,10 @@ fn ollama_execution_receipt_tags(
         return BTreeMap::new();
     };
 
-    let mut tags = BTreeMap::from([("execution.backend".to_string(), "ollama".to_string())]);
+    let mut tags = BTreeMap::from([(
+        "execution.backend".to_string(),
+        provenance.backend.clone(),
+    )]);
     if let Some(requested_model) = provenance.requested_model.as_deref() {
         tags.insert(
             "execution.model.requested".to_string(),
@@ -10489,6 +10492,7 @@ mod tests {
 
     fn fixture_ollama_provenance() -> crate::ollama_execution::OllamaExecutionProvenance {
         crate::ollama_execution::OllamaExecutionProvenance {
+            backend: "ollama".to_string(),
             requested_model: Some("llama3.2:latest".to_string()),
             served_model: "llama3.2:latest".to_string(),
             normalized_prompt_digest: "sha256:prompt".to_string(),
