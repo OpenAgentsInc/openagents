@@ -144,6 +144,22 @@ impl ProjectOpsService {
                     ));
                 }
                 let work_item_id = command.draft.work_item_id.clone();
+                if let Some(project_id) = command.draft.project_id.as_ref() {
+                    if !self
+                        .projections
+                        .projects
+                        .iter()
+                        .any(|project| &project.project_id == project_id)
+                    {
+                        return Err(project_ops_error(
+                            ProjectOpsErrorCode::DependencyMissing,
+                            format!(
+                                "project {} does not exist in the PM projects projection",
+                                project_id.as_str()
+                            ),
+                        ));
+                    }
+                }
                 let work_item = ProjectOpsWorkItem {
                     work_item_id: work_item_id.clone(),
                     title: command.draft.title,
@@ -152,6 +168,7 @@ impl ProjectOpsService {
                     priority: command.draft.priority,
                     assignee: command.draft.assignee,
                     team_key: command.draft.team_key,
+                    project_id: command.draft.project_id,
                     cycle_id: command.draft.cycle_id,
                     parent_id: command.draft.parent_id,
                     area_tags: command.draft.area_tags,
@@ -177,6 +194,22 @@ impl ProjectOpsService {
                 reject_archived_mutation(current, "edit fields")?;
                 let mut next = current.clone();
                 apply_edit_patch(&mut next, &command.patch)?;
+                if let Some(project_id) = next.project_id.as_ref() {
+                    if !self
+                        .projections
+                        .projects
+                        .iter()
+                        .any(|project| &project.project_id == project_id)
+                    {
+                        return Err(project_ops_error(
+                            ProjectOpsErrorCode::DependencyMissing,
+                            format!(
+                                "project {} does not exist in the PM projects projection",
+                                project_id.as_str()
+                            ),
+                        ));
+                    }
+                }
                 if next == *current {
                     return Err(project_ops_error(
                         ProjectOpsErrorCode::NoopMutation,
@@ -702,6 +735,9 @@ fn apply_edit_patch(
     if let Some(priority) = patch.priority {
         work_item.priority = priority;
     }
+    if let Some(project_id) = patch.project_id.as_ref() {
+        work_item.project_id = project_id.clone();
+    }
     if let Some(due_at_unix_ms) = patch.due_at_unix_ms {
         work_item.due_at_unix_ms = due_at_unix_ms;
     }
@@ -765,7 +801,8 @@ mod tests {
     };
     use crate::project_ops::projection::{ProjectOpsCycleRow, ProjectOpsProjectionStore};
     use crate::project_ops::schema::{
-        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItemStatus,
+        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+        ProjectOpsWorkItemStatus,
     };
     use crate::sync_apply::StreamApplyDecision;
 
@@ -811,6 +848,7 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: None,
             team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
+            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project id")),
             cycle_id: None,
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -836,6 +874,7 @@ mod tests {
             unique_temp_path("activity"),
             unique_temp_path("cycles"),
             unique_temp_path("saved-views"),
+            unique_temp_path("projects"),
             unique_temp_path("teams"),
             unique_temp_path("checkpoints"),
         );
@@ -883,6 +922,7 @@ mod tests {
                     title: Some("Ship deterministic PM reducer".to_string()),
                     description: None,
                     priority: None,
+                    project_id: None,
                     due_at_unix_ms: Some(Some(1_762_600_000_000)),
                     area_tags: None,
                 },
@@ -906,6 +946,7 @@ mod tests {
         let activity_path = unique_temp_path("reload-activity");
         let cycles_path = unique_temp_path("reload-cycles");
         let saved_views_path = unique_temp_path("reload-saved-views");
+        let projects_path = unique_temp_path("reload-projects");
         let teams_path = unique_temp_path("reload-teams");
         let checkpoint_path = unique_temp_path("reload-checkpoints");
         let store = ProjectOpsProjectionStore::from_paths_for_tests(
@@ -913,6 +954,7 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
+            projects_path,
             teams_path,
             checkpoint_path.clone(),
         );

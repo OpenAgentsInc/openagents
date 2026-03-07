@@ -1,13 +1,17 @@
 {
   "source_badge": "source: stream.pm.work_items.v1",
+  "project_source_badge": "source: stream.pm.projects.v1",
   "team_source_badge": "source: stream.pm.teams.v1",
   "active_team_key": "desktop",
   "active_team_title": "Desktop",
+  "active_project_id": "desktop-pm",
+  "active_project_title": "Desktop Pm",
   "active_saved_view": "My Work",
   "selected_work_item_id": "wi-1",
   "checkpoints": {
     "stream.pm.activity_projection.v1": 7,
     "stream.pm.cycles.v1": 1,
+    "stream.pm.projects.v1": 0,
     "stream.pm.saved_views.v1": 0,
     "stream.pm.teams.v1": 0,
     "stream.pm.work_items.v1": 7
@@ -32,6 +36,7 @@
           "priority": "high",
           "assignee": "cdavid",
           "team_key": "desktop",
+          "project_id": "desktop-pm",
           "cycle_id": null,
           "parent_id": null,
           "area_tags": [
@@ -94,6 +99,7 @@
           "priority": "urgent",
           "assignee": "cdavid",
           "team_key": "desktop",
+          "project_id": "desktop-pm",
           "cycle_id": null,
           "parent_id": null,
           "area_tags": [
@@ -153,6 +159,7 @@
           "title": "Freeze PM sync contract",
           "description": "Keep the Phase 1 badge, grant, and checkpoint contract stable.",
           "priority": "urgent",
+          "project_id": null,
           "due_at_unix_ms": 1762500000000,
           "area_tags": [
             "pm",

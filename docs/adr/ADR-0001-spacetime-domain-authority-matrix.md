@@ -38,7 +38,7 @@ Before any PM reducer or subscription becomes authoritative, the exact domain mu
 | PM activity and saved-view projections (`stream.pm.activity_projection.v1`, `stream.pm.saved_views.v1`) | Desktop-local PM projection streams | Spacetime projection streams | Ratify source-badge truth, reducer scope, and projection rebuild parity before cutover. |
 | PM comments, mentions, and notifications | Not implemented yet | Spacetime projection streams | Add explicit stream ids, grants, moderation/error rules, and parity evidence before implementation depends on live subscriptions. |
 | PM team records and team-scoped planning views (`stream.pm.teams.v1`) | Desktop-local PM team projection stream | Spacetime reducers/subscriptions | Add explicit multi-team scope rules, reducer scope, and ADR approval before collaboration cutover. |
-| PM project coordination views | Not implemented yet | Spacetime reducers/subscriptions | Add explicit entity contract, multi-project scope rules, and ADR approval before collaboration cutover. |
+| PM project records and project-scoped planning views (`stream.pm.projects.v1`) | Desktop-local PM project projection stream | Spacetime reducers/subscriptions | Add explicit multi-project scope rules, reducer scope, and ADR approval before collaboration cutover. |
 | PM reporting and derived counters | Local or projection-derived only | Spacetime query/subscription | Counting unit, staleness semantics, and rebuild parity must be documented before any badge claims live authority. |
 | PM agent-task coordination metadata | Not implemented yet | Spacetime coordination/projection streams | Keep runtime/work execution authority separate and ratify coordination-only scope before any live queue truth is introduced. |
 
