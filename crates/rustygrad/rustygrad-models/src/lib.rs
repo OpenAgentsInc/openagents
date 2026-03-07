@@ -90,6 +90,7 @@ impl TokenId {
 
 /// Ordered token sequence.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct TokenSequence {
     tokens: Vec<TokenId>,
 }
