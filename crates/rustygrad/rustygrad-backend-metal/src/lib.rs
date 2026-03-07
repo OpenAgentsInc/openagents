@@ -1207,6 +1207,7 @@ mod platform {
             memory_capacity_bytes,
             unified_memory: Some(device.has_unified_memory()),
             feature_flags,
+            amd_metadata: None,
         })
     }
 

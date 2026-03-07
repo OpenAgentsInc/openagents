@@ -344,6 +344,7 @@ impl DeviceDiscovery for CpuBackend {
             memory_capacity_bytes: None,
             unified_memory: Some(true),
             feature_flags: vec![String::from("host_memory")],
+            amd_metadata: None,
         }])
     }
 

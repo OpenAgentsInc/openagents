@@ -56,6 +56,134 @@ pub struct DeviceDescriptor {
     pub unified_memory: Option<bool>,
     /// Stable feature flags relevant to runtime/backend selection.
     pub feature_flags: Vec<String>,
+    /// AMD-specific topology/risk metadata when the device belongs to an AMD backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd_metadata: Option<AmdDeviceMetadata>,
+}
+
+/// Distinct AMD runtime mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdRuntimeMode {
+    /// Kernel-mediated AMD KFD posture using the standard `amdgpu` driver stack.
+    Kfd,
+    /// Explicitly opted-in userspace/AM-driver posture.
+    Userspace,
+}
+
+/// Whether an AMD mode requires or has satisfied explicit opt-in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdOptInStatus {
+    /// The backend does not require an explicit opt-in gate.
+    NotRequired,
+    /// The backend is present but currently disabled until the operator opts in.
+    Disabled,
+    /// The operator has explicitly enabled the backend.
+    Enabled,
+}
+
+/// Risk posture for an AMD backend mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdRiskLevel {
+    /// Lower-risk operational posture.
+    Standard,
+    /// Higher-risk posture that needs stronger operator intent.
+    Elevated,
+}
+
+/// Driver ownership/binding state relevant to AMD recovery posture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdDriverBinding {
+    /// The kernel `amdgpu` driver still owns the device.
+    KernelAmdgpu,
+    /// A userspace stack has taken ownership of the device.
+    UserspaceClaimed,
+    /// Rustygrad could not determine the binding state.
+    Unknown,
+}
+
+/// Expected operator-level recovery step for an AMD backend mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdRecoveryAction {
+    /// Restart the affected process/runtime first.
+    ProcessRestart,
+    /// Attempt a kernel-driver reset or recovery path.
+    KernelDriverReset,
+    /// Rebind or restore the kernel driver after userspace mode.
+    RebindKernelDriver,
+    /// Reboot the host when the runtime cannot recover in-place.
+    RebootHost,
+}
+
+/// Stable AMD topology fields relevant to backend discovery and later capability reporting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdTopologyInfo {
+    /// Stable architecture label such as `gfx1100`, when known.
+    pub architecture: Option<String>,
+    /// PCI bus/device/function address, when known.
+    pub pci_bdf: Option<String>,
+    /// Number of XCC partitions, when known.
+    pub xcc_count: Option<u16>,
+    /// Number of shader engines, when known.
+    pub shader_engine_count: Option<u16>,
+    /// Number of compute units, when known.
+    pub compute_unit_count: Option<u16>,
+    /// Total VRAM bytes, when known.
+    pub vram_bytes: Option<u64>,
+    /// Host-visible VRAM bytes, when known.
+    pub visible_vram_bytes: Option<u64>,
+}
+
+/// Stable AMD risk posture derived from the backend/runtime mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdRiskProfile {
+    /// High-level risk classification.
+    pub level: AmdRiskLevel,
+    /// Whether the mode requires explicit operator intent before activation.
+    pub requires_explicit_opt_in: bool,
+    /// Whether the mode may unbind or otherwise displace the kernel driver.
+    pub may_unbind_kernel_driver: bool,
+    /// Plain-text warnings the operator should see or preserve in logs.
+    pub warnings: Vec<String>,
+}
+
+/// Stable AMD recovery posture derived from the backend/runtime mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdRecoveryProfile {
+    /// Current or expected driver binding state.
+    pub driver_binding: AmdDriverBinding,
+    /// Ordered recovery actions Rustygrad expects the operator/runtime to consider.
+    pub expected_actions: Vec<AmdRecoveryAction>,
+}
+
+/// AMD-specific device metadata carried through runtime and provider truth surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdDeviceMetadata {
+    /// Runtime mode that discovered the device.
+    pub mode: AmdRuntimeMode,
+    /// Stable topology snapshot.
+    pub topology: AmdTopologyInfo,
+    /// Risk posture for the selected AMD mode.
+    pub risk: AmdRiskProfile,
+    /// Recovery posture for the selected AMD mode.
+    pub recovery: AmdRecoveryProfile,
+}
+
+/// Backend-local AMD discovery report that preserves mode and opt-in truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdBackendReport {
+    /// AMD backend mode represented by the report.
+    pub mode: AmdRuntimeMode,
+    /// Opt-in state for the backend mode.
+    pub opt_in: AmdOptInStatus,
+    /// Discovered devices for the mode.
+    pub devices: Vec<DeviceDescriptor>,
+    /// Honest readiness/health for the mode.
+    pub health: RuntimeHealth,
 }
 
 /// How a backend handles a quantization mode.
@@ -251,7 +379,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        Allocator, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
+        Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
+        AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
+        AmdTopologyInfo, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
         ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
         QuantizationSupport, RuntimeError, RuntimeHealth,
     };
@@ -287,6 +417,7 @@ mod tests {
                 memory_capacity_bytes: None,
                 unified_memory: Some(true),
                 feature_flags: vec![String::from("mock_execution")],
+                amd_metadata: None,
             }])
         }
 
@@ -414,6 +545,112 @@ mod tests {
         assert_eq!(
             fallback.fallback_reason.as_deref(),
             Some("metal backend unavailable: offline")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn amd_backend_model_serializes_mode_topology_risk_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let device = DeviceDescriptor {
+            backend: String::from("amd_userspace"),
+            device: Device::new(
+                rustygrad_core::DeviceKind::AmdUserspace,
+                0,
+                Some(String::from("amd_userspace:0")),
+            ),
+            device_name: Some(String::from("AMD Radeon Test")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(24 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("userspace_opt_in")],
+            amd_metadata: Some(AmdDeviceMetadata {
+                mode: AmdRuntimeMode::Userspace,
+                topology: AmdTopologyInfo {
+                    architecture: Some(String::from("gfx1100")),
+                    pci_bdf: Some(String::from("0000:03:00.0")),
+                    xcc_count: Some(1),
+                    shader_engine_count: Some(4),
+                    compute_unit_count: Some(60),
+                    vram_bytes: Some(24 * 1024 * 1024 * 1024),
+                    visible_vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                },
+                risk: AmdRiskProfile {
+                    level: AmdRiskLevel::Elevated,
+                    requires_explicit_opt_in: true,
+                    may_unbind_kernel_driver: true,
+                    warnings: vec![String::from(
+                        "userspace mode may require unloading or rebinding amdgpu",
+                    )],
+                },
+                recovery: AmdRecoveryProfile {
+                    driver_binding: AmdDriverBinding::UserspaceClaimed,
+                    expected_actions: vec![
+                        AmdRecoveryAction::ProcessRestart,
+                        AmdRecoveryAction::RebindKernelDriver,
+                    ],
+                },
+            }),
+        };
+        let report = AmdBackendReport {
+            mode: AmdRuntimeMode::Userspace,
+            opt_in: AmdOptInStatus::Enabled,
+            devices: vec![device],
+            health: RuntimeHealth {
+                status: HealthStatus::Degraded,
+                message: String::from("amdgpu is still loaded; userspace mode not yet ready"),
+            },
+        };
+
+        assert_eq!(
+            serde_json::to_value(&report)?,
+            json!({
+                "mode": "userspace",
+                "opt_in": "enabled",
+                "devices": [{
+                    "backend": "amd_userspace",
+                    "device": {
+                        "kind": "AmdUserspace",
+                        "ordinal": 0,
+                        "label": "amd_userspace:0"
+                    },
+                    "device_name": "AMD Radeon Test",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [],
+                    "memory_capacity_bytes": 25769803776u64,
+                    "unified_memory": false,
+                    "feature_flags": ["userspace_opt_in"],
+                    "amd_metadata": {
+                        "mode": "userspace",
+                        "topology": {
+                            "architecture": "gfx1100",
+                            "pci_bdf": "0000:03:00.0",
+                            "xcc_count": 1,
+                            "shader_engine_count": 4,
+                            "compute_unit_count": 60,
+                            "vram_bytes": 25769803776u64,
+                            "visible_vram_bytes": 17179869184u64
+                        },
+                        "risk": {
+                            "level": "elevated",
+                            "requires_explicit_opt_in": true,
+                            "may_unbind_kernel_driver": true,
+                            "warnings": [
+                                "userspace mode may require unloading or rebinding amdgpu"
+                            ]
+                        },
+                        "recovery": {
+                            "driver_binding": "userspace_claimed",
+                            "expected_actions": ["process_restart", "rebind_kernel_driver"]
+                        }
+                    }
+                }],
+                "health": {
+                    "status": "Degraded",
+                    "message": "amdgpu is still loaded; userspace mode not yet ready"
+                }
+            })
         );
         Ok(())
     }
