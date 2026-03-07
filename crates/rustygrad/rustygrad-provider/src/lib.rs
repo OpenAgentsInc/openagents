@@ -527,9 +527,8 @@ fn digest_generation_input(hasher: &mut Sha256, input: &GenerationInput) {
 mod tests {
     use rustygrad_runtime::HealthStatus;
     use rustygrad_serve::{
-        EmbeddingModelDescriptor, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
-        EmbeddingVector, GenerationOptions, GenerationRequest, GenerationResponse, ModelDescriptor,
-        ReferenceWordDecoder, SessionId, TokenSequence,
+        EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationOptions, GenerationRequest,
+        GenerationResponse, ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TokenSequence,
     };
 
     use super::{
@@ -540,11 +539,7 @@ mod tests {
 
     #[test]
     fn capability_envelope_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
-        let model = EmbeddingModelDescriptor::new(
-            ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-            8,
-            EmbeddingNormalization::None,
-        );
+        let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             "cpu",
             &model,
@@ -603,11 +598,7 @@ mod tests {
     fn execution_receipt_round_trips() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-3",
-            EmbeddingModelDescriptor::new(
-                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-                4,
-                EmbeddingNormalization::UnitLength,
-            ),
+            sample_embedding_descriptor(),
             vec![String::from("hello")],
         );
         let response = EmbeddingResponse::new(
@@ -615,6 +606,7 @@ mod tests {
             vec![EmbeddingVector {
                 index: 0,
                 values: vec![0.1, 0.2, 0.3, 0.4],
+                // Receipt tests do not care about matching model dimensions here.
             }],
         );
         let receipt = ExecutionReceipt::succeeded_for_response("cpu", &request, &response, 10, 20);
@@ -671,11 +663,7 @@ mod tests {
     fn failed_receipt_carries_reason() {
         let request = EmbeddingRequest::new(
             "req-4",
-            EmbeddingModelDescriptor::new(
-                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-                8,
-                EmbeddingNormalization::None,
-            ),
+            sample_embedding_descriptor(),
             vec![String::from("hello")],
         );
 
@@ -689,11 +677,7 @@ mod tests {
     fn request_digests_are_deterministic() {
         let embedding_request = EmbeddingRequest::new(
             "req-5",
-            EmbeddingModelDescriptor::new(
-                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-                8,
-                EmbeddingNormalization::None,
-            ),
+            sample_embedding_descriptor(),
             vec![String::from("same input")],
         );
         let generation_request = GenerationRequest::new_tokens(
@@ -723,5 +707,9 @@ mod tests {
 
     fn sample_decoder_descriptor() -> rustygrad_serve::DecoderModelDescriptor {
         ReferenceWordDecoder::new().descriptor().clone()
+    }
+
+    fn sample_embedding_descriptor() -> rustygrad_serve::EmbeddingModelDescriptor {
+        SmokeByteEmbedder::new().descriptor().clone()
     }
 }

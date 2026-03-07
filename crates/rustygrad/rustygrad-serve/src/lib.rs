@@ -9,10 +9,10 @@ use rustygrad_ir::{Graph, GraphBuilder, GraphError};
 pub use rustygrad_models::{
     ActivationFunction, DecoderAttentionConfig, DecoderBlockConfig, DecoderConfig,
     DecoderFeedForwardConfig, DecoderFixtureWeights, DecoderModelDescriptor, DecoderWeightLoader,
-    EmbeddingModelDescriptor, EmbeddingNormalization, FixtureDecoderLoader, FixtureWordTokenizer,
-    ModelDescriptor, ModelLoadError, ReferenceWordDecoder, SmokeByteEmbedder, TokenId,
-    TokenSequence, TokenVocabulary, TokenizerBoundary, WeightBundleMetadata, WeightFormat,
-    WeightSource, WeightTensorMetadata,
+    EmbeddingModelDescriptor, EmbeddingNormalization, EmbeddingWeights, ByteProjectionEmbedder,
+    FixtureDecoderLoader, FixtureWordTokenizer, ModelDescriptor, ModelLoadError,
+    ReferenceWordDecoder, SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary,
+    TokenizerBoundary, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
 use rustygrad_runtime::RuntimeError;
 use serde::{Deserialize, Serialize};
@@ -1236,6 +1236,29 @@ pub enum SmokeEmbeddingsError {
     Runtime(#[from] RuntimeError),
 }
 
+/// Model-backed embeddings execution error.
+#[derive(Debug, Error)]
+pub enum ModelEmbeddingsError {
+    /// The request targeted the wrong product.
+    #[error("unsupported product id `{0}`")]
+    UnsupportedProduct(String),
+    /// The request targeted the wrong model.
+    #[error("unsupported model `{0}`")]
+    UnsupportedModel(String),
+    /// The request carried no inputs.
+    #[error("embedding request must contain at least one input")]
+    EmptyInputBatch,
+    /// Loading or validating the model failed.
+    #[error(transparent)]
+    Model(#[from] ModelLoadError),
+    /// Graph construction failed.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// CPU runtime execution failed.
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+}
+
 /// CPU-backed embeddings smoke service.
 #[derive(Clone, Debug)]
 pub struct SmokeEmbeddingsService {
@@ -1252,7 +1275,13 @@ impl SmokeEmbeddingsService {
     pub fn new() -> Result<Self, SmokeEmbeddingsError> {
         let model = SmokeByteEmbedder::new();
         let input_shape = Shape::new(vec![1, model.input_dimensions()]);
-        let (graph, input_id, output_id) = build_smoke_graph(&model, input_shape.clone())?;
+        let (graph, input_id, output_id) = build_embedding_graph(
+            model.input_dimensions(),
+            model.descriptor().dimensions,
+            model.projection(),
+            model.bias(),
+            input_shape.clone(),
+        )?;
         Ok(Self {
             backend: CpuBackend::new(),
             model,
@@ -1270,21 +1299,15 @@ impl SmokeEmbeddingsService {
     }
 
     fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, SmokeEmbeddingsError> {
-        let mut runtime_inputs = BTreeMap::new();
-        runtime_inputs.insert(
+        execute_embedding_graph(
+            &mut self.backend,
+            &self.graph,
             self.input_id,
-            self.backend
-                .input_buffer(self.input_shape.clone(), self.model.featurize(input))?,
-        );
-        let result = self
-            .backend
-            .compile_and_execute(&self.graph, &runtime_inputs)?;
-        let Some(output) = result.outputs.get(&self.output_id) else {
-            return Err(SmokeEmbeddingsError::Runtime(RuntimeError::Backend(
-                String::from("missing smoke embedding output"),
-            )));
-        };
-        Ok(output.as_f32_slice().to_vec())
+            self.output_id,
+            &self.input_shape,
+            self.model.featurize(input),
+        )
+        .map_err(SmokeEmbeddingsError::Runtime)
     }
 }
 
@@ -1318,22 +1341,107 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
     }
 }
 
-fn build_smoke_graph(
-    model: &SmokeByteEmbedder,
+/// CPU-backed model embeddings service for artifact-loaded embedding families.
+#[derive(Clone, Debug)]
+pub struct CpuModelEmbeddingsService {
+    backend: CpuBackend,
+    model: ByteProjectionEmbedder,
+    graph: Graph,
+    input_shape: Shape,
+    input_id: TensorId,
+    output_id: TensorId,
+}
+
+impl CpuModelEmbeddingsService {
+    /// Loads the first model-backed embeddings family from a local safetensors artifact.
+    pub fn from_safetensors_artifact(path: impl AsRef<std::path::Path>) -> Result<Self, ModelEmbeddingsError> {
+        let model = ByteProjectionEmbedder::from_safetensors_artifact(path)?;
+        let input_shape = Shape::new(vec![1, model.input_dimensions()]);
+        let (graph, input_id, output_id) = build_embedding_graph(
+            model.input_dimensions(),
+            model.descriptor().dimensions,
+            model.weights().projection(),
+            model.weights().bias(),
+            input_shape.clone(),
+        )?;
+        Ok(Self {
+            backend: CpuBackend::new(),
+            model,
+            graph,
+            input_shape,
+            input_id,
+            output_id,
+        })
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &EmbeddingModelDescriptor {
+        self.model.descriptor()
+    }
+
+    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, ModelEmbeddingsError> {
+        let values = execute_embedding_graph(
+            &mut self.backend,
+            &self.graph,
+            self.input_id,
+            self.output_id,
+            &self.input_shape,
+            self.model.featurize(input),
+        )?;
+        Ok(normalize_embedding(
+            values,
+            self.model.descriptor().normalization,
+        ))
+    }
+}
+
+impl EmbeddingsExecutor for CpuModelEmbeddingsService {
+    type Error = ModelEmbeddingsError;
+
+    fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        if request.product_id != EMBEDDINGS_PRODUCT_ID {
+            return Err(ModelEmbeddingsError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+        if request.model != *self.model.descriptor() {
+            return Err(ModelEmbeddingsError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+        if request.inputs.is_empty() {
+            return Err(ModelEmbeddingsError::EmptyInputBatch);
+        }
+
+        let mut embeddings = Vec::with_capacity(request.inputs.len());
+        for (index, input) in request.inputs.iter().enumerate() {
+            embeddings.push(EmbeddingVector {
+                index,
+                values: self.embed_one(input)?,
+            });
+        }
+
+        Ok(EmbeddingResponse::new(request, embeddings))
+    }
+}
+
+fn build_embedding_graph(
+    input_dimensions: usize,
+    output_dimensions: usize,
+    projection: &[f32],
+    bias: &[f32],
     input_shape: Shape,
 ) -> Result<(Graph, TensorId, TensorId), GraphError> {
     let mut builder = GraphBuilder::new(Device::cpu());
     let input = builder.input("features", input_shape, DType::F32);
     let weights = builder.constant_f32(
-        Shape::new(vec![
-            model.input_dimensions(),
-            model.descriptor().dimensions,
-        ]),
-        model.projection().to_vec(),
+        Shape::new(vec![input_dimensions, output_dimensions]),
+        projection.to_vec(),
     )?;
     let bias = builder.constant_f32(
-        Shape::new(vec![1, model.descriptor().dimensions]),
-        model.bias().to_vec(),
+        Shape::new(vec![1, output_dimensions]),
+        bias.to_vec(),
     )?;
     let projected = builder.matmul(&input, &weights)?;
     let shifted = builder.add(&projected, &bias)?;
@@ -1341,6 +1449,36 @@ fn build_smoke_graph(
     let input_id = input.id();
     let graph = builder.finish(vec![shifted]);
     Ok((graph, input_id, output_id))
+}
+
+fn execute_embedding_graph(
+    backend: &mut CpuBackend,
+    graph: &Graph,
+    input_id: TensorId,
+    output_id: TensorId,
+    input_shape: &Shape,
+    features: Vec<f32>,
+) -> Result<Vec<f32>, RuntimeError> {
+    let mut runtime_inputs = BTreeMap::new();
+    runtime_inputs.insert(input_id, backend.input_buffer(input_shape.clone(), features)?);
+    let result = backend.compile_and_execute(graph, &runtime_inputs)?;
+    let Some(output) = result.outputs.get(&output_id) else {
+        return Err(RuntimeError::Backend(String::from(
+            "missing embedding output",
+        )));
+    };
+    Ok(output.as_f32_slice().to_vec())
+}
+
+fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) -> Vec<f32> {
+    if normalization != EmbeddingNormalization::UnitLength {
+        return values;
+    }
+    let norm = values.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if norm == 0.0 {
+        return values;
+    }
+    values.into_iter().map(|value| value / norm).collect()
 }
 
 #[cfg(test)]
@@ -1352,8 +1490,8 @@ mod tests {
         EmbeddingsExecutor, FixtureWordTokenizer, GenerationOptions, GenerationRequest,
         GenerationResponse, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
         ModelDescriptor, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
-        SmokeEmbeddingsService, TerminationReason, TextGenerationExecutor, WeightBundleMetadata,
-        WeightFormat, WeightSource, WeightTensorMetadata,
+        SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason, TextGenerationExecutor,
+        WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use rustygrad_models::{
@@ -1364,11 +1502,7 @@ mod tests {
     fn embedding_request_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-1",
-            rustygrad_models::EmbeddingModelDescriptor::new(
-                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-                8,
-                rustygrad_models::EmbeddingNormalization::UnitLength,
-            ),
+            sample_embedding_descriptor(),
             vec![String::from("hello world"), String::from("open agents")],
         );
 
@@ -1383,7 +1517,37 @@ mod tests {
       "revision": "v0"
     },
     "dimensions": 8,
-    "normalization": "UnitLength"
+    "normalization": "None",
+    "weights": {
+      "format": "ProgrammaticFixture",
+      "source": "Fixture",
+      "quantization": "none",
+      "digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
+      "tensors": [
+        {
+          "name": "bias",
+          "shape": {
+            "dims": [
+              8
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        },
+        {
+          "name": "projection",
+          "shape": {
+            "dims": [
+              16,
+              8
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        }
+      ],
+      "artifacts": []
+    }
   },
   "inputs": [
     "hello world",
@@ -1398,18 +1562,14 @@ mod tests {
     fn embedding_response_round_trips() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-2",
-            rustygrad_models::EmbeddingModelDescriptor::new(
-                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-                4,
-                rustygrad_models::EmbeddingNormalization::None,
-            ),
+            sample_embedding_descriptor(),
             vec![String::from("hi")],
         );
         let response = EmbeddingResponse::new(
             &request,
             vec![EmbeddingVector {
                 index: 0,
-                values: vec![0.0, 1.0, 2.0, 3.0],
+                values: vec![0.0; 8],
             }],
         );
 
@@ -1662,5 +1822,9 @@ mod tests {
                 artifacts: Vec::new(),
             },
         )
+    }
+
+    fn sample_embedding_descriptor() -> rustygrad_models::EmbeddingModelDescriptor {
+        SmokeByteEmbedder::new().descriptor().clone()
     }
 }

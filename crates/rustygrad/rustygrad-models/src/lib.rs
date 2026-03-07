@@ -8,7 +8,7 @@ use std::{
 };
 
 use rustygrad_core::{DType, QuantizationMode, Shape};
-use safetensors::{Dtype as SafeTensorsDType, SafeTensors};
+use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType, SafeTensors};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -61,6 +61,8 @@ pub struct EmbeddingModelDescriptor {
     pub dimensions: usize,
     /// Normalization policy applied to results.
     pub normalization: EmbeddingNormalization,
+    /// Weight bundle metadata for the embedding model.
+    pub weights: WeightBundleMetadata,
 }
 
 impl EmbeddingModelDescriptor {
@@ -70,12 +72,58 @@ impl EmbeddingModelDescriptor {
         model: ModelDescriptor,
         dimensions: usize,
         normalization: EmbeddingNormalization,
+        weights: WeightBundleMetadata,
     ) -> Self {
         Self {
             model,
             dimensions,
             normalization,
+            weights,
         }
+    }
+}
+
+/// Loaded embedding weights.
+#[derive(Clone, Debug, PartialEq)]
+pub struct EmbeddingWeights {
+    metadata: WeightBundleMetadata,
+    projection: Vec<f32>,
+    bias: Vec<f32>,
+}
+
+impl EmbeddingWeights {
+    /// Returns the stable weight metadata.
+    #[must_use]
+    pub fn metadata(&self) -> &WeightBundleMetadata {
+        &self.metadata
+    }
+
+    /// Returns the projection matrix in row-major order.
+    #[must_use]
+    pub fn projection(&self) -> &[f32] {
+        &self.projection
+    }
+
+    /// Returns the bias vector.
+    #[must_use]
+    pub fn bias(&self) -> &[f32] {
+        &self.bias
+    }
+
+    fn from_loaded_bundle(
+        bundle: LoadedWeightBundle,
+        input_dimensions: usize,
+        dimensions: usize,
+    ) -> Result<Self, ModelLoadError> {
+        Ok(Self {
+            metadata: bundle.metadata().clone(),
+            projection: load_tensor_values(
+                &bundle,
+                "projection",
+                &[input_dimensions, dimensions],
+            )?,
+            bias: load_tensor_values(&bundle, "bias", &[dimensions])?,
+        })
     }
 }
 
@@ -811,6 +859,14 @@ pub enum ModelLoadError {
         /// Read failure summary.
         message: String,
     },
+    /// Writing an artifact file failed.
+    #[error("failed to write artifact `{path}`: {message}")]
+    ArtifactWrite {
+        /// Artifact path attempted by the writer.
+        path: String,
+        /// Write failure summary.
+        message: String,
+    },
     /// Parsing an artifact file failed.
     #[error("failed to parse {format} artifact: {message}")]
     ArtifactFormat {
@@ -1002,8 +1058,7 @@ impl ReferenceWordDecoder {
 pub struct SmokeByteEmbedder {
     descriptor: EmbeddingModelDescriptor,
     input_dimensions: usize,
-    projection: Vec<f32>,
-    bias: Vec<f32>,
+    weights: EmbeddingWeights,
 }
 
 impl Default for SmokeByteEmbedder {
@@ -1021,31 +1076,19 @@ impl SmokeByteEmbedder {
     pub fn new() -> Self {
         let input_dimensions = 16;
         let dimensions = 8;
+        let (projection, bias) = build_byte_projection_parameters(input_dimensions, dimensions);
+        let weights = build_embedding_fixture_weights(input_dimensions, dimensions, &projection, &bias);
         let descriptor = EmbeddingModelDescriptor::new(
             ModelDescriptor::new(Self::MODEL_ID, "smoke", "v0"),
             dimensions,
             EmbeddingNormalization::None,
+            weights.metadata().clone(),
         );
-        let projection = (0..input_dimensions)
-            .flat_map(|row| {
-                (0..dimensions).map(move |column| {
-                    let seed = ((row + 3) * (column + 5)) % 17;
-                    ((seed as f32) - 8.0) / 8.0
-                })
-            })
-            .collect();
-        let bias = (0..dimensions)
-            .map(|column| {
-                let seed = ((column + 1) * 3) % 7;
-                ((seed as f32) - 3.0) / 10.0
-            })
-            .collect();
 
         Self {
             descriptor,
             input_dimensions,
-            projection,
-            bias,
+            weights,
         }
     }
 
@@ -1064,35 +1107,122 @@ impl SmokeByteEmbedder {
     /// Returns the projection matrix in row-major form.
     #[must_use]
     pub fn projection(&self) -> &[f32] {
-        &self.projection
+        self.weights.projection()
     }
 
     /// Returns the bias vector.
     #[must_use]
     pub fn bias(&self) -> &[f32] {
-        &self.bias
+        self.weights.bias()
+    }
+
+    /// Returns the underlying fixture weights.
+    #[must_use]
+    pub fn weights(&self) -> &EmbeddingWeights {
+        &self.weights
     }
 
     /// Converts input text into a deterministic feature vector.
     #[must_use]
     pub fn featurize(&self, input: &str) -> Vec<f32> {
-        let mut buckets = vec![0.0; self.input_dimensions];
-        let bytes = input.as_bytes();
-        if bytes.is_empty() {
-            return buckets;
-        }
+        byte_projection_features(self.input_dimensions, input)
+    }
+}
 
-        for (index, byte) in bytes.iter().enumerate() {
-            let bucket = (usize::from(*byte) + index) % self.input_dimensions;
-            buckets[bucket] += f32::from(*byte) / 255.0;
-        }
+/// Artifact-backed byte-projection embedding model family.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ByteProjectionEmbedder {
+    descriptor: EmbeddingModelDescriptor,
+    input_dimensions: usize,
+    weights: EmbeddingWeights,
+}
 
-        let scale = 1.0 / (bytes.len() as f32);
-        for value in &mut buckets {
-            *value *= scale;
-        }
+impl ByteProjectionEmbedder {
+    /// Stable model identifier for the first supported model-backed embeddings path.
+    pub const MODEL_ID: &str = "byte-projection-embed-v1";
+    /// Stable model family for the first supported model-backed embeddings path.
+    pub const MODEL_FAMILY: &str = "byte_projection";
 
-        buckets
+    /// Writes the default local safetensors artifact for the model family.
+    pub fn write_default_safetensors_artifact(path: &Path) -> Result<(), ModelLoadError> {
+        let input_dimensions = 16;
+        let dimensions = 8;
+        let (projection, bias) = build_byte_projection_parameters(input_dimensions, dimensions);
+        let projection_bytes = encode_f32_bytes(&projection);
+        let bias_bytes = encode_f32_bytes(&bias);
+        let tensors = vec![
+            (
+                "projection",
+                TensorView::new(
+                    SafeTensorsDType::F32,
+                    vec![input_dimensions, dimensions],
+                    projection_bytes.as_slice(),
+                )
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?,
+            ),
+            (
+                "bias",
+                TensorView::new(
+                    SafeTensorsDType::F32,
+                    vec![dimensions],
+                    bias_bytes.as_slice(),
+                )
+                .map_err(|error| ModelLoadError::ArtifactFormat {
+                    format: String::from("safetensors"),
+                    message: error.to_string(),
+                })?,
+            ),
+        ];
+        serialize_to_file(tensors, None, path).map_err(|error| ModelLoadError::ArtifactWrite {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })
+    }
+
+    /// Loads the model family from a local safetensors artifact.
+    pub fn from_safetensors_artifact(path: impl AsRef<Path>) -> Result<Self, ModelLoadError> {
+        let input_dimensions = 16;
+        let dimensions = 8;
+        let bundle = SafeTensorsWeightBundleLoader.load_path(path.as_ref())?;
+        let weights = EmbeddingWeights::from_loaded_bundle(bundle, input_dimensions, dimensions)?;
+        let descriptor = EmbeddingModelDescriptor::new(
+            ModelDescriptor::new(Self::MODEL_ID, Self::MODEL_FAMILY, "v1"),
+            dimensions,
+            EmbeddingNormalization::UnitLength,
+            weights.metadata().clone(),
+        );
+        Ok(Self {
+            descriptor,
+            input_dimensions,
+            weights,
+        })
+    }
+
+    /// Returns the public model descriptor.
+    #[must_use]
+    pub fn descriptor(&self) -> &EmbeddingModelDescriptor {
+        &self.descriptor
+    }
+
+    /// Returns the fixed input feature dimension.
+    #[must_use]
+    pub const fn input_dimensions(&self) -> usize {
+        self.input_dimensions
+    }
+
+    /// Returns the loaded embedding weights.
+    #[must_use]
+    pub fn weights(&self) -> &EmbeddingWeights {
+        &self.weights
+    }
+
+    /// Converts input text into a deterministic feature vector.
+    #[must_use]
+    pub fn featurize(&self, input: &str) -> Vec<f32> {
+        byte_projection_features(self.input_dimensions, input)
     }
 }
 
@@ -1104,6 +1234,97 @@ fn normalize_piece(piece: &str) -> String {
         })
         .collect::<String>()
         .to_ascii_lowercase()
+}
+
+fn build_byte_projection_parameters(input_dimensions: usize, dimensions: usize) -> (Vec<f32>, Vec<f32>) {
+    let projection = (0..input_dimensions)
+        .flat_map(|row| {
+            (0..dimensions).map(move |column| {
+                let seed = ((row + 3) * (column + 5)) % 17;
+                ((seed as f32) - 8.0) / 8.0
+            })
+        })
+        .collect();
+    let bias = (0..dimensions)
+        .map(|column| {
+            let seed = ((column + 1) * 3) % 7;
+            ((seed as f32) - 3.0) / 10.0
+        })
+        .collect();
+    (projection, bias)
+}
+
+fn build_embedding_fixture_weights(
+    input_dimensions: usize,
+    dimensions: usize,
+    projection: &[f32],
+    bias: &[f32],
+) -> EmbeddingWeights {
+    let metadata = build_embedding_weight_bundle_metadata(input_dimensions, dimensions, projection, bias);
+    EmbeddingWeights {
+        metadata,
+        projection: projection.to_vec(),
+        bias: bias.to_vec(),
+    }
+}
+
+fn build_embedding_weight_bundle_metadata(
+    input_dimensions: usize,
+    dimensions: usize,
+    projection: &[f32],
+    bias: &[f32],
+) -> WeightBundleMetadata {
+    let tensors = vec![
+        WeightTensorMetadata::new(
+            "bias",
+            Shape::new(vec![dimensions]),
+            DType::F32,
+        ),
+        WeightTensorMetadata::new(
+            "projection",
+            Shape::new(vec![input_dimensions, dimensions]),
+            DType::F32,
+        ),
+    ];
+
+    let mut hasher = Sha256::new();
+    digest_tensor(&mut hasher, &tensors[0], bias);
+    digest_tensor(&mut hasher, &tensors[1], projection);
+    WeightBundleMetadata {
+        format: WeightFormat::ProgrammaticFixture,
+        source: WeightSource::Fixture,
+        quantization: QuantizationMode::None,
+        digest: hex::encode(hasher.finalize()),
+        tensors,
+        artifacts: Vec::new(),
+    }
+}
+
+fn byte_projection_features(input_dimensions: usize, input: &str) -> Vec<f32> {
+    let mut buckets = vec![0.0; input_dimensions];
+    let bytes = input.as_bytes();
+    if bytes.is_empty() {
+        return buckets;
+    }
+
+    for (index, byte) in bytes.iter().enumerate() {
+        let bucket = (usize::from(*byte) + index) % input_dimensions;
+        buckets[bucket] += f32::from(*byte) / 255.0;
+    }
+
+    let scale = 1.0 / (bytes.len() as f32);
+    for value in &mut buckets {
+        *value *= scale;
+    }
+
+    buckets
+}
+
+fn encode_f32_bytes(values: &[f32]) -> Vec<u8> {
+    values
+        .iter()
+        .flat_map(|value| value.to_le_bytes())
+        .collect()
 }
 
 fn reference_decoder_config(vocab_size: usize) -> DecoderConfig {
@@ -1396,10 +1617,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader, FixtureWordTokenizer,
-        LocalWeightBundleLoader, ReferenceWordDecoder, SafeTensorsDecoderLoader,
-        SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenizerBoundary, WeightFormat,
-        WeightSource,
+        ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader,
+        FixtureWordTokenizer, LocalWeightBundleLoader, ReferenceWordDecoder,
+        SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader, SmokeByteEmbedder,
+        TokenizerBoundary, WeightFormat, WeightSource,
     };
 
     #[test]
@@ -1419,6 +1640,7 @@ mod tests {
             model.descriptor().model.model_id,
             SmokeByteEmbedder::MODEL_ID
         );
+        assert_eq!(model.descriptor().weights.quantization, QuantizationMode::None);
     }
 
     #[test]
@@ -1553,6 +1775,23 @@ mod tests {
         assert_eq!(tensor.metadata().dtype, DType::I8);
         assert_eq!(tensor.metadata().quantization, QuantizationMode::Int8Symmetric);
         assert_eq!(tensor.values(), &[0.5, -0.5, 1.0, -1.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn byte_projection_embedder_loads_from_artifact(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("byte_projection.safetensors");
+        ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
+        let model = ByteProjectionEmbedder::from_safetensors_artifact(&path)?;
+
+        assert_eq!(model.descriptor().model.model_id, ByteProjectionEmbedder::MODEL_ID);
+        assert_eq!(model.descriptor().model.family, ByteProjectionEmbedder::MODEL_FAMILY);
+        assert_eq!(model.descriptor().weights.format, WeightFormat::SafeTensors);
+        assert_eq!(model.descriptor().weights.source, WeightSource::ExternalArtifact);
+        assert_eq!(model.descriptor().weights.artifacts[0].name, "byte_projection.safetensors");
+        assert_eq!(model.descriptor().normalization, super::EmbeddingNormalization::UnitLength);
         Ok(())
     }
 
