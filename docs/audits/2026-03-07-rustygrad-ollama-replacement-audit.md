@@ -325,6 +325,7 @@ The branch still does not show:
 - CPU-vs-Metal parity harness
 - a Metal-backed served embeddings product path
 - AMD discovery/provider truth work
+- any NVIDIA discovery, execution, or provider-truth work
 - GGUF ingestion
 - Ollama manifest/blob compatibility
 - an Ollama-like local runtime with installed-model listing, loaded-model listing, warm/unload, and generate lifecycle
@@ -441,6 +442,7 @@ Current Rustygrad backends:
 - Metal: placeholder on `main`, partial discovery/allocation/submission backend on `rustygrad3`
 - AMD KFD: placeholder
 - AMD userspace: placeholder
+- NVIDIA/CUDA: absent
 
 There is still no complete accelerated served-product backend in the current repo state.
 
@@ -507,6 +509,7 @@ That should shape the Ollama-replacement plan:
 
 - if the replacement needs acceleration soon, it should align with the Metal-first roadmap
 - if the replacement goal is specifically GGUF/Ollama compatibility, that is an additional workstream not yet represented by the open phase-3 and phase-4 issues
+- if the replacement goal is broad local-runtime replacement, NVIDIA support also needs to be added as an explicit workstream, because the current issue stack does not cover it at all
 
 ## Recommended Architecture In This Repo
 
@@ -704,6 +707,10 @@ If the team instead chooses a safetensors-first runtime before GGUF compatibilit
   - Rustygrad-native runtime for packaged safetensors models
 - Phase 3B:
   - GGUF/Ollama-store compatibility layer
+- Phase 3C:
+  - add a first-class NVIDIA backend track, likely as `rustygrad-backend-cuda` or equivalent
+  - implement truthful NVIDIA discovery, readiness, memory accounting, lowering/kernel coverage, and provider capability truth
+  - add CPU-vs-NVIDIA parity coverage before treating the Rust runtime as a broad Ollama replacement
 
 ## Phase 4: Swap desktop default to Rustygrad
 
@@ -793,6 +800,7 @@ The correct order is:
 5. Align any acceleration claims with the current roadmap:
    - Metal embeddings first
    - AMD discovery/provider truth later
+   - add a first-class NVIDIA/CUDA backend track instead of treating Metal plus AMD as the complete hardware plan
 6. Stop advertising or quoting embeddings unless there is a real executable embeddings path behind the selected backend.
 
 ## Bottom Line
@@ -809,4 +817,4 @@ The honest path is:
 - add an Ollama-compatible local model catalog and GGUF ingestion layer
 - preserve the app-owned worker seam
 - replace the external daemon incrementally
-- do not call the migration done until model-backed Rustygrad and at least one truthful accelerated backend exist
+- do not call the migration done until model-backed Rustygrad and truthful accelerated backend coverage exist, with NVIDIA explicitly included in the plan for broad hardware replacement
