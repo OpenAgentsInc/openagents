@@ -1,0 +1,226 @@
+{
+  "source_badge": "source: stream.pm.work_items.v1",
+  "active_saved_view": "My Work",
+  "selected_work_item_id": "wi-1",
+  "checkpoints": {
+    "stream.pm.activity_projection.v1": 7,
+    "stream.pm.cycles.v1": 1,
+    "stream.pm.saved_views.v1": 0,
+    "stream.pm.work_items.v1": 7
+  },
+  "accepted_events": [
+    {
+      "stream_id": "stream.pm.work_items.v1",
+      "seq": 1,
+      "command_id": "pm-fixture-cmd-1",
+      "emitted_at_unix_ms": 1762100000000,
+      "actor": {
+        "actor_id": "npub1fixture",
+        "actor_label": "cdavid"
+      },
+      "event": {
+        "type": "work_item_created",
+        "work_item": {
+          "work_item_id": "wi-1",
+          "title": "Freeze PM contract manifest",
+          "description": "Keep the Phase 1 contract surface stable.",
+          "status": "backlog",
+          "priority": "high",
+          "assignee": "cdavid",
+          "team_key": "desktop",
+          "cycle_id": null,
+          "parent_id": null,
+          "area_tags": [
+            "pm"
+          ],
+          "blocked_reason": null,
+          "due_at_unix_ms": null,
+          "created_at_unix_ms": 1762100000000,
+          "updated_at_unix_ms": 1762100000000,
+          "archived_at_unix_ms": null
+        }
+      }
+    },
+    {
+      "stream_id": "stream.pm.work_items.v1",
+      "seq": 2,
+      "command_id": "pm-fixture-cmd-2",
+      "emitted_at_unix_ms": 1762100001000,
+      "actor": {
+        "actor_id": "npub1fixture",
+        "actor_label": "cdavid"
+      },
+      "event": {
+        "type": "work_item_status_changed",
+        "work_item_id": "wi-1",
+        "status": "todo"
+      }
+    },
+    {
+      "stream_id": "stream.pm.work_items.v1",
+      "seq": 3,
+      "command_id": "pm-fixture-cmd-3",
+      "emitted_at_unix_ms": 1762100002000,
+      "actor": {
+        "actor_id": "npub1fixture",
+        "actor_label": "cdavid"
+      },
+      "event": {
+        "type": "work_item_cycle_set",
+        "work_item_id": "wi-1",
+        "cycle_id": "2026-w10"
+      }
+    },
+    {
+      "stream_id": "stream.pm.work_items.v1",
+      "seq": 4,
+      "command_id": "pm-fixture-cmd-4",
+      "emitted_at_unix_ms": 1762100003000,
+      "actor": {
+        "actor_id": "npub1fixture",
+        "actor_label": "cdavid"
+      },
+      "event": {
+        "type": "work_item_created",
+        "work_item": {
+          "work_item_id": "wi-2",
+          "title": "Prove PM projection replay",
+          "description": "Exercise restart and rebuild against one deterministic script.",
+          "status": "todo",
+          "priority": "urgent",
+          "assignee": "cdavid",
+          "team_key": "desktop",
+          "cycle_id": null,
+          "parent_id": null,
+          "area_tags": [
+            "pm"
+          ],
+          "blocked_reason": null,
+          "due_at_unix_ms": null,
+          "created_at_unix_ms": 1762100003000,
+          "updated_at_unix_ms": 1762100003000,
+          "archived_at_unix_ms": null
+        }
+      }
+    },
+    {
+      "stream_id": "stream.pm.work_items.v1",
+      "seq": 5,
+      "command_id": "pm-fixture-cmd-5",
+      "emitted_at_unix_ms": 1762100004000,
+      "actor": {
+        "actor_id": "npub1fixture",
+        "actor_label": "cdavid"
+      },
+      "event": {
+        "type": "work_item_status_changed",
+        "work_item_id": "wi-2",
+        "status": "in_progress"
+      }
+    },
+    {
+      "stream_id": "stream.pm.work_items.v1",
+      "seq": 6,
+      "command_id": "pm-fixture-cmd-6",
+      "emitted_at_unix_ms": 1762100005000,
+      "actor": {
+        "actor_id": "npub1fixture",
+        "actor_label": "cdavid"
+      },
+      "event": {
+        "type": "work_item_blocked",
+        "work_item_id": "wi-2",
+        "blocked_reason": "Waiting on relay telemetry"
+      }
+    },
+    {
+      "stream_id": "stream.pm.work_items.v1",
+      "seq": 7,
+      "command_id": "pm-fixture-cmd-7",
+      "emitted_at_unix_ms": 1762100006000,
+      "actor": {
+        "actor_id": "npub1fixture",
+        "actor_label": "cdavid"
+      },
+      "event": {
+        "type": "work_item_fields_edited",
+        "work_item_id": "wi-1",
+        "patch": {
+          "title": "Freeze PM sync contract",
+          "description": "Keep the Phase 1 badge, grant, and checkpoint contract stable.",
+          "priority": "urgent",
+          "due_at_unix_ms": 1762500000000,
+          "area_tags": [
+            "pm",
+            "sync"
+          ]
+        }
+      }
+    }
+  ],
+  "visible_work_items": [
+    {
+      "work_item_id": "wi-1",
+      "title": "Freeze PM sync contract",
+      "status": "todo",
+      "priority": "urgent",
+      "assignee": "cdavid",
+      "blocked_reason": null,
+      "cycle_id": "2026-w10",
+      "updated_at_unix_ms": 1762100006000
+    },
+    {
+      "work_item_id": "wi-2",
+      "title": "Prove PM projection replay",
+      "status": "in_progress",
+      "priority": "urgent",
+      "assignee": "cdavid",
+      "blocked_reason": "Waiting on relay telemetry",
+      "cycle_id": null,
+      "updated_at_unix_ms": 1762100005000
+    }
+  ],
+  "detail": {
+    "work_item_id": "wi-1",
+    "title": "Freeze PM sync contract",
+    "description": "Keep the Phase 1 badge, grant, and checkpoint contract stable.",
+    "status": "todo",
+    "priority": "urgent",
+    "assignee": "cdavid",
+    "cycle_id": "2026-w10",
+    "parent_id": null,
+    "blocked_reason": null,
+    "created_at_unix_ms": 1762100000000,
+    "updated_at_unix_ms": 1762100006000
+  },
+  "activity_rows": [
+    {
+      "event_id": "pm.activity:pm-fixture-cmd-7:WorkItemFieldsEdited:1762100006000",
+      "event_name": "WorkItemFieldsEdited",
+      "actor_label": "cdavid",
+      "summary": "Edited fields on wi-1",
+      "occurred_at_unix_ms": 1762100006000
+    },
+    {
+      "event_id": "pm.activity:pm-fixture-cmd-3:WorkItemCycleSet:1762100002000",
+      "event_name": "WorkItemCycleSet",
+      "actor_label": "cdavid",
+      "summary": "Moved wi-1 into cycle 2026-w10",
+      "occurred_at_unix_ms": 1762100002000
+    },
+    {
+      "event_id": "pm.activity:pm-fixture-cmd-2:WorkItemStatusChanged:1762100001000",
+      "event_name": "WorkItemStatusChanged",
+      "actor_label": "cdavid",
+      "summary": "Changed wi-1 status to todo",
+      "occurred_at_unix_ms": 1762100001000
+    },
+    {
+      "event_id": "pm.activity:pm-fixture-cmd-1:WorkItemCreated:1762100000000",
+      "event_name": "WorkItemCreated",
+      "actor_label": "cdavid",
+      "summary": "Created wi-1 (Freeze PM contract manifest)",
+      "occurred_at_unix_ms": 1762100000000
+    }
+  ]
+}

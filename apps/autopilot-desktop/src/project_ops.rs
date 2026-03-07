@@ -812,14 +812,25 @@ fn now_unix_ms() -> u64 {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::BTreeMap;
+    use std::fs;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
 
+    use serde::{Deserialize, Serialize};
+
     use super::{
-        ProjectOpsPaneState, ProjectOpsPilotMetricsState, PROJECT_OPS_BLOCKED_VIEW_ID,
-        PROJECT_OPS_MY_WORK_VIEW_ID,
+        ProjectOpsPaneState, ProjectOpsPilotMetricsState, ProjectOpsService,
+        PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_BLOCKED_VIEW_ID,
+        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
+        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID,
     };
-    use crate::project_ops::contract::ProjectOpsAcceptedEventName;
+    use crate::project_ops::contract::{
+        ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsChangeWorkItemStatus,
+        ProjectOpsCommand, ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCreateWorkItem,
+        ProjectOpsEditWorkItemFields, ProjectOpsEditWorkItemFieldsPatch, ProjectOpsSetBlockedReason,
+        ProjectOpsSetWorkItemCycle, ProjectOpsWorkItemDraft,
+    };
     use crate::project_ops::projection::{
         ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore,
     };
@@ -941,6 +952,341 @@ mod tests {
             )
             .expect("activity projection should apply");
         store
+    }
+
+    #[derive(Clone)]
+    struct ProjectOpsFixturePaths {
+        work_items_path: PathBuf,
+        activity_path: PathBuf,
+        cycles_path: PathBuf,
+        saved_views_path: PathBuf,
+        checkpoint_path: PathBuf,
+    }
+
+    impl ProjectOpsFixturePaths {
+        fn new(tag: &str) -> Self {
+            Self {
+                work_items_path: unique_temp_path(&format!("{tag}-work-items")),
+                activity_path: unique_temp_path(&format!("{tag}-activity")),
+                cycles_path: unique_temp_path(&format!("{tag}-cycles")),
+                saved_views_path: unique_temp_path(&format!("{tag}-saved-views")),
+                checkpoint_path: unique_temp_path(&format!("{tag}-checkpoints")),
+            }
+        }
+
+        fn build_store(&self) -> ProjectOpsProjectionStore {
+            ProjectOpsProjectionStore::from_paths_for_tests(
+                self.work_items_path.clone(),
+                self.activity_path.clone(),
+                self.cycles_path.clone(),
+                self.saved_views_path.clone(),
+                self.checkpoint_path.clone(),
+            )
+        }
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+    struct ProjectOpsGoldenListRow {
+        work_item_id: String,
+        title: String,
+        status: String,
+        priority: String,
+        assignee: Option<String>,
+        blocked_reason: Option<String>,
+        cycle_id: Option<String>,
+        updated_at_unix_ms: u64,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+    struct ProjectOpsGoldenDetail {
+        work_item_id: String,
+        title: String,
+        description: String,
+        status: String,
+        priority: String,
+        assignee: Option<String>,
+        cycle_id: Option<String>,
+        parent_id: Option<String>,
+        blocked_reason: Option<String>,
+        created_at_unix_ms: u64,
+        updated_at_unix_ms: u64,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+    struct ProjectOpsGoldenActivity {
+        event_id: String,
+        event_name: String,
+        actor_label: String,
+        summary: String,
+        occurred_at_unix_ms: u64,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+    struct ProjectOpsGoldenSnapshot {
+        source_badge: String,
+        active_saved_view: String,
+        selected_work_item_id: Option<String>,
+        checkpoints: BTreeMap<String, u64>,
+        accepted_events: Vec<ProjectOpsAcceptedEventEnvelope>,
+        visible_work_items: Vec<ProjectOpsGoldenListRow>,
+        detail: Option<ProjectOpsGoldenDetail>,
+        activity_rows: Vec<ProjectOpsGoldenActivity>,
+    }
+
+    fn pm_projection_fixture_path() -> String {
+        let root = env!("CARGO_MANIFEST_DIR");
+        format!("{root}/tests/goldens/project_ops_stream_projection_snapshot.json")
+    }
+
+    fn assert_or_write_pm_fixture(
+        path: &str,
+        snapshot: &ProjectOpsGoldenSnapshot,
+        label: &str,
+    ) {
+        let actual_json =
+            serde_json::to_string_pretty(snapshot).expect("PM golden snapshot should serialize");
+        if std::env::var("PROJECT_OPS_UPDATE_GOLDENS").as_deref() == Ok("1") {
+            if let Some(parent) = std::path::Path::new(path).parent() {
+                fs::create_dir_all(parent).expect("PM fixture directory should exist");
+            }
+            fs::write(path, actual_json).expect("PM fixture should write");
+            return;
+        }
+
+        let expected_json = fs::read_to_string(path).unwrap_or_else(|error| {
+            panic!(
+                "missing {label} fixture {path}: {error}\nset PROJECT_OPS_UPDATE_GOLDENS=1 to regenerate.\nactual snapshot:\n{actual_json}"
+            )
+        });
+        let expected = serde_json::from_str::<ProjectOpsGoldenSnapshot>(&expected_json)
+            .expect("PM fixture should parse");
+        if expected != *snapshot {
+            panic!("{label} snapshot mismatch against {path}\nactual snapshot:\n{actual_json}");
+        }
+    }
+
+    fn fixture_cycle() -> ProjectOpsCycleRow {
+        ProjectOpsCycleRow {
+            cycle_id: ProjectOpsCycleId::new("2026-w10").expect("cycle id"),
+            title: "Week 10".to_string(),
+            goal: Some("Freeze PM phase 1 semantics".to_string()),
+            starts_at_unix_ms: 1_761_998_400_000,
+            ends_at_unix_ms: 1_762_603_200_000,
+            is_active: true,
+        }
+    }
+
+    fn scripted_work_item_draft(
+        work_item_id: &str,
+        title: &str,
+        description: &str,
+        status: ProjectOpsWorkItemStatus,
+        priority: ProjectOpsPriority,
+        assignee: Option<&str>,
+    ) -> ProjectOpsWorkItemDraft {
+        ProjectOpsWorkItemDraft {
+            work_item_id: ProjectOpsWorkItemId::new(work_item_id).expect("work item id"),
+            title: title.to_string(),
+            description: description.to_string(),
+            status,
+            priority,
+            assignee: assignee.map(ToString::to_string),
+            team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
+            cycle_id: None,
+            parent_id: None,
+            area_tags: vec!["pm".to_string()],
+            blocked_reason: None,
+            due_at_unix_ms: None,
+        }
+    }
+
+    fn scripted_command(
+        command_id: &str,
+        issued_at_unix_ms: u64,
+        command: ProjectOpsCommand,
+    ) -> ProjectOpsCommandEnvelope {
+        ProjectOpsCommandEnvelope {
+            command_id: ProjectOpsCommandId::new(command_id).expect("command id"),
+            issued_at_unix_ms,
+            actor: crate::project_ops::ProjectOpsActor {
+                actor_id: Some("npub1fixture".to_string()),
+                actor_label: Some("cdavid".to_string()),
+            },
+            command,
+        }
+    }
+
+    fn apply_scripted_pm_cycle(
+        store: &mut ProjectOpsProjectionStore,
+    ) -> Vec<ProjectOpsAcceptedEventEnvelope> {
+        store
+            .apply_cycles_projection(1, vec![fixture_cycle()])
+            .expect("cycle projection should seed");
+
+        let commands = vec![
+            scripted_command(
+                "pm-fixture-cmd-1",
+                1_762_100_000_000,
+                ProjectOpsCommand::CreateWorkItem(ProjectOpsCreateWorkItem {
+                    draft: scripted_work_item_draft(
+                        "wi-1",
+                        "Freeze PM contract manifest",
+                        "Keep the Phase 1 contract surface stable.",
+                        ProjectOpsWorkItemStatus::Backlog,
+                        ProjectOpsPriority::High,
+                        Some("cdavid"),
+                    ),
+                }),
+            ),
+            scripted_command(
+                "pm-fixture-cmd-2",
+                1_762_100_001_000,
+                ProjectOpsCommand::ChangeWorkItemStatus(ProjectOpsChangeWorkItemStatus {
+                    work_item_id: ProjectOpsWorkItemId::new("wi-1").expect("work item id"),
+                    status: ProjectOpsWorkItemStatus::Todo,
+                }),
+            ),
+            scripted_command(
+                "pm-fixture-cmd-3",
+                1_762_100_002_000,
+                ProjectOpsCommand::SetWorkItemCycle(ProjectOpsSetWorkItemCycle {
+                    work_item_id: ProjectOpsWorkItemId::new("wi-1").expect("work item id"),
+                    cycle_id: ProjectOpsCycleId::new("2026-w10").expect("cycle id"),
+                }),
+            ),
+            scripted_command(
+                "pm-fixture-cmd-4",
+                1_762_100_003_000,
+                ProjectOpsCommand::CreateWorkItem(ProjectOpsCreateWorkItem {
+                    draft: scripted_work_item_draft(
+                        "wi-2",
+                        "Prove PM projection replay",
+                        "Exercise restart and rebuild against one deterministic script.",
+                        ProjectOpsWorkItemStatus::Todo,
+                        ProjectOpsPriority::Urgent,
+                        Some("cdavid"),
+                    ),
+                }),
+            ),
+            scripted_command(
+                "pm-fixture-cmd-5",
+                1_762_100_004_000,
+                ProjectOpsCommand::ChangeWorkItemStatus(ProjectOpsChangeWorkItemStatus {
+                    work_item_id: ProjectOpsWorkItemId::new("wi-2").expect("work item id"),
+                    status: ProjectOpsWorkItemStatus::InProgress,
+                }),
+            ),
+            scripted_command(
+                "pm-fixture-cmd-6",
+                1_762_100_005_000,
+                ProjectOpsCommand::SetBlockedReason(ProjectOpsSetBlockedReason {
+                    work_item_id: ProjectOpsWorkItemId::new("wi-2").expect("work item id"),
+                    blocked_reason: "Waiting on relay telemetry".to_string(),
+                }),
+            ),
+            scripted_command(
+                "pm-fixture-cmd-7",
+                1_762_100_006_000,
+                ProjectOpsCommand::EditWorkItemFields(ProjectOpsEditWorkItemFields {
+                    work_item_id: ProjectOpsWorkItemId::new("wi-1").expect("work item id"),
+                    patch: ProjectOpsEditWorkItemFieldsPatch {
+                        title: Some("Freeze PM sync contract".to_string()),
+                        description: Some(
+                            "Keep the Phase 1 badge, grant, and checkpoint contract stable."
+                                .to_string(),
+                        ),
+                        priority: Some(ProjectOpsPriority::Urgent),
+                        due_at_unix_ms: Some(Some(1_762_500_000_000)),
+                        area_tags: Some(vec!["pm".to_string(), "sync".to_string()]),
+                    },
+                }),
+            ),
+        ];
+
+        let mut accepted_events = Vec::new();
+        for command in commands {
+            let result = ProjectOpsService::apply_command_to_store(store, command)
+                .expect("scripted PM command should apply");
+            match result {
+                crate::project_ops::ProjectOpsCommandResult::Applied(result) => {
+                    accepted_events.extend(result.accepted_events);
+                }
+                crate::project_ops::ProjectOpsCommandResult::DuplicateCommand { .. } => {
+                    panic!("scripted PM fixture should not emit duplicate commands");
+                }
+            }
+        }
+        accepted_events
+    }
+
+    fn snapshot_from_store(
+        store: ProjectOpsProjectionStore,
+        accepted_events: Vec<ProjectOpsAcceptedEventEnvelope>,
+    ) -> ProjectOpsGoldenSnapshot {
+        let pane = ProjectOpsPaneState::from_local_store_for_tests(store, "cdavid");
+        let mut checkpoints = BTreeMap::new();
+        for stream_id in [
+            PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+            PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
+            PROJECT_OPS_CYCLES_STREAM_ID,
+            PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+        ] {
+            checkpoints.insert(
+                stream_id.to_string(),
+                pane.local_store.checkpoint_for(stream_id).unwrap_or(0),
+            );
+        }
+        ProjectOpsGoldenSnapshot {
+            source_badge: pane.source_badge,
+            active_saved_view: pane.active_saved_view,
+            selected_work_item_id: pane
+                .selected_work_item_id
+                .as_ref()
+                .map(|work_item_id| work_item_id.as_str().to_string()),
+            checkpoints,
+            accepted_events,
+            visible_work_items: pane
+                .visible_work_items
+                .iter()
+                .map(|item| ProjectOpsGoldenListRow {
+                    work_item_id: item.work_item_id.as_str().to_string(),
+                    title: item.title.clone(),
+                    status: item.status.label().to_string(),
+                    priority: item.priority.label().to_string(),
+                    assignee: item.assignee.clone(),
+                    blocked_reason: item.blocked_reason.clone(),
+                    cycle_id: item.cycle_id.as_ref().map(|cycle_id| cycle_id.as_str().to_string()),
+                    updated_at_unix_ms: item.updated_at_unix_ms,
+                })
+                .collect(),
+            detail: pane.detail_draft.as_ref().map(|detail| ProjectOpsGoldenDetail {
+                work_item_id: detail.work_item_id.as_str().to_string(),
+                title: detail.title.clone(),
+                description: detail.description.clone(),
+                status: detail.status.label().to_string(),
+                priority: detail.priority.label().to_string(),
+                assignee: detail.assignee.clone(),
+                cycle_id: detail.cycle_id.as_ref().map(|cycle_id| cycle_id.as_str().to_string()),
+                parent_id: detail
+                    .parent_id
+                    .as_ref()
+                    .map(|parent_id| parent_id.as_str().to_string()),
+                blocked_reason: detail.blocked_reason.clone(),
+                created_at_unix_ms: detail.created_at_unix_ms,
+                updated_at_unix_ms: detail.updated_at_unix_ms,
+            }),
+            activity_rows: pane
+                .visible_activity_rows
+                .iter()
+                .map(|row| ProjectOpsGoldenActivity {
+                    event_id: row.event_id.clone(),
+                    event_name: row.event_name.label().to_string(),
+                    actor_label: row.actor_label.clone(),
+                    summary: row.summary.clone(),
+                    occurred_at_unix_ms: row.occurred_at_unix_ms,
+                })
+                .collect(),
+        }
     }
 
     #[test]
@@ -1113,6 +1459,35 @@ mod tests {
         assert_eq!(
             restored.last_cycle_summary.as_deref(),
             Some("scripted internal PM cycle completed")
+        );
+    }
+
+    #[test]
+    fn project_ops_stream_projection_fixture_matches_golden_across_rebuild_and_restart() {
+        let paths = ProjectOpsFixturePaths::new("golden-fixture");
+        let mut initial_store = paths.build_store();
+        let accepted_events = apply_scripted_pm_cycle(&mut initial_store);
+        let initial_snapshot = snapshot_from_store(initial_store, accepted_events.clone());
+
+        let reloaded_snapshot = snapshot_from_store(paths.build_store(), accepted_events.clone());
+        assert_eq!(
+            reloaded_snapshot, initial_snapshot,
+            "restart reload should preserve the same PM visible snapshot"
+        );
+
+        let rebuild_paths = ProjectOpsFixturePaths::new("golden-rebuild");
+        let mut rebuilt_store = rebuild_paths.build_store();
+        let rebuilt_events = apply_scripted_pm_cycle(&mut rebuilt_store);
+        let rebuilt_snapshot = snapshot_from_store(rebuilt_store, rebuilt_events);
+        assert_eq!(
+            rebuilt_snapshot, initial_snapshot,
+            "rebuild from zero should reproduce the same PM visible snapshot"
+        );
+
+        assert_or_write_pm_fixture(
+            pm_projection_fixture_path().as_str(),
+            &initial_snapshot,
+            "project_ops_stream_projection",
         );
     }
 }
