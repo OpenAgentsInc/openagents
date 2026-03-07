@@ -90,15 +90,51 @@ pub fn paint_project_ops_pane(
         theme::text::MUTED,
     ));
 
+    let projection_counts = format!(
+        "Rows: work items={} | activity={} | cycles={} | views={}",
+        state.local_store.work_items.len(),
+        state.local_store.activity_rows.len(),
+        state.local_store.cycles.len(),
+        state.local_store.saved_views.len()
+    );
+    paint.scene.draw_text(paint.text.layout(
+        projection_counts.as_str(),
+        Point::new(shell.origin.x + 12.0, shell.origin.y + 104.0),
+        11.0,
+        theme::text::PRIMARY,
+    ));
+
+    let checkpoint_status = format!(
+        "Checkpoints: wi={:?} act={:?} cyc={:?} view={:?}",
+        state
+            .local_store
+            .checkpoint_for(crate::project_ops::PROJECT_OPS_WORK_ITEMS_STREAM_ID),
+        state
+            .local_store
+            .checkpoint_for(crate::project_ops::PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID),
+        state
+            .local_store
+            .checkpoint_for(crate::project_ops::PROJECT_OPS_CYCLES_STREAM_ID),
+        state
+            .local_store
+            .checkpoint_for(crate::project_ops::PROJECT_OPS_SAVED_VIEWS_STREAM_ID),
+    );
+    paint.scene.draw_text(paint.text.layout(
+        checkpoint_status.as_str(),
+        Point::new(shell.origin.x + 12.0, shell.origin.y + 124.0),
+        11.0,
+        theme::text::MUTED,
+    ));
+
     let next_steps = [
-        "Next: Step 0 work-item schema",
-        "Next: PM stream ids and projection files",
-        "Next: shared checkpoint integration",
+        "Next: Step 0 command reducer and apply loop",
+        "Next: built-in saved views and toolbar",
+        "Next: detail editor and activity timeline",
     ];
     for (index, line) in next_steps.iter().enumerate() {
         paint.scene.draw_text(paint.text.layout(
             line,
-            Point::new(shell.origin.x + 12.0, shell.origin.y + 118.0 + index as f32 * 18.0),
+            Point::new(shell.origin.x + 12.0, shell.origin.y + 156.0 + index as f32 * 18.0),
             11.0,
             theme::text::PRIMARY,
         ));
