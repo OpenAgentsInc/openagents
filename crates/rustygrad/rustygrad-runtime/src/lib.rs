@@ -44,12 +44,18 @@ pub struct DeviceDescriptor {
     pub backend: String,
     /// Logical device.
     pub device: Device,
+    /// Human-readable device name when the backend can supply one.
+    pub device_name: Option<String>,
     /// Supported dtypes for the device.
     pub supported_dtypes: Vec<DType>,
     /// Supported quantization modes for model-backed execution.
     pub supported_quantization: Vec<QuantizationSupport>,
     /// Optional memory capacity in bytes.
     pub memory_capacity_bytes: Option<u64>,
+    /// Whether the device shares memory with the host, when known.
+    pub unified_memory: Option<bool>,
+    /// Stable feature flags relevant to runtime/backend selection.
+    pub feature_flags: Vec<String>,
 }
 
 /// How a backend handles a quantization mode.
@@ -182,12 +188,15 @@ mod tests {
             Ok(vec![DeviceDescriptor {
                 backend: String::from("mock"),
                 device: Device::cpu(),
+                device_name: Some(String::from("mock cpu")),
                 supported_dtypes: vec![DType::F32],
                 supported_quantization: vec![QuantizationSupport {
                     mode: rustygrad_core::QuantizationMode::None,
                     execution: QuantizationExecution::Native,
                 }],
                 memory_capacity_bytes: None,
+                unified_memory: Some(true),
+                feature_flags: vec![String::from("mock_execution")],
             }])
         }
 
@@ -228,8 +237,17 @@ mod tests {
     fn mock_runtime_reports_device_and_executes_plan() -> Result<(), RuntimeError> {
         let mut runtime = MockRuntime;
         let devices = runtime.discover_devices()?;
-        assert_eq!(devices.len(), 1);
-        assert_eq!(runtime.health().status, HealthStatus::Ready);
+        if devices.len() != 1 {
+            return Err(RuntimeError::Backend(format!(
+                "expected 1 discovered device, found {}",
+                devices.len()
+            )));
+        }
+        if runtime.health().status != HealthStatus::Ready {
+            return Err(RuntimeError::Backend(String::from(
+                "expected mock runtime health to be ready",
+            )));
+        }
 
         let spec = TensorSpec::new(Shape::new(vec![1, 2]), DType::F32, Device::cpu());
         let buffer = runtime.allocate(&spec)?;
@@ -248,7 +266,12 @@ mod tests {
         };
 
         let result = runtime.execute(&plan, &inputs)?;
-        assert_eq!(result.metrics.steps_executed, 1);
+        if result.metrics.steps_executed != 1 {
+            return Err(RuntimeError::Backend(format!(
+                "expected 1 executed step, found {}",
+                result.metrics.steps_executed
+            )));
+        }
         Ok(())
     }
 }

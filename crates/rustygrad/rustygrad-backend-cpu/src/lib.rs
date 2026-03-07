@@ -7,8 +7,8 @@ use rustygrad_core::{DType, Device, Shape, TensorData, TensorId, TensorSpec};
 use rustygrad_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use rustygrad_runtime::{
     Allocator, BackendName, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-    ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
-    QuantizationSupport, RuntimeError, RuntimeHealth,
+    ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution, QuantizationSupport,
+    RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -321,6 +321,7 @@ impl DeviceDiscovery for CpuBackend {
         Ok(vec![DeviceDescriptor {
             backend: String::from(self.backend_name()),
             device: Device::cpu(),
+            device_name: Some(String::from("host cpu")),
             supported_dtypes: vec![DType::F32],
             supported_quantization: vec![
                 QuantizationSupport {
@@ -333,6 +334,8 @@ impl DeviceDiscovery for CpuBackend {
                 },
             ],
             memory_capacity_bytes: None,
+            unified_memory: Some(true),
+            feature_flags: vec![String::from("host_memory")],
         }])
     }
 
@@ -457,7 +460,10 @@ mod tests {
         let devices = backend.discover_devices()?;
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].device, Device::cpu());
+        assert_eq!(devices[0].device_name.as_deref(), Some("host cpu"));
         assert_eq!(devices[0].supported_dtypes, vec![DType::F32]);
+        assert_eq!(devices[0].unified_memory, Some(true));
+        assert_eq!(devices[0].feature_flags, vec![String::from("host_memory")]);
         assert_eq!(
             devices[0].supported_quantization,
             vec![

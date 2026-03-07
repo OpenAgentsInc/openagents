@@ -12,3 +12,10 @@ workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+rustygrad-core = { path = "../rustygrad-core" }
+rustygrad-runtime = { path = "../rustygrad-runtime" }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+metal = "0.33.0"
