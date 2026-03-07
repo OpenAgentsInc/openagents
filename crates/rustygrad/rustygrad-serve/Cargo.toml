@@ -25,5 +25,6 @@ serde_json = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+rustygrad-backend-metal = { path = "../rustygrad-backend-metal" }
 rustygrad-provider = { path = "../rustygrad-provider" }
 tempfile = "3"

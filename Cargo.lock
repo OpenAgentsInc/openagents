@@ -7055,6 +7055,7 @@ name = "rustygrad-serve"
 version = "0.1.0"
 dependencies = [
  "rustygrad-backend-cpu",
+ "rustygrad-backend-metal",
  "rustygrad-compiler",
  "rustygrad-core",
  "rustygrad-ir",

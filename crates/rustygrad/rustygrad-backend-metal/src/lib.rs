@@ -25,6 +25,10 @@ const LEGACY_FAMILY_FLAG: &str = "family_legacy";
 /// `rustygrad.embeddings` milestone.
 pub const EMBEDDINGS_SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "add"];
 
+/// Absolute tolerance used when comparing CPU and Metal outputs for the
+/// supported embeddings product path.
+pub const EMBEDDINGS_PARITY_ABS_TOLERANCE: f32 = 1.0e-5;
+
 /// Metal buffer storage mode visible to Rustygrad.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetalStorageMode {
@@ -1538,7 +1542,7 @@ mod tests {
 
     use super::{
         classify_support, validate_supported_plan, DeviceSupportTier, FamilySupport, MetalBackend,
-        EMBEDDINGS_SUPPORTED_OPS,
+        EMBEDDINGS_PARITY_ABS_TOLERANCE, EMBEDDINGS_SUPPORTED_OPS,
     };
 
     #[test]
@@ -1575,6 +1579,7 @@ mod tests {
             EMBEDDINGS_SUPPORTED_OPS,
             &["input", "constant", "matmul", "add"]
         );
+        assert_eq!(EMBEDDINGS_PARITY_ABS_TOLERANCE, 1.0e-5);
     }
 
     #[test]
