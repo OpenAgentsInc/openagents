@@ -131,7 +131,7 @@ mod tests {
     use std::collections::BTreeMap;
 
     use rustygrad_core::{DType, Device, Shape, TensorSpec};
-    use rustygrad_ir::{ExecutionPlan, ExecutionStep};
+    use rustygrad_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
 
     use super::{
         Allocator, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
@@ -214,7 +214,8 @@ mod tests {
             graph_digest: String::from("digest"),
             steps: vec![ExecutionStep {
                 output: rustygrad_core::TensorId(1),
-                op_label: String::from("add"),
+                op: ExecutionOp::Add,
+                spec: TensorSpec::new(Shape::new(vec![1, 2]), DType::F32, Device::cpu()),
                 inputs: vec![rustygrad_core::TensorId(0)],
             }],
             outputs: vec![rustygrad_core::TensorId(1)],

@@ -1,6 +1,6 @@
 //! Lowering and scheduling boundaries for Rustygrad.
 
-use rustygrad_ir::{ExecutionPlan, ExecutionStep, Graph};
+use rustygrad_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -62,7 +62,8 @@ impl LoweringPass for InsertionOrderLowering {
         for node in graph.nodes() {
             builder.push_step(ExecutionStep {
                 output: node.tensor().id(),
-                op_label: node.op().label().to_string(),
+                op: ExecutionOp::from_op_kind(node.op()),
+                spec: node.tensor().spec().clone(),
                 inputs: node.inputs().to_vec(),
             });
         }
