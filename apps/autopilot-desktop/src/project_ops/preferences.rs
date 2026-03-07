@@ -212,4 +212,31 @@ mod tests {
         );
         assert_eq!(restored.search_query, "blocked:true priority:high");
     }
+
+    #[test]
+    fn unsupported_schema_versions_reset_to_defaults() {
+        let path = unique_temp_path("prefs-unsupported");
+        std::fs::write(
+            &path,
+            serde_json::json!({
+                "schema_version": super::PROJECT_OPS_PREFERENCES_SCHEMA_VERSION + 1,
+                "active_saved_view_id": "focus",
+                "presentation_mode": "board",
+                "sort_preference": "priority_desc",
+                "search_query": "blocked:true",
+            })
+            .to_string(),
+        )
+        .expect("unsupported preferences doc should write");
+
+        let restored = ProjectOpsPreferencesState::from_preferences_path_for_tests(path)
+            .expect("preferences should fall back to defaults");
+        assert_eq!(restored.active_saved_view_id, "my-work");
+        assert_eq!(restored.presentation_mode, ProjectOpsPresentationMode::List);
+        assert_eq!(
+            restored.sort_preference,
+            ProjectOpsSortPreference::UpdatedDesc
+        );
+        assert!(restored.search_query.is_empty());
+    }
 }

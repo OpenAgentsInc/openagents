@@ -1859,6 +1859,14 @@ mod tests {
     }
 
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+    struct ProjectOpsGoldenBoardLane {
+        status: String,
+        work_item_count: usize,
+        blocked_count: usize,
+        work_item_ids: Vec<String>,
+    }
+
+    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
     struct ProjectOpsGoldenSnapshot {
         source_badge: String,
         active_saved_view: String,
@@ -1866,6 +1874,7 @@ mod tests {
         checkpoints: BTreeMap<String, u64>,
         accepted_events: Vec<ProjectOpsAcceptedEventEnvelope>,
         visible_work_items: Vec<ProjectOpsGoldenListRow>,
+        board_lanes: Vec<ProjectOpsGoldenBoardLane>,
         detail: Option<ProjectOpsGoldenDetail>,
         activity_rows: Vec<ProjectOpsGoldenActivity>,
     }
@@ -2093,6 +2102,20 @@ mod tests {
                         .as_ref()
                         .map(|cycle_id| cycle_id.as_str().to_string()),
                     updated_at_unix_ms: item.updated_at_unix_ms,
+                })
+                .collect(),
+            board_lanes: pane
+                .board_lanes
+                .iter()
+                .map(|lane| ProjectOpsGoldenBoardLane {
+                    status: lane.status.label().to_string(),
+                    work_item_count: lane.work_item_count,
+                    blocked_count: lane.blocked_count,
+                    work_item_ids: lane
+                        .items
+                        .iter()
+                        .map(|item| item.work_item_id.as_str().to_string())
+                        .collect(),
                 })
                 .collect(),
             detail: pane

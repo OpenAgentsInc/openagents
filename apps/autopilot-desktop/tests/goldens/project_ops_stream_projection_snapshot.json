@@ -180,6 +180,48 @@
       "updated_at_unix_ms": 1762100005000
     }
   ],
+  "board_lanes": [
+    {
+      "status": "backlog",
+      "work_item_count": 0,
+      "blocked_count": 0,
+      "work_item_ids": []
+    },
+    {
+      "status": "todo",
+      "work_item_count": 1,
+      "blocked_count": 0,
+      "work_item_ids": [
+        "wi-1"
+      ]
+    },
+    {
+      "status": "in_progress",
+      "work_item_count": 1,
+      "blocked_count": 1,
+      "work_item_ids": [
+        "wi-2"
+      ]
+    },
+    {
+      "status": "in_review",
+      "work_item_count": 0,
+      "blocked_count": 0,
+      "work_item_ids": []
+    },
+    {
+      "status": "done",
+      "work_item_count": 0,
+      "blocked_count": 0,
+      "work_item_ids": []
+    },
+    {
+      "status": "cancelled",
+      "work_item_count": 0,
+      "blocked_count": 0,
+      "work_item_ids": []
+    }
+  ],
   "detail": {
     "work_item_id": "wi-1",
     "title": "Freeze PM sync contract",

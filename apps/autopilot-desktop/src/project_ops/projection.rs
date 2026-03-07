@@ -1107,6 +1107,46 @@ mod tests {
     }
 
     #[test]
+    fn unsupported_projection_schema_versions_surface_explicit_rebuild_errors() {
+        let work_items_path = unique_temp_path("unsupported-work-items");
+        let activity_path = unique_temp_path("unsupported-activity");
+        let cycles_path = unique_temp_path("unsupported-cycles");
+        let saved_views_path = unique_temp_path("unsupported-saved-views");
+        let checkpoint_path = unique_temp_path("unsupported-checkpoints");
+
+        if let Some(parent) = work_items_path.parent() {
+            std::fs::create_dir_all(parent).expect("projection dir should exist");
+        }
+        std::fs::write(
+            &work_items_path,
+            serde_json::json!({
+                "schema_version": PROJECT_OPS_PROJECTION_SCHEMA_VERSION + 1,
+                "stream_id": PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+                "rows": [],
+            })
+            .to_string(),
+        )
+        .expect("unsupported work-items projection should write");
+
+        let store = ProjectOpsProjectionStore::from_paths_for_tests(
+            work_items_path,
+            activity_path,
+            cycles_path,
+            saved_views_path,
+            checkpoint_path,
+        );
+        assert_eq!(store.load_state, PaneLoadState::Error);
+        assert!(store
+            .last_error
+            .as_deref()
+            .is_some_and(|error| { error.contains("Unsupported PM work items schema version") }));
+        assert_eq!(
+            store.last_action.as_deref(),
+            Some("PM projection bootstrap failed")
+        );
+    }
+
+    #[test]
     fn apply_projection_updates_persist_and_reload() {
         let work_items_path = unique_temp_path("persist-work-items");
         let activity_path = unique_temp_path("persist-activity");
