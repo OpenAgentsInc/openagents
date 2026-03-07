@@ -1,4 +1,5 @@
 use crate::app_state::{ActiveJobRecord, JobInboxDecision, RenderState};
+use crate::ollama_execution::OllamaExecutionMetrics;
 use crate::state::job_inbox::JobInboxRequest;
 use crate::state::operations::{
     AcceptedSpotComputeOrder, SpotComputeCapabilityConstraints, SpotComputeQuoteCandidate,
@@ -15,9 +16,10 @@ use openagents_kernel_core::authority::{
 use openagents_kernel_core::compute::{
     ApplePlatformCapability, COMPUTE_LAUNCH_TAXONOMY_VERSION, CapacityInstrument,
     CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
-    CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeExecutionKind,
-    ComputeFamily, ComputeHostCapability, ComputeProduct, ComputeProductStatus,
-    ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+    CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
+    ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeHostCapability,
+    ComputeProduct, ComputeProductStatus, ComputeSettlementMode, DeliveryProof,
+    DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
     launch_compute_product_spec,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
@@ -35,7 +37,7 @@ use openagents_kernel_core::time::floor_to_minute_utc;
 use reqwest::Url;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{Value, json};
 use std::future::Future;
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::thread::JoinHandle;
@@ -89,6 +91,33 @@ struct ReceiptProjectionEnvelope {
 #[derive(Debug, Deserialize, Serialize)]
 struct SnapshotProjectionEnvelope {
     snapshot: EconomySnapshot,
+}
+
+#[derive(Clone, Debug, Default)]
+struct LaunchDeliveryContext {
+    execution_output: Option<String>,
+    provider_thread_id: Option<String>,
+    provider_turn_id: Option<String>,
+    ollama_ready_model: Option<String>,
+    ollama_metrics: Option<OllamaExecutionMetrics>,
+    apple_ready_model: Option<String>,
+    apple_metrics: Option<OllamaExecutionMetrics>,
+    apple_model_available: bool,
+    apple_bridge_status: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+struct DeliveryProofEvaluation {
+    metering_rule_id: &'static str,
+    settlement_class: &'static str,
+    metered_quantity: u64,
+    accepted_quantity: u64,
+    status: DeliveryProofStatus,
+    variance_reason: Option<ComputeDeliveryVarianceReason>,
+    variance_reason_detail: Option<String>,
+    rejection_reason: Option<DeliveryRejectionReason>,
+    promised_capability_envelope: ComputeCapabilityEnvelope,
+    observed_capability_envelope: Option<ComputeCapabilityEnvelope>,
 }
 
 impl Default for KernelProjectionWorker {
@@ -324,12 +353,26 @@ pub(crate) fn finalize_paid_active_job(state: &mut RenderState) -> Result<String
     };
     let client = remote_authority_client_for_state(state)?;
 
-    let delivery_proof_request = build_delivery_proof_request(state, &job)?;
+    let (delivery_proof_request, delivery_evaluation) = build_delivery_proof_request(state, &job)?;
     let delivery_proof_receipt =
         run_kernel_call(client.record_delivery_proof(delivery_proof_request))?.receipt;
     state
         .earn_kernel_receipts
         .apply_authoritative_receipt(delivery_proof_receipt, "kernel.authority.delivery_proof");
+    if let Some(active_job) = state.active_job.job.as_mut() {
+        active_job.delivery_metering_rule_id =
+            Some(delivery_evaluation.metering_rule_id.to_string());
+        active_job.delivery_proof_status_label =
+            Some(delivery_evaluation.status.label().to_string());
+        active_job.delivery_metered_quantity = Some(delivery_evaluation.metered_quantity);
+        active_job.delivery_accepted_quantity = Some(delivery_evaluation.accepted_quantity);
+        active_job.delivery_variance_reason_label = delivery_evaluation
+            .variance_reason
+            .map(|reason| reason.label().to_string());
+        active_job.delivery_rejection_reason_label = delivery_evaluation
+            .rejection_reason
+            .map(|reason| reason.label().to_string());
+    }
 
     let verdict_request = build_finalize_verdict_request(state, &job);
     let receipt = run_kernel_call(client.finalize_verdict(verdict_request))?.receipt;
@@ -1320,7 +1363,7 @@ fn build_capacity_instrument_request(
 fn build_delivery_proof_request(
     state: &RenderState,
     job: &ActiveJobRecord,
-) -> Result<RecordDeliveryProofRequest, String> {
+) -> Result<(RecordDeliveryProofRequest, DeliveryProofEvaluation), String> {
     let Some(linkage) = compute_linkage_for_active_job(job).or_else(|| {
         compute_linkage_for_request(state, job.request_id.as_str(), job.capability.as_str())
     }) else {
@@ -1329,16 +1372,25 @@ fn build_delivery_proof_request(
             job.capability
         ));
     };
+    let binding = compute_binding_for_product_id(linkage.product_id)
+        .ok_or_else(|| format!("unsupported launch compute product: {}", linkage.product_id))?;
+    let delivery_context = delivery_context_for_state(state);
+    let evaluation = evaluate_delivery_proof(job, binding, &delivery_context);
     let attestation_digest = job.execution_provenance.as_ref().map(|provenance| {
         let digest_input = format!(
-            "{}:{}:{}",
+            "{}:{}:{}:{}",
+            provenance.backend,
             provenance.served_model,
             provenance.normalized_prompt_digest,
             provenance.normalized_options_digest
         );
         sha256_prefixed_text(digest_input.as_str())
     });
-    Ok(RecordDeliveryProofRequest {
+    let execution_output_digest = delivery_context
+        .execution_output
+        .as_deref()
+        .map(sha256_prefixed_text);
+    let request = RecordDeliveryProofRequest {
         idempotency_key: format!("desktop.finalize.compute_delivery:{}", job.request_id),
         trace: trace_context_for_job(job),
         policy: kernel_policy_context(state),
@@ -1349,30 +1401,39 @@ fn build_delivery_proof_request(
             instrument_id: Some(linkage.capacity_instrument_id.clone()),
             contract_id: Some(contract_id_for_request(job.request_id.as_str())),
             created_at_ms: current_epoch_ms(),
-            metered_quantity: 1,
-            accepted_quantity: 1,
+            metered_quantity: evaluation.metered_quantity,
+            accepted_quantity: evaluation.accepted_quantity,
             performance_band_observed: Some("desktop-local".to_string()),
-            variance_reason: None,
+            variance_reason: evaluation.variance_reason,
+            variance_reason_detail: evaluation.variance_reason_detail.clone(),
             attestation_digest,
             cost_attestation_ref: job
                 .payment_id
                 .as_ref()
                 .map(|payment_id| format!("oa://wallet/payments/{payment_id}")),
-            status: DeliveryProofStatus::Accepted,
+            status: evaluation.status,
+            rejection_reason: evaluation.rejection_reason,
+            promised_capability_envelope: Some(evaluation.promised_capability_envelope.clone()),
+            observed_capability_envelope: evaluation.observed_capability_envelope.clone(),
             metadata: json!({
                 "request_id": job.request_id.clone(),
                 "job_id": job.job_id.clone(),
+                "metering_rule_id": evaluation.metering_rule_id,
+                "settlement_class": evaluation.settlement_class,
                 "compute_family": compute_family_label(linkage.compute_family),
+                "delivery_status": evaluation.status.label(),
+                "variance_reason": evaluation.variance_reason.map(|reason| reason.label().to_string()),
+                "variance_reason_detail": evaluation.variance_reason_detail.clone(),
+                "rejection_reason": evaluation.rejection_reason.map(|reason| reason.label().to_string()),
+                "rejection_reason_detail": (evaluation.rejection_reason.is_some())
+                    .then(|| evaluation.variance_reason_detail.clone())
+                    .flatten(),
                 "served_model": job
                     .execution_provenance
                     .as_ref()
                     .map(|provenance| provenance.served_model.clone()),
                 "requested_model": job.requested_model.clone(),
-                "execution_output_digest": state
-                    .active_job
-                    .execution_output
-                    .as_deref()
-                    .map(sha256_prefixed_text),
+                "execution_output_digest": execution_output_digest,
                 "prompt_token_count": job
                     .execution_provenance
                     .as_ref()
@@ -1385,13 +1446,514 @@ fn build_delivery_proof_request(
                     .execution_provenance
                     .as_ref()
                     .and_then(|provenance| provenance.total_duration_ns),
-                "provider_thread_id": state.active_job.execution_thread_id.clone(),
-                "provider_turn_id": state.active_job.execution_turn_id.clone(),
+                "provider_thread_id": delivery_context.provider_thread_id.clone(),
+                "provider_turn_id": delivery_context.provider_turn_id.clone(),
+                "runtime_identity_backend": job
+                    .execution_provenance
+                    .as_ref()
+                    .map(|provenance| provenance.backend.clone()),
+                "apple_bridge_status": delivery_context.apple_bridge_status.clone(),
+                "promised_capability_envelope": evaluation.promised_capability_envelope.clone(),
+                "observed_capability_envelope": evaluation.observed_capability_envelope.clone(),
             }),
         },
-        evidence: submission_evidence_refs(job, state.active_job.execution_output.as_deref()),
+        evidence: delivery_proof_evidence_refs(
+            job,
+            delivery_context.execution_output.as_deref(),
+            &evaluation,
+        ),
         hints: receipt_hints_for_notional(job.quoted_price_sats),
+    };
+    Ok((request, evaluation))
+}
+
+fn delivery_context_for_state(state: &RenderState) -> LaunchDeliveryContext {
+    LaunchDeliveryContext {
+        execution_output: state.active_job.execution_output.clone(),
+        provider_thread_id: state.active_job.execution_thread_id.clone(),
+        provider_turn_id: state.active_job.execution_turn_id.clone(),
+        ollama_ready_model: state.provider_runtime.ollama.ready_model.clone(),
+        ollama_metrics: state.provider_runtime.ollama.last_metrics.clone(),
+        apple_ready_model: state.provider_runtime.apple_fm.ready_model.clone(),
+        apple_metrics: state.provider_runtime.apple_fm.last_metrics.clone(),
+        apple_model_available: state.provider_runtime.apple_fm.model_available,
+        apple_bridge_status: state.provider_runtime.apple_fm.bridge_status.clone(),
+    }
+}
+
+fn evaluate_delivery_proof(
+    job: &ActiveJobRecord,
+    binding: LaunchComputeBinding,
+    context: &LaunchDeliveryContext,
+) -> DeliveryProofEvaluation {
+    let promised_capability_envelope =
+        promised_capability_envelope_for_delivery(job, binding, context);
+    let observed_capability_envelope =
+        observed_capability_envelope_for_delivery(job, binding, context);
+    let metering_rule_id = metering_rule_id_for_binding(binding);
+    let settlement_class = compute_family_label(binding.compute_family);
+    let output_text = context
+        .execution_output
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty());
+    let metered_quantity = match binding.compute_family {
+        ComputeFamily::Inference => {
+            if observed_capability_envelope.is_some() && output_text.is_some() {
+                1
+            } else {
+                0
+            }
+        }
+        ComputeFamily::Embeddings => embedding_quantity_from_output(output_text),
+    };
+
+    let mut evaluation = DeliveryProofEvaluation {
+        metering_rule_id,
+        settlement_class,
+        metered_quantity,
+        accepted_quantity: metered_quantity.min(1),
+        status: DeliveryProofStatus::Accepted,
+        variance_reason: None,
+        variance_reason_detail: None,
+        rejection_reason: None,
+        promised_capability_envelope,
+        observed_capability_envelope,
+    };
+
+    if binding.backend_family == ComputeBackendFamily::AppleFoundationModels
+        && binding.compute_family == ComputeFamily::Embeddings
+    {
+        set_delivery_rejection(
+            &mut evaluation,
+            DeliveryRejectionReason::NonConformingDelivery,
+            "apple_foundation_models_embeddings_not_supported",
+        );
+        return evaluation;
+    }
+
+    let Some(observed) = evaluation.observed_capability_envelope.clone() else {
+        set_delivery_rejection(
+            &mut evaluation,
+            DeliveryRejectionReason::AttestationMissing,
+            "runtime adapter did not emit observed capability envelope",
+        );
+        return evaluation;
+    };
+
+    if observed.backend_family != Some(binding.backend_family) {
+        set_delivery_rejection(
+            &mut evaluation,
+            DeliveryRejectionReason::RuntimeIdentityMismatch,
+            "observed backend did not match committed launch product",
+        );
+        return evaluation;
+    }
+    if observed.compute_family != Some(binding.compute_family) {
+        set_delivery_rejection(
+            &mut evaluation,
+            DeliveryRejectionReason::NonConformingDelivery,
+            "observed compute family did not match committed launch product",
+        );
+        return evaluation;
+    }
+    if metered_quantity == 0 {
+        let detail = match binding.compute_family {
+            ComputeFamily::Inference => {
+                "inference delivery missing execution output or runtime attestation"
+            }
+            ComputeFamily::Embeddings => "embedding delivery missing vector-like execution output",
+        };
+        set_delivery_rejection(
+            &mut evaluation,
+            DeliveryRejectionReason::NonConformingDelivery,
+            detail,
+        );
+        return evaluation;
+    }
+
+    if let Some(requested_model) = job.requested_model.as_deref()
+        && job
+            .execution_provenance
+            .as_ref()
+            .is_some_and(|provenance| provenance.served_model != requested_model)
+    {
+        set_delivery_variance(
+            &mut evaluation,
+            ComputeDeliveryVarianceReason::ModelPolicyDrift,
+            format!(
+                "requested model '{}' settled against '{}'",
+                requested_model,
+                job.execution_provenance
+                    .as_ref()
+                    .map(|provenance| provenance.served_model.as_str())
+                    .unwrap_or("unknown")
+            ),
+        );
+        return evaluation;
+    }
+
+    if let (Some(promised_latency), Some(observed_latency)) = (
+        evaluation.promised_capability_envelope.latency_ms_p50,
+        observed.latency_ms_p50,
+    ) && observed_latency > promised_latency
+    {
+        set_delivery_variance(
+            &mut evaluation,
+            ComputeDeliveryVarianceReason::LatencyBreach,
+            format!(
+                "observed p50 latency {}ms exceeded promised {}ms",
+                observed_latency, promised_latency
+            ),
+        );
+        return evaluation;
+    }
+
+    if let (Some(promised_throughput), Some(observed_throughput)) = (
+        evaluation
+            .promised_capability_envelope
+            .throughput_per_minute,
+        observed.throughput_per_minute,
+    ) && observed_throughput < promised_throughput
+    {
+        set_delivery_variance(
+            &mut evaluation,
+            ComputeDeliveryVarianceReason::ThroughputShortfall,
+            format!(
+                "observed throughput {} fell below promised {}",
+                observed_throughput, promised_throughput
+            ),
+        );
+        return evaluation;
+    }
+
+    if capability_envelope_mismatch(&evaluation.promised_capability_envelope, &observed) {
+        set_delivery_variance(
+            &mut evaluation,
+            ComputeDeliveryVarianceReason::CapabilityEnvelopeMismatch,
+            "observed capability envelope diverged from committed launch product".to_string(),
+        );
+    }
+    evaluation
+}
+
+fn promised_capability_envelope_for_delivery(
+    job: &ActiveJobRecord,
+    binding: LaunchComputeBinding,
+    context: &LaunchDeliveryContext,
+) -> ComputeCapabilityEnvelope {
+    let model_identity = job
+        .requested_model
+        .clone()
+        .or_else(|| ready_model_from_delivery_context(binding, context));
+    let throughput_per_minute = throughput_from_metrics(
+        context_metrics_for_binding(binding, context),
+        inferred_quantity_for_family(binding.compute_family, context.execution_output.as_deref()),
+    );
+    ComputeCapabilityEnvelope {
+        backend_family: Some(binding.backend_family),
+        execution_kind: Some(ComputeExecutionKind::LocalInference),
+        compute_family: Some(binding.compute_family),
+        model_policy: Some(binding.model_policy.to_string()),
+        model_family: model_identity.clone(),
+        host_capability: None,
+        apple_platform: apple_platform_for_binding(binding, context),
+        ollama_runtime: ollama_runtime_for_binding(binding, model_identity),
+        latency_ms_p50: latency_from_metrics(context_metrics_for_binding(binding, context)),
+        throughput_per_minute,
+        concurrency_limit: Some(1),
+    }
+}
+
+fn observed_capability_envelope_for_delivery(
+    job: &ActiveJobRecord,
+    binding: LaunchComputeBinding,
+    context: &LaunchDeliveryContext,
+) -> Option<ComputeCapabilityEnvelope> {
+    let provenance = job.execution_provenance.as_ref()?;
+    let observed_backend_family = backend_family_from_runtime_label(provenance.backend.as_str())?;
+    let inferred_output_quantity =
+        inferred_quantity_for_family(binding.compute_family, context.execution_output.as_deref());
+    Some(ComputeCapabilityEnvelope {
+        backend_family: Some(observed_backend_family),
+        execution_kind: Some(ComputeExecutionKind::LocalInference),
+        compute_family: Some(binding.compute_family),
+        model_policy: Some(binding.model_policy.to_string()),
+        model_family: Some(provenance.served_model.clone()),
+        host_capability: None,
+        apple_platform: match observed_backend_family {
+            ComputeBackendFamily::AppleFoundationModels => Some(ApplePlatformCapability {
+                apple_silicon_required: true,
+                apple_intelligence_required: true,
+                apple_intelligence_available: Some(context.apple_model_available),
+                minimum_macos_version: Some("26.0".to_string()),
+            }),
+            ComputeBackendFamily::Ollama => None,
+        },
+        ollama_runtime: match observed_backend_family {
+            ComputeBackendFamily::Ollama => Some(OllamaRuntimeCapability {
+                runtime_ready: Some(true),
+                model_name: Some(provenance.served_model.clone()),
+                quantization: None,
+            }),
+            ComputeBackendFamily::AppleFoundationModels => None,
+        },
+        latency_ms_p50: latency_from_provenance(provenance),
+        throughput_per_minute: throughput_from_provenance(provenance, inferred_output_quantity),
+        concurrency_limit: Some(1),
     })
+}
+
+fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
+    match (binding.backend_family, binding.compute_family) {
+        (ComputeBackendFamily::Ollama, ComputeFamily::Inference) => "meter.ollama.inference.v1",
+        (ComputeBackendFamily::Ollama, ComputeFamily::Embeddings) => "meter.ollama.embeddings.v1",
+        (ComputeBackendFamily::AppleFoundationModels, ComputeFamily::Inference) => {
+            "meter.apple_fm.inference.v1"
+        }
+        (ComputeBackendFamily::AppleFoundationModels, ComputeFamily::Embeddings) => {
+            "meter.apple_fm.embeddings.unsupported"
+        }
+    }
+}
+
+fn latency_from_provenance(
+    provenance: &crate::ollama_execution::OllamaExecutionProvenance,
+) -> Option<u32> {
+    provenance
+        .total_duration_ns
+        .map(|duration| duration / 1_000_000)
+        .and_then(|duration_ms| u32::try_from(duration_ms).ok())
+}
+
+fn latency_from_metrics(metrics: Option<&OllamaExecutionMetrics>) -> Option<u32> {
+    metrics
+        .and_then(|metrics| metrics.total_duration_ns)
+        .map(|duration| duration / 1_000_000)
+        .and_then(|duration_ms| u32::try_from(duration_ms).ok())
+}
+
+fn throughput_from_provenance(
+    provenance: &crate::ollama_execution::OllamaExecutionProvenance,
+    quantity_hint: u64,
+) -> Option<u32> {
+    let duration_ns = provenance.total_duration_ns?;
+    if duration_ns == 0 {
+        return None;
+    }
+    let units = match provenance.generated_token_count {
+        Some(count) if count > 0 => count,
+        _ if quantity_hint > 0 => quantity_hint,
+        _ => 1,
+    };
+    throughput_per_minute(duration_ns, units)
+}
+
+fn throughput_from_metrics(
+    metrics: Option<&OllamaExecutionMetrics>,
+    quantity_hint: u64,
+) -> Option<u32> {
+    let duration_ns = metrics.and_then(|metrics| metrics.total_duration_ns)?;
+    if duration_ns == 0 || quantity_hint == 0 {
+        return None;
+    }
+    throughput_per_minute(duration_ns, quantity_hint)
+}
+
+fn throughput_per_minute(duration_ns: u64, units: u64) -> Option<u32> {
+    let per_minute = (u128::from(units))
+        .saturating_mul(60_000_000_000u128)
+        .checked_div(u128::from(duration_ns))?;
+    u32::try_from(per_minute).ok()
+}
+
+fn inferred_quantity_for_family(
+    compute_family: ComputeFamily,
+    execution_output: Option<&str>,
+) -> u64 {
+    match compute_family {
+        ComputeFamily::Inference => 1,
+        ComputeFamily::Embeddings => embedding_quantity_from_output(
+            execution_output
+                .map(str::trim)
+                .filter(|value| !value.is_empty()),
+        ),
+    }
+}
+
+fn embedding_quantity_from_output(execution_output: Option<&str>) -> u64 {
+    let Some(execution_output) = execution_output else {
+        return 0;
+    };
+    let Ok(parsed) = serde_json::from_str::<Value>(execution_output) else {
+        return 0;
+    };
+    match parsed {
+        Value::Array(values) if values.is_empty() => 0,
+        Value::Array(values) if values.iter().all(Value::is_number) => 1,
+        Value::Array(values) => values
+            .iter()
+            .filter(|value| {
+                value
+                    .as_array()
+                    .is_some_and(|items| items.iter().all(Value::is_number))
+            })
+            .count() as u64,
+        _ => 0,
+    }
+}
+
+fn backend_family_from_runtime_label(value: &str) -> Option<ComputeBackendFamily> {
+    match value.trim() {
+        "ollama" => Some(ComputeBackendFamily::Ollama),
+        "apple_foundation_models" => Some(ComputeBackendFamily::AppleFoundationModels),
+        _ => None,
+    }
+}
+
+fn context_metrics_for_binding(
+    binding: LaunchComputeBinding,
+    context: &LaunchDeliveryContext,
+) -> Option<&OllamaExecutionMetrics> {
+    match binding.backend_family {
+        ComputeBackendFamily::Ollama => context.ollama_metrics.as_ref(),
+        ComputeBackendFamily::AppleFoundationModels => context.apple_metrics.as_ref(),
+    }
+}
+
+fn ready_model_from_delivery_context(
+    binding: LaunchComputeBinding,
+    context: &LaunchDeliveryContext,
+) -> Option<String> {
+    match binding.backend_family {
+        ComputeBackendFamily::Ollama => context.ollama_ready_model.clone(),
+        ComputeBackendFamily::AppleFoundationModels => context.apple_ready_model.clone(),
+    }
+}
+
+fn apple_platform_for_binding(
+    binding: LaunchComputeBinding,
+    context: &LaunchDeliveryContext,
+) -> Option<ApplePlatformCapability> {
+    if binding.backend_family != ComputeBackendFamily::AppleFoundationModels {
+        return None;
+    }
+    Some(ApplePlatformCapability {
+        apple_silicon_required: true,
+        apple_intelligence_required: true,
+        apple_intelligence_available: Some(context.apple_model_available),
+        minimum_macos_version: Some("26.0".to_string()),
+    })
+}
+
+fn ollama_runtime_for_binding(
+    binding: LaunchComputeBinding,
+    model_name: Option<String>,
+) -> Option<OllamaRuntimeCapability> {
+    if binding.backend_family != ComputeBackendFamily::Ollama {
+        return None;
+    }
+    Some(OllamaRuntimeCapability {
+        runtime_ready: Some(true),
+        model_name,
+        quantization: None,
+    })
+}
+
+fn capability_envelope_mismatch(
+    promised: &ComputeCapabilityEnvelope,
+    observed: &ComputeCapabilityEnvelope,
+) -> bool {
+    if promised.backend_family.is_some() && promised.backend_family != observed.backend_family {
+        return true;
+    }
+    if promised.execution_kind.is_some() && promised.execution_kind != observed.execution_kind {
+        return true;
+    }
+    if promised.compute_family.is_some() && promised.compute_family != observed.compute_family {
+        return true;
+    }
+    if let Some(promised_model_family) = promised.model_family.as_deref()
+        && observed.model_family.as_deref() != Some(promised_model_family)
+    {
+        return true;
+    }
+    if let Some(promised_concurrency) = promised.concurrency_limit
+        && observed
+            .concurrency_limit
+            .is_some_and(|observed_concurrency| observed_concurrency < promised_concurrency)
+    {
+        return true;
+    }
+    false
+}
+
+fn set_delivery_variance(
+    evaluation: &mut DeliveryProofEvaluation,
+    reason: ComputeDeliveryVarianceReason,
+    detail: impl Into<String>,
+) {
+    evaluation.variance_reason = Some(reason);
+    evaluation.variance_reason_detail = Some(detail.into());
+}
+
+fn set_delivery_rejection(
+    evaluation: &mut DeliveryProofEvaluation,
+    reason: DeliveryRejectionReason,
+    detail: impl Into<String>,
+) {
+    evaluation.status = DeliveryProofStatus::Rejected;
+    evaluation.accepted_quantity = 0;
+    evaluation.variance_reason = None;
+    evaluation.rejection_reason = Some(reason);
+    evaluation.variance_reason_detail = Some(detail.into());
+}
+
+fn delivery_proof_evidence_refs(
+    job: &ActiveJobRecord,
+    execution_output: Option<&str>,
+    evaluation: &DeliveryProofEvaluation,
+) -> Vec<EvidenceRef> {
+    let mut evidence = submission_evidence_refs(job, execution_output);
+    evidence.push(evidence_ref(
+        "compute_delivery_metering_rule",
+        format!(
+            "oa://kernel/compute/metering/{}",
+            canonical_kernel_id_component(evaluation.metering_rule_id)
+        ),
+        evaluation.metering_rule_id,
+    ));
+    evidence.push(evidence_ref(
+        "compute_delivery_promised_envelope",
+        format!("oa://kernel/compute/promised/{}", job.job_id),
+        serde_json::to_string(&evaluation.promised_capability_envelope)
+            .unwrap_or_else(|_| "null".to_string())
+            .as_str(),
+    ));
+    if let Some(observed) = evaluation.observed_capability_envelope.as_ref() {
+        evidence.push(evidence_ref(
+            "compute_delivery_observed_envelope",
+            format!("oa://kernel/compute/observed/{}", job.job_id),
+            serde_json::to_string(observed)
+                .unwrap_or_else(|_| "null".to_string())
+                .as_str(),
+        ));
+    }
+    if let Some(variance_reason) = evaluation.variance_reason {
+        evidence.push(evidence_ref(
+            "compute_delivery_variance",
+            format!("oa://kernel/compute/variance/{}", job.job_id),
+            variance_reason.label(),
+        ));
+    }
+    if let Some(rejection_reason) = evaluation.rejection_reason {
+        evidence.push(evidence_ref(
+            "compute_delivery_rejection",
+            format!("oa://kernel/compute/rejection/{}", job.job_id),
+            rejection_reason.label(),
+        ));
+    }
+    evidence
 }
 
 fn build_work_unit_request(
@@ -2459,11 +3021,11 @@ pub(crate) fn reset_request_decision_after_kernel_error(
 #[cfg(test)]
 mod tests {
     use super::{
-        KernelAuthorityMode, PendingSseEvent, ReceiptProjectionEnvelope,
+        KernelAuthorityMode, LaunchDeliveryContext, PendingSseEvent, ReceiptProjectionEnvelope,
         build_compute_product_request, build_spot_compute_quotes_from_market,
         compute_binding_for_backend_and_capability, compute_linkage_for_active_job,
-        consume_sse_buffer, delivery_proof_id_for_request, flush_pending_sse_event,
-        online_capacity_lot_id_for_binding, resolve_kernel_authority_mode,
+        consume_sse_buffer, delivery_proof_id_for_request, evaluate_delivery_proof,
+        flush_pending_sse_event, online_capacity_lot_id_for_binding, resolve_kernel_authority_mode,
         submission_evidence_refs,
     };
     use crate::app_state::{ActiveJobRecord, JobDemandSource, JobLifecycleStage};
@@ -2475,8 +3037,9 @@ mod tests {
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
         CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeExecutionKind, ComputeFamily, ComputeProduct, ComputeProductStatus,
-        ComputeSettlementMode, OllamaRuntimeCapability,
+        ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeProduct,
+        ComputeProductStatus, ComputeSettlementMode, DeliveryProofStatus, DeliveryRejectionReason,
+        OllamaRuntimeCapability,
     };
     use openagents_kernel_core::receipts::{Asset, Money, MoneyAmount};
     use serde_json::json;
@@ -2541,6 +3104,12 @@ mod tests {
             ),
             capacity_instrument_id: Some("instrument.req-ollama-001".to_string()),
             delivery_proof_id: Some("delivery.req-ollama-001".to_string()),
+            delivery_metering_rule_id: None,
+            delivery_proof_status_label: None,
+            delivery_metered_quantity: None,
+            delivery_accepted_quantity: None,
+            delivery_variance_reason_label: None,
+            delivery_rejection_reason_label: None,
             quoted_price_sats: 21,
             ttl_seconds: 90,
             stage: JobLifecycleStage::Delivered,
@@ -2548,6 +3117,27 @@ mod tests {
             payment_id: None,
             failure_reason: None,
             events: Vec::new(),
+        }
+    }
+
+    fn fixture_delivery_context(output: &str) -> LaunchDeliveryContext {
+        LaunchDeliveryContext {
+            execution_output: Some(output.to_string()),
+            provider_thread_id: Some("thread-1".to_string()),
+            provider_turn_id: Some("turn-1".to_string()),
+            ollama_ready_model: Some("llama3.2:latest".to_string()),
+            ollama_metrics: Some(crate::ollama_execution::OllamaExecutionMetrics {
+                total_duration_ns: Some(1_000_000_000),
+                load_duration_ns: Some(10_000_000),
+                prompt_eval_count: Some(11),
+                prompt_eval_duration_ns: Some(100_000_000),
+                eval_count: Some(7),
+                eval_duration_ns: Some(900_000_000),
+            }),
+            apple_ready_model: Some("apple-foundation-model".to_string()),
+            apple_metrics: None,
+            apple_model_available: true,
+            apple_bridge_status: Some("running".to_string()),
         }
     }
 
@@ -2886,5 +3476,86 @@ mod tests {
         assert_eq!(quotes[0].requested_quantity, 2);
         assert_eq!(quotes[0].available_quantity, 3);
         assert_eq!(quotes[0].price_sats, 16);
+    }
+
+    #[test]
+    fn delivery_evaluation_accepts_ollama_inference_with_metering_rule() {
+        let job = fixture_active_job_with_ollama_provenance();
+        let binding = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_generation",
+        )
+        .expect("inference binding");
+
+        let evaluation = evaluate_delivery_proof(&job, binding, &fixture_delivery_context("hello"));
+
+        assert_eq!(evaluation.metering_rule_id, "meter.ollama.inference.v1");
+        assert_eq!(evaluation.status, DeliveryProofStatus::Accepted);
+        assert_eq!(evaluation.metered_quantity, 1);
+        assert_eq!(evaluation.accepted_quantity, 1);
+        assert_eq!(evaluation.rejection_reason, None);
+        assert_eq!(
+            evaluation
+                .observed_capability_envelope
+                .as_ref()
+                .and_then(|envelope| envelope.backend_family),
+            Some(ComputeBackendFamily::Ollama)
+        );
+        assert_eq!(
+            evaluation
+                .observed_capability_envelope
+                .as_ref()
+                .and_then(|envelope| envelope.compute_family),
+            Some(ComputeFamily::Inference)
+        );
+    }
+
+    #[test]
+    fn delivery_evaluation_marks_model_drift_as_variance() {
+        let mut job = fixture_active_job_with_ollama_provenance();
+        job.requested_model = Some("llama3.2:latest".to_string());
+        if let Some(provenance) = job.execution_provenance.as_mut() {
+            provenance.served_model = "llama3.1:latest".to_string();
+        }
+        let binding = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_generation",
+        )
+        .expect("inference binding");
+
+        let evaluation = evaluate_delivery_proof(&job, binding, &fixture_delivery_context("hello"));
+
+        assert_eq!(evaluation.status, DeliveryProofStatus::Accepted);
+        assert_eq!(
+            evaluation.variance_reason,
+            Some(ComputeDeliveryVarianceReason::ModelPolicyDrift)
+        );
+        assert!(evaluation.rejection_reason.is_none());
+    }
+
+    #[test]
+    fn delivery_evaluation_rejects_embeddings_without_vector_output() {
+        let mut job = fixture_active_job_with_ollama_provenance();
+        job.capability = "text_embeddings".to_string();
+        job.compute_product_id = Some("ollama.embeddings".to_string());
+        job.requested_model = Some("nomic-embed-text".to_string());
+        if let Some(provenance) = job.execution_provenance.as_mut() {
+            provenance.served_model = "nomic-embed-text".to_string();
+        }
+        let binding = compute_binding_for_backend_and_capability(
+            LocalInferenceBackend::Ollama,
+            "text_embeddings",
+        )
+        .expect("embedding binding");
+
+        let evaluation =
+            evaluate_delivery_proof(&job, binding, &fixture_delivery_context("not-json"));
+
+        assert_eq!(evaluation.status, DeliveryProofStatus::Rejected);
+        assert_eq!(
+            evaluation.rejection_reason,
+            Some(DeliveryRejectionReason::NonConformingDelivery)
+        );
+        assert_eq!(evaluation.accepted_quantity, 0);
     }
 }

@@ -381,13 +381,21 @@ pub struct DeliveryProof {
     #[serde(default)]
     pub performance_band_observed: Option<String>,
     #[serde(default)]
-    pub variance_reason: Option<String>,
+    pub variance_reason: Option<ComputeDeliveryVarianceReason>,
+    #[serde(default)]
+    pub variance_reason_detail: Option<String>,
     #[serde(default)]
     pub attestation_digest: Option<String>,
     #[serde(default)]
     pub cost_attestation_ref: Option<String>,
     #[serde(default)]
     pub status: DeliveryProofStatus,
+    #[serde(default)]
+    pub rejection_reason: Option<DeliveryRejectionReason>,
+    #[serde(default)]
+    pub promised_capability_envelope: Option<ComputeCapabilityEnvelope>,
+    #[serde(default)]
+    pub observed_capability_envelope: Option<ComputeCapabilityEnvelope>,
     #[serde(default)]
     pub metadata: Value,
 }

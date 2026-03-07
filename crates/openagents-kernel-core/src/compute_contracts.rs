@@ -5,11 +5,11 @@ use crate::authority::{
     RecordDeliveryProofResponse,
 };
 use crate::compute::{
-    ApplePlatformCapability, CapacityInstrument, CapacityInstrumentKind,
-    CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, CapacityReserveState,
-    ComputeBackendFamily, ComputeCapabilityEnvelope, ComputeExecutionKind, ComputeFamily,
-    ComputeIndex, ComputeIndexStatus, ComputeProduct, ComputeProductStatus,
-    ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+    ApplePlatformCapability, CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus,
+    CapacityLot, CapacityLotStatus, CapacityReserveState, ComputeBackendFamily,
+    ComputeCapabilityEnvelope, ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily,
+    ComputeIndex, ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementMode,
+    DeliveryProof, DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
 };
 use crate::receipts::{
     Asset, AuthAssuranceLevel, EvidenceRef, FeedbackLatencyClass, Money, MoneyAmount,
@@ -29,18 +29,15 @@ fn missing(field: &str) -> anyhow::Error {
 
 fn empty_string_as_none(value: String) -> Option<String> {
     let value = value.trim().to_string();
-    if value.is_empty() {
-        None
-    } else {
-        Some(value)
-    }
+    if value.is_empty() { None } else { Some(value) }
 }
 
 fn json_value_to_string(value: &Value) -> Result<String> {
     if value.is_null() {
         return Ok(String::new());
     }
-    serde_json::to_string(value).map_err(|error| anyhow!("compute_proto_json_encode_failed:{error}"))
+    serde_json::to_string(value)
+        .map_err(|error| anyhow!("compute_proto_json_encode_failed:{error}"))
 }
 
 fn json_string_to_value(value: &str) -> Result<Value> {
@@ -158,9 +155,7 @@ fn verification_tier_to_proto(value: VerificationTier) -> i32 {
             proto_common::VerificationTier::Unspecified as i32
         }
         VerificationTier::TierOObjective => proto_common::VerificationTier::Tier0Objective as i32,
-        VerificationTier::Tier1Correlated => {
-            proto_common::VerificationTier::Tier1Correlated as i32
-        }
+        VerificationTier::Tier1Correlated => proto_common::VerificationTier::Tier1Correlated as i32,
         VerificationTier::Tier2Heterogeneous => {
             proto_common::VerificationTier::Tier2Heterogeneous as i32
         }
@@ -177,12 +172,12 @@ fn verification_tier_from_proto(value: i32) -> VerificationTier {
     {
         proto_common::VerificationTier::Tier0Objective => VerificationTier::TierOObjective,
         proto_common::VerificationTier::Tier1Correlated => VerificationTier::Tier1Correlated,
-        proto_common::VerificationTier::Tier2Heterogeneous => {
-            VerificationTier::Tier2Heterogeneous
-        }
+        proto_common::VerificationTier::Tier2Heterogeneous => VerificationTier::Tier2Heterogeneous,
         proto_common::VerificationTier::Tier3Adjudication => VerificationTier::Tier3Adjudication,
         proto_common::VerificationTier::Tier4Human => VerificationTier::Tier4Human,
-        proto_common::VerificationTier::Unspecified => VerificationTier::VerificationTierUnspecified,
+        proto_common::VerificationTier::Unspecified => {
+            VerificationTier::VerificationTierUnspecified
+        }
     }
 }
 
@@ -216,15 +211,11 @@ fn auth_assurance_to_proto(value: AuthAssuranceLevel) -> i32 {
             proto_common::AuthAssuranceLevel::Unspecified as i32
         }
         AuthAssuranceLevel::Anon => proto_common::AuthAssuranceLevel::Anon as i32,
-        AuthAssuranceLevel::Authenticated => {
-            proto_common::AuthAssuranceLevel::Authenticated as i32
-        }
+        AuthAssuranceLevel::Authenticated => proto_common::AuthAssuranceLevel::Authenticated as i32,
         AuthAssuranceLevel::OrgKyc => proto_common::AuthAssuranceLevel::OrgKyc as i32,
         AuthAssuranceLevel::Personhood => proto_common::AuthAssuranceLevel::Personhood as i32,
         AuthAssuranceLevel::GovId => proto_common::AuthAssuranceLevel::GovId as i32,
-        AuthAssuranceLevel::HardwareBound => {
-            proto_common::AuthAssuranceLevel::HardwareBound as i32
-        }
+        AuthAssuranceLevel::HardwareBound => proto_common::AuthAssuranceLevel::HardwareBound as i32,
     }
 }
 
@@ -344,7 +335,8 @@ fn hints_from_proto(hints: &proto_economy::ReceiptHints) -> Result<ReceiptHints>
             != proto_common::VerificationTier::Unspecified as i32)
             .then(|| verification_tier_from_proto(hints.achieved_verification_tier)),
         verification_correlated: Some(hints.verification_correlated),
-        provenance_grade: (hints.provenance_grade != proto_common::ProvenanceGrade::Unspecified as i32)
+        provenance_grade: (hints.provenance_grade
+            != proto_common::ProvenanceGrade::Unspecified as i32)
             .then(|| provenance_grade_from_proto(hints.provenance_grade)),
         auth_assurance_level: (hints.auth_assurance_level
             != proto_common::AuthAssuranceLevel::Unspecified as i32)
@@ -392,7 +384,12 @@ fn receipt_from_proto(receipt: &proto_economy::Receipt) -> Result<Receipt> {
         created_at_ms: receipt.created_at_ms,
         canonical_hash: receipt.canonical_hash.clone(),
         idempotency_key: receipt.idempotency_key.clone(),
-        trace: trace_from_proto(receipt.trace.as_ref().ok_or_else(|| missing("receipt.trace"))?),
+        trace: trace_from_proto(
+            receipt
+                .trace
+                .as_ref()
+                .ok_or_else(|| missing("receipt.trace"))?,
+        ),
         policy: policy_from_proto(
             receipt
                 .policy
@@ -435,9 +432,7 @@ fn settlement_mode_from_proto(value: i32) -> ComputeSettlementMode {
         .unwrap_or(proto_compute::ComputeSettlementMode::Physical)
     {
         proto_compute::ComputeSettlementMode::Cash => ComputeSettlementMode::Cash,
-        proto_compute::ComputeSettlementMode::BuyerElection => {
-            ComputeSettlementMode::BuyerElection
-        }
+        proto_compute::ComputeSettlementMode::BuyerElection => ComputeSettlementMode::BuyerElection,
         proto_compute::ComputeSettlementMode::Unspecified
         | proto_compute::ComputeSettlementMode::Physical => ComputeSettlementMode::Physical,
     }
@@ -560,8 +555,9 @@ fn capacity_lot_status_from_proto(value: i32) -> CapacityLotStatus {
         proto_compute::CapacityLotStatus::Delivered => CapacityLotStatus::Delivered,
         proto_compute::CapacityLotStatus::Cancelled => CapacityLotStatus::Cancelled,
         proto_compute::CapacityLotStatus::Expired => CapacityLotStatus::Expired,
-        proto_compute::CapacityLotStatus::Unspecified
-        | proto_compute::CapacityLotStatus::Open => CapacityLotStatus::Open,
+        proto_compute::CapacityLotStatus::Unspecified | proto_compute::CapacityLotStatus::Open => {
+            CapacityLotStatus::Open
+        }
     }
 }
 
@@ -613,7 +609,9 @@ fn capacity_instrument_status_to_proto(value: CapacityInstrumentStatus) -> i32 {
         CapacityInstrumentStatus::Cancelled => {
             proto_compute::CapacityInstrumentStatus::Cancelled as i32
         }
-        CapacityInstrumentStatus::Expired => proto_compute::CapacityInstrumentStatus::Expired as i32,
+        CapacityInstrumentStatus::Expired => {
+            proto_compute::CapacityInstrumentStatus::Expired as i32
+        }
     }
 }
 
@@ -622,9 +620,7 @@ fn capacity_instrument_status_from_proto(value: i32) -> CapacityInstrumentStatus
         .unwrap_or(proto_compute::CapacityInstrumentStatus::Open)
     {
         proto_compute::CapacityInstrumentStatus::Active => CapacityInstrumentStatus::Active,
-        proto_compute::CapacityInstrumentStatus::Delivering => {
-            CapacityInstrumentStatus::Delivering
-        }
+        proto_compute::CapacityInstrumentStatus::Delivering => CapacityInstrumentStatus::Delivering,
         proto_compute::CapacityInstrumentStatus::CashSettling => {
             CapacityInstrumentStatus::CashSettling
         }
@@ -653,6 +649,86 @@ fn delivery_proof_status_from_proto(value: i32) -> DeliveryProofStatus {
         proto_compute::DeliveryProofStatus::Rejected => DeliveryProofStatus::Rejected,
         proto_compute::DeliveryProofStatus::Unspecified
         | proto_compute::DeliveryProofStatus::Recorded => DeliveryProofStatus::Recorded,
+    }
+}
+
+fn delivery_variance_reason_to_proto(value: ComputeDeliveryVarianceReason) -> i32 {
+    match value {
+        ComputeDeliveryVarianceReason::CapabilityEnvelopeMismatch => {
+            proto_compute::ComputeDeliveryVarianceReason::CapabilityEnvelopeMismatch as i32
+        }
+        ComputeDeliveryVarianceReason::PartialQuantity => {
+            proto_compute::ComputeDeliveryVarianceReason::PartialQuantity as i32
+        }
+        ComputeDeliveryVarianceReason::LatencyBreach => {
+            proto_compute::ComputeDeliveryVarianceReason::LatencyBreach as i32
+        }
+        ComputeDeliveryVarianceReason::ThroughputShortfall => {
+            proto_compute::ComputeDeliveryVarianceReason::ThroughputShortfall as i32
+        }
+        ComputeDeliveryVarianceReason::ModelPolicyDrift => {
+            proto_compute::ComputeDeliveryVarianceReason::ModelPolicyDrift as i32
+        }
+    }
+}
+
+fn delivery_variance_reason_from_proto(value: i32) -> Option<ComputeDeliveryVarianceReason> {
+    match proto_compute::ComputeDeliveryVarianceReason::try_from(value)
+        .unwrap_or(proto_compute::ComputeDeliveryVarianceReason::Unspecified)
+    {
+        proto_compute::ComputeDeliveryVarianceReason::CapabilityEnvelopeMismatch => {
+            Some(ComputeDeliveryVarianceReason::CapabilityEnvelopeMismatch)
+        }
+        proto_compute::ComputeDeliveryVarianceReason::PartialQuantity => {
+            Some(ComputeDeliveryVarianceReason::PartialQuantity)
+        }
+        proto_compute::ComputeDeliveryVarianceReason::LatencyBreach => {
+            Some(ComputeDeliveryVarianceReason::LatencyBreach)
+        }
+        proto_compute::ComputeDeliveryVarianceReason::ThroughputShortfall => {
+            Some(ComputeDeliveryVarianceReason::ThroughputShortfall)
+        }
+        proto_compute::ComputeDeliveryVarianceReason::ModelPolicyDrift => {
+            Some(ComputeDeliveryVarianceReason::ModelPolicyDrift)
+        }
+        proto_compute::ComputeDeliveryVarianceReason::Unspecified => None,
+    }
+}
+
+fn delivery_rejection_reason_to_proto(value: DeliveryRejectionReason) -> i32 {
+    match value {
+        DeliveryRejectionReason::AttestationMissing => {
+            proto_compute::DeliveryRejectionReason::AttestationMissing as i32
+        }
+        DeliveryRejectionReason::CostProofMissing => {
+            proto_compute::DeliveryRejectionReason::CostProofMissing as i32
+        }
+        DeliveryRejectionReason::RuntimeIdentityMismatch => {
+            proto_compute::DeliveryRejectionReason::RuntimeIdentityMismatch as i32
+        }
+        DeliveryRejectionReason::NonConformingDelivery => {
+            proto_compute::DeliveryRejectionReason::NonConformingDelivery as i32
+        }
+    }
+}
+
+fn delivery_rejection_reason_from_proto(value: i32) -> Option<DeliveryRejectionReason> {
+    match proto_compute::DeliveryRejectionReason::try_from(value)
+        .unwrap_or(proto_compute::DeliveryRejectionReason::Unspecified)
+    {
+        proto_compute::DeliveryRejectionReason::AttestationMissing => {
+            Some(DeliveryRejectionReason::AttestationMissing)
+        }
+        proto_compute::DeliveryRejectionReason::CostProofMissing => {
+            Some(DeliveryRejectionReason::CostProofMissing)
+        }
+        proto_compute::DeliveryRejectionReason::RuntimeIdentityMismatch => {
+            Some(DeliveryRejectionReason::RuntimeIdentityMismatch)
+        }
+        proto_compute::DeliveryRejectionReason::NonConformingDelivery => {
+            Some(DeliveryRejectionReason::NonConformingDelivery)
+        }
+        proto_compute::DeliveryRejectionReason::Unspecified => None,
     }
 }
 
@@ -731,7 +807,8 @@ pub fn compute_capability_envelope_from_proto(
             != proto_compute::ComputeExecutionKind::Unspecified as i32)
             .then(|| compute_execution_kind_from_proto(envelope.execution_kind))
             .transpose()?,
-        compute_family: (envelope.compute_family != proto_compute::ComputeFamily::Unspecified as i32)
+        compute_family: (envelope.compute_family
+            != proto_compute::ComputeFamily::Unspecified as i32)
             .then(|| compute_family_from_proto(envelope.compute_family))
             .transpose()?,
         model_policy: envelope.model_policy.clone(),
@@ -743,17 +820,23 @@ pub fn compute_capability_envelope_from_proto(
                 memory_gb: capability.memory_gb,
             }
         }),
-        apple_platform: envelope.apple_platform.as_ref().map(|platform| ApplePlatformCapability {
-            apple_silicon_required: platform.apple_silicon_required,
-            apple_intelligence_required: platform.apple_intelligence_required,
-            apple_intelligence_available: platform.apple_intelligence_available,
-            minimum_macos_version: platform.minimum_macos_version.clone(),
-        }),
-        ollama_runtime: envelope.ollama_runtime.as_ref().map(|runtime| OllamaRuntimeCapability {
-            runtime_ready: runtime.runtime_ready,
-            model_name: runtime.model_name.clone(),
-            quantization: runtime.quantization.clone(),
-        }),
+        apple_platform: envelope
+            .apple_platform
+            .as_ref()
+            .map(|platform| ApplePlatformCapability {
+                apple_silicon_required: platform.apple_silicon_required,
+                apple_intelligence_required: platform.apple_intelligence_required,
+                apple_intelligence_available: platform.apple_intelligence_available,
+                minimum_macos_version: platform.minimum_macos_version.clone(),
+            }),
+        ollama_runtime: envelope
+            .ollama_runtime
+            .as_ref()
+            .map(|runtime| OllamaRuntimeCapability {
+                runtime_ready: runtime.runtime_ready,
+                model_name: runtime.model_name.clone(),
+                quantization: runtime.quantization.clone(),
+            }),
         latency_ms_p50: envelope.latency_ms_p50,
         throughput_per_minute: envelope.throughput_per_minute,
         concurrency_limit: envelope.concurrency_limit,
@@ -785,7 +868,9 @@ pub fn compute_product_to_proto(product: &ComputeProduct) -> Result<proto_comput
     })
 }
 
-pub fn compute_product_from_proto(product: &proto_compute::ComputeProduct) -> Result<ComputeProduct> {
+pub fn compute_product_from_proto(
+    product: &proto_compute::ComputeProduct,
+) -> Result<ComputeProduct> {
     Ok(ComputeProduct {
         product_id: product.product_id.clone(),
         resource_class: product.resource_class.clone(),
@@ -840,7 +925,11 @@ pub fn capacity_lot_from_proto(lot: &proto_compute::CapacityLot) -> Result<Capac
         delivery_start_ms: lot.delivery_start_ms,
         delivery_end_ms: lot.delivery_end_ms,
         quantity: lot.quantity,
-        min_unit_price: lot.min_unit_price.as_ref().map(money_from_proto).transpose()?,
+        min_unit_price: lot
+            .min_unit_price
+            .as_ref()
+            .map(money_from_proto)
+            .transpose()?,
         region_hint: lot.region_hint.clone(),
         attestation_posture: lot.attestation_posture.clone(),
         reserve_state: capacity_reserve_state_from_proto(lot.reserve_state),
@@ -889,7 +978,11 @@ pub fn capacity_instrument_from_proto(
         delivery_start_ms: instrument.delivery_start_ms,
         delivery_end_ms: instrument.delivery_end_ms,
         quantity: instrument.quantity,
-        fixed_price: instrument.fixed_price.as_ref().map(money_from_proto).transpose()?,
+        fixed_price: instrument
+            .fixed_price
+            .as_ref()
+            .map(money_from_proto)
+            .transpose()?,
         reference_index_id: instrument.reference_index_id.clone(),
         kind: capacity_instrument_kind_from_proto(instrument.kind),
         settlement_mode: settlement_mode_from_proto(instrument.settlement_mode),
@@ -910,14 +1003,26 @@ pub fn delivery_proof_to_proto(proof: &DeliveryProof) -> Result<proto_compute::D
         metered_quantity: proof.metered_quantity,
         accepted_quantity: proof.accepted_quantity,
         performance_band_observed: proof.performance_band_observed.clone(),
-        variance_reason: proto_compute::ComputeDeliveryVarianceReason::Unspecified as i32,
-        variance_reason_detail: proof.variance_reason.clone(),
+        variance_reason: proof
+            .variance_reason
+            .map(delivery_variance_reason_to_proto)
+            .unwrap_or(proto_compute::ComputeDeliveryVarianceReason::Unspecified as i32),
+        variance_reason_detail: proof.variance_reason_detail.clone(),
         attestation_digest: proof.attestation_digest.clone(),
         cost_attestation_ref: proof.cost_attestation_ref.clone(),
         status: delivery_proof_status_to_proto(proof.status),
-        rejection_reason: proto_compute::DeliveryRejectionReason::Unspecified as i32,
-        promised_capability_envelope: None,
-        observed_capability_envelope: None,
+        rejection_reason: proof
+            .rejection_reason
+            .map(delivery_rejection_reason_to_proto)
+            .unwrap_or(proto_compute::DeliveryRejectionReason::Unspecified as i32),
+        promised_capability_envelope: proof
+            .promised_capability_envelope
+            .as_ref()
+            .map(compute_capability_envelope_to_proto),
+        observed_capability_envelope: proof
+            .observed_capability_envelope
+            .as_ref()
+            .map(compute_capability_envelope_to_proto),
         metadata_json: json_value_to_string(&proof.metadata)?,
     })
 }
@@ -933,10 +1038,22 @@ pub fn delivery_proof_from_proto(proof: &proto_compute::DeliveryProof) -> Result
         metered_quantity: proof.metered_quantity,
         accepted_quantity: proof.accepted_quantity,
         performance_band_observed: proof.performance_band_observed.clone(),
-        variance_reason: proof.variance_reason_detail.clone(),
+        variance_reason: delivery_variance_reason_from_proto(proof.variance_reason),
+        variance_reason_detail: proof.variance_reason_detail.clone(),
         attestation_digest: proof.attestation_digest.clone(),
         cost_attestation_ref: proof.cost_attestation_ref.clone(),
         status: delivery_proof_status_from_proto(proof.status),
+        rejection_reason: delivery_rejection_reason_from_proto(proof.rejection_reason),
+        promised_capability_envelope: proof
+            .promised_capability_envelope
+            .as_ref()
+            .map(compute_capability_envelope_from_proto)
+            .transpose()?,
+        observed_capability_envelope: proof
+            .observed_capability_envelope
+            .as_ref()
+            .map(compute_capability_envelope_from_proto)
+            .transpose()?,
         metadata: json_string_to_value(proof.metadata_json.as_str())?,
     })
 }
@@ -968,7 +1085,11 @@ pub fn compute_index_from_proto(index: &proto_compute::ComputeIndex) -> Result<C
         published_at_ms: index.published_at_ms,
         observation_count: index.observation_count,
         total_accepted_quantity: index.total_accepted_quantity,
-        reference_price: index.reference_price.as_ref().map(money_from_proto).transpose()?,
+        reference_price: index
+            .reference_price
+            .as_ref()
+            .map(money_from_proto)
+            .transpose()?,
         methodology: index.methodology.clone(),
         status: compute_index_status_from_proto(index.status),
         metadata: json_string_to_value(index.metadata_json.as_str())?,
@@ -1025,10 +1146,16 @@ pub fn create_compute_product_response_from_proto(
 ) -> Result<CreateComputeProductResponse> {
     Ok(CreateComputeProductResponse {
         product: compute_product_from_proto(
-            response.product.as_ref().ok_or_else(|| missing("product"))?,
+            response
+                .product
+                .as_ref()
+                .ok_or_else(|| missing("product"))?,
         )?,
         receipt: receipt_from_proto(
-            response.receipt.as_ref().ok_or_else(|| missing("receipt"))?,
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
         )?,
     })
 }
@@ -1082,7 +1209,10 @@ pub fn create_capacity_lot_response_from_proto(
     Ok(CreateCapacityLotResponse {
         lot: capacity_lot_from_proto(response.lot.as_ref().ok_or_else(|| missing("lot"))?)?,
         receipt: receipt_from_proto(
-            response.receipt.as_ref().ok_or_else(|| missing("receipt"))?,
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
         )?,
     })
 }
@@ -1146,7 +1276,10 @@ pub fn create_capacity_instrument_response_from_proto(
                 .ok_or_else(|| missing("instrument"))?,
         )?,
         receipt: receipt_from_proto(
-            response.receipt.as_ref().ok_or_else(|| missing("receipt"))?,
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
         )?,
     })
 }
@@ -1210,7 +1343,10 @@ pub fn record_delivery_proof_response_from_proto(
                 .ok_or_else(|| missing("delivery_proof"))?,
         )?,
         receipt: receipt_from_proto(
-            response.receipt.as_ref().ok_or_else(|| missing("receipt"))?,
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
         )?,
     })
 }
@@ -1264,7 +1400,10 @@ pub fn publish_compute_index_response_from_proto(
     Ok(PublishComputeIndexResponse {
         index: compute_index_from_proto(response.index.as_ref().ok_or_else(|| missing("index"))?)?,
         receipt: receipt_from_proto(
-            response.receipt.as_ref().ok_or_else(|| missing("receipt"))?,
+            response
+                .receipt
+                .as_ref()
+                .ok_or_else(|| missing("receipt"))?,
         )?,
     })
 }
@@ -1301,7 +1440,12 @@ pub fn get_compute_product_response_to_proto(
 pub fn get_compute_product_response_from_proto(
     response: &proto_compute::GetComputeProductResponse,
 ) -> Result<ComputeProduct> {
-    compute_product_from_proto(response.product.as_ref().ok_or_else(|| missing("product"))?)
+    compute_product_from_proto(
+        response
+            .product
+            .as_ref()
+            .ok_or_else(|| missing("product"))?,
+    )
 }
 
 pub fn list_capacity_lots_response_to_proto(
@@ -1429,7 +1573,11 @@ pub fn list_compute_indices_response_to_proto(
 pub fn list_compute_indices_response_from_proto(
     response: &proto_compute::ListComputeIndicesResponse,
 ) -> Result<Vec<ComputeIndex>> {
-    response.indices.iter().map(compute_index_from_proto).collect()
+    response
+        .indices
+        .iter()
+        .map(compute_index_from_proto)
+        .collect()
 }
 
 pub fn get_compute_index_response_to_proto(
@@ -1459,9 +1607,9 @@ mod tests {
     use crate::compute::{
         CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
         CapacityLotStatus, CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeExecutionKind, ComputeFamily, ComputeIndex, ComputeIndexStatus, ComputeProduct,
-        ComputeProductStatus, ComputeSettlementMode, DeliveryProof, DeliveryProofStatus,
-        OllamaRuntimeCapability,
+        ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
+        ComputeIndexStatus, ComputeProduct, ComputeProductStatus, ComputeSettlementMode,
+        DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
     };
     use serde_json::json;
 
@@ -1552,10 +1700,46 @@ mod tests {
             metered_quantity: 64,
             accepted_quantity: 64,
             performance_band_observed: Some("balanced".to_string()),
-            variance_reason: None,
+            variance_reason: Some(ComputeDeliveryVarianceReason::LatencyBreach),
+            variance_reason_detail: Some("p50 latency exceeded promised bound".to_string()),
             attestation_digest: Some("sha256:test".to_string()),
             cost_attestation_ref: Some("cost:test".to_string()),
             status: DeliveryProofStatus::Accepted,
+            rejection_reason: None,
+            promised_capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::Ollama),
+                execution_kind: Some(ComputeExecutionKind::LocalInference),
+                compute_family: Some(ComputeFamily::Inference),
+                model_policy: Some("ollama.text_generation.launch".to_string()),
+                model_family: Some("llama3.2".to_string()),
+                host_capability: None,
+                apple_platform: None,
+                ollama_runtime: Some(OllamaRuntimeCapability {
+                    runtime_ready: Some(true),
+                    model_name: Some("llama3.2".to_string()),
+                    quantization: Some("q4_k_m".to_string()),
+                }),
+                latency_ms_p50: Some(250),
+                throughput_per_minute: Some(1_200),
+                concurrency_limit: Some(1),
+            }),
+            observed_capability_envelope: Some(ComputeCapabilityEnvelope {
+                backend_family: Some(ComputeBackendFamily::Ollama),
+                execution_kind: Some(ComputeExecutionKind::LocalInference),
+                compute_family: Some(ComputeFamily::Inference),
+                model_policy: Some("ollama.text_generation.launch".to_string()),
+                model_family: Some("llama3.2".to_string()),
+                host_capability: None,
+                apple_platform: None,
+                ollama_runtime: Some(OllamaRuntimeCapability {
+                    runtime_ready: Some(true),
+                    model_name: Some("llama3.2".to_string()),
+                    quantization: Some("q4_k_m".to_string()),
+                }),
+                latency_ms_p50: Some(310),
+                throughput_per_minute: Some(1_100),
+                concurrency_limit: Some(1),
+            }),
             metadata: json!({"backend": "ollama"}),
         }
     }

@@ -657,7 +657,10 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             "/v1/kernel/compute/lots",
             get(list_kernel_capacity_lots).post(create_kernel_capacity_lot),
         )
-        .route("/v1/kernel/compute/lots/{lot_id}", get(get_kernel_capacity_lot))
+        .route(
+            "/v1/kernel/compute/lots/{lot_id}",
+            get(get_kernel_capacity_lot),
+        )
         .route(
             "/v1/kernel/compute/instruments",
             get(list_kernel_capacity_instruments).post(create_kernel_capacity_instrument),
@@ -678,7 +681,10 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
             "/v1/kernel/compute/indices",
             get(list_kernel_compute_indices).post(publish_kernel_compute_index),
         )
-        .route("/v1/kernel/compute/indices/{index_id}", get(get_kernel_compute_index))
+        .route(
+            "/v1/kernel/compute/indices/{index_id}",
+            get(get_kernel_compute_index),
+        )
         .route("/v1/kernel/data/assets", post(register_kernel_data_asset))
         .route("/v1/kernel/data/grants", post(create_kernel_access_grant))
         .route(
@@ -1793,8 +1799,8 @@ async fn get_kernel_capacity_lot(
             reason: "kernel_capacity_lot_not_found".to_string(),
         });
     };
-    let response =
-        compute_contracts::get_capacity_lot_response_to_proto(&lot).map_err(kernel_contract_error)?;
+    let response = compute_contracts::get_capacity_lot_response_to_proto(&lot)
+        .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -1935,8 +1941,8 @@ async fn get_kernel_compute_index(
             reason: "kernel_compute_index_not_found".to_string(),
         });
     };
-    let response =
-        compute_contracts::get_compute_index_response_to_proto(&index).map_err(kernel_contract_error)?;
+    let response = compute_contracts::get_compute_index_response_to_proto(&index)
+        .map_err(kernel_contract_error)?;
     Ok(Json(response))
 }
 
@@ -1946,8 +1952,8 @@ async fn create_kernel_compute_product(
     Json(request): Json<proto_compute::CreateComputeProductRequest>,
 ) -> Result<Json<proto_compute::CreateComputeProductResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
-    let request =
-        compute_contracts::create_compute_product_request_from_proto(&request).map_err(kernel_contract_error)?;
+    let request = compute_contracts::create_compute_product_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -1979,8 +1985,8 @@ async fn create_kernel_capacity_lot(
     Json(request): Json<proto_compute::CreateCapacityLotRequest>,
 ) -> Result<Json<proto_compute::CreateCapacityLotResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
-    let request =
-        compute_contracts::create_capacity_lot_request_from_proto(&request).map_err(kernel_contract_error)?;
+    let request = compute_contracts::create_capacity_lot_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -2047,8 +2053,8 @@ async fn record_kernel_delivery_proof(
     Json(request): Json<proto_compute::RecordDeliveryProofRequest>,
 ) -> Result<Json<proto_compute::RecordDeliveryProofResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
-    let mut request =
-        compute_contracts::record_delivery_proof_request_from_proto(&request).map_err(kernel_contract_error)?;
+    let mut request = compute_contracts::record_delivery_proof_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let lot_id = normalize_required_field(lot_id.as_str(), "capacity_lot_id_missing")?;
     if !request.delivery_proof.capacity_lot_id.trim().is_empty()
         && request.delivery_proof.capacity_lot_id != lot_id
@@ -2091,8 +2097,8 @@ async fn publish_kernel_compute_index(
     Json(request): Json<proto_compute::PublishComputeIndexRequest>,
 ) -> Result<Json<proto_compute::PublishComputeIndexResponse>, ApiError> {
     let session = authenticate_session(&state, &headers)?;
-    let request =
-        compute_contracts::publish_compute_index_request_from_proto(&request).map_err(kernel_contract_error)?;
+    let request = compute_contracts::publish_compute_index_request_from_proto(&request)
+        .map_err(kernel_contract_error)?;
     let now = now_unix_ms();
     let result = {
         let mut store = state.store.write().map_err(|_| ApiError {
@@ -3536,15 +3542,14 @@ mod tests {
         CreateAccessGrantRequest, CreateAccessGrantResponse, CreateCapacityInstrumentRequest,
         CreateCapacityLotRequest, CreateComputeProductRequest, CreateContractRequest,
         CreateContractResponse, CreateLiquidityQuoteRequest, CreateLiquidityQuoteResponse,
-        HttpKernelAuthorityClient, KernelAuthority,
         CreatePredictionPositionRequest, CreatePredictionPositionResponse, CreateRiskClaimRequest,
         CreateRiskClaimResponse, CreateWorkUnitRequest, CreateWorkUnitResponse,
         ExecuteSettlementIntentRequest, ExecuteSettlementIntentResponse, FinalizeVerdictRequest,
-        FinalizeVerdictResponse, IssueDeliveryBundleRequest, IssueDeliveryBundleResponse,
-        IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse, PlaceCoverageOfferRequest,
-        PlaceCoverageOfferResponse, PublishComputeIndexRequest, PublishRiskSignalRequest,
-        PublishRiskSignalResponse, RecordDeliveryProofRequest, RegisterDataAssetRequest,
-        RegisterDataAssetResponse,
+        FinalizeVerdictResponse, HttpKernelAuthorityClient, IssueDeliveryBundleRequest,
+        IssueDeliveryBundleResponse, IssueLiquidityEnvelopeRequest, IssueLiquidityEnvelopeResponse,
+        KernelAuthority, PlaceCoverageOfferRequest, PlaceCoverageOfferResponse,
+        PublishComputeIndexRequest, PublishRiskSignalRequest, PublishRiskSignalResponse,
+        RecordDeliveryProofRequest, RegisterDataAssetRequest, RegisterDataAssetResponse,
         RegisterReservePartitionRequest, RegisterReservePartitionResponse, ResolveRiskClaimRequest,
         ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
         SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
@@ -3579,8 +3584,8 @@ mod tests {
         PredictionPosition, PredictionPositionStatus, PredictionSide, RiskClaim, RiskClaimStatus,
         RiskSignal, RiskSignalStatus,
     };
-    use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
     use openagents_kernel_core::time::floor_to_minute_utc;
+    use openagents_kernel_proto::openagents::compute::v1 as proto_compute;
     use serde_json::json;
     use tower::ServiceExt;
 
@@ -3966,9 +3971,29 @@ mod tests {
                 accepted_quantity: 6,
                 performance_band_observed: Some("sxm".to_string()),
                 variance_reason: None,
+                variance_reason_detail: None,
                 attestation_digest: Some("sha256:attestation.compute.alpha".to_string()),
                 cost_attestation_ref: Some("oa://attestations/compute-cost-alpha".to_string()),
                 status: DeliveryProofStatus::Accepted,
+                rejection_reason: None,
+                promised_capability_envelope: None,
+                observed_capability_envelope: Some(ComputeCapabilityEnvelope {
+                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    execution_kind: Some(ComputeExecutionKind::LocalInference),
+                    compute_family: Some(ComputeFamily::Inference),
+                    model_policy: Some("ollama.text_generation.launch".to_string()),
+                    model_family: Some("llama3.2:latest".to_string()),
+                    host_capability: None,
+                    apple_platform: None,
+                    ollama_runtime: Some(OllamaRuntimeCapability {
+                        runtime_ready: Some(true),
+                        model_name: Some("llama3.2:latest".to_string()),
+                        quantization: None,
+                    }),
+                    latency_ms_p50: Some(140),
+                    throughput_per_minute: Some(36),
+                    concurrency_limit: Some(1),
+                }),
                 metadata: json!({
                     "sample_count": 12
                 }),
@@ -5439,11 +5464,13 @@ mod tests {
                     .uri("/v1/kernel/compute/products")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_product_wire_request(
-                        "ollama.text_generation",
-                        "idemp.compute.product.alpha",
-                        created_at_ms,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_product_wire_request(
+                            "ollama.text_generation",
+                            "idemp.compute.product.alpha",
+                            created_at_ms,
+                        ),
+                    )?))?,
             )
             .await?;
         assert_eq!(product.status(), StatusCode::OK);
@@ -5500,11 +5527,9 @@ mod tests {
             )
             .await?;
         assert_eq!(instrument.status(), StatusCode::OK);
-        let instrument_payload =
-            compute_contracts::create_capacity_instrument_response_from_proto(
-                &response_json::<proto_compute::CreateCapacityInstrumentResponse>(instrument)
-                    .await?,
-            )?;
+        let instrument_payload = compute_contracts::create_capacity_instrument_response_from_proto(
+            &response_json::<proto_compute::CreateCapacityInstrumentResponse>(instrument).await?,
+        )?;
         assert_eq!(
             instrument_payload.receipt.receipt_type,
             "kernel.compute.instrument.create.v1"
@@ -5518,14 +5543,16 @@ mod tests {
                     .uri("/v1/kernel/compute/lots/lot.compute.alpha/delivery_proofs")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&delivery_proof_wire_request(
-                        "delivery.compute.alpha",
-                        "ollama.text_generation",
-                        "lot.compute.alpha",
-                        "instrument.compute.alpha",
-                        "idemp.compute.delivery.alpha",
-                        created_at_ms + 3_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &delivery_proof_wire_request(
+                            "delivery.compute.alpha",
+                            "ollama.text_generation",
+                            "lot.compute.alpha",
+                            "instrument.compute.alpha",
+                            "idemp.compute.delivery.alpha",
+                            created_at_ms + 3_000,
+                        ),
+                    )?))?,
             )
             .await?;
         assert_eq!(delivery.status(), StatusCode::OK);
@@ -5545,12 +5572,14 @@ mod tests {
                     .uri("/v1/kernel/compute/indices")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_index_wire_request(
-                        "index.compute.alpha",
-                        "ollama.text_generation",
-                        "idemp.compute.index.alpha",
-                        created_at_ms + 4_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_index_wire_request(
+                            "index.compute.alpha",
+                            "ollama.text_generation",
+                            "idemp.compute.index.alpha",
+                            created_at_ms + 4_000,
+                        ),
+                    )?))?,
             )
             .await?;
         assert_eq!(index.status(), StatusCode::OK);
@@ -5619,7 +5648,8 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn compute_read_models_reload_after_restart_when_kernel_state_is_persisted() -> Result<()> {
+    async fn compute_read_models_reload_after_restart_when_kernel_state_is_persisted() -> Result<()>
+    {
         let kernel_state_path = std::env::temp_dir().join(format!(
             "nexus-control-kernel-state-{}.json",
             super::random_token()
@@ -5640,11 +5670,13 @@ mod tests {
                     .uri("/v1/kernel/compute/products")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_product_wire_request(
-                        "ollama.text_generation",
-                        "idemp.compute.product.persisted",
-                        created_at_ms,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_product_wire_request(
+                            "ollama.text_generation",
+                            "idemp.compute.product.persisted",
+                            created_at_ms,
+                        ),
+                    )?))?,
             )
             .await?;
         assert_eq!(product_response.status(), StatusCode::OK);
@@ -5678,13 +5710,15 @@ mod tests {
                     .uri("/v1/kernel/compute/instruments")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&capacity_instrument_wire_request(
-                        "instrument.compute.persisted",
-                        "ollama.text_generation",
-                        "lot.compute.persisted",
-                        "idemp.compute.instrument.persisted",
-                        created_at_ms + 2_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &capacity_instrument_wire_request(
+                            "instrument.compute.persisted",
+                            "ollama.text_generation",
+                            "lot.compute.persisted",
+                            "idemp.compute.instrument.persisted",
+                            created_at_ms + 2_000,
+                        ),
+                    )?))?,
             )
             .await?;
         assert_eq!(instrument_response.status(), StatusCode::OK);
@@ -5697,14 +5731,16 @@ mod tests {
                     .uri("/v1/kernel/compute/lots/lot.compute.persisted/delivery_proofs")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&delivery_proof_wire_request(
-                        "delivery.compute.persisted",
-                        "ollama.text_generation",
-                        "lot.compute.persisted",
-                        "instrument.compute.persisted",
-                        "idemp.compute.delivery.persisted",
-                        created_at_ms + 3_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &delivery_proof_wire_request(
+                            "delivery.compute.persisted",
+                            "ollama.text_generation",
+                            "lot.compute.persisted",
+                            "instrument.compute.persisted",
+                            "idemp.compute.delivery.persisted",
+                            created_at_ms + 3_000,
+                        ),
+                    )?))?,
             )
             .await?;
         assert_eq!(delivery_response.status(), StatusCode::OK);
@@ -5717,12 +5753,14 @@ mod tests {
                     .uri("/v1/kernel/compute/indices")
                     .header("authorization", authorization(&session))
                     .header("content-type", "application/json")
-                    .body(Body::from(serde_json::to_vec(&compute_index_wire_request(
-                        "index.compute.persisted",
-                        "ollama.text_generation",
-                        "idemp.compute.index.persisted",
-                        created_at_ms + 4_000,
-                    ))?))?,
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_index_wire_request(
+                            "index.compute.persisted",
+                            "ollama.text_generation",
+                            "idemp.compute.index.persisted",
+                            created_at_ms + 4_000,
+                        ),
+                    )?))?,
             )
             .await?;
         assert_eq!(index_response.status(), StatusCode::OK);
@@ -5780,7 +5818,10 @@ mod tests {
         let lots = compute_contracts::list_capacity_lots_response_from_proto(
             &response_json::<proto_compute::ListCapacityLotsResponse>(lots_response).await?,
         )?;
-        assert!(lots.iter().any(|lot| lot.capacity_lot_id == "lot.compute.persisted"));
+        assert!(
+            lots.iter()
+                .any(|lot| lot.capacity_lot_id == "lot.compute.persisted")
+        );
 
         let instruments_response = reloaded_app
             .clone()
@@ -5797,9 +5838,11 @@ mod tests {
             &response_json::<proto_compute::ListCapacityInstrumentsResponse>(instruments_response)
                 .await?,
         )?;
-        assert!(instruments
-            .iter()
-            .any(|instrument| instrument.instrument_id == "instrument.compute.persisted"));
+        assert!(
+            instruments
+                .iter()
+                .any(|instrument| instrument.instrument_id == "instrument.compute.persisted")
+        );
 
         let delivery_proofs_response = reloaded_app
             .clone()
@@ -5816,9 +5859,11 @@ mod tests {
             &response_json::<proto_compute::ListDeliveryProofsResponse>(delivery_proofs_response)
                 .await?,
         )?;
-        assert!(delivery_proofs
-            .iter()
-            .any(|proof| proof.delivery_proof_id == "delivery.compute.persisted"));
+        assert!(
+            delivery_proofs
+                .iter()
+                .any(|proof| proof.delivery_proof_id == "delivery.compute.persisted")
+        );
 
         let indices_response = reloaded_app
             .clone()
@@ -5834,9 +5879,11 @@ mod tests {
         let indices = compute_contracts::list_compute_indices_response_from_proto(
             &response_json::<proto_compute::ListComputeIndicesResponse>(indices_response).await?,
         )?;
-        assert!(indices
-            .iter()
-            .any(|index| index.index_id == "index.compute.persisted"));
+        assert!(
+            indices
+                .iter()
+                .any(|index| index.index_id == "index.compute.persisted")
+        );
 
         let _ = std::fs::remove_file(kernel_state_path.as_path());
         Ok(())
@@ -5887,7 +5934,10 @@ mod tests {
                 created_at_ms + 2_000,
             ))
             .await?;
-        assert_eq!(instrument.instrument.instrument_id, "instrument.compute.client");
+        assert_eq!(
+            instrument.instrument.instrument_id,
+            "instrument.compute.client"
+        );
 
         let delivery = client
             .record_delivery_proof(delivery_proof_request(
@@ -5899,7 +5949,10 @@ mod tests {
                 created_at_ms + 3_000,
             ))
             .await?;
-        assert_eq!(delivery.delivery_proof.delivery_proof_id, "delivery.compute.client");
+        assert_eq!(
+            delivery.delivery_proof.delivery_proof_id,
+            "delivery.compute.client"
+        );
 
         let index = client
             .publish_compute_index(compute_index_request(
@@ -5914,37 +5967,47 @@ mod tests {
         let listed_products = client
             .list_compute_products(Some(ComputeProductStatus::Active))
             .await?;
-        assert!(listed_products
-            .iter()
-            .any(|item| item.product_id == "ollama.text_generation"));
+        assert!(
+            listed_products
+                .iter()
+                .any(|item| item.product_id == "ollama.text_generation")
+        );
 
         let listed_lots = client
             .list_capacity_lots(Some("ollama.text_generation"), None)
             .await?;
-        assert!(listed_lots
-            .iter()
-            .any(|item| item.capacity_lot_id == "lot.compute.client"));
+        assert!(
+            listed_lots
+                .iter()
+                .any(|item| item.capacity_lot_id == "lot.compute.client")
+        );
 
         let listed_instruments = client
             .list_capacity_instruments(None, Some("lot.compute.client"), None)
             .await?;
-        assert!(listed_instruments
-            .iter()
-            .any(|item| item.instrument_id == "instrument.compute.client"));
+        assert!(
+            listed_instruments
+                .iter()
+                .any(|item| item.instrument_id == "instrument.compute.client")
+        );
 
         let listed_delivery_proofs = client
             .list_delivery_proofs(Some("lot.compute.client"), None)
             .await?;
-        assert!(listed_delivery_proofs
-            .iter()
-            .any(|item| item.delivery_proof_id == "delivery.compute.client"));
+        assert!(
+            listed_delivery_proofs
+                .iter()
+                .any(|item| item.delivery_proof_id == "delivery.compute.client")
+        );
 
         let listed_indices = client
             .list_compute_indices(Some("ollama.text_generation"))
             .await?;
-        assert!(listed_indices
-            .iter()
-            .any(|item| item.index_id == "index.compute.client"));
+        assert!(
+            listed_indices
+                .iter()
+                .any(|item| item.index_id == "index.compute.client")
+        );
 
         let fetched_product = client.get_compute_product("ollama.text_generation").await?;
         assert_eq!(fetched_product.product_id, "ollama.text_generation");
@@ -5955,12 +6018,16 @@ mod tests {
         let fetched_instrument = client
             .get_capacity_instrument("instrument.compute.client")
             .await?;
-        assert_eq!(fetched_instrument.instrument_id, "instrument.compute.client");
+        assert_eq!(
+            fetched_instrument.instrument_id,
+            "instrument.compute.client"
+        );
 
-        let fetched_delivery = client
-            .get_delivery_proof("delivery.compute.client")
-            .await?;
-        assert_eq!(fetched_delivery.delivery_proof_id, "delivery.compute.client");
+        let fetched_delivery = client.get_delivery_proof("delivery.compute.client").await?;
+        assert_eq!(
+            fetched_delivery.delivery_proof_id,
+            "delivery.compute.client"
+        );
 
         let fetched_index = client.get_compute_index("index.compute.client").await?;
         assert_eq!(fetched_index.index_id, "index.compute.client");

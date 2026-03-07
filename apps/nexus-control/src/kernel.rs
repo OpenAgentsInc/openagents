@@ -19,8 +19,9 @@ use openagents_kernel_core::authority::{
 };
 use openagents_kernel_core::compute::{
     CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus,
-    CapacityReserveState, ComputeIndex, ComputeProduct, ComputeProductStatus, DeliveryProof,
-    validate_launch_compute_product,
+    CapacityReserveState, ComputeCapabilityEnvelope, ComputeDeliveryVarianceReason, ComputeIndex,
+    ComputeProduct, ComputeProductStatus, DeliveryProof, DeliveryProofStatus,
+    DeliveryRejectionReason, validate_launch_compute_product,
 };
 use openagents_kernel_core::data::{
     AccessGrant, AccessGrantStatus, DataAsset, DeliveryBundle, DeliveryBundleStatus,
@@ -47,8 +48,8 @@ use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
-use std::fs;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::fs;
 use std::path::PathBuf;
 
 const SNAPSHOT_WINDOW_MS: i64 = 86_400_000;
@@ -511,6 +512,98 @@ struct KernelReceiptSpec {
     hints: ReceiptHints,
 }
 
+fn set_delivery_variance(
+    proof: &mut DeliveryProof,
+    reason: ComputeDeliveryVarianceReason,
+    detail: String,
+) {
+    proof.variance_reason = Some(reason);
+    proof.variance_reason_detail = Some(detail);
+}
+
+fn reject_delivery_proof(proof: &mut DeliveryProof, reason: DeliveryRejectionReason, detail: &str) {
+    proof.status = DeliveryProofStatus::Rejected;
+    proof.accepted_quantity = 0;
+    proof.variance_reason = None;
+    proof.variance_reason_detail = Some(detail.to_string());
+    proof.rejection_reason = Some(reason);
+}
+
+fn delivery_capability_envelope_mismatch(
+    promised: &ComputeCapabilityEnvelope,
+    observed: &ComputeCapabilityEnvelope,
+) -> bool {
+    if promised.backend_family.is_some() && promised.backend_family != observed.backend_family {
+        return true;
+    }
+    if promised.execution_kind.is_some() && promised.execution_kind != observed.execution_kind {
+        return true;
+    }
+    if promised.compute_family.is_some() && promised.compute_family != observed.compute_family {
+        return true;
+    }
+    if let Some(promised_model_family) = promised.model_family.as_deref()
+        && observed.model_family.as_deref() != Some(promised_model_family)
+    {
+        return true;
+    }
+    if let Some(promised_concurrency) = promised.concurrency_limit
+        && observed
+            .concurrency_limit
+            .is_some_and(|observed_concurrency| observed_concurrency < promised_concurrency)
+    {
+        return true;
+    }
+    false
+}
+
+fn append_delivery_proof_evidence(evidence: &mut Vec<EvidenceRef>, proof: &DeliveryProof) {
+    if let Some(metering_rule_id) = proof
+        .metadata
+        .get("metering_rule_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    {
+        evidence.push(EvidenceRef::new(
+            "compute_delivery_metering_rule",
+            format!("oa://kernel/compute/metering/{metering_rule_id}"),
+            sha256_prefixed_text(metering_rule_id),
+        ));
+    }
+    if let Some(promised) = proof.promised_capability_envelope.as_ref()
+        && let Ok(serialized) = serde_json::to_string(promised)
+    {
+        evidence.push(EvidenceRef::new(
+            "compute_delivery_promised_envelope",
+            format!("oa://kernel/compute/promised/{}", proof.delivery_proof_id),
+            sha256_prefixed_text(serialized.as_str()),
+        ));
+    }
+    if let Some(observed) = proof.observed_capability_envelope.as_ref()
+        && let Ok(serialized) = serde_json::to_string(observed)
+    {
+        evidence.push(EvidenceRef::new(
+            "compute_delivery_observed_envelope",
+            format!("oa://kernel/compute/observed/{}", proof.delivery_proof_id),
+            sha256_prefixed_text(serialized.as_str()),
+        ));
+    }
+    if let Some(variance_reason) = proof.variance_reason {
+        evidence.push(EvidenceRef::new(
+            "compute_delivery_variance",
+            format!("oa://kernel/compute/variance/{}", proof.delivery_proof_id),
+            sha256_prefixed_text(variance_reason.label()),
+        ));
+    }
+    if let Some(rejection_reason) = proof.rejection_reason {
+        evidence.push(EvidenceRef::new(
+            "compute_delivery_rejection",
+            format!("oa://kernel/compute/rejection/{}", proof.delivery_proof_id),
+            sha256_prefixed_text(rejection_reason.label()),
+        ));
+    }
+}
+
 impl KernelState {
     pub fn new_with_persistence(persistence_path: Option<PathBuf>) -> Self {
         let mut state = Self {
@@ -538,7 +631,9 @@ impl KernelState {
     }
 
     pub fn get_compute_product(&self, product_id: &str) -> Option<ComputeProduct> {
-        self.compute_products.get(product_id).map(|record| record.product.clone())
+        self.compute_products
+            .get(product_id)
+            .map(|record| record.product.clone())
     }
 
     pub fn list_capacity_lots(
@@ -560,7 +655,9 @@ impl KernelState {
     }
 
     pub fn get_capacity_lot(&self, lot_id: &str) -> Option<CapacityLot> {
-        self.capacity_lots.get(lot_id).map(|record| record.lot.clone())
+        self.capacity_lots
+            .get(lot_id)
+            .map(|record| record.lot.clone())
     }
 
     pub fn list_capacity_instruments(
@@ -632,7 +729,9 @@ impl KernelState {
     }
 
     pub fn get_compute_index(&self, index_id: &str) -> Option<ComputeIndex> {
-        self.compute_indices.get(index_id).map(|record| record.index.clone())
+        self.compute_indices
+            .get(index_id)
+            .map(|record| record.index.clone())
     }
 
     fn load_persisted_compute_authority_state(&mut self) {
@@ -651,19 +750,18 @@ impl KernelState {
                 return;
             }
         };
-        let persisted = match serde_json::from_str::<PersistedComputeAuthorityState>(
-            contents.as_str(),
-        ) {
-            Ok(persisted) => persisted,
-            Err(error) => {
-                self.last_persistence_error = Some(format!(
-                    "kernel_state_decode_failed:{}:{}",
-                    path.display(),
-                    error
-                ));
-                return;
-            }
-        };
+        let persisted =
+            match serde_json::from_str::<PersistedComputeAuthorityState>(contents.as_str()) {
+                Ok(persisted) => persisted,
+                Err(error) => {
+                    self.last_persistence_error = Some(format!(
+                        "kernel_state_decode_failed:{}:{}",
+                        path.display(),
+                        error
+                    ));
+                    return;
+                }
+            };
         if persisted.schema_version != COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION {
             self.last_persistence_error = Some(format!(
                 "kernel_state_schema_unsupported:{}:{}",
@@ -713,19 +811,10 @@ impl KernelState {
         }
         let tmp_path = path.with_extension("tmp");
         fs::write(tmp_path.as_path(), payload).map_err(|error| {
-            format!(
-                "kernel_state_write_failed:{}:{}",
-                tmp_path.display(),
-                error
-            )
+            format!("kernel_state_write_failed:{}:{}", tmp_path.display(), error)
         })?;
-        fs::rename(tmp_path.as_path(), path.as_path()).map_err(|error| {
-            format!(
-                "kernel_state_rename_failed:{}:{}",
-                path.display(),
-                error
-            )
-        })?;
+        fs::rename(tmp_path.as_path(), path.as_path())
+            .map_err(|error| format!("kernel_state_rename_failed:{}:{}", path.display(), error))?;
         self.last_persistence_error = None;
         Ok(())
     }
@@ -1469,6 +1558,257 @@ impl KernelState {
         })
     }
 
+    fn canonicalize_delivery_proof(
+        &self,
+        proof: &mut DeliveryProof,
+        product: &ComputeProduct,
+        lot: &CapacityLot,
+        instrument: Option<&CapacityInstrument>,
+    ) -> Result<(), String> {
+        let spec = validate_launch_compute_product(product)
+            .map_err(|reason| format!("compute_product_invalid:{reason}"))?;
+        let promised_capability_envelope = product
+            .capability_envelope
+            .clone()
+            .ok_or_else(|| "compute_product_capability_envelope_missing".to_string())?;
+        let metering_rule_id = match product.product_id.as_str() {
+            "ollama.text_generation" => "meter.ollama.inference.v1",
+            "ollama.embeddings" => "meter.ollama.embeddings.v1",
+            "apple_foundation_models.text_generation" => "meter.apple_fm.inference.v1",
+            _ => "meter.compute.unknown",
+        };
+        let settlement_class = match spec.compute_family {
+            openagents_kernel_core::compute::ComputeFamily::Inference => "inference",
+            openagents_kernel_core::compute::ComputeFamily::Embeddings => "embeddings",
+        };
+        let max_quantity = instrument
+            .map(|instrument| instrument.quantity)
+            .unwrap_or(lot.quantity)
+            .max(1);
+        proof.promised_capability_envelope = Some(promised_capability_envelope.clone());
+        proof.metered_quantity = proof.metered_quantity.min(max_quantity);
+        proof.accepted_quantity = proof.accepted_quantity.min(proof.metered_quantity);
+        proof.variance_reason = None;
+        proof.variance_reason_detail = None;
+        proof.rejection_reason = None;
+        proof.status = DeliveryProofStatus::Accepted;
+
+        if spec.backend_family
+            == openagents_kernel_core::compute::ComputeBackendFamily::AppleFoundationModels
+            && spec.compute_family == openagents_kernel_core::compute::ComputeFamily::Embeddings
+        {
+            reject_delivery_proof(
+                proof,
+                DeliveryRejectionReason::NonConformingDelivery,
+                "apple_foundation_models_embeddings_not_supported",
+            );
+        } else if product.attestation_required && proof.attestation_digest.is_none() {
+            reject_delivery_proof(
+                proof,
+                DeliveryRejectionReason::AttestationMissing,
+                "attestation digest required by product policy",
+            );
+        } else if product.cost_proof_required && proof.cost_attestation_ref.is_none() {
+            reject_delivery_proof(
+                proof,
+                DeliveryRejectionReason::CostProofMissing,
+                "cost proof required by product policy",
+            );
+        } else if proof.observed_capability_envelope.is_none() {
+            reject_delivery_proof(
+                proof,
+                DeliveryRejectionReason::AttestationMissing,
+                "observed capability envelope missing from delivery proof",
+            );
+        } else if proof.metered_quantity == 0 {
+            reject_delivery_proof(
+                proof,
+                DeliveryRejectionReason::NonConformingDelivery,
+                "metered quantity must be positive",
+            );
+        } else {
+            let Some(observed) = proof.observed_capability_envelope.clone() else {
+                reject_delivery_proof(
+                    proof,
+                    DeliveryRejectionReason::AttestationMissing,
+                    "observed capability envelope missing from delivery proof",
+                );
+                return Ok(());
+            };
+            if observed.backend_family != Some(spec.backend_family) {
+                reject_delivery_proof(
+                    proof,
+                    DeliveryRejectionReason::RuntimeIdentityMismatch,
+                    "observed backend family did not match committed launch product",
+                );
+            } else if observed.compute_family != Some(spec.compute_family) {
+                reject_delivery_proof(
+                    proof,
+                    DeliveryRejectionReason::NonConformingDelivery,
+                    "observed compute family did not match committed launch product",
+                );
+            } else {
+                if proof.accepted_quantity == 0 {
+                    proof.accepted_quantity = proof.metered_quantity.min(max_quantity);
+                }
+                if proof.accepted_quantity == 0 {
+                    reject_delivery_proof(
+                        proof,
+                        DeliveryRejectionReason::NonConformingDelivery,
+                        "accepted quantity resolved to zero",
+                    );
+                } else if let (Some(promised_model), Some(observed_model)) = (
+                    promised_capability_envelope.model_family.as_deref(),
+                    observed.model_family.as_deref(),
+                ) && promised_model != observed_model
+                {
+                    set_delivery_variance(
+                        proof,
+                        ComputeDeliveryVarianceReason::ModelPolicyDrift,
+                        format!(
+                            "observed model '{}' differed from promised '{}'",
+                            observed_model, promised_model
+                        ),
+                    );
+                } else if let (Some(promised_latency), Some(observed_latency)) = (
+                    promised_capability_envelope.latency_ms_p50,
+                    observed.latency_ms_p50,
+                ) && observed_latency > promised_latency
+                {
+                    set_delivery_variance(
+                        proof,
+                        ComputeDeliveryVarianceReason::LatencyBreach,
+                        format!(
+                            "observed p50 latency {}ms exceeded promised {}ms",
+                            observed_latency, promised_latency
+                        ),
+                    );
+                } else if let (Some(promised_throughput), Some(observed_throughput)) = (
+                    promised_capability_envelope.throughput_per_minute,
+                    observed.throughput_per_minute,
+                ) && observed_throughput < promised_throughput
+                {
+                    set_delivery_variance(
+                        proof,
+                        ComputeDeliveryVarianceReason::ThroughputShortfall,
+                        format!(
+                            "observed throughput {} fell below promised {}",
+                            observed_throughput, promised_throughput
+                        ),
+                    );
+                } else if delivery_capability_envelope_mismatch(
+                    &promised_capability_envelope,
+                    &observed,
+                ) {
+                    set_delivery_variance(
+                        proof,
+                        ComputeDeliveryVarianceReason::CapabilityEnvelopeMismatch,
+                        "observed capability envelope diverged from committed launch product"
+                            .to_string(),
+                    );
+                }
+            }
+        }
+
+        if !proof.metadata.is_object() {
+            proof.metadata = json!({});
+        }
+        let Some(metadata) = proof.metadata.as_object_mut() else {
+            return Err("delivery_proof_metadata_object_missing".to_string());
+        };
+        metadata.insert(
+            "metering_rule_id".to_string(),
+            Value::String(metering_rule_id.to_string()),
+        );
+        metadata.insert(
+            "settlement_class".to_string(),
+            Value::String(settlement_class.to_string()),
+        );
+        metadata.insert(
+            "delivery_status".to_string(),
+            Value::String(proof.status.label().to_string()),
+        );
+        metadata.insert(
+            "variance_reason".to_string(),
+            proof.variance_reason.map_or(Value::Null, |reason| {
+                Value::String(reason.label().to_string())
+            }),
+        );
+        metadata.insert(
+            "variance_reason_detail".to_string(),
+            proof
+                .variance_reason_detail
+                .clone()
+                .map_or(Value::Null, Value::String),
+        );
+        metadata.insert(
+            "rejection_reason".to_string(),
+            proof.rejection_reason.map_or(Value::Null, |reason| {
+                Value::String(reason.label().to_string())
+            }),
+        );
+        metadata.insert(
+            "rejection_reason_detail".to_string(),
+            if proof.rejection_reason.is_some() {
+                proof
+                    .variance_reason_detail
+                    .clone()
+                    .map_or(Value::Null, Value::String)
+            } else {
+                Value::Null
+            },
+        );
+        Ok(())
+    }
+
+    fn recompute_capacity_lot_state(
+        &self,
+        capacity_lot_id: &str,
+    ) -> Option<(CapacityReserveState, CapacityLotStatus)> {
+        let lot = self.capacity_lots.get(capacity_lot_id)?;
+        let delivered_quantity = self
+            .delivery_proofs
+            .values()
+            .filter(|record| {
+                record.delivery_proof.capacity_lot_id == capacity_lot_id
+                    && record.delivery_proof.status == DeliveryProofStatus::Accepted
+            })
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.delivery_proof.accepted_quantity)
+            });
+        let reserved_quantity = self
+            .capacity_instruments
+            .values()
+            .filter(|record| record.instrument.capacity_lot_id.as_deref() == Some(capacity_lot_id))
+            .filter(|record| {
+                matches!(
+                    record.instrument.status,
+                    CapacityInstrumentStatus::Open
+                        | CapacityInstrumentStatus::Active
+                        | CapacityInstrumentStatus::Delivering
+                        | CapacityInstrumentStatus::CashSettling
+                )
+            })
+            .fold(0u64, |total, record| {
+                total.saturating_add(record.instrument.quantity)
+            });
+        if delivered_quantity >= lot.lot.quantity {
+            Some((
+                CapacityReserveState::Exhausted,
+                CapacityLotStatus::Delivered,
+            ))
+        } else if delivered_quantity > 0 {
+            Some((
+                CapacityReserveState::Reserved,
+                CapacityLotStatus::Delivering,
+            ))
+        } else if reserved_quantity > 0 {
+            Some((CapacityReserveState::Reserved, CapacityLotStatus::Reserved))
+        } else {
+            Some((CapacityReserveState::Available, CapacityLotStatus::Open))
+        }
+    }
+
     pub fn record_delivery_proof(
         &mut self,
         context: &KernelMutationContext,
@@ -1527,6 +1867,14 @@ impl KernelState {
         req.delivery_proof.product_id.clone_from(&product_id);
         req.delivery_proof.created_at_ms =
             normalize_created_at_ms(req.delivery_proof.created_at_ms, context.now_unix_ms);
+        self.canonicalize_delivery_proof(
+            &mut req.delivery_proof,
+            &product_record.product,
+            &lot_record.lot,
+            instrument_record
+                .as_ref()
+                .map(|(_, record)| &record.instrument),
+        )?;
         req.policy = normalized_policy(req.policy, context);
         let request_hash = request_hash(&req)?;
         let mut evidence = req.evidence.clone();
@@ -1550,6 +1898,7 @@ impl KernelState {
                     .as_ref(),
             );
         }
+        append_delivery_proof_evidence(&mut evidence, &req.delivery_proof);
         let delivery_payload = serde_json::to_value(&req.delivery_proof)
             .map_err(|error| format!("kernel_delivery_proof_encode_failed: {error}"))?;
         let receipt = build_receipt(
@@ -1566,8 +1915,20 @@ impl KernelState {
                     "product_id": product_id.clone(),
                     "capacity_lot_id": capacity_lot_id.clone(),
                     "instrument_id": req.delivery_proof.instrument_id.clone(),
+                    "metered_quantity": req.delivery_proof.metered_quantity,
                     "accepted_quantity": req.delivery_proof.accepted_quantity,
                     "status": req.delivery_proof.status,
+                    "variance_reason": req.delivery_proof.variance_reason.map(|reason| reason.label().to_string()),
+                    "variance_reason_detail": req.delivery_proof.variance_reason_detail.clone(),
+                    "rejection_reason": req.delivery_proof.rejection_reason.map(|reason| reason.label().to_string()),
+                    "rejection_reason_detail": if req.delivery_proof.rejection_reason.is_some() { req.delivery_proof.variance_reason_detail.clone() } else { None },
+                    "promised_capability_envelope": req.delivery_proof.promised_capability_envelope.clone(),
+                    "observed_capability_envelope": req.delivery_proof.observed_capability_envelope.clone(),
+                    "metering_rule_id": req
+                        .delivery_proof
+                        .metadata
+                        .get("metering_rule_id")
+                        .cloned(),
                     "product_receipt_id": product_record.receipt_id.clone(),
                     "capacity_lot_receipt_id": lot_record.receipt_id.clone(),
                     "capacity_instrument_receipt_id": instrument_record.as_ref().map(|(_, record)| record.receipt_id.clone()),
@@ -1599,30 +1960,20 @@ impl KernelState {
             });
         }
 
-        if let Some(lot_record) = self.capacity_lots.get_mut(capacity_lot_id.as_str()) {
-            lot_record.lot.reserve_state =
-                if req.delivery_proof.accepted_quantity >= lot_record.lot.quantity {
-                    CapacityReserveState::Exhausted
-                } else {
-                    CapacityReserveState::Reserved
-                };
-            lot_record.lot.status =
-                if req.delivery_proof.accepted_quantity >= lot_record.lot.quantity {
-                    CapacityLotStatus::Delivered
-                } else {
-                    CapacityLotStatus::Delivering
-                };
-        }
         if let Some((instrument_id, _)) = instrument_record.as_ref()
             && let Some(instrument_record) =
                 self.capacity_instruments.get_mut(instrument_id.as_str())
         {
-            instrument_record.instrument.status =
-                if req.delivery_proof.accepted_quantity >= instrument_record.instrument.quantity {
-                    CapacityInstrumentStatus::Settled
-                } else {
-                    CapacityInstrumentStatus::Delivering
-                };
+            instrument_record.instrument.status = if req.delivery_proof.status
+                == DeliveryProofStatus::Rejected
+            {
+                CapacityInstrumentStatus::Defaulted
+            } else if req.delivery_proof.accepted_quantity >= instrument_record.instrument.quantity
+            {
+                CapacityInstrumentStatus::Settled
+            } else {
+                CapacityInstrumentStatus::Delivering
+            };
         }
         self.delivery_proofs.insert(
             delivery_proof_id,
@@ -1631,6 +1982,13 @@ impl KernelState {
                 receipt_id: put_result.receipt.receipt_id.clone(),
             },
         );
+        if let Some((reserve_state, status)) =
+            self.recompute_capacity_lot_state(capacity_lot_id.as_str())
+            && let Some(lot_record) = self.capacity_lots.get_mut(capacity_lot_id.as_str())
+        {
+            lot_record.lot.reserve_state = reserve_state;
+            lot_record.lot.status = status;
+        }
         let receipt_event = self.next_receipt_event(put_result.seq, put_result.receipt.clone());
         let snapshot_event = self.refresh_snapshot_for(req.delivery_proof.created_at_ms)?;
         Ok(MutationResult {
@@ -4693,8 +5051,9 @@ mod tests {
     use openagents_kernel_core::compute::{
         CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
         CapacityLotStatus, CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
-        ComputeExecutionKind, ComputeFamily, ComputeIndex, ComputeProduct, ComputeProductStatus,
-        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+        ComputeDeliveryVarianceReason, ComputeExecutionKind, ComputeFamily, ComputeIndex,
+        ComputeProduct, ComputeProductStatus, ComputeSettlementMode, DeliveryProof,
+        DeliveryProofStatus, DeliveryRejectionReason, OllamaRuntimeCapability,
     };
     use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext};
     use serde_json::json;
@@ -4742,7 +5101,7 @@ mod tests {
                     execution_kind: Some(ComputeExecutionKind::LocalInference),
                     compute_family: Some(ComputeFamily::Inference),
                     model_policy: Some("ollama.text_generation.launch".to_string()),
-                    model_family: None,
+                    model_family: Some("llama3.2:latest".to_string()),
                     host_capability: None,
                     apple_platform: None,
                     ollama_runtime: Some(OllamaRuntimeCapability {
@@ -4829,9 +5188,29 @@ mod tests {
                 accepted_quantity: 256,
                 performance_band_observed: Some("desktop-local".to_string()),
                 variance_reason: None,
-                attestation_digest: None,
+                variance_reason_detail: None,
+                attestation_digest: Some("sha256:attestation.compute.alpha".to_string()),
                 cost_attestation_ref: None,
                 status: DeliveryProofStatus::Accepted,
+                rejection_reason: None,
+                promised_capability_envelope: None,
+                observed_capability_envelope: Some(ComputeCapabilityEnvelope {
+                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    execution_kind: Some(ComputeExecutionKind::LocalInference),
+                    compute_family: Some(ComputeFamily::Inference),
+                    model_policy: Some("ollama.text_generation.launch".to_string()),
+                    model_family: Some("llama3.2:latest".to_string()),
+                    host_capability: None,
+                    apple_platform: None,
+                    ollama_runtime: Some(OllamaRuntimeCapability {
+                        runtime_ready: Some(true),
+                        model_name: Some("llama3.2:latest".to_string()),
+                        quantization: None,
+                    }),
+                    latency_ms_p50: Some(120),
+                    throughput_per_minute: Some(40),
+                    concurrency_limit: Some(1),
+                }),
                 metadata: json!({"source": "test"}),
             },
             evidence: Vec::new(),
@@ -4911,7 +5290,10 @@ mod tests {
         let mut reloaded = KernelState::new_with_persistence(Some(path.clone()));
         assert_eq!(reloaded.list_compute_products(None).len(), 1);
         assert_eq!(reloaded.list_capacity_lots(None, None).len(), 1);
-        assert_eq!(reloaded.list_capacity_instruments(None, None, None).len(), 1);
+        assert_eq!(
+            reloaded.list_capacity_instruments(None, None, None).len(),
+            1
+        );
         assert_eq!(reloaded.list_delivery_proofs(None, None).len(), 1);
         assert_eq!(reloaded.list_compute_indices(None).len(), 1);
         assert!(
@@ -4938,5 +5320,102 @@ mod tests {
         assert!(replay.snapshot_event.is_none());
 
         let _ = std::fs::remove_file(path.as_path());
+    }
+
+    #[test]
+    fn delivery_proof_runtime_identity_mismatch_rejects_and_defaults_instrument() {
+        let created_at_ms = 1_762_000_200_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let mut request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        request.delivery_proof.observed_capability_envelope = Some(ComputeCapabilityEnvelope {
+            backend_family: Some(ComputeBackendFamily::AppleFoundationModels),
+            execution_kind: Some(ComputeExecutionKind::LocalInference),
+            compute_family: Some(ComputeFamily::Inference),
+            model_policy: Some("apple_foundation_models.text_generation.launch".to_string()),
+            model_family: Some("apple-foundation-model".to_string()),
+            host_capability: None,
+            apple_platform: None,
+            ollama_runtime: None,
+            latency_ms_p50: Some(90),
+            throughput_per_minute: Some(42),
+            concurrency_limit: Some(1),
+        });
+
+        let response = kernel
+            .record_delivery_proof(&context, request)
+            .expect("record delivery proof");
+        assert_eq!(
+            response.response.delivery_proof.status,
+            DeliveryProofStatus::Rejected
+        );
+        assert_eq!(
+            response.response.delivery_proof.rejection_reason,
+            Some(DeliveryRejectionReason::RuntimeIdentityMismatch)
+        );
+        assert_eq!(
+            kernel
+                .get_capacity_instrument("instrument.compute.alpha")
+                .expect("instrument")
+                .status,
+            CapacityInstrumentStatus::Defaulted
+        );
+    }
+
+    #[test]
+    fn delivery_proof_model_drift_is_recorded_as_variance() {
+        let created_at_ms = 1_762_000_300_000u64;
+        let context = fixture_context(created_at_ms);
+        let mut kernel = KernelState::default();
+        kernel
+            .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+            .expect("product");
+        kernel
+            .create_capacity_lot(&context, capacity_lot_request(created_at_ms as i64 + 1_000))
+            .expect("lot");
+        kernel
+            .create_capacity_instrument(
+                &context,
+                capacity_instrument_request(created_at_ms as i64 + 2_000),
+            )
+            .expect("instrument");
+
+        let mut request = delivery_proof_request(created_at_ms as i64 + 3_000);
+        if let Some(observed) = request.delivery_proof.observed_capability_envelope.as_mut() {
+            observed.model_family = Some("llama3.1:latest".to_string());
+        }
+
+        let response = kernel
+            .record_delivery_proof(&context, request)
+            .expect("record delivery proof");
+        assert_eq!(
+            response.response.delivery_proof.status,
+            DeliveryProofStatus::Accepted
+        );
+        assert_eq!(
+            response.response.delivery_proof.variance_reason,
+            Some(ComputeDeliveryVarianceReason::ModelPolicyDrift)
+        );
+        assert!(
+            response
+                .response
+                .delivery_proof
+                .variance_reason_detail
+                .as_deref()
+                .is_some_and(|detail| detail.contains("promised"))
+        );
     }
 }
