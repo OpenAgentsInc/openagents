@@ -20,7 +20,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
-use axum::extract::{Path, State};
+use axum::extract::{Path, Query, State};
 use axum::http::{HeaderMap, StatusCode};
 use axum::response::sse::{Event, KeepAlive, Sse};
 use axum::response::{IntoResponse, Response};
@@ -45,6 +45,10 @@ use openagents_kernel_core::authority::{
     ResolveRiskClaimResponse, RevokeAccessGrantRequest, RevokeAccessGrantResponse,
     SelectRoutePlanRequest, SelectRoutePlanResponse, SubmitOutputRequest, SubmitOutputResponse,
 };
+use openagents_kernel_core::compute::{
+    CapacityInstrument, CapacityInstrumentStatus, CapacityLot, CapacityLotStatus, ComputeIndex,
+    ComputeProduct, ComputeProductStatus, DeliveryProof, DeliveryProofStatus,
+};
 use openagents_kernel_core::receipts::Receipt;
 use openagents_kernel_core::snapshots::EconomySnapshot;
 use serde::{Deserialize, Serialize};
@@ -66,6 +70,7 @@ const ENV_SYNC_TOKEN_REFRESH_AFTER_SECONDS: &str = "NEXUS_CONTROL_SYNC_TOKEN_REF
 const ENV_SYNC_STREAM_GRANTS: &str = "NEXUS_CONTROL_SYNC_STREAM_GRANTS";
 const ENV_HOSTED_NEXUS_RELAY_URL: &str = "NEXUS_CONTROL_HOSTED_NEXUS_RELAY_URL";
 const ENV_RECEIPT_LOG_PATH: &str = "NEXUS_CONTROL_RECEIPT_LOG_PATH";
+const ENV_KERNEL_STATE_PATH: &str = "NEXUS_CONTROL_KERNEL_STATE_PATH";
 const ENV_STARTER_DEMAND_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_STARTER_DEMAND_BUDGET_CAP_SATS";
 const ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
@@ -83,6 +88,7 @@ const DEFAULT_SESSION_TTL_SECONDS: u64 = 86_400;
 const DEFAULT_SYNC_TOKEN_TTL_SECONDS: u64 = 900;
 const DEFAULT_SYNC_TOKEN_REFRESH_AFTER_SECONDS: u64 = 300;
 const DEFAULT_HOSTED_NEXUS_RELAY_URL: &str = "wss://nexus.openagents.com/";
+const DEFAULT_KERNEL_STATE_PATH: &str = "var/nexus-control/kernel-state.json";
 const DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS: u64 = 5_000;
 const DEFAULT_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: u64 = 12;
 const DEFAULT_STARTER_DEMAND_REQUEST_TTL_SECONDS: u64 = 75;
@@ -107,6 +113,7 @@ pub struct ServiceConfig {
     pub sync_stream_grants: Vec<String>,
     pub hosted_nexus_relay_url: String,
     pub receipt_log_path: Option<PathBuf>,
+    pub kernel_state_path: Option<PathBuf>,
     pub starter_demand_budget_cap_sats: u64,
     pub starter_demand_dispatch_interval_seconds: u64,
     pub starter_demand_request_ttl_seconds: u64,
@@ -171,6 +178,12 @@ impl ServiceConfig {
             .map(|value| value.trim().to_string())
             .filter(|value| !value.is_empty())
             .map(PathBuf::from);
+        let kernel_state_path = std::env::var(ENV_KERNEL_STATE_PATH)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from)
+            .or_else(|| Some(PathBuf::from(DEFAULT_KERNEL_STATE_PATH)));
         let starter_demand_budget_cap_sats = parse_u64_env(
             ENV_STARTER_DEMAND_BUDGET_CAP_SATS,
             DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS,
@@ -240,6 +253,7 @@ impl ServiceConfig {
             sync_stream_grants,
             hosted_nexus_relay_url,
             receipt_log_path,
+            kernel_state_path,
             starter_demand_budget_cap_sats,
             starter_demand_dispatch_interval_seconds,
             starter_demand_request_ttl_seconds,
@@ -446,7 +460,7 @@ impl ControlStore {
             sync_tokens: HashMap::new(),
             starter_demand: StarterDemandState::default(),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
-            kernel: KernelState::new(),
+            kernel: KernelState::new_with_persistence(config.kernel_state_path.clone()),
         }
     }
 }
@@ -635,21 +649,38 @@ pub fn build_api_router(config: ServiceConfig) -> Router {
         )
         .route(
             "/v1/kernel/compute/products",
-            post(create_kernel_compute_product),
+            get(list_kernel_compute_products).post(create_kernel_compute_product),
         )
-        .route("/v1/kernel/compute/lots", post(create_kernel_capacity_lot))
+        .route(
+            "/v1/kernel/compute/products/{product_id}",
+            get(get_kernel_compute_product),
+        )
+        .route(
+            "/v1/kernel/compute/lots",
+            get(list_kernel_capacity_lots).post(create_kernel_capacity_lot),
+        )
+        .route("/v1/kernel/compute/lots/{lot_id}", get(get_kernel_capacity_lot))
         .route(
             "/v1/kernel/compute/instruments",
-            post(create_kernel_capacity_instrument),
+            get(list_kernel_capacity_instruments).post(create_kernel_capacity_instrument),
+        )
+        .route(
+            "/v1/kernel/compute/instruments/{instrument_id}",
+            get(get_kernel_capacity_instrument),
         )
         .route(
             "/v1/kernel/compute/lots/{lot_id}/delivery_proofs",
-            post(record_kernel_delivery_proof),
+            get(list_kernel_delivery_proofs).post(record_kernel_delivery_proof),
+        )
+        .route(
+            "/v1/kernel/compute/delivery_proofs/{delivery_proof_id}",
+            get(get_kernel_delivery_proof),
         )
         .route(
             "/v1/kernel/compute/indices",
-            post(publish_kernel_compute_index),
+            get(list_kernel_compute_indices).post(publish_kernel_compute_index),
         )
+        .route("/v1/kernel/compute/indices/{index_id}", get(get_kernel_compute_index))
         .route("/v1/kernel/data/assets", post(register_kernel_data_asset))
         .route("/v1/kernel/data/grants", post(create_kernel_access_grant))
         .route(
@@ -1652,6 +1683,228 @@ async fn finalize_kernel_verdict(
         result.snapshot_event.clone(),
     );
     Ok(Json(result.response))
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeProductsQuery {
+    status: Option<ComputeProductStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapacityLotsQuery {
+    product_id: Option<String>,
+    status: Option<CapacityLotStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct CapacityInstrumentsQuery {
+    product_id: Option<String>,
+    capacity_lot_id: Option<String>,
+    status: Option<CapacityInstrumentStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeliveryProofsQuery {
+    status: Option<DeliveryProofStatus>,
+}
+
+#[derive(Debug, Deserialize)]
+struct ComputeIndicesQuery {
+    product_id: Option<String>,
+}
+
+async fn list_kernel_compute_products(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeProductsQuery>,
+) -> Result<Json<Vec<ComputeProduct>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_compute_products(query.status)))
+}
+
+async fn get_kernel_compute_product(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(product_id): Path<String>,
+) -> Result<Json<ComputeProduct>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let product_id = normalize_required_field(product_id.as_str(), "product_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(product) = store.kernel.get_compute_product(product_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_product_not_found".to_string(),
+        });
+    };
+    Ok(Json(product))
+}
+
+async fn list_kernel_capacity_lots(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<CapacityLotsQuery>,
+) -> Result<Json<Vec<CapacityLot>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_capacity_lots(
+        query.product_id.as_deref(),
+        query.status,
+    )))
+}
+
+async fn get_kernel_capacity_lot(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(lot_id): Path<String>,
+) -> Result<Json<CapacityLot>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let lot_id = normalize_required_field(lot_id.as_str(), "capacity_lot_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(lot) = store.kernel.get_capacity_lot(lot_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_capacity_lot_not_found".to_string(),
+        });
+    };
+    Ok(Json(lot))
+}
+
+async fn list_kernel_capacity_instruments(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<CapacityInstrumentsQuery>,
+) -> Result<Json<Vec<CapacityInstrument>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_capacity_instruments(
+        query.product_id.as_deref(),
+        query.capacity_lot_id.as_deref(),
+        query.status,
+    )))
+}
+
+async fn get_kernel_capacity_instrument(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(instrument_id): Path<String>,
+) -> Result<Json<CapacityInstrument>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let instrument_id = normalize_required_field(instrument_id.as_str(), "instrument_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(instrument) = store.kernel.get_capacity_instrument(instrument_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_capacity_instrument_not_found".to_string(),
+        });
+    };
+    Ok(Json(instrument))
+}
+
+async fn list_kernel_delivery_proofs(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(lot_id): Path<String>,
+    Query(query): Query<DeliveryProofsQuery>,
+) -> Result<Json<Vec<DeliveryProof>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let lot_id = normalize_required_field(lot_id.as_str(), "capacity_lot_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(
+        store
+            .kernel
+            .list_delivery_proofs(Some(lot_id.as_str()), query.status),
+    ))
+}
+
+async fn get_kernel_delivery_proof(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(delivery_proof_id): Path<String>,
+) -> Result<Json<DeliveryProof>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let delivery_proof_id =
+        normalize_required_field(delivery_proof_id.as_str(), "delivery_proof_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(delivery_proof) = store.kernel.get_delivery_proof(delivery_proof_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_delivery_proof_not_found".to_string(),
+        });
+    };
+    Ok(Json(delivery_proof))
+}
+
+async fn list_kernel_compute_indices(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<ComputeIndicesQuery>,
+) -> Result<Json<Vec<ComputeIndex>>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    Ok(Json(store.kernel.list_compute_indices(query.product_id.as_deref())))
+}
+
+async fn get_kernel_compute_index(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Path(index_id): Path<String>,
+) -> Result<Json<ComputeIndex>, ApiError> {
+    let _session = authenticate_session(&state, &headers)?;
+    let index_id = normalize_required_field(index_id.as_str(), "index_id_missing")?;
+    let store = state.store.read().map_err(|_| ApiError {
+        status: StatusCode::INTERNAL_SERVER_ERROR,
+        error: "internal_error",
+        reason: "session_store_poisoned".to_string(),
+    })?;
+    let Some(index) = store.kernel.get_compute_index(index_id.as_str()) else {
+        return Err(ApiError {
+            status: StatusCode::NOT_FOUND,
+            error: "not_found",
+            reason: "kernel_compute_index_not_found".to_string(),
+        });
+    };
+    Ok(Json(index))
 }
 
 async fn create_kernel_compute_product(
@@ -3287,6 +3540,7 @@ mod tests {
             ],
             hosted_nexus_relay_url: "wss://nexus.openagents.com/".to_string(),
             receipt_log_path: None,
+            kernel_state_path: None,
             starter_demand_budget_cap_sats: 500,
             starter_demand_dispatch_interval_seconds: 1,
             starter_demand_request_ttl_seconds: 120,
@@ -5205,6 +5459,213 @@ mod tests {
                 .any(|receipt| { receipt.receipt_type == "kernel.compute.delivery.recorded" })
         );
 
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn compute_read_models_reload_after_restart_when_kernel_state_is_persisted() -> Result<()> {
+        let kernel_state_path = std::env::temp_dir().join(format!(
+            "nexus-control-kernel-state-{}.json",
+            super::random_token()
+        ));
+        let _ = std::fs::remove_file(kernel_state_path.as_path());
+
+        let mut config = test_config()?;
+        config.kernel_state_path = Some(kernel_state_path.clone());
+        let app = build_router(config.clone());
+        let session = create_session_token(&app).await?;
+        let created_at_ms = super::now_unix_ms() as i64;
+
+        let product_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&compute_product_request(
+                        "ollama.text_generation",
+                        "idemp.compute.product.persisted",
+                        created_at_ms,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(product_response.status(), StatusCode::OK);
+        let product_payload: CreateComputeProductResponse = response_json(product_response).await?;
+
+        let lot_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&capacity_lot_request(
+                        "lot.compute.persisted",
+                        "ollama.text_generation",
+                        "idemp.compute.lot.persisted",
+                        created_at_ms + 1_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(lot_response.status(), StatusCode::OK);
+
+        let instrument_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&capacity_instrument_request(
+                        "instrument.compute.persisted",
+                        "ollama.text_generation",
+                        "lot.compute.persisted",
+                        "idemp.compute.instrument.persisted",
+                        created_at_ms + 2_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(instrument_response.status(), StatusCode::OK);
+
+        let delivery_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/lots/lot.compute.persisted/delivery_proofs")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&delivery_proof_request(
+                        "delivery.compute.persisted",
+                        "ollama.text_generation",
+                        "lot.compute.persisted",
+                        "instrument.compute.persisted",
+                        "idemp.compute.delivery.persisted",
+                        created_at_ms + 3_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(delivery_response.status(), StatusCode::OK);
+
+        let index_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/indices")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(&compute_index_request(
+                        "index.compute.persisted",
+                        "ollama.text_generation",
+                        "idemp.compute.index.persisted",
+                        created_at_ms + 4_000,
+                    ))?))?,
+            )
+            .await?;
+        assert_eq!(index_response.status(), StatusCode::OK);
+
+        let reloaded_app = build_router(config);
+        let reloaded_session = create_session_token(&reloaded_app).await?;
+
+        let products_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/products?status=active")
+                    .header("authorization", authorization(&reloaded_session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(products_response.status(), StatusCode::OK);
+        let products: Vec<ComputeProduct> = response_json(products_response).await?;
+        assert!(products.iter().any(|product| {
+            product.product_id == "ollama.text_generation"
+                || product.product_id == product_payload.product.product_id
+        }));
+
+        let product_get_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/products/ollama.text_generation")
+                    .header("authorization", authorization(&reloaded_session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(product_get_response.status(), StatusCode::OK);
+        let product_get: ComputeProduct = response_json(product_get_response).await?;
+        assert_eq!(product_get.product_id, "ollama.text_generation");
+
+        let lots_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/lots?product_id=ollama.text_generation")
+                    .header("authorization", authorization(&reloaded_session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(lots_response.status(), StatusCode::OK);
+        let lots: Vec<CapacityLot> = response_json(lots_response).await?;
+        assert!(lots.iter().any(|lot| lot.capacity_lot_id == "lot.compute.persisted"));
+
+        let instruments_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/instruments?capacity_lot_id=lot.compute.persisted")
+                    .header("authorization", authorization(&reloaded_session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(instruments_response.status(), StatusCode::OK);
+        let instruments: Vec<CapacityInstrument> = response_json(instruments_response).await?;
+        assert!(instruments
+            .iter()
+            .any(|instrument| instrument.instrument_id == "instrument.compute.persisted"));
+
+        let delivery_proofs_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/lots/lot.compute.persisted/delivery_proofs")
+                    .header("authorization", authorization(&reloaded_session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(delivery_proofs_response.status(), StatusCode::OK);
+        let delivery_proofs: Vec<DeliveryProof> = response_json(delivery_proofs_response).await?;
+        assert!(delivery_proofs
+            .iter()
+            .any(|proof| proof.delivery_proof_id == "delivery.compute.persisted"));
+
+        let indices_response = reloaded_app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/v1/kernel/compute/indices?product_id=ollama.text_generation")
+                    .header("authorization", authorization(&reloaded_session))
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(indices_response.status(), StatusCode::OK);
+        let indices: Vec<ComputeIndex> = response_json(indices_response).await?;
+        assert!(indices
+            .iter()
+            .any(|index| index.index_id == "index.compute.persisted"));
+
+        let _ = std::fs::remove_file(kernel_state_path.as_path());
         Ok(())
     }
 

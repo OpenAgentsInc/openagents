@@ -47,9 +47,12 @@ use openagents_kernel_core::snapshots::EconomySnapshot;
 use openagents_kernel_core::time::{floor_to_minute_utc, snapshot_id_for_minute};
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+use std::fs;
 use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::path::PathBuf;
 
 const SNAPSHOT_WINDOW_MS: i64 = 86_400_000;
+const COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION: u32 = 1;
 
 #[derive(Debug, Clone)]
 pub struct KernelMutationContext {
@@ -98,6 +101,16 @@ struct IdempotencyRecord {
     seq: u64,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedIdempotencyRecord {
+    action: String,
+    caller_id: String,
+    idempotency_key: String,
+    normalized_request_hash: String,
+    receipt_id: String,
+    seq: u64,
+}
+
 #[derive(Debug, Clone)]
 pub enum ReceiptStoreError {
     IdempotencyConflict,
@@ -134,6 +147,61 @@ impl InMemoryReceiptStore {
             ..Self::default()
         }
     }
+
+    fn persisted(&self) -> PersistedReceiptStore {
+        PersistedReceiptStore {
+            next_seq: self.next_seq,
+            ordered_receipt_ids: self.ordered_receipt_ids.clone(),
+            receipts_by_id: self.receipts_by_id.clone(),
+            idempotency_index: self
+                .idempotency_index
+                .iter()
+                .map(|(scope, record)| PersistedIdempotencyRecord {
+                    action: scope.action.clone(),
+                    caller_id: scope.caller_id.clone(),
+                    idempotency_key: scope.idempotency_key.clone(),
+                    normalized_request_hash: record.normalized_request_hash.clone(),
+                    receipt_id: record.receipt_id.clone(),
+                    seq: record.seq,
+                })
+                .collect(),
+        }
+    }
+
+    fn from_persisted(persisted: PersistedReceiptStore) -> Self {
+        let idempotency_index = persisted
+            .idempotency_index
+            .into_iter()
+            .map(|record| {
+                (
+                    IdempotencyScope {
+                        action: record.action,
+                        caller_id: record.caller_id,
+                        idempotency_key: record.idempotency_key,
+                    },
+                    IdempotencyRecord {
+                        normalized_request_hash: record.normalized_request_hash,
+                        receipt_id: record.receipt_id,
+                        seq: record.seq,
+                    },
+                )
+            })
+            .collect();
+        Self {
+            next_seq: persisted.next_seq.max(1),
+            ordered_receipt_ids: persisted.ordered_receipt_ids,
+            receipts_by_id: persisted.receipts_by_id,
+            idempotency_index,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedReceiptStore {
+    next_seq: u64,
+    ordered_receipt_ids: Vec<String>,
+    receipts_by_id: BTreeMap<String, Receipt>,
+    idempotency_index: Vec<PersistedIdempotencyRecord>,
 }
 
 impl ReceiptStore for InMemoryReceiptStore {
@@ -232,6 +300,8 @@ pub struct KernelState {
     risk_signals: HashMap<String, RiskSignalRecord>,
     snapshots: BTreeMap<i64, EconomySnapshot>,
     next_projection_seq: u64,
+    persistence_path: Option<PathBuf>,
+    last_persistence_error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -252,33 +322,46 @@ struct SubmissionRecord {
     receipt_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeProductRecord {
     product: ComputeProduct,
     receipt_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CapacityLotRecord {
     lot: CapacityLot,
     receipt_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CapacityInstrumentRecord {
     instrument: CapacityInstrument,
     receipt_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct DeliveryProofRecord {
     delivery_proof: DeliveryProof,
     receipt_id: String,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct ComputeIndexRecord {
     index: ComputeIndex,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct PersistedComputeAuthorityState {
+    schema_version: u32,
+    receipt_store: PersistedReceiptStore,
+    compute_products: BTreeMap<String, ComputeProductRecord>,
+    capacity_lots: BTreeMap<String, CapacityLotRecord>,
+    capacity_instruments: BTreeMap<String, CapacityInstrumentRecord>,
+    delivery_proofs: BTreeMap<String, DeliveryProofRecord>,
+    compute_indices: BTreeMap<String, ComputeIndexRecord>,
+    snapshots: BTreeMap<i64, EconomySnapshot>,
+    next_projection_seq: u64,
 }
 
 #[derive(Debug, Clone)]
@@ -429,12 +512,222 @@ struct KernelReceiptSpec {
 }
 
 impl KernelState {
-    pub fn new() -> Self {
-        Self {
+    pub fn new_with_persistence(persistence_path: Option<PathBuf>) -> Self {
+        let mut state = Self {
             receipt_store: InMemoryReceiptStore::new(),
             next_projection_seq: 1,
+            persistence_path,
             ..Self::default()
+        };
+        state.load_persisted_compute_authority_state();
+        state
+    }
+
+    pub fn list_compute_products(
+        &self,
+        status: Option<ComputeProductStatus>,
+    ) -> Vec<ComputeProduct> {
+        let mut items = self
+            .compute_products
+            .values()
+            .map(|record| record.product.clone())
+            .filter(|product| status.is_none_or(|expected| product.status == expected))
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| lhs.product_id.cmp(&rhs.product_id));
+        items
+    }
+
+    pub fn get_compute_product(&self, product_id: &str) -> Option<ComputeProduct> {
+        self.compute_products.get(product_id).map(|record| record.product.clone())
+    }
+
+    pub fn list_capacity_lots(
+        &self,
+        product_id: Option<&str>,
+        status: Option<CapacityLotStatus>,
+    ) -> Vec<CapacityLot> {
+        let mut items = self
+            .capacity_lots
+            .values()
+            .map(|record| record.lot.clone())
+            .filter(|lot| {
+                product_id.is_none_or(|expected| lot.product_id == expected)
+                    && status.is_none_or(|expected| lot.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| lhs.capacity_lot_id.cmp(&rhs.capacity_lot_id));
+        items
+    }
+
+    pub fn get_capacity_lot(&self, lot_id: &str) -> Option<CapacityLot> {
+        self.capacity_lots.get(lot_id).map(|record| record.lot.clone())
+    }
+
+    pub fn list_capacity_instruments(
+        &self,
+        product_id: Option<&str>,
+        lot_id: Option<&str>,
+        status: Option<CapacityInstrumentStatus>,
+    ) -> Vec<CapacityInstrument> {
+        let mut items = self
+            .capacity_instruments
+            .values()
+            .map(|record| record.instrument.clone())
+            .filter(|instrument| {
+                product_id.is_none_or(|expected| instrument.product_id == expected)
+                    && lot_id.is_none_or(|expected| {
+                        instrument.capacity_lot_id.as_deref() == Some(expected)
+                    })
+                    && status.is_none_or(|expected| instrument.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| lhs.instrument_id.cmp(&rhs.instrument_id));
+        items
+    }
+
+    pub fn get_capacity_instrument(&self, instrument_id: &str) -> Option<CapacityInstrument> {
+        self.capacity_instruments
+            .get(instrument_id)
+            .map(|record| record.instrument.clone())
+    }
+
+    pub fn list_delivery_proofs(
+        &self,
+        lot_id: Option<&str>,
+        status: Option<openagents_kernel_core::compute::DeliveryProofStatus>,
+    ) -> Vec<DeliveryProof> {
+        let mut items = self
+            .delivery_proofs
+            .values()
+            .map(|record| record.delivery_proof.clone())
+            .filter(|proof| {
+                lot_id.is_none_or(|expected| proof.capacity_lot_id == expected)
+                    && status.is_none_or(|expected| proof.status == expected)
+            })
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| lhs.delivery_proof_id.cmp(&rhs.delivery_proof_id));
+        items
+    }
+
+    pub fn get_delivery_proof(&self, delivery_proof_id: &str) -> Option<DeliveryProof> {
+        self.delivery_proofs
+            .get(delivery_proof_id)
+            .map(|record| record.delivery_proof.clone())
+    }
+
+    pub fn list_compute_indices(&self, product_id: Option<&str>) -> Vec<ComputeIndex> {
+        let mut items = self
+            .compute_indices
+            .values()
+            .map(|record| record.index.clone())
+            .filter(|index| product_id.is_none_or(|expected| index.product_id == expected))
+            .collect::<Vec<_>>();
+        items.sort_by(|lhs, rhs| {
+            lhs.product_id
+                .cmp(&rhs.product_id)
+                .then_with(|| lhs.published_at_ms.cmp(&rhs.published_at_ms))
+                .then_with(|| lhs.index_id.cmp(&rhs.index_id))
+        });
+        items
+    }
+
+    pub fn get_compute_index(&self, index_id: &str) -> Option<ComputeIndex> {
+        self.compute_indices.get(index_id).map(|record| record.index.clone())
+    }
+
+    fn load_persisted_compute_authority_state(&mut self) {
+        let Some(path) = self.persistence_path.clone() else {
+            return;
+        };
+        let contents = match fs::read_to_string(path.as_path()) {
+            Ok(contents) => contents,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => {
+                self.last_persistence_error = Some(format!(
+                    "kernel_state_read_failed:{}:{}",
+                    path.display(),
+                    error
+                ));
+                return;
+            }
+        };
+        let persisted = match serde_json::from_str::<PersistedComputeAuthorityState>(
+            contents.as_str(),
+        ) {
+            Ok(persisted) => persisted,
+            Err(error) => {
+                self.last_persistence_error = Some(format!(
+                    "kernel_state_decode_failed:{}:{}",
+                    path.display(),
+                    error
+                ));
+                return;
+            }
+        };
+        if persisted.schema_version != COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION {
+            self.last_persistence_error = Some(format!(
+                "kernel_state_schema_unsupported:{}:{}",
+                path.display(),
+                persisted.schema_version
+            ));
+            return;
         }
+        self.receipt_store = InMemoryReceiptStore::from_persisted(persisted.receipt_store);
+        self.compute_products = persisted.compute_products.into_iter().collect();
+        self.capacity_lots = persisted.capacity_lots.into_iter().collect();
+        self.capacity_instruments = persisted.capacity_instruments.into_iter().collect();
+        self.delivery_proofs = persisted.delivery_proofs.into_iter().collect();
+        self.compute_indices = persisted.compute_indices.into_iter().collect();
+        self.snapshots = persisted.snapshots;
+        self.next_projection_seq = persisted.next_projection_seq.max(1);
+        self.last_persistence_error = None;
+    }
+
+    fn persist_compute_authority_state(&mut self) -> Result<(), String> {
+        let Some(path) = self.persistence_path.clone() else {
+            return Ok(());
+        };
+        let persisted = PersistedComputeAuthorityState {
+            schema_version: COMPUTE_AUTHORITY_STATE_SCHEMA_VERSION,
+            receipt_store: self.receipt_store.persisted(),
+            compute_products: self.compute_products.clone().into_iter().collect(),
+            capacity_lots: self.capacity_lots.clone().into_iter().collect(),
+            capacity_instruments: self.capacity_instruments.clone().into_iter().collect(),
+            delivery_proofs: self.delivery_proofs.clone().into_iter().collect(),
+            compute_indices: self.compute_indices.clone().into_iter().collect(),
+            snapshots: self.snapshots.clone(),
+            next_projection_seq: self.next_projection_seq.max(1),
+        };
+        let payload = serde_json::to_vec_pretty(&persisted)
+            .map_err(|error| format!("kernel_state_encode_failed: {error}"))?;
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent).map_err(|error| {
+                format!(
+                    "kernel_state_parent_create_failed:{}:{}",
+                    parent.display(),
+                    error
+                )
+            })?;
+        }
+        let tmp_path = path.with_extension("tmp");
+        fs::write(tmp_path.as_path(), payload).map_err(|error| {
+            format!(
+                "kernel_state_write_failed:{}:{}",
+                tmp_path.display(),
+                error
+            )
+        })?;
+        fs::rename(tmp_path.as_path(), path.as_path()).map_err(|error| {
+            format!(
+                "kernel_state_rename_failed:{}:{}",
+                path.display(),
+                error
+            )
+        })?;
+        self.last_persistence_error = None;
+        Ok(())
     }
 
     pub fn create_work_unit(
@@ -3987,6 +4280,7 @@ impl KernelState {
         let snapshot = self.compute_snapshot_for(minute_start_ms);
         let seq = self.next_projection_seq;
         self.next_projection_seq = self.next_projection_seq.saturating_add(1);
+        self.persist_compute_authority_state()?;
         Ok(SnapshotProjectionEvent { seq, snapshot })
     }
 
@@ -4386,5 +4680,263 @@ fn ratio(numerator: u64, denominator: u64) -> f64 {
         0.0
     } else {
         numerator as f64 / denominator as f64
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{KernelMutationContext, KernelState, floor_to_minute_utc};
+    use openagents_kernel_core::authority::{
+        CreateCapacityInstrumentRequest, CreateCapacityLotRequest, CreateComputeProductRequest,
+        PublishComputeIndexRequest, RecordDeliveryProofRequest,
+    };
+    use openagents_kernel_core::compute::{
+        CapacityInstrument, CapacityInstrumentKind, CapacityInstrumentStatus, CapacityLot,
+        CapacityLotStatus, CapacityReserveState, ComputeBackendFamily, ComputeCapabilityEnvelope,
+        ComputeExecutionKind, ComputeFamily, ComputeIndex, ComputeProduct, ComputeProductStatus,
+        ComputeSettlementMode, DeliveryProof, DeliveryProofStatus, OllamaRuntimeCapability,
+    };
+    use openagents_kernel_core::receipts::{PolicyContext, ReceiptHints, TraceContext};
+    use serde_json::json;
+    use std::path::PathBuf;
+
+    fn fixture_context(now_unix_ms: u64) -> KernelMutationContext {
+        KernelMutationContext {
+            caller_id: "account.test".to_string(),
+            session_id: "session.test".to_string(),
+            now_unix_ms,
+        }
+    }
+
+    fn temp_kernel_state_path() -> PathBuf {
+        let nonce = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .expect("system time")
+            .as_nanos();
+        std::env::temp_dir().join(format!("nexus-control-kernel-state-{nonce}.json"))
+    }
+
+    fn compute_product_request(created_at_ms: i64) -> CreateComputeProductRequest {
+        CreateComputeProductRequest {
+            idempotency_key: "idemp.compute.product.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            product: ComputeProduct {
+                product_id: "ollama.text_generation".to_string(),
+                resource_class: "compute".to_string(),
+                capacity_unit: "request".to_string(),
+                window_spec: "session".to_string(),
+                region_spec: vec!["local".to_string()],
+                performance_band: Some("desktop-local".to_string()),
+                sla_terms_ref: Some("sla.autopilot.best_effort".to_string()),
+                cost_proof_required: false,
+                attestation_required: false,
+                settlement_mode: ComputeSettlementMode::Physical,
+                index_eligible: true,
+                status: ComputeProductStatus::Active,
+                version: "v1".to_string(),
+                created_at_ms,
+                taxonomy_version: Some("compute.launch.v1".to_string()),
+                capability_envelope: Some(ComputeCapabilityEnvelope {
+                    backend_family: Some(ComputeBackendFamily::Ollama),
+                    execution_kind: Some(ComputeExecutionKind::LocalInference),
+                    compute_family: Some(ComputeFamily::Inference),
+                    model_policy: Some("ollama.text_generation.launch".to_string()),
+                    model_family: None,
+                    host_capability: None,
+                    apple_platform: None,
+                    ollama_runtime: Some(OllamaRuntimeCapability {
+                        runtime_ready: Some(true),
+                        model_name: Some("llama3.2:latest".to_string()),
+                        quantization: None,
+                    }),
+                    latency_ms_p50: Some(120),
+                    throughput_per_minute: Some(40),
+                    concurrency_limit: Some(1),
+                }),
+                metadata: json!({"source": "test"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn capacity_lot_request(created_at_ms: i64) -> CreateCapacityLotRequest {
+        CreateCapacityLotRequest {
+            idempotency_key: "idemp.compute.lot.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            lot: CapacityLot {
+                capacity_lot_id: "lot.compute.alpha".to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                provider_id: "provider.alpha".to_string(),
+                delivery_start_ms: created_at_ms,
+                delivery_end_ms: created_at_ms + 60_000,
+                quantity: 1_024,
+                min_unit_price: None,
+                region_hint: None,
+                attestation_posture: None,
+                reserve_state: CapacityReserveState::Available,
+                offer_expires_at_ms: created_at_ms + 60_000,
+                status: CapacityLotStatus::Open,
+                metadata: json!({"source": "test"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn capacity_instrument_request(created_at_ms: i64) -> CreateCapacityInstrumentRequest {
+        CreateCapacityInstrumentRequest {
+            idempotency_key: "idemp.compute.instrument.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            instrument: CapacityInstrument {
+                instrument_id: "instrument.compute.alpha".to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                capacity_lot_id: Some("lot.compute.alpha".to_string()),
+                buyer_id: Some("buyer.alpha".to_string()),
+                provider_id: Some("provider.alpha".to_string()),
+                delivery_start_ms: created_at_ms,
+                delivery_end_ms: created_at_ms + 60_000,
+                quantity: 256,
+                fixed_price: None,
+                reference_index_id: None,
+                kind: CapacityInstrumentKind::Spot,
+                settlement_mode: ComputeSettlementMode::Physical,
+                created_at_ms,
+                status: CapacityInstrumentStatus::Active,
+                metadata: json!({"source": "test"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn delivery_proof_request(created_at_ms: i64) -> RecordDeliveryProofRequest {
+        RecordDeliveryProofRequest {
+            idempotency_key: "idemp.compute.delivery.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            delivery_proof: DeliveryProof {
+                delivery_proof_id: "delivery.compute.alpha".to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                capacity_lot_id: "lot.compute.alpha".to_string(),
+                instrument_id: Some("instrument.compute.alpha".to_string()),
+                contract_id: None,
+                created_at_ms,
+                metered_quantity: 256,
+                accepted_quantity: 256,
+                performance_band_observed: Some("desktop-local".to_string()),
+                variance_reason: None,
+                attestation_digest: None,
+                cost_attestation_ref: None,
+                status: DeliveryProofStatus::Accepted,
+                metadata: json!({"source": "test"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    fn compute_index_request(created_at_ms: i64) -> PublishComputeIndexRequest {
+        PublishComputeIndexRequest {
+            idempotency_key: "idemp.compute.index.alpha".to_string(),
+            trace: TraceContext::default(),
+            policy: PolicyContext::default(),
+            index: ComputeIndex {
+                index_id: "index.compute.alpha".to_string(),
+                product_id: "ollama.text_generation".to_string(),
+                observation_window_start_ms: created_at_ms - 60_000,
+                observation_window_end_ms: created_at_ms,
+                published_at_ms: created_at_ms,
+                observation_count: 1,
+                total_accepted_quantity: 256,
+                reference_price: None,
+                methodology: Some("accepted delivery median".to_string()),
+                status: openagents_kernel_core::compute::ComputeIndexStatus::Published,
+                metadata: json!({"source": "test"}),
+            },
+            evidence: Vec::new(),
+            hints: ReceiptHints::default(),
+        }
+    }
+
+    #[test]
+    fn persisted_compute_authority_state_reloads_objects_and_idempotency() {
+        let path = temp_kernel_state_path();
+        let created_at_ms = 1_762_000_111_000u64;
+        let minute_start_ms = floor_to_minute_utc(created_at_ms as i64);
+
+        let first_product_receipt_id = {
+            let mut kernel = KernelState::new_with_persistence(Some(path.clone()));
+            let context = fixture_context(created_at_ms);
+            let product = kernel
+                .create_compute_product(&context, compute_product_request(created_at_ms as i64))
+                .expect("create compute product");
+            kernel
+                .create_capacity_lot(
+                    &fixture_context(created_at_ms + 1_000),
+                    capacity_lot_request(created_at_ms as i64 + 1_000),
+                )
+                .expect("create capacity lot");
+            kernel
+                .create_capacity_instrument(
+                    &fixture_context(created_at_ms + 2_000),
+                    capacity_instrument_request(created_at_ms as i64 + 2_000),
+                )
+                .expect("create capacity instrument");
+            kernel
+                .record_delivery_proof(
+                    &fixture_context(created_at_ms + 3_000),
+                    delivery_proof_request(created_at_ms as i64 + 3_000),
+                )
+                .expect("record delivery proof");
+            kernel
+                .publish_compute_index(
+                    &fixture_context(created_at_ms + 4_000),
+                    compute_index_request(created_at_ms as i64 + 4_000),
+                )
+                .expect("publish compute index");
+
+            let snapshot = kernel
+                .get_snapshot(minute_start_ms)
+                .expect("compute snapshot after writes");
+            assert_eq!(snapshot.compute_products_active, 1);
+            assert_eq!(snapshot.compute_capacity_lots_delivering, 1);
+            assert_eq!(snapshot.compute_delivery_proofs_24h, 1);
+            product.response.receipt.receipt_id
+        };
+
+        let mut reloaded = KernelState::new_with_persistence(Some(path.clone()));
+        assert_eq!(reloaded.list_compute_products(None).len(), 1);
+        assert_eq!(reloaded.list_capacity_lots(None, None).len(), 1);
+        assert_eq!(reloaded.list_capacity_instruments(None, None, None).len(), 1);
+        assert_eq!(reloaded.list_delivery_proofs(None, None).len(), 1);
+        assert_eq!(reloaded.list_compute_indices(None).len(), 1);
+        assert!(
+            reloaded
+                .get_receipt(first_product_receipt_id.as_str())
+                .is_some(),
+            "expected canonical receipt history to reload"
+        );
+        let reloaded_snapshot = reloaded
+            .get_snapshot(minute_start_ms)
+            .expect("snapshot after reload");
+        assert_eq!(reloaded_snapshot.compute_products_active, 1);
+        assert_eq!(reloaded_snapshot.compute_capacity_lots_delivering, 1);
+        assert_eq!(reloaded_snapshot.compute_delivery_proofs_24h, 1);
+
+        let replay = reloaded
+            .create_compute_product(
+                &fixture_context(created_at_ms),
+                compute_product_request(created_at_ms as i64),
+            )
+            .expect("replay compute product");
+        assert_eq!(replay.response.receipt.receipt_id, first_product_receipt_id);
+        assert!(replay.receipt_event.is_none());
+        assert!(replay.snapshot_event.is_none());
+
+        let _ = std::fs::remove_file(path.as_path());
     }
 }
