@@ -99,6 +99,30 @@ pub struct RollbackReasonCodeRow {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeBreakerStatusRow {
+    pub breaker_id: String,
+    pub state: String,
+    pub reason: String,
+    pub threshold: f64,
+    pub observed_value: f64,
+    pub action: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeRolloutGateRow {
+    pub gate_id: String,
+    pub enabled: bool,
+    pub stage: String,
+    pub description: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
+pub struct ComputeTruthLabelRow {
+    pub truth_label: String,
+    pub count_24h: u64,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq)]
 pub struct EconomySnapshot {
     pub snapshot_id: String,
     pub as_of_ms: i64,
@@ -173,9 +197,25 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub compute_instruments_active: u64,
     #[serde(default)]
+    pub compute_inventory_quantity_open: u64,
+    #[serde(default)]
+    pub compute_inventory_quantity_reserved: u64,
+    #[serde(default)]
+    pub compute_inventory_quantity_delivering: u64,
+    #[serde(default)]
     pub compute_delivery_proofs_24h: u64,
     #[serde(default)]
     pub compute_delivery_quantity_24h: u64,
+    #[serde(default)]
+    pub compute_delivery_rejections_24h: u64,
+    #[serde(default)]
+    pub compute_delivery_variances_24h: u64,
+    #[serde(default)]
+    pub compute_delivery_accept_rate_24h: f64,
+    #[serde(default)]
+    pub compute_fill_ratio_24h: f64,
+    #[serde(default)]
+    pub compute_priced_instruments_24h: u64,
     #[serde(default)]
     pub compute_indices_published_24h: u64,
     #[serde(default)]
@@ -187,6 +227,16 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub compute_index_quality_score_24h: f64,
     #[serde(default)]
+    pub compute_active_provider_count: u64,
+    #[serde(default)]
+    pub compute_provider_concentration_hhi: f64,
+    #[serde(default)]
+    pub compute_forward_physical_instruments_active: u64,
+    #[serde(default)]
+    pub compute_forward_physical_open_quantity: u64,
+    #[serde(default)]
+    pub compute_forward_physical_defaults_24h: u64,
+    #[serde(default)]
     pub compute_future_cash_instruments_active: u64,
     #[serde(default)]
     pub compute_future_cash_open_interest: u64,
@@ -195,9 +245,35 @@ pub struct EconomySnapshot {
     #[serde(default)]
     pub compute_future_cash_cash_flow_24h: u64,
     #[serde(default)]
+    pub compute_future_cash_defaults_24h: u64,
+    #[serde(default)]
+    pub compute_future_cash_collateral_shortfall_24h: u64,
+    #[serde(default)]
+    pub compute_structured_instruments_active: u64,
+    #[serde(default)]
+    pub compute_structured_instruments_closed_24h: u64,
+    #[serde(default)]
+    pub compute_max_buyer_concentration_share: f64,
+    #[serde(default)]
     pub compute_paper_to_physical_ratio: f64,
     #[serde(default)]
     pub compute_deliverable_coverage_ratio: f64,
+    #[serde(default)]
+    pub compute_breakers_tripped: u64,
+    #[serde(default)]
+    pub compute_breakers_guarded: u64,
+    #[serde(default)]
+    pub compute_breaker_states: Vec<ComputeBreakerStatusRow>,
+    #[serde(default)]
+    pub compute_rollout_gates: Vec<ComputeRolloutGateRow>,
+    #[serde(default)]
+    pub compute_truth_labels: Vec<ComputeTruthLabelRow>,
+    #[serde(default)]
+    pub compute_reconciliation_gap_24h: u64,
+    #[serde(default)]
+    pub compute_policy_bundle_id: String,
+    #[serde(default)]
+    pub compute_policy_version: String,
     #[serde(default)]
     pub liquidity_quotes_active: u64,
     #[serde(default)]

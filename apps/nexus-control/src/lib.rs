@@ -70,6 +70,14 @@ const ENV_SYNC_STREAM_GRANTS: &str = "NEXUS_CONTROL_SYNC_STREAM_GRANTS";
 const ENV_HOSTED_NEXUS_RELAY_URL: &str = "NEXUS_CONTROL_HOSTED_NEXUS_RELAY_URL";
 const ENV_RECEIPT_LOG_PATH: &str = "NEXUS_CONTROL_RECEIPT_LOG_PATH";
 const ENV_KERNEL_STATE_PATH: &str = "NEXUS_CONTROL_KERNEL_STATE_PATH";
+const ENV_COMPUTE_ENABLE_FORWARD_PHYSICAL: &str = "NEXUS_CONTROL_COMPUTE_ENABLE_FORWARD_PHYSICAL";
+const ENV_COMPUTE_ENABLE_FUTURE_CASH: &str = "NEXUS_CONTROL_COMPUTE_ENABLE_FUTURE_CASH";
+const ENV_COMPUTE_ENABLE_STRUCTURED_PRODUCTS: &str =
+    "NEXUS_CONTROL_COMPUTE_ENABLE_STRUCTURED_PRODUCTS";
+const ENV_COMPUTE_ENABLE_RECONCILIATION_DIAGNOSTICS: &str =
+    "NEXUS_CONTROL_COMPUTE_ENABLE_RECONCILIATION_DIAGNOSTICS";
+const ENV_COMPUTE_POLICY_BUNDLE_ID: &str = "NEXUS_CONTROL_COMPUTE_POLICY_BUNDLE_ID";
+const ENV_COMPUTE_POLICY_VERSION: &str = "NEXUS_CONTROL_COMPUTE_POLICY_VERSION";
 const ENV_STARTER_DEMAND_BUDGET_CAP_SATS: &str = "NEXUS_CONTROL_STARTER_DEMAND_BUDGET_CAP_SATS";
 const ENV_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: &str =
     "NEXUS_CONTROL_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS";
@@ -88,6 +96,8 @@ const DEFAULT_SYNC_TOKEN_TTL_SECONDS: u64 = 900;
 const DEFAULT_SYNC_TOKEN_REFRESH_AFTER_SECONDS: u64 = 300;
 const DEFAULT_HOSTED_NEXUS_RELAY_URL: &str = "wss://nexus.openagents.com/";
 const DEFAULT_KERNEL_STATE_PATH: &str = "var/nexus-control/kernel-state.json";
+const DEFAULT_COMPUTE_POLICY_BUNDLE_ID: &str = "policy.compute.market.default";
+const DEFAULT_COMPUTE_POLICY_VERSION: &str = "1";
 const DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS: u64 = 5_000;
 const DEFAULT_STARTER_DEMAND_DISPATCH_INTERVAL_SECONDS: u64 = 12;
 const DEFAULT_STARTER_DEMAND_REQUEST_TTL_SECONDS: u64 = 75;
@@ -113,6 +123,12 @@ pub struct ServiceConfig {
     pub hosted_nexus_relay_url: String,
     pub receipt_log_path: Option<PathBuf>,
     pub kernel_state_path: Option<PathBuf>,
+    pub compute_enable_forward_physical: bool,
+    pub compute_enable_future_cash: bool,
+    pub compute_enable_structured_products: bool,
+    pub compute_enable_reconciliation_diagnostics: bool,
+    pub compute_policy_bundle_id: String,
+    pub compute_policy_version: String,
     pub starter_demand_budget_cap_sats: u64,
     pub starter_demand_dispatch_interval_seconds: u64,
     pub starter_demand_request_ttl_seconds: u64,
@@ -183,6 +199,23 @@ impl ServiceConfig {
             .filter(|value| !value.is_empty())
             .map(PathBuf::from)
             .or_else(|| Some(PathBuf::from(DEFAULT_KERNEL_STATE_PATH)));
+        let compute_enable_forward_physical =
+            parse_bool_env(ENV_COMPUTE_ENABLE_FORWARD_PHYSICAL, true)?;
+        let compute_enable_future_cash = parse_bool_env(ENV_COMPUTE_ENABLE_FUTURE_CASH, true)?;
+        let compute_enable_structured_products =
+            parse_bool_env(ENV_COMPUTE_ENABLE_STRUCTURED_PRODUCTS, true)?;
+        let compute_enable_reconciliation_diagnostics =
+            parse_bool_env(ENV_COMPUTE_ENABLE_RECONCILIATION_DIAGNOSTICS, true)?;
+        let compute_policy_bundle_id = std::env::var(ENV_COMPUTE_POLICY_BUNDLE_ID)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_COMPUTE_POLICY_BUNDLE_ID.to_string());
+        let compute_policy_version = std::env::var(ENV_COMPUTE_POLICY_VERSION)
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty())
+            .unwrap_or_else(|| DEFAULT_COMPUTE_POLICY_VERSION.to_string());
         let starter_demand_budget_cap_sats = parse_u64_env(
             ENV_STARTER_DEMAND_BUDGET_CAP_SATS,
             DEFAULT_STARTER_DEMAND_BUDGET_CAP_SATS,
@@ -253,6 +286,12 @@ impl ServiceConfig {
             hosted_nexus_relay_url,
             receipt_log_path,
             kernel_state_path,
+            compute_enable_forward_physical,
+            compute_enable_future_cash,
+            compute_enable_structured_products,
+            compute_enable_reconciliation_diagnostics,
+            compute_policy_bundle_id,
+            compute_policy_version,
             starter_demand_budget_cap_sats,
             starter_demand_dispatch_interval_seconds,
             starter_demand_request_ttl_seconds,
@@ -454,12 +493,21 @@ struct ControlStore {
 
 impl ControlStore {
     fn new(config: &ServiceConfig) -> Self {
+        let mut kernel = KernelState::new_with_persistence(config.kernel_state_path.clone());
+        kernel.set_compute_runtime_policy(crate::kernel::ComputeRuntimePolicy {
+            enable_forward_physical: config.compute_enable_forward_physical,
+            enable_future_cash: config.compute_enable_future_cash,
+            enable_structured_products: config.compute_enable_structured_products,
+            enable_reconciliation_diagnostics: config.compute_enable_reconciliation_diagnostics,
+            policy_bundle_id: config.compute_policy_bundle_id.clone(),
+            policy_version: config.compute_policy_version.clone(),
+        });
         Self {
             sessions_by_access_token: HashMap::new(),
             sync_tokens: HashMap::new(),
             starter_demand: StarterDemandState::default(),
             economy: ReceiptLedger::new(config.receipt_log_path.clone()),
-            kernel: KernelState::new_with_persistence(config.kernel_state_path.clone()),
+            kernel,
         }
     }
 }
@@ -3122,6 +3170,9 @@ fn kernel_api_error(reason: String) -> ApiError {
         | "future_cash_paper_to_physical_limit"
         | "future_cash_deliverable_coverage_limit"
         | "future_cash_concentration_limit"
+        | "compute_forward_physical_disabled"
+        | "compute_future_cash_disabled"
+        | "compute_structured_products_disabled"
         | "future_cash_strike_asset_mismatch"
         | "compute_index_reference_price_missing"
         | "future_cash_settlement_window_open"
@@ -3727,22 +3778,56 @@ fn runtime_snapshot(
         compute_capacity_lots_open: compute_metrics.compute_capacity_lots_open,
         compute_capacity_lots_delivering: compute_metrics.compute_capacity_lots_delivering,
         compute_instruments_active: compute_metrics.compute_instruments_active,
+        compute_inventory_quantity_open: compute_metrics.compute_inventory_quantity_open,
+        compute_inventory_quantity_reserved: compute_metrics.compute_inventory_quantity_reserved,
+        compute_inventory_quantity_delivering: compute_metrics
+            .compute_inventory_quantity_delivering,
         compute_delivery_proofs_24h: compute_metrics.compute_delivery_proofs_24h,
         compute_delivery_quantity_24h: compute_metrics.compute_delivery_quantity_24h,
+        compute_delivery_rejections_24h: compute_metrics.compute_delivery_rejections_24h,
+        compute_delivery_variances_24h: compute_metrics.compute_delivery_variances_24h,
+        compute_delivery_accept_rate_24h: compute_metrics.compute_delivery_accept_rate_24h,
+        compute_fill_ratio_24h: compute_metrics.compute_fill_ratio_24h,
+        compute_priced_instruments_24h: compute_metrics.compute_priced_instruments_24h,
         compute_indices_published_24h: compute_metrics.compute_indices_published_24h,
         compute_index_corrections_24h: compute_metrics.compute_index_corrections_24h,
         compute_index_thin_windows_24h: compute_metrics.compute_index_thin_windows_24h,
         compute_index_settlement_eligible_24h: compute_metrics
             .compute_index_settlement_eligible_24h,
         compute_index_quality_score_24h: compute_metrics.compute_index_quality_score_24h,
+        compute_active_provider_count: compute_metrics.compute_active_provider_count,
+        compute_provider_concentration_hhi: compute_metrics.compute_provider_concentration_hhi,
+        compute_forward_physical_instruments_active: compute_metrics
+            .compute_forward_physical_instruments_active,
+        compute_forward_physical_open_quantity: compute_metrics
+            .compute_forward_physical_open_quantity,
+        compute_forward_physical_defaults_24h: compute_metrics
+            .compute_forward_physical_defaults_24h,
         compute_future_cash_instruments_active: compute_metrics
             .compute_future_cash_instruments_active,
         compute_future_cash_open_interest: compute_metrics.compute_future_cash_open_interest,
         compute_future_cash_cash_settlements_24h: compute_metrics
             .compute_future_cash_cash_settlements_24h,
         compute_future_cash_cash_flow_24h: compute_metrics.compute_future_cash_cash_flow_24h,
+        compute_future_cash_defaults_24h: compute_metrics.compute_future_cash_defaults_24h,
+        compute_future_cash_collateral_shortfall_24h: compute_metrics
+            .compute_future_cash_collateral_shortfall_24h,
+        compute_structured_instruments_active: compute_metrics
+            .compute_structured_instruments_active,
+        compute_structured_instruments_closed_24h: compute_metrics
+            .compute_structured_instruments_closed_24h,
+        compute_max_buyer_concentration_share: compute_metrics
+            .compute_max_buyer_concentration_share,
         compute_paper_to_physical_ratio: compute_metrics.compute_paper_to_physical_ratio,
         compute_deliverable_coverage_ratio: compute_metrics.compute_deliverable_coverage_ratio,
+        compute_breakers_tripped: compute_metrics.compute_breakers_tripped,
+        compute_breakers_guarded: compute_metrics.compute_breakers_guarded,
+        compute_breaker_states: compute_metrics.compute_breaker_states.clone(),
+        compute_rollout_gates: compute_metrics.compute_rollout_gates.clone(),
+        compute_truth_labels: compute_metrics.compute_truth_labels.clone(),
+        compute_reconciliation_gap_24h: compute_metrics.compute_reconciliation_gap_24h,
+        compute_policy_bundle_id: compute_metrics.compute_policy_bundle_id.clone(),
+        compute_policy_version: compute_metrics.compute_policy_version.clone(),
         liquidity_quotes_active: liquidity_metrics.liquidity_quotes_active,
         liquidity_route_plans_active: liquidity_metrics.liquidity_route_plans_active,
         liquidity_envelopes_open: liquidity_metrics.liquidity_envelopes_open,
@@ -3848,6 +3933,18 @@ fn parse_u64_env(key: &str, default: u64) -> Result<u64, String> {
             value
                 .parse::<u64>()
                 .map_err(|error| format!("invalid {key}: {error}"))
+        })
+}
+
+fn parse_bool_env(key: &str, default: bool) -> Result<bool, String> {
+    std::env::var(key)
+        .ok()
+        .map(|value| value.trim().to_ascii_lowercase())
+        .filter(|value| !value.is_empty())
+        .map_or(Ok(default), |value| match value.as_str() {
+            "1" | "true" | "yes" | "on" => Ok(true),
+            "0" | "false" | "no" | "off" => Ok(false),
+            _ => Err(format!("invalid {key}: expected boolean")),
         })
 }
 
@@ -3976,6 +4073,7 @@ mod tests {
     use tower::ServiceExt;
 
     use super::{
+        DEFAULT_COMPUTE_POLICY_BUNDLE_ID, DEFAULT_COMPUTE_POLICY_VERSION,
         DesktopSessionCreateRequest, DesktopSessionResponse, PublicStatsSnapshot, ServiceConfig,
         StarterDemandAckRequest, StarterDemandAckResponse, StarterDemandCompleteRequest,
         StarterDemandCompleteResponse, StarterDemandHeartbeatRequest,
@@ -3996,6 +4094,12 @@ mod tests {
             hosted_nexus_relay_url: "wss://nexus.openagents.com/".to_string(),
             receipt_log_path: None,
             kernel_state_path: None,
+            compute_enable_forward_physical: true,
+            compute_enable_future_cash: true,
+            compute_enable_structured_products: true,
+            compute_enable_reconciliation_diagnostics: true,
+            compute_policy_bundle_id: DEFAULT_COMPUTE_POLICY_BUNDLE_ID.to_string(),
+            compute_policy_version: DEFAULT_COMPUTE_POLICY_VERSION.to_string(),
             starter_demand_budget_cap_sats: 500,
             starter_demand_dispatch_interval_seconds: 1,
             starter_demand_request_ttl_seconds: 120,
@@ -6971,10 +7075,221 @@ mod tests {
             .await?;
         assert_eq!(stats_response.status(), StatusCode::OK);
         let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(stats.compute_active_provider_count, 2);
+        assert!((stats.compute_provider_concentration_hhi - 0.5).abs() < f64::EPSILON);
+        assert_eq!(stats.compute_forward_physical_instruments_active, 2);
+        assert_eq!(stats.compute_forward_physical_open_quantity, 20);
         assert_eq!(stats.compute_future_cash_instruments_active, 0);
         assert_eq!(stats.compute_future_cash_open_interest, 0);
         assert_eq!(stats.compute_future_cash_cash_settlements_24h, 1);
         assert_eq!(stats.compute_future_cash_cash_flow_24h, 150);
+        assert_eq!(stats.compute_priced_instruments_24h, 3);
+        assert_eq!(stats.compute_breakers_tripped, 1);
+        assert_eq!(stats.compute_breakers_guarded, 1);
+        assert_eq!(stats.compute_breaker_states.len(), 6);
+        assert!(
+            stats
+                .compute_breaker_states
+                .iter()
+                .any(|row| row.breaker_id == "future_cash.index_quality" && row.state == "tripped")
+        );
+        assert!(
+            stats
+                .compute_breaker_states
+                .iter()
+                .any(|row| row.breaker_id == "provider_concentration" && row.state == "guarded")
+        );
+        assert_eq!(
+            stats
+                .compute_truth_labels
+                .iter()
+                .find(|row| row.truth_label == "canonical")
+                .map(|row| row.count_24h),
+            Some(2)
+        );
+        assert_eq!(
+            stats
+                .compute_truth_labels
+                .iter()
+                .find(|row| row.truth_label == "legacy")
+                .map(|row| row.count_24h),
+            Some(0)
+        );
+        assert_eq!(
+            stats
+                .compute_truth_labels
+                .iter()
+                .find(|row| row.truth_label == "transitional")
+                .map(|row| row.count_24h),
+            Some(0)
+        );
+        assert_eq!(stats.compute_rollout_gates.len(), 4);
+        assert!(stats.compute_rollout_gates.iter().all(|gate| gate.enabled));
+        assert_eq!(
+            stats.compute_policy_bundle_id,
+            DEFAULT_COMPUTE_POLICY_BUNDLE_ID
+        );
+        assert_eq!(stats.compute_policy_version, DEFAULT_COMPUTE_POLICY_VERSION);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn future_cash_route_rejects_when_runtime_gate_disabled() -> Result<()> {
+        let mut config = test_config()?;
+        config.compute_enable_future_cash = false;
+        let app = build_router(config);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = super::now_unix_ms() as i64;
+
+        let product = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/products")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_product_wire_request(
+                            "ollama.text_generation",
+                            "idemp.compute.product.future-cash.gate",
+                            created_at_ms,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(product.status(), StatusCode::OK);
+
+        let future_cash = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &compute_contracts::create_capacity_instrument_request_to_proto(
+                            &future_cash_instrument_request(
+                                "instrument.compute.future_cash.disabled",
+                                "index.compute.missing",
+                                "idemp.compute.instrument.future-cash.disabled",
+                                created_at_ms + 1_000,
+                                150,
+                                10,
+                            ),
+                        )?,
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(future_cash.status(), StatusCode::CONFLICT);
+        let body: serde_json::Value = response_json(future_cash).await?;
+        assert_eq!(body["reason"], "compute_future_cash_disabled");
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn structured_route_rejects_when_disabled_and_stats_publish_rollout_state() -> Result<()>
+    {
+        let mut config = test_config()?;
+        config.compute_enable_future_cash = false;
+        config.compute_enable_structured_products = false;
+        config.compute_enable_reconciliation_diagnostics = false;
+        config.compute_policy_bundle_id = "policy.compute.market.launch-ops".to_string();
+        config.compute_policy_version = "2026-03-07".to_string();
+        let app = build_router(config);
+        let session = create_session_token(&app).await?;
+        let created_at_ms = super::now_unix_ms() as i64;
+
+        let structured = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/v1/kernel/compute/structured_instruments")
+                    .header("authorization", authorization(&session))
+                    .header("content-type", "application/json")
+                    .body(Body::from(serde_json::to_vec(
+                        &structured_reservation_wire_request(
+                            "structured.compute.disabled",
+                            "instrument.compute.disabled",
+                            "idemp.compute.structured.disabled",
+                            created_at_ms,
+                        ),
+                    )?))?,
+            )
+            .await?;
+        assert_eq!(structured.status(), StatusCode::CONFLICT);
+        let structured_body: serde_json::Value = response_json(structured).await?;
+        assert_eq!(
+            structured_body["reason"],
+            "compute_structured_products_disabled"
+        );
+
+        let stats_response = app
+            .clone()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/stats")
+                    .body(Body::empty())?,
+            )
+            .await?;
+        assert_eq!(stats_response.status(), StatusCode::OK);
+        let stats: PublicStatsSnapshot = response_json(stats_response).await?;
+        assert_eq!(
+            stats.compute_policy_bundle_id,
+            "policy.compute.market.launch-ops"
+        );
+        assert_eq!(stats.compute_policy_version, "2026-03-07");
+        assert!(stats.compute_truth_labels.is_empty());
+        assert_eq!(stats.compute_rollout_gates.len(), 4);
+        assert_eq!(
+            stats
+                .compute_rollout_gates
+                .iter()
+                .find(|gate| gate.gate_id == "forward_physical")
+                .map(|gate| gate.enabled),
+            Some(true)
+        );
+        assert_eq!(
+            stats
+                .compute_rollout_gates
+                .iter()
+                .find(|gate| gate.gate_id == "future_cash")
+                .map(|gate| gate.enabled),
+            Some(false)
+        );
+        assert_eq!(
+            stats
+                .compute_rollout_gates
+                .iter()
+                .find(|gate| gate.gate_id == "structured_products")
+                .map(|gate| gate.enabled),
+            Some(false)
+        );
+        assert_eq!(
+            stats
+                .compute_rollout_gates
+                .iter()
+                .find(|gate| gate.gate_id == "reconciliation_diagnostics")
+                .map(|gate| gate.enabled),
+            Some(false)
+        );
+        assert!(
+            stats
+                .compute_breaker_states
+                .iter()
+                .any(|row| row.breaker_id == "provider_concentration")
+        );
+        assert!(
+            stats
+                .compute_breaker_states
+                .iter()
+                .any(|row| row.breaker_id == "future_cash.index_quality")
+        );
 
         Ok(())
     }
