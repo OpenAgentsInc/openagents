@@ -192,19 +192,76 @@ impl Graph {
     }
 }
 
+/// Executable operation payload emitted by the compiler layer.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum ExecutionOp {
+    /// Graph input.
+    Input {
+        /// Input name.
+        name: String,
+    },
+    /// Constant tensor payload.
+    Constant {
+        /// Constant data.
+        data: TensorData,
+    },
+    /// Binary add.
+    Add,
+    /// Binary multiply.
+    Mul,
+    /// Matrix multiplication.
+    Matmul,
+    /// Tensor reshape.
+    Reshape,
+    /// Full reduction to a scalar.
+    ReduceSum,
+}
+
+impl ExecutionOp {
+    /// Returns a stable operation label.
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::Input { .. } => "input",
+            Self::Constant { .. } => "constant",
+            Self::Add => "add",
+            Self::Mul => "mul",
+            Self::Matmul => "matmul",
+            Self::Reshape => "reshape",
+            Self::ReduceSum => "reduce_sum",
+        }
+    }
+
+    /// Converts a graph op into an executable op payload.
+    #[must_use]
+    pub fn from_op_kind(op: &OpKind) -> Self {
+        match op {
+            OpKind::Input { name } => Self::Input { name: name.clone() },
+            OpKind::Constant { data } => Self::Constant { data: data.clone() },
+            OpKind::Add => Self::Add,
+            OpKind::Mul => Self::Mul,
+            OpKind::Matmul => Self::Matmul,
+            OpKind::Reshape => Self::Reshape,
+            OpKind::ReduceSum => Self::ReduceSum,
+        }
+    }
+}
+
 /// Execution step placeholder emitted by the compiler layer.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionStep {
     /// Output tensor ID produced by the step.
     pub output: TensorId,
-    /// Operation label.
-    pub op_label: String,
+    /// Operation payload.
+    pub op: ExecutionOp,
+    /// Static output tensor spec.
+    pub spec: TensorSpec,
     /// Input tensor IDs.
     pub inputs: Vec<TensorId>,
 }
 
 /// Placeholder execution plan.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ExecutionPlan {
     /// Stable digest of the source graph.
     pub graph_digest: String,
@@ -226,7 +283,14 @@ impl ExecutionPlan {
                 .map(ToString::to_string)
                 .collect::<Vec<_>>()
                 .join(",");
-            lines.push(format!("step|{}|{}|{}", step.output, step.op_label, inputs));
+            lines.push(format!(
+                "step|{}|{}|{}|{}|{}",
+                step.output,
+                step.op.label(),
+                format_spec(&step.spec),
+                inputs,
+                format_execution_payload(&step.op),
+            ));
         }
         lines.push(format!(
             "outputs|{}",
@@ -247,7 +311,7 @@ impl ExecutionPlan {
             lines.push(format!(
                 "{} <- {}({})",
                 step.output,
-                step.op_label,
+                step.op.label(),
                 step.inputs
                     .iter()
                     .map(ToString::to_string)
@@ -468,6 +532,22 @@ fn format_constant_payload(op: &OpKind) -> String {
                 .join(",");
             format!("f32:{bits}")
         }
+        _ => String::new(),
+    }
+}
+
+fn format_execution_payload(op: &ExecutionOp) -> String {
+    match op {
+        ExecutionOp::Constant { data } => {
+            let bits = data
+                .as_f32_slice()
+                .iter()
+                .map(|value| format!("{:08x}", value.to_bits()))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("f32:{bits}")
+        }
+        ExecutionOp::Input { name } => format!("input:{name}"),
         _ => String::new(),
     }
 }
