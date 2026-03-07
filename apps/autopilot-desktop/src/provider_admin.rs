@@ -3,10 +3,10 @@ use std::time::Instant;
 
 use openagents_provider_substrate::{
     ProviderAdminConfig, ProviderAdminRuntime, ProviderAdminUpdate, ProviderControlEvent,
-    ProviderDesiredMode, ProviderEarningsSummary, ProviderHealthEvent,
-    ProviderIdentityMetadata, ProviderJsonEntry, ProviderPersistedSnapshot,
-    ProviderPayoutSummary, ProviderReceiptSummary, ProviderRecentJob,
-    ProviderRuntimeStatusSnapshot,
+    ProviderDesiredMode, ProviderEarningsSummary, ProviderHealthEvent, ProviderIdentityMetadata,
+    ProviderJsonEntry, ProviderPayoutSummary, ProviderPersistedSnapshot, ProviderReceiptSummary,
+    ProviderRecentJob, ProviderRuntimeStatusSnapshot, ProviderSnapshotParts,
+    assemble_provider_persisted_snapshot,
 };
 use serde_json::json;
 
@@ -124,7 +124,7 @@ fn apply_control_event(state: &mut RenderState, event: ProviderControlEvent) {
 
 fn snapshot_for_state(state: &RenderState) -> ProviderPersistedSnapshot {
     let captured_at_ms = now_epoch_ms();
-    ProviderPersistedSnapshot {
+    assemble_provider_persisted_snapshot(ProviderSnapshotParts {
         captured_at_ms,
         config_metadata: config_metadata_for_state(state),
         identity: identity_metadata_for_state(state),
@@ -136,7 +136,7 @@ fn snapshot_for_state(state: &RenderState) -> ProviderPersistedSnapshot {
         payouts: payout_summaries_for_state(state),
         health_events: health_events_for_state(state, captured_at_ms),
         earnings: Some(earnings_summary_for_state(state)),
-    }
+    })
 }
 
 fn config_metadata_for_state(state: &RenderState) -> Vec<ProviderJsonEntry> {
