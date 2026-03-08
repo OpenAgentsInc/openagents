@@ -1953,6 +1953,311 @@ impl GgufChatTemplateMetadata {
     }
 }
 
+/// Prompt message role used by the supported GGUF prompt-rendering surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PromptMessageRole {
+    /// System/developer instruction.
+    System,
+    /// End-user input.
+    User,
+    /// Assistant output already present in history.
+    Assistant,
+    /// Tool result message.
+    Tool,
+}
+
+impl PromptMessageRole {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::System => "system",
+            Self::User => "user",
+            Self::Assistant => "assistant",
+            Self::Tool => "tool",
+        }
+    }
+}
+
+/// Prompt message consumed by the supported GGUF prompt renderer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PromptMessage {
+    /// Message role.
+    pub role: PromptMessageRole,
+    /// Message content.
+    pub content: String,
+}
+
+impl PromptMessage {
+    /// Creates a prompt message.
+    #[must_use]
+    pub fn new(role: PromptMessageRole, content: impl Into<String>) -> Self {
+        Self {
+            role,
+            content: content.into(),
+        }
+    }
+}
+
+/// Supported GGUF prompt-template families with explicit render compatibility.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GgufPromptTemplateFamily {
+    /// Phi-3 template family.
+    Phi3,
+    /// Qwen2 template family.
+    Qwen2,
+    /// Command-R template family.
+    CommandR,
+}
+
+impl GgufPromptTemplateFamily {
+    fn stop_sequences(self) -> &'static [&'static str] {
+        match self {
+            Self::Phi3 => &["<|end|>", "<|system|>", "<|user|>", "<|assistant|>"],
+            Self::Qwen2 => &[],
+            Self::CommandR => &["<|START_OF_TURN_TOKEN|>", "<|END_OF_TURN_TOKEN|>"],
+        }
+    }
+}
+
+/// Rendered prompt plus explicit template truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RenderedPrompt {
+    /// Fully rendered prompt text.
+    pub text: String,
+    /// Selected template name when a named GGUF template was requested.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub template_name: Option<String>,
+    /// Stable digest of the selected raw template.
+    pub template_digest: String,
+    /// Supported template family that produced the prompt.
+    pub family: GgufPromptTemplateFamily,
+    /// Explicit stop defaults associated with the template family.
+    pub stop_sequences: Vec<String>,
+}
+
+/// Prompt-render failure for the supported GGUF prompt surface.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum PromptRenderError {
+    /// The requested template name was not present in GGUF metadata.
+    #[error("missing gguf chat template `{name}`")]
+    MissingTemplateName {
+        /// Requested template name.
+        name: String,
+    },
+    /// The GGUF artifact carries no default chat template.
+    #[error("gguf artifact does not carry a default chat template")]
+    MissingDefaultTemplate,
+    /// The template digest is not one of the supported prompt families yet.
+    #[error("unsupported gguf prompt template digest `{digest}`")]
+    UnsupportedTemplateDigest {
+        /// Stable digest of the selected raw template.
+        digest: String,
+    },
+    /// The prompt history cannot be rendered honestly for the selected family.
+    #[error("invalid prompt conversation: {message}")]
+    InvalidConversation {
+        /// Validation failure summary.
+        message: String,
+    },
+}
+
+/// Supported GGUF prompt renderer over extracted tokenizer and chat-template metadata.
+#[derive(Clone, Debug, PartialEq)]
+pub struct GgufPromptTemplateRenderer {
+    tokenizer: GgufTokenizerMetadata,
+    chat_templates: GgufChatTemplateMetadata,
+}
+
+impl GgufPromptTemplateRenderer {
+    /// Creates a renderer from GGUF tokenizer and chat-template metadata.
+    #[must_use]
+    pub fn new(tokenizer: GgufTokenizerMetadata, chat_templates: GgufChatTemplateMetadata) -> Self {
+        Self {
+            tokenizer,
+            chat_templates,
+        }
+    }
+
+    /// Renders a prompt for a supported chat template.
+    pub fn render(
+        &self,
+        template_name: Option<&str>,
+        messages: &[PromptMessage],
+        add_generation_prompt: bool,
+    ) -> Result<RenderedPrompt, PromptRenderError> {
+        let template_name_owned = template_name.map(str::to_string);
+        let raw_template = match template_name {
+            Some(name) => self.chat_templates.template(Some(name)).ok_or_else(|| {
+                PromptRenderError::MissingTemplateName {
+                    name: name.to_string(),
+                }
+            })?,
+            None => self
+                .chat_templates
+                .default_template()
+                .ok_or(PromptRenderError::MissingDefaultTemplate)?,
+        };
+        let template_digest = digest_chat_template(raw_template);
+        let family =
+            supported_prompt_template_family(template_digest.as_str()).ok_or_else(|| {
+                PromptRenderError::UnsupportedTemplateDigest {
+                    digest: template_digest.clone(),
+                }
+            })?;
+        let rendered = match family {
+            GgufPromptTemplateFamily::Phi3 => self.render_phi3(messages),
+            GgufPromptTemplateFamily::Qwen2 => self.render_qwen2(messages, add_generation_prompt),
+            GgufPromptTemplateFamily::CommandR => {
+                self.render_command_r(messages, add_generation_prompt)
+            }
+        }?;
+
+        Ok(RenderedPrompt {
+            text: rendered,
+            template_name: template_name_owned,
+            template_digest,
+            family,
+            stop_sequences: family
+                .stop_sequences()
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect(),
+        })
+    }
+
+    fn render_phi3(&self, messages: &[PromptMessage]) -> Result<String, PromptRenderError> {
+        let mut rendered = self.bos_token().unwrap_or_default().to_string();
+        for message in messages {
+            match message.role {
+                PromptMessageRole::User => {
+                    rendered.push_str("<|user|>\n");
+                    rendered.push_str(message.content.as_str());
+                    rendered.push_str("<|end|>\n<|assistant|>\n");
+                }
+                PromptMessageRole::Assistant => {
+                    rendered.push_str(message.content.as_str());
+                    rendered.push_str("<|end|>\n");
+                }
+                PromptMessageRole::System | PromptMessageRole::Tool => {}
+            }
+        }
+        Ok(rendered)
+    }
+
+    fn render_qwen2(
+        &self,
+        messages: &[PromptMessage],
+        add_generation_prompt: bool,
+    ) -> Result<String, PromptRenderError> {
+        if messages.is_empty() {
+            return Err(PromptRenderError::InvalidConversation {
+                message: String::from("qwen2 prompt rendering requires at least one message"),
+            });
+        }
+
+        let mut rendered = String::new();
+        if messages[0].role != PromptMessageRole::System {
+            rendered.push_str("<|im_start|>system\nYou are a helpful assistant<|im_end|>\n");
+        }
+        for message in messages {
+            rendered.push_str("<|im_start|>");
+            rendered.push_str(message.role.as_str());
+            rendered.push('\n');
+            rendered.push_str(message.content.as_str());
+            rendered.push_str("<|im_end|>\n");
+        }
+        if add_generation_prompt {
+            rendered.push_str("<|im_start|>assistant\n");
+        }
+        Ok(rendered)
+    }
+
+    fn render_command_r(
+        &self,
+        messages: &[PromptMessage],
+        add_generation_prompt: bool,
+    ) -> Result<String, PromptRenderError> {
+        if messages.is_empty() {
+            return Err(PromptRenderError::InvalidConversation {
+                message: String::from("command-r prompt rendering requires at least one message"),
+            });
+        }
+
+        let mut rendered = self.bos_token().unwrap_or_default().to_string();
+        let mut loop_messages = messages;
+        if let Some(first) = messages.first() {
+            if first.role == PromptMessageRole::System {
+                rendered.push_str("<|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>");
+                rendered.push_str(first.content.as_str());
+                rendered.push_str("<|END_OF_TURN_TOKEN|>");
+                loop_messages = &messages[1..];
+            }
+        }
+
+        for (index, message) in loop_messages.iter().enumerate() {
+            let expected_role = if index % 2 == 0 {
+                PromptMessageRole::User
+            } else {
+                PromptMessageRole::Assistant
+            };
+            if message.role != expected_role {
+                return Err(PromptRenderError::InvalidConversation {
+                    message: String::from(
+                        "command-r messages must alternate user/assistant after an optional leading system message",
+                    ),
+                });
+            }
+
+            match message.role {
+                PromptMessageRole::User => {
+                    rendered.push_str("<|START_OF_TURN_TOKEN|><|USER_TOKEN|>");
+                    rendered.push_str(message.content.trim());
+                    rendered.push_str("<|END_OF_TURN_TOKEN|>");
+                }
+                PromptMessageRole::Assistant => {
+                    rendered.push_str("<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>");
+                    rendered.push_str(message.content.trim());
+                    rendered.push_str("<|END_OF_TURN_TOKEN|>");
+                }
+                PromptMessageRole::System | PromptMessageRole::Tool => {
+                    return Err(PromptRenderError::InvalidConversation {
+                        message: String::from(
+                            "command-r only supports user and assistant turns after the optional leading system message",
+                        ),
+                    });
+                }
+            }
+        }
+        if add_generation_prompt {
+            rendered.push_str("<|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>");
+        }
+        Ok(rendered)
+    }
+
+    fn bos_token(&self) -> Option<&str> {
+        self.tokenizer
+            .vocabulary
+            .bos_token_id()
+            .and_then(|token_id| self.tokenizer.vocabulary.token(token_id))
+    }
+}
+
+fn supported_prompt_template_family(digest: &str) -> Option<GgufPromptTemplateFamily> {
+    match digest {
+        "268b6082ceb7176dc6ed80557a2f7837f9f0339592fbee677d405a553af15f88" => {
+            Some(GgufPromptTemplateFamily::Phi3)
+        }
+        "af9c0233881b083b52ff773580215222b5440ac3d0beeeca99b76329b048f8db" => {
+            Some(GgufPromptTemplateFamily::Qwen2)
+        }
+        "9db2cf47ce03bfd0aab6ec59942503714fa0372f09f7e1d54cbcd71a1110b863" => {
+            Some(GgufPromptTemplateFamily::CommandR)
+        }
+        _ => None,
+    }
+}
+
 /// First-launch GGUF decoder family classification used by Mox.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -2732,6 +3037,23 @@ impl GgufDecoderAdapter {
     #[must_use]
     pub fn chat_templates(&self) -> &GgufChatTemplateMetadata {
         &self.chat_templates
+    }
+
+    /// Creates a reusable prompt renderer over the adapter's tokenizer and chat templates.
+    #[must_use]
+    pub fn prompt_renderer(&self) -> GgufPromptTemplateRenderer {
+        GgufPromptTemplateRenderer::new(self.tokenizer.clone(), self.chat_templates.clone())
+    }
+
+    /// Renders a prompt through the adapter's supported chat-template families.
+    pub fn render_prompt(
+        &self,
+        template_name: Option<&str>,
+        messages: &[PromptMessage],
+        add_generation_prompt: bool,
+    ) -> Result<RenderedPrompt, PromptRenderError> {
+        self.prompt_renderer()
+            .render(template_name, messages, add_generation_prompt)
     }
 
     /// Returns the reusable GGUF tensor-name layout for the decoder family.
@@ -5514,9 +5836,10 @@ mod tests {
         ActivationFunction, ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader,
         FixtureDecoderLoader, FixtureWordTokenizer, GgufBlobArtifact, GgufContent,
         GgufDecoderAdapterLoader, GgufDecoderFamily, GgufEmbeddingAdapterLoader,
-        GgufEmbeddingFamily, GgufEmbeddingPooling, GgufMetadataValue, GgufTensorType,
-        GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion,
-        GgufWeightBundleLoader, LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader,
+        GgufEmbeddingFamily, GgufEmbeddingPooling, GgufMetadataValue, GgufPromptTemplateFamily,
+        GgufPromptTemplateRenderer, GgufTensorType, GgufTokenizerMetadata, GgufTokenizerModel,
+        GgufTokenizerPretokenizer, GgufVersion, GgufWeightBundleLoader, LoadedWeightTensor,
+        LocalBlobOpenOptions, LocalWeightBundleLoader, PromptMessage, PromptMessageRole,
         QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
         SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId, TokenizerBoundary,
         WeightArtifactBlobKind, WeightArtifactReadPath, WeightFormat, WeightSource,
@@ -6155,6 +6478,127 @@ mod tests {
     }
 
     #[test]
+    fn gguf_prompt_template_renderer_matches_phi3_fixture_render_case()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = golden_prompt_fixture("phi3").expect("phi3 fixture");
+        let variant = fixture.template_variant("phi3.default").expect("variant");
+        let render_case = variant.render_case("phi3.multi_turn").expect("render case");
+        let renderer = GgufPromptTemplateRenderer::new(
+            phi3_prompt_tokenizer_metadata(),
+            super::GgufChatTemplateMetadata::new(
+                variant.raw_template.map(String::from),
+                BTreeMap::new(),
+            ),
+        );
+
+        let rendered = renderer.render(
+            None,
+            prompt_messages_from_fixture(render_case.messages).as_slice(),
+            render_case.add_generation_prompt,
+        )?;
+
+        assert_eq!(rendered.family, GgufPromptTemplateFamily::Phi3);
+        assert_eq!(rendered.text, render_case.expected_rendered);
+        assert_eq!(
+            rendered.stop_sequences,
+            variant
+                .stop_sequences
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect::<Vec<_>>()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_prompt_template_renderer_matches_command_r_fixture_render_case()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = golden_prompt_fixture("command_r").expect("command-r fixture");
+        let variant = fixture
+            .template_variant("command_r.default")
+            .expect("variant");
+        let render_case = variant
+            .render_case("command_r.with_system_history")
+            .expect("render case");
+        let renderer = GgufPromptTemplateRenderer::new(
+            command_r_prompt_tokenizer_metadata(),
+            super::GgufChatTemplateMetadata::new(
+                variant.raw_template.map(String::from),
+                BTreeMap::new(),
+            ),
+        );
+
+        let rendered = renderer.render(
+            None,
+            prompt_messages_from_fixture(render_case.messages).as_slice(),
+            render_case.add_generation_prompt,
+        )?;
+
+        assert_eq!(rendered.family, GgufPromptTemplateFamily::CommandR);
+        assert_eq!(rendered.text, render_case.expected_rendered);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_decoder_adapter_render_prompt_matches_qwen2_fixture()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("tiny_qwen2.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &qwen2_decoder_metadata(
+                "Tiny Qwen2",
+                golden_prompt_fixture("qwen2")
+                    .and_then(|fixture| fixture.template_variant("qwen2.default"))
+                    .and_then(|variant| variant.raw_template),
+            ),
+            &decoder_family_tensors(1, true, false),
+        )?;
+
+        let adapter = GgufDecoderAdapterLoader.load_path(&path)?;
+        let fixture = golden_prompt_fixture("qwen2").expect("qwen2 fixture");
+        let render_case = fixture
+            .template_variant("qwen2.default")
+            .and_then(|variant| variant.render_case("qwen2.with_system_history"))
+            .expect("render case");
+
+        let rendered = adapter.render_prompt(
+            None,
+            prompt_messages_from_fixture(render_case.messages).as_slice(),
+            render_case.add_generation_prompt,
+        )?;
+
+        assert_eq!(rendered.family, GgufPromptTemplateFamily::Qwen2);
+        assert_eq!(rendered.text, render_case.expected_rendered);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_prompt_template_renderer_rejects_unsupported_template_digest() {
+        let renderer = GgufPromptTemplateRenderer::new(
+            command_r_prompt_tokenizer_metadata(),
+            super::GgufChatTemplateMetadata::new(
+                Some(String::from("{{ prompt }}")),
+                BTreeMap::new(),
+            ),
+        );
+
+        let error = renderer
+            .render(
+                None,
+                &[PromptMessage::new(PromptMessageRole::User, "hello")],
+                true,
+            )
+            .expect_err("unknown template digest should be rejected");
+
+        assert!(matches!(
+            error,
+            super::PromptRenderError::UnsupportedTemplateDigest { .. }
+        ));
+    }
+
+    #[test]
     fn apply_special_token_defaults_handles_bos_and_eos_paths() {
         let with_both = build_test_tokenizer_metadata(true, true);
         let without_both = build_test_tokenizer_metadata(false, false);
@@ -6779,6 +7223,75 @@ mod tests {
             token_type_count: None,
             digest: String::from("fixture"),
         }
+    }
+
+    fn phi3_prompt_tokenizer_metadata() -> GgufTokenizerMetadata {
+        GgufTokenizerMetadata {
+            model: GgufTokenizerModel::SentencePiece,
+            vocabulary: super::GgufTokenizerVocabulary {
+                tokens: vec![
+                    String::from("<unk>"),
+                    String::from("<s>"),
+                    String::from("<|end|>"),
+                    String::from("<|user|>"),
+                    String::from("<|assistant|>"),
+                ],
+                bos_token_id: Some(TokenId(1)),
+                eos_token_ids: vec![TokenId(2)],
+                pad_token_id: None,
+                unknown_token_id: Some(TokenId(0)),
+            },
+            scores: Vec::new(),
+            token_types: Vec::new(),
+            merges: Vec::new(),
+            add_bos: true,
+            add_eos: false,
+            pretokenizer: None,
+            token_type_count: None,
+            digest: String::from("phi3-fixture"),
+        }
+    }
+
+    fn command_r_prompt_tokenizer_metadata() -> GgufTokenizerMetadata {
+        GgufTokenizerMetadata {
+            model: GgufTokenizerModel::SentencePiece,
+            vocabulary: super::GgufTokenizerVocabulary {
+                tokens: vec![
+                    String::from("<unk>"),
+                    String::from("<BOS_TOKEN>"),
+                    String::from("<EOS_TOKEN>"),
+                    String::from("<|START_OF_TURN_TOKEN|>"),
+                    String::from("<|END_OF_TURN_TOKEN|>"),
+                ],
+                bos_token_id: Some(TokenId(1)),
+                eos_token_ids: vec![TokenId(2)],
+                pad_token_id: None,
+                unknown_token_id: Some(TokenId(0)),
+            },
+            scores: Vec::new(),
+            token_types: Vec::new(),
+            merges: Vec::new(),
+            add_bos: true,
+            add_eos: false,
+            pretokenizer: None,
+            token_type_count: None,
+            digest: String::from("command-r-fixture"),
+        }
+    }
+
+    fn prompt_messages_from_fixture(messages: &[super::GoldenPromptMessage]) -> Vec<PromptMessage> {
+        messages
+            .iter()
+            .map(|message| {
+                let role = match message.role {
+                    super::GoldenPromptRole::System => PromptMessageRole::System,
+                    super::GoldenPromptRole::User => PromptMessageRole::User,
+                    super::GoldenPromptRole::Assistant => PromptMessageRole::Assistant,
+                    super::GoldenPromptRole::Tool => PromptMessageRole::Tool,
+                };
+                PromptMessage::new(role, message.content)
+            })
+            .collect()
     }
 
     fn llama_decoder_metadata(

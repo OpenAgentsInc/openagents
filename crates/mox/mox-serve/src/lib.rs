@@ -20,9 +20,10 @@ pub use mox_models::{
     GgufDecoderLayerTensorLayout, GgufDecoderTensorLayout, GgufEmbeddingAdapter,
     GgufEmbeddingAdapterLoader, GgufEmbeddingFamily, GgufEmbeddingFamilyMetadata,
     GgufEmbeddingLayerTensorLayout, GgufEmbeddingPooling, GgufEmbeddingTensorLayout,
-    ModelDescriptor, ModelLoadError, ReferenceWordDecoder, SmokeByteEmbedder, TokenId,
-    TokenSequence, TokenVocabulary, TokenizerBoundary, WeightArtifactMetadata,
-    WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
+    GgufPromptTemplateFamily, GgufPromptTemplateRenderer, ModelDescriptor, ModelLoadError,
+    PromptMessage, PromptMessageRole, PromptRenderError, ReferenceWordDecoder, RenderedPrompt,
+    SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
+    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
 use mox_runtime::{BackendSelection, DeviceDiscovery, HealthStatus, RuntimeError};
 use serde::{Deserialize, Serialize};

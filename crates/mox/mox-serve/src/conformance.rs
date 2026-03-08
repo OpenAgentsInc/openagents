@@ -2008,7 +2008,7 @@ mod tests {
     }
 
     #[test]
-    fn conformance_suite_records_intentional_candidate_gap()
+    fn conformance_suite_accepts_matching_prompt_render_candidate()
     -> Result<(), Box<dyn std::error::Error>> {
         let case = GenerateConformanceCase::from_generate_compatible_prompt_fixture(
             "phi3-render",
@@ -2027,16 +2027,22 @@ mod tests {
             compare_tags: false,
             compare_ps: false,
             show_cases: Vec::new(),
-            generate_cases: vec![GenerateConformanceCase {
-                expected_candidate_difference: Some(String::from(
-                    "current Mox prompt rendering is tracked separately in MOX-114",
-                )),
-                ..case
-            }],
+            generate_cases: vec![case],
             embed_cases: Vec::new(),
         };
 
         let baseline = RecordedConformanceSubject::new("ollama-baseline").with_generate_case(
+            "phi3-render",
+            SubjectObservation::Supported(GenerateObservation {
+                rendered_prompt: Some(expected_rendered_prompt.clone()),
+                output_text: String::new(),
+                done_reason: None,
+                prompt_eval_count: None,
+                eval_count: None,
+                error: None,
+            }),
+        );
+        let candidate = RecordedConformanceSubject::new("mox-candidate").with_generate_case(
             "phi3-render",
             SubjectObservation::Supported(GenerateObservation {
                 rendered_prompt: Some(expected_rendered_prompt),
@@ -2047,20 +2053,15 @@ mod tests {
                 error: None,
             }),
         );
-        let candidate = RecordedConformanceSubject::new("mox-candidate").with_generate_case(
-            "phi3-render",
-            SubjectObservation::Unsupported {
-                reason: String::from("prompt rendering not yet implemented in Mox"),
-            },
-        );
 
         let mut baseline = baseline;
         let mut candidate = candidate;
         let report = run_conformance_suite(&suite, &mut baseline, &mut candidate)?;
 
-        assert_eq!(report.summary.intentional_differences, 1);
+        assert_eq!(report.summary.passed, 1);
         assert_eq!(report.summary.failed, 0);
         assert_eq!(report.summary.unsupported, 0);
+        assert_eq!(report.summary.intentional_differences, 0);
         assert!(report.cutover_ready());
         Ok(())
     }
