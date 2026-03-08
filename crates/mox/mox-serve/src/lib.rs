@@ -31,10 +31,11 @@ pub use mox_models::{
 use mox_runtime::{
     BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
     KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelResidency,
-    RuntimeError,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError,
 };
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -70,6 +71,17 @@ pub fn default_kv_cache_policy(max_context: usize, width: usize) -> KvCachePolic
 #[must_use]
 pub fn default_decoder_kv_cache_policy(model: &DecoderModelDescriptor) -> KvCachePolicy {
     default_kv_cache_policy(model.config.max_context, model.config.kv_width())
+}
+
+/// Returns the default shared prompt-prefix reuse policy for local Mox serving.
+#[must_use]
+pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
+    PrefixCacheReusePolicy {
+        shared_across_sessions: true,
+        shared_across_users: false,
+        shared_across_models: false,
+        shared_across_backends: false,
+    }
 }
 
 /// Embeddings request contract.
@@ -394,6 +406,9 @@ pub struct GenerationMetrics {
     /// Explicit paged-KV accounting for the request, when available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache: Option<KvCacheAccounting>,
+    /// Number of prompt-prefix tokens reused from the shared prefix cache.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_tokens_reused: Option<usize>,
 }
 
 /// Whether a request hit a cold or warm model path.
@@ -416,6 +431,15 @@ pub struct GenerationProvenance {
     /// Explicit paged-KV policy for the request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache_policy: Option<KvCachePolicy>,
+    /// Observable shared prefix-cache state for the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_state: Option<PrefixCacheState>,
+    /// Explicit shared prefix-cache reuse policy for the request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_policy: Option<PrefixCacheReusePolicy>,
+    /// Shared prefix-cache identity when the request used or rebuilt a prefix entry.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_identity: Option<PrefixCacheIdentity>,
 }
 
 /// Terminal reason for a generation response.
@@ -511,6 +535,7 @@ impl GenerationMetrics {
             prompt_eval_count: Some(usage.input_tokens),
             eval_count: Some(usage.output_tokens),
             kv_cache: None,
+            prefix_tokens_reused: None,
         }
     }
 
@@ -521,6 +546,7 @@ impl GenerationMetrics {
             && self.prompt_eval_count.is_none()
             && self.eval_count.is_none()
             && self.kv_cache.is_none()
+            && self.prefix_tokens_reused.is_none()
     }
 }
 
@@ -1405,6 +1431,205 @@ fn sync_session_cache_state(session: &mut GenerationSession, cache: &InMemoryKvC
     session.kv_cache = cache.state();
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SharedPrefixCompatibility {
+    model_id: String,
+    model_revision: String,
+    weight_bundle_digest: String,
+    tokenizer_family: String,
+    tokenizer_digest: Option<String>,
+    chat_template_digest: Option<String>,
+    generation_defaults_digest: Option<String>,
+    backend_compatibility: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct SharedPrefixEntry {
+    compatibility: SharedPrefixCompatibility,
+    prompt_tokens: TokenSequence,
+    prompt_logits: Vec<Vec<f32>>,
+    cache: InMemoryKvCache,
+}
+
+#[derive(Clone, Debug, Default)]
+struct SharedPrefixStore {
+    entries: Vec<SharedPrefixEntry>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct PrefixLookupResult {
+    state: PrefixCacheState,
+    reused_tokens: usize,
+    identity: Option<PrefixCacheIdentity>,
+    cache: Option<InMemoryKvCache>,
+    prompt_logits: Vec<Vec<f32>>,
+}
+
+impl SharedPrefixStore {
+    fn lookup(
+        &mut self,
+        compatibility: &SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+    ) -> PrefixLookupResult {
+        let compatible_indices: Vec<usize> = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| (&entry.compatibility == compatibility).then_some(index))
+            .collect();
+        if compatible_indices.is_empty() {
+            return PrefixLookupResult {
+                state: PrefixCacheState::None,
+                reused_tokens: 0,
+                identity: None,
+                cache: None,
+                prompt_logits: Vec::new(),
+            };
+        }
+
+        let mut best: Option<(usize, usize)> = None;
+        let mut stale_prefix = false;
+        for index in compatible_indices {
+            let entry = &self.entries[index];
+            let shared =
+                shared_prefix_len(entry.prompt_tokens.as_slice(), prompt_tokens.as_slice());
+            if shared == 0 {
+                continue;
+            }
+            if entry.cache.len() < shared || entry.prompt_logits.len() < shared {
+                stale_prefix = true;
+                continue;
+            }
+            match best {
+                Some((_, best_shared)) if best_shared >= shared => {}
+                _ => best = Some((index, shared)),
+            }
+        }
+
+        if let Some((index, shared)) = best {
+            let entry = &self.entries[index];
+            let mut cache = entry.cache.clone();
+            cache.entries.truncate(shared);
+            return PrefixLookupResult {
+                state: PrefixCacheState::Hit,
+                reused_tokens: shared,
+                identity: Some(prefix_identity(
+                    compatibility,
+                    &entry.prompt_tokens.as_slice()[..shared],
+                )),
+                cache: Some(cache),
+                prompt_logits: entry.prompt_logits[..shared].to_vec(),
+            };
+        }
+
+        if stale_prefix {
+            self.entries.retain(|entry| {
+                !(&entry.compatibility == compatibility
+                    && (entry.cache.len() < entry.prompt_tokens.len()
+                        || entry.prompt_logits.len() < entry.prompt_tokens.len()))
+            });
+            return PrefixLookupResult {
+                state: PrefixCacheState::Rebuilt,
+                reused_tokens: 0,
+                identity: None,
+                cache: None,
+                prompt_logits: Vec::new(),
+            };
+        }
+
+        PrefixLookupResult {
+            state: PrefixCacheState::Miss,
+            reused_tokens: 0,
+            identity: None,
+            cache: None,
+            prompt_logits: Vec::new(),
+        }
+    }
+
+    fn record(
+        &mut self,
+        compatibility: SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+        prompt_logits: &[Vec<f32>],
+        cache: &InMemoryKvCache,
+    ) -> PrefixCacheIdentity {
+        let identity = prefix_identity(&compatibility, prompt_tokens.as_slice());
+        if let Some(existing) = self.entries.iter_mut().find(|entry| {
+            entry.compatibility == compatibility
+                && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
+        }) {
+            existing.prompt_logits = prompt_logits.to_vec();
+            existing.cache = cache.clone();
+        } else {
+            self.entries.push(SharedPrefixEntry {
+                compatibility,
+                prompt_tokens: prompt_tokens.clone(),
+                prompt_logits: prompt_logits.to_vec(),
+                cache: cache.clone(),
+            });
+        }
+        identity
+    }
+}
+
+fn shared_prefix_len(left: &[TokenId], right: &[TokenId]) -> usize {
+    left.iter()
+        .zip(right.iter())
+        .take_while(|(left, right)| left == right)
+        .count()
+}
+
+fn tokenizer_digest(tokenizer: &FixtureWordTokenizer) -> String {
+    let mut hasher = Sha256::new();
+    for token in tokenizer.vocabulary().tokens() {
+        hasher.update(token.as_bytes());
+        hasher.update([0]);
+    }
+    hasher.update(tokenizer.vocabulary().bos_id().as_u32().to_le_bytes());
+    hasher.update(tokenizer.vocabulary().eos_id().as_u32().to_le_bytes());
+    hasher.update(tokenizer.vocabulary().pad_id().as_u32().to_le_bytes());
+    hasher.update(tokenizer.vocabulary().unknown_id().as_u32().to_le_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn prefix_compatibility<M>(model: &CpuWordGenerationModel<M>) -> SharedPrefixCompatibility
+where
+    M: WordDecoderExecutionModel,
+{
+    SharedPrefixCompatibility {
+        model_id: model.descriptor().model.model_id.clone(),
+        model_revision: model.descriptor().model.revision.clone(),
+        weight_bundle_digest: model.descriptor().weights.digest.clone(),
+        tokenizer_family: model.descriptor().tokenizer_family.clone(),
+        tokenizer_digest: Some(tokenizer_digest(model.model().tokenizer())),
+        chat_template_digest: None,
+        generation_defaults_digest: None,
+        backend_compatibility: String::from("cpu"),
+    }
+}
+
+fn prefix_identity(
+    compatibility: &SharedPrefixCompatibility,
+    prompt_tokens: &[TokenId],
+) -> PrefixCacheIdentity {
+    let mut hasher = Sha256::new();
+    for token in prompt_tokens {
+        hasher.update(token.as_u32().to_le_bytes());
+    }
+    PrefixCacheIdentity {
+        model_id: compatibility.model_id.clone(),
+        model_revision: compatibility.model_revision.clone(),
+        weight_bundle_digest: compatibility.weight_bundle_digest.clone(),
+        tokenizer_family: compatibility.tokenizer_family.clone(),
+        tokenizer_digest: compatibility.tokenizer_digest.clone(),
+        chat_template_digest: compatibility.chat_template_digest.clone(),
+        generation_defaults_digest: compatibility.generation_defaults_digest.clone(),
+        backend_compatibility: compatibility.backend_compatibility.clone(),
+        prefix_digest: hex::encode(hasher.finalize()),
+        prefix_tokens: prompt_tokens.len(),
+    }
+}
+
 fn validate_session_model(
     state: &GenerationSessionState,
     session_id: &SessionId,
@@ -1654,6 +1879,7 @@ pub struct CpuReferenceTextGenerationService {
     backend: CpuBackend,
     models: InMemoryGenerationModelRegistry<CpuReferenceGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
+    shared_prefixes: SharedPrefixStore,
     model_descriptor: DecoderModelDescriptor,
 }
 
@@ -1675,6 +1901,7 @@ impl CpuReferenceTextGenerationService {
             backend: CpuBackend::new(),
             models,
             sessions: InMemoryGenerationSessionStore::new(),
+            shared_prefixes: SharedPrefixStore::default(),
             model_descriptor,
         })
     }
@@ -1792,6 +2019,7 @@ impl TextGenerationExecutor for CpuReferenceTextGenerationService {
             &mut self.backend,
             &mut self.models,
             &mut self.sessions,
+            &mut self.shared_prefixes,
             request,
         )
     }
@@ -1821,6 +2049,7 @@ pub struct CpuModelTextGenerationService {
     backend: CpuBackend,
     models: InMemoryGenerationModelRegistry<CpuModelGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
+    shared_prefixes: SharedPrefixStore,
     model_descriptor: DecoderModelDescriptor,
 }
 
@@ -1844,6 +2073,7 @@ impl CpuModelTextGenerationService {
             backend: CpuBackend::new(),
             models,
             sessions: InMemoryGenerationSessionStore::new(),
+            shared_prefixes: SharedPrefixStore::default(),
             model_descriptor,
         })
     }
@@ -1961,6 +2191,7 @@ impl TextGenerationExecutor for CpuModelTextGenerationService {
             &mut self.backend,
             &mut self.models,
             &mut self.sessions,
+            &mut self.shared_prefixes,
             request,
         )
     }
@@ -2019,6 +2250,7 @@ fn run_generation_request<M>(
     backend: &mut CpuBackend,
     models: &mut InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
     sessions: &mut InMemoryGenerationSessionStore,
+    shared_prefixes: &mut SharedPrefixStore,
     request: &GenerationRequest,
 ) -> Result<GenerationResponse, ReferenceTextGenerationError>
 where
@@ -2064,6 +2296,12 @@ where
 
         let hidden_size = loaded_model.descriptor().config.hidden_size;
         let mut session_tokens = Vec::new();
+        let compatibility = prefix_compatibility(&loaded_model);
+        let prefix_policy = default_prefix_cache_policy();
+        let mut prefix_state = PrefixCacheState::None;
+        let mut prefix_tokens_reused = 0usize;
+        let mut prefix_identity = None;
+        let mut shared_prefix_eligible = false;
         let previous_kv_state = if let Some(session_id) = &request.session_id {
             if request.reset_session {
                 sessions.reset(session_id)?;
@@ -2071,11 +2309,32 @@ where
             let state = sessions.state(session_id)?;
             validate_session_model(state, session_id, loaded_model.descriptor())?;
             session_tokens = state.tokens().to_vec();
+            if state.cache().is_empty() {
+                shared_prefix_eligible = true;
+            } else {
+                prefix_state = PrefixCacheState::Bypassed;
+            }
             state.cache().state()
         } else {
+            shared_prefix_eligible = true;
             KvCacheState::default()
         };
-        let mut cache = if let Some(session_id) = &request.session_id {
+        let mut prompt_logits = Vec::new();
+        let mut last_logits = Vec::new();
+        let mut cache = if shared_prefix_eligible {
+            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            prefix_state = lookup.state;
+            prefix_tokens_reused = lookup.reused_tokens;
+            prefix_identity = lookup.identity;
+            prompt_logits = lookup.prompt_logits;
+            last_logits = prompt_logits.last().cloned().unwrap_or_default();
+            lookup.cache.unwrap_or_else(|| {
+                InMemoryKvCache::new(
+                    loaded_model.descriptor().config.max_context,
+                    loaded_model.descriptor().config.hidden_size,
+                )
+            })
+        } else if let Some(session_id) = &request.session_id {
             sessions.state(session_id)?.cache().clone()
         } else {
             InMemoryKvCache::new(
@@ -2089,14 +2348,14 @@ where
                 kv_width: cache.width(),
             });
         }
-
-        let mut last_logits = Vec::new();
-        for token in prompt_tokens.as_slice() {
+        for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             let context = mean_cache_value(&cache, hidden_size);
             let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
             cache.append(*token, step.hidden.clone(), step.hidden)?;
             last_logits = step.logits;
+            prompt_logits.push(last_logits.clone());
         }
+        let prompt_cache = cache.clone();
 
         let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
         let mut sampler = GenerationSampler::new(&request.options);
@@ -2132,6 +2391,18 @@ where
                 break TerminationReason::EndOfSequence;
             }
         };
+
+        if shared_prefix_eligible {
+            let recorded_identity = shared_prefixes.record(
+                compatibility,
+                &prompt_tokens,
+                &prompt_logits,
+                &prompt_cache,
+            );
+            if prefix_state != PrefixCacheState::Hit || prefix_identity.is_none() {
+                prefix_identity = Some(recorded_identity);
+            }
+        }
 
         let generated = TokenSequence::new(generated_tokens);
         if let Some(session_id) = &request.session_id {
@@ -2169,11 +2440,15 @@ where
             prompt_eval_count: Some(usage.input_tokens),
             eval_count: Some(usage.output_tokens),
             kv_cache: Some(kv_cache),
+            prefix_tokens_reused: Some(prefix_tokens_reused),
         };
         let provenance = GenerationProvenance {
             execution_plan_digest: loaded_model.plan_digest().to_string(),
             load_state,
             kv_cache_policy: Some(cache.policy().clone()),
+            prefix_cache_state: Some(prefix_state),
+            prefix_cache_policy: Some(prefix_policy),
+            prefix_cache_identity: prefix_identity,
         };
         Ok(GenerationResponse::new(
             request,
@@ -2854,18 +3129,19 @@ mod tests {
     use mox_core::{DType, Shape};
     use mox_runtime::{
         KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelState,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelState, PrefixCacheState,
     };
 
     use super::{
-        CpuReferenceTextGenerationService, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
-        EmbeddingsExecutor, FixtureWordTokenizer, GenerationLoadState, GenerationModelHandle,
-        GenerationOptions, GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
-        InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
-        LocalModelCatalog, ModelDescriptor, ModelSummary, MoxLocalRuntime,
-        ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, ShowObservation,
-        SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason, TextGenerationExecutor,
-        TokenId, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
+        CpuReferenceTextGenerationService, CpuWordGenerationModel, EmbeddingRequest,
+        EmbeddingResponse, EmbeddingVector, EmbeddingsExecutor, FixtureWordTokenizer,
+        GenerationLoadState, GenerationModelHandle, GenerationOptions, GenerationRequest,
+        GenerationResponse, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
+        InMemoryKvCache, KvCacheError, ListModelsObservation, LocalModelCatalog, ModelDescriptor,
+        ModelSummary, MoxLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder,
+        SessionId, SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
+        TerminationReason, TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat,
+        WeightSource, WeightTensorMetadata, prefix_compatibility,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -3355,6 +3631,55 @@ mod tests {
     }
 
     #[test]
+    fn shared_prefix_store_reports_hit_miss_and_rebuilt() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let loaded_model = CpuWordGenerationModel::new(ReferenceWordDecoder::new())?;
+        let compatibility = prefix_compatibility(&loaded_model);
+        let tokenizer = loaded_model.model().tokenizer();
+        let hello = tokenizer.encode_with_special_tokens("hello", true, false);
+        let hello_world = tokenizer.encode_with_special_tokens("hello world", true, false);
+        let rusty = TokenSequence::new(vec![FixtureWordTokenizer::RUSTY_ID]);
+        let width = loaded_model.descriptor().config.hidden_size;
+        let vocab_size = loaded_model.descriptor().config.vocab_size;
+
+        let mut cache = InMemoryKvCache::new(loaded_model.descriptor().config.max_context, width);
+        for token in hello_world.as_slice() {
+            cache.append(*token, vec![0.0; width], vec![1.0; width])?;
+        }
+        let prompt_logits = hello_world
+            .as_slice()
+            .iter()
+            .map(|token| vec![token.as_u32() as f32; vocab_size])
+            .collect::<Vec<_>>();
+
+        let mut store = SharedPrefixStore::default();
+        store.record(compatibility.clone(), &hello_world, &prompt_logits, &cache);
+
+        let hit = store.lookup(&compatibility, &hello);
+        assert_eq!(hit.state, PrefixCacheState::Hit);
+        assert_eq!(hit.reused_tokens, hello.len());
+        assert_eq!(
+            hit.identity.as_ref().map(|value| value.prefix_tokens),
+            Some(hello.len())
+        );
+        assert_eq!(
+            hit.cache.as_ref().map(InMemoryKvCache::len),
+            Some(hello.len())
+        );
+        assert_eq!(hit.prompt_logits.len(), hello.len());
+
+        let miss = store.lookup(&compatibility, &rusty);
+        assert_eq!(miss.state, PrefixCacheState::Miss);
+        assert_eq!(miss.reused_tokens, 0);
+
+        store.entries[0].cache.entries.pop();
+        let rebuilt = store.lookup(&compatibility, &hello_world);
+        assert_eq!(rebuilt.state, PrefixCacheState::Rebuilt);
+        assert!(store.entries.is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn model_registry_tracks_active_generation_models() {
         let mut registry = InMemoryGenerationModelRegistry::new();
         let model = ReferenceWordDecoder::new();
@@ -3662,6 +3987,88 @@ mod tests {
         );
         assert!(second.metrics.total_duration_ns.is_some());
         assert_eq!(second.metrics.load_duration_ns, Some(0));
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_text_generation_reports_prefix_hits_and_bypasses()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+
+        let first = service.generate(&GenerationRequest::new_text(
+            "gen-ref-prefix-1",
+            service.model_descriptor().clone(),
+            None,
+            "hello world",
+            GenerationOptions::greedy(4),
+        ))?;
+        assert_eq!(
+            first
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::None)
+        );
+        assert_eq!(first.metrics.prefix_tokens_reused, Some(0));
+
+        let second = service.generate(&GenerationRequest::new_text(
+            "gen-ref-prefix-2",
+            service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(4),
+        ))?;
+        assert_eq!(
+            second
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Hit)
+        );
+        assert_eq!(second.metrics.prefix_tokens_reused, Some(2));
+        assert_eq!(second.output.text, "open agents");
+        assert_eq!(
+            second
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_identity.as_ref())
+                .map(|value| value.prefix_tokens),
+            Some(2)
+        );
+
+        let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
+        let warmed_session = service.generate(&GenerationRequest::new_text(
+            "gen-ref-prefix-3",
+            service.model_descriptor().clone(),
+            Some(session.session_id.clone()),
+            "hello",
+            GenerationOptions::greedy(4),
+        ))?;
+        assert_eq!(
+            warmed_session
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Hit)
+        );
+        assert_eq!(warmed_session.metrics.prefix_tokens_reused, Some(2));
+
+        let bypassed = service.generate(&GenerationRequest::new_text(
+            "gen-ref-prefix-4",
+            service.model_descriptor().clone(),
+            Some(session.session_id),
+            "rusty",
+            GenerationOptions::greedy(4),
+        ))?;
+        assert_eq!(
+            bypassed
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Bypassed)
+        );
+        assert_eq!(bypassed.metrics.prefix_tokens_reused, Some(0));
+        assert_eq!(bypassed.output.text, "grad");
         Ok(())
     }
 

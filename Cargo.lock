@@ -4524,6 +4524,7 @@ dependencies = [
 name = "mox-serve"
 version = "0.1.0"
 dependencies = [
+ "hex",
  "mox-backend-cpu",
  "mox-backend-metal",
  "mox-catalog",
