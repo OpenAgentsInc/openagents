@@ -1,6 +1,9 @@
 //! Canonical graph and plan representation for Mox.
 
-use mox_core::{DType, Device, LazyOp, Shape, Tensor, TensorData, TensorId, TensorSpec};
+use mox_core::{
+    BackendExtensionOp, DType, Device, LazyOp, QuantizationMode, Shape, Tensor, TensorData,
+    TensorId, TensorSpec,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -105,6 +108,14 @@ pub enum GraphError {
         /// Requested axis.
         axis: usize,
     },
+    /// A typed backend-extension op was constructed with invalid inputs.
+    #[error("invalid backend extension `{op}`: {message}")]
+    InvalidBackendExtension {
+        /// Stable backend-extension label.
+        op: String,
+        /// Human-readable validation failure.
+        message: String,
+    },
 }
 
 /// Operation kind recorded in the canonical graph.
@@ -164,6 +175,11 @@ pub enum OpKind {
         /// Reduction axis. `None` means reduce all elements.
         axis: Option<usize>,
     },
+    /// Typed backend-extension op.
+    BackendExtension {
+        /// Backend-extension payload.
+        op: BackendExtensionOp,
+    },
 }
 
 impl OpKind {
@@ -183,6 +199,7 @@ impl OpKind {
             Self::Concat { .. } => "concat",
             Self::Expand { .. } => "expand",
             Self::ReduceSum { .. } => "reduce_sum",
+            Self::BackendExtension { op } => op.label(),
         }
     }
 }
@@ -340,6 +357,11 @@ pub enum ExecutionOp {
         /// Reduction axis. `None` means reduce all elements.
         axis: Option<usize>,
     },
+    /// Typed backend-extension op.
+    BackendExtension {
+        /// Backend-extension payload.
+        op: BackendExtensionOp,
+    },
 }
 
 impl ExecutionOp {
@@ -359,6 +381,7 @@ impl ExecutionOp {
             Self::Concat { .. } => "concat",
             Self::Expand { .. } => "expand",
             Self::ReduceSum { .. } => "reduce_sum",
+            Self::BackendExtension { op } => op.label(),
         }
     }
 
@@ -387,6 +410,7 @@ impl ExecutionOp {
                 shape: shape.clone(),
             },
             OpKind::ReduceSum { axis } => Self::ReduceSum { axis: *axis },
+            OpKind::BackendExtension { op } => Self::BackendExtension { op: op.clone() },
         }
     }
 }
@@ -751,6 +775,237 @@ impl GraphBuilder {
         ))
     }
 
+    /// Applies RMS normalization over the last dimension.
+    pub fn rms_norm(
+        &mut self,
+        input: &Tensor,
+        weight: &Tensor,
+        epsilon: f32,
+    ) -> Result<Tensor, GraphError> {
+        ensure_matching_context("rms_norm", &[input, weight])?;
+        let Some(&last_dim) = input.spec().shape().dims().last() else {
+            return Err(extension_error(
+                "rms_norm",
+                "input must have at least one dimension",
+            ));
+        };
+        if weight.spec().shape().dims() != [last_dim] {
+            return Err(extension_error(
+                "rms_norm",
+                format!(
+                    "weight shape {} must match input last dimension {last_dim}",
+                    weight.spec().shape()
+                ),
+            ));
+        }
+        let spec = TensorSpec::new(
+            input.spec().shape().clone(),
+            input.spec().dtype(),
+            input.spec().device().clone(),
+        );
+        Ok(self.register_backend_extension(
+            BackendExtensionOp::RmsNorm {
+                epsilon: mox_core::StableF32::from_f32(epsilon),
+            },
+            vec![input.id(), weight.id()],
+            spec,
+        ))
+    }
+
+    /// Applies layer normalization over the last dimension.
+    pub fn layer_norm(
+        &mut self,
+        input: &Tensor,
+        weight: &Tensor,
+        bias: &Tensor,
+        epsilon: f32,
+    ) -> Result<Tensor, GraphError> {
+        ensure_matching_context("layer_norm", &[input, weight, bias])?;
+        let Some(&last_dim) = input.spec().shape().dims().last() else {
+            return Err(extension_error(
+                "layer_norm",
+                "input must have at least one dimension",
+            ));
+        };
+        if weight.spec().shape().dims() != [last_dim] {
+            return Err(extension_error(
+                "layer_norm",
+                format!(
+                    "weight shape {} must match input last dimension {last_dim}",
+                    weight.spec().shape()
+                ),
+            ));
+        }
+        if bias.spec().shape().dims() != [last_dim] {
+            return Err(extension_error(
+                "layer_norm",
+                format!(
+                    "bias shape {} must match input last dimension {last_dim}",
+                    bias.spec().shape()
+                ),
+            ));
+        }
+        let spec = TensorSpec::new(
+            input.spec().shape().clone(),
+            input.spec().dtype(),
+            input.spec().device().clone(),
+        );
+        Ok(self.register_backend_extension(
+            BackendExtensionOp::LayerNorm {
+                epsilon: mox_core::StableF32::from_f32(epsilon),
+            },
+            vec![input.id(), weight.id(), bias.id()],
+            spec,
+        ))
+    }
+
+    /// Applies RoPE over a rank-4 `[batch, heads, seq, dim]` tensor.
+    pub fn rope(
+        &mut self,
+        input: &Tensor,
+        cos: &Tensor,
+        sin: &Tensor,
+        interleaved: bool,
+    ) -> Result<Tensor, GraphError> {
+        ensure_matching_context("rotary_embedding", &[input, cos, sin])?;
+        let input_dims = input.spec().shape().dims();
+        if input_dims.len() != 4 || input_dims[3] == 0 || input_dims[3] % 2 != 0 {
+            return Err(extension_error(
+                "rotary_embedding",
+                format!(
+                    "input shape {} must be rank-4 with an even last dimension",
+                    input.spec().shape()
+                ),
+            ));
+        }
+        let seq_len = input_dims[2];
+        let half_dim = input_dims[3] / 2;
+        let cos_dims = cos.spec().shape().dims();
+        let sin_dims = sin.spec().shape().dims();
+        if cos_dims != sin_dims {
+            return Err(extension_error(
+                "rotary_embedding",
+                format!(
+                    "cos shape {} must match sin shape {}",
+                    cos.spec().shape(),
+                    sin.spec().shape()
+                ),
+            ));
+        }
+        let valid = matches!(cos_dims, [s, d] if *s == seq_len && *d == half_dim)
+            || matches!(cos_dims, [b, s, d] if *b == input_dims[0] && *s == seq_len && *d == half_dim);
+        if !valid {
+            return Err(extension_error(
+                "rotary_embedding",
+                format!(
+                    "cos/sin shape {} must be [{seq_len}, {half_dim}] or [{}, {seq_len}, {half_dim}]",
+                    cos.spec().shape(),
+                    input_dims[0]
+                ),
+            ));
+        }
+        let spec = TensorSpec::new(
+            input.spec().shape().clone(),
+            input.spec().dtype(),
+            input.spec().device().clone(),
+        );
+        Ok(self.register_backend_extension(
+            BackendExtensionOp::RotaryEmbedding { interleaved },
+            vec![input.id(), cos.id(), sin.id()],
+            spec,
+        ))
+    }
+
+    /// Applies scaled dot-product attention over rank-4 `[batch, heads, seq, dim]` tensors.
+    pub fn scaled_dot_product_attention(
+        &mut self,
+        query: &Tensor,
+        key: &Tensor,
+        value: &Tensor,
+        scale: f32,
+        causal: bool,
+    ) -> Result<Tensor, GraphError> {
+        ensure_matching_context("scaled_dot_product_attention", &[query, key, value])?;
+        let query_dims = query.spec().shape().dims();
+        let key_dims = key.spec().shape().dims();
+        let value_dims = value.spec().shape().dims();
+        let valid = query_dims.len() == 4
+            && key_dims.len() == 4
+            && value_dims.len() == 4
+            && query_dims[0] == key_dims[0]
+            && query_dims[0] == value_dims[0]
+            && query_dims[1] == key_dims[1]
+            && query_dims[1] == value_dims[1]
+            && key_dims[2] == value_dims[2]
+            && query_dims[3] == key_dims[3];
+        if !valid {
+            return Err(extension_error(
+                "scaled_dot_product_attention",
+                format!(
+                    "query/key/value shapes {} / {} / {} are incompatible",
+                    query.spec().shape(),
+                    key.spec().shape(),
+                    value.spec().shape()
+                ),
+            ));
+        }
+        let spec = TensorSpec::new(
+            Shape::new(vec![
+                query_dims[0],
+                query_dims[1],
+                query_dims[2],
+                value_dims[3],
+            ]),
+            query.spec().dtype(),
+            query.spec().device().clone(),
+        );
+        Ok(self.register_backend_extension(
+            BackendExtensionOp::ScaledDotProductAttention {
+                scale: mox_core::StableF32::from_f32(scale),
+                causal,
+            },
+            vec![query.id(), key.id(), value.id()],
+            spec,
+        ))
+    }
+
+    /// Registers a matmul that is eligible for a quantized-GEMM specialization.
+    pub fn quantized_matmul(
+        &mut self,
+        left: &Tensor,
+        right: &Tensor,
+        rhs_mode: QuantizationMode,
+    ) -> Result<Tensor, GraphError> {
+        if rhs_mode == QuantizationMode::None {
+            return Err(extension_error(
+                "quantized_matmul",
+                "rhs quantization mode must be non-dense",
+            ));
+        }
+        ensure_matching_context("quantized_matmul", &[left, right])?;
+        let left_shape = left.spec().shape();
+        let right_shape = right.spec().shape();
+        let valid = left_shape.rank() == 2
+            && right_shape.rank() == 2
+            && left_shape.dims()[1] == right_shape.dims()[0];
+        if !valid {
+            return Err(extension_error(
+                "quantized_matmul",
+                format!("invalid matmul shapes: left={left_shape} right={right_shape}"),
+            ));
+        }
+        let spec = TensorSpec::new(
+            Shape::new(vec![left_shape.dims()[0], right_shape.dims()[1]]),
+            left.spec().dtype(),
+            left.spec().device().clone(),
+        );
+        Ok(self.register_backend_extension(
+            BackendExtensionOp::QuantizedMatmul { rhs_mode },
+            vec![left.id(), right.id()],
+            spec,
+        ))
+    }
+
     /// Finishes the graph with the provided outputs.
     #[must_use]
     pub fn finish(self, outputs: Vec<Tensor>) -> Graph {
@@ -788,6 +1043,20 @@ impl GraphBuilder {
         Ok(self.register(lazy_op, op, vec![left.id(), right.id()], spec))
     }
 
+    fn register_backend_extension(
+        &mut self,
+        op: BackendExtensionOp,
+        inputs: Vec<TensorId>,
+        spec: TensorSpec,
+    ) -> Tensor {
+        self.register(
+            LazyOp::BackendExtension { op: op.clone() },
+            OpKind::BackendExtension { op },
+            inputs,
+            spec,
+        )
+    }
+
     fn register(
         &mut self,
         lazy_op: LazyOp,
@@ -808,6 +1077,36 @@ impl GraphBuilder {
 
     fn device(&self) -> Device {
         self.device.clone().unwrap_or_else(Device::cpu)
+    }
+}
+
+fn ensure_matching_context(op: &str, tensors: &[&Tensor]) -> Result<(), GraphError> {
+    let Some(first) = tensors.first() else {
+        return Ok(());
+    };
+    let first_dtype = first.spec().dtype();
+    let first_device = first.spec().device();
+    if let Some(tensor) = tensors.iter().skip(1).find(|tensor| {
+        tensor.spec().dtype() != first_dtype || tensor.spec().device() != first_device
+    }) {
+        return Err(extension_error(
+            op,
+            format!(
+                "all inputs must share dtype/device; expected {:?} on {}, actual {:?} on {}",
+                first_dtype,
+                first_device,
+                tensor.spec().dtype(),
+                tensor.spec().device()
+            ),
+        ));
+    }
+    Ok(())
+}
+
+fn extension_error(op: &str, message: impl Into<String>) -> GraphError {
+    GraphError::InvalidBackendExtension {
+        op: String::from(op),
+        message: message.into(),
     }
 }
 
@@ -838,6 +1137,7 @@ fn format_lazy_op(op: &LazyOp) -> String {
         LazyOp::Concat { axis } => format!("concat:axis={axis}"),
         LazyOp::Expand { shape } => format!("expand:shape={shape}"),
         LazyOp::ReduceSum { axis } => format_reduce_axis(*axis),
+        LazyOp::BackendExtension { op } => format_backend_extension_payload(op),
     }
 }
 
@@ -876,7 +1176,28 @@ fn format_execution_payload(op: &ExecutionOp) -> String {
         ExecutionOp::Concat { axis } => format!("axis={axis}"),
         ExecutionOp::Expand { shape } => format!("shape={shape}"),
         ExecutionOp::ReduceSum { axis } => format_reduce_axis(*axis),
+        ExecutionOp::BackendExtension { op } => format_backend_extension_payload(op),
         _ => String::new(),
+    }
+}
+
+fn format_backend_extension_payload(op: &BackendExtensionOp) -> String {
+    match op {
+        BackendExtensionOp::RmsNorm { epsilon } => {
+            format!("epsilon_bits={:08x}", epsilon.0)
+        }
+        BackendExtensionOp::LayerNorm { epsilon } => {
+            format!("epsilon_bits={:08x}", epsilon.0)
+        }
+        BackendExtensionOp::RotaryEmbedding { interleaved } => {
+            format!("interleaved={interleaved}")
+        }
+        BackendExtensionOp::ScaledDotProductAttention { scale, causal } => {
+            format!("scale_bits={:08x},causal={causal}", scale.0)
+        }
+        BackendExtensionOp::QuantizedMatmul { rhs_mode } => {
+            format!("rhs_mode={rhs_mode:?}")
+        }
     }
 }
 
@@ -905,43 +1226,160 @@ fn digest_lines(lines: Vec<String>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use mox_core::Device;
+    use mox_core::{Device, QuantizationMode};
 
     use super::{DType, GraphBuilder, Shape};
 
     #[test]
-    fn graph_digest_is_stable_for_identical_layout_graphs() -> Result<(), super::GraphError> {
-        let digest_a = build_sample_graph()?.stable_digest();
-        let digest_b = build_sample_graph()?.stable_digest();
+    fn graph_digest_is_stable_for_identical_layout_graphs() {
+        let digest_a = build_sample_graph();
+        let digest_b = build_sample_graph();
+        assert!(digest_a.is_ok());
+        assert!(digest_b.is_ok());
+        let Ok(digest_a) = digest_a.map(|graph| graph.stable_digest()) else {
+            return;
+        };
+        let Ok(digest_b) = digest_b.map(|graph| graph.stable_digest()) else {
+            return;
+        };
         assert_eq!(digest_a, digest_b);
-        Ok(())
     }
 
     #[test]
-    fn graph_debug_lists_layout_ops_and_parameters() -> Result<(), super::GraphError> {
-        let graph = build_sample_graph()?;
+    fn graph_debug_lists_layout_ops_and_parameters() {
+        let graph = build_sample_graph();
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
         let debug = graph.stable_debug();
         assert!(debug.contains("permute:axes=1,0"));
         assert!(debug.contains("concat:axis=0"));
         assert!(debug.contains("reduce_sum"));
         assert!(debug.contains("axis=0"));
-        Ok(())
     }
 
     #[test]
-    fn builder_tracks_expected_view_shapes() -> Result<(), super::GraphError> {
+    fn builder_tracks_expected_view_shapes() {
         let mut builder = GraphBuilder::new(Device::cpu());
         let input = builder.input("input", Shape::new(vec![2, 3]), DType::F32);
-        let permuted = builder.permute(&input, vec![1, 0])?;
-        let sliced = builder.slice(&permuted, 0, 1, 3)?;
-        let selected = builder.select(&sliced, 1, 0)?;
-        let expanded = builder.expand(&selected, Shape::new(vec![2, 2]))?;
+        let permuted = builder.permute(&input, vec![1, 0]);
+        assert!(permuted.is_ok());
+        let Ok(permuted) = permuted else {
+            return;
+        };
+        let sliced = builder.slice(&permuted, 0, 1, 3);
+        assert!(sliced.is_ok());
+        let Ok(sliced) = sliced else {
+            return;
+        };
+        let selected = builder.select(&sliced, 1, 0);
+        assert!(selected.is_ok());
+        let Ok(selected) = selected else {
+            return;
+        };
+        let expanded = builder.expand(&selected, Shape::new(vec![2, 2]));
+        assert!(expanded.is_ok());
+        let Ok(expanded) = expanded else {
+            return;
+        };
 
         assert_eq!(permuted.spec().shape().dims(), &[3, 2]);
         assert_eq!(sliced.spec().shape().dims(), &[2, 2]);
         assert_eq!(selected.spec().shape().dims(), &[2]);
         assert_eq!(expanded.spec().shape().dims(), &[2, 2]);
-        Ok(())
+    }
+
+    #[test]
+    fn builder_tracks_backend_extension_ops_and_payloads() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![1, 2, 2, 4]), DType::F32);
+        let norm_weight = builder.constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0]);
+        assert!(norm_weight.is_ok());
+        let Ok(norm_weight) = norm_weight else {
+            return;
+        };
+        let norm_bias = builder.constant_f32(Shape::new(vec![4]), vec![0.0, 0.0, 0.0, 0.0]);
+        assert!(norm_bias.is_ok());
+        let Ok(norm_bias) = norm_bias else {
+            return;
+        };
+        let cos = builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 0.0, 1.0, 0.0]);
+        assert!(cos.is_ok());
+        let Ok(cos) = cos else {
+            return;
+        };
+        let sin = builder.constant_f32(Shape::new(vec![2, 2]), vec![0.0, 1.0, 0.0, 1.0]);
+        assert!(sin.is_ok());
+        let Ok(sin) = sin else {
+            return;
+        };
+        let qk_weights = builder.constant_f32(Shape::new(vec![4, 4]), vec![1.0f32; 16]);
+        assert!(qk_weights.is_ok());
+        let Ok(qk_weights) = qk_weights else {
+            return;
+        };
+        let normed = builder.rms_norm(&input, &norm_weight, 1e-5);
+        assert!(normed.is_ok());
+        let Ok(normed) = normed else {
+            return;
+        };
+        let roped = builder.rope(&normed, &cos, &sin, true);
+        assert!(roped.is_ok());
+        let Ok(roped) = roped else {
+            return;
+        };
+        let attended = builder.scaled_dot_product_attention(&roped, &roped, &roped, 0.5, true);
+        assert!(attended.is_ok());
+        let Ok(attended) = attended else {
+            return;
+        };
+        let flattened = builder.reshape(&attended, Shape::new(vec![4, 4]));
+        assert!(flattened.is_ok());
+        let Ok(flattened) = flattened else {
+            return;
+        };
+        let projected =
+            builder.quantized_matmul(&flattened, &qk_weights, QuantizationMode::GgmlQ4_0);
+        assert!(projected.is_ok());
+        let Ok(projected) = projected else {
+            return;
+        };
+        let shifted = builder.layer_norm(&projected, &norm_weight, &norm_bias, 1e-5);
+        assert!(shifted.is_ok());
+        let Ok(shifted) = shifted else {
+            return;
+        };
+        let graph = builder.finish(vec![shifted]);
+
+        let debug = graph.stable_debug();
+        assert!(debug.contains("rms_norm"));
+        assert!(debug.contains("rotary_embedding"));
+        assert!(debug.contains("scaled_dot_product_attention"));
+        assert!(debug.contains("quantized_matmul"));
+        assert!(debug.contains("layer_norm"));
+    }
+
+    #[test]
+    fn rope_rejects_invalid_cos_shape() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![1, 2, 2, 4]), DType::F32);
+        let cos = builder.constant_f32(Shape::new(vec![3, 2]), vec![1.0f32; 6]);
+        assert!(cos.is_ok());
+        let Ok(cos) = cos else {
+            return;
+        };
+        let sin = builder.constant_f32(Shape::new(vec![3, 2]), vec![0.0f32; 6]);
+        assert!(sin.is_ok());
+        let Ok(sin) = sin else {
+            return;
+        };
+
+        let error = builder.rope(&input, &cos, &sin, false);
+        assert!(matches!(
+            error,
+            Err(super::GraphError::InvalidBackendExtension { .. })
+        ));
     }
 
     fn build_sample_graph() -> Result<super::Graph, super::GraphError> {

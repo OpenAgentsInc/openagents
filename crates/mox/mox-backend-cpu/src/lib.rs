@@ -3,13 +3,16 @@
 use std::collections::{BTreeMap, HashMap};
 
 use mox_compiler::compile_graph;
-use mox_core::{DType, Device, Shape, TensorData, TensorId, TensorSpec};
+use mox_core::{
+    BackendExtensionKind, BackendExtensionOp, DType, Device, QuantizationMode, Shape, TensorData,
+    TensorId, TensorSpec,
+};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
-    BackendName, BackendRuntimeResources, BackendSelection, BufferHandle, DeviceDescriptor,
-    DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus,
-    KernelCachePolicy, KernelCacheReport, KernelCacheState, QuantizationExecution,
+    BackendExtensionSupport, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
+    DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult,
+    HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, QuantizationExecution,
     QuantizationLoadPath, QuantizationSupport, RuntimeError, RuntimeHealth,
 };
 
@@ -194,6 +197,7 @@ impl CpuBackend {
                     .collect::<Vec<_>>();
                 CpuBuffer::from_f32(step.spec.clone(), output)?
             }
+            ExecutionOp::BackendExtension { op } => self.backend_extension(step, values, op)?,
             ExecutionOp::Matmul => self.matmul(step, values)?,
             ExecutionOp::Reshape => {
                 let source = self.input(step, values, 0)?.logical_values();
@@ -211,6 +215,31 @@ impl CpuBackend {
 
         values.insert(step.output, buffer);
         Ok(())
+    }
+
+    fn backend_extension(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        op: &BackendExtensionOp,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        match op {
+            BackendExtensionOp::RmsNorm { epsilon } => {
+                self.rms_norm(step, values, epsilon.to_f32())
+            }
+            BackendExtensionOp::LayerNorm { epsilon } => {
+                self.layer_norm(step, values, epsilon.to_f32())
+            }
+            BackendExtensionOp::RotaryEmbedding { interleaved } => {
+                self.rotary_embedding(step, values, *interleaved)
+            }
+            BackendExtensionOp::ScaledDotProductAttention { scale, causal } => {
+                self.scaled_dot_product_attention(step, values, scale.to_f32(), *causal)
+            }
+            BackendExtensionOp::QuantizedMatmul { rhs_mode } => {
+                self.quantized_matmul(step, values, *rhs_mode)
+            }
+        }
     }
 
     fn input<'a>(
@@ -326,6 +355,219 @@ impl CpuBackend {
             Some(axis) => reduce_sum_axis(&logical, input.spec().shape().dims(), axis)?,
         };
         CpuBuffer::from_f32(step.spec.clone(), output)
+    }
+
+    fn rms_norm(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        epsilon: f32,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        let input = self.input(step, values, 0)?.logical_values();
+        let weight = self.input(step, values, 1)?.logical_values();
+        let last_dim = weight.len();
+        let mut output = vec![0.0; input.len()];
+        for (src_row, dst_row) in input
+            .chunks_exact(last_dim)
+            .zip(output.chunks_exact_mut(last_dim))
+        {
+            let mean_square =
+                src_row.iter().map(|value| value * value).sum::<f32>() / last_dim as f32;
+            let inv = (mean_square + epsilon).sqrt().recip();
+            for ((dst, value), scale) in dst_row.iter_mut().zip(src_row.iter()).zip(weight.iter()) {
+                *dst = *value * inv * *scale;
+            }
+        }
+        CpuBuffer::from_f32(step.spec.clone(), output)
+    }
+
+    fn layer_norm(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        epsilon: f32,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        let input = self.input(step, values, 0)?.logical_values();
+        let weight = self.input(step, values, 1)?.logical_values();
+        let bias = self.input(step, values, 2)?.logical_values();
+        let last_dim = weight.len();
+        let mut output = vec![0.0; input.len()];
+        for (src_row, dst_row) in input
+            .chunks_exact(last_dim)
+            .zip(output.chunks_exact_mut(last_dim))
+        {
+            let mean = src_row.iter().sum::<f32>() / last_dim as f32;
+            let variance = src_row
+                .iter()
+                .map(|value| {
+                    let centered = *value - mean;
+                    centered * centered
+                })
+                .sum::<f32>()
+                / last_dim as f32;
+            let inv = (variance + epsilon).sqrt().recip();
+            for (((dst, value), scale), bias) in dst_row
+                .iter_mut()
+                .zip(src_row.iter())
+                .zip(weight.iter())
+                .zip(bias.iter())
+            {
+                *dst = (*value - mean) * inv * *scale + *bias;
+            }
+        }
+        CpuBuffer::from_f32(step.spec.clone(), output)
+    }
+
+    fn rotary_embedding(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        interleaved: bool,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        let input = self.input(step, values, 0)?.logical_values();
+        let cos_buffer = self.input(step, values, 1)?;
+        let sin_buffer = self.input(step, values, 2)?;
+        let cos = cos_buffer.logical_values();
+        let sin = sin_buffer.logical_values();
+        let dims = step.spec.shape().dims();
+        let batch = dims[0];
+        let heads = dims[1];
+        let seq_len = dims[2];
+        let head_dim = dims[3];
+        let half_dim = head_dim / 2;
+        let cos_dims = cos_buffer.spec().shape().dims();
+        let batched_cos = cos_dims.len() == 3;
+        let mut output = input.clone();
+
+        for batch_index in 0..batch {
+            for head_index in 0..heads {
+                for position in 0..seq_len {
+                    let base = ((batch_index * heads + head_index) * seq_len + position) * head_dim;
+                    for pair in 0..half_dim {
+                        let cos_index = if batched_cos {
+                            (batch_index * seq_len + position) * half_dim + pair
+                        } else {
+                            position * half_dim + pair
+                        };
+                        let cosine = cos[cos_index];
+                        let sine = sin[cos_index];
+                        let (left_index, right_index) = if interleaved {
+                            (base + pair * 2, base + pair * 2 + 1)
+                        } else {
+                            (base + pair, base + half_dim + pair)
+                        };
+                        let left = input[left_index];
+                        let right = input[right_index];
+                        output[left_index] = left * cosine - right * sine;
+                        output[right_index] = left * sine + right * cosine;
+                    }
+                }
+            }
+        }
+
+        CpuBuffer::from_f32(step.spec.clone(), output)
+    }
+
+    fn scaled_dot_product_attention(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        scale: f32,
+        causal: bool,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        let query = self.input(step, values, 0)?.logical_values();
+        let key_buffer = self.input(step, values, 1)?;
+        let value_buffer = self.input(step, values, 2)?;
+        let key = key_buffer.logical_values();
+        let value = value_buffer.logical_values();
+        let query_dims = self.input(step, values, 0)?.spec().shape().dims().to_vec();
+        let key_dims = key_buffer.spec().shape().dims().to_vec();
+        let value_dims = value_buffer.spec().shape().dims().to_vec();
+        let batch = query_dims[0];
+        let heads = query_dims[1];
+        let query_seq = query_dims[2];
+        let key_seq = key_dims[2];
+        let head_dim = query_dims[3];
+        let value_dim = value_dims[3];
+        let mut output = vec![0.0; batch * heads * query_seq * value_dim];
+        let mut scores = vec![0.0; key_seq];
+        let mut weights = vec![0.0; key_seq];
+
+        for batch_index in 0..batch {
+            for head_index in 0..heads {
+                for query_index in 0..query_seq {
+                    let mut max_score = f32::NEG_INFINITY;
+                    let mut valid_scores = 0usize;
+                    for key_index in 0..key_seq {
+                        if causal && key_index > query_index {
+                            scores[key_index] = f32::NEG_INFINITY;
+                            continue;
+                        }
+                        let mut dot = 0.0;
+                        let query_base = ((batch_index * heads + head_index) * query_seq
+                            + query_index)
+                            * head_dim;
+                        let key_base =
+                            ((batch_index * heads + head_index) * key_seq + key_index) * head_dim;
+                        for dim in 0..head_dim {
+                            dot += query[query_base + dim] * key[key_base + dim];
+                        }
+                        let score = dot * scale;
+                        scores[key_index] = score;
+                        max_score = max_score.max(score);
+                        valid_scores += 1;
+                    }
+
+                    if valid_scores == 0 {
+                        continue;
+                    }
+
+                    let mut weight_sum = 0.0;
+                    for key_index in 0..key_seq {
+                        if !scores[key_index].is_finite() {
+                            weights[key_index] = 0.0;
+                            continue;
+                        }
+                        let weight = (scores[key_index] - max_score).exp();
+                        weights[key_index] = weight;
+                        weight_sum += weight;
+                    }
+                    if weight_sum <= 0.0 {
+                        continue;
+                    }
+
+                    let output_base =
+                        ((batch_index * heads + head_index) * query_seq + query_index) * value_dim;
+                    for key_index in 0..key_seq {
+                        let normalized = weights[key_index] / weight_sum;
+                        if normalized == 0.0 {
+                            continue;
+                        }
+                        let value_base =
+                            ((batch_index * heads + head_index) * key_seq + key_index) * value_dim;
+                        for dim in 0..value_dim {
+                            output[output_base + dim] += normalized * value[value_base + dim];
+                        }
+                    }
+                }
+            }
+        }
+
+        CpuBuffer::from_f32(step.spec.clone(), output)
+    }
+
+    fn quantized_matmul(
+        &self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, CpuBuffer>,
+        rhs_mode: QuantizationMode,
+    ) -> Result<CpuBuffer, RuntimeError> {
+        if rhs_mode == QuantizationMode::None {
+            return Err(RuntimeError::Backend(String::from(
+                "quantized_matmul requires a non-dense rhs quantization mode",
+            )));
+        }
+        self.matmul(step, values)
     }
 }
 
@@ -461,6 +703,16 @@ impl DeviceDiscovery for CpuBackend {
             device_memory_budget: None,
         })
     }
+
+    fn extension_support(&self) -> Vec<BackendExtensionSupport> {
+        vec![
+            BackendExtensionSupport::reference(BackendExtensionKind::RmsNorm),
+            BackendExtensionSupport::reference(BackendExtensionKind::LayerNorm),
+            BackendExtensionSupport::reference(BackendExtensionKind::RotaryEmbedding),
+            BackendExtensionSupport::reference(BackendExtensionKind::ScaledDotProductAttention),
+            BackendExtensionSupport::reference(BackendExtensionKind::QuantizedMatmul),
+        ]
+    }
 }
 
 impl Allocator for CpuBackend {
@@ -574,7 +826,7 @@ fn for_each_index(shape: &Shape, mut f: impl FnMut(&[usize])) {
 mod tests {
     use std::collections::BTreeMap;
 
-    use mox_core::{DType, Device, Shape, TensorSpec};
+    use mox_core::{BackendExtensionKind, DType, Device, QuantizationMode, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
     use mox_runtime::{
         Allocator, AllocatorPoolMode, BackendSelectionState, BufferHandle, DeviceDiscovery,
@@ -640,10 +892,24 @@ mod tests {
         assert_eq!(selection.selection_state, BackendSelectionState::Direct);
         assert!(selection.fallback_reason.is_none());
         assert!(selection.degraded_reason.is_none());
+        assert_eq!(
+            selection
+                .backend_extensions
+                .iter()
+                .map(|support| support.kind)
+                .collect::<Vec<_>>(),
+            vec![
+                BackendExtensionKind::RmsNorm,
+                BackendExtensionKind::LayerNorm,
+                BackendExtensionKind::RotaryEmbedding,
+                BackendExtensionKind::ScaledDotProductAttention,
+                BackendExtensionKind::QuantizedMatmul,
+            ]
+        );
         let runtime_resources = selection
             .runtime_resources
             .as_ref()
-            .expect("cpu runtime resources");
+            .ok_or_else(|| RuntimeError::Backend(String::from("cpu runtime resources")))?;
         assert_eq!(
             runtime_resources.allocator_pool.policy.mode,
             AllocatorPoolMode::ExactTensorSpec
@@ -782,25 +1048,93 @@ mod tests {
         );
         let _ = backend.compile_and_execute(&graph, &inputs)?;
 
-        let before = backend
+        let runtime_resources = backend
             .runtime_resources()
-            .expect("cpu runtime resources")
-            .allocator_pool
-            .state
-            .cached_buffers;
+            .ok_or_else(|| RuntimeError::Backend(String::from("cpu runtime resources")))?;
+        let before = runtime_resources.allocator_pool.state.cached_buffers;
         assert!(before >= 1);
 
         let spec = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
         let buffer = backend.allocate(&spec)?;
-        let after = backend
+        let runtime_resources = backend
             .runtime_resources()
-            .expect("cpu runtime resources")
-            .allocator_pool
-            .state
-            .cached_buffers;
+            .ok_or_else(|| RuntimeError::Backend(String::from("cpu runtime resources")))?;
+        let after = runtime_resources.allocator_pool.state.cached_buffers;
 
         assert!(after < before);
         assert_eq!(buffer.as_f32_slice(), &[0.0, 0.0, 0.0, 0.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_backend_executes_backend_extension_reference_ops() -> Result<(), RuntimeError> {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![1, 1, 2, 4]), DType::F32);
+        let weight = builder
+            .constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0])
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let bias = builder
+            .constant_f32(Shape::new(vec![4]), vec![0.1, 0.1, 0.1, 0.1])
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let cos = builder
+            .constant_f32(Shape::new(vec![2, 2]), vec![1.0, 0.0, 1.0, 0.0])
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let sin = builder
+            .constant_f32(Shape::new(vec![2, 2]), vec![0.0, 1.0, 0.0, 1.0])
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let rhs = builder
+            .constant_f32(
+                Shape::new(vec![4, 4]),
+                vec![
+                    1.0, 0.0, 0.0, 0.0, //
+                    0.0, 1.0, 0.0, 0.0, //
+                    0.0, 0.0, 1.0, 0.0, //
+                    0.0, 0.0, 0.0, 1.0,
+                ],
+            )
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+
+        let normed = builder
+            .rms_norm(&input, &weight, 1e-5)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let roped = builder
+            .rope(&normed, &cos, &sin, true)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let attended = builder
+            .scaled_dot_product_attention(&roped, &roped, &roped, 0.5, true)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let flattened = builder
+            .reshape(&attended, Shape::new(vec![2, 4]))
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let quantized = builder
+            .quantized_matmul(&flattened, &rhs, QuantizationMode::GgmlQ4_0)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let output = builder
+            .layer_norm(&quantized, &weight, &bias, 1e-5)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![output.clone()]);
+
+        let mut backend = CpuBackend::new();
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(
+                Shape::new(vec![1, 1, 2, 4]),
+                vec![
+                    1.0, 2.0, 3.0, 4.0, //
+                    4.0, 3.0, 2.0, 1.0,
+                ],
+            )?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let output_buffer = result
+            .outputs
+            .get(&output.id())
+            .ok_or_else(|| RuntimeError::Backend(String::from("extension output")))?;
+        let values = output_buffer.logical_values();
+        assert_eq!(values.len(), 8);
+        assert!(values.iter().all(|value| value.is_finite()));
         Ok(())
     }
 }
