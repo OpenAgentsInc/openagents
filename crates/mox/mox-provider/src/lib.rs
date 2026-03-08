@@ -7,11 +7,12 @@ use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
     BackendProbeState, BackendSelection, BackendToolchainIdentity, CacheAction,
     CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    DeviceInventoryQualifiers, HealthStatus, KvCacheAccounting, KvCachePolicy,
-    LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
-    ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
-    NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    ServedArtifactIdentity, ValidationMatrixReference, validation_reference_for_served_product,
+    DeviceInventoryQualifiers, ExecutionCapabilityProfile, HealthStatus, KvCacheAccounting,
+    KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot,
+    ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile,
+    NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy,
+    PrefixCacheState, ServedArtifactIdentity, ValidationMatrixReference,
+    validation_reference_for_served_product,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -21,8 +22,9 @@ use mox_serve::{
     ModelArtifactProvenanceKind, QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID,
     TerminationReason, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
     cache_invalidation_policy, cache_observations_for_embedding_model,
-    default_decoder_kv_cache_policy, default_prefix_cache_policy,
-    served_artifact_identity_for_decoder_model, served_artifact_identity_for_embedding_model,
+    default_decoder_kv_cache_policy, default_embeddings_execution_profile,
+    default_prefix_cache_policy, served_artifact_identity_for_decoder_model,
+    served_artifact_identity_for_embedding_model,
 };
 
 /// Human-readable crate ownership summary.
@@ -461,6 +463,8 @@ pub struct CapabilityEnvelope {
     pub supply_decision: ComputeMarketSupplyDecision,
     /// Explicit runtime-owned cache invalidation policy.
     pub cache_invalidation_policy: CacheInvalidationPolicy,
+    /// Explicit batch, queueing, and throughput profile for the served path.
+    pub execution_profile: ExecutionCapabilityProfile,
     /// Stable output dimensions.
     pub dimensions: usize,
     /// Normalization policy applied to returned vectors.
@@ -527,6 +531,7 @@ impl CapabilityEnvelope {
             supply_policy,
             supply_decision,
             cache_invalidation_policy: cache_invalidation_policy(),
+            execution_profile: default_embeddings_execution_profile(),
             dimensions,
             normalization,
             preserves_input_order: true,
@@ -808,18 +813,6 @@ pub enum KvCacheMode {
     Tiered,
 }
 
-/// Batch posture exposed to provider capability consumers.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum BatchPosture {
-    /// Single-request reference path only.
-    SingleRequestOnly,
-    /// Future static batching.
-    StaticBatch,
-    /// Future continuous batching.
-    Continuous,
-}
-
 /// Capability envelope for a text-generation provider.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TextGenerationCapabilityEnvelope {
@@ -879,8 +872,8 @@ pub struct TextGenerationCapabilityEnvelope {
     /// Explicit shared prompt-prefix reuse policy.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_cache_policy: Option<PrefixCacheReusePolicy>,
-    /// Advertised batching posture.
-    pub batch_posture: BatchPosture,
+    /// Explicit batch, queueing, and throughput profile for the served path.
+    pub execution_profile: ExecutionCapabilityProfile,
     /// Current readiness state.
     pub readiness: ProviderReadiness,
 }
@@ -894,7 +887,7 @@ impl TextGenerationCapabilityEnvelope {
         memory_plan: ModelMemoryPlan,
         residency_policy: ModelResidencyPolicy,
         kv_cache_mode: KvCacheMode,
-        batch_posture: BatchPosture,
+        execution_profile: ExecutionCapabilityProfile,
         readiness: ProviderReadiness,
     ) -> Self {
         let served_artifact = served_artifact_identity_for_decoder_model(model, &backend_selection);
@@ -934,7 +927,7 @@ impl TextGenerationCapabilityEnvelope {
                 .then(|| default_decoder_kv_cache_policy(model)),
             prefix_cache_policy: Some(default_prefix_cache_policy()),
             kv_cache_mode,
-            batch_posture,
+            execution_profile,
             readiness,
         }
     }
@@ -1603,13 +1596,14 @@ mod tests {
         TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
         default_decoder_kv_cache_policy, default_decoder_memory_plan,
         default_generation_streaming_policy, default_prefix_cache_policy,
+        default_text_generation_execution_profile,
     };
     use serde_json::json;
     use tempfile::tempdir;
 
     use super::{
-        BatchPosture, CapabilityEnvelope, ComputeMarketSupplyViolationCode, ExecutionReceipt,
-        KvCacheMode, LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
+        CapabilityEnvelope, ComputeMarketSupplyViolationCode, ExecutionReceipt, KvCacheMode,
+        LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
         TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
         cache_invalidation_policy, compute_market_supply_refusal_diagnostic,
         default_compute_market_supply_policy, digest_embedding_request, digest_generation_request,
@@ -1821,6 +1815,16 @@ mod tests {
                         ]
                     }
                 },
+                "execution_profile": {
+                    "batch_posture": "caller_static_batch",
+                    "queue_policy": {
+                        "discipline": "direct_caller_backpressure",
+                        "max_active_requests": 1,
+                        "max_queued_requests": 0,
+                        "per_model_serialization": true
+                    },
+                    "throughput_class": "balanced"
+                },
                 "dimensions": 8,
                 "normalization": "None",
                 "preserves_input_order": true,
@@ -1845,7 +1849,7 @@ mod tests {
             default_decoder_memory_plan(&model, None, None),
             ModelResidencyPolicy::default(),
             KvCacheMode::Paged,
-            BatchPosture::SingleRequestOnly,
+            default_text_generation_execution_profile(),
             ProviderReadiness::ready("cpu backend ready"),
         );
 
@@ -2085,7 +2089,16 @@ mod tests {
                     "shared_across_models": false,
                     "shared_across_backends": false
                 },
-                "batch_posture": "single_request_only",
+                "execution_profile": {
+                    "batch_posture": "single_request_only",
+                    "queue_policy": {
+                        "discipline": "direct_caller_backpressure",
+                        "max_active_requests": 1,
+                        "max_queued_requests": 0,
+                        "per_model_serialization": true
+                    },
+                    "throughput_class": "latency_optimized"
+                },
                 "readiness": {
                     "status": "Ready",
                     "message": "cpu backend ready"
@@ -2272,6 +2285,7 @@ mod tests {
         let envelope = LocalRuntimeObservabilityEnvelope::new(LocalRuntimeObservability {
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             cache_invalidation_policy: cache_invalidation_policy(),
+            execution_profile: default_text_generation_execution_profile(),
             queue_depth: 0,
             queue_capacity: None,
             active_sessions: 2,
@@ -2398,6 +2412,16 @@ mod tests {
                                 "kv_state_format_upgrade"
                             ]
                         }
+                    },
+                    "execution_profile": {
+                        "batch_posture": "single_request_only",
+                        "queue_policy": {
+                            "discipline": "direct_caller_backpressure",
+                            "max_active_requests": 1,
+                            "max_queued_requests": 0,
+                            "per_model_serialization": true
+                        },
+                        "throughput_class": "latency_optimized"
                     },
                     "queue_depth": 0,
                     "active_sessions": 2,

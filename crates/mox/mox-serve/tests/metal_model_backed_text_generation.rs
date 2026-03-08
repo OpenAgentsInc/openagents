@@ -1,11 +1,12 @@
 use mox_provider::{
-    BatchPosture, KvCacheMode, ProviderReadiness, ReceiptStatus, TextGenerationCapabilityEnvelope,
+    KvCacheMode, ProviderReadiness, ReceiptStatus, TextGenerationCapabilityEnvelope,
     TextGenerationReceipt,
 };
 use mox_runtime::{BackendSelectionState, HealthStatus, LocalRuntimeErrorCode};
 use mox_serve::{
     ArtifactWordDecoder, GenerationOptions, GenerationRequest, MetalModelTextGenerationService,
     MetalTextGenerationError, TerminationReason, TextGenerationExecutor,
+    default_text_generation_execution_profile,
 };
 use tempfile::tempdir;
 
@@ -50,7 +51,7 @@ fn metal_model_backed_text_generation_returns_response_capability_and_receipt_or
                 loaded_view.memory_plan.clone(),
                 loaded_view.residency_policy.clone(),
                 KvCacheMode::Paged,
-                BatchPosture::SingleRequestOnly,
+                default_text_generation_execution_profile(),
                 ProviderReadiness::ready("metal backend ready"),
             );
             let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -93,7 +94,10 @@ fn metal_model_backed_text_generation_returns_response_capability_and_receipt_or
                 request.model.weights.digest
             );
             assert_eq!(capability.kv_cache_mode, KvCacheMode::Paged);
-            assert_eq!(capability.batch_posture, BatchPosture::SingleRequestOnly);
+            assert_eq!(
+                capability.execution_profile,
+                default_text_generation_execution_profile()
+            );
             let capability_json = serde_json::to_string_pretty(&capability)?;
             assert!(capability_json.contains("\"runtime_backend\": \"metal\""));
             assert!(capability_json.contains("\"effective_backend\": \"metal\""));

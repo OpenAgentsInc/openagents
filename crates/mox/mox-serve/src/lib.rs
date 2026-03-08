@@ -35,14 +35,14 @@ pub use mox_models::{
 use mox_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
     CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
-    KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-    LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
-    LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
-    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler,
-    default_cache_invalidation_policy, plan_model_admission,
+    DeviceDiscovery, ExecutionCapabilityProfile, HealthStatus, KvCacheAccounting,
+    KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+    LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+    LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, RuntimeTransitionEvent,
+    RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
+    ServedArtifactIdentity, TokenSampler, default_cache_invalidation_policy, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -163,6 +163,18 @@ pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
         shared_across_models: false,
         shared_across_backends: false,
     }
+}
+
+/// Returns the default execution profile for current local text generation.
+#[must_use]
+pub fn default_text_generation_execution_profile() -> ExecutionCapabilityProfile {
+    ExecutionCapabilityProfile::single_request_latency_optimized()
+}
+
+/// Returns the default execution profile for current local embeddings.
+#[must_use]
+pub fn default_embeddings_execution_profile() -> ExecutionCapabilityProfile {
+    ExecutionCapabilityProfile::caller_static_batch_balanced()
 }
 
 /// Returns the current runtime-owned cache invalidation policy.
@@ -1734,6 +1746,7 @@ where
     LocalRuntimeObservability {
         isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
         cache_invalidation_policy: cache_invalidation_policy(),
+        execution_profile: default_text_generation_execution_profile(),
         queue_depth: 0,
         queue_capacity: None,
         active_sessions: sessions.len(),

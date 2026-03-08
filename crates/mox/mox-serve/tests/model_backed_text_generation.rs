@@ -1,13 +1,13 @@
 use mox_backend_cpu::CpuBackend;
 use mox_models::ModelLoadError;
 use mox_provider::{
-    BatchPosture, KvCacheMode, ProviderReadiness, ReceiptStatus, TextGenerationCapabilityEnvelope,
+    KvCacheMode, ProviderReadiness, ReceiptStatus, TextGenerationCapabilityEnvelope,
     TextGenerationReceipt,
 };
 use mox_serve::{
     ArtifactWordDecoder, CpuModelTextGenerationService, GenerationOptions, GenerationRequest,
     ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, TerminationReason,
-    TextGenerationExecutor,
+    TextGenerationExecutor, default_text_generation_execution_profile,
 };
 use tempfile::tempdir;
 
@@ -40,7 +40,7 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
         loaded_view.memory_plan.clone(),
         loaded_view.residency_policy.clone(),
         KvCacheMode::Paged,
-        BatchPosture::SingleRequestOnly,
+        default_text_generation_execution_profile(),
         ProviderReadiness::ready("cpu backend ready"),
     );
     let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -81,7 +81,10 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert!(capability.memory_plan.resident_host_bytes > 0);
     assert_eq!(capability.kv_cache_mode, KvCacheMode::Paged);
     assert!(capability.kv_cache_policy.is_some());
-    assert_eq!(capability.batch_posture, BatchPosture::SingleRequestOnly);
+    assert_eq!(
+        capability.execution_profile,
+        default_text_generation_execution_profile()
+    );
     let capability_json = serde_json::to_string_pretty(&capability)?;
     assert!(capability_json.contains("\"model_revision\": \"v1\""));
     assert!(capability_json.contains("\"weight_bundle\""));
