@@ -12,7 +12,7 @@ use std::{
 
 use mox_catalog::{
     BlobError, BlobReadPath, LocalBlob, LocalBlobKind, LocalBlobMetadata, LocalBlobOpenOptions,
-    OllamaManifest, PagedBlobRange,
+    OllamaAdapterPolicy, OllamaManifest, PagedBlobRange,
 };
 use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
 use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
@@ -1884,6 +1884,14 @@ impl GgufBlobArtifact {
         manifest: &OllamaManifest,
         options: LocalBlobOpenOptions,
     ) -> Result<Self, ModelLoadError> {
+        let adapter_policy = manifest.adapter_policy_status();
+        if !adapter_policy.supported {
+            return Err(ModelLoadError::UnsupportedOllamaAdapterPolicy {
+                model: manifest.name.canonical_name(),
+                adapter_layers: adapter_policy.adapter_layer_count,
+                policy: adapter_policy.policy,
+            });
+        }
         let layer =
             manifest
                 .primary_model_layer()
@@ -4384,6 +4392,18 @@ pub enum ModelLoadError {
         family: String,
         /// Unsupported feature summary.
         feature: String,
+    },
+    /// The Ollama manifest carries adapter layers that Mox does not support at the replacement boundary yet.
+    #[error(
+        "unsupported ollama adapter policy for `{model}`: policy=`{policy}` adapter_layers={adapter_layers}"
+    )]
+    UnsupportedOllamaAdapterPolicy {
+        /// Canonical Ollama model name.
+        model: String,
+        /// Number of adapter layers carried by the manifest.
+        adapter_layers: usize,
+        /// Current Mox adapter policy.
+        policy: OllamaAdapterPolicy,
     },
     /// Opening or paging a local blob failed.
     #[error(transparent)]
@@ -7303,6 +7323,65 @@ mod tests {
             super::ModelLoadError::ArtifactRead { ref message, .. }
                 if message.contains("integrity verification failed")
                     && message.contains("blob digest mismatch")
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_weight_bundle_loader_refuses_adapter_bearing_ollama_manifest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let bytes = build_test_gguf(
+            GgufVersion::V3,
+            &[],
+            &[TestGgufTensor::new(
+                "dense",
+                vec![2],
+                GgufTensorType::F32,
+                super::encode_f32_bytes(&[1.0, 2.0]),
+            )],
+        )?;
+        let digest = hex::encode(Sha256::digest(bytes.as_slice()));
+        let blob_path = temp.path().join("blobs").join(format!("sha256-{digest}"));
+        std::fs::create_dir_all(blob_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(&blob_path, &bytes)?;
+
+        let adapter_digest = hex::encode(Sha256::digest(b"adapter-gguf"));
+        let adapter_path = temp
+            .path()
+            .join("blobs")
+            .join(format!("sha256-{adapter_digest}"));
+        std::fs::write(&adapter_path, b"adapter-gguf")?;
+
+        let manifest_path = temp
+            .path()
+            .join("manifests/registry.ollama.ai/library/qwen2-adapter/latest");
+        std::fs::create_dir_all(manifest_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(
+            &manifest_path,
+            format!(
+                r#"{{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json","layers":[{{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:{digest}","size":{}}},{{"mediaType":"application/vnd.ollama.image.adapter","digest":"sha256:{adapter_digest}","size":12}}]}}"#,
+                bytes.len()
+            ),
+        )?;
+
+        let manifest = OllamaModelCatalog::new(temp.path()).resolve_model("qwen2-adapter")?;
+        let error = GgufWeightBundleLoader
+            .load_ollama_manifest(
+                &manifest,
+                LocalBlobOpenOptions::default()
+                    .with_read_preference(BlobReadPreference::PreferBuffered)
+                    .with_page_size(16),
+            )
+            .expect_err("adapter-bearing manifest should be refused explicitly");
+
+        assert!(matches!(
+            error,
+            super::ModelLoadError::UnsupportedOllamaAdapterPolicy {
+                ref model,
+                adapter_layers,
+                policy: mox_catalog::OllamaAdapterPolicy::RefuseManifestWithAdapters,
+            } if model == "registry.ollama.ai/library/qwen2-adapter:latest" && adapter_layers == 1
         ));
         Ok(())
     }
