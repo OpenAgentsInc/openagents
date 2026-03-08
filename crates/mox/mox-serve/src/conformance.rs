@@ -5,7 +5,14 @@ use std::{
     path::Path,
 };
 
-use mox_models::{GoldenPromptRole, digest_chat_template, golden_prompt_fixture};
+use mox_catalog::{
+    BlobReadPreference, LocalBlobOpenOptions, OllamaLayerKind, OllamaManifest, OllamaModelCatalog,
+    OllamaModelConfig,
+};
+use mox_models::{
+    GgufBlobArtifact, GgufMetadataValue, GoldenPromptRole, digest_chat_template,
+    golden_prompt_fixture,
+};
 use mox_runtime::{EmbeddingParityBudget, compare_embedding_vectors};
 use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -1057,6 +1064,236 @@ impl ConformanceSubject for RecordedConformanceSubject {
     }
 }
 
+/// Local installed-model subject backed directly by the shared Ollama catalog substrate.
+pub struct LocalOllamaCatalogSubject {
+    label: String,
+    catalog: OllamaModelCatalog,
+    blob_options: LocalBlobOpenOptions,
+}
+
+impl LocalOllamaCatalogSubject {
+    /// Creates a local subject rooted at an Ollama models directory.
+    #[must_use]
+    pub fn new(models_root: impl AsRef<Path>) -> Self {
+        let catalog = OllamaModelCatalog::new(models_root);
+        Self {
+            label: format!("mox-local@{}", catalog.models_root().display()),
+            catalog,
+            blob_options: LocalBlobOpenOptions::default(),
+        }
+    }
+
+    /// Overrides the blob-open options used for local layer and GGUF reads.
+    #[must_use]
+    pub fn with_blob_options(mut self, blob_options: LocalBlobOpenOptions) -> Self {
+        self.blob_options = blob_options;
+        self
+    }
+
+    /// Returns the local `tags` / `list_models` observation.
+    #[must_use]
+    pub fn list_models_observation(&self) -> ListModelsObservation {
+        let discovery = match self.catalog.discover_models() {
+            Ok(discovery) => discovery,
+            Err(error) => return ListModelsObservation::error(500, error.to_string()),
+        };
+
+        let mut models = Vec::new();
+        for manifest in discovery.manifests {
+            let config = if manifest.config.is_some() {
+                match manifest.load_config(self.small_blob_options()) {
+                    Ok(config) => config,
+                    Err(_) => continue,
+                }
+            } else {
+                None
+            };
+
+            models.push(ModelSummary {
+                name: manifest.short_name,
+                digest: Some(manifest.manifest_sha256),
+                family: config
+                    .as_ref()
+                    .and_then(OllamaModelConfig::family)
+                    .map(str::to_string),
+                format: config
+                    .as_ref()
+                    .and_then(OllamaModelConfig::format)
+                    .map(str::to_string),
+                quantization: config
+                    .as_ref()
+                    .and_then(OllamaModelConfig::quantization_level)
+                    .map(str::to_string),
+                size_bytes: Some(manifest.total_blob_size_bytes),
+                remote_host: config
+                    .as_ref()
+                    .and_then(OllamaModelConfig::remote_host)
+                    .map(str::to_string),
+                remote_model: config
+                    .as_ref()
+                    .and_then(OllamaModelConfig::remote_model)
+                    .map(str::to_string),
+            });
+        }
+
+        ListModelsObservation::new(models)
+    }
+
+    /// Returns the local `show` / `show_model` observation for one model.
+    #[must_use]
+    pub fn show_model_observation(&self, model: &str) -> ShowObservation {
+        let manifest = match self.catalog.resolve_model(model) {
+            Ok(manifest) => manifest,
+            Err(error) => return show_catalog_error(model, error),
+        };
+
+        let config = match manifest.load_config(self.small_blob_options()) {
+            Ok(config) => config,
+            Err(error) => return ShowObservation::error(model, 500, error.to_string()),
+        };
+
+        match self.build_show_observation(model, &manifest, config.as_ref()) {
+            Ok(observation) => observation,
+            Err(message) => ShowObservation::error(model, 500, message),
+        }
+    }
+
+    fn build_show_observation(
+        &self,
+        requested_model: &str,
+        manifest: &OllamaManifest,
+        config: Option<&OllamaModelConfig>,
+    ) -> Result<ShowObservation, String> {
+        let template = manifest
+            .load_template(self.small_blob_options())
+            .map_err(|error| error.to_string())?;
+        let gguf_artifact = manifest
+            .primary_model_layer()
+            .map(|layer| {
+                GgufBlobArtifact::open_ollama_blob(
+                    self.catalog.models_root(),
+                    layer.digest.as_str(),
+                    self.blob_options.clone(),
+                )
+                .map_err(|error| error.to_string())
+            })
+            .transpose()?;
+        let model_metadata = gguf_artifact
+            .as_ref()
+            .map(|artifact| artifact.content().metadata());
+
+        let mut format = config
+            .and_then(OllamaModelConfig::format)
+            .map(str::to_string);
+        if format.is_none() && gguf_artifact.is_some() {
+            format = Some(String::from("gguf"));
+        }
+
+        let mut family = config
+            .and_then(OllamaModelConfig::family)
+            .map(str::to_string);
+        if family.is_none() {
+            family = model_metadata
+                .and_then(|metadata| metadata.get("general.architecture"))
+                .and_then(GgufMetadataValue::as_str)
+                .map(str::to_string);
+        }
+
+        let facts = if let Some(metadata) = model_metadata {
+            select_model_info_facts(local_gguf_model_info(metadata))
+        } else {
+            select_model_info_facts(remote_model_info(config))
+        };
+
+        Ok(ShowObservation {
+            model: requested_model.to_string(),
+            format,
+            family,
+            families: config.map_or_else(Vec::new, OllamaModelConfig::families),
+            quantization: config
+                .and_then(OllamaModelConfig::quantization_level)
+                .map(str::to_string),
+            chat_template_digest: template
+                .as_deref()
+                .filter(|value| !value.is_empty())
+                .map(digest_chat_template),
+            capabilities: derive_local_capabilities(
+                requested_model,
+                config,
+                manifest,
+                template.as_deref(),
+                model_metadata,
+            ),
+            facts,
+            error: None,
+        })
+    }
+
+    fn small_blob_options(&self) -> LocalBlobOpenOptions {
+        self.blob_options
+            .clone()
+            .with_read_preference(BlobReadPreference::PreferBuffered)
+    }
+}
+
+impl ConformanceSubject for LocalOllamaCatalogSubject {
+    fn label(&self) -> &str {
+        self.label.as_str()
+    }
+
+    fn tags(
+        &mut self,
+    ) -> Result<SubjectObservation<ListModelsObservation>, ConformanceSubjectError> {
+        Ok(SubjectObservation::Supported(
+            self.list_models_observation(),
+        ))
+    }
+
+    fn show(
+        &mut self,
+        case: &ShowConformanceCase,
+    ) -> Result<SubjectObservation<ShowObservation>, ConformanceSubjectError> {
+        Ok(SubjectObservation::Supported(
+            self.show_model_observation(case.model.as_str()),
+        ))
+    }
+
+    fn ps(
+        &mut self,
+    ) -> Result<SubjectObservation<LoadedModelsObservation>, ConformanceSubjectError> {
+        Ok(SubjectObservation::Unsupported {
+            reason: String::from("loaded-model lifecycle is not implemented yet"),
+        })
+    }
+
+    fn generate(
+        &mut self,
+        _case: &GenerateConformanceCase,
+    ) -> Result<SubjectObservation<GenerateObservation>, ConformanceSubjectError> {
+        Ok(SubjectObservation::Unsupported {
+            reason: String::from("text generation is not implemented by the catalog subject"),
+        })
+    }
+
+    fn generate_stream(
+        &mut self,
+        _case: &GenerateConformanceCase,
+    ) -> Result<SubjectObservation<GenerateStreamObservation>, ConformanceSubjectError> {
+        Ok(SubjectObservation::Unsupported {
+            reason: String::from("streaming generation is not implemented by the catalog subject"),
+        })
+    }
+
+    fn embed(
+        &mut self,
+        _case: &EmbedConformanceCase,
+    ) -> Result<SubjectObservation<EmbedObservation>, ConformanceSubjectError> {
+        Ok(SubjectObservation::Unsupported {
+            reason: String::from("embeddings are not implemented by the catalog subject"),
+        })
+    }
+}
+
 /// Live adapter for the subset of Ollama HTTP behavior the desktop depends on.
 pub struct OllamaHttpSubject {
     label: String,
@@ -1817,6 +2054,214 @@ fn build_embed_payload(case: &EmbedConformanceCase) -> Value {
     Value::Object(request)
 }
 
+fn show_catalog_error(model: &str, error: mox_catalog::CatalogError) -> ShowObservation {
+    match error {
+        mox_catalog::CatalogError::InvalidModelName { .. } => {
+            ShowObservation::error(model, 400, error.to_string())
+        }
+        mox_catalog::CatalogError::MissingManifest { .. } => {
+            ShowObservation::error(model, 404, format!("model '{model}' not found"))
+        }
+        mox_catalog::CatalogError::InvalidManifestPath { .. }
+        | mox_catalog::CatalogError::ReadManifest { .. }
+        | mox_catalog::CatalogError::DecodeManifest { .. }
+        | mox_catalog::CatalogError::InvalidManifest { .. }
+        | mox_catalog::CatalogError::DecodeLayer { .. }
+        | mox_catalog::CatalogError::Blob(_) => {
+            ShowObservation::error(model, 500, error.to_string())
+        }
+    }
+}
+
+fn derive_local_capabilities(
+    requested_model: &str,
+    config: Option<&OllamaModelConfig>,
+    manifest: &OllamaManifest,
+    template: Option<&str>,
+    metadata: Option<&BTreeMap<String, GgufMetadataValue>>,
+) -> Vec<String> {
+    let mut capabilities = Vec::new();
+
+    if let Some(metadata) = metadata {
+        if metadata_contains_suffix_key(metadata, "pooling_type") {
+            capabilities.push(String::from("embedding"));
+        } else {
+            capabilities.push(String::from("completion"));
+        }
+        if metadata_contains_suffix_key(metadata, "vision.block_count") {
+            capabilities.push(String::from("vision"));
+        }
+    } else if let Some(config) = config {
+        capabilities.extend(config.capabilities());
+    }
+
+    if let Some(template) = template {
+        if template_contains_variable(template, "tools")
+            || config
+                .and_then(OllamaModelConfig::parser)
+                .is_some_and(parser_has_tool_support)
+        {
+            capabilities.push(String::from("tools"));
+        }
+        if template_contains_variable(template, "suffix") {
+            capabilities.push(String::from("insert"));
+        }
+    }
+
+    if manifest
+        .first_layer_of_kind(OllamaLayerKind::Projector)
+        .is_some()
+    {
+        capabilities.push(String::from("vision"));
+    }
+
+    if !capabilities
+        .iter()
+        .any(|capability| capability == "thinking")
+        && (template_has_thinking_markers(template)
+            || config
+                .and_then(OllamaModelConfig::parser)
+                .is_some_and(parser_has_thinking_support)
+            || config
+                .and_then(OllamaModelConfig::family)
+                .is_some_and(gpt_oss_family)
+            || requested_model.contains("gpt-oss"))
+    {
+        capabilities.push(String::from("thinking"));
+    }
+
+    sorted_strings(capabilities)
+}
+
+fn remote_model_info(config: Option<&OllamaModelConfig>) -> BTreeMap<String, Value> {
+    let mut model_info = BTreeMap::new();
+    if let Some(family) = config.and_then(OllamaModelConfig::family) {
+        model_info.insert(
+            String::from("general.architecture"),
+            Value::String(family.to_string()),
+        );
+    }
+    model_info
+}
+
+fn local_gguf_model_info(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+) -> BTreeMap<String, Value> {
+    const KEYS: [&str; 10] = [
+        "general.architecture",
+        "tokenizer.ggml.model",
+        "tokenizer.ggml.pre",
+        "tokenizer.ggml.add_bos_token",
+        "tokenizer.ggml.add_eos_token",
+        "tokenizer.ggml.bos_token_id",
+        "tokenizer.ggml.eos_token_id",
+        "tokenizer.ggml.eos_token_ids",
+        "tokenizer.ggml.padding_token_id",
+        "tokenizer.ggml.unknown_token_id",
+    ];
+
+    let mut model_info = BTreeMap::new();
+    for key in KEYS {
+        if let Some(value) = metadata.get(key) {
+            model_info.insert(String::from(key), gguf_metadata_to_json(value));
+        }
+    }
+    model_info
+}
+
+fn gguf_metadata_to_json(value: &GgufMetadataValue) -> Value {
+    match value {
+        GgufMetadataValue::U8(value) => Value::from(*value),
+        GgufMetadataValue::I8(value) => Value::from(*value),
+        GgufMetadataValue::U16(value) => Value::from(*value),
+        GgufMetadataValue::I16(value) => Value::from(*value),
+        GgufMetadataValue::U32(value) => Value::from(*value),
+        GgufMetadataValue::I32(value) => Value::from(*value),
+        GgufMetadataValue::U64(value) => Value::from(*value),
+        GgufMetadataValue::I64(value) => Value::from(*value),
+        GgufMetadataValue::F32(value) => serde_json::Number::from_f64(f64::from(*value))
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        GgufMetadataValue::F64(value) => serde_json::Number::from_f64(*value)
+            .map(Value::Number)
+            .unwrap_or(Value::Null),
+        GgufMetadataValue::Bool(value) => Value::Bool(*value),
+        GgufMetadataValue::String(value) => Value::String(value.clone()),
+        GgufMetadataValue::Array(values) => {
+            Value::Array(values.iter().map(gguf_metadata_to_json).collect())
+        }
+    }
+}
+
+fn metadata_contains_suffix_key(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    suffix: &str,
+) -> bool {
+    metadata.contains_key(suffix)
+        || metadata.keys().any(|key| {
+            key.strip_suffix(suffix)
+                .is_some_and(|prefix| prefix.ends_with('.'))
+        })
+}
+
+fn template_contains_variable(template: &str, variable: &str) -> bool {
+    let quoted_single = format!("'{variable}'");
+    let quoted_double = format!("\"{variable}\"");
+    let dotted = format!(".{variable}");
+    template.contains(quoted_single.as_str())
+        || template.contains(quoted_double.as_str())
+        || template.contains(dotted.as_str())
+        || template.contains(variable)
+}
+
+fn template_has_thinking_markers(template: Option<&str>) -> bool {
+    template.is_some_and(|template| {
+        (template.contains("<think>") && template.contains("</think>"))
+            || (template.contains("<thinking>") && template.contains("</thinking>"))
+    })
+}
+
+fn gpt_oss_family(family: &str) -> bool {
+    matches!(family, "gptoss" | "gpt-oss")
+}
+
+fn parser_has_tool_support(parser: &str) -> bool {
+    matches!(
+        parser,
+        "cogito"
+            | "deepseek3"
+            | "functiongemma"
+            | "glm-4.7"
+            | "glm-ocr"
+            | "lfm2"
+            | "lfm2-thinking"
+            | "ministral"
+            | "nemotron-3-nano"
+            | "olmo3"
+            | "qwen3"
+            | "qwen3-thinking"
+            | "qwen3-coder"
+            | "qwen3-vl-instruct"
+            | "qwen3-vl-thinking"
+            | "qwen3.5"
+    )
+}
+
+fn parser_has_thinking_support(parser: &str) -> bool {
+    matches!(
+        parser,
+        "cogito"
+            | "deepseek3"
+            | "glm-4.7"
+            | "lfm2-thinking"
+            | "nemotron-3-nano"
+            | "olmo3-think"
+            | "qwen3-thinking"
+            | "qwen3-vl-thinking"
+            | "qwen3.5"
+    )
+}
+
 fn parse_error_body(status: u16, body: &str) -> SemanticError {
     if let Ok(payload) = serde_json::from_str::<OllamaErrorBody>(body)
         && let Some(error) = payload.error
@@ -1971,8 +2416,10 @@ struct OllamaEmbedResponse {
 mod tests {
     use super::*;
     use std::{
+        fs,
         io::{Read, Write},
         net::{Shutdown, TcpListener, TcpStream},
+        path::Path,
         sync::{
             Arc,
             atomic::{AtomicBool, Ordering},
@@ -1982,6 +2429,7 @@ mod tests {
 
     use mox_core::QuantizationMode;
     use mox_runtime::BackendParityPolicy;
+    use sha2::{Digest, Sha256};
 
     #[test]
     fn generate_case_builder_uses_real_qwen2_fixture() -> Result<(), Box<dyn std::error::Error>> {
@@ -2234,6 +2682,195 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn local_ollama_catalog_subject_lists_and_shows_models()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let model_bytes = build_test_gguf(&[
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("qwen2")),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(String::from("Tiny Qwen2")),
+            ),
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("gpt2")),
+            ),
+            (
+                String::from("tokenizer.ggml.pre"),
+                GgufMetadataValue::String(String::from("qwen2")),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(151645),
+            ),
+        ])?;
+        let model_digest = write_blob(temp.path(), model_bytes.as_slice())?;
+        let config_digest = write_blob(
+            temp.path(),
+            br#"{
+                "model_format":"gguf",
+                "model_family":"qwen2",
+                "model_families":["qwen2"],
+                "model_type":"7B",
+                "file_type":"Q4_0"
+            }"#,
+        )?;
+        let template_digest = write_blob(
+            temp.path(),
+            b"{% for message in messages %}{% if loop.first and messages[0]['role'] != 'system' %}{{ '<|im_start|>system\nYou are a helpful assistant<|im_end|>\n' }}{% endif %}{{'<|im_start|>' + message['role'] + '\n' + message['content'] + '<|im_end|>' + '\n'}}{% endfor %}{% if add_generation_prompt %}{{ '<|im_start|>assistant\n' }}{% endif %}",
+        )?;
+        let bad_config_digest = write_blob(temp.path(), b"{")?;
+
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2/latest",
+            json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "digest": config_digest,
+                    "size": 123
+                },
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                        "size": 456
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.template",
+                        "digest": template_digest,
+                        "size": 42
+                    }
+                ]
+            }),
+        )?;
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/bad/latest",
+            json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "digest": bad_config_digest,
+                    "size": 1
+                },
+                "layers": []
+            }),
+        )?;
+
+        let mut subject = LocalOllamaCatalogSubject::new(temp.path());
+
+        let tags = subject.tags()?;
+        match tags {
+            SubjectObservation::Supported(tags) => {
+                assert_eq!(tags.models.len(), 1);
+                assert_eq!(tags.models[0].name, "qwen2:latest");
+                assert_eq!(tags.models[0].family.as_deref(), Some("qwen2"));
+                assert_eq!(tags.models[0].format.as_deref(), Some("gguf"));
+                assert_eq!(tags.models[0].quantization.as_deref(), Some("Q4_0"));
+                assert_eq!(tags.models[0].size_bytes, Some(621));
+                assert_eq!(tags.models[0].digest.as_ref().map(String::len), Some(64));
+            }
+            SubjectObservation::Unsupported { reason } => {
+                return Err(format!("unexpected tags unsupported: {reason}").into());
+            }
+        }
+
+        let show = subject.show(&ShowConformanceCase {
+            id: String::from("local-show"),
+            model: String::from("qwen2"),
+            expected_candidate_difference: None,
+        })?;
+        match show {
+            SubjectObservation::Supported(show) => {
+                assert_eq!(show.family.as_deref(), Some("qwen2"));
+                assert_eq!(show.format.as_deref(), Some("gguf"));
+                assert_eq!(show.quantization.as_deref(), Some("Q4_0"));
+                assert_eq!(
+                    show.chat_template_digest.as_deref(),
+                    Some("af9c0233881b083b52ff773580215222b5440ac3d0beeeca99b76329b048f8db")
+                );
+                assert_eq!(show.capabilities, vec![String::from("completion")]);
+                assert_eq!(
+                    show.facts.get("general.architecture").map(String::as_str),
+                    Some("qwen2")
+                );
+                assert_eq!(
+                    show.facts.get("tokenizer.ggml.model").map(String::as_str),
+                    Some("gpt2")
+                );
+                assert_eq!(
+                    show.facts.get("tokenizer.ggml.pre").map(String::as_str),
+                    Some("qwen2")
+                );
+                assert_eq!(
+                    show.facts
+                        .get("tokenizer.ggml.add_bos_token")
+                        .map(String::as_str),
+                    Some("false")
+                );
+                assert_eq!(
+                    show.facts
+                        .get("tokenizer.ggml.add_eos_token")
+                        .map(String::as_str),
+                    Some("false")
+                );
+                assert_eq!(
+                    show.facts
+                        .get("tokenizer.ggml.eos_token_id")
+                        .map(String::as_str),
+                    Some("151645")
+                );
+                assert!(!show.facts.contains_key("general.name"));
+            }
+            SubjectObservation::Unsupported { reason } => {
+                return Err(format!("unexpected show unsupported: {reason}").into());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn local_ollama_catalog_subject_reports_missing_model() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp = tempfile::tempdir()?;
+        let mut subject = LocalOllamaCatalogSubject::new(temp.path());
+
+        let show = subject.show(&ShowConformanceCase {
+            id: String::from("missing"),
+            model: String::from("missing-model"),
+            expected_candidate_difference: None,
+        })?;
+        match show {
+            SubjectObservation::Supported(show) => {
+                let error = show.error.expect("missing-model error");
+                assert_eq!(error.status, 404);
+                assert_eq!(error.message, "model 'missing-model' not found");
+            }
+            SubjectObservation::Unsupported { reason } => {
+                return Err(format!("unexpected show unsupported: {reason}").into());
+            }
+        }
+
+        Ok(())
+    }
+
     struct TestServer {
         base_url: String,
         alive: Arc<AtomicBool>,
@@ -2455,5 +3092,130 @@ mod tests {
         )?;
         stream.flush()?;
         Ok(())
+    }
+
+    fn write_manifest(
+        models_root: &Path,
+        relpath: &str,
+        json: Value,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let path = models_root.join("manifests").join(relpath);
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, serde_json::to_vec(&json)?)?;
+        Ok(())
+    }
+
+    fn write_blob(models_root: &Path, bytes: &[u8]) -> Result<String, Box<dyn std::error::Error>> {
+        let digest = format!("sha256:{:x}", Sha256::digest(bytes));
+        let path = models_root.join("blobs").join(digest.replace(':', "-"));
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        fs::write(path, bytes)?;
+        Ok(digest)
+    }
+
+    fn build_test_gguf(
+        metadata: &[(String, GgufMetadataValue)],
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let alignment = metadata
+            .iter()
+            .find(|(key, _)| key == "general.alignment")
+            .and_then(|(_, value)| match value {
+                GgufMetadataValue::U64(value) => Some(*value),
+                GgufMetadataValue::U32(value) => Some(u64::from(*value)),
+                _ => None,
+            })
+            .unwrap_or(32);
+
+        let mut bytes = Vec::new();
+        bytes.extend_from_slice(b"GGUF");
+        push_u32(&mut bytes, 3);
+        push_u64(&mut bytes, 0);
+        push_u64(&mut bytes, u64::try_from(metadata.len())?);
+
+        for (key, value) in metadata {
+            push_gguf_string(&mut bytes, key)?;
+            push_u32(&mut bytes, gguf_metadata_value_type(value));
+            push_gguf_value(&mut bytes, value)?;
+        }
+
+        let aligned = align_offset_local(bytes.len() as u64, alignment);
+        bytes.resize(aligned as usize, 0);
+        Ok(bytes)
+    }
+
+    fn push_gguf_string(
+        bytes: &mut Vec<u8>,
+        value: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        push_u64(bytes, u64::try_from(value.len())?);
+        bytes.extend_from_slice(value.as_bytes());
+        Ok(())
+    }
+
+    fn push_gguf_value(
+        bytes: &mut Vec<u8>,
+        value: &GgufMetadataValue,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match value {
+            GgufMetadataValue::U8(value) => bytes.push(*value),
+            GgufMetadataValue::I8(value) => bytes.push(value.to_le_bytes()[0]),
+            GgufMetadataValue::U16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::Bool(value) => bytes.push(u8::from(*value)),
+            GgufMetadataValue::String(value) => push_gguf_string(bytes, value)?,
+            GgufMetadataValue::Array(values) => {
+                let value_type = values.first().map_or(4, gguf_metadata_value_type);
+                push_u32(bytes, value_type);
+                push_u64(bytes, u64::try_from(values.len())?);
+                for value in values {
+                    push_gguf_value(bytes, value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn gguf_metadata_value_type(value: &GgufMetadataValue) -> u32 {
+        match value {
+            GgufMetadataValue::U8(_) => 0,
+            GgufMetadataValue::I8(_) => 1,
+            GgufMetadataValue::U16(_) => 2,
+            GgufMetadataValue::I16(_) => 3,
+            GgufMetadataValue::U32(_) => 4,
+            GgufMetadataValue::I32(_) => 5,
+            GgufMetadataValue::F32(_) => 6,
+            GgufMetadataValue::Bool(_) => 7,
+            GgufMetadataValue::String(_) => 8,
+            GgufMetadataValue::Array(_) => 9,
+            GgufMetadataValue::U64(_) => 10,
+            GgufMetadataValue::I64(_) => 11,
+            GgufMetadataValue::F64(_) => 12,
+        }
+    }
+
+    fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_u64(bytes: &mut Vec<u8>, value: u64) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn align_offset_local(value: u64, alignment: u64) -> u64 {
+        if alignment <= 1 {
+            value
+        } else {
+            value.div_ceil(alignment) * alignment
+        }
     }
 }

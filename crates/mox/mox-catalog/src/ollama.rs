@@ -2,9 +2,11 @@ use std::{
     collections::BTreeMap,
     fmt, fs,
     path::{Path, PathBuf},
+    time::SystemTime,
 };
 
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::Value;
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
@@ -71,6 +73,14 @@ pub enum CatalogError {
         /// Manifest path.
         path: String,
         /// Validation failure summary.
+        message: String,
+    },
+    /// Decoding a manifest layer payload failed.
+    #[error("failed to decode ollama layer `{path}`: {message}")]
+    DecodeLayer {
+        /// Layer blob path.
+        path: String,
+        /// Failure summary.
         message: String,
     },
     /// Blob access delegated to the lower-level blob substrate failed.
@@ -373,6 +383,27 @@ impl OllamaManifestLayer {
             options,
         )?)
     }
+
+    /// Reads the full layer blob into a UTF-8 string.
+    pub fn read_text(&self, options: LocalBlobOpenOptions) -> Result<String, CatalogError> {
+        let blob = self.open_blob(options)?;
+        String::from_utf8(blob.bytes().to_vec()).map_err(|error| CatalogError::DecodeLayer {
+            path: self.blob_path.display().to_string(),
+            message: error.to_string(),
+        })
+    }
+
+    /// Decodes the full layer blob as JSON.
+    pub fn decode_json<T: DeserializeOwned>(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<T, CatalogError> {
+        let blob = self.open_blob(options)?;
+        serde_json::from_slice(blob.bytes()).map_err(|error| CatalogError::DecodeLayer {
+            path: self.blob_path.display().to_string(),
+            message: error.to_string(),
+        })
+    }
 }
 
 /// One resolved local Ollama manifest plus layer identity and size truth.
@@ -409,6 +440,260 @@ impl OllamaManifest {
             .iter()
             .find(|layer| layer.kind == OllamaLayerKind::Model)
     }
+
+    /// Returns the first layer matching the requested logical role.
+    #[must_use]
+    pub fn first_layer_of_kind(&self, kind: OllamaLayerKind) -> Option<&OllamaManifestLayer> {
+        self.layers.iter().find(|layer| layer.kind == kind)
+    }
+
+    /// Returns the manifest file modification time.
+    pub fn modified_at(&self) -> Result<SystemTime, CatalogError> {
+        fs::metadata(&self.manifest_path)
+            .map_err(|error| CatalogError::ReadManifest {
+                path: self.manifest_path.display().to_string(),
+                message: error.to_string(),
+            })?
+            .modified()
+            .map_err(|error| CatalogError::ReadManifest {
+                path: self.manifest_path.display().to_string(),
+                message: error.to_string(),
+            })
+    }
+
+    /// Loads the manifest config blob when one exists.
+    pub fn load_config(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Option<OllamaModelConfig>, CatalogError> {
+        self.config
+            .as_ref()
+            .map(|layer| layer.decode_json(options))
+            .transpose()
+    }
+
+    /// Loads the effective prompt/template layer text when present.
+    pub fn load_template(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Option<String>, CatalogError> {
+        self.load_last_text_layer(
+            &[OllamaLayerKind::Prompt, OllamaLayerKind::Template],
+            options,
+        )
+    }
+
+    /// Loads the effective system-prompt layer text when present.
+    pub fn load_system_prompt(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Option<String>, CatalogError> {
+        self.load_last_text_layer(&[OllamaLayerKind::System], options)
+    }
+
+    /// Loads the effective parameters/options layer when present.
+    pub fn load_parameters(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Option<BTreeMap<String, Value>>, CatalogError> {
+        self.load_last_json_layer(OllamaLayerKind::Parameters, options)
+    }
+
+    /// Loads the effective message-history layer when present.
+    pub fn load_messages(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Vec<OllamaStoredMessage>, CatalogError> {
+        Ok(self
+            .load_last_json_layer::<Vec<OllamaStoredMessage>>(OllamaLayerKind::Messages, options)?
+            .unwrap_or_default())
+    }
+
+    /// Loads all license text blobs in manifest order.
+    pub fn load_licenses(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Vec<String>, CatalogError> {
+        let mut licenses = Vec::new();
+        for layer in self
+            .layers
+            .iter()
+            .filter(|layer| layer.kind == OllamaLayerKind::License)
+        {
+            licenses.push(layer.read_text(options.clone())?);
+        }
+        Ok(licenses)
+    }
+
+    fn load_last_text_layer(
+        &self,
+        kinds: &[OllamaLayerKind],
+        options: LocalBlobOpenOptions,
+    ) -> Result<Option<String>, CatalogError> {
+        let mut value = None;
+        for layer in self
+            .layers
+            .iter()
+            .filter(|layer| kinds.contains(&layer.kind))
+        {
+            value = Some(layer.read_text(options.clone())?);
+        }
+        Ok(value)
+    }
+
+    fn load_last_json_layer<T: DeserializeOwned>(
+        &self,
+        kind: OllamaLayerKind,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Option<T>, CatalogError> {
+        let mut value = None;
+        for layer in self.layers.iter().filter(|layer| layer.kind == kind) {
+            value = Some(layer.decode_json(options.clone())?);
+        }
+        Ok(value)
+    }
+}
+
+/// Decoded Ollama config layer with the fields needed by local list/show parity.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaModelConfig {
+    /// User-visible weight format label.
+    #[serde(default)]
+    pub model_format: String,
+    /// User-visible model family label.
+    #[serde(default)]
+    pub model_family: String,
+    /// Additional family aliases.
+    #[serde(default)]
+    pub model_families: Vec<String>,
+    /// User-visible parameter-size label.
+    #[serde(default)]
+    pub model_type: String,
+    /// User-visible quantization label.
+    #[serde(default)]
+    pub file_type: String,
+    /// Optional renderer label.
+    #[serde(default)]
+    pub renderer: String,
+    /// Optional parser label.
+    #[serde(default)]
+    pub parser: String,
+    /// Optional runtime requirement string.
+    #[serde(default)]
+    pub requires: String,
+    /// Optional upstream host for remote aliases.
+    #[serde(default)]
+    pub remote_host: String,
+    /// Optional upstream model for remote aliases.
+    #[serde(default)]
+    pub remote_model: String,
+    /// Explicit capability list for non-GGUF-backed models.
+    #[serde(default)]
+    pub capabilities: Vec<String>,
+    /// Remote-model context window when explicitly declared.
+    #[serde(default)]
+    pub context_length: usize,
+    /// Remote-model embedding width when explicitly declared.
+    #[serde(default)]
+    pub embedding_length: usize,
+    /// Optional base model name.
+    #[serde(default)]
+    pub base_name: String,
+}
+
+impl OllamaModelConfig {
+    /// Returns the non-empty model format.
+    #[must_use]
+    pub fn format(&self) -> Option<&str> {
+        non_empty(self.model_format.as_str())
+    }
+
+    /// Returns the non-empty primary family label.
+    #[must_use]
+    pub fn family(&self) -> Option<&str> {
+        non_empty(self.model_family.as_str())
+    }
+
+    /// Returns stable family aliases with empties removed.
+    #[must_use]
+    pub fn families(&self) -> Vec<String> {
+        self.model_families
+            .iter()
+            .filter_map(|value| non_empty(value.as_str()).map(str::to_string))
+            .collect()
+    }
+
+    /// Returns the non-empty parameter-size label.
+    #[must_use]
+    pub fn parameter_size(&self) -> Option<&str> {
+        non_empty(self.model_type.as_str())
+    }
+
+    /// Returns the non-empty quantization label.
+    #[must_use]
+    pub fn quantization_level(&self) -> Option<&str> {
+        non_empty(self.file_type.as_str())
+    }
+
+    /// Returns the non-empty parser label.
+    #[must_use]
+    pub fn parser(&self) -> Option<&str> {
+        non_empty(self.parser.as_str())
+    }
+
+    /// Returns the non-empty requirement string.
+    #[must_use]
+    pub fn requires(&self) -> Option<&str> {
+        non_empty(self.requires.as_str())
+    }
+
+    /// Returns the non-empty remote host.
+    #[must_use]
+    pub fn remote_host(&self) -> Option<&str> {
+        non_empty(self.remote_host.as_str())
+    }
+
+    /// Returns the non-empty remote model.
+    #[must_use]
+    pub fn remote_model(&self) -> Option<&str> {
+        non_empty(self.remote_model.as_str())
+    }
+
+    /// Returns the declared non-empty capabilities in stable file order.
+    #[must_use]
+    pub fn capabilities(&self) -> Vec<String> {
+        self.capabilities
+            .iter()
+            .filter_map(|value| non_empty(value.as_str()).map(str::to_string))
+            .collect()
+    }
+
+    /// Returns the declared context length when non-zero.
+    #[must_use]
+    pub fn context_length(&self) -> Option<usize> {
+        (self.context_length > 0).then_some(self.context_length)
+    }
+
+    /// Returns the declared embedding length when non-zero.
+    #[must_use]
+    pub fn embedding_length(&self) -> Option<usize> {
+        (self.embedding_length > 0).then_some(self.embedding_length)
+    }
+
+    /// Returns the non-empty base model name.
+    #[must_use]
+    pub fn base_name(&self) -> Option<&str> {
+        non_empty(self.base_name.as_str())
+    }
+}
+
+/// Decoded message-history row from an Ollama manifest layer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaStoredMessage {
+    /// Message role label.
+    pub role: String,
+    /// Message content.
+    pub content: String,
 }
 
 /// Discovery result over the local Ollama manifest tree.
@@ -574,6 +859,11 @@ fn is_valid_namespace_char(character: char) -> bool {
 
 fn is_valid_model_char(character: char) -> bool {
     character.is_ascii_alphanumeric() || matches!(character, '-' | '_' | '.')
+}
+
+fn non_empty(value: &str) -> Option<&str> {
+    let value = value.trim();
+    (!value.is_empty()).then_some(value)
 }
 
 fn scan_manifest_tree(
@@ -808,7 +1098,7 @@ struct RawManifestLayer {
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, io::Write, path::Path};
+    use std::{collections::BTreeMap, fs, io::Write, path::Path};
 
     use sha2::{Digest, Sha256};
     use tempfile::tempdir;
@@ -817,7 +1107,8 @@ mod tests {
 
     use super::{
         CatalogError, OLLAMA_DEFAULT_HOST, OLLAMA_DEFAULT_NAMESPACE, OLLAMA_DEFAULT_TAG,
-        OllamaLayerKind, OllamaMediaType, OllamaModelCatalog, OllamaModelName,
+        OllamaLayerKind, OllamaMediaType, OllamaModelCatalog, OllamaModelConfig, OllamaModelName,
+        OllamaStoredMessage,
     };
 
     #[test]
@@ -975,6 +1266,133 @@ mod tests {
             .expect_err("missing manifest should fail");
 
         assert!(matches!(error, CatalogError::MissingManifest { .. }));
+    }
+
+    #[test]
+    fn ollama_manifest_loads_config_and_optional_layers() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp = tempdir()?;
+        let config_digest = write_blob(
+            temp.path(),
+            br#"{
+                "model_format":"gguf",
+                "model_family":"qwen2",
+                "model_families":["qwen2","qwen"],
+                "model_type":"7B",
+                "file_type":"Q4_0",
+                "parser":"qwen2",
+                "requires":"metal",
+                "remote_host":"registry.ollama.ai",
+                "remote_model":"library/qwen2"
+            }"#,
+        )?;
+        let template_digest = write_blob(temp.path(), b"{{ prompt }}")?;
+        let system_digest = write_blob(temp.path(), b"You are helpful.")?;
+        let params_digest = write_blob(temp.path(), br#"{"seed":42,"stop":["<|im_end|>"]}"#)?;
+        let messages_digest = write_blob(
+            temp.path(),
+            br#"[{"role":"user","content":"hello"},{"role":"assistant","content":"hi"}]"#,
+        )?;
+        let license_digest = write_blob(temp.path(), b"Apache-2.0")?;
+
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2/latest",
+            serde_json::json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "digest": config_digest,
+                    "size": 1
+                },
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.template",
+                        "digest": template_digest,
+                        "size": 1
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.system",
+                        "digest": system_digest,
+                        "size": 1
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.params",
+                        "digest": params_digest,
+                        "size": 1
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.messages",
+                        "digest": messages_digest,
+                        "size": 1
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.license",
+                        "digest": license_digest,
+                        "size": 1
+                    }
+                ]
+            }),
+        )?;
+
+        let manifest = OllamaModelCatalog::new(temp.path()).resolve_model("qwen2")?;
+        let config = manifest
+            .load_config(LocalBlobOpenOptions::default())?
+            .expect("config layer");
+        assert_eq!(
+            config,
+            OllamaModelConfig {
+                model_format: String::from("gguf"),
+                model_family: String::from("qwen2"),
+                model_families: vec![String::from("qwen2"), String::from("qwen")],
+                model_type: String::from("7B"),
+                file_type: String::from("Q4_0"),
+                renderer: String::new(),
+                parser: String::from("qwen2"),
+                requires: String::from("metal"),
+                remote_host: String::from("registry.ollama.ai"),
+                remote_model: String::from("library/qwen2"),
+                capabilities: Vec::new(),
+                context_length: 0,
+                embedding_length: 0,
+                base_name: String::new(),
+            }
+        );
+        assert_eq!(
+            manifest.load_template(LocalBlobOpenOptions::default())?,
+            Some(String::from("{{ prompt }}"))
+        );
+        assert_eq!(
+            manifest.load_system_prompt(LocalBlobOpenOptions::default())?,
+            Some(String::from("You are helpful."))
+        );
+        assert_eq!(
+            manifest.load_parameters(LocalBlobOpenOptions::default())?,
+            Some(BTreeMap::from([
+                (String::from("seed"), serde_json::json!(42)),
+                (String::from("stop"), serde_json::json!(["<|im_end|>"])),
+            ]))
+        );
+        assert_eq!(
+            manifest.load_messages(LocalBlobOpenOptions::default())?,
+            vec![
+                OllamaStoredMessage {
+                    role: String::from("user"),
+                    content: String::from("hello"),
+                },
+                OllamaStoredMessage {
+                    role: String::from("assistant"),
+                    content: String::from("hi"),
+                },
+            ]
+        );
+        assert_eq!(
+            manifest.load_licenses(LocalBlobOpenOptions::default())?,
+            vec![String::from("Apache-2.0")]
+        );
+        assert!(manifest.modified_at()?.elapsed().is_ok());
+        Ok(())
     }
 
     fn write_manifest(

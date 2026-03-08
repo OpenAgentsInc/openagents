@@ -4526,6 +4526,7 @@ version = "0.1.0"
 dependencies = [
  "mox-backend-cpu",
  "mox-backend-metal",
+ "mox-catalog",
  "mox-compiler",
  "mox-core",
  "mox-ir",
@@ -4535,6 +4536,7 @@ dependencies = [
  "reqwest",
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "thiserror 2.0.17",
 ]
