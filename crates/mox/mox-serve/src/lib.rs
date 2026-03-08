@@ -28,17 +28,17 @@ pub use mox_models::{
     ModelDescriptor, ModelLoadError, PromptMessage, PromptMessageRole, PromptRenderError,
     ReferenceWordDecoder, RenderedPrompt, SmokeByteEmbedder, TokenId, TokenSequence,
     TokenVocabulary, TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat,
-    WeightSource, WeightTensorMetadata, apply_context_window,
+    WeightSource, WeightTensorMetadata, apply_context_window, digest_generation_defaults,
 };
 use mox_runtime::{
-    BackendHealthTracker, BackendSelection, BackendSelectionState, DeviceDiscovery, HealthStatus,
-    KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy,
-    KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
-    LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
-    MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError,
-    RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
-    SamplingStrategy, TokenSampler, plan_model_admission,
+    BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
+    DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
+    KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+    LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
+    LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
+    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -159,6 +159,95 @@ pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
         shared_across_models: false,
         shared_across_backends: false,
     }
+}
+
+fn default_generation_defaults_digest() -> String {
+    digest_generation_defaults(false, false, &[])
+}
+
+fn backend_toolchain_identity(
+    runtime_backend: &str,
+    compiled_backend_features: &[String],
+) -> BackendToolchainIdentity {
+    let mut compiled_backend_features = compiled_backend_features.to_vec();
+    compiled_backend_features.sort();
+    compiled_backend_features.dedup();
+    BackendToolchainIdentity::new(
+        runtime_backend,
+        format!("{runtime_backend}@{}", env!("CARGO_PKG_VERSION")),
+        compiled_backend_features,
+    )
+}
+
+fn served_artifact_identity_from_parts(
+    model_id: &str,
+    model_revision: &str,
+    weights: &WeightBundleMetadata,
+    runtime_backend: &str,
+    compiled_backend_features: &[String],
+    artifact_identity: Option<&mox_models::ServedModelArtifactMetadata>,
+) -> ServedArtifactIdentity {
+    ServedArtifactIdentity::new(
+        model_id,
+        model_revision,
+        weights.digest.clone(),
+        artifact_identity.and_then(|value| value.model_blob_digest.clone()),
+        artifact_identity.and_then(|value| value.tokenizer_digest.clone()),
+        artifact_identity.and_then(|value| value.chat_template_digest.clone()),
+        artifact_identity
+            .map(|value| value.generation_defaults_digest.clone())
+            .unwrap_or_else(default_generation_defaults_digest),
+        weights.format.identity_label(),
+        weights.quantization,
+        backend_toolchain_identity(runtime_backend, compiled_backend_features),
+    )
+}
+
+/// Returns the served-artifact identity for an embeddings descriptor and backend selection.
+#[must_use]
+pub fn served_artifact_identity_for_embedding_model(
+    model: &EmbeddingModelDescriptor,
+    backend_selection: &BackendSelection,
+) -> ServedArtifactIdentity {
+    served_artifact_identity_from_parts(
+        model.model.model_id.as_str(),
+        model.model.revision.as_str(),
+        &model.weights,
+        backend_selection.effective_backend.as_str(),
+        &[],
+        model.artifact_identity.as_ref(),
+    )
+}
+
+/// Returns the served-artifact identity for a decoder descriptor and backend selection.
+#[must_use]
+pub fn served_artifact_identity_for_decoder_model(
+    model: &DecoderModelDescriptor,
+    backend_selection: &BackendSelection,
+) -> ServedArtifactIdentity {
+    served_artifact_identity_from_parts(
+        model.model.model_id.as_str(),
+        model.model.revision.as_str(),
+        &model.weights,
+        backend_selection.effective_backend.as_str(),
+        &[],
+        model.artifact_identity.as_ref(),
+    )
+}
+
+fn served_artifact_identity_for_decoder_backend(
+    model: &DecoderModelDescriptor,
+    runtime_backend: &str,
+    compiled_backend_features: &[String],
+) -> ServedArtifactIdentity {
+    served_artifact_identity_from_parts(
+        model.model.model_id.as_str(),
+        model.model.revision.as_str(),
+        &model.weights,
+        runtime_backend,
+        compiled_backend_features,
+        model.artifact_identity.as_ref(),
+    )
 }
 
 /// Embeddings request contract.
@@ -566,6 +655,8 @@ pub enum GenerationLoadState {
 /// Provenance fields attached to one generation response.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenerationProvenance {
+    /// Stable served-artifact identity for the active model/backend path.
+    pub served_artifact: ServedArtifactIdentity,
     /// Stable execution-plan digest for the active model graph.
     pub execution_plan_digest: String,
     /// Whether the request took the warm or cold model path.
@@ -1686,6 +1777,8 @@ impl InMemoryKvCache {
 pub struct GenerationSession {
     /// Stable session identifier.
     pub session_id: SessionId,
+    /// Stable served-artifact digest that owns the session KV state.
+    pub served_artifact_digest: String,
     /// Bound model identifier.
     pub model_id: String,
     /// Bound model family.
@@ -1742,11 +1835,13 @@ pub enum SessionStoreError {
     SessionNotFound(String),
     /// The caller attempted to use a session with the wrong model.
     #[error(
-        "generation session `{session_id}` expects model `{expected_model}` revision `{expected_revision}` bundle `{expected_weight_bundle_digest}` but got model `{actual_model}` revision `{actual_revision}` bundle `{actual_weight_bundle_digest}`"
+        "generation session `{session_id}` expects model `{expected_model}` revision `{expected_revision}` artifact `{expected_served_artifact_digest}` bundle `{expected_weight_bundle_digest}` but got model `{actual_model}` revision `{actual_revision}` artifact `{actual_served_artifact_digest}` bundle `{actual_weight_bundle_digest}`"
     )]
     ModelMismatch {
         /// Session identifier.
         session_id: String,
+        /// Expected served-artifact digest.
+        expected_served_artifact_digest: String,
         /// Expected model identifier.
         expected_model: String,
         /// Expected model revision.
@@ -1755,6 +1850,8 @@ pub enum SessionStoreError {
         expected_weight_bundle_digest: String,
         /// Actual model identifier.
         actual_model: String,
+        /// Actual served-artifact digest.
+        actual_served_artifact_digest: String,
         /// Actual model revision.
         actual_revision: String,
         /// Actual weight-bundle digest.
@@ -1800,12 +1897,17 @@ impl InMemoryGenerationSessionStore {
     }
 
     /// Creates a new session bound to a decoder model.
-    pub fn create(&mut self, model: &DecoderModelDescriptor) -> GenerationSession {
+    pub fn create(
+        &mut self,
+        model: &DecoderModelDescriptor,
+        served_artifact_digest: impl Into<String>,
+    ) -> GenerationSession {
         self.next_session += 1;
         let session_id = SessionId::new(format!("sess-{:08}", self.next_session));
         let policy = default_decoder_kv_cache_policy(model);
         let session = GenerationSession {
             session_id: session_id.clone(),
+            served_artifact_digest: served_artifact_digest.into(),
             model_id: model.model.model_id.clone(),
             model_family: model.model.family.clone(),
             model_revision: model.model.revision.clone(),
@@ -1869,6 +1971,7 @@ impl InMemoryGenerationSessionStore {
         &mut self,
         session_id: &SessionId,
         model: &DecoderModelDescriptor,
+        served_artifact_digest: &str,
         token: TokenId,
         key: Vec<f32>,
         value: Vec<f32>,
@@ -1877,7 +1980,7 @@ impl InMemoryGenerationSessionStore {
             .sessions
             .get_mut(session_id)
             .ok_or_else(|| SessionStoreError::SessionNotFound(session_id.as_str().to_string()))?;
-        validate_session_model(state, session_id, model)?;
+        validate_session_model(state, session_id, model, served_artifact_digest)?;
 
         state.cache.append(token, key, value)?;
         state.tokens.push(token);
@@ -1916,6 +2019,7 @@ impl InMemoryGenerationSessionStore {
         &mut self,
         session_id: &SessionId,
         model: &DecoderModelDescriptor,
+        served_artifact_digest: &str,
         cache: InMemoryKvCache,
         tokens: TokenSequence,
     ) -> Result<GenerationSession, SessionStoreError> {
@@ -1923,7 +2027,7 @@ impl InMemoryGenerationSessionStore {
             .sessions
             .get_mut(session_id)
             .ok_or_else(|| SessionStoreError::SessionNotFound(session_id.as_str().to_string()))?;
-        validate_session_model(state, session_id, model)?;
+        validate_session_model(state, session_id, model, served_artifact_digest)?;
         if state.cache.max_context() != cache.max_context() || state.cache.width() != cache.width()
         {
             return Err(SessionStoreError::CacheGeometryMismatch {
@@ -1950,6 +2054,7 @@ fn sync_session_cache_state(session: &mut GenerationSession, cache: &InMemoryKvC
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SharedPrefixCompatibility {
+    served_artifact_digest: String,
     model_id: String,
     model_revision: String,
     weight_bundle_digest: String,
@@ -2113,7 +2218,13 @@ fn prefix_compatibility<M>(model: &M) -> SharedPrefixCompatibility
 where
     M: CompiledWordGenerationModel,
 {
+    let served_artifact = served_artifact_identity_for_decoder_backend(
+        model.descriptor(),
+        model.backend_compatibility(),
+        &[],
+    );
     SharedPrefixCompatibility {
+        served_artifact_digest: served_artifact.served_artifact_digest,
         model_id: model.descriptor().model.model_id.clone(),
         model_revision: model.descriptor().model.revision.clone(),
         weight_bundle_digest: model.descriptor().weights.digest.clone(),
@@ -2134,6 +2245,7 @@ fn prefix_identity(
         hasher.update(token.as_u32().to_le_bytes());
     }
     PrefixCacheIdentity {
+        served_artifact_digest: compatibility.served_artifact_digest.clone(),
         model_id: compatibility.model_id.clone(),
         model_revision: compatibility.model_revision.clone(),
         weight_bundle_digest: compatibility.weight_bundle_digest.clone(),
@@ -2151,17 +2263,21 @@ fn validate_session_model(
     state: &GenerationSessionState,
     session_id: &SessionId,
     model: &DecoderModelDescriptor,
+    served_artifact_digest: &str,
 ) -> Result<(), SessionStoreError> {
-    if state.session.model_id != model.model.model_id
+    if state.session.served_artifact_digest != served_artifact_digest
+        || state.session.model_id != model.model.model_id
         || state.session.model_revision != model.model.revision
         || state.session.weight_bundle_digest != model.weights.digest
     {
         return Err(SessionStoreError::ModelMismatch {
             session_id: session_id.as_str().to_string(),
+            expected_served_artifact_digest: state.session.served_artifact_digest.clone(),
             expected_model: state.session.model_id.clone(),
             expected_revision: state.session.model_revision.clone(),
             expected_weight_bundle_digest: state.session.weight_bundle_digest.clone(),
             actual_model: model.model.model_id.clone(),
+            actual_served_artifact_digest: served_artifact_digest.to_string(),
             actual_revision: model.model.revision.clone(),
             actual_weight_bundle_digest: model.weights.digest.clone(),
         });
@@ -2952,7 +3068,11 @@ impl CpuReferenceTextGenerationService {
             .models
             .active(model_id)
             .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
-        Ok(self.sessions.create(model.descriptor()))
+        Ok(self.sessions.create(
+            model.descriptor(),
+            served_artifact_identity_for_decoder_backend(model.descriptor(), "cpu", &[])
+                .served_artifact_digest,
+        ))
     }
 
     /// Resets an existing session.
@@ -3168,7 +3288,11 @@ impl CpuModelTextGenerationService {
             .models
             .active(model_id)
             .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
-        Ok(self.sessions.create(model.descriptor()))
+        Ok(self.sessions.create(
+            model.descriptor(),
+            served_artifact_identity_for_decoder_backend(model.descriptor(), "cpu", &[])
+                .served_artifact_digest,
+        ))
     }
 
     /// Resets an existing session.
@@ -3430,7 +3554,21 @@ impl MetalModelTextGenerationService {
             .models
             .active(model_id)
             .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
-        Ok(self.sessions.create(model.descriptor()))
+        let compiled_backend_features = self
+            .backend_selection
+            .selected_device
+            .as_ref()
+            .map(|device| device.feature_flags.clone())
+            .unwrap_or_default();
+        Ok(self.sessions.create(
+            model.descriptor(),
+            served_artifact_identity_for_decoder_backend(
+                model.descriptor(),
+                self.backend_selection.effective_backend.as_str(),
+                &compiled_backend_features,
+            )
+            .served_artifact_digest,
+        ))
     }
 
     /// Resets an existing session.
@@ -3502,6 +3640,7 @@ where
     request: GenerationRequest,
     loaded_model: CpuWordGenerationModel<M>,
     model_id: String,
+    served_artifact: ServedArtifactIdentity,
     load_state: GenerationLoadState,
     generation_start: Instant,
     streaming_policy: GenerationStreamingPolicy,
@@ -3567,6 +3706,11 @@ where
         let residency_policy = Some(models.residency_policy().clone());
         let residency_snapshot = Some(models.memory_snapshot());
         let generation_start = Instant::now();
+        let served_artifact = served_artifact_identity_for_decoder_backend(
+            loaded_model.descriptor(),
+            loaded_model.backend_compatibility(),
+            &[],
+        );
 
         let prepared = (|| -> Result<_, ReferenceTextGenerationError> {
             let prompt_eval_start = Instant::now();
@@ -3594,7 +3738,12 @@ where
                     sessions.reset(session_id)?;
                 }
                 let state = sessions.state(session_id)?;
-                validate_session_model(state, session_id, loaded_model.descriptor())?;
+                validate_session_model(
+                    state,
+                    session_id,
+                    loaded_model.descriptor(),
+                    served_artifact.served_artifact_digest.as_str(),
+                )?;
                 session_tokens = state.tokens().to_vec();
                 if state.cache().is_empty() {
                     shared_prefix_eligible = true;
@@ -3703,6 +3852,7 @@ where
                 request: request.clone(),
                 loaded_model,
                 model_id,
+                served_artifact,
                 load_state,
                 generation_start,
                 streaming_policy,
@@ -3779,6 +3929,7 @@ where
             prefix_tokens_reused: Some(self.prefix_tokens_reused),
         };
         let provenance = GenerationProvenance {
+            served_artifact: self.served_artifact.clone(),
             execution_plan_digest: self.loaded_model.plan_digest().to_string(),
             load_state: self.load_state,
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
@@ -3818,6 +3969,7 @@ where
                 let _ = self.sessions.replace_cache(
                     session_id,
                     self.loaded_model.descriptor(),
+                    self.served_artifact.served_artifact_digest.as_str(),
                     self.cache.clone(),
                     TokenSequence::new(committed_tokens),
                 );
@@ -4115,6 +4267,11 @@ where
     let memory_plan = models.memory_plan(model_id).cloned();
     let residency_policy = Some(models.residency_policy().clone());
     let residency_snapshot = Some(models.memory_snapshot());
+    let served_artifact = served_artifact_identity_for_decoder_backend(
+        loaded_model.descriptor(),
+        loaded_model.backend_compatibility(),
+        &[],
+    );
 
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
         let prompt_eval_start = Instant::now();
@@ -4140,7 +4297,12 @@ where
                 sessions.reset(session_id)?;
             }
             let state = sessions.state(session_id)?;
-            validate_session_model(state, session_id, loaded_model.descriptor())?;
+            validate_session_model(
+                state,
+                session_id,
+                loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
+            )?;
             session_tokens = state.tokens().to_vec();
             if state.cache().is_empty() {
                 shared_prefix_eligible = true;
@@ -4261,6 +4423,7 @@ where
             sessions.replace_cache(
                 session_id,
                 loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
                 cache.clone(),
                 TokenSequence::new(session_tokens),
             )?;
@@ -4292,6 +4455,7 @@ where
             prefix_tokens_reused: Some(prefix_tokens_reused),
         };
         let provenance = GenerationProvenance {
+            served_artifact,
             execution_plan_digest: loaded_model.plan_digest().to_string(),
             load_state,
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
@@ -5636,6 +5800,9 @@ mod tests {
         }
       ],
       "artifacts": []
+    },
+    "artifact_identity": {
+      "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395"
     }
   },
   "inputs": [
@@ -5972,9 +6139,12 @@ mod tests {
     #[test]
     fn generation_sessions_isolate_and_reset_kv_cache() -> Result<(), Box<dyn std::error::Error>> {
         let descriptor = sample_decoder_descriptor();
+        let served_artifact_digest =
+            super::served_artifact_identity_for_decoder_backend(&descriptor, "cpu", &[])
+                .served_artifact_digest;
         let mut store = InMemoryGenerationSessionStore::new();
-        let session_a = store.create(&descriptor);
-        let session_b = store.create(&descriptor);
+        let session_a = store.create(&descriptor, served_artifact_digest.clone());
+        let session_b = store.create(&descriptor, served_artifact_digest.clone());
 
         assert_eq!(session_a.model_family, "fixture_decoder");
         assert_eq!(session_a.model_revision, "v0");
@@ -5988,6 +6158,7 @@ mod tests {
         store.append(
             &session_a.session_id,
             &descriptor,
+            served_artifact_digest.as_str(),
             FixtureWordTokenizer::HELLO_ID,
             vec![1.0; descriptor.config.kv_width()],
             vec![2.0; descriptor.config.kv_width()],
@@ -5995,6 +6166,7 @@ mod tests {
         store.append(
             &session_b.session_id,
             &descriptor,
+            served_artifact_digest.as_str(),
             FixtureWordTokenizer::RUSTY_ID,
             vec![3.0; descriptor.config.kv_width()],
             vec![4.0; descriptor.config.kv_width()],
@@ -6052,15 +6224,19 @@ mod tests {
     #[test]
     fn generation_sessions_reject_descriptor_drift_even_when_model_id_matches() {
         let descriptor = sample_decoder_descriptor();
+        let served_artifact_digest =
+            super::served_artifact_identity_for_decoder_backend(&descriptor, "cpu", &[])
+                .served_artifact_digest;
         let mut drifted = descriptor.clone();
         drifted.weights.digest = String::from("different-weight-bundle");
 
         let mut store = InMemoryGenerationSessionStore::new();
-        let session = store.create(&descriptor);
+        let session = store.create(&descriptor, served_artifact_digest.clone());
         let error = store
             .append(
                 &session.session_id,
                 &drifted,
+                served_artifact_digest.as_str(),
                 FixtureWordTokenizer::HELLO_ID,
                 vec![1.0; descriptor.config.kv_width()],
                 vec![2.0; descriptor.config.kv_width()],

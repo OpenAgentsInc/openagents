@@ -8,8 +8,8 @@ use mox_runtime::{
     BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
     LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
     NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, ValidationMatrixReference,
-    validation_reference_for_served_product,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, ServedArtifactIdentity,
+    ValidationMatrixReference, validation_reference_for_served_product,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -18,6 +18,7 @@ use mox_serve::{
     GenerationStreamTerminal, GenerationStreamingPolicy, QuantizationMode, SessionId,
     TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata, WeightBundleMetadata,
     WeightFormat, WeightSource, default_decoder_kv_cache_policy, default_prefix_cache_policy,
+    served_artifact_identity_for_decoder_model, served_artifact_identity_for_embedding_model,
 };
 
 /// Human-readable crate ownership summary.
@@ -171,6 +172,8 @@ pub struct CapabilityEnvelope {
     pub model_revision: String,
     /// Weight bundle identity for the loaded model.
     pub weight_bundle: WeightBundleEvidence,
+    /// Stable served-artifact identity for the active model/backend path.
+    pub served_artifact: ServedArtifactIdentity,
     /// Stable output dimensions.
     pub dimensions: usize,
     /// Normalization policy applied to returned vectors.
@@ -196,6 +199,7 @@ impl CapabilityEnvelope {
         model_family: impl Into<String>,
         model_revision: impl Into<String>,
         weight_bundle: WeightBundleEvidence,
+        served_artifact: ServedArtifactIdentity,
         dimensions: usize,
         normalization: EmbeddingNormalization,
         readiness: ProviderReadiness,
@@ -215,6 +219,7 @@ impl CapabilityEnvelope {
             model_family: model_family.into(),
             model_revision: model_revision.into(),
             weight_bundle,
+            served_artifact,
             dimensions,
             normalization,
             preserves_input_order: true,
@@ -232,12 +237,15 @@ impl CapabilityEnvelope {
         model: &EmbeddingModelDescriptor,
         readiness: ProviderReadiness,
     ) -> Self {
+        let served_artifact =
+            served_artifact_identity_for_embedding_model(model, &backend_selection);
         Self::embeddings(
             backend_selection,
             model.model.model_id.clone(),
             model.model.family.clone(),
             model.model.revision.clone(),
             WeightBundleEvidence::from_metadata(&model.weights),
+            served_artifact,
             model.dimensions,
             model.normalization,
             readiness,
@@ -309,6 +317,8 @@ pub struct ExecutionReceipt {
     pub model_revision: String,
     /// Weight bundle identity used during execution.
     pub weight_bundle: WeightBundleEvidence,
+    /// Stable served-artifact identity for the realized model/backend path.
+    pub served_artifact: ServedArtifactIdentity,
     /// Output dimensions.
     pub output_dimensions: usize,
     /// Number of request inputs.
@@ -350,6 +360,8 @@ impl ExecutionReceipt {
         started_at_unix_ms: u64,
         ended_at_unix_ms: u64,
     ) -> Self {
+        let served_artifact =
+            served_artifact_identity_for_embedding_model(&request.model, &backend_selection);
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
@@ -367,6 +379,7 @@ impl ExecutionReceipt {
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
+            served_artifact,
             output_dimensions: response.metadata.dimensions,
             input_count: response.metadata.input_count,
             output_vector_count: response.metadata.vector_count,
@@ -410,6 +423,8 @@ impl ExecutionReceipt {
         ended_at_unix_ms: u64,
         failure_reason: impl Into<String>,
     ) -> Self {
+        let served_artifact =
+            served_artifact_identity_for_embedding_model(&request.model, &backend_selection);
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
@@ -427,6 +442,7 @@ impl ExecutionReceipt {
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
+            served_artifact,
             output_dimensions: request
                 .output_dimensions
                 .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions)
@@ -509,6 +525,8 @@ pub struct TextGenerationCapabilityEnvelope {
     pub model_revision: String,
     /// Weight bundle identity for the loaded model.
     pub weight_bundle: WeightBundleEvidence,
+    /// Stable served-artifact identity for the active model/backend path.
+    pub served_artifact: ServedArtifactIdentity,
     /// Maximum supported context length.
     pub max_context: usize,
     /// Explicit resident-memory plan for the loaded model.
@@ -543,6 +561,7 @@ impl TextGenerationCapabilityEnvelope {
         batch_posture: BatchPosture,
         readiness: ProviderReadiness,
     ) -> Self {
+        let served_artifact = served_artifact_identity_for_decoder_model(model, &backend_selection);
         Self {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
@@ -558,6 +577,7 @@ impl TextGenerationCapabilityEnvelope {
             model_family: model.model.family.clone(),
             model_revision: model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&model.weights),
+            served_artifact,
             max_context: model.config.max_context,
             memory_plan,
             residency_policy,
@@ -605,6 +625,8 @@ pub struct TextGenerationReceipt {
     pub model_revision: String,
     /// Weight bundle identity used during execution.
     pub weight_bundle: WeightBundleEvidence,
+    /// Stable served-artifact identity for the realized model/backend path.
+    pub served_artifact: ServedArtifactIdentity,
     /// Explicit resident-memory plan for the loaded model, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_plan: Option<ModelMemoryPlan>,
@@ -690,6 +712,13 @@ impl TextGenerationReceipt {
             .as_ref()
             .map(|value| value.execution_plan_digest.clone())
             .unwrap_or_else(|| execution_plan_digest.into());
+        let served_artifact = response
+            .provenance
+            .as_ref()
+            .map(|value| value.served_artifact.clone())
+            .unwrap_or_else(|| {
+                served_artifact_identity_for_decoder_model(&request.model, &backend_selection)
+            });
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
@@ -708,6 +737,7 @@ impl TextGenerationReceipt {
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
+            served_artifact,
             memory_plan: response
                 .provenance
                 .as_ref()
@@ -795,6 +825,8 @@ impl TextGenerationReceipt {
             GenerationInput::Text(text) => text.split_whitespace().count(),
             GenerationInput::Tokens(tokens) => tokens.len(),
         };
+        let served_artifact =
+            served_artifact_identity_for_decoder_model(&request.model, &backend_selection);
 
         Self {
             product_id: request.product_id.clone(),
@@ -814,6 +846,7 @@ impl TextGenerationReceipt {
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
+            served_artifact,
             memory_plan: None,
             residency_policy: None,
             residency_snapshot: None,
@@ -928,6 +961,34 @@ pub fn digest_embedding_request(request: &EmbeddingRequest) -> String {
     );
     hasher.update(b"|");
     digest_weight_bundle(&mut hasher, &request.model.weights);
+    if let Some(artifact_identity) = &request.model.artifact_identity {
+        hasher.update(b"|");
+        hasher.update(
+            artifact_identity
+                .model_blob_digest
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            artifact_identity
+                .tokenizer_digest
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            artifact_identity
+                .chat_template_digest
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(artifact_identity.generation_defaults_digest.as_bytes());
+    }
     for input in &request.inputs {
         hasher.update(b"|");
         hasher.update(input.as_bytes());
@@ -958,6 +1019,34 @@ pub fn digest_generation_request(request: &GenerationRequest) -> String {
     hasher.update(request.model.config.max_context.to_string().as_bytes());
     hasher.update(b"|");
     digest_weight_bundle(&mut hasher, &request.model.weights);
+    if let Some(artifact_identity) = &request.model.artifact_identity {
+        hasher.update(b"|");
+        hasher.update(
+            artifact_identity
+                .model_blob_digest
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            artifact_identity
+                .tokenizer_digest
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            artifact_identity
+                .chat_template_digest
+                .as_deref()
+                .unwrap_or("")
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(artifact_identity.generation_defaults_digest.as_bytes());
+    }
     hasher.update(b"|");
     if let Some(session_id) = &request.session_id {
         hasher.update(session_id.as_str().as_bytes());
@@ -1093,6 +1182,7 @@ mod tests {
         LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
         TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
         digest_embedding_request, digest_generation_request,
+        served_artifact_identity_for_decoder_model,
     };
 
     #[test]
@@ -1188,6 +1278,19 @@ mod tests {
                     "quantization": "none",
                     "digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
                     "artifacts": []
+                },
+                "served_artifact": {
+                    "model_id": "smoke-byte-embed-v0",
+                    "model_revision": "v0",
+                    "weight_bundle_digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
+                    "served_artifact_digest": "1865a72814dad3a851a669f0bfad1fd8afaa120b8afdf89f8b39db0b559b3e3e",
+                    "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
+                    "weight_format": "programmatic_fixture",
+                    "quantization_family": "none",
+                    "backend": {
+                        "effective_backend": "cpu",
+                        "toolchain_version": "cpu@0.1.0"
+                    }
                 },
                 "dimensions": 8,
                 "normalization": "None",
@@ -1301,6 +1404,20 @@ mod tests {
                     "quantization": "none",
                     "digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
                     "artifacts": []
+                },
+                "served_artifact": {
+                    "model_id": "fixture-word-decoder-v0",
+                    "model_revision": "v0",
+                    "weight_bundle_digest": "7daf98e44b6eee34df8d97f24419709f23b19010cdb49c9b18b771936ced352b",
+                    "served_artifact_digest": "c0f838e0eb224f32558fbf1f5c2b90439a3714135b5b0838f319eafeba905473",
+                    "tokenizer_digest": "5464809cdd952c531b8536eeec1c728a8b6aa9621853f2bf63e569c9d5a9117f",
+                    "generation_defaults_digest": "6b25930e91686cee8bb5d4dae8dbed14f63c690c1c97ecb98552d8842e2d9395",
+                    "weight_format": "programmatic_fixture",
+                    "quantization_family": "none",
+                    "backend": {
+                        "effective_backend": "cpu",
+                        "toolchain_version": "cpu@0.1.0"
+                    }
                 },
                 "max_context": 8,
                 "memory_plan": {
@@ -1885,6 +2002,10 @@ mod tests {
                 prefix_tokens_reused: Some(1),
             },
             GenerationProvenance {
+                served_artifact: served_artifact_identity_for_decoder_model(
+                    &request.model,
+                    &cpu_backend_selection(),
+                ),
                 execution_plan_digest: String::from("plan-digest-from-response"),
                 load_state: GenerationLoadState::Cold,
                 isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
@@ -1900,6 +2021,11 @@ mod tests {
                 prefix_cache_state: Some(PrefixCacheState::Hit),
                 prefix_cache_policy: Some(default_prefix_cache_policy()),
                 prefix_cache_identity: Some(PrefixCacheIdentity {
+                    served_artifact_digest: served_artifact_identity_for_decoder_model(
+                        &request.model,
+                        &cpu_backend_selection(),
+                    )
+                    .served_artifact_digest,
                     model_id: request.model.model.model_id.clone(),
                     model_revision: request.model.model.revision.clone(),
                     weight_bundle_digest: request.model.weights.digest.clone(),
@@ -2025,6 +2151,10 @@ mod tests {
                 prefix_tokens_reused: Some(0),
             },
             GenerationProvenance {
+                served_artifact: served_artifact_identity_for_decoder_model(
+                    &request.model,
+                    &cpu_backend_selection(),
+                ),
                 execution_plan_digest: String::from("stream-plan"),
                 load_state: GenerationLoadState::Cold,
                 isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
@@ -2245,6 +2375,47 @@ mod tests {
 
         embedding_request.model.weights.digest = String::from("different-embedding-bundle");
         generation_request.model.weights.quantization = mox_serve::QuantizationMode::Int8Symmetric;
+
+        assert_ne!(
+            digest_embedding_request(&embedding_request),
+            embedding_digest
+        );
+        assert_ne!(
+            digest_generation_request(&generation_request),
+            generation_digest
+        );
+    }
+
+    #[test]
+    fn request_digests_change_when_artifact_identity_changes() {
+        let mut embedding_request = EmbeddingRequest::new(
+            "req-6a",
+            sample_embedding_descriptor(),
+            vec![String::from("same input")],
+        );
+        let mut generation_request = GenerationRequest::new_tokens(
+            "gen-6a",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-00000006a")),
+            TokenSequence::new(vec![mox_serve::FixtureWordTokenizer::HELLO_ID]),
+            GenerationOptions::greedy(2),
+        );
+
+        let embedding_digest = digest_embedding_request(&embedding_request);
+        let generation_digest = digest_generation_request(&generation_request);
+
+        embedding_request
+            .model
+            .artifact_identity
+            .as_mut()
+            .expect("fixture embedding descriptor should carry artifact identity")
+            .generation_defaults_digest = String::from("different-defaults");
+        generation_request
+            .model
+            .artifact_identity
+            .as_mut()
+            .expect("fixture decoder descriptor should carry artifact identity")
+            .chat_template_digest = Some(String::from("different-template"));
 
         assert_ne!(
             digest_embedding_request(&embedding_request),

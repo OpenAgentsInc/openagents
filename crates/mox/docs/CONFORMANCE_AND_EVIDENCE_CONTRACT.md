@@ -71,12 +71,16 @@ families rather than hand-built synthetic strings alone.
 
 ## Served Artifact Identity Tuple
 
-`MOX-162` should define a first-class identity for the full served artifact set
-instead of treating "same model" as a display name plus plan digest.
+`MOX-162` defines a first-class `ServedArtifactIdentity` for the full served
+artifact set instead of treating "same model" as a display name plus plan
+digest.
 
 At minimum the identity tuple must cover:
 
 - `served_artifact_digest`
+- `model_id`
+- `model_revision`
+- `weight_bundle_digest`
 - `model_blob_digest`
 - `tokenizer_digest`
 - `chat_template_digest`
@@ -84,10 +88,24 @@ At minimum the identity tuple must cover:
 - `weight_format`
 - `quantization_family`
 - `backend_toolchain_version`
+- `effective_backend`
 
 If any element of that tuple changes, cache reuse, comparability claims, and
 receipt equivalence must be treated as changed unless a narrower reuse rule is
 explicitly documented.
+
+The same `ServedArtifactIdentity` must be surfaced without app-local
+reconstruction through:
+
+- generation provenance
+- provider capability envelopes
+- provider execution receipts
+- any cache or persisted-state identity that claims reuse across requests
+
+For the current implementation, session KV ownership and shared prefix-cache
+reuse both key off the served-artifact digest. Descriptor drift and
+served-artifact drift are separate invalidation cases and both must refuse
+cross-run reuse.
 
 ## Local Serving Isolation Policy
 
@@ -132,6 +150,10 @@ Required identity and backend fields:
 - `selected_devices`
 - `effective_backend`
 - `fallback_state`
+
+Capability and receipt surfaces may carry the whole served-artifact object
+instead of flattening every identity field, but they must still preserve the
+same information content.
 
 Required execution-plan and cache fields:
 
