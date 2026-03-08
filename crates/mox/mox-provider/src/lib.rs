@@ -1536,6 +1536,34 @@ mod tests {
     }
 
     #[test]
+    fn amd_kfd_execution_capability_preserves_runtime_resources()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            amd_kfd_execution_selection(),
+            &sample_embedding_descriptor(),
+            ProviderReadiness {
+                status: HealthStatus::Ready,
+                message: String::from("amd_kfd staging substrate ready"),
+            },
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]["max_cached_buffers"],
+            json!(64)
+        );
+        assert_eq!(
+            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]["allocator_pool_budget_bytes"],
+            json!(8 * 1024 * 1024u64)
+        );
+        assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("amd_kfd.embeddings.not_yet_validated")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn amd_userspace_capability_reports_disabled_risk_posture()
     -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
@@ -1569,6 +1597,31 @@ mod tests {
         assert_eq!(
             encoded["amd"]["recovery"]["driver_binding"],
             json!("kernel_amdgpu")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn amd_userspace_execution_capability_preserves_runtime_resources()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            amd_userspace_execution_selection(),
+            &sample_embedding_descriptor(),
+            ProviderReadiness {
+                status: HealthStatus::Ready,
+                message: String::from("amd_userspace staging substrate ready"),
+            },
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            encoded["backend_selection"]["runtime_resources"]["kernel_cache"]["policy"]["enabled"],
+            json!(false)
+        );
+        assert_eq!(encoded["amd"]["mode"], json!("userspace"));
+        assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("amd_userspace.embeddings.not_yet_validated")
         );
         Ok(())
     }
@@ -2325,12 +2378,46 @@ mod tests {
         )
     }
 
+    fn amd_kfd_execution_selection() -> BackendSelection {
+        BackendSelection::direct_with_policy(
+            "amd_kfd",
+            Some(sample_amd_kfd_device()),
+            vec![
+                String::from("input"),
+                String::from("constant"),
+                String::from("fill_buffer"),
+                String::from("copy_buffer"),
+            ],
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+        )
+        .with_runtime_resources(Some(sample_backend_runtime_resources()))
+    }
+
     fn amd_userspace_selection() -> BackendSelection {
         BackendSelection::direct(
             "amd_userspace",
             Some(sample_amd_userspace_device()),
             vec![String::from("probe_only")],
         )
+    }
+
+    fn amd_userspace_execution_selection() -> BackendSelection {
+        BackendSelection::direct_with_policy(
+            "amd_userspace",
+            Some(sample_amd_userspace_device()),
+            vec![
+                String::from("input"),
+                String::from("constant"),
+                String::from("fill_buffer"),
+                String::from("copy_buffer"),
+            ],
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+        )
+        .with_runtime_resources(Some(sample_backend_runtime_resources()))
     }
 
     fn cuda_backend_selection() -> BackendSelection {

@@ -11,22 +11,28 @@ backend.
 
 ## Current Status
 
-AMD support in this subtree is currently **discovery/readiness groundwork**, not
-execution-complete support.
+AMD support in this subtree is currently **execution-substrate groundwork**, not
+served-product-complete support.
 
 What exists today:
 
 - explicit backend discovery/reporting in
   `mox-backend-amd-kfd` and `mox-backend-amd-userspace`
+- backend-owned staging allocation and explicit fill/copy submission substrate
+  in `mox-backend-amd-kfd` and `mox-backend-amd-userspace`
+- explicit allocator/kernel-cache/device-budget truth for AMD execution
+  substrate paths
 - serializable AMD runtime metadata in `mox-runtime`
 - provider-facing AMD context derived from backend/runtime state in
   `mox-provider`
 
 What does not exist yet:
 
-- AMD execution kernels
-- AMD-backed served product paths
-- any claim that Mox can execute inference or embeddings on AMD today
+- AMD graph lowering or execution kernels for served products
+- CPU-vs-AMD parity coverage for a shipped product path
+- AMD-backed served product paths in `mox-serve`
+- any positive hardware-validation claim that Mox can execute inference or
+  embeddings on AMD today
 
 ## Canonical Types
 
@@ -46,7 +52,8 @@ of backend strings.
 
 ## AMD KFD
 
-`amd_kfd` is the lower-risk AMD posture.
+`amd_kfd` is the lower-risk AMD posture and the first AMD execution substrate
+that later served-product work should target.
 
 Expected environment:
 
@@ -58,9 +65,11 @@ Expected environment:
 Expected readiness states:
 
 - `ready`
-  AMD DRM devices are present and `/dev/kfd` exists.
+  AMD DRM devices are present and `/dev/kfd` exists. In this state Mox can own
+  backend-local staging buffers and explicit fill/copy submissions.
 - `degraded`
-  AMD hardware is present but `/dev/kfd` is missing.
+  AMD hardware is present but `/dev/kfd` is missing, so Mox must not pretend
+  the KFD execution substrate is available.
 - `offline`
   no AMD KFD posture is detectable on the host.
 
@@ -94,9 +103,12 @@ Expected readiness states:
   userspace mode was enabled but no AMD devices were detected
 - `degraded` + `opt_in = enabled`
   AMD devices were found but `amdgpu` is still loaded, so the machine is not in
-  the expected userspace posture
+  the expected userspace posture and Mox must not pretend the userspace
+  execution substrate is available
 - `ready` + `opt_in = enabled`
-  AMD devices were found and the kernel-driver handoff was detected
+  AMD devices were found and the kernel-driver handoff was detected. In this
+  state Mox can own backend-local staging buffers and explicit fill/copy
+  submissions.
 
 Risk posture:
 
@@ -124,6 +136,7 @@ Practical host checks:
 
 ## Review Boundary
 
-If a future change claims AMD execution support, it must add more than discovery
-and readiness truth. This runbook only covers the current discovery/reporting
-phase and should stay explicit about that limit.
+If a future change claims AMD served-product execution support, it must add more
+than discovery, staging allocation, and explicit copy/fill submissions. This
+runbook only covers the current execution-substrate phase and should stay
+explicit about that limit.
