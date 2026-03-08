@@ -378,6 +378,116 @@ pub enum BufferStorageKind {
     },
 }
 
+/// How a runtime load plan sources model artifact bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactStorageKind {
+    /// The artifact was copied into an in-memory buffer before planning.
+    InMemoryCopy,
+    /// The artifact stays backed by a paged local blob.
+    PagedLocalBlob,
+}
+
+/// Blob family used by a paged local model artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactBlobKind {
+    /// Standalone GGUF file discovered on disk.
+    GgufFile,
+    /// Ollama-managed blob resolved by digest.
+    OllamaBlob,
+}
+
+/// Actual local read path used for a paged model artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactReadPath {
+    /// The artifact bytes are exposed through a memory map.
+    MemoryMapped,
+    /// The artifact bytes are exposed from a buffered host copy.
+    Buffered,
+}
+
+/// Runtime-visible storage truth for a model artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelArtifactStorage {
+    /// Stable artifact name.
+    pub artifact_name: String,
+    /// Stable SHA-256 digest of the artifact bytes.
+    pub artifact_sha256: String,
+    /// High-level storage posture used by the runtime.
+    pub storage_kind: ModelArtifactStorageKind,
+    /// Blob family when the runtime kept paged local blob storage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blob_kind: Option<ModelArtifactBlobKind>,
+    /// Actual local read path when the runtime kept paged local blob storage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_path: Option<ArtifactReadPath>,
+    /// Logical page size when the runtime kept paged local blob storage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<usize>,
+    /// Explicit fallback reason when mmap was preferred but not used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
+}
+
+impl ModelArtifactStorage {
+    /// Creates storage truth for an eager in-memory artifact copy.
+    #[must_use]
+    pub fn in_memory_copy(
+        artifact_name: impl Into<String>,
+        artifact_sha256: impl Into<String>,
+    ) -> Self {
+        Self {
+            artifact_name: artifact_name.into(),
+            artifact_sha256: artifact_sha256.into(),
+            storage_kind: ModelArtifactStorageKind::InMemoryCopy,
+            blob_kind: None,
+            read_path: None,
+            page_size: None,
+            fallback_reason: None,
+        }
+    }
+
+    /// Creates storage truth for a paged local blob artifact.
+    #[must_use]
+    pub fn paged_local_blob(
+        artifact_name: impl Into<String>,
+        artifact_sha256: impl Into<String>,
+        blob_kind: ModelArtifactBlobKind,
+        read_path: ArtifactReadPath,
+        page_size: usize,
+        fallback_reason: Option<String>,
+    ) -> Self {
+        Self {
+            artifact_name: artifact_name.into(),
+            artifact_sha256: artifact_sha256.into(),
+            storage_kind: ModelArtifactStorageKind::PagedLocalBlob,
+            blob_kind: Some(blob_kind),
+            read_path: Some(read_path),
+            page_size: Some(page_size),
+            fallback_reason,
+        }
+    }
+}
+
+/// Runtime-visible paged tensor byte plan derived from a blob-backed artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PagedTensorStoragePlan {
+    /// Stable tensor name.
+    pub tensor_name: String,
+    /// Backing artifact name.
+    pub artifact_name: String,
+    /// Byte offset inside the artifact.
+    pub byte_offset: u64,
+    /// Tensor byte length inside the artifact.
+    pub byte_length: u64,
+    /// Logical page size for reads over the tensor bytes.
+    pub page_size: usize,
+    /// Total page count for the tensor byte range.
+    pub page_count: usize,
+}
+
 /// Trait for device discovery.
 pub trait DeviceDiscovery {
     /// Returns the backend name.
@@ -432,10 +542,11 @@ mod tests {
     use super::{
         Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
-        AmdTopologyInfo, BackendSelection, BufferHandle, BufferResidency, BufferStorageKind,
-        DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult,
-        HealthStatus, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeError, RuntimeHealth,
+        AmdTopologyInfo, ArtifactReadPath, BackendSelection, BufferHandle, BufferResidency,
+        BufferStorageKind, DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics,
+        ExecutionResult, HealthStatus, ModelArtifactBlobKind, ModelArtifactStorage,
+        ModelArtifactStorageKind, PagedTensorStoragePlan, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, RuntimeError, RuntimeHealth,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -679,6 +790,70 @@ mod tests {
                 source_quantization: mox_core::QuantizationMode::GgmlQ8_0,
             }
         );
+    }
+
+    #[test]
+    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let copy = ModelArtifactStorage::in_memory_copy("weights.gguf", "abcd");
+        let paged = ModelArtifactStorage::paged_local_blob(
+            "weights.gguf",
+            "abcd",
+            ModelArtifactBlobKind::OllamaBlob,
+            ArtifactReadPath::MemoryMapped,
+            4096,
+            Some(String::from("mmap preferred and available")),
+        );
+
+        assert_eq!(copy.storage_kind, ModelArtifactStorageKind::InMemoryCopy);
+        assert_eq!(
+            serde_json::to_value(&copy)?,
+            json!({
+                "artifact_name": "weights.gguf",
+                "artifact_sha256": "abcd",
+                "storage_kind": "in_memory_copy"
+            })
+        );
+        assert_eq!(paged.storage_kind, ModelArtifactStorageKind::PagedLocalBlob);
+        assert_eq!(
+            serde_json::to_value(&paged)?,
+            json!({
+                "artifact_name": "weights.gguf",
+                "artifact_sha256": "abcd",
+                "storage_kind": "paged_local_blob",
+                "blob_kind": "ollama_blob",
+                "read_path": "memory_mapped",
+                "page_size": 4096,
+                "fallback_reason": "mmap preferred and available"
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let plan = PagedTensorStoragePlan {
+            tensor_name: String::from("blk.0.attn_q.weight"),
+            artifact_name: String::from("weights.gguf"),
+            byte_offset: 8192,
+            byte_length: 16384,
+            page_size: 4096,
+            page_count: 4,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&plan)?,
+            json!({
+                "tensor_name": "blk.0.attn_q.weight",
+                "artifact_name": "weights.gguf",
+                "byte_offset": 8192,
+                "byte_length": 16384,
+                "page_size": 4096,
+                "page_count": 4
+            })
+        );
+        Ok(())
     }
 
     #[test]
