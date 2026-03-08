@@ -16,6 +16,7 @@ path = "src/lib.rs"
 [dependencies]
 mox-core = { path = "../mox-core" }
 mox-ir = { path = "../mox-ir" }
+rand = { workspace = true }
 serde = { workspace = true }
 thiserror = { workspace = true }
 

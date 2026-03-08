@@ -7,6 +7,7 @@ use std::collections::BTreeMap;
 use mox_core::{DType, Device, QuantizationMode, QuantizedBlockLayout, TensorId, TensorSpec};
 use mox_ir::ExecutionPlan;
 pub use parity::*;
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -240,6 +241,280 @@ pub struct RuntimeHealth {
     pub status: HealthStatus,
     /// Plain-text explanation.
     pub message: String,
+}
+
+/// Maximum token-history window used when applying repetition-style penalties.
+pub const DEFAULT_PENALTY_LOOKBACK: usize = 64;
+
+/// Runtime-owned token-selection strategy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SamplingStrategy {
+    /// Always choose the highest adjusted logit.
+    Greedy,
+    /// Draw from the adjusted probability distribution.
+    Sample,
+}
+
+/// Reusable runtime sampling policy for token selection.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SamplingPolicy {
+    /// Sampling strategy.
+    pub strategy: SamplingStrategy,
+    /// Temperature override for stochastic sampling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Top-k sampling cap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
+    /// Top-p / nucleus sampling threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    /// Repeat penalty applied to previously seen tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+    /// Presence penalty applied once to previously seen tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    /// Frequency penalty scaled by prior token count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    /// Deterministic seed for stochastic decode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+}
+
+impl SamplingPolicy {
+    /// Returns the effective temperature after applying runtime defaults.
+    #[must_use]
+    pub fn effective_temperature(&self) -> f32 {
+        self.temperature.unwrap_or(0.8).max(0.0)
+    }
+
+    /// Returns the effective top-k cap after applying runtime defaults.
+    #[must_use]
+    pub fn effective_top_k(&self) -> Option<usize> {
+        self.top_k.or(Some(40))
+    }
+
+    /// Returns the effective top-p threshold after applying runtime defaults.
+    #[must_use]
+    pub fn effective_top_p(&self) -> Option<f32> {
+        self.top_p.or(Some(0.9))
+    }
+
+    /// Returns the effective repeat penalty after applying runtime defaults.
+    #[must_use]
+    pub fn effective_repeat_penalty(&self) -> f32 {
+        self.repeat_penalty.unwrap_or(1.0)
+    }
+
+    /// Returns the effective presence penalty after applying runtime defaults.
+    #[must_use]
+    pub fn effective_presence_penalty(&self) -> f32 {
+        self.presence_penalty.unwrap_or(0.0)
+    }
+
+    /// Returns the effective frequency penalty after applying runtime defaults.
+    #[must_use]
+    pub fn effective_frequency_penalty(&self) -> f32 {
+        self.frequency_penalty.unwrap_or(0.0)
+    }
+}
+
+/// Reusable runtime sampler with optional seeded replay.
+#[derive(Clone, Debug)]
+pub struct TokenSampler {
+    policy: SamplingPolicy,
+    rng: StdRng,
+}
+
+impl TokenSampler {
+    /// Creates a token sampler for one runtime policy.
+    #[must_use]
+    pub fn new(policy: &SamplingPolicy) -> Self {
+        let rng = policy
+            .seed
+            .map_or_else(StdRng::from_os_rng, StdRng::seed_from_u64);
+        Self {
+            policy: policy.clone(),
+            rng,
+        }
+    }
+
+    /// Returns the runtime sampling policy.
+    #[must_use]
+    pub fn policy(&self) -> &SamplingPolicy {
+        &self.policy
+    }
+
+    /// Selects the next token from logits and prior token history.
+    pub fn select_next_token(&mut self, logits: &[f32], history: &[u32]) -> Option<u32> {
+        let mut adjusted_logits = logits.to_vec();
+        apply_sampling_penalties(&mut adjusted_logits, history, &self.policy);
+        if self.policy.strategy == SamplingStrategy::Greedy
+            || self.policy.effective_temperature() <= 1e-6
+        {
+            return select_argmax_token(&adjusted_logits);
+        }
+        sample_token_index(&mut self.rng, &adjusted_logits, &self.policy)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SampleToken {
+    id: u32,
+    value: f32,
+}
+
+/// Applies repeat, presence, and frequency penalties using the bounded runtime history window.
+pub fn apply_sampling_penalties(logits: &mut [f32], history: &[u32], policy: &SamplingPolicy) {
+    let repeat_penalty = policy.effective_repeat_penalty();
+    let presence_penalty = policy.effective_presence_penalty();
+    let frequency_penalty = policy.effective_frequency_penalty();
+    if (repeat_penalty - 1.0).abs() <= f32::EPSILON
+        && presence_penalty.abs() <= f32::EPSILON
+        && frequency_penalty.abs() <= f32::EPSILON
+    {
+        return;
+    }
+
+    for (token, count) in token_counts(history, logits.len()) {
+        let Some(logit) = logits.get_mut(token as usize) else {
+            continue;
+        };
+        if (repeat_penalty - 1.0).abs() > f32::EPSILON {
+            if *logit < 0.0 {
+                *logit *= repeat_penalty;
+            } else {
+                *logit /= repeat_penalty;
+            }
+        }
+        if frequency_penalty.abs() > f32::EPSILON {
+            *logit -= frequency_penalty * (count as f32);
+        }
+        if presence_penalty.abs() > f32::EPSILON {
+            *logit -= presence_penalty;
+        }
+    }
+}
+
+/// Selects the highest-logit token index.
+#[must_use]
+pub fn select_argmax_token(logits: &[f32]) -> Option<u32> {
+    logits
+        .iter()
+        .enumerate()
+        .max_by(|(_, left), (_, right)| left.total_cmp(right))
+        .map(|(index, _)| index as u32)
+}
+
+fn token_counts(history: &[u32], vocab_size: usize) -> BTreeMap<u32, usize> {
+    let start = history.len().saturating_sub(DEFAULT_PENALTY_LOOKBACK);
+    let mut counts = BTreeMap::new();
+    for &token in &history[start..] {
+        if token as usize >= vocab_size {
+            continue;
+        }
+        *counts.entry(token).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn sample_token_index(rng: &mut StdRng, logits: &[f32], policy: &SamplingPolicy) -> Option<u32> {
+    let temperature = policy.effective_temperature();
+    if temperature <= 1e-6 {
+        return select_argmax_token(logits);
+    }
+
+    let mut tokens = logits
+        .iter()
+        .enumerate()
+        .map(|(index, value)| SampleToken {
+            id: index as u32,
+            value: *value,
+        })
+        .collect::<Vec<_>>();
+    top_k(&mut tokens, policy.effective_top_k());
+    temperature_scale(&mut tokens, temperature);
+    let total = softmax(&mut tokens);
+    if !total.is_finite() || total <= 0.0 {
+        return None;
+    }
+    top_p(&mut tokens, policy.effective_top_p());
+
+    let distribution_total = tokens.iter().map(|token| token.value).sum::<f32>();
+    if !distribution_total.is_finite() || distribution_total <= 0.0 {
+        return None;
+    }
+
+    let mut target = rng.random::<f32>() * distribution_total;
+    for token in &tokens {
+        target -= token.value;
+        if target <= 0.0 {
+            return Some(token.id);
+        }
+    }
+    tokens.last().map(|token| token.id)
+}
+
+fn top_k(tokens: &mut Vec<SampleToken>, top_k: Option<usize>) {
+    tokens.sort_by(|left, right| right.value.total_cmp(&left.value));
+    let Some(top_k) = top_k else {
+        return;
+    };
+    if top_k > 0 && top_k < tokens.len() {
+        tokens.truncate(top_k);
+    }
+}
+
+fn temperature_scale(tokens: &mut [SampleToken], temperature: f32) {
+    let temperature = temperature.max(1e-7);
+    for token in tokens {
+        token.value /= temperature;
+    }
+}
+
+fn softmax(tokens: &mut [SampleToken]) -> f32 {
+    let Some(max_logit) = tokens
+        .iter()
+        .map(|token| token.value)
+        .max_by(f32::total_cmp)
+    else {
+        return 0.0;
+    };
+    let mut sum = 0.0;
+    for token in tokens.iter_mut() {
+        token.value = (token.value - max_logit).exp();
+        sum += token.value;
+    }
+    if !sum.is_finite() || sum <= 0.0 {
+        return sum;
+    }
+    for token in tokens.iter_mut() {
+        token.value /= sum;
+    }
+    sum
+}
+
+fn top_p(tokens: &mut Vec<SampleToken>, top_p: Option<f32>) {
+    let Some(top_p) = top_p else {
+        return;
+    };
+    if top_p <= 0.0 || top_p >= 1.0 {
+        return;
+    }
+
+    let mut cumulative = 0.0;
+    let mut keep = tokens.len();
+    for (index, token) in tokens.iter().enumerate() {
+        cumulative += token.value;
+        if cumulative >= top_p {
+            keep = index + 1;
+            break;
+        }
+    }
+    tokens.truncate(keep.max(1));
 }
 
 /// Lifecycle state for a model that is resident in a local runtime.
@@ -863,13 +1138,14 @@ mod tests {
         Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, ArtifactReadPath, BackendSelection, BufferHandle, BufferResidency,
-        BufferStorageKind, DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics,
-        ExecutionResult, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
-        KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelResidency, LoadedModelState,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeError,
-        RuntimeHealth,
+        BufferStorageKind, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
+        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KvCacheAccounting,
+        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        LoadedModelResidency, LoadedModelState, ModelArtifactBlobKind, ModelArtifactStorage,
+        ModelArtifactStorageKind, PagedTensorStoragePlan, PrefixCacheIdentity,
+        PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
+        QuantizationSupport, RuntimeError, RuntimeHealth, SamplingPolicy, SamplingStrategy,
+        TokenSampler, apply_sampling_penalties,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1307,6 +1583,95 @@ mod tests {
             ])
         );
         Ok(())
+    }
+
+    #[test]
+    fn sampling_policy_serializes_supported_generation_controls()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let policy = SamplingPolicy {
+            strategy: SamplingStrategy::Sample,
+            temperature: Some(0.7),
+            top_k: Some(32),
+            top_p: Some(0.85),
+            repeat_penalty: Some(1.2),
+            presence_penalty: Some(0.4),
+            frequency_penalty: Some(0.3),
+            seed: Some(17),
+        };
+        let encoded = serde_json::to_value(&policy)?;
+
+        assert_eq!(encoded["strategy"], "sample");
+        assert!((encoded["temperature"].as_f64().expect("temperature") - 0.7).abs() < 1e-6);
+        assert_eq!(encoded["top_k"], 32);
+        assert!((encoded["top_p"].as_f64().expect("top_p") - 0.85).abs() < 1e-6);
+        assert!((encoded["repeat_penalty"].as_f64().expect("repeat_penalty") - 1.2).abs() < 1e-6);
+        assert!(
+            (encoded["presence_penalty"]
+                .as_f64()
+                .expect("presence_penalty")
+                - 0.4)
+                .abs()
+                < 1e-6
+        );
+        assert!(
+            (encoded["frequency_penalty"]
+                .as_f64()
+                .expect("frequency_penalty")
+                - 0.3)
+                .abs()
+                < 1e-6
+        );
+        assert_eq!(encoded["seed"], 17);
+        Ok(())
+    }
+
+    #[test]
+    fn seeded_token_sampler_replays_draws() {
+        let policy = SamplingPolicy {
+            strategy: SamplingStrategy::Sample,
+            temperature: Some(0.9),
+            top_k: Some(3),
+            top_p: Some(0.95),
+            repeat_penalty: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            seed: Some(42),
+        };
+        let logits = vec![3.0, 2.9, 2.8];
+        let history = Vec::new();
+        let mut left = TokenSampler::new(&policy);
+        let mut right = TokenSampler::new(&policy);
+
+        let left_draws = (0..4)
+            .map(|_| left.select_next_token(&logits, &history).expect("sample"))
+            .collect::<Vec<_>>();
+        let right_draws = (0..4)
+            .map(|_| right.select_next_token(&logits, &history).expect("sample"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(left_draws, right_draws);
+    }
+
+    #[test]
+    fn sampling_penalties_honor_the_bounded_lookback_window() {
+        let policy = SamplingPolicy {
+            strategy: SamplingStrategy::Greedy,
+            temperature: None,
+            top_k: None,
+            top_p: None,
+            repeat_penalty: Some(1.0),
+            presence_penalty: Some(0.0),
+            frequency_penalty: Some(1.0),
+            seed: None,
+        };
+        let mut logits = vec![0.0, 10.0];
+        let mut history = vec![1u32; DEFAULT_PENALTY_LOOKBACK];
+        history.insert(0, 0);
+
+        apply_sampling_penalties(&mut logits, &history, &policy);
+
+        assert_eq!(logits[0], 0.0);
+        assert_eq!(logits[1], 10.0 - (DEFAULT_PENALTY_LOOKBACK as f32));
     }
 
     #[test]
