@@ -32,9 +32,9 @@ pub use mox_models::{
 use mox_runtime::{
     BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
     KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelResidency,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, SamplingPolicy,
+    SamplingStrategy, TokenSampler,
 };
-use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -280,28 +280,20 @@ impl GenerationOptions {
         }
     }
 
-    fn effective_temperature(&self) -> f32 {
-        self.temperature.unwrap_or(0.8)
-    }
-
-    fn effective_top_k(&self) -> Option<usize> {
-        self.top_k.or(Some(40))
-    }
-
-    fn effective_top_p(&self) -> Option<f32> {
-        self.top_p.or(Some(0.9))
-    }
-
-    fn effective_repeat_penalty(&self) -> f32 {
-        self.repeat_penalty.unwrap_or(1.0)
-    }
-
-    fn effective_presence_penalty(&self) -> f32 {
-        self.presence_penalty.unwrap_or(0.0)
-    }
-
-    fn effective_frequency_penalty(&self) -> f32 {
-        self.frequency_penalty.unwrap_or(0.0)
+    fn sampling_policy(&self) -> SamplingPolicy {
+        SamplingPolicy {
+            strategy: match self.decode_strategy {
+                DecodeStrategy::Greedy => SamplingStrategy::Greedy,
+                DecodeStrategy::Sample => SamplingStrategy::Sample,
+            },
+            temperature: self.temperature,
+            top_k: self.top_k,
+            top_p: self.top_p,
+            repeat_penalty: self.repeat_penalty,
+            presence_penalty: self.presence_penalty,
+            frequency_penalty: self.frequency_penalty,
+            seed: self.seed,
+        }
     }
 }
 
@@ -2232,30 +2224,25 @@ impl ManagedTextGenerationRuntime for CpuModelTextGenerationService {
 pub type CpuProductTextGenerationService = CpuModelTextGenerationService;
 
 struct GenerationSampler {
-    options: GenerationOptions,
-    rng: StdRng,
+    sampler: TokenSampler,
 }
 
 impl GenerationSampler {
     fn new(options: &GenerationOptions) -> Self {
-        let rng = options
-            .seed
-            .map_or_else(StdRng::from_os_rng, StdRng::seed_from_u64);
         Self {
-            options: options.clone(),
-            rng,
+            sampler: TokenSampler::new(&options.sampling_policy()),
         }
     }
 
     fn select_next_token(&mut self, logits: &[f32], cache: &InMemoryKvCache) -> Option<TokenId> {
-        let mut adjusted_logits = logits.to_vec();
-        apply_generation_penalties(&mut adjusted_logits, cache, &self.options);
-        if self.options.decode_strategy == DecodeStrategy::Greedy
-            || self.options.effective_temperature() <= 1e-6
-        {
-            return select_argmax(&adjusted_logits);
-        }
-        sample_next_token(&mut self.rng, &adjusted_logits, &self.options)
+        let history = cache
+            .entries()
+            .iter()
+            .map(|entry| entry.token.as_u32())
+            .collect::<Vec<_>>();
+        self.sampler
+            .select_next_token(logits, &history)
+            .map(TokenId)
     }
 }
 
@@ -2489,103 +2476,6 @@ where
     result
 }
 
-fn apply_generation_penalties(
-    logits: &mut [f32],
-    cache: &InMemoryKvCache,
-    options: &GenerationOptions,
-) {
-    let repeat_penalty = options.effective_repeat_penalty();
-    let presence_penalty = options.effective_presence_penalty();
-    let frequency_penalty = options.effective_frequency_penalty();
-    if (repeat_penalty - 1.0).abs() <= f32::EPSILON
-        && presence_penalty.abs() <= f32::EPSILON
-        && frequency_penalty.abs() <= f32::EPSILON
-    {
-        return;
-    }
-
-    let mut counts = BTreeMap::<u32, usize>::new();
-    for entry in cache.entries() {
-        *counts.entry(entry.token.as_u32()).or_default() += 1;
-    }
-
-    for (token_id, count) in counts {
-        let Some(logit) = logits.get_mut(token_id as usize) else {
-            continue;
-        };
-        if repeat_penalty > 0.0 && (repeat_penalty - 1.0).abs() > f32::EPSILON {
-            if *logit >= 0.0 {
-                *logit /= repeat_penalty;
-            } else {
-                *logit *= repeat_penalty;
-            }
-        }
-        if presence_penalty.abs() > f32::EPSILON {
-            *logit -= presence_penalty;
-        }
-        if frequency_penalty.abs() > f32::EPSILON {
-            *logit -= frequency_penalty * (count as f32);
-        }
-    }
-}
-
-fn sample_next_token(
-    rng: &mut StdRng,
-    logits: &[f32],
-    options: &GenerationOptions,
-) -> Option<TokenId> {
-    let temperature = options.effective_temperature();
-    if temperature <= 1e-6 {
-        return select_argmax(logits);
-    }
-
-    let max_logit = logits.iter().copied().max_by(f32::total_cmp)?;
-    let mut probabilities = logits
-        .iter()
-        .enumerate()
-        .map(|(index, logit)| (index, ((*logit - max_logit) / temperature).exp()))
-        .collect::<Vec<_>>();
-    probabilities.sort_by(|left, right| right.1.total_cmp(&left.1));
-
-    if let Some(top_k) = options.effective_top_k() {
-        if top_k > 0 && top_k < probabilities.len() {
-            probabilities.truncate(top_k);
-        }
-    }
-
-    if let Some(top_p) = options.effective_top_p() {
-        if top_p > 0.0 && top_p < 1.0 {
-            let total = probabilities.iter().map(|(_, value)| *value).sum::<f32>();
-            let mut cumulative = 0.0;
-            let mut truncated = Vec::new();
-            for (index, probability) in probabilities {
-                cumulative += probability / total.max(f32::EPSILON);
-                truncated.push((index, probability));
-                if cumulative >= top_p {
-                    break;
-                }
-            }
-            probabilities = truncated;
-        }
-    }
-
-    let total = probabilities.iter().map(|(_, value)| *value).sum::<f32>();
-    if total <= 0.0 {
-        return select_argmax(logits);
-    }
-
-    let mut target = rng.random::<f32>() * total;
-    for (index, probability) in &probabilities {
-        target -= *probability;
-        if target <= 0.0 {
-            return Some(TokenId(*index as u32));
-        }
-    }
-    probabilities
-        .last()
-        .map(|(index, _)| TokenId(*index as u32))
-}
-
 fn truncate_generated_text(
     tokenizer: &FixtureWordTokenizer,
     generated_tokens: &mut Vec<TokenId>,
@@ -2693,14 +2583,6 @@ fn mean_cache_value(cache: &InMemoryKvCache, width: usize) -> Vec<f32> {
         *value *= scale;
     }
     output
-}
-
-fn select_argmax(logits: &[f32]) -> Option<TokenId> {
-    logits
-        .iter()
-        .enumerate()
-        .max_by(|(_, left), (_, right)| left.total_cmp(right))
-        .map(|(index, _)| TokenId(index as u32))
 }
 
 /// Smoke embeddings execution error.
@@ -3872,10 +3754,53 @@ mod tests {
         cache.append(TokenId(1), vec![0.0], vec![0.0])?;
         cache.append(TokenId(1), vec![0.0], vec![0.0])?;
 
-        let mut logits = vec![1.0, 3.0, 2.5];
-        super::apply_generation_penalties(&mut logits, &cache, &options);
+        let mut sampler = super::GenerationSampler::new(&options);
+        assert_eq!(
+            sampler.select_next_token(&[1.0, 3.0, 2.5], &cache),
+            Some(TokenId(2))
+        );
+        Ok(())
+    }
 
-        assert_eq!(super::select_argmax(&logits), Some(TokenId(2)));
+    #[test]
+    fn cpu_reference_text_generation_replays_seeded_sampling_options()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut left = CpuReferenceTextGenerationService::new()?;
+        let mut right = CpuReferenceTextGenerationService::new()?;
+        let options = GenerationOptions {
+            max_output_tokens: 4,
+            context_overflow_policy: ContextOverflowPolicy::Refuse,
+            decode_strategy: super::DecodeStrategy::Sample,
+            temperature: Some(0.9),
+            top_k: Some(3),
+            top_p: Some(0.95),
+            repeat_penalty: Some(1.1),
+            presence_penalty: Some(0.2),
+            frequency_penalty: Some(0.1),
+            seed: Some(42),
+            stop_sequences: Vec::new(),
+        };
+        let left_request = GenerationRequest::new_text(
+            "gen-ref-seeded-left",
+            left.model_descriptor().clone(),
+            None,
+            "hello",
+            options.clone(),
+        );
+        let right_request = GenerationRequest::new_text(
+            "gen-ref-seeded-right",
+            right.model_descriptor().clone(),
+            None,
+            "hello",
+            options,
+        );
+
+        let left_response = left.generate(&left_request)?;
+        let right_response = right.generate(&right_request)?;
+
+        assert_eq!(left_response.output, right_response.output);
+        assert_eq!(left_response.usage, right_response.usage);
+        assert_eq!(left_response.termination, right_response.termination);
         Ok(())
     }
 
