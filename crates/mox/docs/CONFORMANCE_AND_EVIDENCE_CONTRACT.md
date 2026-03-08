@@ -316,6 +316,43 @@ surfaces queue depth or queue capacity, it must also carry the same
 `execution_profile`/queue-policy context so callers can tell whether "queue
 depth = 0" means "no queue currently" or "no internal queue exists at all."
 
+## Multi-Device And Sharding Schema
+
+`MOX-173` defines the minimum topology truth for same-backend multi-device and
+sharded execution paths.
+
+At minimum, capability and receipt surfaces must carry:
+
+- `selected_devices`
+  - one reusable inventory entry per concrete participating device
+  - each entry should reuse the same qualifier schema as
+    `selected_device_inventory`
+- `execution_topology` when the runtime has a concrete placement plan
+  - `effective_backend`
+  - `kind`
+    - `single_device`
+    - `replicated`
+    - `layer_sharded`
+    - `tensor_sharded`
+  - `assignments`
+    - `shard_id`
+    - `device`
+      - `stable_device_id`
+      - `topology_key` when available
+      - `placement_index`
+    - `partition`
+      - `whole_model`
+      - `replica`
+      - `layer_range`
+      - `tensor_range`
+
+The current Mox implementation is still operationally single-device for the
+shipped product paths, but that single-device fact must now be explicit rather
+than implied from a lone `selected_device` field. When future paths attach more
+than one device, Mox must not silently imply replication or sharding from a
+device count alone; the topology kind and assignments must be surfaced
+explicitly.
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or
@@ -340,6 +377,7 @@ Required identity and backend fields:
 - `backend_toolchain_version`
 - `compiled_backend_features`
 - `selected_devices`
+- `execution_topology`
 - `effective_backend`
 - `fallback_state`
 
