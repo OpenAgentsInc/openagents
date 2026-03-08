@@ -3,7 +3,10 @@
 
 #![allow(clippy::result_large_err)]
 
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{BTreeMap, BTreeSet, HashMap},
+    fmt,
+};
 
 use mox_compiler::compile_graph;
 #[cfg(target_os = "macos")]
@@ -11,12 +14,16 @@ use mox_core::QuantizationMode;
 use mox_core::{DType, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
-    Allocator, BackendDegradedPolicy, BackendName, BackendSelection, BufferHandle,
+    Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
+    BackendDegradedPolicy, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
     DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult,
     HealthStatus, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
 };
 #[cfg(target_os = "macos")]
-use mox_runtime::{QuantizationExecution, QuantizationLoadPath, QuantizationSupport};
+use mox_runtime::{
+    KernelCachePolicy, KernelCacheReport, KernelCacheState, QuantizationExecution,
+    QuantizationLoadPath, QuantizationSupport,
+};
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submission";
@@ -25,6 +32,15 @@ pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submissio
 const MODERN_FAMILY_FLAG: &str = "family_modern";
 #[cfg(target_os = "macos")]
 const LEGACY_FAMILY_FLAG: &str = "family_legacy";
+
+const METAL_POOL_MAX_CACHED_BUFFERS: usize = 128;
+const METAL_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
+#[cfg(target_os = "macos")]
+const METAL_KERNEL_CACHE_MAX_ENTRIES: usize = 1;
+#[cfg(target_os = "macos")]
+const METAL_KERNEL_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
+#[cfg(target_os = "macos")]
+const METAL_EMBEDDINGS_PIPELINE_ESTIMATED_BYTES: u64 = 1 * 1024 * 1024;
 
 /// Exact plan surface currently supported for the first accelerated
 /// `mox.embeddings` milestone.
@@ -284,11 +300,125 @@ enum MetalBackendState {
 struct AvailableMetalBackend {
     descriptor: DeviceDescriptor,
     platform: platform::ConfiguredBackend,
+    pool: MetalAllocatorPool,
 }
 
 /// Metal backend discovery, allocation, and submission implementation.
 pub struct MetalBackend {
     state: MetalBackendState,
+}
+
+#[derive(Clone, Debug)]
+struct MetalAllocatorPool {
+    policy: AllocatorPoolPolicy,
+    cached: HashMap<TensorSpec, Vec<MetalBuffer>>,
+    state: AllocatorPoolState,
+}
+
+impl MetalAllocatorPool {
+    fn new(policy: AllocatorPoolPolicy) -> Self {
+        Self {
+            policy,
+            cached: HashMap::new(),
+            state: AllocatorPoolState::default(),
+        }
+    }
+
+    fn take(&mut self, spec: &TensorSpec) -> Option<MetalBuffer> {
+        if self.policy.mode != AllocatorPoolMode::ExactTensorSpec {
+            return None;
+        }
+        let mut should_remove = false;
+        let buffer = self.cached.get_mut(spec).and_then(|entries| {
+            let buffer = entries.pop();
+            should_remove = entries.is_empty();
+            buffer
+        });
+        if should_remove {
+            self.cached.remove(spec);
+        }
+        if let Some(buffer) = buffer {
+            self.state.cached_buffers = self.state.cached_buffers.saturating_sub(1);
+            self.state.cached_bytes = self
+                .state
+                .cached_bytes
+                .saturating_sub(buffer_bytes(buffer.byte_len()));
+            Some(buffer)
+        } else {
+            None
+        }
+    }
+
+    fn recycle(&mut self, buffer: MetalBuffer) {
+        if self.policy.mode != AllocatorPoolMode::ExactTensorSpec {
+            return;
+        }
+        let bytes = buffer_bytes(buffer.byte_len());
+        if self.state.cached_buffers >= self.policy.max_cached_buffers
+            || self.state.cached_bytes.saturating_add(bytes) > self.policy.max_cached_bytes
+        {
+            return;
+        }
+        self.cached
+            .entry(buffer.spec.clone())
+            .or_default()
+            .push(buffer);
+        self.state.cached_buffers += 1;
+        self.state.cached_bytes = self.state.cached_bytes.saturating_add(bytes);
+    }
+
+    fn report(&self) -> AllocatorPoolReport {
+        AllocatorPoolReport {
+            policy: self.policy.clone(),
+            state: self.state.clone(),
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+#[derive(Clone, Debug)]
+struct MetalKernelCache {
+    policy: KernelCachePolicy,
+    state: KernelCacheState,
+}
+
+#[cfg(target_os = "macos")]
+impl MetalKernelCache {
+    fn new() -> Self {
+        Self {
+            policy: KernelCachePolicy::bounded(
+                METAL_KERNEL_CACHE_MAX_ENTRIES,
+                Some(METAL_KERNEL_CACHE_MAX_CACHED_BYTES),
+            ),
+            state: KernelCacheState::default(),
+        }
+    }
+
+    fn record_embeddings_pipelines(&mut self) {
+        if self.state.cached_entries == 0 {
+            self.state.cached_entries = 1;
+            self.state.cached_bytes = METAL_EMBEDDINGS_PIPELINE_ESTIMATED_BYTES
+                .min(self.policy.max_cached_bytes.unwrap_or(u64::MAX));
+        }
+    }
+
+    fn report(&self) -> KernelCacheReport {
+        KernelCacheReport {
+            policy: self.policy.clone(),
+            state: self.state.clone(),
+        }
+    }
+}
+
+fn metal_allocator_pool_policy() -> AllocatorPoolPolicy {
+    AllocatorPoolPolicy::exact_tensor_spec(
+        METAL_POOL_MAX_CACHED_BUFFERS,
+        METAL_POOL_MAX_CACHED_BYTES,
+    )
+}
+
+fn buffer_bytes(byte_len: usize) -> u64 {
+    byte_len.try_into().unwrap_or(u64::MAX)
 }
 
 impl Default for MetalBackend {
@@ -309,6 +439,7 @@ impl MetalBackend {
                     state: MetalBackendState::Available(Box::new(AvailableMetalBackend {
                         descriptor,
                         platform: platform_backend,
+                        pool: MetalAllocatorPool::new(metal_allocator_pool_policy()),
                     })),
                 }
             }
@@ -401,14 +532,16 @@ impl MetalBackend {
                         Some(backend.descriptor.clone()),
                         supported_ops,
                         policy,
-                    )),
+                    )
+                    .with_runtime_resources(self.runtime_resources())),
                     HealthStatus::Degraded => Ok(BackendSelection::degraded(
                         self.backend_name(),
                         Some(backend.descriptor.clone()),
                         supported_ops,
                         policy,
                         health.message,
-                    )),
+                    )
+                    .with_runtime_resources(self.runtime_resources())),
                     HealthStatus::Offline => Err(RuntimeError::Backend(format!(
                         "metal backend unavailable: {}",
                         health.message
@@ -447,7 +580,8 @@ impl MetalBackend {
                     .collect(),
                 policy,
                 format!("metal backend unavailable: {}", health.message),
-            )),
+            )
+            .with_runtime_resources(fallback_backend.runtime_resources())),
         }
     }
 }
@@ -468,6 +602,21 @@ impl DeviceDiscovery for MetalBackend {
                 status: HealthStatus::Degraded,
                 message: format!("metal discovery failed: {error}"),
             },
+        }
+    }
+
+    fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        match &self.state {
+            MetalBackendState::Available(backend) => Some(BackendRuntimeResources {
+                allocator_pool: backend.pool.report(),
+                kernel_cache: backend.platform.kernel_cache_report(),
+                device_memory_budget: Some(
+                    backend
+                        .platform
+                        .device_memory_budget(backend.pool.policy.max_cached_bytes),
+                ),
+            }),
+            MetalBackendState::Unavailable(_) => None,
         }
     }
 }
@@ -521,6 +670,11 @@ impl AvailableMetalBackend {
             )));
         }
 
+        if let Some(mut buffer) = self.pool.take(spec) {
+            self.clear_buffer(&mut buffer)?;
+            return Ok(buffer);
+        }
+
         let byte_len = spec
             .storage_size()
             .checked_mul(size_of_dtype(spec.dtype()))
@@ -536,6 +690,19 @@ impl AvailableMetalBackend {
             ),
             platform: self.platform.allocate_buffer(byte_len)?,
         })
+    }
+
+    fn clear_buffer(&self, buffer: &mut MetalBuffer) -> Result<(), RuntimeError> {
+        if buffer.host_visible() {
+            buffer.write_bytes(&vec![0u8; buffer.byte_len()])?;
+            return Ok(());
+        }
+        let mut submission = self
+            .platform
+            .begin_submission(String::from("mox.pool.clear"))?;
+        submission.fill_buffer(&buffer.platform, buffer.byte_len(), 0)?;
+        submission.commit(MetalCommandWait::Completed)?;
+        Ok(())
     }
 
     fn buffer_from_tensor_data(
@@ -563,6 +730,12 @@ impl AvailableMetalBackend {
                 .begin_submission(String::from("mox.execute"))?,
         };
         let mut values = BTreeMap::new();
+        let external_input_aliases = plan
+            .steps
+            .iter()
+            .filter(|step| matches!(step.op, ExecutionOp::Input { .. }))
+            .map(|step| step.output)
+            .collect::<BTreeSet<_>>();
 
         for step in &plan.steps {
             match &step.op {
@@ -628,6 +801,11 @@ impl AvailableMetalBackend {
                 return Err(RuntimeError::MissingInput(*output_id));
             };
             outputs.insert(*output_id, buffer);
+        }
+        for (tensor_id, buffer) in values {
+            if !external_input_aliases.contains(&tensor_id) {
+                self.pool.recycle(buffer);
+            }
         }
         Ok(ExecutionResult {
             outputs,
@@ -762,14 +940,14 @@ mod platform {
     };
     use mox_core::{DType, Device, DeviceKind, QuantizationMode};
     use mox_runtime::{
-        BufferHandle, DeviceDescriptor, HealthStatus, QuantizationExecution, QuantizationSupport,
-        RuntimeError, RuntimeHealth,
+        BufferHandle, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCacheReport,
+        QuantizationExecution, QuantizationSupport, RuntimeError, RuntimeHealth,
     };
 
     use super::{
         DeviceSupportTier, FamilySupport, LEGACY_FAMILY_FLAG, MODERN_FAMILY_FLAG, MetalBuffer,
-        MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalStorageMode,
-        classify_support,
+        MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalKernelCache,
+        MetalStorageMode, classify_support,
     };
 
     #[derive(Clone)]
@@ -981,6 +1159,7 @@ mod platform {
         command_queue: CommandQueue,
         storage_mode: MetalStorageMode,
         pipelines: Option<EmbeddingsPipelines>,
+        kernel_cache: MetalKernelCache,
     }
 
     impl ConfiguredBackend {
@@ -1017,6 +1196,7 @@ mod platform {
         fn pipelines(&mut self) -> Result<&EmbeddingsPipelines, RuntimeError> {
             if self.pipelines.is_none() {
                 self.pipelines = Some(compile_embeddings_pipelines(&self.device)?);
+                self.kernel_cache.record_embeddings_pipelines();
             }
             let Some(pipelines) = self.pipelines.as_ref() else {
                 return Err(RuntimeError::Backend(String::from(
@@ -1024,6 +1204,26 @@ mod platform {
                 )));
             };
             Ok(pipelines)
+        }
+
+        pub(super) fn kernel_cache_report(&self) -> KernelCacheReport {
+            self.kernel_cache.report()
+        }
+
+        pub(super) fn device_memory_budget(
+            &self,
+            allocator_pool_budget_bytes: u64,
+        ) -> DeviceMemoryBudget {
+            let kernel_cache_budget_bytes = self
+                .kernel_cache
+                .policy
+                .max_cached_bytes
+                .unwrap_or(self.kernel_cache.state.cached_bytes);
+            DeviceMemoryBudget::new(
+                self.descriptor.memory_capacity_bytes,
+                allocator_pool_budget_bytes,
+                kernel_cache_budget_bytes,
+            )
         }
 
         pub(super) fn encode_add(
@@ -1110,6 +1310,7 @@ mod platform {
             command_queue,
             storage_mode,
             pipelines: None,
+            kernel_cache: MetalKernelCache::new(),
         })
     }
 
@@ -1400,7 +1601,10 @@ kernel void mox_matmul(
 
 #[cfg(not(target_os = "macos"))]
 mod platform {
-    use mox_runtime::{HealthStatus, RuntimeHealth};
+    use mox_runtime::{
+        DeviceMemoryBudget, HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState,
+        RuntimeHealth,
+    };
 
     use super::{
         MetalBuffer, MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalStorageMode,
@@ -1537,6 +1741,24 @@ mod platform {
             Err(RuntimeError::Backend(String::from(
                 "metal backend is only available on macOS",
             )))
+        }
+
+        pub(super) fn kernel_cache_report(&self) -> KernelCacheReport {
+            KernelCacheReport {
+                policy: KernelCachePolicy::bounded(0, Some(0)),
+                state: KernelCacheState::default(),
+            }
+        }
+
+        pub(super) fn device_memory_budget(
+            &self,
+            allocator_pool_budget_bytes: u64,
+        ) -> DeviceMemoryBudget {
+            DeviceMemoryBudget::new(
+                self.descriptor.memory_capacity_bytes,
+                allocator_pool_budget_bytes,
+                0,
+            )
         }
     }
 
@@ -1677,6 +1899,7 @@ mod tests {
             BackendSelectionState::CrossBackendFallback
         );
         assert!(selection.degraded_reason.is_none());
+        assert!(selection.runtime_resources.is_some());
         Ok(())
     }
 
@@ -1735,6 +1958,7 @@ mod tests {
                 assert_eq!(selection.effective_backend, "metal");
                 assert!(selection.selected_device.is_some());
                 assert!(selection.fallback_reason.is_none());
+                assert!(selection.runtime_resources.is_some());
                 assert_eq!(
                     selection.policy,
                     ServedProductBackendPolicy::fallback_to_compatible_backend(
@@ -1765,6 +1989,7 @@ mod tests {
                 assert_eq!(fallback.effective_backend, "cpu");
                 assert!(fallback.selected_device.is_some());
                 assert!(fallback.fallback_reason.is_some());
+                assert!(fallback.runtime_resources.is_some());
                 assert_eq!(
                     fallback.policy,
                     ServedProductBackendPolicy::fallback_to_compatible_backend(

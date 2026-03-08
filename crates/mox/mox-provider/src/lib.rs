@@ -957,9 +957,11 @@ fn digest_weight_bundle(hasher: &mut Sha256, weight_bundle: &WeightBundleMetadat
 mod tests {
     use mox_core::{DType, Device, DeviceKind, QuantizationMode as RuntimeQuantizationMode};
     use mox_runtime::{
-        AmdDeviceMetadata, AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
-        AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendSelection, DeviceDescriptor,
-        HealthStatus, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata,
+        AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
+        AmdRuntimeMode, AmdTopologyInfo, BackendRuntimeResources, BackendSelection,
+        DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
         MemoryResidencySnapshot, ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheState,
         QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     };
@@ -1168,6 +1170,33 @@ mod tests {
                     "message": "cpu backend ready"
                 }
             })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn capability_envelope_preserves_backend_runtime_resources()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cpu_backend_selection()
+                .with_runtime_resources(Some(sample_backend_runtime_resources())),
+            &model,
+            ProviderReadiness::ready("cpu backend ready"),
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]["max_cached_bytes"],
+            json!(8 * 1024 * 1024)
+        );
+        assert_eq!(
+            encoded["backend_selection"]["runtime_resources"]["kernel_cache"]["policy"]["enabled"],
+            json!(false)
+        );
+        assert_eq!(
+            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]["allocator_pool_budget_bytes"],
+            json!(8 * 1024 * 1024)
         );
         Ok(())
     }
@@ -1741,6 +1770,27 @@ mod tests {
                 String::from("add"),
             ],
         )
+    }
+
+    fn sample_backend_runtime_resources() -> BackendRuntimeResources {
+        BackendRuntimeResources {
+            allocator_pool: AllocatorPoolReport {
+                policy: AllocatorPoolPolicy::exact_tensor_spec(64, 8 * 1024 * 1024),
+                state: AllocatorPoolState {
+                    cached_buffers: 3,
+                    cached_bytes: 4096,
+                },
+            },
+            kernel_cache: KernelCacheReport {
+                policy: KernelCachePolicy::disabled(),
+                state: KernelCacheState::default(),
+            },
+            device_memory_budget: Some(DeviceMemoryBudget::new(
+                Some(16 * 1024 * 1024 * 1024),
+                8 * 1024 * 1024,
+                0,
+            )),
+        }
     }
 
     fn metal_fallback_selection() -> BackendSelection {
