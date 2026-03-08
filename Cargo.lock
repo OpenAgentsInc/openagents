@@ -4449,6 +4449,7 @@ dependencies = [
  "hex",
  "memmap2",
  "serde",
+ "serde_json",
  "sha2",
  "tempfile",
  "thiserror 2.0.17",
