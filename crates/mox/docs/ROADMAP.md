@@ -99,7 +99,7 @@ Verified on 2026-03-08 via `gh issue view` and `gh issue create`:
 | [#3150](https://github.com/OpenAgentsInc/openagents/issues/3150), [#3151](https://github.com/OpenAgentsInc/openagents/issues/3151) to [#3156](https://github.com/OpenAgentsInc/openagents/issues/3156) | Closed | Phase-3 Metal baseline: discovery, allocator/submission substrate, minimum kernel coverage, truthful backend selection, parity coverage, and Metal embeddings. |
 | [#3157](https://github.com/OpenAgentsInc/openagents/issues/3157), [#3158](https://github.com/OpenAgentsInc/openagents/issues/3158) to [#3162](https://github.com/OpenAgentsInc/openagents/issues/3162) | Closed | Phase-4 AMD truth baseline: AMD metadata model, KFD/userspace discovery, provider truth, and runbook coverage. |
 
-Current open GitHub issues seeded from this roadmap:
+Selected open GitHub issues seeded first from this roadmap:
 
 | Issue | Title | Why it is open now |
 | --- | --- | --- |
@@ -151,13 +151,17 @@ contract, compatibility, lifecycle, and cutover work.
 - context-window accounting and truncation policy
 - sampler correctness and deterministic replay
 - model memory planning and load admission control
-- streaming semantics and cancellation behavior
+- streaming semantics, backpressure, slow-reader, and consumer-disconnect
+  behavior
 - embeddings batch semantics and metadata reporting
 - model-store integrity verification
 - backend-neutral error taxonomy
 - explicit fallback and degraded-state policy
+- shared prompt-prefix cache identity, reuse policy, and accounting
 - backend allocator pooling, kernel-cache bounds, and device-memory-budget
   reporting
+- cache/state upgrade invalidation for plans, kernels, paged tensors, and
+  persisted runtime state
 - runtime observability and cutover performance gates
 
 ### Accelerator coverage
@@ -167,15 +171,22 @@ contract, compatibility, lifecycle, and cutover work.
   RoPE, and normalization kernels
 - NVIDIA discovery, truth, and execution
 - AMD execution after the current discovery/readiness work
+- a minimum hardware validation matrix across CPU, Apple Silicon, NVIDIA, AMD
+  KFD, and refusal-path coverage
 
 ### Desktop cutover and compute-market substrate
 
 - app-owned local runtime seam instead of Ollama HTTP calls
 - rename/remove remaining Ollama-specific app contracts and wording
+- a served-artifact identity and reproducibility tuple for model blob,
+  tokenizer, chat template, generation defaults, quant format, and
+  backend/toolchain version
 - compute-market capability qualifiers, batching truth, topology truth, warm/cold
   cache truth, and delivery-proof evidence
 - stable execution-plan digests, kernel counts, bytes moved, plan-cache
   hit/miss, and KV-growth evidence
+- model provenance/license gating for what local artifacts may be advertised or
+  served
 - process isolation policy and the long-term Mox-native model/runtime boundary
 
 ## Ollama Behaviors That Must Become Explicit
@@ -310,6 +321,7 @@ baseline is merged.
 | `MOX-125` | Publish a library-first local runtime API for `list_models`, `show_model`, `loaded_models`, `warm_model`, `unload_model`, `generate`, and `embed` | `mox-serve`, `mox-provider` | Creates the in-process replacement boundary the app can call directly. |
 | `MOX-126` | Add GGUF-backed KV-cache ownership and deterministic session lifecycle for text generation | `mox-serve` | Required for real text-generation serving instead of fixture-shaped flows. |
 | `MOX-126A` | Add paged KV-cache layout, accounting, and spill policy for long-context text generation | `mox-serve`, `mox-runtime`, `mox-provider` | Model-blob paging and KV paging are different operational problems and need separate policy. |
+| `MOX-126B` | Add shared prompt-prefix cache identity, reuse policy, accounting, and truth surfaces | `mox-serve`, `mox-runtime`, `mox-provider` | Shared prefix reuse changes warm/cold posture and latency claims and should not hide inside generic KV-cache work. |
 
 ### Epic C: Behavioral contract and serving policy
 
@@ -318,7 +330,7 @@ baseline is merged.
 | `MOX-127` | Add explicit context-window accounting, truncation policy, and over-limit error semantics | `mox-models`, `mox-serve` | Mox needs concrete token budgeting, truncation, and refusal rules. |
 | `MOX-128` | Add deterministic sampler implementation and replay coverage for supported generation options | `mox-serve`, `mox-runtime` | Option parity without sampler correctness is not enough. |
 | `MOX-129` | Add model memory planning, residency policy, and admission control for local serving | `mox-serve`, `mox-runtime`, `mox-provider` | Warm/load/unload is underspecified without memory planning and refusal behavior. |
-| `MOX-133` | Add streaming token generation semantics and cancellation behavior for the local runtime API | `mox-serve`, `mox-provider` | The app needs explicit partial-output and final-chunk semantics. |
+| `MOX-133` | Add streaming token generation, backpressure, disconnect, and cancellation semantics for the local runtime API | `mox-serve`, `mox-provider` | The app needs explicit partial-output, slow-reader, dropped-client, and final-chunk semantics. |
 | `MOX-134` | Add embeddings API parity, batch semantics, and model metadata reporting | `mox-serve`, `mox-provider` | Embeddings need explicit dimension, normalization, and failure behavior. |
 | `MOX-135` | Add local model-store integrity verification and cache-repair diagnostics | `mox-catalog`, `mox-models` | Reading the Ollama store is not enough without digest and corruption checks. |
 | `MOX-136` | Define backend-neutral local runtime error taxonomy and desktop-facing diagnostics | `mox-serve`, `mox-provider`, `mox-runtime` | Replacing Ollama requires a stable error model. |
@@ -345,6 +357,7 @@ baseline is merged.
 | `MOX-145` | Wire NVIDIA backend selection and truthful capability reporting through Mox | `mox-runtime`, `mox-provider`, `mox-backend-cuda` | Keeps provider/runtime contracts explicit and replay-safe. |
 | `MOX-146` | Add CPU-vs-NVIDIA parity coverage for the first supported served product path | `mox-backend-cuda`, `mox-serve` | Prevents "CUDA works" claims without evidence. |
 | `MOX-147` | Ship the first tested NVIDIA-backed served product path | `mox-backend-cuda`, `mox-serve`, `mox-provider` | Makes NVIDIA real instead of aspirational. |
+| `MOX-148` | Define and keep a minimum hardware validation matrix for CPU, Apple Silicon, NVIDIA, AMD KFD, and refusal paths | backend crates, `mox-serve`, test fixtures | Truthful backend support will drift unless the minimum lab matrix and refusal-path coverage stay green. |
 | `MOX-150` | Mox phase 6: AMD served-product execution path | `mox-backend-amd-kfd`, `mox-backend-amd-userspace`, `mox-runtime`, `mox-provider` | Turns AMD from truthful detection into actual execution. |
 | `MOX-151` | Add AMD KFD lowering and kernel coverage for the first supported primitive set | `mox-backend-amd-kfd`, `mox-compiler`, `mox-runtime` | KFD is the lower-risk AMD execution lane and should come first. |
 | `MOX-152` | Wire served-product capability gating for AMD KFD separately from AMD userspace | `mox-provider`, `mox-runtime`, AMD backend crates | Preserves the KFD/userspace split after execution lands. |
@@ -361,6 +374,9 @@ baseline is merged.
 | `OA-203` | Remove the external Ollama dependency and clean up provider/UI wording | `apps/autopilot-desktop` | Finishes product truth cleanup after parity is proven. |
 | `MOX-160` | Define in-process vs subprocess isolation policy for Mox local serving | `mox-serve`, `mox-runtime`, backend crates | The desktop needs an explicit crash/reset isolation decision. |
 | `MOX-161` | Define allowed fallback lattice for Mox served products: refuse, degrade, replan, retry, or same-backend slow path | `mox-runtime`, `mox-provider`, `mox-serve` | Teams will otherwise improvise correctness-vs-speed fallback behavior inconsistently. |
+| `MOX-162` | Define the served-artifact identity and reproducibility tuple for model blob, tokenizer, template, defaults, quantization, and backend/toolchain version | `mox-models`, `mox-serve`, `mox-provider`, `mox-runtime` | "Same model" is not reproducible enough without a first-class artifact identity tuple. |
+| `MOX-163` | Define cache and persisted-state upgrade invalidation policy for plan caches, kernel caches, paged tensors, and KV state | `mox-runtime`, `mox-serve`, `mox-models`, backend crates | Execution and cache truth is unsafe across upgrades unless invalidation rules are explicit. |
+| `MOX-164` | Add model provenance and license gating for locally discovered artifacts and advertised compute-market supply | `mox-catalog`, `mox-provider`, `mox-models` | Integrity alone does not say whether an artifact may be served or advertised. |
 | `MOX-170` | Define the boundary between Ollama-compat migration support and the long-term Mox-native model/runtime format | `mox-models`, `mox-catalog`, `mox-serve` | Migration support should not permanently dictate Mox architecture. |
 
 ### Epic F: Compute-market execution substrate beyond Ollama parity
@@ -384,7 +400,7 @@ for the minimum conformance harness scope and runtime evidence schema that
 
 The shortest honest path from today's `main` is:
 
-1. Open and land `MOX-110` through `MOX-119` and `MOX-120` through `MOX-126A`
+1. Open and land `MOX-110` through `MOX-119` and `MOX-120` through `MOX-126B`
    so Mox can actually read, mmap, catalog, prove conformance for, and serve supported
    Ollama-installed models.
 2. Land `MOX-127` through `MOX-139`, plus `MOX-157` through `MOX-159`, before
@@ -395,10 +411,12 @@ The shortest honest path from today's `main` is:
    not hidden behind truthful load-only support.
 4. Finish Metal as a real text-generation backend via `MOX-130` through
    `MOX-132`.
-5. Open NVIDIA explicitly via `MOX-140` through `MOX-147`.
+5. Open NVIDIA explicitly via `MOX-140` through `MOX-147` and keep `MOX-148`
+   green as backend claims widen.
 6. Turn AMD truth into AMD execution via `MOX-150` through `MOX-154`.
-7. Lock process-isolation, fallback-lattice, and migration-boundary decisions
-   via `MOX-160`, `MOX-161`, and `MOX-170`.
+7. Lock process-isolation, fallback-lattice, served-artifact identity,
+   cache-invalidation, provenance, and migration-boundary decisions via
+   `MOX-160`, `MOX-161`, `MOX-162`, `MOX-163`, `MOX-164`, and `MOX-170`.
 8. Land the cutover contract from
    [CONFORMANCE_AND_EVIDENCE_CONTRACT.md](./CONFORMANCE_AND_EVIDENCE_CONTRACT.md)
    before hardening backend and app cutover work.
@@ -429,16 +447,22 @@ true:
 - Mox can warm, load, unload, and keep alive a local model lifecycle
 - Mox has explicit paged-KV policy for long-context text generation or explicit
   refusal when that policy is unsupported
+- Mox has explicit shared prompt-prefix cache policy and accounting or explicit
+  refusal when shared prefix reuse is unsupported
 - Mox can decide whether a model may load based on memory planning, residency
   policy, and admission control
 - Mox can execute the current text-generation path with the option surface the
   desktop already uses
-- Mox can stream partial output and cancellation with stable final-chunk
-  semantics
+- Mox can stream partial output, slow-reader handling, disconnect behavior, and
+  cancellation with stable final-chunk semantics
 - metrics, receipts, capability surfaces, error taxonomy, and fallback states
   remain truthful
+- Mox exposes a served-artifact identity tuple for model blob, tokenizer, chat
+  template, generation defaults, quant format, and backend/toolchain version
 - model-store integrity verification and corruption diagnostics exist for the
   local catalog path
+- cache and persisted-state upgrade invalidation is explicit for execution
+  plans, kernel caches, paged tensors, and KV state
 - performance acceptance thresholds for cutover are defined and met
 - the desktop uses an app-owned local runtime seam instead of `reqwest` calls
   to Ollama
@@ -463,10 +487,16 @@ are also true:
 - runtime evidence includes execution-plan digest, compile digest, kernel count,
   bytes moved, queue wait, warm/cold load state, KV growth, backend/interface
   mode, and refusal/degraded reason codes
+- shared prompt-prefix reuse, cache-hit state, and warm/cold posture are
+  explicit and machine-checkable
 - multi-device or sharded execution is either explicitly supported for a product
   path or explicitly refused with stable diagnostics
 - accelerator-sensitive offers can compare promised versus delivered topology
   and capability truth
+- supported backend claims stay green against a minimum hardware validation
+  matrix that includes CPU, Apple Silicon, NVIDIA, AMD KFD, and refusal paths
+- model provenance and license gating is explicit for what local artifacts may
+  be advertised or served into the compute market
 - if `sandbox_execution` is added later, Mox exposes a bounded execution
   profile and machine-checkable evidence surface
 
