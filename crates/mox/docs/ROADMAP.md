@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, after `MOX-123` / [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) landed in commit `cf986e282`, after `MOX-124` / [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) landed in commit `27273f837`, after `MOX-125` / [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) landed in commit `877112111`, after `MOX-126` / [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) landed in commit `cd3987928`, after `MOX-126A` / [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) landed in commit `0dfcf3f7c`, after `MOX-126B` / [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) landed in commit `2bd89d48f`, after `MOX-165` / [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) landed in commit `e4ffbee5b`, after `MOX-127` / [#3187](https://github.com/OpenAgentsInc/openagents/issues/3187) landed in commit `bf0cf75a8`, after `MOX-128` / [#3188](https://github.com/OpenAgentsInc/openagents/issues/3188) landed in commits `9e283787a` and `875de50b9`, after `MOX-129` / [#3189](https://github.com/OpenAgentsInc/openagents/issues/3189) landed in commit `a12badddb`, after `MOX-133` / [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) landed in commit `eb0f84af2`, after `MOX-134` / [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) landed in commit `1600ec4bc`, after `MOX-135` / [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) landed in commit `2516c70e3`, after `MOX-136` / [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) landed in commit `74ebe5cf9`, after `MOX-137` / [#3194](https://github.com/OpenAgentsInc/openagents/issues/3194) landed in commit `b91fe2c4d`, after `MOX-138` / [#3195](https://github.com/OpenAgentsInc/openagents/issues/3195) landed in commit `f488763b0`, after `MOX-139` / [#3196](https://github.com/OpenAgentsInc/openagents/issues/3196) landed in commit `cbfc30a6d`, after `MOX-157` / [#3197](https://github.com/OpenAgentsInc/openagents/issues/3197) landed in commit `d54614807`, after `MOX-158` / [#3198](https://github.com/OpenAgentsInc/openagents/issues/3198) landed in commit `1f6c6e9fe`, after `MOX-159` / [#3199](https://github.com/OpenAgentsInc/openagents/issues/3199) landed in commit `a7b73314f`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, after `MOX-123` / [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) landed in commit `cf986e282`, after `MOX-124` / [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) landed in commit `27273f837`, after `MOX-125` / [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) landed in commit `877112111`, after `MOX-126` / [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) landed in commit `cd3987928`, after `MOX-126A` / [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) landed in commit `0dfcf3f7c`, after `MOX-126B` / [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) landed in commit `2bd89d48f`, after `MOX-165` / [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) landed in commit `e4ffbee5b`, after `MOX-127` / [#3187](https://github.com/OpenAgentsInc/openagents/issues/3187) landed in commit `bf0cf75a8`, after `MOX-128` / [#3188](https://github.com/OpenAgentsInc/openagents/issues/3188) landed in commits `9e283787a` and `875de50b9`, after `MOX-129` / [#3189](https://github.com/OpenAgentsInc/openagents/issues/3189) landed in commit `a12badddb`, after `MOX-133` / [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) landed in commit `eb0f84af2`, after `MOX-134` / [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) landed in commit `1600ec4bc`, after `MOX-135` / [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) landed in commit `2516c70e3`, after `MOX-136` / [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) landed in commit `74ebe5cf9`, after `MOX-137` / [#3194](https://github.com/OpenAgentsInc/openagents/issues/3194) landed in commit `b91fe2c4d`, after `MOX-138` / [#3195](https://github.com/OpenAgentsInc/openagents/issues/3195) landed in commit `f488763b0`, after `MOX-139` / [#3196](https://github.com/OpenAgentsInc/openagents/issues/3196) landed in commit `cbfc30a6d`, after `MOX-157` / [#3197](https://github.com/OpenAgentsInc/openagents/issues/3197) landed in commit `d54614807`, after `MOX-158` / [#3198](https://github.com/OpenAgentsInc/openagents/issues/3198) landed in commit `1f6c6e9fe`, after `MOX-159` / [#3199](https://github.com/OpenAgentsInc/openagents/issues/3199) landed in commit `a7b73314f`, after `MOX-156` / [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) landed in commit `d3329e658`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -295,6 +295,13 @@ per-issue commit anchors.
   active-request counts, queue-depth truth, memory-footprint snapshots, and a
   managed-runtime `observability()` surface plus provider-facing envelope
   serialization/tests
+- `MOX-156` / [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170):
+  first-class quantized GGML/GGUF constant payloads in `mox-core` /
+  `mox-ir`, Candle-aligned row-wise quantized-matmul RHS orientation,
+  CPU-native `Q4_0` / `Q4_1` / `Q8_0` kernels over preserved block bytes,
+  explicit `backend_quantized` + `native` CPU capability truth, provider-
+  visible quantized capability reporting, and explicit Metal refusal for
+  quantized constants instead of silent fallback
 - `MOX-129` / [#3189](https://github.com/OpenAgentsInc/openagents/issues/3189):
   explicit local-serving memory planning, residency policy, and admission
   control in `mox-runtime` / `mox-serve` / `mox-provider`, with bounded-budget
@@ -342,6 +349,7 @@ checks via `gh issue view`:
 | [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | Closed | `MOX-117` landed: reusable Ollama-to-Mox conformance harness in `mox-serve`, live Ollama HTTP normalization for `tags` / `show` / `ps` / `generate` / `embed`, explicit pass/fail/unsupported/intentional-difference outcomes, fixture-driven prompt-render cases, and a documented report/runbook. |
 | [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) | Closed | `MOX-118` landed: real tokenizer and prompt/template fixture corpus, GGUF chat-template extraction plus digests, reusable assertion helpers, and documented fixture refresh flow. |
 | [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) | Closed | `MOX-119` landed: shared backend parity policy in `mox-runtime`, explicit dense-vs-quantized drift budgets for embeddings/logits, seeded-vs-unseeded generation parity classes, reusable comparison helpers, and policy-backed parity/conformance tests plus documentation. |
+| [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | Closed | `MOX-156` landed: first-class quantized GGML/GGUF constant payloads, Candle-aligned row-wise quantized matmul RHS semantics, native CPU `Q4_0` / `Q4_1` / `Q8_0` kernels over preserved block bytes, explicit CPU quantized capability truth, and explicit Metal refusal for quantized constants. |
 | [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) | Closed | `MOX-112` landed: reusable GGUF decoder-family adapters, explicit Llama/Qwen/Mistral family metadata and tensor layouts, attached tokenizer/chat-template metadata, and explicit refusal of unsupported llama MoE artifacts. |
 | [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) | Closed | `MOX-113` landed: reusable GGUF embedding-family adapters for BERT and Nomic-BERT, explicit pooling/normalization truth and tensor layouts, finished BERT wordpiece/token-type-count tokenizer support, and explicit refusal of unsupported Nomic MoE artifacts. |
 | [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) | Closed | `MOX-114` landed: reusable GGUF prompt rendering for the supported Phi-3, Qwen2, and Command-R template digests, explicit prompt/render/error types, `GgufDecoderAdapter` render helpers, `mox-serve` re-exports, and conformance coverage that removed the old prompt-render gap. |
@@ -410,7 +418,8 @@ state:
 | 31 | `MOX-157` | [#3197](https://github.com/OpenAgentsInc/openagents/issues/3197) | Closed | Allocator pooling, bounded kernel caches, and device-memory-budget truth are now explicit on `main`; keep this in sequence but skip it when choosing the next issue. |
 | 32 | `MOX-158` | [#3198](https://github.com/OpenAgentsInc/openagents/issues/3198) | Closed | Typed backend-extension hooks are now explicit on `main`; keep this in sequence but skip it when choosing the next issue. |
 | 33 | `MOX-159` | [#3199](https://github.com/OpenAgentsInc/openagents/issues/3199) | Closed | Local runtime observability is now explicit on `main`; keep this in sequence but skip it when choosing the next issue. |
-| 34 | `MOX-156` | [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | Open | This is now the next unresolved dependency because quantized execution parity must exist before later backend work or product claims can treat GGUF quant families as more than truthful load-only support. |
+| 34 | `MOX-156` | [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | Closed | Quantized execution parity is now landed on `main`; keep this in sequence but skip it when choosing the next issue. |
+| 35 | `MOX-130` | [#3200](https://github.com/OpenAgentsInc/openagents/issues/3200) | Open | This is now the next unresolved dependency because Metal must cover the minimum text-generation primitive set before later Metal parity/product issues can land honestly. |
 
 ## Current Reality
 
@@ -418,8 +427,10 @@ The checked-in repo is no longer at "phase 0 bootstrap." The current truthful
 baseline on `main` is:
 
 - CPU model-backed embeddings and text generation exist and are tested
-- initial GGML quantized tensor storage and decode coverage exists for `Q4_0`,
-  `Q4_1`, and `Q8_0`, but backend-side quantized execution is still future work
+- initial GGML quantized tensor storage and decode coverage now extends to
+  CPU-native `Q4_0`, `Q4_1`, and `Q8_0` execution over preserved GGML block
+  bytes, with explicit `backend_quantized` + `native` CPU capability truth and
+  explicit Metal refusal instead of silent quantized fallback
 - local GGUF and Ollama blobs can now be opened through mmap-or-buffered
   fallback paths with explicit paging and storage-truth metadata
 - local Ollama manifests can now be discovered and resolved through a
@@ -726,7 +737,7 @@ called out in the status section above.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `MOX-156` | [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | Open | Add backend-specific quantized execution kernels and parity coverage for supported GGUF quant families | `mox-compiler`, `mox-runtime`, backend crates, `mox-serve` | Loading quantized models truthfully is not enough if execution immediately falls back to dequantized slow paths. |
+| `MOX-156` | [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | Closed | Add backend-specific quantized execution kernels and parity coverage for supported GGUF quant families | `mox-compiler`, `mox-runtime`, backend crates, `mox-serve` | Landed in `d3329e658`: first-class quantized GGML/GGUF constants, Candle-aligned row-wise quantized matmul semantics, CPU-native `Q4_0` / `Q4_1` / `Q8_0` kernels over preserved blocks, explicit CPU quantized capability truth, and explicit Metal quantized-constant refusal. |
 | `MOX-130` | [#3200](https://github.com/OpenAgentsInc/openagents/issues/3200) | Open | Add Metal lowering/kernel coverage for the minimum text-generation primitive set | `mox-backend-metal`, `mox-compiler`, `mox-runtime` | Embeddings-only Metal is not enough to replace Ollama. |
 | `MOX-131` | [#3201](https://github.com/OpenAgentsInc/openagents/issues/3201) | Open | Add CPU-vs-Metal parity coverage for the supported text-generation product path | `mox-backend-metal`, `mox-serve` | Required before Metal-backed text generation is believable. |
 | `MOX-132` | [#3202](https://github.com/OpenAgentsInc/openagents/issues/3202) | Open | Ship a tested Metal-backed `mox.text_generation` path | `mox-backend-metal`, `mox-serve`, `mox-provider` | Closes the biggest remaining Metal gap. |
@@ -781,26 +792,21 @@ for the minimum conformance harness scope and runtime evidence schema that
 
 The shortest honest path from today's `main` is:
 
-1. Land `MOX-156` next so quantized execution parity exists before backend
-   expansion or product claims treat GGUF quant families as more than truthful
-   load-only support.
-2. Land `MOX-156` before broad backend claims so quantized execution parity is
-   not hidden behind truthful load-only support.
-3. Finish Metal as a real text-generation backend via `MOX-130` through
+1. Finish Metal as a real text-generation backend via `MOX-130` through
    `MOX-132`.
-4. Land NVIDIA explicitly via `MOX-140` through `MOX-147` and keep `MOX-148`
+2. Land NVIDIA explicitly via `MOX-140` through `MOX-147` and keep `MOX-148`
    green as backend claims widen.
-5. Turn AMD truth into AMD execution via `MOX-150` through `MOX-154`.
-6. Lock process-isolation, fallback-lattice, served-artifact identity,
+3. Turn AMD truth into AMD execution via `MOX-150` through `MOX-154`.
+4. Lock process-isolation, fallback-lattice, served-artifact identity,
    cache-invalidation, provenance, and migration-boundary decisions via
    `MOX-160`, `MOX-161`, `MOX-162`, `MOX-163`, `MOX-164`, and `MOX-170`.
-7. Land the cutover contract from
+5. Land the cutover contract from
    [CONFORMANCE_AND_EVIDENCE_CONTRACT.md](./CONFORMANCE_AND_EVIDENCE_CONTRACT.md)
    before hardening backend and app cutover work.
-8. Add compute-market capability and evidence substrate via `MOX-171` through
+6. Add compute-market capability and evidence substrate via `MOX-171` through
    `MOX-175`.
-9. Cut the app over via `OA-200` through `OA-203`.
-10. Only after inference and embeddings are truthful, consider
+7. Cut the app over via `OA-200` through `OA-203`.
+8. Only after inference and embeddings are truthful, consider
    `MOX-176` through `MOX-178` for bounded `sandbox_execution`.
 
 ## Definition Of Done For "Replace Ollama"
