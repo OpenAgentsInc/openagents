@@ -401,6 +401,208 @@ impl TokenizerBoundary for FixtureWordTokenizer {
     }
 }
 
+/// Explicit overflow posture when a prompt would exceed the available context budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ContextOverflowPolicy {
+    /// Refuse the request instead of truncating the prompt.
+    Refuse,
+    /// Truncate the oldest prompt tokens while preserving an explicit prefix when requested.
+    TruncateOldest,
+}
+
+impl Default for ContextOverflowPolicy {
+    fn default() -> Self {
+        Self::Refuse
+    }
+}
+
+/// Explicit context-window budget for one prompt evaluation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextWindowBudget {
+    /// Maximum context tokens the model can hold.
+    pub max_context_tokens: usize,
+    /// Tokens already occupied by prior session/KV state.
+    pub existing_context_tokens: usize,
+    /// Tokens reserved for requested generation output.
+    pub reserved_output_tokens: usize,
+    /// Remaining prompt-token budget after existing context and output reservation.
+    pub available_prompt_tokens: usize,
+}
+
+impl ContextWindowBudget {
+    /// Builds a context-window budget from max context, existing context, and reserved output.
+    #[must_use]
+    pub fn new(
+        max_context_tokens: usize,
+        existing_context_tokens: usize,
+        reserved_output_tokens: usize,
+    ) -> Self {
+        let available_prompt_tokens = max_context_tokens
+            .saturating_sub(existing_context_tokens.saturating_add(reserved_output_tokens));
+        Self {
+            max_context_tokens,
+            existing_context_tokens,
+            reserved_output_tokens,
+            available_prompt_tokens,
+        }
+    }
+}
+
+/// Explicit accounting for how one prompt fit or overflowed the available context budget.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ContextWindowAccounting {
+    /// Derived context-window budget.
+    pub budget: ContextWindowBudget,
+    /// Prompt tokens before truncation.
+    pub input_prompt_tokens: usize,
+    /// Prompt tokens retained for evaluation.
+    pub retained_prompt_tokens: usize,
+    /// Prompt tokens truncated from the front.
+    pub truncated_prompt_tokens: usize,
+    /// Number of prefix tokens the caller requested to preserve during truncation.
+    pub preserved_prefix_tokens: usize,
+}
+
+impl ContextWindowAccounting {
+    /// Returns whether the untruncated prompt overflowed the available budget.
+    #[must_use]
+    pub fn overflowed(&self) -> bool {
+        self.input_prompt_tokens > self.budget.available_prompt_tokens
+    }
+}
+
+/// Context-window application failure.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum ContextWindowError {
+    /// The prompt exceeded the available context budget and truncation was not allowed.
+    #[error("input exceeds maximum context length and cannot be truncated further")]
+    CannotTruncateFurther {
+        /// Maximum context tokens.
+        max_context_tokens: usize,
+        /// Existing occupied context tokens.
+        existing_context_tokens: usize,
+        /// Reserved output tokens.
+        reserved_output_tokens: usize,
+        /// Input prompt tokens.
+        input_prompt_tokens: usize,
+        /// Available prompt-token budget.
+        available_prompt_tokens: usize,
+        /// Selected overflow policy.
+        policy: ContextOverflowPolicy,
+    },
+    /// The prompt still did not fit after applying truncation rules.
+    #[error("input after truncation exceeds maximum context length")]
+    ExceedsAfterTruncation {
+        /// Maximum context tokens.
+        max_context_tokens: usize,
+        /// Existing occupied context tokens.
+        existing_context_tokens: usize,
+        /// Reserved output tokens.
+        reserved_output_tokens: usize,
+        /// Input prompt tokens.
+        input_prompt_tokens: usize,
+        /// Available prompt-token budget.
+        available_prompt_tokens: usize,
+        /// Number of prefix tokens the caller required preserving.
+        preserved_prefix_tokens: usize,
+        /// Prompt tokens retained by the attempted truncation.
+        retained_prompt_tokens: usize,
+        /// Selected overflow policy.
+        policy: ContextOverflowPolicy,
+    },
+}
+
+/// Applies context budgeting and optional front truncation to a prompt token sequence.
+pub fn apply_context_window(
+    prompt_tokens: &TokenSequence,
+    max_context_tokens: usize,
+    existing_context_tokens: usize,
+    reserved_output_tokens: usize,
+    overflow_policy: ContextOverflowPolicy,
+    preserve_prefix_tokens: usize,
+) -> Result<(TokenSequence, ContextWindowAccounting), ContextWindowError> {
+    let budget = ContextWindowBudget::new(
+        max_context_tokens,
+        existing_context_tokens,
+        reserved_output_tokens,
+    );
+    let input_prompt_tokens = prompt_tokens.len();
+    if input_prompt_tokens <= budget.available_prompt_tokens {
+        return Ok((
+            prompt_tokens.clone(),
+            ContextWindowAccounting {
+                budget,
+                input_prompt_tokens,
+                retained_prompt_tokens: input_prompt_tokens,
+                truncated_prompt_tokens: 0,
+                preserved_prefix_tokens: preserve_prefix_tokens.min(input_prompt_tokens),
+            },
+        ));
+    }
+
+    let preserved_prefix_tokens = preserve_prefix_tokens.min(input_prompt_tokens);
+    if overflow_policy == ContextOverflowPolicy::Refuse {
+        return Err(ContextWindowError::CannotTruncateFurther {
+            max_context_tokens,
+            existing_context_tokens,
+            reserved_output_tokens,
+            input_prompt_tokens,
+            available_prompt_tokens: budget.available_prompt_tokens,
+            policy: overflow_policy,
+        });
+    }
+
+    if budget.available_prompt_tokens == 0
+        || budget.available_prompt_tokens <= preserved_prefix_tokens
+    {
+        return Err(ContextWindowError::ExceedsAfterTruncation {
+            max_context_tokens,
+            existing_context_tokens,
+            reserved_output_tokens,
+            input_prompt_tokens,
+            available_prompt_tokens: budget.available_prompt_tokens,
+            preserved_prefix_tokens,
+            retained_prompt_tokens: preserved_prefix_tokens,
+            policy: overflow_policy,
+        });
+    }
+
+    let tail_tokens = budget
+        .available_prompt_tokens
+        .saturating_sub(preserved_prefix_tokens);
+    let suffix_start = input_prompt_tokens
+        .saturating_sub(tail_tokens)
+        .max(preserved_prefix_tokens);
+    let mut retained = prompt_tokens.as_slice()[..preserved_prefix_tokens].to_vec();
+    retained.extend_from_slice(&prompt_tokens.as_slice()[suffix_start..]);
+    let retained = TokenSequence::new(retained);
+    if retained.len() > budget.available_prompt_tokens || retained.len() <= preserved_prefix_tokens
+    {
+        return Err(ContextWindowError::ExceedsAfterTruncation {
+            max_context_tokens,
+            existing_context_tokens,
+            reserved_output_tokens,
+            input_prompt_tokens,
+            available_prompt_tokens: budget.available_prompt_tokens,
+            preserved_prefix_tokens,
+            retained_prompt_tokens: retained.len(),
+            policy: overflow_policy,
+        });
+    }
+
+    Ok((
+        retained.clone(),
+        ContextWindowAccounting {
+            budget,
+            input_prompt_tokens,
+            retained_prompt_tokens: retained.len(),
+            truncated_prompt_tokens: input_prompt_tokens.saturating_sub(retained.len()),
+            preserved_prefix_tokens,
+        },
+    ))
+}
+
 /// Activation function used by a decoder feed-forward block.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ActivationFunction {
@@ -5864,17 +6066,18 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        ActivationFunction, ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader,
-        FixtureDecoderLoader, FixtureWordTokenizer, GgufBlobArtifact, GgufContent,
-        GgufDecoderAdapterLoader, GgufDecoderFamily, GgufEmbeddingAdapterLoader,
-        GgufEmbeddingFamily, GgufEmbeddingPooling, GgufMetadataValue, GgufPromptTemplateFamily,
-        GgufPromptTemplateRenderer, GgufTensorType, GgufTokenizerMetadata, GgufTokenizerModel,
-        GgufTokenizerPretokenizer, GgufVersion, GgufWeightBundleLoader, LoadedWeightTensor,
-        LocalBlobOpenOptions, LocalWeightBundleLoader, PromptMessage, PromptMessageRole,
-        QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
-        SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId, TokenizerBoundary,
-        WeightArtifactBlobKind, WeightArtifactReadPath, WeightFormat, WeightSource,
-        WeightTensorStorage, apply_special_token_defaults, assert_prompt_template_fixture_matches,
+        ActivationFunction, ByteProjectionEmbedder, ContextOverflowPolicy, ContextWindowError,
+        DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader, FixtureWordTokenizer,
+        GgufBlobArtifact, GgufContent, GgufDecoderAdapterLoader, GgufDecoderFamily,
+        GgufEmbeddingAdapterLoader, GgufEmbeddingFamily, GgufEmbeddingPooling, GgufMetadataValue,
+        GgufPromptTemplateFamily, GgufPromptTemplateRenderer, GgufTensorType,
+        GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion,
+        GgufWeightBundleLoader, LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader,
+        PromptMessage, PromptMessageRole, QuantizedTensorStorage, ReferenceWordDecoder,
+        SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId,
+        TokenSequence, TokenizerBoundary, WeightArtifactBlobKind, WeightArtifactReadPath,
+        WeightFormat, WeightSource, WeightTensorStorage, apply_context_window,
+        apply_special_token_defaults, assert_prompt_template_fixture_matches,
         assert_prompt_window_case, assert_rendered_prompt_case, assert_tokenizer_fixture_matches,
         digest_chat_template, golden_prompt_fixture, golden_prompt_fixtures,
         golden_tokenizer_fixture, golden_tokenizer_fixtures,
@@ -5916,6 +6119,82 @@ mod tests {
             ]
         );
         assert_eq!(tokenizer.decode(encoded.as_slice()), "hello open agents");
+    }
+
+    #[test]
+    fn context_window_refuses_overflow_when_truncation_is_disabled() {
+        let prompt = TokenSequence::new(vec![
+            FixtureWordTokenizer::BOS_ID,
+            FixtureWordTokenizer::HELLO_ID,
+            FixtureWordTokenizer::WORLD_ID,
+        ]);
+        let error = apply_context_window(&prompt, 8, 0, 6, ContextOverflowPolicy::Refuse, 1)
+            .expect_err("overflow should refuse");
+
+        assert!(matches!(
+            error,
+            ContextWindowError::CannotTruncateFurther {
+                max_context_tokens: 8,
+                existing_context_tokens: 0,
+                reserved_output_tokens: 6,
+                input_prompt_tokens: 3,
+                available_prompt_tokens: 2,
+                policy: ContextOverflowPolicy::Refuse,
+            }
+        ));
+    }
+
+    #[test]
+    fn context_window_truncates_oldest_tokens_while_preserving_prefix() {
+        let prompt = TokenSequence::new(vec![
+            FixtureWordTokenizer::BOS_ID,
+            FixtureWordTokenizer::HELLO_ID,
+            FixtureWordTokenizer::OPEN_ID,
+            FixtureWordTokenizer::AGENTS_ID,
+        ]);
+        let (retained, accounting) =
+            apply_context_window(&prompt, 8, 0, 6, ContextOverflowPolicy::TruncateOldest, 1)
+                .expect("truncate oldest");
+
+        assert_eq!(
+            retained.as_slice(),
+            &[
+                FixtureWordTokenizer::BOS_ID,
+                FixtureWordTokenizer::AGENTS_ID
+            ]
+        );
+        assert_eq!(accounting.budget.available_prompt_tokens, 2);
+        assert_eq!(accounting.input_prompt_tokens, 4);
+        assert_eq!(accounting.retained_prompt_tokens, 2);
+        assert_eq!(accounting.truncated_prompt_tokens, 2);
+        assert_eq!(accounting.preserved_prefix_tokens, 1);
+        assert!(accounting.overflowed());
+    }
+
+    #[test]
+    fn context_window_rejects_truncation_when_only_preserved_prefix_would_remain() {
+        let prompt = TokenSequence::new(vec![
+            FixtureWordTokenizer::BOS_ID,
+            FixtureWordTokenizer::HELLO_ID,
+            FixtureWordTokenizer::WORLD_ID,
+        ]);
+        let error =
+            apply_context_window(&prompt, 8, 0, 7, ContextOverflowPolicy::TruncateOldest, 1)
+                .expect_err("prefix-only truncation should refuse");
+
+        assert!(matches!(
+            error,
+            ContextWindowError::ExceedsAfterTruncation {
+                max_context_tokens: 8,
+                existing_context_tokens: 0,
+                reserved_output_tokens: 7,
+                input_prompt_tokens: 3,
+                available_prompt_tokens: 1,
+                preserved_prefix_tokens: 1,
+                retained_prompt_tokens: 1,
+                policy: ContextOverflowPolicy::TruncateOldest,
+            }
+        ));
     }
 
     #[test]
