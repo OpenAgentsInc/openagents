@@ -1164,9 +1164,20 @@ mod tests {
                         "unavailable": "refuse",
                         "degraded": "allow_same_backend"
                     },
+                    "fallback_lattice": {
+                        "unavailable": "refuse",
+                        "degraded": "degrade",
+                        "numerical_safety": "refuse",
+                        "memory_pressure": "refuse",
+                        "plan_unavailable": "same_backend_slow_path",
+                        "transient_backend_failure": "retry"
+                    },
                     "selection_state": "direct",
+                    "fallback_trigger": null,
+                    "fallback_action": null,
                     "fallback_reason": null,
-                    "degraded_reason": null
+                    "degraded_reason": null,
+                    "retry_attempt": null
                 },
                 "model_id": "smoke-byte-embed-v0",
                 "model_family": "smoke",
@@ -1266,9 +1277,20 @@ mod tests {
                         "unavailable": "refuse",
                         "degraded": "allow_same_backend"
                     },
+                    "fallback_lattice": {
+                        "unavailable": "refuse",
+                        "degraded": "degrade",
+                        "numerical_safety": "refuse",
+                        "memory_pressure": "refuse",
+                        "plan_unavailable": "same_backend_slow_path",
+                        "transient_backend_failure": "retry"
+                    },
                     "selection_state": "direct",
+                    "fallback_trigger": null,
+                    "fallback_action": null,
                     "fallback_reason": null,
-                    "degraded_reason": null
+                    "degraded_reason": null,
+                    "retry_attempt": null
                 },
                 "model_id": "fixture-word-decoder-v0",
                 "model_family": "fixture_decoder",

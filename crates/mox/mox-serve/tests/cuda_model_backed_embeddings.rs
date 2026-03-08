@@ -32,15 +32,23 @@ fn cuda_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_
             let selection = service.backend_selection().clone();
             let readiness = match selection.selection_state {
                 BackendSelectionState::Direct => ProviderReadiness::ready("cuda backend ready"),
-                BackendSelectionState::SameBackendDegraded => ProviderReadiness {
+                BackendSelectionState::SameBackendDegraded
+                | BackendSelectionState::SameBackendSlowPath => ProviderReadiness {
                     status: HealthStatus::Degraded,
                     message: selection
                         .degraded_reason
                         .clone()
+                        .or_else(|| selection.fallback_reason.clone())
                         .unwrap_or_else(|| String::from("cuda backend degraded")),
                 },
-                BackendSelectionState::CrossBackendFallback => {
-                    return Err("cuda service should not construct with CPU fallback".into());
+                BackendSelectionState::Retried => ProviderReadiness::ready(
+                    selection
+                        .fallback_reason
+                        .clone()
+                        .unwrap_or_else(|| String::from("cuda backend recovered after retry")),
+                ),
+                BackendSelectionState::CrossBackendFallback | BackendSelectionState::Refused => {
+                    return Err("cuda service should not construct without CUDA execution".into());
                 }
             };
             let capability = CapabilityEnvelope::from_embedding_model(
@@ -82,6 +90,10 @@ fn cuda_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_
                 capability.backend_selection.selection_state,
                 BackendSelectionState::CrossBackendFallback
             );
+            assert_ne!(
+                capability.backend_selection.selection_state,
+                BackendSelectionState::Refused
+            );
             assert_eq!(capability.model_id, ByteProjectionEmbedder::MODEL_ID);
             assert_eq!(
                 capability.model_family,
@@ -109,7 +121,13 @@ fn cuda_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_
                     assert!(capability.backend_selection.fallback_reason.is_none());
                     assert!(capability.backend_selection.degraded_reason.is_some());
                 }
-                BackendSelectionState::CrossBackendFallback => unreachable!(),
+                BackendSelectionState::SameBackendSlowPath | BackendSelectionState::Retried => {
+                    assert!(capability.backend_selection.fallback_reason.is_some());
+                    assert!(capability.backend_selection.degraded_reason.is_none());
+                }
+                BackendSelectionState::CrossBackendFallback | BackendSelectionState::Refused => {
+                    unreachable!()
+                }
             }
 
             assert_eq!(receipt.status, ReceiptStatus::Succeeded);

@@ -101,11 +101,19 @@ fn metal_model_backed_text_generation_returns_response_capability_and_receipt_or
             match capability.backend_selection.selection_state {
                 BackendSelectionState::Direct => {
                     assert!(capability.backend_selection.fallback_reason.is_none());
+                    assert!(capability.backend_selection.degraded_reason.is_none());
                 }
                 BackendSelectionState::SameBackendDegraded => {
-                    assert!(capability.backend_selection.fallback_reason.is_some());
+                    assert!(capability.backend_selection.fallback_reason.is_none());
+                    assert!(capability.backend_selection.degraded_reason.is_some());
                 }
-                BackendSelectionState::CrossBackendFallback => unreachable!(),
+                BackendSelectionState::SameBackendSlowPath | BackendSelectionState::Retried => {
+                    assert!(capability.backend_selection.fallback_reason.is_some());
+                    assert!(capability.backend_selection.degraded_reason.is_none());
+                }
+                BackendSelectionState::CrossBackendFallback | BackendSelectionState::Refused => {
+                    unreachable!()
+                }
             }
 
             assert_eq!(receipt.status, ReceiptStatus::Succeeded);

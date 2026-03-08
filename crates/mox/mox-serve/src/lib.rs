@@ -3251,7 +3251,10 @@ fn backend_selection_fallback_state(selection: &BackendSelection) -> Option<Stri
     match selection.selection_state {
         BackendSelectionState::Direct => None,
         BackendSelectionState::SameBackendDegraded => Some(String::from("same_backend_degraded")),
+        BackendSelectionState::SameBackendSlowPath => Some(String::from("same_backend_slow_path")),
         BackendSelectionState::CrossBackendFallback => Some(String::from("cross_backend_fallback")),
+        BackendSelectionState::Retried => Some(String::from("retried")),
+        BackendSelectionState::Refused => Some(String::from("refused")),
     }
 }
 

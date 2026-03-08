@@ -188,18 +188,58 @@ Required outcome and refusal fields:
 
 ## Fallback Policy Boundary
 
-`MOX-161` should define the allowed fallback lattice used by this contract.
+`MOX-161` defines the backend-neutral fallback lattice used by this contract.
 
-Until that lands, no implementation may silently:
+The allowed fallback triggers are:
+
+- `requested_backend_unavailable`
+- `requested_backend_degraded`
+- `numerical_safety_risk`
+- `memory_pressure`
+- `plan_unavailable`
+- `transient_backend_failure`
+
+The allowed fallback actions are:
+
+- `refuse`
+- `degrade`
+- `replan`
+- `retry`
+- `same_backend_slow_path`
+
+The current lattice rules are:
+
+- `requested_backend_unavailable` may `refuse` or `replan`, depending on the
+  served-product backend policy.
+- `requested_backend_degraded` may `refuse` or `degrade`, but must remain on
+  the requested backend when degraded execution is allowed.
+- `numerical_safety_risk` must `refuse`; correctness wins over speed or
+  convenience.
+- `memory_pressure` may follow the explicit backend policy for that product
+  path, but it must never silently substitute a backend or alter request
+  semantics.
+- `plan_unavailable` may take an explicit `same_backend_slow_path` or explicit
+  `replan`, but only when the resulting path preserves request semantics.
+- `transient_backend_failure` may `retry` explicitly; retry count must remain
+  surfaced in runtime/provider truth.
+
+Capability, receipt, and runtime-observability surfaces must carry fallback
+state explicitly through `backend_selection`. That state must include:
+
+- the requested backend
+- the effective backend
+- the realized selection state
+- the active fallback lattice
+- the fallback trigger and action when the request left the direct path
+- the fallback or degraded reason
+- the retry attempt count when a retry occurred
+
+No implementation may silently:
 
 - switch from accelerated backend to CPU
 - switch from quantized execution to hidden eager dequantized execution while
   still advertising quantized parity
 - change prompt or stop semantics to salvage a request
-
-Allowed temporary behavior during development is:
-
-- explicit refusal
-- explicit degraded state
-- explicit same-backend slow path when surfaced in evidence
-- explicit replan or rewarm when surfaced in evidence
+- relabel a refusal, retry, or same-backend slow path as a direct success
+- publish capability or receipt evidence that omits the effective backend or
+  the realized fallback state
