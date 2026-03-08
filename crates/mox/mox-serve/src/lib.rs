@@ -29,7 +29,9 @@ pub use mox_models::{
     WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
 use mox_runtime::{
-    BackendSelection, DeviceDiscovery, HealthStatus, LoadedModelResidency, RuntimeError,
+    BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
+    KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelResidency,
+    RuntimeError,
 };
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
@@ -43,6 +45,32 @@ pub const EMBEDDINGS_PRODUCT_ID: &str = "mox.embeddings";
 
 /// Phase-1 text-generation product identifier.
 pub const TEXT_GENERATION_PRODUCT_ID: &str = "mox.text_generation";
+
+/// Default logical page width for reference-path paged KV state.
+pub const DEFAULT_KV_PAGE_TOKENS: usize = 16;
+
+/// Returns the default paged-KV policy for a decoder geometry.
+#[must_use]
+pub fn default_kv_cache_policy(max_context: usize, width: usize) -> KvCachePolicy {
+    let bytes_per_token = width
+        .saturating_mul(2)
+        .saturating_mul(std::mem::size_of::<f32>());
+    KvCachePolicy {
+        device_scope: KvCacheDeviceScope::SameDeviceOnly,
+        spill_policy: KvCacheSpillPolicy::RefuseNewPages,
+        page_layout: KvCachePageLayout::new(
+            max_context,
+            DEFAULT_KV_PAGE_TOKENS.min(max_context.max(1)),
+            bytes_per_token,
+        ),
+    }
+}
+
+/// Returns the default paged-KV policy for a decoder descriptor.
+#[must_use]
+pub fn default_decoder_kv_cache_policy(model: &DecoderModelDescriptor) -> KvCachePolicy {
+    default_kv_cache_policy(model.config.max_context, model.config.kv_width())
+}
 
 /// Embeddings request contract.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -363,6 +391,9 @@ pub struct GenerationMetrics {
     /// Output token count surfaced in the metrics lane.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eval_count: Option<usize>,
+    /// Explicit paged-KV accounting for the request, when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_cache: Option<KvCacheAccounting>,
 }
 
 /// Whether a request hit a cold or warm model path.
@@ -382,6 +413,9 @@ pub struct GenerationProvenance {
     pub execution_plan_digest: String,
     /// Whether the request took the warm or cold model path.
     pub load_state: GenerationLoadState,
+    /// Explicit paged-KV policy for the request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_cache_policy: Option<KvCachePolicy>,
 }
 
 /// Terminal reason for a generation response.
@@ -476,6 +510,7 @@ impl GenerationMetrics {
             load_duration_ns: None,
             prompt_eval_count: Some(usage.input_tokens),
             eval_count: Some(usage.output_tokens),
+            kv_cache: None,
         }
     }
 
@@ -485,6 +520,7 @@ impl GenerationMetrics {
             && self.load_duration_ns.is_none()
             && self.prompt_eval_count.is_none()
             && self.eval_count.is_none()
+            && self.kv_cache.is_none()
     }
 }
 
@@ -971,11 +1007,19 @@ pub struct KvCacheEntry {
 /// KV cache failure.
 #[derive(Debug, Error, PartialEq, Eq)]
 pub enum KvCacheError {
-    /// A KV append exceeded the configured context limit.
-    #[error("session KV cache is full: max_context={max_context}")]
-    ContextLimitExceeded {
-        /// Maximum cache size.
+    /// A KV append would require more pages than the cache policy admits.
+    #[error(
+        "session KV cache refused growth at token {requested_tokens}: max_context={max_context} max_pages={max_pages} spill_policy={spill_policy:?}"
+    )]
+    PageBudgetExceeded {
+        /// Token count the append would have produced.
+        requested_tokens: usize,
+        /// Maximum cache size in tokens.
         max_context: usize,
+        /// Maximum admitted page count.
+        max_pages: usize,
+        /// Explicit spill/refusal posture.
+        spill_policy: KvCacheSpillPolicy,
     },
     /// A KV append used vectors with the wrong width.
     #[error("kv width mismatch: expected={expected} key={actual_key} value={actual_value}")]
@@ -989,11 +1033,12 @@ pub enum KvCacheError {
     },
 }
 
-/// In-memory per-session KV cache for the phase-1 reference path.
+/// In-memory per-session KV cache with an explicit logical page layout.
 #[derive(Clone, Debug, PartialEq)]
 pub struct InMemoryKvCache {
     max_context: usize,
     width: usize,
+    policy: KvCachePolicy,
     entries: Vec<KvCacheEntry>,
 }
 
@@ -1001,9 +1046,20 @@ impl InMemoryKvCache {
     /// Creates an empty in-memory KV cache.
     #[must_use]
     pub fn new(max_context: usize, width: usize) -> Self {
+        Self::with_policy(
+            max_context,
+            width,
+            default_kv_cache_policy(max_context, width),
+        )
+    }
+
+    /// Creates an empty in-memory cache with an explicit paged-KV policy.
+    #[must_use]
+    pub fn with_policy(max_context: usize, width: usize, policy: KvCachePolicy) -> Self {
         Self {
             max_context,
             width,
+            policy,
             entries: Vec::new(),
         }
     }
@@ -1018,6 +1074,18 @@ impl InMemoryKvCache {
     #[must_use]
     pub const fn width(&self) -> usize {
         self.width
+    }
+
+    /// Returns the explicit paged-KV policy for the cache.
+    #[must_use]
+    pub fn policy(&self) -> &KvCachePolicy {
+        &self.policy
+    }
+
+    /// Returns the logical page layout for the cache.
+    #[must_use]
+    pub fn page_layout(&self) -> &KvCachePageLayout {
+        &self.policy.page_layout
     }
 
     /// Returns the number of cached slots.
@@ -1038,6 +1106,12 @@ impl InMemoryKvCache {
         &self.entries
     }
 
+    /// Returns the current paged-KV snapshot for the cache.
+    #[must_use]
+    pub fn state(&self) -> KvCacheState {
+        KvCacheState::paged(self.page_layout(), self.len())
+    }
+
     /// Appends a token KV pair to the cache.
     pub fn append(
         &mut self,
@@ -1046,8 +1120,11 @@ impl InMemoryKvCache {
         value: Vec<f32>,
     ) -> Result<(), KvCacheError> {
         if self.entries.len() >= self.max_context {
-            return Err(KvCacheError::ContextLimitExceeded {
+            return Err(KvCacheError::PageBudgetExceeded {
+                requested_tokens: self.entries.len().saturating_add(1),
                 max_context: self.max_context,
+                max_pages: self.page_layout().max_pages,
+                spill_policy: self.policy.spill_policy,
             });
         }
         if key.len() != self.width || value.len() != self.width {
@@ -1092,6 +1169,10 @@ pub struct GenerationSession {
     pub kv_width: usize,
     /// Current cached token count.
     pub cached_tokens: usize,
+    /// Explicit paged-KV policy for the session cache.
+    pub kv_cache_policy: KvCachePolicy,
+    /// Current paged-KV snapshot for the session cache.
+    pub kv_cache: KvCacheState,
 }
 
 /// Session state stored in memory.
@@ -1191,6 +1272,7 @@ impl InMemoryGenerationSessionStore {
     pub fn create(&mut self, model: &DecoderModelDescriptor) -> GenerationSession {
         self.next_session += 1;
         let session_id = SessionId::new(format!("sess-{:08}", self.next_session));
+        let policy = default_decoder_kv_cache_policy(model);
         let session = GenerationSession {
             session_id: session_id.clone(),
             model_id: model.model.model_id.clone(),
@@ -1200,10 +1282,16 @@ impl InMemoryGenerationSessionStore {
             max_context: model.config.max_context,
             kv_width: model.config.kv_width(),
             cached_tokens: 0,
+            kv_cache_policy: policy.clone(),
+            kv_cache: KvCacheState::default(),
         };
         let state = GenerationSessionState {
             session: session.clone(),
-            cache: InMemoryKvCache::new(model.config.max_context, model.config.kv_width()),
+            cache: InMemoryKvCache::with_policy(
+                model.config.max_context,
+                model.config.kv_width(),
+                policy,
+            ),
             tokens: Vec::new(),
         };
         self.sessions.insert(session_id, state);
@@ -1250,7 +1338,7 @@ impl InMemoryGenerationSessionStore {
 
         state.cache.append(token, key, value)?;
         state.tokens.push(token);
-        state.session.cached_tokens = state.cache.len();
+        sync_session_cache_state(&mut state.session, &state.cache);
         Ok(state.session.clone())
     }
 
@@ -1265,7 +1353,7 @@ impl InMemoryGenerationSessionStore {
             .ok_or_else(|| SessionStoreError::SessionNotFound(session_id.as_str().to_string()))?;
         state.cache.reset();
         state.tokens.clear();
-        state.session.cached_tokens = 0;
+        sync_session_cache_state(&mut state.session, &state.cache);
         Ok(state.session.clone())
     }
 
@@ -1306,9 +1394,15 @@ impl InMemoryGenerationSessionStore {
 
         state.cache = cache;
         state.tokens = tokens.as_slice().to_vec();
-        state.session.cached_tokens = state.cache.len();
+        sync_session_cache_state(&mut state.session, &state.cache);
         Ok(state.session.clone())
     }
+}
+
+fn sync_session_cache_state(session: &mut GenerationSession, cache: &InMemoryKvCache) {
+    session.cached_tokens = cache.len();
+    session.kv_cache_policy = cache.policy().clone();
+    session.kv_cache = cache.state();
 }
 
 fn validate_session_model(
@@ -1970,14 +2064,19 @@ where
 
         let hidden_size = loaded_model.descriptor().config.hidden_size;
         let mut session_tokens = Vec::new();
-        let mut cache = if let Some(session_id) = &request.session_id {
+        let previous_kv_state = if let Some(session_id) = &request.session_id {
             if request.reset_session {
                 sessions.reset(session_id)?;
             }
             let state = sessions.state(session_id)?;
             validate_session_model(state, session_id, loaded_model.descriptor())?;
             session_tokens = state.tokens().to_vec();
-            state.cache().clone()
+            state.cache().state()
+        } else {
+            KvCacheState::default()
+        };
+        let mut cache = if let Some(session_id) = &request.session_id {
+            sessions.state(session_id)?.cache().clone()
         } else {
             InMemoryKvCache::new(
                 loaded_model.descriptor().config.max_context,
@@ -2054,6 +2153,7 @@ where
             output_tokens: generated.len(),
             cache_tokens: cache.len(),
         };
+        let kv_cache = KvCacheAccounting::from_states(&previous_kv_state, cache.state());
         let metrics = GenerationMetrics {
             total_duration_ns: Some(
                 generation_start
@@ -2068,10 +2168,12 @@ where
             }),
             prompt_eval_count: Some(usage.input_tokens),
             eval_count: Some(usage.output_tokens),
+            kv_cache: Some(kv_cache),
         };
         let provenance = GenerationProvenance {
             execution_plan_digest: loaded_model.plan_digest().to_string(),
             load_state,
+            kv_cache_policy: Some(cache.policy().clone()),
         };
         Ok(GenerationResponse::new(
             request,
@@ -2750,17 +2852,20 @@ fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) 
 #[cfg(test)]
 mod tests {
     use mox_core::{DType, Shape};
-    use mox_runtime::LoadedModelState;
+    use mox_runtime::{
+        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelState,
+    };
 
     use super::{
         CpuReferenceTextGenerationService, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
         EmbeddingsExecutor, FixtureWordTokenizer, GenerationLoadState, GenerationModelHandle,
         GenerationOptions, GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
-        InMemoryGenerationSessionStore, ListModelsObservation, LocalModelCatalog, ModelDescriptor,
-        ModelSummary, MoxLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder,
-        SessionId, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason,
-        TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat, WeightSource,
-        WeightTensorMetadata,
+        InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
+        LocalModelCatalog, ModelDescriptor, ModelSummary, MoxLocalRuntime,
+        ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, ShowObservation,
+        SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason, TextGenerationExecutor,
+        TokenId, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -3100,6 +3205,11 @@ mod tests {
         assert_eq!(session_a.model_family, "fixture_decoder");
         assert_eq!(session_a.model_revision, "v0");
         assert_eq!(session_a.weight_bundle_digest, descriptor.weights.digest);
+        assert_eq!(session_a.kv_cache.pages, 0);
+        assert_eq!(
+            session_a.kv_cache_policy.page_layout.max_context_tokens,
+            descriptor.config.max_context
+        );
 
         store.append(
             &session_a.session_id,
@@ -3132,9 +3242,27 @@ mod tests {
             store.state(&session_b.session_id)?.tokens(),
             &[FixtureWordTokenizer::RUSTY_ID]
         );
+        assert_eq!(
+            store
+                .state(&session_a.session_id)?
+                .session()
+                .kv_cache
+                .tokens,
+            1
+        );
+        assert_eq!(
+            store.state(&session_a.session_id)?.session().kv_cache.pages,
+            1
+        );
+        assert_eq!(
+            store.state(&session_a.session_id)?.session().kv_cache.bytes,
+            32
+        );
 
         let reset = store.reset(&session_a.session_id)?;
         assert_eq!(reset.cached_tokens, 0);
+        assert_eq!(reset.kv_cache.tokens, 0);
+        assert_eq!(reset.kv_cache.pages, 0);
         assert!(store.cache(&session_a.session_id)?.is_empty());
         assert!(store.state(&session_a.session_id)?.tokens().is_empty());
         assert_eq!(store.cache(&session_b.session_id)?.len(), 1);
@@ -3176,6 +3304,54 @@ mod tests {
                 && expected_weight_bundle_digest == descriptor.weights.digest
                 && actual_weight_bundle_digest == "different-weight-bundle"
         ));
+    }
+
+    #[test]
+    fn paged_kv_cache_tracks_growth_refill_and_refusal() -> Result<(), Box<dyn std::error::Error>> {
+        let policy = KvCachePolicy {
+            device_scope: KvCacheDeviceScope::SameDeviceOnly,
+            spill_policy: KvCacheSpillPolicy::RefuseNewPages,
+            page_layout: KvCachePageLayout::new(5, 2, 32),
+        };
+        let mut cache = InMemoryKvCache::with_policy(5, 4, policy.clone());
+        assert_eq!(cache.state(), KvCacheState::default());
+
+        cache.append(TokenId(1), vec![0.0; 4], vec![1.0; 4])?;
+        let first = cache.state();
+        assert_eq!(first.tokens, 1);
+        assert_eq!(first.pages, 1);
+        assert_eq!(first.bytes, 32);
+
+        cache.append(TokenId(2), vec![0.0; 4], vec![1.0; 4])?;
+        let refill = KvCacheAccounting::from_states(&first, cache.state());
+        assert_eq!(refill.current.tokens, 2);
+        assert_eq!(refill.current.pages, 1);
+        assert_eq!(refill.growth.tokens, 1);
+        assert_eq!(refill.growth.pages, 0);
+
+        cache.append(TokenId(3), vec![0.0; 4], vec![1.0; 4])?;
+        let growth = KvCacheAccounting::from_states(&first, cache.state());
+        assert_eq!(growth.current.pages, 2);
+        assert_eq!(growth.growth.pages, 1);
+
+        cache.append(TokenId(4), vec![0.0; 4], vec![1.0; 4])?;
+        cache.append(TokenId(5), vec![0.0; 4], vec![1.0; 4])?;
+        let error = cache
+            .append(TokenId(6), vec![0.0; 4], vec![1.0; 4])
+            .expect_err("page-budget refusal");
+        assert!(matches!(
+            error,
+            KvCacheError::PageBudgetExceeded {
+                requested_tokens: 6,
+                max_context: 5,
+                max_pages: 3,
+                spill_policy: KvCacheSpillPolicy::RefuseNewPages,
+            }
+        ));
+
+        cache.reset();
+        assert_eq!(cache.state(), KvCacheState::default());
+        Ok(())
     }
 
     #[test]
@@ -3427,8 +3603,31 @@ mod tests {
             Some(first.usage.input_tokens)
         );
         assert_eq!(first.metrics.eval_count, Some(first.usage.output_tokens));
+        assert_eq!(
+            first
+                .metrics
+                .kv_cache
+                .as_ref()
+                .map(|value| value.current.tokens),
+            Some(first.usage.cache_tokens)
+        );
+        assert_eq!(
+            first
+                .metrics
+                .kv_cache
+                .as_ref()
+                .map(|value| value.growth.pages),
+            Some(1)
+        );
         assert!(first.metrics.total_duration_ns.is_some());
         assert!(first.metrics.load_duration_ns.is_some());
+        assert!(
+            first
+                .provenance
+                .as_ref()
+                .and_then(|value| value.kv_cache_policy.as_ref())
+                .is_some()
+        );
 
         let second = service.generate(&GenerationRequest::new_text(
             "gen-ref-metrics-2",
@@ -3453,6 +3652,14 @@ mod tests {
             Some(second.usage.input_tokens)
         );
         assert_eq!(second.metrics.eval_count, Some(second.usage.output_tokens));
+        assert_eq!(
+            second
+                .metrics
+                .kv_cache
+                .as_ref()
+                .map(|value| value.current.tokens),
+            Some(second.usage.cache_tokens)
+        );
         assert!(second.metrics.total_duration_ns.is_some());
         assert_eq!(second.metrics.load_duration_ns, Some(0));
         Ok(())
@@ -3474,6 +3681,14 @@ mod tests {
         let first = service.generate(&first_request)?;
         assert_eq!(first.output.text, "open agents");
         assert_eq!(first.usage.cache_tokens, 4);
+        assert_eq!(
+            first
+                .metrics
+                .kv_cache
+                .as_ref()
+                .map(|value| value.current.pages),
+            Some(1)
+        );
 
         let second_request = GenerationRequest::new_text(
             "gen-ref-session-2",
@@ -3485,6 +3700,14 @@ mod tests {
         let second = service.generate(&second_request)?;
         assert_eq!(second.output.text, "grad");
         assert!(second.usage.cache_tokens > first.usage.cache_tokens);
+        assert_eq!(
+            second
+                .metrics
+                .kv_cache
+                .as_ref()
+                .map(|value| value.growth.tokens),
+            Some(3)
+        );
 
         let reset_request = GenerationRequest::new_text(
             "gen-ref-session-3",
@@ -3497,6 +3720,14 @@ mod tests {
         let reset = service.generate(&reset_request)?;
         assert_eq!(reset.output.text, "grad");
         assert_eq!(reset.usage.cache_tokens, 3);
+        assert_eq!(
+            reset
+                .metrics
+                .kv_cache
+                .as_ref()
+                .map(|value| value.growth.tokens),
+            Some(3)
+        );
         Ok(())
     }
 
