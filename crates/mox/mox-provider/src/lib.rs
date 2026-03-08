@@ -8,11 +8,12 @@ use mox_runtime::{
     BackendProbeState, BackendSelection, BackendToolchainIdentity, CacheAction,
     CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
     CompilePathEvidence, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
-    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
-    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
-    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, ServedArtifactIdentity,
-    ValidationMatrixReference, validation_reference_for_served_product,
+    ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy,
+    LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
+    ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
+    NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    ServedArtifactIdentity, SettlementLinkageInput, ValidationMatrixReference,
+    validation_reference_for_served_product,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -127,6 +128,45 @@ fn execution_topology_for_selection(
     backend_selection: &BackendSelection,
 ) -> Option<ExecutionTopologyPlan> {
     backend_selection.execution_topology_plan()
+}
+
+fn embedding_delivery_proof(response: &EmbeddingResponse) -> Option<ExecutionDeliveryProof> {
+    response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.delivery_proof.clone())
+}
+
+fn generation_delivery_proof(response: &GenerationResponse) -> Option<ExecutionDeliveryProof> {
+    response
+        .provenance
+        .as_ref()
+        .and_then(|value| value.delivery_proof.clone())
+}
+
+fn settlement_linkage(
+    request_digest: impl Into<String>,
+    product_id: &str,
+    model_id: &str,
+    served_artifact: &ServedArtifactIdentity,
+    runtime_backend: &str,
+    delivery_proof: &ExecutionDeliveryProof,
+    output_tokens: Option<usize>,
+) -> SettlementLinkageInput {
+    SettlementLinkageInput {
+        request_digest: request_digest.into(),
+        product_id: String::from(product_id),
+        model_id: String::from(model_id),
+        served_artifact_digest: served_artifact.served_artifact_digest.clone(),
+        execution_plan_digest: delivery_proof.execution_plan_digest.clone(),
+        runtime_backend: String::from(runtime_backend),
+        kernel_count: delivery_proof.kernel_count,
+        bytes_moved: delivery_proof.bytes_moved,
+        plan_cache_hits: delivery_proof.plan_cache_hits,
+        plan_cache_misses: delivery_proof.plan_cache_misses,
+        kv_growth: delivery_proof.kv_growth.clone(),
+        output_tokens,
+    }
 }
 
 /// Explicit policy for whether one model artifact may be advertised or served into compute-market supply.
@@ -671,6 +711,12 @@ pub struct ExecutionReceipt {
     /// Explicit warm/cold compile-path evidence for the realized request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_path: Option<CompilePathEvidence>,
+    /// Delivery-proof facts surfaced by the local runtime for this request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof: Option<ExecutionDeliveryProof>,
+    /// Settlement-linkage inputs derived from the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_linkage: Option<SettlementLinkageInput>,
     /// Output dimensions.
     pub output_dimensions: usize,
     /// Number of request inputs.
@@ -712,8 +758,21 @@ impl ExecutionReceipt {
         started_at_unix_ms: u64,
         ended_at_unix_ms: u64,
     ) -> Self {
+        let request_digest = request_digest.into();
         let served_artifact =
             served_artifact_identity_for_embedding_model(&request.model, &backend_selection);
+        let delivery_proof = embedding_delivery_proof(response);
+        let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
+            settlement_linkage(
+                request_digest.clone(),
+                request.product_id.as_str(),
+                response.metadata.model_id.as_str(),
+                &served_artifact,
+                backend_selection.effective_backend.as_str(),
+                delivery_proof,
+                None,
+            )
+        });
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
@@ -730,7 +789,7 @@ impl ExecutionReceipt {
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
-            request_digest: request_digest.into(),
+            request_digest,
             model_id: response.metadata.model_id.clone(),
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
@@ -745,6 +804,8 @@ impl ExecutionReceipt {
                 .provenance
                 .as_ref()
                 .and_then(|value| value.compile_path.clone()),
+            delivery_proof,
+            settlement_linkage,
             output_dimensions: response.metadata.dimensions,
             input_count: response.metadata.input_count,
             output_vector_count: response.metadata.vector_count,
@@ -814,6 +875,8 @@ impl ExecutionReceipt {
             served_artifact,
             cache_observations: cache_observations_for_embedding_model(&request.model, None),
             compile_path: None,
+            delivery_proof: None,
+            settlement_linkage: None,
             output_dimensions: request
                 .output_dimensions
                 .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions)
@@ -1037,6 +1100,12 @@ pub struct TextGenerationReceipt {
     /// Explicit warm/cold compile-path evidence for the realized request path, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_path: Option<CompilePathEvidence>,
+    /// Delivery-proof facts surfaced by the local runtime for this request path, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof: Option<ExecutionDeliveryProof>,
+    /// Settlement-linkage inputs derived from the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_linkage: Option<SettlementLinkageInput>,
     /// Explicit resident-memory plan for the loaded model, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_plan: Option<ModelMemoryPlan>,
@@ -1117,6 +1186,7 @@ impl TextGenerationReceipt {
         started_at_unix_ms: u64,
         ended_at_unix_ms: u64,
     ) -> Self {
+        let request_digest = request_digest.into();
         let execution_plan_digest = response
             .provenance
             .as_ref()
@@ -1129,6 +1199,18 @@ impl TextGenerationReceipt {
             .unwrap_or_else(|| {
                 served_artifact_identity_for_decoder_model(&request.model, &backend_selection)
             });
+        let delivery_proof = generation_delivery_proof(response);
+        let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
+            settlement_linkage(
+                request_digest.clone(),
+                request.product_id.as_str(),
+                response.model_id.as_str(),
+                &served_artifact,
+                backend_selection.effective_backend.as_str(),
+                delivery_proof,
+                Some(response.usage.output_tokens),
+            )
+        });
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
@@ -1145,7 +1227,7 @@ impl TextGenerationReceipt {
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
-            request_digest: request_digest.into(),
+            request_digest,
             execution_plan_digest: Some(execution_plan_digest),
             model_id: response.model_id.clone(),
             model_family: request.model.model.family.clone(),
@@ -1161,6 +1243,8 @@ impl TextGenerationReceipt {
                 .provenance
                 .as_ref()
                 .and_then(|value| value.compile_path.clone()),
+            delivery_proof,
+            settlement_linkage,
             memory_plan: response
                 .provenance
                 .as_ref()
@@ -1276,6 +1360,8 @@ impl TextGenerationReceipt {
             served_artifact,
             cache_observations: failed_generation_cache_observations(request),
             compile_path: None,
+            delivery_proof: None,
+            settlement_linkage: None,
             memory_plan: None,
             residency_policy: None,
             residency_snapshot: None,
@@ -1647,14 +1733,15 @@ mod tests {
         AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
         AmdRuntimeMode, AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport,
         BackendProbeState, BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
-        DeviceDescriptor, DeviceMemoryBudget, ExecutionTopologyKind, ExecutionTopologyPlan,
-        HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelResidencyPolicy,
-        NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
-        NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent,
-        RuntimeTransitionKind, ServedProductBackendPolicy, ValidationCoverage,
+        DeviceDescriptor, DeviceMemoryBudget, ExecutionDeliveryProof, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeTransitionEvent, RuntimeTransitionKind, ServedProductBackendPolicy,
+        ValidationCoverage,
     };
     use mox_serve::{
         ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
@@ -3138,6 +3225,18 @@ mod tests {
                     prefix_tokens: 1,
                 }),
                 compile_path: None,
+                delivery_proof: Some(ExecutionDeliveryProof {
+                    execution_plan_digest: String::from("plan-digest-from-response"),
+                    kernel_count: 2,
+                    bytes_moved: 512,
+                    plan_cache_hits: 1,
+                    plan_cache_misses: 0,
+                    kv_growth: Some(mox_runtime::KvCacheGrowth {
+                        tokens: 2,
+                        bytes: 64,
+                        pages: 1,
+                    }),
+                }),
                 cache_observations: Vec::new(),
             },
         );
@@ -3207,6 +3306,41 @@ mod tests {
                 .as_ref()
                 .map(|value| value.prefix_digest.as_str()),
             Some("prefix-digest")
+        );
+        assert_eq!(
+            receipt
+                .delivery_proof
+                .as_ref()
+                .map(|value| value.kernel_count),
+            Some(2)
+        );
+        assert_eq!(
+            receipt
+                .delivery_proof
+                .as_ref()
+                .map(|value| value.bytes_moved),
+            Some(512)
+        );
+        assert_eq!(
+            receipt
+                .settlement_linkage
+                .as_ref()
+                .map(|value| value.request_digest.as_str()),
+            Some(digest_generation_request(&request).as_str())
+        );
+        assert_eq!(
+            receipt
+                .settlement_linkage
+                .as_ref()
+                .map(|value| value.execution_plan_digest.as_str()),
+            Some("plan-digest-from-response")
+        );
+        assert_eq!(
+            receipt
+                .settlement_linkage
+                .as_ref()
+                .and_then(|value| value.output_tokens),
+            Some(1)
         );
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: TextGenerationReceipt = serde_json::from_str(&encoded)?;
@@ -3288,6 +3422,7 @@ mod tests {
                 prefix_cache_policy: Some(default_prefix_cache_policy()),
                 prefix_cache_identity: None,
                 compile_path: None,
+                delivery_proof: None,
                 cache_observations: Vec::new(),
             },
         );

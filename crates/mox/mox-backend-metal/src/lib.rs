@@ -511,6 +511,22 @@ impl MetalBackend {
         let mut result = backend.execute(&plan, inputs)?;
         result.metrics.execution_plan_digest = Some(plan_digest);
         result.metrics.compile_path = Some(compile_path);
+        result.metrics.plan_cache_hits = usize::from(matches!(
+            result
+                .metrics
+                .compile_path
+                .as_ref()
+                .map(|value| value.temperature),
+            Some(CompilePathTemperature::WarmReuse)
+        ));
+        result.metrics.plan_cache_misses = usize::from(matches!(
+            result
+                .metrics
+                .compile_path
+                .as_ref()
+                .map(|value| value.temperature),
+            Some(CompilePathTemperature::ColdCompile)
+        ));
         Ok(result)
     }
 
@@ -857,6 +873,10 @@ impl AvailableMetalBackend {
             outputs,
             metrics: ExecutionMetrics {
                 steps_executed: plan.steps.len(),
+                kernel_count: plan.steps.len(),
+                bytes_moved: plan_output_bytes(plan),
+                plan_cache_hits: 0,
+                plan_cache_misses: 0,
                 execution_plan_digest: None,
                 compile_path: None,
             },
@@ -991,6 +1011,19 @@ fn estimate_execution_plan_bytes(plan: &ExecutionPlan, plan_digest: &str) -> u64
         .saturating_add(plan_digest.len())
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn plan_output_bytes(plan: &ExecutionPlan) -> u64 {
+    plan.steps
+        .iter()
+        .map(|step| {
+            step.spec
+                .storage_size()
+                .saturating_mul(step.spec.dtype().element_size_bytes())
+                .try_into()
+                .unwrap_or(u64::MAX)
+        })
+        .sum()
 }
 
 fn size_of_dtype(dtype: DType) -> usize {

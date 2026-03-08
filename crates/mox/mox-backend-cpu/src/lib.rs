@@ -267,6 +267,22 @@ impl CpuBackend {
         let mut result = self.execute(&plan, inputs)?;
         result.metrics.execution_plan_digest = Some(plan_digest);
         result.metrics.compile_path = Some(compile_path);
+        result.metrics.plan_cache_hits = usize::from(matches!(
+            result
+                .metrics
+                .compile_path
+                .as_ref()
+                .map(|value| value.temperature),
+            Some(CompilePathTemperature::WarmReuse)
+        ));
+        result.metrics.plan_cache_misses = usize::from(matches!(
+            result
+                .metrics
+                .compile_path
+                .as_ref()
+                .map(|value| value.temperature),
+            Some(CompilePathTemperature::ColdCompile)
+        ));
         Ok(result)
     }
 
@@ -934,6 +950,19 @@ fn estimate_execution_plan_bytes(plan: &ExecutionPlan, plan_digest: &str) -> u64
         .unwrap_or(u64::MAX)
 }
 
+fn plan_output_bytes(plan: &ExecutionPlan) -> u64 {
+    plan.steps
+        .iter()
+        .map(|step| {
+            step.spec
+                .storage_size()
+                .saturating_mul(step.spec.dtype().element_size_bytes())
+                .try_into()
+                .unwrap_or(u64::MAX)
+        })
+        .sum()
+}
+
 fn buffer_bytes_from_len(len: usize) -> u64 {
     len.saturating_mul(std::mem::size_of::<f32>())
         .try_into()
@@ -1320,6 +1349,10 @@ impl ExecutionBackend for CpuBackend {
             outputs,
             metrics: ExecutionMetrics {
                 steps_executed: plan.steps.len(),
+                kernel_count: plan.steps.len(),
+                bytes_moved: plan_output_bytes(plan),
+                plan_cache_hits: 0,
+                plan_cache_misses: 0,
                 execution_plan_digest: None,
                 compile_path: None,
             },

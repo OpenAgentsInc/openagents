@@ -35,15 +35,15 @@ pub use mox_models::{
 use mox_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
     CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    CompilePathEvidence, DeviceDiscovery, ExecutionCapabilityProfile, HealthStatus,
-    KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy,
-    KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
-    LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
-    MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError,
-    RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
-    SamplingStrategy, ServedArtifactIdentity, TokenSampler, default_cache_invalidation_policy,
-    plan_model_admission,
+    CompilePathEvidence, DeviceDiscovery, ExecutionCapabilityProfile, ExecutionDeliveryProof,
+    HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+    KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+    LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
+    LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
+    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler,
+    default_cache_invalidation_policy, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -327,6 +327,32 @@ fn compile_path_cache_observations(
     ]
 }
 
+fn build_delivery_proof(
+    execution_plan_digest: String,
+    kernel_count: usize,
+    bytes_moved: u64,
+    plan_cache_hits: usize,
+    plan_cache_misses: usize,
+    kv_growth: Option<mox_runtime::KvCacheGrowth>,
+) -> Option<ExecutionDeliveryProof> {
+    if kernel_count == 0
+        && bytes_moved == 0
+        && plan_cache_hits == 0
+        && plan_cache_misses == 0
+        && kv_growth.is_none()
+    {
+        return None;
+    }
+    Some(ExecutionDeliveryProof {
+        execution_plan_digest,
+        kernel_count,
+        bytes_moved,
+        plan_cache_hits,
+        plan_cache_misses,
+        kv_growth,
+    })
+}
+
 fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation {
     match prefix_state {
         PrefixCacheState::None => CacheObservation::new(
@@ -590,6 +616,9 @@ pub struct EmbeddingProvenance {
     /// Explicit warm/cold compile-path evidence for the realized request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_path: Option<CompilePathEvidence>,
+    /// Delivery-proof facts surfaced by the local runtime for this request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof: Option<ExecutionDeliveryProof>,
     /// Explicit cache actions observed for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
@@ -892,6 +921,9 @@ pub struct GenerationProvenance {
     /// Explicit warm/cold compile-path evidence for the realized request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub compile_path: Option<CompilePathEvidence>,
+    /// Delivery-proof facts surfaced by the local runtime for this request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof: Option<ExecutionDeliveryProof>,
     /// Explicit cache actions observed for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
@@ -2880,6 +2912,10 @@ struct GenerationStepOutput {
     logits: Vec<f32>,
     execution_plan_digest: Option<String>,
     compile_path: Option<CompilePathEvidence>,
+    kernel_count: usize,
+    bytes_moved: u64,
+    plan_cache_hits: usize,
+    plan_cache_misses: usize,
 }
 
 #[derive(Clone, Debug)]
@@ -2887,6 +2923,10 @@ struct EmbeddingStepOutput {
     values: Vec<f32>,
     execution_plan_digest: Option<String>,
     compile_path: Option<CompilePathEvidence>,
+    kernel_count: usize,
+    bytes_moved: u64,
+    plan_cache_hits: usize,
+    plan_cache_misses: usize,
 }
 
 trait CompiledWordGenerationModel: GenerationModelHandle + Clone {
@@ -3879,6 +3919,10 @@ where
     prefix_identity: Option<PrefixCacheIdentity>,
     execution_plan_digest: String,
     compile_path: Option<CompilePathEvidence>,
+    kernel_count: usize,
+    bytes_moved: u64,
+    plan_cache_hits: usize,
+    plan_cache_misses: usize,
     last_logits: Vec<f32>,
     generated_tokens: Vec<TokenId>,
     emitted_token_count: usize,
@@ -3991,6 +4035,10 @@ where
             let mut last_logits = Vec::new();
             let mut execution_plan_digest = None;
             let mut compile_path = None;
+            let mut kernel_count = 0usize;
+            let mut bytes_moved = 0u64;
+            let mut plan_cache_hits = 0usize;
+            let mut plan_cache_misses = 0usize;
             let mut cache = if shared_prefix_eligible {
                 let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
                 prefix_state = lookup.state;
@@ -4027,6 +4075,10 @@ where
                 if compile_path.is_none() {
                     compile_path = step.compile_path.clone();
                 }
+                kernel_count = kernel_count.saturating_add(step.kernel_count);
+                bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+                plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+                plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
                 cache.append(*token, step.hidden.clone(), step.hidden)?;
                 last_logits = step.logits;
                 prompt_logits.push(last_logits.clone());
@@ -4059,6 +4111,10 @@ where
                 prompt_eval_duration_ns,
                 execution_plan_digest,
                 compile_path,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
                 last_logits,
             ))
         })();
@@ -4077,6 +4133,10 @@ where
                 prompt_eval_duration_ns,
                 execution_plan_digest,
                 compile_path,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
                 last_logits,
             )) => Ok(Self {
                 execution_plan_digest: execution_plan_digest
@@ -4106,6 +4166,10 @@ where
                 prefix_tokens_reused,
                 prefix_identity,
                 compile_path,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
                 last_logits,
                 generated_tokens: Vec::new(),
                 emitted_token_count: 0,
@@ -4178,6 +4242,14 @@ where
             prefix_cache_policy: Some(self.prefix_policy.clone()),
             prefix_cache_identity: self.prefix_identity.clone(),
             compile_path: self.compile_path.clone(),
+            delivery_proof: build_delivery_proof(
+                self.execution_plan_digest.clone(),
+                self.kernel_count,
+                self.bytes_moved,
+                self.plan_cache_hits,
+                self.plan_cache_misses,
+                metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+            ),
             cache_observations: generation_cache_observations(
                 self.loaded_model.descriptor(),
                 self.compile_path.as_ref(),
@@ -4377,6 +4449,13 @@ where
                     if let Some(digest) = step.execution_plan_digest.clone() {
                         self.execution_plan_digest = digest;
                     }
+                    self.kernel_count = self.kernel_count.saturating_add(step.kernel_count);
+                    self.bytes_moved = self.bytes_moved.saturating_add(step.bytes_moved);
+                    self.plan_cache_hits =
+                        self.plan_cache_hits.saturating_add(step.plan_cache_hits);
+                    self.plan_cache_misses = self
+                        .plan_cache_misses
+                        .saturating_add(step.plan_cache_misses);
                     if let Err(error) =
                         self.cache
                             .append(next_token, step.hidden.clone(), step.hidden)
@@ -4581,6 +4660,10 @@ where
         let mut last_logits = Vec::new();
         let mut execution_plan_digest = None;
         let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
         let mut cache = if shared_prefix_eligible {
             let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
             prefix_state = lookup.state;
@@ -4617,6 +4700,10 @@ where
             if compile_path.is_none() {
                 compile_path = step.compile_path.clone();
             }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
             cache.append(*token, step.hidden.clone(), step.hidden)?;
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
@@ -4650,6 +4737,10 @@ where
             if compile_path.is_none() {
                 compile_path = step.compile_path.clone();
             }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
             cache.append(next_token, step.hidden.clone(), step.hidden)?;
             last_logits = step.logits;
 
@@ -4720,10 +4811,12 @@ where
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
         };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| loaded_model.plan_digest().to_string());
         let provenance = GenerationProvenance {
             served_artifact,
-            execution_plan_digest: execution_plan_digest
-                .unwrap_or_else(|| loaded_model.plan_digest().to_string()),
+            execution_plan_digest: delivery_plan_digest.clone(),
             load_state,
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: None,
@@ -4735,6 +4828,14 @@ where
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
             compile_path: compile_path.clone(),
+            delivery_proof: build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+            ),
             cache_observations: generation_cache_observations(
                 loaded_model.descriptor(),
                 compile_path.as_ref(),
@@ -4971,6 +5072,10 @@ fn execute_cpu_generation_graph(
         logits,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
+        kernel_count: result.metrics.kernel_count,
+        bytes_moved: result.metrics.bytes_moved,
+        plan_cache_hits: result.metrics.plan_cache_hits,
+        plan_cache_misses: result.metrics.plan_cache_misses,
     })
 }
 
@@ -5025,6 +5130,10 @@ fn execute_metal_generation_graph(
         logits,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
+        kernel_count: result.metrics.kernel_count,
+        bytes_moved: result.metrics.bytes_moved,
+        plan_cache_hits: result.metrics.plan_cache_hits,
+        plan_cache_misses: result.metrics.plan_cache_misses,
     })
 }
 
@@ -5461,6 +5570,10 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
         let mut embeddings = Vec::with_capacity(request.inputs.len());
         let mut execution_plan_digest = None;
         let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
         for (index, input) in request.inputs.iter().enumerate() {
             let step = self.embed_one(input)?;
             if execution_plan_digest.is_none() {
@@ -5469,6 +5582,10 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
             if compile_path.is_none() {
                 compile_path = step.compile_path.clone();
             }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
             let values = finalize_embedding_values(
                 step.values,
                 request.model.normalization,
@@ -5490,10 +5607,20 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
             prompt_eval_count: None,
             prompt_eval_duration_ns: None,
         };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
-            execution_plan_digest: execution_plan_digest
-                .unwrap_or_else(|| self.plan_digest.clone()),
+            execution_plan_digest: delivery_plan_digest.clone(),
             compile_path: compile_path.clone(),
+            delivery_proof: build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                None,
+            ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
                 compile_path.as_ref(),
@@ -5593,6 +5720,10 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
         let mut embeddings = Vec::with_capacity(request.inputs.len());
         let mut execution_plan_digest = None;
         let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
         for (index, input) in request.inputs.iter().enumerate() {
             let step = self.embed_one(input)?;
             if execution_plan_digest.is_none() {
@@ -5601,6 +5732,10 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
             if compile_path.is_none() {
                 compile_path = step.compile_path.clone();
             }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
             let values = finalize_embedding_values(
                 step.values,
                 request.model.normalization,
@@ -5622,10 +5757,20 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
             prompt_eval_count: None,
             prompt_eval_duration_ns: None,
         };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
-            execution_plan_digest: execution_plan_digest
-                .unwrap_or_else(|| self.plan_digest.clone()),
+            execution_plan_digest: delivery_plan_digest.clone(),
             compile_path: compile_path.clone(),
+            delivery_proof: build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                None,
+            ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
                 compile_path.as_ref(),
@@ -5752,6 +5897,10 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
         let mut embeddings = Vec::with_capacity(request.inputs.len());
         let mut execution_plan_digest = None;
         let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
         for (index, input) in request.inputs.iter().enumerate() {
             let step = self.embed_one(input)?;
             if execution_plan_digest.is_none() {
@@ -5760,6 +5909,10 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
             if compile_path.is_none() {
                 compile_path = step.compile_path.clone();
             }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
             let values = finalize_embedding_values(
                 step.values,
                 request.model.normalization,
@@ -5781,10 +5934,20 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
             prompt_eval_count: None,
             prompt_eval_duration_ns: None,
         };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
-            execution_plan_digest: execution_plan_digest
-                .unwrap_or_else(|| self.plan_digest.clone()),
+            execution_plan_digest: delivery_plan_digest.clone(),
             compile_path: compile_path.clone(),
+            delivery_proof: build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                None,
+            ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
                 compile_path.as_ref(),
@@ -5911,6 +6074,10 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
         let mut embeddings = Vec::with_capacity(request.inputs.len());
         let mut execution_plan_digest = None;
         let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
         for (index, input) in request.inputs.iter().enumerate() {
             let step = self.embed_one(input)?;
             if execution_plan_digest.is_none() {
@@ -5919,6 +6086,10 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
             if compile_path.is_none() {
                 compile_path = step.compile_path.clone();
             }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
             let values = finalize_embedding_values(
                 step.values,
                 request.model.normalization,
@@ -5940,10 +6111,20 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
             prompt_eval_count: None,
             prompt_eval_duration_ns: None,
         };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| self.plan_digest.clone());
         let provenance = EmbeddingProvenance {
-            execution_plan_digest: execution_plan_digest
-                .unwrap_or_else(|| self.plan_digest.clone()),
+            execution_plan_digest: delivery_plan_digest.clone(),
             compile_path: compile_path.clone(),
+            delivery_proof: build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                None,
+            ),
             cache_observations: cache_observations_for_embedding_model(
                 self.model.descriptor(),
                 compile_path.as_ref(),
@@ -6008,6 +6189,10 @@ fn execute_cpu_embedding_graph(
             .to_vec(),
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
+        kernel_count: result.metrics.kernel_count,
+        bytes_moved: result.metrics.bytes_moved,
+        plan_cache_hits: result.metrics.plan_cache_hits,
+        plan_cache_misses: result.metrics.plan_cache_misses,
     })
 }
 
@@ -6034,6 +6219,10 @@ fn execute_metal_embedding_graph(
         values: output.read_f32()?,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
+        kernel_count: result.metrics.kernel_count,
+        bytes_moved: result.metrics.bytes_moved,
+        plan_cache_hits: result.metrics.plan_cache_hits,
+        plan_cache_misses: result.metrics.plan_cache_misses,
     })
 }
 
@@ -6060,6 +6249,10 @@ fn execute_cuda_embedding_graph(
         values: output.read_f32()?,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
+        kernel_count: result.metrics.kernel_count,
+        bytes_moved: result.metrics.bytes_moved,
+        plan_cache_hits: result.metrics.plan_cache_hits,
+        plan_cache_misses: result.metrics.plan_cache_misses,
     })
 }
 
@@ -7428,6 +7621,30 @@ mod tests {
             Some(expected_plan_digest.as_str())
         );
         assert_eq!(
+            first
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .map(|value| value.execution_plan_digest.as_str()),
+            Some(expected_plan_digest.as_str())
+        );
+        assert!(
+            first
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .is_some_and(|value| value.kernel_count > 0 && value.bytes_moved > 0)
+        );
+        assert_eq!(
+            first
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .and_then(|value| value.kv_growth.as_ref())
+                .map(|value| value.pages),
+            Some(1)
+        );
+        assert_eq!(
             first.metrics.prompt_eval_count,
             Some(first.usage.input_tokens)
         );
@@ -7500,6 +7717,21 @@ mod tests {
                 .as_ref()
                 .map(|value| value.execution_plan_digest.as_str()),
             Some(expected_plan_digest.as_str())
+        );
+        assert_eq!(
+            second
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .map(|value| value.execution_plan_digest.as_str()),
+            Some(expected_plan_digest.as_str())
+        );
+        assert!(
+            second
+                .provenance
+                .as_ref()
+                .and_then(|value| value.delivery_proof.as_ref())
+                .is_some_and(|value| value.kernel_count > 0 && value.plan_cache_hits > 0)
         );
         assert_eq!(
             second.metrics.prompt_eval_count,

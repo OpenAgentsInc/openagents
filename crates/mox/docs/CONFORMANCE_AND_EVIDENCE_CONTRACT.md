@@ -418,6 +418,30 @@ Required timing and movement fields:
   - total bytes minimum
   - split fields are allowed if the backend can expose them cleanly
 
+Required delivery-proof and settlement-linkage fields:
+
+- `delivery_proof.execution_plan_digest`
+- `delivery_proof.kernel_count`
+- `delivery_proof.bytes_moved`
+- `delivery_proof.plan_cache_hits`
+- `delivery_proof.plan_cache_misses`
+- `delivery_proof.kv_growth`
+  - `tokens`
+  - `bytes`
+  - `pages`
+- `settlement_linkage.request_digest`
+- `settlement_linkage.product_id`
+- `settlement_linkage.model_id`
+- `settlement_linkage.served_artifact_digest`
+- `settlement_linkage.execution_plan_digest`
+- `settlement_linkage.runtime_backend`
+- `settlement_linkage.kernel_count`
+- `settlement_linkage.bytes_moved`
+- `settlement_linkage.plan_cache_hits`
+- `settlement_linkage.plan_cache_misses`
+- `settlement_linkage.kv_growth`
+- `settlement_linkage.output_tokens` where applicable
+
 Required token and KV fields:
 
 - `prompt_tokens`
