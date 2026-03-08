@@ -4540,6 +4540,7 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "mox-backend-cpu",
+ "mox-backend-cuda",
  "mox-backend-metal",
  "mox-catalog",
  "mox-compiler",

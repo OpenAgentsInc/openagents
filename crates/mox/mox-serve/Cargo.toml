@@ -31,5 +31,6 @@ sha2 = { workspace = true }
 thiserror = { workspace = true }
 
 [dev-dependencies]
+mox-backend-cuda = { path = "../mox-backend-cuda" }
 mox-provider = { path = "../mox-provider" }
 tempfile = "3"
