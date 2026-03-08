@@ -3,7 +3,10 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use rustygrad_runtime::{BackendSelection, HealthStatus};
+use rustygrad_runtime::{
+    AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
+    BackendSelection, HealthStatus,
+};
 use rustygrad_serve::{
     DecoderModelDescriptor, EmbeddingModelDescriptor, EmbeddingRequest, EmbeddingResponse,
     GenerationInput, GenerationRequest, GenerationResponse, QuantizationMode, SessionId,
@@ -46,6 +49,42 @@ impl WeightBundleEvidence {
     }
 }
 
+/// AMD-specific provider truth derived from reusable runtime/backend state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdCapabilityContext {
+    /// Active AMD mode.
+    pub mode: AmdRuntimeMode,
+    /// Stable AMD topology snapshot.
+    pub topology: AmdTopologyInfo,
+    /// Risk posture for the AMD mode.
+    pub risk: AmdRiskProfile,
+    /// Recovery posture for the AMD mode.
+    pub recovery: AmdRecoveryProfile,
+}
+
+impl AmdCapabilityContext {
+    /// Derives AMD capability context from a runtime backend selection.
+    #[must_use]
+    pub fn from_backend_selection(backend_selection: &BackendSelection) -> Option<Self> {
+        backend_selection
+            .selected_device
+            .as_ref()
+            .and_then(|device| device.amd_metadata.as_ref())
+            .map(Self::from_metadata)
+    }
+
+    /// Derives AMD capability context directly from runtime device metadata.
+    #[must_use]
+    pub fn from_metadata(metadata: &AmdDeviceMetadata) -> Self {
+        Self {
+            mode: metadata.mode,
+            topology: metadata.topology.clone(),
+            risk: metadata.risk.clone(),
+            recovery: metadata.recovery.clone(),
+        }
+    }
+}
+
 /// Capability envelope for a provider-advertised embeddings product.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityEnvelope {
@@ -57,6 +96,9 @@ pub struct CapabilityEnvelope {
     pub runtime_backend: String,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// AMD-specific capability context when the selected backend is AMD.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd: Option<AmdCapabilityContext>,
     /// Model identifier.
     pub model_id: String,
     /// Model family.
@@ -87,6 +129,7 @@ impl CapabilityEnvelope {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(EMBEDDINGS_PRODUCT_ID),
             runtime_backend: backend_selection.effective_backend.clone(),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             model_id: model_id.into(),
             model_family: model_family.into(),
@@ -156,6 +199,9 @@ pub struct ExecutionReceipt {
     pub runtime_backend: String,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// AMD-specific execution context when the selected backend is AMD.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd: Option<AmdCapabilityContext>,
     /// Request identifier.
     pub request_id: String,
     /// Stable request digest.
@@ -197,6 +243,7 @@ impl ExecutionReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
@@ -245,6 +292,7 @@ impl ExecutionReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: digest_embedding_request(request),
@@ -297,6 +345,9 @@ pub struct TextGenerationCapabilityEnvelope {
     pub runtime_backend: String,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// AMD-specific capability context when the selected backend is AMD.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd: Option<AmdCapabilityContext>,
     /// Model identifier.
     pub model_id: String,
     /// Model family.
@@ -329,6 +380,7 @@ impl TextGenerationCapabilityEnvelope {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
             runtime_backend: backend_selection.effective_backend.clone(),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             model_id: model.model.model_id.clone(),
             model_family: model.model.family.clone(),
@@ -353,6 +405,9 @@ pub struct TextGenerationReceipt {
     pub runtime_backend: String,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// AMD-specific execution context when the selected backend is AMD.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd: Option<AmdCapabilityContext>,
     /// Request identifier.
     pub request_id: String,
     /// Stable request digest.
@@ -403,6 +458,7 @@ impl TextGenerationReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
@@ -463,6 +519,7 @@ impl TextGenerationReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: digest_generation_request(request),
@@ -602,10 +659,11 @@ fn digest_weight_bundle(hasher: &mut Sha256, weight_bundle: &WeightBundleMetadat
 
 #[cfg(test)]
 mod tests {
-    use rustygrad_core::{DType, Device, QuantizationMode as RuntimeQuantizationMode};
+    use rustygrad_core::{DType, Device, DeviceKind, QuantizationMode as RuntimeQuantizationMode};
     use rustygrad_runtime::{
-        BackendSelection, DeviceDescriptor, HealthStatus, QuantizationExecution,
-        QuantizationSupport,
+        AmdDeviceMetadata, AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
+        AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendSelection, DeviceDescriptor,
+        HealthStatus, QuantizationExecution, QuantizationSupport,
     };
     use rustygrad_serve::{
         EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationOptions, GenerationRequest,
@@ -779,6 +837,63 @@ mod tests {
     }
 
     #[test]
+    fn amd_kfd_capability_reports_mode_topology_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            amd_kfd_selection(),
+            &sample_embedding_descriptor(),
+            ProviderReadiness {
+                status: HealthStatus::Ready,
+                message: String::from("amd_kfd ready on 1 AMD device"),
+            },
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(encoded["runtime_backend"], json!("amd_kfd"));
+        assert_eq!(encoded["amd"]["mode"], json!("kfd"));
+        assert_eq!(encoded["amd"]["topology"]["architecture"], json!("gfx1100"));
+        assert_eq!(
+            encoded["amd"]["risk"]["requires_explicit_opt_in"],
+            json!(false)
+        );
+        assert_eq!(
+            encoded["amd"]["recovery"]["expected_actions"],
+            json!(["kernel_driver_reset", "reboot_host"])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn amd_userspace_capability_reports_disabled_risk_posture(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            amd_userspace_selection(),
+            &sample_embedding_descriptor(),
+            ProviderReadiness {
+                status: HealthStatus::Offline,
+                message: String::from("amd_userspace disabled pending explicit opt-in"),
+            },
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(encoded["runtime_backend"], json!("amd_userspace"));
+        assert_eq!(encoded["amd"]["mode"], json!("userspace"));
+        assert_eq!(
+            encoded["amd"]["risk"]["requires_explicit_opt_in"],
+            json!(true)
+        );
+        assert_eq!(
+            encoded["amd"]["risk"]["may_unbind_kernel_driver"],
+            json!(true)
+        );
+        assert_eq!(
+            encoded["amd"]["recovery"]["driver_binding"],
+            json!("kernel_amdgpu")
+        );
+        Ok(())
+    }
+
+    #[test]
     fn execution_receipt_round_trips() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-3",
@@ -885,6 +1000,27 @@ mod tests {
         assert_eq!(receipt.runtime_backend, "cpu");
         assert_eq!(receipt.backend_selection.requested_backend, "metal");
         assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
+    }
+
+    #[test]
+    fn amd_receipt_carries_execution_context() {
+        let request = EmbeddingRequest::new(
+            "req-amd-1",
+            sample_embedding_descriptor(),
+            vec![String::from("hello")],
+        );
+
+        let receipt = ExecutionReceipt::failed_for_request(
+            amd_userspace_selection(),
+            &request,
+            10,
+            11,
+            "backend disabled",
+        );
+        let amd = receipt.amd.expect("amd context");
+        assert_eq!(amd.mode, AmdRuntimeMode::Userspace);
+        assert!(amd.risk.requires_explicit_opt_in);
+        assert_eq!(amd.recovery.driver_binding, AmdDriverBinding::KernelAmdgpu);
     }
 
     #[test]
@@ -1007,6 +1143,105 @@ mod tests {
             unified_memory: Some(true),
             feature_flags: vec![String::from("host_memory")],
             amd_metadata: None,
+        }
+    }
+
+    fn amd_kfd_selection() -> BackendSelection {
+        BackendSelection::direct(
+            "amd_kfd",
+            Some(sample_amd_kfd_device()),
+            vec![String::from("probe_only")],
+        )
+    }
+
+    fn amd_userspace_selection() -> BackendSelection {
+        BackendSelection::direct(
+            "amd_userspace",
+            Some(sample_amd_userspace_device()),
+            vec![String::from("probe_only")],
+        )
+    }
+
+    fn sample_amd_kfd_device() -> DeviceDescriptor {
+        DeviceDescriptor {
+            backend: String::from("amd_kfd"),
+            device: Device::new(DeviceKind::AmdKfd, 0, Some(String::from("amd_kfd:0"))),
+            device_name: Some(String::from("AMD Radeon KFD Test")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(24 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("kfd_device_node")],
+            amd_metadata: Some(AmdDeviceMetadata {
+                mode: AmdRuntimeMode::Kfd,
+                topology: AmdTopologyInfo {
+                    architecture: Some(String::from("gfx1100")),
+                    pci_bdf: Some(String::from("0000:03:00.0")),
+                    xcc_count: Some(1),
+                    shader_engine_count: Some(4),
+                    compute_unit_count: Some(60),
+                    vram_bytes: Some(24 * 1024 * 1024 * 1024),
+                    visible_vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                },
+                risk: AmdRiskProfile {
+                    level: AmdRiskLevel::Standard,
+                    requires_explicit_opt_in: false,
+                    may_unbind_kernel_driver: false,
+                    warnings: Vec::new(),
+                },
+                recovery: AmdRecoveryProfile {
+                    driver_binding: AmdDriverBinding::KernelAmdgpu,
+                    expected_actions: vec![
+                        AmdRecoveryAction::KernelDriverReset,
+                        AmdRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
+        }
+    }
+
+    fn sample_amd_userspace_device() -> DeviceDescriptor {
+        DeviceDescriptor {
+            backend: String::from("amd_userspace"),
+            device: Device::new(
+                DeviceKind::AmdUserspace,
+                0,
+                Some(String::from("amd_userspace:0")),
+            ),
+            device_name: Some(String::from("AMD Radeon Userspace Test")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(24 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("userspace_opt_in_disabled")],
+            amd_metadata: Some(AmdDeviceMetadata {
+                mode: AmdRuntimeMode::Userspace,
+                topology: AmdTopologyInfo {
+                    architecture: Some(String::from("gfx1100")),
+                    pci_bdf: Some(String::from("0000:03:00.0")),
+                    xcc_count: Some(1),
+                    shader_engine_count: Some(4),
+                    compute_unit_count: Some(60),
+                    vram_bytes: Some(24 * 1024 * 1024 * 1024),
+                    visible_vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                },
+                risk: AmdRiskProfile {
+                    level: AmdRiskLevel::Elevated,
+                    requires_explicit_opt_in: true,
+                    may_unbind_kernel_driver: true,
+                    warnings: vec![String::from(
+                        "userspace mode may require unloading or rebinding amdgpu",
+                    )],
+                },
+                recovery: AmdRecoveryProfile {
+                    driver_binding: AmdDriverBinding::KernelAmdgpu,
+                    expected_actions: vec![
+                        AmdRecoveryAction::ProcessRestart,
+                        AmdRecoveryAction::RebindKernelDriver,
+                        AmdRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
         }
     }
 }
