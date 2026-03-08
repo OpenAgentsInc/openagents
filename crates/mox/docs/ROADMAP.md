@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, after `MOX-123` / [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) landed in commit `cf986e282`, after `MOX-124` / [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) landed in commit `27273f837`, after `MOX-125` / [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) landed in commit `877112111`, after `MOX-126` / [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) landed in commit `cd3987928`, after `MOX-126A` / [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) landed in commit `0dfcf3f7c`, after `MOX-126B` / [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) landed in commit `2bd89d48f`, after `MOX-165` / [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) landed in commit `e4ffbee5b`, after `MOX-127` / [#3187](https://github.com/OpenAgentsInc/openagents/issues/3187) landed in commit `bf0cf75a8`, after `MOX-128` / [#3188](https://github.com/OpenAgentsInc/openagents/issues/3188) landed in commits `9e283787a` and `875de50b9`, after `MOX-129` / [#3189](https://github.com/OpenAgentsInc/openagents/issues/3189) landed in commit `a12badddb`, after `MOX-133` / [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) landed in commit `eb0f84af2`, after `MOX-134` / [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) landed in commit `1600ec4bc`, after `MOX-135` / [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) landed in commit `2516c70e3`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, after `MOX-123` / [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) landed in commit `cf986e282`, after `MOX-124` / [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) landed in commit `27273f837`, after `MOX-125` / [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) landed in commit `877112111`, after `MOX-126` / [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) landed in commit `cd3987928`, after `MOX-126A` / [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) landed in commit `0dfcf3f7c`, after `MOX-126B` / [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) landed in commit `2bd89d48f`, after `MOX-165` / [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) landed in commit `e4ffbee5b`, after `MOX-127` / [#3187](https://github.com/OpenAgentsInc/openagents/issues/3187) landed in commit `bf0cf75a8`, after `MOX-128` / [#3188](https://github.com/OpenAgentsInc/openagents/issues/3188) landed in commits `9e283787a` and `875de50b9`, after `MOX-129` / [#3189](https://github.com/OpenAgentsInc/openagents/issues/3189) landed in commit `a12badddb`, after `MOX-133` / [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) landed in commit `eb0f84af2`, after `MOX-134` / [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) landed in commit `1600ec4bc`, after `MOX-135` / [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) landed in commit `2516c70e3`, after `MOX-136` / [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) landed in commit `74ebe5cf9`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -282,6 +282,13 @@ per-issue commit anchors.
   corrupt-or-size-mismatched blobs, explicit manifest-level verification over
   the shared blob substrate, and GGUF manifest loads that now refuse corrupt
   primary model blobs before parse
+- `MOX-136` / [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193):
+  backend-neutral local runtime diagnostics taxonomy in `mox-runtime` /
+  `mox-serve` / `mox-provider`, with stable error codes plus HTTP-style
+  status/message/context fields, serve-layer mappings from current generation
+  and embeddings failures into that taxonomy, streaming terminals carrying
+  structured diagnostics, and provider receipts preserving those diagnostics
+  alongside plain-text failure reasons
 
 ### GitHub issue status
 
@@ -314,6 +321,7 @@ checks via `gh issue view`:
 | [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) | Closed | `MOX-133` landed: pull-driven local streaming generation in `mox-serve` with explicit backpressure/disconnect/cancellation policy, typed chunk vs terminal events, partial-output terminal semantics for cancel/disconnect/runtime failure after stream start, runtime forwarding through `MoxLocalRuntime`, and provider receipt/capability streaming truth. |
 | [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) | Closed | `MOX-134` landed: explicit embeddings API semantics in `mox-serve` and `mox-provider`, including empty-batch success, requested output dimensions with re-normalization, model-family/revision/normalization metadata reporting, ordered-batch capability truth, and explicit no-input-truncation support for current byte-projection embeddings paths. |
 | [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) | Closed | `MOX-135` landed: explicit local model-store integrity verification and cache-repair diagnostics in `mox-catalog`, covering missing manifests, missing blobs, digest mismatch, and declared-size mismatch, plus `mox-models` refusal of corrupt primary GGUF blobs from manifest-backed loads. |
+| [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) | Closed | `MOX-136` landed: backend-neutral local runtime diagnostics taxonomy in `mox-runtime`, `mox-serve`, and `mox-provider`, including stable error codes plus HTTP-style status/message/context fields, serve-layer mappings for current request failures, streaming-terminal diagnostics, and provider receipts that preserve structured diagnostics alongside plain-text reasons. |
 | [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | Closed | `MOX-126A` landed: runtime-owned paged-KV policy/accounting, a logically paged per-session KV cache in `mox-serve` with explicit `refuse_new_pages` behavior, session metadata bound to KV policy/state, and generation/provider evidence carrying KV pages, bytes, and growth. |
 | [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) | Closed | `MOX-126B` landed: explicit shared prefix-cache policy/state/identity in `mox-runtime`, longest-safe prefix reuse plus stale rebuild and bypass handling in `mox-serve`, and provider/receipt truth for prefix reuse and reused-token counts. |
 | [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) | Closed | `MOX-165` landed: OCI/Docker-v2 registry pull into the local Ollama-style manifest/blob store, shared manifest validation for remote and local paths, digest/size-checked blob ingestion with reuse reporting, and `mox-models` loading from a resolved local manifest. |
@@ -352,7 +360,8 @@ state:
 | 24 | `MOX-133` | [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) | Closed | Local runtime streaming semantics are now landed on `main`; keep this in sequence but skip it when choosing the next issue. |
 | 25 | `MOX-134` | [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) | Closed | Embeddings batch semantics, metadata reporting, and failure behavior are now landed on `main`; keep this in sequence but skip it when choosing the next issue. |
 | 26 | `MOX-135` | [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) | Closed | Local model-store integrity verification and repair diagnostics are now landed on `main`; keep this in sequence but skip it when choosing the next issue. |
-| 27 | `MOX-136` | [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) | Open | This is now the next unresolved dependency because the local runtime seam still needs a backend-neutral error taxonomy and desktop-facing diagnostics before cutover can replace Ollama error handling honestly. |
+| 27 | `MOX-136` | [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) | Closed | Backend-neutral local runtime diagnostics are now landed on `main`; keep this in sequence but skip it when choosing the next issue. |
+| 28 | `MOX-137` | [#3194](https://github.com/OpenAgentsInc/openagents/issues/3194) | Open | This is now the next unresolved dependency because fallback, refusal, and degraded-state policy still need to become explicit and testable before the cutover can honestly replace Ollama error handling and backend truth. |
 
 ## Current Reality
 
@@ -403,6 +412,11 @@ baseline on `main` is:
   typed chunk-vs-terminal events, partial-output terminal semantics, and
   streaming-policy truth carried in provenance, receipts, and capability
   envelopes
+- local runtime failures now have a backend-neutral diagnostics taxonomy in
+  `mox-runtime`, `mox-serve`, and `mox-provider`, with stable error codes plus
+  status/message/context fields, serve-layer mappings for current request
+  failures, and structured diagnostics preserved on streamed terminals and
+  provider receipts
 - embeddings execution now has explicit empty-batch behavior, requested
   output-dimension handling, ordered-batch truth, model-family/revision and
   normalization metadata, and provider-facing capability/receipt reporting for
@@ -450,7 +464,6 @@ contract, compatibility, lifecycle, and cutover work.
 
 ### Behavioral contract
 
-- backend-neutral error taxonomy
 - explicit fallback and degraded-state policy
 - expanded prompt-template family coverage beyond the currently supported
   digest-gated GGUF renderers
@@ -632,7 +645,7 @@ called out in the status section above.
 | `MOX-133` | [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) | Closed | Add streaming token generation, backpressure, disconnect, and cancellation semantics for the local runtime API | `mox-serve`, `mox-provider` | Landed in `eb0f84af2`: pull-driven local streaming generation, explicit backpressure/disconnect/cancellation policy, typed chunk and terminal events, partial-output terminal semantics, and provider receipt/capability streaming truth. |
 | `MOX-134` | [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) | Closed | Add embeddings API parity, batch semantics, and model metadata reporting | `mox-serve`, `mox-provider` | Landed in `1600ec4bc`: empty-batch success, requested output dimensions with re-normalization, explicit model-family/revision/normalization metadata, ordered-batch capability truth, and explicit no-input-truncation support on current byte-projection embeddings paths. |
 | `MOX-135` | [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) | Closed | Add local model-store integrity verification and cache-repair diagnostics | `mox-catalog`, `mox-models` | Landed in `2516c70e3`: structured per-model integrity diagnostics and repair hints in `mox-catalog`, plus `mox-models` refusal of corrupt primary GGUF blobs from manifest-backed loads. |
-| `MOX-136` | [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) | Open | Define backend-neutral local runtime error taxonomy and desktop-facing diagnostics | `mox-serve`, `mox-provider`, `mox-runtime` | Replacing Ollama requires a stable error model. |
+| `MOX-136` | [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) | Closed | Define backend-neutral local runtime error taxonomy and desktop-facing diagnostics | `mox-serve`, `mox-provider`, `mox-runtime` | Landed in `74ebe5cf9`: runtime-owned diagnostics taxonomy with stable error codes plus HTTP-style status/message/context, serve-layer mappings from current request failures into that taxonomy, streaming-terminal diagnostics, and provider receipts preserving structured diagnostics alongside plain-text reasons. |
 | `MOX-137` | [#3194](https://github.com/OpenAgentsInc/openagents/issues/3194) | Open | Add explicit backend fallback, refusal, and degraded-state policy for served products | `mox-runtime`, `mox-provider`, backend crates | "No silent CPU fallback" must become concrete and testable. |
 | `MOX-138` | [#3195](https://github.com/OpenAgentsInc/openagents/issues/3195) | Open | Define performance acceptance thresholds and cutover gates for Mox runtime replacement | `mox-serve`, `mox-provider`, backend crates | The team needs explicit launch gates before cutover. |
 | `MOX-139` | [#3196](https://github.com/OpenAgentsInc/openagents/issues/3196) | Open | Decide and document LoRA/adapter support policy for the Ollama replacement boundary | `mox-models`, `mox-catalog`, `mox-serve` | Even a deferral needs an explicit migration policy. |
@@ -699,14 +712,14 @@ for the minimum conformance harness scope and runtime evidence schema that
 
 The shortest honest path from today's `main` is:
 
-1. Land `MOX-136` next so the local runtime seam gains a backend-neutral error
-   taxonomy and desktop-facing diagnostics before cutover replaces Ollama's
-   current error/reporting surface.
-2. Land `MOX-136` through `MOX-139`, plus `MOX-157` through `MOX-159`, before
-   app cutover so error taxonomy, fallback, allocator policy, fused-kernel
-   escape hatches, observability, and performance gates are explicit on top of
-   the already-landed context, sampling, streaming, embeddings, residency, and
-   integrity behavior.
+1. Land `MOX-137` next so fallback, refusal, and degraded-state policy become
+   explicit and testable on top of the now-landed diagnostics taxonomy before
+   cutover replaces Ollama's current runtime seam.
+2. Land `MOX-137` through `MOX-139`, plus `MOX-157` through `MOX-159`, before
+   app cutover so fallback, allocator policy, fused-kernel escape hatches,
+   observability, and performance gates are explicit on top of the already-
+   landed diagnostics, context, sampling, streaming, embeddings, residency,
+   and integrity behavior.
 3. Land `MOX-156` before broad backend claims so quantized execution parity is
    not hidden behind truthful load-only support.
 4. Finish Metal as a real text-generation backend via `MOX-130` through
