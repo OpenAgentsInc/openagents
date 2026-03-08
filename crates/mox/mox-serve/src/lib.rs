@@ -30,12 +30,13 @@ pub use mox_models::{
     WeightSource, WeightTensorMetadata, apply_context_window,
 };
 use mox_runtime::{
-    BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
-    KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-    LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode, MemoryResidencySnapshot,
-    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, SamplingPolicy, SamplingStrategy,
-    TokenSampler, plan_model_admission,
+    BackendHealthTracker, BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting,
+    KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+    LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+    LocalRuntimeObservability, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
+    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+    SamplingPolicy, SamplingStrategy, TokenSampler, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -852,6 +853,9 @@ pub trait ManagedTextGenerationRuntime:
     /// Returns the current loaded-model observation.
     fn loaded_models(&mut self) -> LoadedModelsObservation;
 
+    /// Returns current local-runtime observability for lifecycle/debug surfaces.
+    fn observability(&mut self) -> LocalRuntimeObservability;
+
     /// Refreshes or overrides keepalive for one already-loaded model.
     fn warm_model(
         &mut self,
@@ -946,6 +950,12 @@ where
     #[must_use]
     pub fn loaded_models(&mut self) -> LoadedModelsObservation {
         self.generation.loaded_models()
+    }
+
+    /// Returns current in-process runtime observability.
+    #[must_use]
+    pub fn observability(&mut self) -> LocalRuntimeObservability {
+        self.generation.observability()
     }
 
     /// Refreshes keepalive for one loaded generation model.
@@ -1111,6 +1121,7 @@ pub enum LoadedModelRegistryError {
 pub struct InMemoryGenerationModelRegistry<M> {
     models: BTreeMap<String, LoadedGenerationModel<M>>,
     residency_policy: ModelResidencyPolicy,
+    transitions: RuntimeTransitionLog,
 }
 
 impl<M> InMemoryGenerationModelRegistry<M>
@@ -1123,6 +1134,7 @@ where
         Self {
             models: BTreeMap::new(),
             residency_policy: ModelResidencyPolicy::default(),
+            transitions: RuntimeTransitionLog::default(),
         }
     }
 
@@ -1132,6 +1144,7 @@ where
         Self {
             models: BTreeMap::new(),
             residency_policy,
+            transitions: RuntimeTransitionLog::default(),
         }
     }
 
@@ -1161,12 +1174,18 @@ where
             &self.residency_policy,
         )?;
         for evicted_model_id in decision.evicted_models {
-            self.models.remove(evicted_model_id.as_str());
+            if self.models.remove(evicted_model_id.as_str()).is_some() {
+                self.transitions.record(RuntimeTransitionEvent::model(
+                    RuntimeTransitionKind::ModelUnloaded,
+                    evicted_model_id,
+                    now_millis,
+                ));
+            }
         }
-        Ok(self
+        let previous = self
             .models
             .insert(
-                model_id,
+                model_id.clone(),
                 LoadedGenerationModel {
                     model,
                     residency: LoadedModelResidency::ready(now_millis, keep_alive_millis),
@@ -1178,7 +1197,20 @@ where
                     fallback_state,
                 },
             )
-            .map(|previous| previous.model))
+            .map(|previous| previous.model);
+        if previous.is_some() {
+            self.transitions.record(RuntimeTransitionEvent::model(
+                RuntimeTransitionKind::ModelUnloaded,
+                model_id.clone(),
+                now_millis,
+            ));
+        }
+        self.transitions.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelLoadedCold,
+            model_id,
+            now_millis,
+        ));
+        Ok(previous)
     }
 
     /// Refreshes an already-loaded model's keepalive window.
@@ -1211,6 +1243,13 @@ where
             .models
             .get_mut(model_id)
             .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        if !entry.has_served_request {
+            self.transitions.record(RuntimeTransitionEvent::model(
+                RuntimeTransitionKind::ModelBecameWarm,
+                model_id,
+                now_millis,
+            ));
+        }
         entry.has_served_request = true;
         entry.residency.begin_request(now_millis);
         let snapshot = self.memory_snapshot();
@@ -1244,11 +1283,17 @@ where
     pub fn unload_view(
         &mut self,
         model_id: &str,
+        now_millis: u64,
     ) -> Result<LoadedModelView, LoadedModelRegistryError> {
         let entry = self
             .models
             .remove(model_id)
             .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        self.transitions.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelUnloaded,
+            model_id,
+            now_millis,
+        ));
         let snapshot = self.memory_snapshot();
         Ok(entry.view(&self.residency_policy, &snapshot))
     }
@@ -1280,6 +1325,11 @@ where
         let mut removed = Vec::with_capacity(expired.len());
         for model_id in expired {
             if let Some(entry) = self.models.remove(model_id.as_str()) {
+                self.transitions.record(RuntimeTransitionEvent::model(
+                    RuntimeTransitionKind::ModelUnloaded,
+                    model_id.clone(),
+                    now_millis,
+                ));
                 removed.push(entry.model);
             }
         }
@@ -1340,6 +1390,21 @@ where
         MemoryResidencySnapshot::from_loaded_models(&self.memory_states())
     }
 
+    /// Returns total active requests across loaded models.
+    #[must_use]
+    pub fn active_request_count(&self) -> usize {
+        self.models
+            .values()
+            .map(|entry| entry.residency.active_requests)
+            .sum()
+    }
+
+    /// Returns recent lifecycle transitions in chronological order.
+    #[must_use]
+    pub fn recent_transitions(&self) -> Vec<RuntimeTransitionEvent> {
+        self.transitions.snapshot()
+    }
+
     /// Returns the memory plan for one loaded model.
     #[must_use]
     pub fn memory_plan(&self, model_id: &str) -> Option<&ModelMemoryPlan> {
@@ -1397,6 +1462,38 @@ fn current_time_millis() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn generation_runtime_observability<M>(
+    models: &InMemoryGenerationModelRegistry<M>,
+    sessions: &InMemoryGenerationSessionStore,
+    backend_health: &BackendHealthTracker,
+) -> LocalRuntimeObservability
+where
+    M: GenerationModelHandle,
+{
+    let mut recent_transitions = models.recent_transitions();
+    recent_transitions.extend(backend_health.recent_changes());
+    recent_transitions.sort_by(|left, right| {
+        left.observed_at_millis
+            .cmp(&right.observed_at_millis)
+            .then_with(|| left.kind.cmp(&right.kind))
+            .then_with(|| left.model_id.cmp(&right.model_id))
+            .then_with(|| left.backend.cmp(&right.backend))
+            .then_with(|| left.previous_status.cmp(&right.previous_status))
+            .then_with(|| left.status.cmp(&right.status))
+            .then_with(|| left.message.cmp(&right.message))
+    });
+
+    LocalRuntimeObservability {
+        queue_depth: 0,
+        queue_capacity: None,
+        active_sessions: sessions.len(),
+        active_requests: models.active_request_count(),
+        memory_footprint: models.memory_snapshot(),
+        backend_health: backend_health.snapshot(),
+        recent_transitions,
+    }
 }
 
 impl LocalModelCatalog for LocalOllamaCatalogSubject {
@@ -1722,6 +1819,18 @@ impl InMemoryGenerationSessionStore {
         self.sessions
             .get(session_id)
             .map(GenerationSessionState::session)
+    }
+
+    /// Returns the number of tracked generation sessions.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.sessions.len()
+    }
+
+    /// Returns whether the session store is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.sessions.is_empty()
     }
 
     /// Returns session state by ID.
@@ -2514,12 +2623,14 @@ pub struct CpuReferenceTextGenerationService {
     models: InMemoryGenerationModelRegistry<CpuReferenceGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
     shared_prefixes: SharedPrefixStore,
+    backend_health: BackendHealthTracker,
     model_descriptor: DecoderModelDescriptor,
 }
 
 impl CpuReferenceTextGenerationService {
     /// Creates a service with the default reference decoder loaded.
     pub fn new() -> Result<Self, ReferenceTextGenerationError> {
+        let backend = CpuBackend::new();
         let model = ReferenceWordDecoder::new();
         let model_descriptor = model.descriptor().clone();
         let mut models = InMemoryGenerationModelRegistry::new();
@@ -2531,11 +2642,14 @@ impl CpuReferenceTextGenerationService {
             Some(String::from("cpu")),
             None,
         )?;
+        let mut backend_health = BackendHealthTracker::default();
+        backend_health.observe("cpu", backend.health(), current_time_millis());
         Ok(Self {
-            backend: CpuBackend::new(),
+            backend,
             models,
             sessions: InMemoryGenerationSessionStore::new(),
             shared_prefixes: SharedPrefixStore::default(),
+            backend_health,
             model_descriptor,
         })
     }
@@ -2595,6 +2709,21 @@ impl CpuReferenceTextGenerationService {
         self.models.loaded_models_observation()
     }
 
+    /// Returns runtime observability at a caller-provided time.
+    #[must_use]
+    pub fn observability_at(&mut self, now_millis: u64) -> LocalRuntimeObservability {
+        self.models.expire_idle(now_millis);
+        self.backend_health
+            .observe("cpu", self.backend.health(), now_millis);
+        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+    }
+
+    /// Returns runtime observability after applying idle expiry.
+    #[must_use]
+    pub fn observability(&mut self) -> LocalRuntimeObservability {
+        self.observability_at(current_time_millis())
+    }
+
     /// Returns explicit loaded-model residency views at a caller-provided time.
     #[must_use]
     pub fn loaded_model_views_at(&mut self, now_millis: u64) -> Vec<LoadedModelView> {
@@ -2613,7 +2742,7 @@ impl CpuReferenceTextGenerationService {
         &mut self,
         model_id: &str,
     ) -> Result<LoadedModelView, ReferenceTextGenerationError> {
-        Ok(self.models.unload_view(model_id)?)
+        Ok(self.models.unload_view(model_id, current_time_millis())?)
     }
 
     /// Creates a reusable generation session for the provided model ID.
@@ -2681,6 +2810,10 @@ impl ManagedTextGenerationRuntime for CpuReferenceTextGenerationService {
         CpuReferenceTextGenerationService::loaded_models(self)
     }
 
+    fn observability(&mut self) -> LocalRuntimeObservability {
+        CpuReferenceTextGenerationService::observability(self)
+    }
+
     fn warm_model(
         &mut self,
         model_id: &str,
@@ -2704,6 +2837,7 @@ pub struct CpuModelTextGenerationService {
     models: InMemoryGenerationModelRegistry<CpuModelGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
     shared_prefixes: SharedPrefixStore,
+    backend_health: BackendHealthTracker,
     model_descriptor: DecoderModelDescriptor,
 }
 
@@ -2712,6 +2846,7 @@ impl CpuModelTextGenerationService {
     pub fn from_safetensors_artifact(
         path: impl AsRef<std::path::Path>,
     ) -> Result<Self, ReferenceTextGenerationError> {
+        let backend = CpuBackend::new();
         let model = ArtifactWordDecoder::from_safetensors_artifact(path)?;
         let model_descriptor = model.descriptor().clone();
         let mut models = InMemoryGenerationModelRegistry::new();
@@ -2723,11 +2858,14 @@ impl CpuModelTextGenerationService {
             Some(String::from("cpu")),
             None,
         )?;
+        let mut backend_health = BackendHealthTracker::default();
+        backend_health.observe("cpu", backend.health(), current_time_millis());
         Ok(Self {
-            backend: CpuBackend::new(),
+            backend,
             models,
             sessions: InMemoryGenerationSessionStore::new(),
             shared_prefixes: SharedPrefixStore::default(),
+            backend_health,
             model_descriptor,
         })
     }
@@ -2787,6 +2925,21 @@ impl CpuModelTextGenerationService {
         self.models.loaded_models_observation()
     }
 
+    /// Returns runtime observability at a caller-provided time.
+    #[must_use]
+    pub fn observability_at(&mut self, now_millis: u64) -> LocalRuntimeObservability {
+        self.models.expire_idle(now_millis);
+        self.backend_health
+            .observe("cpu", self.backend.health(), now_millis);
+        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+    }
+
+    /// Returns runtime observability after applying idle expiry.
+    #[must_use]
+    pub fn observability(&mut self) -> LocalRuntimeObservability {
+        self.observability_at(current_time_millis())
+    }
+
     /// Returns explicit loaded-model residency views at a caller-provided time.
     #[must_use]
     pub fn loaded_model_views_at(&mut self, now_millis: u64) -> Vec<LoadedModelView> {
@@ -2805,7 +2958,7 @@ impl CpuModelTextGenerationService {
         &mut self,
         model_id: &str,
     ) -> Result<LoadedModelView, ReferenceTextGenerationError> {
-        Ok(self.models.unload_view(model_id)?)
+        Ok(self.models.unload_view(model_id, current_time_millis())?)
     }
 
     /// Creates a reusable generation session for the provided model ID.
@@ -2871,6 +3024,10 @@ impl StreamingTextGenerationExecutor for CpuModelTextGenerationService {
 impl ManagedTextGenerationRuntime for CpuModelTextGenerationService {
     fn loaded_models(&mut self) -> LoadedModelsObservation {
         CpuModelTextGenerationService::loaded_models(self)
+    }
+
+    fn observability(&mut self) -> LocalRuntimeObservability {
+        CpuModelTextGenerationService::observability(self)
     }
 
     fn warm_model(
@@ -4592,9 +4749,10 @@ mod tests {
     use mox_backend_cpu::CpuBackend;
     use mox_core::{DType, Shape};
     use mox_runtime::{
-        AdmissionRefusalReason, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
-        KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState, LocalRuntimeErrorCode,
-        MemoryBudget, ModelResidencyPolicy, PrefixCacheState, ResidencyPressureAction,
+        AdmissionRefusalReason, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState,
+        LocalRuntimeErrorCode, MemoryBudget, ModelResidencyPolicy, PrefixCacheState,
+        ResidencyPressureAction, RuntimeTransitionEvent, RuntimeTransitionKind,
     };
 
     use super::{
@@ -4936,6 +5094,20 @@ mod tests {
         let loaded = runtime.loaded_models();
         assert_eq!(loaded.models.len(), 1);
         assert_eq!(loaded.models[0].model, ReferenceWordDecoder::MODEL_ID);
+        let observability = runtime.observability();
+        assert_eq!(observability.queue_depth, 0);
+        assert_eq!(observability.active_sessions, 0);
+        assert_eq!(observability.active_requests, 0);
+        assert_eq!(observability.memory_footprint.loaded_models, 1);
+        assert_eq!(observability.backend_health.len(), 1);
+        assert_eq!(observability.backend_health[0].backend, "cpu");
+        assert_eq!(observability.backend_health[0].status, HealthStatus::Ready);
+        assert!(
+            observability
+                .recent_transitions
+                .iter()
+                .any(|event| event.kind == RuntimeTransitionKind::ModelLoadedCold)
+        );
 
         let warmed = runtime.warm_model(ReferenceWordDecoder::MODEL_ID, 0)?;
         assert_eq!(warmed.summary.model, ReferenceWordDecoder::MODEL_ID);
@@ -5028,6 +5200,8 @@ mod tests {
             store.state(&session_b.session_id)?.tokens(),
             &[FixtureWordTokenizer::RUSTY_ID]
         );
+        assert_eq!(store.len(), 2);
+        assert!(!store.is_empty());
         assert_eq!(
             store
                 .state(&session_a.session_id)?
@@ -5336,6 +5510,81 @@ mod tests {
         let expired = registry.expire_idle(10_100);
         assert_eq!(expired.len(), 1);
         assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn model_registry_records_lifecycle_transitions() {
+        let mut registry = InMemoryGenerationModelRegistry::new();
+        let alpha = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("alpha"),
+        };
+
+        registry
+            .warm_with_metadata(alpha, 1_000, 5_000, None, Some(String::from("cpu")), None)
+            .expect("warm alpha");
+        registry.begin_request("alpha", 2_000).expect("begin alpha");
+        registry
+            .finish_request("alpha", 2_100)
+            .expect("finish alpha");
+        registry.unload_view("alpha", 2_100).expect("unload alpha");
+
+        assert_eq!(
+            registry.recent_transitions(),
+            vec![
+                RuntimeTransitionEvent::model(
+                    RuntimeTransitionKind::ModelLoadedCold,
+                    "alpha",
+                    1_000,
+                ),
+                RuntimeTransitionEvent::model(
+                    RuntimeTransitionKind::ModelBecameWarm,
+                    "alpha",
+                    2_000,
+                ),
+                RuntimeTransitionEvent::model(RuntimeTransitionKind::ModelUnloaded, "alpha", 2_100,),
+            ]
+        );
+    }
+
+    #[test]
+    fn cpu_reference_observability_reports_sessions_memory_and_transitions()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let initial = service.observability_at(1_000);
+        assert_eq!(initial.queue_depth, 0);
+        assert_eq!(initial.active_sessions, 0);
+        assert_eq!(initial.active_requests, 0);
+        assert_eq!(initial.memory_footprint.loaded_models, 1);
+        assert_eq!(initial.backend_health[0].backend, "cpu");
+        assert_eq!(initial.backend_health[0].status, HealthStatus::Ready);
+        assert_eq!(
+            initial.recent_transitions[0].kind,
+            RuntimeTransitionKind::ModelLoadedCold
+        );
+
+        let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
+        let with_session = service.observability_at(1_100);
+        assert_eq!(with_session.active_sessions, 1);
+
+        let request = GenerationRequest::new_text(
+            "obs-gen-1",
+            service.model_descriptor().clone(),
+            Some(session.session_id),
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+        let response = service.generate(&request)?;
+        assert_eq!(response.output.text, "open agents");
+
+        let after_generate = service.observability_at(1_200);
+        assert_eq!(after_generate.active_requests, 0);
+        assert!(
+            after_generate
+                .recent_transitions
+                .iter()
+                .any(|event| event.kind == RuntimeTransitionKind::ModelBecameWarm)
+        );
+        Ok(())
     }
 
     #[test]

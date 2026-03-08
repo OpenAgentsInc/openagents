@@ -2,7 +2,7 @@
 
 mod parity;
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 
 use mox_core::{
     BackendExtensionKind, DType, Device, QuantizationMode, QuantizedBlockLayout, TensorId,
@@ -536,7 +536,7 @@ pub struct QuantizationSupport {
 }
 
 /// Runtime health state.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum HealthStatus {
     /// Device/runtime is ready for work.
     Ready,
@@ -553,6 +553,226 @@ pub struct RuntimeHealth {
     pub status: HealthStatus,
     /// Plain-text explanation.
     pub message: String,
+}
+
+/// Default number of recent runtime transitions to retain for observability.
+pub const DEFAULT_OBSERVABILITY_HISTORY_LIMIT: usize = 32;
+
+/// Current observed health for one backend in the local runtime.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendHealthObservation {
+    /// Stable backend label such as `cpu` or `metal`.
+    pub backend: String,
+    /// Current observed health status.
+    pub status: HealthStatus,
+    /// Current observed health message.
+    pub message: String,
+    /// Timestamp when the backend was last observed.
+    pub observed_at_millis: u64,
+    /// Timestamp when the backend last changed health/message.
+    pub changed_at_millis: u64,
+}
+
+/// Explicit runtime transition category surfaced for local observability.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeTransitionKind {
+    /// A model was loaded and begins in the cold state.
+    ModelLoadedCold,
+    /// A previously cold model became warm after serving its first request.
+    ModelBecameWarm,
+    /// A model was unloaded or evicted.
+    ModelUnloaded,
+    /// A backend changed health posture.
+    BackendHealthChanged,
+}
+
+/// One observable runtime transition for local lifecycle/debug reporting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeTransitionEvent {
+    /// Transition category.
+    pub kind: RuntimeTransitionKind,
+    /// Model involved in the transition, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Backend involved in the transition, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Previous backend health status when the transition is health-driven.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_status: Option<HealthStatus>,
+    /// Current backend health status when the transition is health-driven.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<HealthStatus>,
+    /// Human-readable transition detail when useful.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// Timestamp when the transition was observed.
+    pub observed_at_millis: u64,
+}
+
+impl RuntimeTransitionEvent {
+    /// Creates a model lifecycle transition.
+    #[must_use]
+    pub fn model(
+        kind: RuntimeTransitionKind,
+        model_id: impl Into<String>,
+        observed_at_millis: u64,
+    ) -> Self {
+        Self {
+            kind,
+            model_id: Some(model_id.into()),
+            backend: None,
+            previous_status: None,
+            status: None,
+            message: None,
+            observed_at_millis,
+        }
+    }
+
+    /// Creates a backend-health transition.
+    #[must_use]
+    pub fn backend_health_changed(
+        backend: impl Into<String>,
+        previous: &RuntimeHealth,
+        current: &RuntimeHealth,
+        observed_at_millis: u64,
+    ) -> Self {
+        Self {
+            kind: RuntimeTransitionKind::BackendHealthChanged,
+            model_id: None,
+            backend: Some(backend.into()),
+            previous_status: Some(previous.status),
+            status: Some(current.status),
+            message: Some(current.message.clone()),
+            observed_at_millis,
+        }
+    }
+}
+
+/// Bounded log of recent runtime transitions.
+#[derive(Clone, Debug)]
+pub struct RuntimeTransitionLog {
+    limit: usize,
+    events: VecDeque<RuntimeTransitionEvent>,
+}
+
+impl RuntimeTransitionLog {
+    /// Creates a transition log with the default retention limit.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_limit(DEFAULT_OBSERVABILITY_HISTORY_LIMIT)
+    }
+
+    /// Creates a transition log with an explicit retention limit.
+    #[must_use]
+    pub fn with_limit(limit: usize) -> Self {
+        Self {
+            limit: limit.max(1),
+            events: VecDeque::new(),
+        }
+    }
+
+    /// Records one runtime transition, dropping the oldest retained entry when full.
+    pub fn record(&mut self, event: RuntimeTransitionEvent) {
+        if self.events.len() == self.limit {
+            self.events.pop_front();
+        }
+        self.events.push_back(event);
+    }
+
+    /// Returns the retained transitions in chronological order.
+    #[must_use]
+    pub fn snapshot(&self) -> Vec<RuntimeTransitionEvent> {
+        self.events.iter().cloned().collect()
+    }
+}
+
+impl Default for RuntimeTransitionLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Tracks observed backend health and records health-change transitions.
+#[derive(Clone, Debug)]
+pub struct BackendHealthTracker {
+    observed: BTreeMap<String, BackendHealthObservation>,
+    changes: RuntimeTransitionLog,
+}
+
+impl BackendHealthTracker {
+    /// Creates a health tracker with the default transition-history limit.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_history_limit(DEFAULT_OBSERVABILITY_HISTORY_LIMIT)
+    }
+
+    /// Creates a health tracker with an explicit transition-history limit.
+    #[must_use]
+    pub fn with_history_limit(limit: usize) -> Self {
+        Self {
+            observed: BTreeMap::new(),
+            changes: RuntimeTransitionLog::with_limit(limit),
+        }
+    }
+
+    /// Observes current health for one backend and records a change event when it differs.
+    pub fn observe(
+        &mut self,
+        backend: impl Into<String>,
+        health: RuntimeHealth,
+        observed_at_millis: u64,
+    ) -> BackendHealthObservation {
+        let backend = backend.into();
+        let entry =
+            self.observed
+                .entry(backend.clone())
+                .or_insert_with(|| BackendHealthObservation {
+                    backend: backend.clone(),
+                    status: health.status,
+                    message: health.message.clone(),
+                    observed_at_millis,
+                    changed_at_millis: observed_at_millis,
+                });
+        let previous = RuntimeHealth {
+            status: entry.status,
+            message: entry.message.clone(),
+        };
+        let changed = previous != health;
+        entry.status = health.status;
+        entry.message = health.message.clone();
+        entry.observed_at_millis = observed_at_millis;
+        if changed {
+            entry.changed_at_millis = observed_at_millis;
+            self.changes
+                .record(RuntimeTransitionEvent::backend_health_changed(
+                    backend,
+                    &previous,
+                    &health,
+                    observed_at_millis,
+                ));
+        }
+        entry.clone()
+    }
+
+    /// Returns the currently observed backend-health rows in stable backend order.
+    #[must_use]
+    pub fn snapshot(&self) -> Vec<BackendHealthObservation> {
+        self.observed.values().cloned().collect()
+    }
+
+    /// Returns recent health-change transitions in chronological order.
+    #[must_use]
+    pub fn recent_changes(&self) -> Vec<RuntimeTransitionEvent> {
+        self.changes.snapshot()
+    }
+}
+
+impl Default for BackendHealthTracker {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 /// Maximum token-history window used when applying repetition-style penalties.
@@ -1084,6 +1304,28 @@ impl MemoryResidencySnapshot {
                 .sum(),
         }
     }
+}
+
+/// Explicit local-runtime observability snapshot for app cutover and debugging.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalRuntimeObservability {
+    /// Number of requests currently queued behind active execution.
+    pub queue_depth: usize,
+    /// Maximum queued requests admitted by policy, when bounded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_capacity: Option<usize>,
+    /// Number of active generation sessions currently tracked by the runtime.
+    pub active_sessions: usize,
+    /// Number of actively executing requests across loaded models.
+    pub active_requests: usize,
+    /// Aggregate resident-memory footprint for currently loaded models.
+    pub memory_footprint: MemoryResidencySnapshot,
+    /// Current observed health for the backends participating in the local runtime.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backend_health: Vec<BackendHealthObservation>,
+    /// Recent runtime transitions in chronological order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_transitions: Vec<RuntimeTransitionEvent>,
 }
 
 /// Explicit reason admission was refused under the active residency policy.
@@ -1949,18 +2191,20 @@ mod tests {
         AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendExtensionExecution,
-        BackendExtensionSupport, BackendRuntimeResources, BackendSelection, BackendSelectionState,
-        BufferHandle, BufferResidency, BufferStorageKind, DEFAULT_PENALTY_LOOKBACK,
-        DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics,
-        ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState,
-        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-        LoadedModelState, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        ResidencyPressureAction, RuntimeError, RuntimeHealth, SamplingPolicy, SamplingStrategy,
-        ServedProductBackendPolicy, TokenSampler, apply_sampling_penalties, plan_model_admission,
+        BackendExtensionSupport, BackendHealthTracker, BackendRuntimeResources, BackendSelection,
+        BackendSelectionState, BufferHandle, BufferResidency, BufferStorageKind,
+        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
+        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
+        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability, MemoryBudget,
+        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
+        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction,
+        RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
+        RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy,
+        TokenSampler, apply_sampling_penalties, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2839,5 +3083,167 @@ mod tests {
             json!(2944)
         );
         Ok(())
+    }
+
+    #[test]
+    fn backend_health_tracker_records_only_real_changes() {
+        let mut tracker = BackendHealthTracker::with_history_limit(2);
+        let first = tracker.observe(
+            "metal",
+            RuntimeHealth {
+                status: HealthStatus::Ready,
+                message: String::from("ready"),
+            },
+            10,
+        );
+        assert_eq!(first.changed_at_millis, 10);
+        assert!(tracker.recent_changes().is_empty());
+
+        tracker.observe(
+            "metal",
+            RuntimeHealth {
+                status: HealthStatus::Ready,
+                message: String::from("ready"),
+            },
+            15,
+        );
+        assert!(tracker.recent_changes().is_empty());
+
+        let changed = tracker.observe(
+            "metal",
+            RuntimeHealth {
+                status: HealthStatus::Degraded,
+                message: String::from("reduced throughput"),
+            },
+            20,
+        );
+        assert_eq!(changed.changed_at_millis, 20);
+        assert_eq!(changed.observed_at_millis, 20);
+        assert_eq!(changed.status, HealthStatus::Degraded);
+
+        assert_eq!(
+            tracker.recent_changes(),
+            vec![RuntimeTransitionEvent {
+                kind: RuntimeTransitionKind::BackendHealthChanged,
+                model_id: None,
+                backend: Some(String::from("metal")),
+                previous_status: Some(HealthStatus::Ready),
+                status: Some(HealthStatus::Degraded),
+                message: Some(String::from("reduced throughput")),
+                observed_at_millis: 20,
+            }]
+        );
+    }
+
+    #[test]
+    fn runtime_transition_log_retains_latest_events() {
+        let mut log = RuntimeTransitionLog::with_limit(2);
+        log.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelLoadedCold,
+            "alpha",
+            1,
+        ));
+        log.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelBecameWarm,
+            "alpha",
+            2,
+        ));
+        log.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelUnloaded,
+            "alpha",
+            3,
+        ));
+
+        assert_eq!(
+            log.snapshot(),
+            vec![
+                RuntimeTransitionEvent::model(RuntimeTransitionKind::ModelBecameWarm, "alpha", 2,),
+                RuntimeTransitionEvent::model(RuntimeTransitionKind::ModelUnloaded, "alpha", 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn local_runtime_observability_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let observability = LocalRuntimeObservability {
+            queue_depth: 0,
+            queue_capacity: None,
+            active_sessions: 2,
+            active_requests: 1,
+            memory_footprint: MemoryResidencySnapshot {
+                loaded_models: 1,
+                resident_host_bytes: 1024,
+                resident_device_bytes: 2048,
+            },
+            backend_health: vec![tracker_observation("cpu", HealthStatus::Ready, "ready", 10)],
+            recent_transitions: vec![
+                RuntimeTransitionEvent::model(
+                    RuntimeTransitionKind::ModelLoadedCold,
+                    "fixture-word-decoder-v0",
+                    8,
+                ),
+                RuntimeTransitionEvent {
+                    kind: RuntimeTransitionKind::BackendHealthChanged,
+                    model_id: None,
+                    backend: Some(String::from("cpu")),
+                    previous_status: Some(HealthStatus::Degraded),
+                    status: Some(HealthStatus::Ready),
+                    message: Some(String::from("ready")),
+                    observed_at_millis: 10,
+                },
+            ],
+        };
+
+        assert_eq!(
+            serde_json::to_value(&observability)?,
+            json!({
+                "queue_depth": 0,
+                "active_sessions": 2,
+                "active_requests": 1,
+                "memory_footprint": {
+                    "loaded_models": 1,
+                    "resident_host_bytes": 1024,
+                    "resident_device_bytes": 2048
+                },
+                "backend_health": [{
+                    "backend": "cpu",
+                    "status": "Ready",
+                    "message": "ready",
+                    "observed_at_millis": 10,
+                    "changed_at_millis": 10
+                }],
+                "recent_transitions": [
+                    {
+                        "kind": "model_loaded_cold",
+                        "model_id": "fixture-word-decoder-v0",
+                        "observed_at_millis": 8
+                    },
+                    {
+                        "kind": "backend_health_changed",
+                        "backend": "cpu",
+                        "previous_status": "Degraded",
+                        "status": "Ready",
+                        "message": "ready",
+                        "observed_at_millis": 10
+                    }
+                ]
+            })
+        );
+        Ok(())
+    }
+
+    fn tracker_observation(
+        backend: &str,
+        status: HealthStatus,
+        message: &str,
+        observed_at_millis: u64,
+    ) -> super::BackendHealthObservation {
+        super::BackendHealthObservation {
+            backend: String::from(backend),
+            status,
+            message: String::from(message),
+            observed_at_millis,
+            changed_at_millis: observed_at_millis,
+        }
     }
 }

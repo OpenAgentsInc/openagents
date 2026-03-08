@@ -6,8 +6,8 @@ use sha2::{Digest, Sha256};
 use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
     BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
-    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState,
+    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -85,6 +85,26 @@ impl AmdCapabilityContext {
             topology: metadata.topology.clone(),
             risk: metadata.risk.clone(),
             recovery: metadata.recovery.clone(),
+        }
+    }
+}
+
+/// Provider-facing wrapper for live local-runtime observability.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalRuntimeObservabilityEnvelope {
+    /// Engine backend family.
+    pub backend_family: String,
+    /// Current local-runtime observability snapshot.
+    pub observability: LocalRuntimeObservability,
+}
+
+impl LocalRuntimeObservabilityEnvelope {
+    /// Creates a provider-facing wrapper from a reusable runtime snapshot.
+    #[must_use]
+    pub fn new(observability: LocalRuntimeObservability) -> Self {
+        Self {
+            backend_family: String::from(BACKEND_FAMILY),
+            observability,
         }
     }
 }
@@ -965,8 +985,9 @@ mod tests {
         AmdRuntimeMode, AmdTopologyInfo, BackendExtensionSupport, BackendRuntimeResources,
         BackendSelection, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy,
         KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
-        LocalRuntimeErrorCode, MemoryResidencySnapshot, ModelResidencyPolicy, PrefixCacheIdentity,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        LocalRuntimeErrorCode, LocalRuntimeObservability, MemoryResidencySnapshot,
+        ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
     };
     use mox_serve::{
         EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
@@ -980,9 +1001,10 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        BatchPosture, CapabilityEnvelope, ExecutionReceipt, KvCacheMode, ProviderReadiness,
-        ReceiptStatus, TextGenerationCapabilityEnvelope, TextGenerationReceipt,
-        WeightBundleEvidence, digest_embedding_request, digest_generation_request,
+        BatchPosture, CapabilityEnvelope, ExecutionReceipt, KvCacheMode,
+        LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
+        TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
+        digest_embedding_request, digest_generation_request,
     };
 
     #[test]
@@ -1217,6 +1239,82 @@ mod tests {
                     "execution": "reference"
                 }
             ])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_runtime_observability_envelope_serializes_stably()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = LocalRuntimeObservabilityEnvelope::new(LocalRuntimeObservability {
+            queue_depth: 0,
+            queue_capacity: None,
+            active_sessions: 2,
+            active_requests: 1,
+            memory_footprint: MemoryResidencySnapshot {
+                loaded_models: 1,
+                resident_host_bytes: 640,
+                resident_device_bytes: 0,
+            },
+            backend_health: vec![mox_runtime::BackendHealthObservation {
+                backend: String::from("cpu"),
+                status: HealthStatus::Ready,
+                message: String::from("cpu backend ready"),
+                observed_at_millis: 10,
+                changed_at_millis: 10,
+            }],
+            recent_transitions: vec![
+                RuntimeTransitionEvent::model(
+                    RuntimeTransitionKind::ModelLoadedCold,
+                    "fixture-word-decoder-v0",
+                    5,
+                ),
+                RuntimeTransitionEvent {
+                    kind: RuntimeTransitionKind::ModelBecameWarm,
+                    model_id: Some(String::from("fixture-word-decoder-v0")),
+                    backend: None,
+                    previous_status: None,
+                    status: None,
+                    message: None,
+                    observed_at_millis: 9,
+                },
+            ],
+        });
+
+        assert_eq!(
+            serde_json::to_value(&envelope)?,
+            json!({
+                "backend_family": "mox",
+                "observability": {
+                    "queue_depth": 0,
+                    "active_sessions": 2,
+                    "active_requests": 1,
+                    "memory_footprint": {
+                        "loaded_models": 1,
+                        "resident_host_bytes": 640,
+                        "resident_device_bytes": 0
+                    },
+                    "backend_health": [{
+                        "backend": "cpu",
+                        "status": "Ready",
+                        "message": "cpu backend ready",
+                        "observed_at_millis": 10,
+                        "changed_at_millis": 10
+                    }],
+                    "recent_transitions": [
+                        {
+                            "kind": "model_loaded_cold",
+                            "model_id": "fixture-word-decoder-v0",
+                            "observed_at_millis": 5
+                        },
+                        {
+                            "kind": "model_became_warm",
+                            "model_id": "fixture-word-decoder-v0",
+                            "observed_at_millis": 9
+                        }
+                    ]
+                }
+            })
         );
         Ok(())
     }
