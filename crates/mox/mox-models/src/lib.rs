@@ -408,6 +408,8 @@ pub enum ActivationFunction {
     Identity,
     /// ReLU activation.
     Relu,
+    /// SiLU / SwiGLU-style activation used by the first supported GGUF decoder families.
+    Silu,
 }
 
 /// Attention configuration for a decoder block.
@@ -1940,6 +1942,99 @@ impl GgufChatTemplateMetadata {
     }
 }
 
+/// First-launch GGUF decoder family classification used by Mox.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GgufDecoderFamily {
+    /// Llama-family decoder behavior.
+    Llama,
+    /// Qwen-family decoder behavior backed by the `qwen2` GGUF architecture today.
+    Qwen,
+    /// Mistral-family decoder behavior, including legacy Mistral models carried through `llama` GGUF metadata.
+    Mistral,
+}
+
+impl GgufDecoderFamily {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Llama => "llama",
+            Self::Qwen => "qwen",
+            Self::Mistral => "mistral",
+        }
+    }
+}
+
+/// Family-specific GGUF decoder metadata kept outside the generic decoder descriptor.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GgufDecoderFamilyMetadata {
+    /// Launch-family label used by higher layers.
+    pub family: GgufDecoderFamily,
+    /// Raw GGUF `general.architecture` label.
+    pub architecture: String,
+    /// Human-readable model name when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Effective RoPE frequency base.
+    pub rope_theta: f32,
+    /// Effective RMSNorm epsilon.
+    pub rms_norm_epsilon: f32,
+    /// Sliding-window attention bound when the artifact declares one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sliding_window: Option<usize>,
+    /// Whether the artifact uses tied token embedding / LM head weights.
+    pub tie_word_embeddings: bool,
+    /// Whether the adapter expects explicit Q/K/V bias tensors.
+    pub attention_qkv_biases: bool,
+}
+
+/// Family-specific tensor naming for one GGUF decoder layer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GgufDecoderLayerTensorLayout {
+    /// Zero-based decoder layer index.
+    pub layer_index: usize,
+    /// Attention input norm tensor.
+    pub attention_norm: String,
+    /// Attention query weight tensor.
+    pub attention_query_weight: String,
+    /// Attention query bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_query_bias: Option<String>,
+    /// Attention key weight tensor.
+    pub attention_key_weight: String,
+    /// Attention key bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_key_bias: Option<String>,
+    /// Attention value weight tensor.
+    pub attention_value_weight: String,
+    /// Attention value bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_value_bias: Option<String>,
+    /// Attention output projection tensor.
+    pub attention_output_weight: String,
+    /// Feed-forward gate projection tensor.
+    pub feed_forward_gate_weight: String,
+    /// Feed-forward down projection tensor.
+    pub feed_forward_down_weight: String,
+    /// Feed-forward up projection tensor.
+    pub feed_forward_up_weight: String,
+    /// Feed-forward norm tensor.
+    pub feed_forward_norm: String,
+}
+
+/// Reusable tensor-name layout for a GGUF-backed decoder family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GgufDecoderTensorLayout {
+    /// Token embedding tensor.
+    pub token_embedding: String,
+    /// Final norm tensor.
+    pub output_norm: String,
+    /// LM-head tensor when it is stored separately.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<String>,
+    /// Decoder-layer tensor layouts in stable layer order.
+    pub layers: Vec<GgufDecoderLayerTensorLayout>,
+}
+
 /// Backend-neutral quantized GGML/GGUF block storage preserved by the loader.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct QuantizedTensorStorage {
@@ -2328,6 +2423,473 @@ impl DecoderModelDescriptor {
     }
 }
 
+/// Reusable GGUF-backed decoder-family adapter for supported first-launch model families.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GgufDecoderAdapter {
+    descriptor: DecoderModelDescriptor,
+    family_metadata: GgufDecoderFamilyMetadata,
+    tokenizer: GgufTokenizerMetadata,
+    chat_templates: GgufChatTemplateMetadata,
+    tensor_layout: GgufDecoderTensorLayout,
+}
+
+impl GgufDecoderAdapter {
+    /// Returns the generic decoder descriptor for higher-layer request contracts.
+    #[must_use]
+    pub fn descriptor(&self) -> &DecoderModelDescriptor {
+        &self.descriptor
+    }
+
+    /// Returns the family-specific GGUF metadata.
+    #[must_use]
+    pub fn family_metadata(&self) -> &GgufDecoderFamilyMetadata {
+        &self.family_metadata
+    }
+
+    /// Returns the tokenizer metadata loaded from GGUF.
+    #[must_use]
+    pub fn tokenizer(&self) -> &GgufTokenizerMetadata {
+        &self.tokenizer
+    }
+
+    /// Returns the chat-template metadata loaded from GGUF.
+    #[must_use]
+    pub fn chat_templates(&self) -> &GgufChatTemplateMetadata {
+        &self.chat_templates
+    }
+
+    /// Returns the reusable GGUF tensor-name layout for the decoder family.
+    #[must_use]
+    pub fn tensor_layout(&self) -> &GgufDecoderTensorLayout {
+        &self.tensor_layout
+    }
+}
+
+/// GGUF-backed decoder-family adapter loader.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GgufDecoderAdapterLoader;
+
+impl GgufDecoderAdapterLoader {
+    /// Loads a decoder-family adapter from an already-open GGUF blob artifact.
+    pub fn load_blob_artifact(
+        &self,
+        artifact: &GgufBlobArtifact,
+    ) -> Result<GgufDecoderAdapter, ModelLoadError> {
+        let content = artifact.content();
+        let metadata = content.metadata();
+        let architecture = read_required_gguf_string(metadata, "general.architecture")?;
+        let family = classify_gguf_decoder_family(metadata, architecture.as_str())?;
+        validate_supported_decoder_family_features(metadata, family, architecture.as_str())?;
+
+        let tokenizer = content.load_tokenizer()?;
+        let chat_templates = content.load_chat_templates()?;
+        let bundle = GgufWeightBundleLoader.load_blob_artifact(artifact)?;
+        let family_metadata =
+            build_gguf_decoder_family_metadata(metadata, content, &family, architecture)?;
+        let descriptor = build_gguf_decoder_descriptor(
+            artifact.artifact_metadata(),
+            &bundle.metadata,
+            &family_metadata,
+            &tokenizer,
+            content,
+        )?;
+        let tensor_layout = build_gguf_decoder_tensor_layout(
+            content,
+            descriptor.config.layer_count,
+            family_metadata.attention_qkv_biases,
+            family_metadata.tie_word_embeddings,
+        )?;
+
+        Ok(GgufDecoderAdapter {
+            descriptor,
+            family_metadata,
+            tokenizer,
+            chat_templates,
+            tensor_layout,
+        })
+    }
+
+    /// Loads a decoder-family adapter from a local GGUF path.
+    pub fn load_path(&self, path: &Path) -> Result<GgufDecoderAdapter, ModelLoadError> {
+        let artifact = GgufBlobArtifact::open_path(path, LocalBlobOpenOptions::default())?;
+        self.load_blob_artifact(&artifact)
+    }
+
+    /// Loads a decoder-family adapter from an Ollama-managed GGUF blob.
+    pub fn load_ollama_blob(
+        &self,
+        models_root: impl AsRef<Path>,
+        digest: &str,
+        options: LocalBlobOpenOptions,
+    ) -> Result<GgufDecoderAdapter, ModelLoadError> {
+        let artifact = GgufBlobArtifact::open_ollama_blob(models_root, digest, options)?;
+        self.load_blob_artifact(&artifact)
+    }
+}
+
+fn classify_gguf_decoder_family(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    architecture: &str,
+) -> Result<GgufDecoderFamily, ModelLoadError> {
+    match architecture {
+        "llama" => {
+            let sliding_window =
+                read_optional_gguf_usize(metadata, "llama.attention.sliding_window")?;
+            let name = read_optional_gguf_string(metadata, "general.name")?;
+            if sliding_window.is_some()
+                || name
+                    .as_deref()
+                    .is_some_and(|value| value.to_ascii_lowercase().contains("mistral"))
+            {
+                Ok(GgufDecoderFamily::Mistral)
+            } else {
+                Ok(GgufDecoderFamily::Llama)
+            }
+        }
+        "mistral" | "mistral3" => Ok(GgufDecoderFamily::Mistral),
+        "qwen2" => Ok(GgufDecoderFamily::Qwen),
+        other => Err(ModelLoadError::UnsupportedGgufArchitecture {
+            architecture: other.to_string(),
+        }),
+    }
+}
+
+fn validate_supported_decoder_family_features(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    family: GgufDecoderFamily,
+    architecture: &str,
+) -> Result<(), ModelLoadError> {
+    let expert_count_key = format!("{architecture}.expert_count");
+    if read_optional_gguf_usize(metadata, expert_count_key.as_str())?.unwrap_or(0) > 0 {
+        return Err(ModelLoadError::UnsupportedGgufDecoderFamilyFeature {
+            family: family.as_str().to_string(),
+            feature: String::from("mixture_of_experts"),
+        });
+    }
+    Ok(())
+}
+
+fn build_gguf_decoder_family_metadata(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    content: &GgufContent,
+    family: &GgufDecoderFamily,
+    architecture: String,
+) -> Result<GgufDecoderFamilyMetadata, ModelLoadError> {
+    let rope_theta_key = format!("{architecture}.rope.freq_base");
+    let rms_norm_key = format!("{architecture}.attention.layer_norm_rms_epsilon");
+    let sliding_window_key = format!("{architecture}.attention.sliding_window");
+    let tie_word_embeddings_key = format!("{architecture}.tie_word_embeddings");
+
+    Ok(GgufDecoderFamilyMetadata {
+        family: *family,
+        architecture,
+        display_name: read_optional_gguf_string(metadata, "general.name")?,
+        rope_theta: read_optional_gguf_f32(metadata, rope_theta_key.as_str())?.unwrap_or(10_000.0),
+        rms_norm_epsilon: read_required_gguf_f32(metadata, rms_norm_key.as_str())?,
+        sliding_window: read_optional_gguf_usize(metadata, sliding_window_key.as_str())?,
+        tie_word_embeddings: read_optional_gguf_bool(metadata, tie_word_embeddings_key.as_str())?
+            .unwrap_or(false)
+            || content.tensor_info("output.weight").is_none(),
+        attention_qkv_biases: matches!(family, GgufDecoderFamily::Qwen),
+    })
+}
+
+fn build_gguf_decoder_descriptor(
+    artifact: &WeightArtifactMetadata,
+    bundle: &WeightBundleMetadata,
+    family_metadata: &GgufDecoderFamilyMetadata,
+    tokenizer: &GgufTokenizerMetadata,
+    content: &GgufContent,
+) -> Result<DecoderModelDescriptor, ModelLoadError> {
+    let metadata = content.metadata();
+    let architecture = family_metadata.architecture.as_str();
+    let hidden_size = read_required_gguf_usize(
+        metadata,
+        format!("{architecture}.embedding_length").as_str(),
+    )?;
+    let layer_count =
+        read_required_gguf_usize(metadata, format!("{architecture}.block_count").as_str())?;
+    let max_context =
+        read_required_gguf_usize(metadata, format!("{architecture}.context_length").as_str())?;
+    let intermediate_size = read_required_gguf_usize(
+        metadata,
+        format!("{architecture}.feed_forward_length").as_str(),
+    )?;
+    let head_count = read_required_gguf_usize(
+        metadata,
+        format!("{architecture}.attention.head_count").as_str(),
+    )?;
+    let kv_head_count = read_optional_gguf_usize(
+        metadata,
+        format!("{architecture}.attention.head_count_kv").as_str(),
+    )?
+    .unwrap_or(head_count);
+    if head_count == 0 || hidden_size % head_count != 0 {
+        return Err(ModelLoadError::InvalidGgufMetadata {
+            key: format!("{architecture}.attention.head_count"),
+            message: format!(
+                "hidden size {hidden_size} is not divisible by attention head count {head_count}"
+            ),
+        });
+    }
+    let head_dim = hidden_size / head_count;
+    let rotary_dim = read_optional_gguf_usize(
+        metadata,
+        format!("{architecture}.rope.dimension_count").as_str(),
+    )?
+    .unwrap_or(head_dim);
+
+    let token_embedding = required_tensor_info(content, "token_embd.weight")?;
+    let (vocab_size, token_hidden_size) = tensor_matrix_shape(token_embedding)?;
+    if token_hidden_size != hidden_size {
+        return Err(artifact_format_error(
+            "gguf",
+            format!(
+                "token_embd.weight hidden size {token_hidden_size} does not match metadata embedding length {hidden_size}"
+            ),
+        ));
+    }
+    let output_norm = required_tensor_info(content, "output_norm.weight")?;
+    let output_norm_width = tensor_vector_shape(output_norm)?;
+    if output_norm_width != hidden_size {
+        return Err(artifact_format_error(
+            "gguf",
+            format!(
+                "output_norm.weight width {output_norm_width} does not match metadata embedding length {hidden_size}"
+            ),
+        ));
+    }
+    if tokenizer.vocabulary.len() != vocab_size {
+        return Err(ModelLoadError::InvalidTokenizerMetadata {
+            key: String::from("tokenizer.ggml.tokens"),
+            message: format!(
+                "tokenizer vocabulary length {} does not match token_embd.weight rows {vocab_size}",
+                tokenizer.vocabulary.len()
+            ),
+        });
+    }
+
+    let config = DecoderConfig {
+        hidden_size,
+        layer_count,
+        vocab_size,
+        max_context,
+        block: DecoderBlockConfig {
+            attention: DecoderAttentionConfig {
+                head_count,
+                kv_head_count,
+                head_dim,
+                rotary_dim,
+            },
+            feed_forward: DecoderFeedForwardConfig {
+                intermediate_size,
+                activation: ActivationFunction::Silu,
+            },
+        },
+    };
+    let model_id = build_gguf_model_id(
+        artifact,
+        family_metadata.display_name.as_deref(),
+        family_metadata.family.as_str(),
+    );
+    let revision = format!("sha256:{}", artifact.sha256);
+
+    Ok(DecoderModelDescriptor::new(
+        ModelDescriptor::new(model_id, family_metadata.family.as_str(), revision),
+        config,
+        gguf_tokenizer_family_label(tokenizer),
+        bundle.clone(),
+    ))
+}
+
+fn build_gguf_decoder_tensor_layout(
+    content: &GgufContent,
+    layer_count: usize,
+    attention_qkv_biases: bool,
+    tie_word_embeddings: bool,
+) -> Result<GgufDecoderTensorLayout, ModelLoadError> {
+    required_tensor_info(content, "token_embd.weight")?;
+    required_tensor_info(content, "output_norm.weight")?;
+    let output = match content.tensor_info("output.weight") {
+        Some(_) => Some(String::from("output.weight")),
+        None if tie_word_embeddings => None,
+        None => return Err(ModelLoadError::MissingTensor(String::from("output.weight"))),
+    };
+
+    let mut layers = Vec::with_capacity(layer_count);
+    for layer_index in 0..layer_count {
+        let prefix = format!("blk.{layer_index}");
+        let query_bias = if attention_qkv_biases {
+            Some(
+                required_tensor_info(content, &format!("{prefix}.attn_q.bias"))?
+                    .name
+                    .clone(),
+            )
+        } else {
+            None
+        };
+        let key_bias = if attention_qkv_biases {
+            Some(
+                required_tensor_info(content, &format!("{prefix}.attn_k.bias"))?
+                    .name
+                    .clone(),
+            )
+        } else {
+            None
+        };
+        let value_bias = if attention_qkv_biases {
+            Some(
+                required_tensor_info(content, &format!("{prefix}.attn_v.bias"))?
+                    .name
+                    .clone(),
+            )
+        } else {
+            None
+        };
+        layers.push(GgufDecoderLayerTensorLayout {
+            layer_index,
+            attention_norm: required_tensor_info(content, &format!("{prefix}.attn_norm.weight"))?
+                .name
+                .clone(),
+            attention_query_weight: required_tensor_info(
+                content,
+                &format!("{prefix}.attn_q.weight"),
+            )?
+            .name
+            .clone(),
+            attention_query_bias: query_bias,
+            attention_key_weight: required_tensor_info(
+                content,
+                &format!("{prefix}.attn_k.weight"),
+            )?
+            .name
+            .clone(),
+            attention_key_bias: key_bias,
+            attention_value_weight: required_tensor_info(
+                content,
+                &format!("{prefix}.attn_v.weight"),
+            )?
+            .name
+            .clone(),
+            attention_value_bias: value_bias,
+            attention_output_weight: required_tensor_info(
+                content,
+                &format!("{prefix}.attn_output.weight"),
+            )?
+            .name
+            .clone(),
+            feed_forward_gate_weight: required_tensor_info(
+                content,
+                &format!("{prefix}.ffn_gate.weight"),
+            )?
+            .name
+            .clone(),
+            feed_forward_down_weight: required_tensor_info(
+                content,
+                &format!("{prefix}.ffn_down.weight"),
+            )?
+            .name
+            .clone(),
+            feed_forward_up_weight: required_tensor_info(
+                content,
+                &format!("{prefix}.ffn_up.weight"),
+            )?
+            .name
+            .clone(),
+            feed_forward_norm: required_tensor_info(content, &format!("{prefix}.ffn_norm.weight"))?
+                .name
+                .clone(),
+        });
+    }
+
+    Ok(GgufDecoderTensorLayout {
+        token_embedding: String::from("token_embd.weight"),
+        output_norm: String::from("output_norm.weight"),
+        output,
+        layers,
+    })
+}
+
+fn gguf_tokenizer_family_label(tokenizer: &GgufTokenizerMetadata) -> String {
+    match tokenizer.model {
+        GgufTokenizerModel::SentencePiece => String::from("sentencepiece"),
+        GgufTokenizerModel::Gpt2Bpe => tokenizer.pretokenizer.as_ref().map_or_else(
+            || String::from("gpt2_bpe"),
+            |pretokenizer| format!("gpt2_bpe:{}", pretokenizer.digest_label()),
+        ),
+    }
+}
+
+fn required_tensor_info<'a>(
+    content: &'a GgufContent,
+    name: &str,
+) -> Result<&'a GgufTensorInfo, ModelLoadError> {
+    content
+        .tensor_info(name)
+        .ok_or_else(|| ModelLoadError::MissingTensor(name.to_string()))
+}
+
+fn tensor_matrix_shape(tensor: &GgufTensorInfo) -> Result<(usize, usize), ModelLoadError> {
+    match tensor.shape.dims() {
+        [rows, columns] => Ok((*rows, *columns)),
+        actual => Err(artifact_format_error(
+            "gguf",
+            format!(
+                "tensor `{}` expected rank-2 shape, got {actual:?}",
+                tensor.name
+            ),
+        )),
+    }
+}
+
+fn tensor_vector_shape(tensor: &GgufTensorInfo) -> Result<usize, ModelLoadError> {
+    match tensor.shape.dims() {
+        [width] => Ok(*width),
+        actual => Err(artifact_format_error(
+            "gguf",
+            format!(
+                "tensor `{}` expected rank-1 shape, got {actual:?}",
+                tensor.name
+            ),
+        )),
+    }
+}
+
+fn build_gguf_model_id(
+    artifact: &WeightArtifactMetadata,
+    display_name: Option<&str>,
+    family_label: &str,
+) -> String {
+    let base = display_name
+        .filter(|value| !value.trim().is_empty())
+        .map(str::trim)
+        .or_else(|| artifact.name.strip_suffix(".gguf"))
+        .unwrap_or(family_label);
+    let normalized = normalize_model_id_component(base);
+    format!("{normalized}@sha256:{}", artifact.sha256)
+}
+
+fn normalize_model_id_component(value: &str) -> String {
+    let mut normalized = String::new();
+    let mut pending_dash = false;
+    for character in value.chars() {
+        if character.is_ascii_alphanumeric() {
+            if pending_dash && !normalized.is_empty() {
+                normalized.push('-');
+            }
+            normalized.push(character.to_ascii_lowercase());
+            pending_dash = false;
+        } else {
+            pending_dash = true;
+        }
+    }
+    if normalized.is_empty() {
+        String::from("gguf-model")
+    } else {
+        normalized
+    }
+}
+
 /// Loaded decoder weights.
 #[derive(Clone, Debug, PartialEq)]
 pub struct DecoderWeights {
@@ -2443,6 +3005,34 @@ pub enum ModelLoadError {
         format: String,
         /// Parse failure summary.
         message: String,
+    },
+    /// A required GGUF metadata key was missing.
+    #[error("missing gguf metadata `{key}`")]
+    MissingGgufMetadata {
+        /// Missing metadata key.
+        key: String,
+    },
+    /// A GGUF metadata key had the wrong type or an invalid value.
+    #[error("invalid gguf metadata `{key}`: {message}")]
+    InvalidGgufMetadata {
+        /// Metadata key that failed validation.
+        key: String,
+        /// Validation failure summary.
+        message: String,
+    },
+    /// The GGUF architecture is not one of the supported first-launch decoder families.
+    #[error("unsupported gguf decoder architecture `{architecture}`")]
+    UnsupportedGgufArchitecture {
+        /// Raw architecture string from `general.architecture`.
+        architecture: String,
+    },
+    /// The GGUF decoder artifact uses a family feature that the first-launch adapters do not support yet.
+    #[error("unsupported gguf decoder family feature for `{family}`: {feature}")]
+    UnsupportedGgufDecoderFamilyFeature {
+        /// Launch-family label.
+        family: String,
+        /// Unsupported feature summary.
+        feature: String,
     },
     /// Opening or paging a local blob failed.
     #[error(transparent)]
@@ -3434,6 +4024,92 @@ fn read_optional_gguf_string(
     )
 }
 
+fn read_required_gguf_string(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<String, ModelLoadError> {
+    read_optional_gguf_string(metadata, key)?.ok_or_else(|| ModelLoadError::MissingGgufMetadata {
+        key: key.to_string(),
+    })
+}
+
+fn read_optional_gguf_bool(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Option<bool>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(None),
+        |value| {
+            value
+                .as_bool()
+                .ok_or_else(|| ModelLoadError::InvalidGgufMetadata {
+                    key: key.to_string(),
+                    message: String::from("expected a boolean value"),
+                })
+                .map(Some)
+        },
+    )
+}
+
+fn read_optional_gguf_usize(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Option<usize>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(None),
+        |value| {
+            let Some(raw) = value.as_u64() else {
+                return Err(ModelLoadError::InvalidGgufMetadata {
+                    key: key.to_string(),
+                    message: String::from("expected a non-negative integer value"),
+                });
+            };
+            usize::try_from(raw)
+                .map(Some)
+                .map_err(|_| ModelLoadError::InvalidGgufMetadata {
+                    key: key.to_string(),
+                    message: format!("value `{raw}` does not fit usize"),
+                })
+        },
+    )
+}
+
+fn read_required_gguf_usize(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<usize, ModelLoadError> {
+    read_optional_gguf_usize(metadata, key)?.ok_or_else(|| ModelLoadError::MissingGgufMetadata {
+        key: key.to_string(),
+    })
+}
+
+fn read_optional_gguf_f32(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Option<f32>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(None),
+        |value| {
+            value
+                .as_f32()
+                .ok_or_else(|| ModelLoadError::InvalidGgufMetadata {
+                    key: key.to_string(),
+                    message: String::from("expected a numeric value"),
+                })
+                .map(Some)
+        },
+    )
+}
+
+fn read_required_gguf_f32(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<f32, ModelLoadError> {
+    read_optional_gguf_f32(metadata, key)?.ok_or_else(|| ModelLoadError::MissingGgufMetadata {
+        key: key.to_string(),
+    })
+}
+
 fn read_optional_gguf_string_array(
     metadata: &BTreeMap<String, GgufMetadataValue>,
     key: &str,
@@ -4047,8 +4723,9 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader,
-        FixtureWordTokenizer, GgufBlobArtifact, GgufContent, GgufMetadataValue, GgufTensorType,
+        ActivationFunction, ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader,
+        FixtureDecoderLoader, FixtureWordTokenizer, GgufBlobArtifact, GgufContent,
+        GgufDecoderAdapterLoader, GgufDecoderFamily, GgufMetadataValue, GgufTensorType,
         GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion,
         GgufWeightBundleLoader, LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader,
         QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
@@ -4966,6 +5643,148 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn gguf_decoder_adapter_loader_maps_llama_family_and_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("tiny_llama.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &llama_decoder_metadata("Tiny Llama", None),
+            &decoder_family_tensors(2, false, true),
+        )?;
+
+        let adapter = GgufDecoderAdapterLoader.load_path(&path)?;
+        assert_eq!(adapter.descriptor().model.family, "llama");
+        assert_eq!(adapter.descriptor().config.hidden_size, 4);
+        assert_eq!(adapter.descriptor().config.layer_count, 2);
+        assert_eq!(adapter.descriptor().config.vocab_size, 6);
+        assert_eq!(adapter.descriptor().config.max_context, 64);
+        assert_eq!(adapter.descriptor().config.block.attention.head_count, 2);
+        assert_eq!(adapter.descriptor().config.block.attention.kv_head_count, 1);
+        assert_eq!(adapter.descriptor().config.block.attention.head_dim, 2);
+        assert_eq!(adapter.descriptor().config.block.attention.rotary_dim, 2);
+        assert_eq!(
+            adapter.descriptor().config.block.feed_forward.activation,
+            ActivationFunction::Silu
+        );
+        assert_eq!(adapter.descriptor().tokenizer_family, "sentencepiece");
+        assert_eq!(adapter.family_metadata().family, GgufDecoderFamily::Llama);
+        assert_eq!(adapter.family_metadata().architecture, "llama");
+        assert_eq!(
+            adapter.family_metadata().display_name.as_deref(),
+            Some("Tiny Llama")
+        );
+        assert_eq!(adapter.family_metadata().rope_theta, 10000.0);
+        assert_eq!(adapter.family_metadata().rms_norm_epsilon, 1e-5);
+        assert_eq!(adapter.family_metadata().sliding_window, None);
+        assert!(!adapter.family_metadata().tie_word_embeddings);
+        assert!(!adapter.family_metadata().attention_qkv_biases);
+        assert_eq!(
+            adapter.tensor_layout().output.as_deref(),
+            Some("output.weight")
+        );
+        assert_eq!(adapter.tensor_layout().layers.len(), 2);
+        assert_eq!(
+            adapter.tensor_layout().layers[0].attention_query_weight,
+            "blk.0.attn_q.weight"
+        );
+        assert!(
+            adapter.tensor_layout().layers[0]
+                .attention_query_bias
+                .is_none()
+        );
+        assert!(adapter.chat_templates().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_decoder_adapter_loader_maps_qwen_family_with_biases_and_tied_output()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("tiny_qwen2.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &qwen2_decoder_metadata("Tiny Qwen2", Some("{{ prompt }}")),
+            &decoder_family_tensors(1, true, false),
+        )?;
+
+        let adapter = GgufDecoderAdapterLoader.load_path(&path)?;
+        assert_eq!(adapter.descriptor().model.family, "qwen");
+        assert_eq!(adapter.descriptor().tokenizer_family, "gpt2_bpe:qwen2");
+        assert_eq!(adapter.family_metadata().family, GgufDecoderFamily::Qwen);
+        assert_eq!(adapter.family_metadata().architecture, "qwen2");
+        assert_eq!(adapter.family_metadata().sliding_window, Some(32));
+        assert!(adapter.family_metadata().tie_word_embeddings);
+        assert!(adapter.family_metadata().attention_qkv_biases);
+        assert!(adapter.tensor_layout().output.is_none());
+        assert_eq!(
+            adapter.tensor_layout().layers[0]
+                .attention_query_bias
+                .as_deref(),
+            Some("blk.0.attn_q.bias")
+        );
+        assert_eq!(
+            adapter.chat_templates().default_template(),
+            Some("{{ prompt }}")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_decoder_adapter_loader_classifies_sliding_window_llama_as_mistral()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("tiny_mistral.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &llama_decoder_metadata("Tiny Mistral", Some(16)),
+            &decoder_family_tensors(2, false, true),
+        )?;
+
+        let adapter = GgufDecoderAdapterLoader.load_path(&path)?;
+        assert_eq!(adapter.descriptor().model.family, "mistral");
+        assert_eq!(adapter.family_metadata().family, GgufDecoderFamily::Mistral);
+        assert_eq!(adapter.family_metadata().architecture, "llama");
+        assert_eq!(adapter.family_metadata().sliding_window, Some(16));
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_decoder_adapter_loader_rejects_moe_llama_artifacts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("moe_llama.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[
+                (
+                    String::from("general.architecture"),
+                    GgufMetadataValue::String(String::from("llama")),
+                ),
+                (
+                    String::from("llama.expert_count"),
+                    GgufMetadataValue::U32(8),
+                ),
+            ],
+            &[],
+        )?;
+
+        let error = GgufDecoderAdapterLoader
+            .load_path(&path)
+            .expect_err("moe llama should remain unsupported");
+        assert!(matches!(
+            error,
+            super::ModelLoadError::UnsupportedGgufDecoderFamilyFeature { family, feature }
+                if family == "llama" && feature == "mixture_of_experts"
+        ));
+        Ok(())
+    }
+
     fn build_test_tokenizer_metadata(add_bos: bool, add_eos: bool) -> GgufTokenizerMetadata {
         GgufTokenizerMetadata {
             model: GgufTokenizerModel::SentencePiece,
@@ -4991,6 +5810,278 @@ mod tests {
             pretokenizer: None,
             digest: String::from("fixture"),
         }
+    }
+
+    fn llama_decoder_metadata(
+        name: &str,
+        sliding_window: Option<u32>,
+    ) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("llama")),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(name.to_string()),
+            ),
+            (
+                String::from("llama.context_length"),
+                GgufMetadataValue::U32(64),
+            ),
+            (
+                String::from("llama.embedding_length"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                String::from("llama.feed_forward_length"),
+                GgufMetadataValue::U32(8),
+            ),
+            (String::from("llama.block_count"), GgufMetadataValue::U32(2)),
+            (
+                String::from("llama.attention.head_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("llama.attention.head_count_kv"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("llama.attention.layer_norm_rms_epsilon"),
+                GgufMetadataValue::F32(1e-5),
+            ),
+            (
+                String::from("llama.rope.dimension_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("llama.rope.freq_base"),
+                GgufMetadataValue::F32(10_000.0),
+            ),
+        ];
+        if let Some(sliding_window) = sliding_window {
+            metadata.push((
+                String::from("llama.attention.sliding_window"),
+                GgufMetadataValue::U32(sliding_window),
+            ));
+        }
+        metadata.extend(sentencepiece_tokenizer_metadata_entries());
+        metadata
+    }
+
+    fn qwen2_decoder_metadata(
+        name: &str,
+        chat_template: Option<&str>,
+    ) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("qwen2")),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(name.to_string()),
+            ),
+            (
+                String::from("qwen2.context_length"),
+                GgufMetadataValue::U32(128),
+            ),
+            (
+                String::from("qwen2.embedding_length"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                String::from("qwen2.feed_forward_length"),
+                GgufMetadataValue::U32(8),
+            ),
+            (String::from("qwen2.block_count"), GgufMetadataValue::U32(1)),
+            (
+                String::from("qwen2.attention.head_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("qwen2.attention.head_count_kv"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("qwen2.attention.layer_norm_rms_epsilon"),
+                GgufMetadataValue::F32(1e-6),
+            ),
+            (
+                String::from("qwen2.rope.freq_base"),
+                GgufMetadataValue::F32(1_000_000.0),
+            ),
+            (
+                String::from("qwen2.attention.sliding_window"),
+                GgufMetadataValue::U32(32),
+            ),
+        ];
+        metadata.extend(qwen2_tokenizer_metadata_entries());
+        if let Some(chat_template) = chat_template {
+            metadata.push((
+                String::from("tokenizer.chat_template"),
+                GgufMetadataValue::String(chat_template.to_string()),
+            ));
+        }
+        metadata
+    }
+
+    fn sentencepiece_tokenizer_metadata_entries() -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("llama")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("<unk>")),
+                    GgufMetadataValue::String(String::from("<s>")),
+                    GgufMetadataValue::String(String::from("</s>")),
+                    GgufMetadataValue::String(String::from("hello")),
+                    GgufMetadataValue::String(String::from("world")),
+                    GgufMetadataValue::String(String::from("mox")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("tokenizer.ggml.unknown_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(true),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+        ]
+    }
+
+    fn qwen2_tokenizer_metadata_entries() -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("gpt2")),
+            ),
+            (
+                String::from("tokenizer.ggml.pre"),
+                GgufMetadataValue::String(String::from("qwen2")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("<|bos|>")),
+                    GgufMetadataValue::String(String::from("<|eos|>")),
+                    GgufMetadataValue::String(String::from("h")),
+                    GgufMetadataValue::String(String::from("e")),
+                    GgufMetadataValue::String(String::from("l")),
+                    GgufMetadataValue::String(String::from("o")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.merges"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("h e")),
+                    GgufMetadataValue::String(String::from("he l")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+        ]
+    }
+
+    fn decoder_family_tensors(
+        layer_count: usize,
+        include_qkv_bias: bool,
+        include_output: bool,
+    ) -> Vec<TestGgufTensor> {
+        let mut tensors = vec![
+            dense_f32_tensor("token_embd.weight", vec![6, 4]),
+            dense_f32_tensor("output_norm.weight", vec![4]),
+        ];
+        if include_output {
+            tensors.push(dense_f32_tensor("output.weight", vec![6, 4]));
+        }
+
+        for layer_index in 0..layer_count {
+            let prefix = format!("blk.{layer_index}");
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_norm.weight"),
+                vec![4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_q.weight"),
+                vec![4, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_k.weight"),
+                vec![2, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_v.weight"),
+                vec![2, 4],
+            ));
+            if include_qkv_bias {
+                tensors.push(dense_f32_tensor(&format!("{prefix}.attn_q.bias"), vec![4]));
+                tensors.push(dense_f32_tensor(&format!("{prefix}.attn_k.bias"), vec![2]));
+                tensors.push(dense_f32_tensor(&format!("{prefix}.attn_v.bias"), vec![2]));
+            }
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_output.weight"),
+                vec![4, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_gate.weight"),
+                vec![8, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_down.weight"),
+                vec![4, 8],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_up.weight"),
+                vec![8, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_norm.weight"),
+                vec![4],
+            ));
+        }
+
+        tensors
+    }
+
+    fn dense_f32_tensor(name: &str, shape: Vec<usize>) -> TestGgufTensor {
+        let element_count = shape.iter().product::<usize>();
+        TestGgufTensor::new(
+            name,
+            shape,
+            GgufTensorType::F32,
+            super::encode_f32_bytes(&vec![0.0; element_count]),
+        )
     }
 
     #[test]
