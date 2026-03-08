@@ -1,8 +1,8 @@
 //! Canonical graph and plan representation for Mox.
 
 use mox_core::{
-    BackendExtensionOp, DType, Device, LazyOp, QuantizationMode, Shape, Tensor, TensorData,
-    TensorId, TensorSpec,
+    BackendExtensionOp, DType, Device, LazyOp, QuantizationMode, QuantizedTensorData, Shape,
+    Tensor, TensorData, TensorId, TensorSpec,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -21,6 +21,16 @@ pub enum GraphError {
         expected: usize,
         /// Actual element count in the payload.
         actual: usize,
+    },
+    /// A quantized constant payload did not match its declared GGML block layout.
+    #[error("invalid quantized constant mode {mode:?} for shape {shape}: {message}")]
+    InvalidQuantizedConstant {
+        /// Quantization family for the payload.
+        mode: QuantizationMode,
+        /// Declared logical tensor shape.
+        shape: Shape,
+        /// Human-readable validation failure.
+        message: String,
     },
     /// Two tensors with incompatible shapes were used in a binary op.
     #[error("binary op shape mismatch: left={left} right={right}")]
@@ -559,6 +569,45 @@ impl GraphBuilder {
         ))
     }
 
+    /// Adds a quantized GGML/GGUF block constant whose logical dtype is `f32`.
+    pub fn constant_quantized_blocks(
+        &mut self,
+        shape: Shape,
+        mode: QuantizationMode,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<Tensor, GraphError> {
+        let Some(layout) = mode.ggml_block_layout(&shape) else {
+            return Err(GraphError::InvalidQuantizedConstant {
+                mode,
+                shape,
+                message: String::from(
+                    "shape must be non-scalar with a block-aligned last dimension",
+                ),
+            });
+        };
+        let bytes = bytes.into();
+        if bytes.len() != layout.byte_len() {
+            return Err(GraphError::InvalidQuantizedConstant {
+                mode,
+                shape,
+                message: format!(
+                    "expected {} bytes from the block layout, got {}",
+                    layout.byte_len(),
+                    bytes.len()
+                ),
+            });
+        }
+        let spec = TensorSpec::new(shape, DType::F32, self.device());
+        Ok(self.register(
+            LazyOp::Constant,
+            OpKind::Constant {
+                data: TensorData::QuantizedBlocks(QuantizedTensorData::new(mode, layout, bytes)),
+            },
+            Vec::new(),
+            spec,
+        ))
+    }
+
     /// Adds two tensors.
     pub fn add(&mut self, left: &Tensor, right: &Tensor) -> Result<Tensor, GraphError> {
         self.binary_tensor_op(left, right, LazyOp::Add, OpKind::Add)
@@ -987,7 +1036,7 @@ impl GraphBuilder {
         let right_shape = right.spec().shape();
         let valid = left_shape.rank() == 2
             && right_shape.rank() == 2
-            && left_shape.dims()[1] == right_shape.dims()[0];
+            && left_shape.dims()[1] == right_shape.dims()[1];
         if !valid {
             return Err(extension_error(
                 "quantized_matmul",
@@ -995,7 +1044,7 @@ impl GraphBuilder {
             ));
         }
         let spec = TensorSpec::new(
-            Shape::new(vec![left_shape.dims()[0], right_shape.dims()[1]]),
+            Shape::new(vec![left_shape.dims()[0], right_shape.dims()[0]]),
             left.spec().dtype(),
             left.spec().device().clone(),
         );
@@ -1143,30 +1192,14 @@ fn format_lazy_op(op: &LazyOp) -> String {
 
 fn format_constant_payload(op: &OpKind) -> String {
     match op {
-        OpKind::Constant { data } => {
-            let bits = data
-                .as_f32_slice()
-                .iter()
-                .map(|value| format!("{:08x}", value.to_bits()))
-                .collect::<Vec<_>>()
-                .join(",");
-            format!("f32:{bits}")
-        }
+        OpKind::Constant { data } => format_tensor_data(data),
         _ => String::new(),
     }
 }
 
 fn format_execution_payload(op: &ExecutionOp) -> String {
     match op {
-        ExecutionOp::Constant { data } => {
-            let bits = data
-                .as_f32_slice()
-                .iter()
-                .map(|value| format!("{:08x}", value.to_bits()))
-                .collect::<Vec<_>>()
-                .join(",");
-            format!("f32:{bits}")
-        }
+        ExecutionOp::Constant { data } => format_tensor_data(data),
         ExecutionOp::Input { name } => format!("input:{name}"),
         ExecutionOp::Permute { axes } => format!("axes={}", format_axes(axes)),
         ExecutionOp::Slice { axis, start, end } => {
@@ -1198,6 +1231,26 @@ fn format_backend_extension_payload(op: &BackendExtensionOp) -> String {
         BackendExtensionOp::QuantizedMatmul { rhs_mode } => {
             format!("rhs_mode={rhs_mode:?}")
         }
+    }
+}
+
+fn format_tensor_data(data: &TensorData) -> String {
+    match data {
+        TensorData::F32(values) => {
+            let bits = values
+                .iter()
+                .map(|value| format!("{:08x}", value.to_bits()))
+                .collect::<Vec<_>>()
+                .join(",");
+            format!("f32:{bits}")
+        }
+        TensorData::QuantizedBlocks(data) => format!(
+            "quantized:{:?}:blocks={}:bytes_per_block={}:bytes={}",
+            data.mode,
+            data.layout.block_count,
+            data.layout.bytes_per_block,
+            hex::encode(&data.bytes)
+        ),
     }
 }
 
@@ -1293,33 +1346,42 @@ mod tests {
     #[test]
     fn builder_tracks_backend_extension_ops_and_payloads() {
         let mut builder = GraphBuilder::new(Device::cpu());
-        let input = builder.input("input", Shape::new(vec![1, 2, 2, 4]), DType::F32);
-        let norm_weight = builder.constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0]);
-        assert!(norm_weight.is_ok());
-        let Ok(norm_weight) = norm_weight else {
+        let input = builder.input("input", Shape::new(vec![1, 2, 2, 32]), DType::F32);
+        let input_norm_weight = builder.constant_f32(Shape::new(vec![32]), vec![1.0; 32]);
+        assert!(input_norm_weight.is_ok());
+        let Ok(input_norm_weight) = input_norm_weight else {
             return;
         };
-        let norm_bias = builder.constant_f32(Shape::new(vec![4]), vec![0.0, 0.0, 0.0, 0.0]);
-        assert!(norm_bias.is_ok());
-        let Ok(norm_bias) = norm_bias else {
+        let output_norm_weight = builder.constant_f32(Shape::new(vec![4]), vec![1.0; 4]);
+        assert!(output_norm_weight.is_ok());
+        let Ok(output_norm_weight) = output_norm_weight else {
             return;
         };
-        let cos = builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 0.0, 1.0, 0.0]);
+        let output_norm_bias = builder.constant_f32(Shape::new(vec![4]), vec![0.0; 4]);
+        assert!(output_norm_bias.is_ok());
+        let Ok(output_norm_bias) = output_norm_bias else {
+            return;
+        };
+        let cos = builder.constant_f32(Shape::new(vec![2, 16]), vec![1.0; 32]);
         assert!(cos.is_ok());
         let Ok(cos) = cos else {
             return;
         };
-        let sin = builder.constant_f32(Shape::new(vec![2, 2]), vec![0.0, 1.0, 0.0, 1.0]);
+        let sin = builder.constant_f32(Shape::new(vec![2, 16]), vec![0.0; 32]);
         assert!(sin.is_ok());
         let Ok(sin) = sin else {
             return;
         };
-        let qk_weights = builder.constant_f32(Shape::new(vec![4, 4]), vec![1.0f32; 16]);
+        let qk_weights = builder.constant_quantized_blocks(
+            Shape::new(vec![4, 32]),
+            QuantizationMode::GgmlQ4_0,
+            vec![0x88_u8; 72],
+        );
         assert!(qk_weights.is_ok());
         let Ok(qk_weights) = qk_weights else {
             return;
         };
-        let normed = builder.rms_norm(&input, &norm_weight, 1e-5);
+        let normed = builder.rms_norm(&input, &input_norm_weight, 1e-5);
         assert!(normed.is_ok());
         let Ok(normed) = normed else {
             return;
@@ -1334,7 +1396,7 @@ mod tests {
         let Ok(attended) = attended else {
             return;
         };
-        let flattened = builder.reshape(&attended, Shape::new(vec![4, 4]));
+        let flattened = builder.reshape(&attended, Shape::new(vec![4, 32]));
         assert!(flattened.is_ok());
         let Ok(flattened) = flattened else {
             return;
@@ -1345,7 +1407,7 @@ mod tests {
         let Ok(projected) = projected else {
             return;
         };
-        let shifted = builder.layer_norm(&projected, &norm_weight, &norm_bias, 1e-5);
+        let shifted = builder.layer_norm(&projected, &output_norm_weight, &output_norm_bias, 1e-5);
         assert!(shifted.is_ok());
         let Ok(shifted) = shifted else {
             return;
@@ -1357,7 +1419,30 @@ mod tests {
         assert!(debug.contains("rotary_embedding"));
         assert!(debug.contains("scaled_dot_product_attention"));
         assert!(debug.contains("quantized_matmul"));
+        assert!(debug.contains("quantized:GgmlQ4_0"));
         assert!(debug.contains("layer_norm"));
+    }
+
+    #[test]
+    fn quantized_matmul_uses_rowwise_rhs_orientation() {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let left = builder.input("left", Shape::new(vec![2, 32]), DType::F32);
+        let rhs = builder.constant_quantized_blocks(
+            Shape::new(vec![3, 32]),
+            QuantizationMode::GgmlQ8_0,
+            vec![0_u8; 102],
+        );
+        assert!(rhs.is_ok());
+        let Ok(rhs) = rhs else {
+            return;
+        };
+
+        let output = builder.quantized_matmul(&left, &rhs, QuantizationMode::GgmlQ8_0);
+        assert!(output.is_ok());
+        let Ok(output) = output else {
+            return;
+        };
+        assert_eq!(output.spec().shape().dims(), &[2, 3]);
     }
 
     #[test]

@@ -716,6 +716,12 @@ impl AvailableMetalBackend {
         let mut buffer = self.allocate(spec)?;
         match data {
             TensorData::F32(values) => buffer.write_f32(values.as_slice())?,
+            TensorData::QuantizedBlocks(data) => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal backend does not support quantized constant storage for {:?}",
+                    data.mode
+                )));
+            }
         }
         Ok(buffer)
     }
@@ -842,7 +848,13 @@ fn validate_supported_step(step: &ExecutionStep) -> Result<(), RuntimeError> {
             }
         }
         ExecutionOp::Constant { data } => {
-            if data.as_f32_slice().len() != step.spec.storage_size() {
+            let Some(values) = data.as_f32_slice() else {
+                return Err(RuntimeError::Backend(format!(
+                    "metal constant {} must use dense f32 storage",
+                    step.output
+                )));
+            };
+            if values.len() != step.spec.storage_size() {
                 return Err(RuntimeError::Backend(format!(
                     "metal constant {} payload length mismatch",
                     step.output

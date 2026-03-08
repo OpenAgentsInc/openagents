@@ -616,6 +616,35 @@ impl TensorSpec {
 pub enum TensorData {
     /// 32-bit floating point tensor payload.
     F32(Vec<f32>),
+    /// Quantized GGML/GGUF block payload.
+    QuantizedBlocks(QuantizedTensorData),
+}
+
+/// Quantized GGML/GGUF block payload kept in graph/runtime constants.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizedTensorData {
+    /// Quantization family for the blocks.
+    pub mode: QuantizationMode,
+    /// Stable GGML block layout for the logical tensor.
+    pub layout: QuantizedBlockLayout,
+    /// Serialized quantized block bytes.
+    pub bytes: Vec<u8>,
+}
+
+impl QuantizedTensorData {
+    /// Creates a quantized block payload.
+    #[must_use]
+    pub fn new(
+        mode: QuantizationMode,
+        layout: QuantizedBlockLayout,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Self {
+        Self {
+            mode,
+            layout,
+            bytes: bytes.into(),
+        }
+    }
 }
 
 impl TensorData {
@@ -624,6 +653,7 @@ impl TensorData {
     pub fn len(&self) -> usize {
         match self {
             Self::F32(values) => values.len(),
+            Self::QuantizedBlocks(data) => data.layout.element_count(),
         }
     }
 
@@ -633,11 +663,21 @@ impl TensorData {
         self.len() == 0
     }
 
-    /// Returns the payload as an `f32` slice.
+    /// Returns the payload as an `f32` slice when the storage is dense.
     #[must_use]
-    pub fn as_f32_slice(&self) -> &[f32] {
+    pub fn as_f32_slice(&self) -> Option<&[f32]> {
         match self {
-            Self::F32(values) => values.as_slice(),
+            Self::F32(values) => Some(values.as_slice()),
+            Self::QuantizedBlocks(_) => None,
+        }
+    }
+
+    /// Returns the quantized payload when the storage is GGML/GGUF blocks.
+    #[must_use]
+    pub fn as_quantized_blocks(&self) -> Option<&QuantizedTensorData> {
+        match self {
+            Self::F32(_) => None,
+            Self::QuantizedBlocks(data) => Some(data),
         }
     }
 }

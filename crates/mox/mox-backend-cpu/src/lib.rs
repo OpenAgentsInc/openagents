@@ -11,9 +11,10 @@ use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
     BackendExtensionSupport, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
-    DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult,
-    HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, QuantizationExecution,
-    QuantizationLoadPath, QuantizationSupport, RuntimeError, RuntimeHealth,
+    BufferResidency, BufferStorageKind, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
+    ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport,
+    KernelCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+    RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -26,7 +27,17 @@ const CPU_POOL_MAX_CACHED_BYTES: u64 = 8 * 1024 * 1024;
 #[derive(Clone, Debug, PartialEq)]
 pub struct CpuBuffer {
     spec: TensorSpec,
-    data: Vec<f32>,
+    storage: CpuBufferStorage,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum CpuBufferStorage {
+    Dense(Vec<f32>),
+    QuantizedBlocks {
+        mode: QuantizationMode,
+        layout: mox_core::QuantizedBlockLayout,
+        bytes: Vec<u8>,
+    },
 }
 
 impl CpuBuffer {
@@ -45,7 +56,10 @@ impl CpuBuffer {
                 "from_f32 requires a contiguous zero-offset tensor spec",
             )));
         }
-        Ok(Self { spec, data })
+        Ok(Self {
+            spec,
+            storage: CpuBufferStorage::Dense(data),
+        })
     }
 
     /// Builds a buffer from explicit backing storage.
@@ -61,12 +75,68 @@ impl CpuBuffer {
                 data.len()
             )));
         }
-        Ok(Self { spec, data })
+        Ok(Self {
+            spec,
+            storage: CpuBufferStorage::Dense(data),
+        })
     }
 
     /// Builds a buffer from tensor data.
     pub fn from_tensor_data(spec: TensorSpec, data: &TensorData) -> Result<Self, RuntimeError> {
-        Self::from_f32(spec, data.as_f32_slice().to_vec())
+        match data {
+            TensorData::F32(values) => Self::from_f32(spec, values.clone()),
+            TensorData::QuantizedBlocks(data) => {
+                Self::from_quantized_blocks(spec, data.mode, data.layout, data.bytes.clone())
+            }
+        }
+    }
+
+    /// Builds a buffer that preserves quantized GGML/GGUF blocks.
+    pub fn from_quantized_blocks(
+        spec: TensorSpec,
+        mode: QuantizationMode,
+        layout: mox_core::QuantizedBlockLayout,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<Self, RuntimeError> {
+        if spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "quantized blocks require logical F32 dtype, actual {:?}",
+                spec.dtype()
+            )));
+        }
+        if !spec.layout().is_contiguous() || spec.layout().offset() != 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "quantized blocks require a contiguous zero-offset tensor spec",
+            )));
+        }
+        let Some(expected_layout) = mode.ggml_block_layout(spec.shape()) else {
+            return Err(RuntimeError::Backend(format!(
+                "shape {} is invalid for quantized mode {mode:?}",
+                spec.shape()
+            )));
+        };
+        if expected_layout != layout {
+            return Err(RuntimeError::Backend(format!(
+                "quantized layout mismatch: expected {:?}, actual {:?}",
+                expected_layout, layout
+            )));
+        }
+        let bytes = bytes.into();
+        if bytes.len() != layout.byte_len() {
+            return Err(RuntimeError::Backend(format!(
+                "quantized byte length mismatch: expected {}, actual {}",
+                layout.byte_len(),
+                bytes.len()
+            )));
+        }
+        Ok(Self {
+            spec,
+            storage: CpuBufferStorage::QuantizedBlocks {
+                mode,
+                layout,
+                bytes,
+            },
+        })
     }
 
     /// Returns a zeroed buffer for a tensor spec.
@@ -74,24 +144,35 @@ impl CpuBuffer {
     pub fn zeros(spec: &TensorSpec) -> Self {
         Self {
             spec: spec.clone(),
-            data: vec![0.0; spec.storage_size()],
+            storage: CpuBufferStorage::Dense(vec![0.0; spec.storage_size()]),
         }
     }
 
-    /// Returns the raw backing storage.
+    /// Returns the dense backing storage when the buffer is materialized as `f32`.
     #[must_use]
-    pub fn as_f32_slice(&self) -> &[f32] {
-        self.data.as_slice()
+    pub fn as_f32_slice(&self) -> Option<&[f32]> {
+        match &self.storage {
+            CpuBufferStorage::Dense(data) => Some(data.as_slice()),
+            CpuBufferStorage::QuantizedBlocks { .. } => None,
+        }
     }
 
     /// Returns logical values in row-major order.
-    #[must_use]
-    pub fn logical_values(&self) -> Vec<f32> {
-        let mut output = Vec::with_capacity(self.spec.element_count());
-        for_each_index(self.spec.shape(), |index| {
-            output.push(self.data[self.storage_index(index)]);
-        });
-        output
+    pub fn logical_values(&self) -> Result<Vec<f32>, RuntimeError> {
+        match &self.storage {
+            CpuBufferStorage::Dense(data) => {
+                let mut output = Vec::with_capacity(self.spec.element_count());
+                for_each_index(self.spec.shape(), |index| {
+                    output.push(data[self.storage_index(index)]);
+                });
+                Ok(output)
+            }
+            CpuBufferStorage::QuantizedBlocks {
+                mode,
+                layout,
+                bytes,
+            } => decode_quantized_values(self.spec.shape(), *mode, *layout, bytes.as_slice()),
+        }
     }
 
     fn storage_index(&self, logical_index: &[usize]) -> usize {
@@ -104,13 +185,44 @@ impl CpuBuffer {
     }
 
     fn view_of(source: &CpuBuffer, spec: TensorSpec) -> Result<Self, RuntimeError> {
-        Self::from_storage_f32(spec, source.data.clone())
+        match &source.storage {
+            CpuBufferStorage::Dense(data) => Self::from_storage_f32(spec, data.clone()),
+            CpuBufferStorage::QuantizedBlocks { .. } => Err(RuntimeError::Backend(String::from(
+                "views of quantized cpu buffers are unsupported",
+            ))),
+        }
+    }
+
+    fn quantized_blocks(
+        &self,
+    ) -> Option<(QuantizationMode, mox_core::QuantizedBlockLayout, &[u8])> {
+        match &self.storage {
+            CpuBufferStorage::Dense(_) => None,
+            CpuBufferStorage::QuantizedBlocks {
+                mode,
+                layout,
+                bytes,
+            } => Some((*mode, *layout, bytes.as_slice())),
+        }
     }
 }
 
 impl BufferHandle for CpuBuffer {
     fn spec(&self) -> &TensorSpec {
         &self.spec
+    }
+
+    fn storage_kind(&self) -> BufferStorageKind {
+        match &self.storage {
+            CpuBufferStorage::Dense(_) => BufferStorageKind::DenseF32,
+            CpuBufferStorage::QuantizedBlocks { mode, layout, .. } => {
+                BufferStorageKind::QuantizedBlocks {
+                    mode: *mode,
+                    layout: *layout,
+                    residency: BufferResidency::Host,
+                }
+            }
+        }
     }
 }
 
@@ -180,9 +292,9 @@ impl CpuBackend {
             ExecutionOp::Add => {
                 let (left, right) = self.binary_inputs(step, values)?;
                 let output = left
-                    .logical_values()
+                    .logical_values()?
                     .into_iter()
-                    .zip(right.logical_values())
+                    .zip(right.logical_values()?)
                     .map(|(lhs, rhs)| lhs + rhs)
                     .collect::<Vec<_>>();
                 CpuBuffer::from_f32(step.spec.clone(), output)?
@@ -190,9 +302,9 @@ impl CpuBackend {
             ExecutionOp::Mul => {
                 let (left, right) = self.binary_inputs(step, values)?;
                 let output = left
-                    .logical_values()
+                    .logical_values()?
                     .into_iter()
-                    .zip(right.logical_values())
+                    .zip(right.logical_values()?)
                     .map(|(lhs, rhs)| lhs * rhs)
                     .collect::<Vec<_>>();
                 CpuBuffer::from_f32(step.spec.clone(), output)?
@@ -200,7 +312,7 @@ impl CpuBackend {
             ExecutionOp::BackendExtension { op } => self.backend_extension(step, values, op)?,
             ExecutionOp::Matmul => self.matmul(step, values)?,
             ExecutionOp::Reshape => {
-                let source = self.input(step, values, 0)?.logical_values();
+                let source = self.input(step, values, 0)?.logical_values()?;
                 CpuBuffer::from_f32(step.spec.clone(), source)?
             }
             ExecutionOp::Permute { .. }
@@ -285,8 +397,13 @@ impl CpuBackend {
         let k = left_shape[1];
         let n = right_shape[1];
         let mut output = vec![0.0; m * n];
-        let left_values = left.logical_values();
-        let right_values = right.logical_values();
+        if left.quantized_blocks().is_some() || right.quantized_blocks().is_some() {
+            return Err(RuntimeError::Backend(String::from(
+                "dense matmul does not accept quantized block storage; use quantized_matmul",
+            )));
+        }
+        let left_values = left.logical_values()?;
+        let right_values = right.logical_values()?;
 
         for row in 0..m {
             for col in 0..n {
@@ -328,7 +445,7 @@ impl CpuBackend {
         let logical_inputs = input_buffers
             .iter()
             .map(CpuBuffer::logical_values)
-            .collect::<Vec<_>>();
+            .collect::<Result<Vec<_>, _>>()?;
 
         for outer_index in 0..outer {
             for (buffer, logical) in input_buffers.iter().zip(logical_inputs.iter()) {
@@ -349,7 +466,7 @@ impl CpuBackend {
         axis: Option<usize>,
     ) -> Result<CpuBuffer, RuntimeError> {
         let input = self.input(step, values, 0)?;
-        let logical = input.logical_values();
+        let logical = input.logical_values()?;
         let output = match axis {
             None => vec![logical.iter().copied().sum()],
             Some(axis) => reduce_sum_axis(&logical, input.spec().shape().dims(), axis)?,
@@ -363,8 +480,8 @@ impl CpuBackend {
         values: &BTreeMap<TensorId, CpuBuffer>,
         epsilon: f32,
     ) -> Result<CpuBuffer, RuntimeError> {
-        let input = self.input(step, values, 0)?.logical_values();
-        let weight = self.input(step, values, 1)?.logical_values();
+        let input = self.input(step, values, 0)?.logical_values()?;
+        let weight = self.input(step, values, 1)?.logical_values()?;
         let last_dim = weight.len();
         let mut output = vec![0.0; input.len()];
         for (src_row, dst_row) in input
@@ -387,9 +504,9 @@ impl CpuBackend {
         values: &BTreeMap<TensorId, CpuBuffer>,
         epsilon: f32,
     ) -> Result<CpuBuffer, RuntimeError> {
-        let input = self.input(step, values, 0)?.logical_values();
-        let weight = self.input(step, values, 1)?.logical_values();
-        let bias = self.input(step, values, 2)?.logical_values();
+        let input = self.input(step, values, 0)?.logical_values()?;
+        let weight = self.input(step, values, 1)?.logical_values()?;
+        let bias = self.input(step, values, 2)?.logical_values()?;
         let last_dim = weight.len();
         let mut output = vec![0.0; input.len()];
         for (src_row, dst_row) in input
@@ -424,11 +541,11 @@ impl CpuBackend {
         values: &BTreeMap<TensorId, CpuBuffer>,
         interleaved: bool,
     ) -> Result<CpuBuffer, RuntimeError> {
-        let input = self.input(step, values, 0)?.logical_values();
+        let input = self.input(step, values, 0)?.logical_values()?;
         let cos_buffer = self.input(step, values, 1)?;
         let sin_buffer = self.input(step, values, 2)?;
-        let cos = cos_buffer.logical_values();
-        let sin = sin_buffer.logical_values();
+        let cos = cos_buffer.logical_values()?;
+        let sin = sin_buffer.logical_values()?;
         let dims = step.spec.shape().dims();
         let batch = dims[0];
         let heads = dims[1];
@@ -475,11 +592,11 @@ impl CpuBackend {
         scale: f32,
         causal: bool,
     ) -> Result<CpuBuffer, RuntimeError> {
-        let query = self.input(step, values, 0)?.logical_values();
+        let query = self.input(step, values, 0)?.logical_values()?;
         let key_buffer = self.input(step, values, 1)?;
         let value_buffer = self.input(step, values, 2)?;
-        let key = key_buffer.logical_values();
-        let value = value_buffer.logical_values();
+        let key = key_buffer.logical_values()?;
+        let value = value_buffer.logical_values()?;
         let query_dims = self.input(step, values, 0)?.spec().shape().dims().to_vec();
         let key_dims = key_buffer.spec().shape().dims().to_vec();
         let value_dims = value_buffer.spec().shape().dims().to_vec();
@@ -567,7 +684,45 @@ impl CpuBackend {
                 "quantized_matmul requires a non-dense rhs quantization mode",
             )));
         }
-        self.matmul(step, values)
+        let left = self.input(step, values, 0)?;
+        let right = self.input(step, values, 1)?;
+        let left_shape = left.spec().shape().dims();
+        let right_shape = right.spec().shape().dims();
+        if left_shape.len() != 2 || right_shape.len() != 2 || left_shape[1] != right_shape[1] {
+            return Err(RuntimeError::Backend(String::from(
+                "invalid quantized_matmul shapes at runtime",
+            )));
+        }
+
+        let left_values = left.logical_values()?;
+        let Some((stored_mode, layout, bytes)) = right.quantized_blocks() else {
+            return Err(RuntimeError::Backend(String::from(
+                "quantized_matmul requires quantized rhs block storage",
+            )));
+        };
+        if stored_mode != rhs_mode {
+            return Err(RuntimeError::Backend(format!(
+                "quantized_matmul rhs mode mismatch: requested {rhs_mode:?}, actual {stored_mode:?}",
+            )));
+        }
+
+        let m = left_shape[0];
+        let k = left_shape[1];
+        let n = right_shape[0];
+        let row_bytes = quantized_row_byte_len(right.spec().shape(), layout)?;
+        let mut output = vec![0.0; m * n];
+
+        for row in 0..m {
+            let lhs_row = &left_values[row * k..(row + 1) * k];
+            for col in 0..n {
+                let row_start = col * row_bytes;
+                let row_end = row_start + row_bytes;
+                output[row * n + col] =
+                    quantized_row_dot(lhs_row, rhs_mode, &bytes[row_start..row_end])?;
+            }
+        }
+
+        CpuBuffer::from_f32(step.spec.clone(), output)
     }
 }
 
@@ -608,7 +763,7 @@ impl CpuAllocatorPool {
                         .saturating_sub(buffer_bytes_from_len(data.len()));
                     return CpuBuffer {
                         spec: spec.clone(),
-                        data,
+                        storage: CpuBufferStorage::Dense(data),
                     };
                 }
             }
@@ -620,16 +775,16 @@ impl CpuAllocatorPool {
         if self.policy.mode != AllocatorPoolMode::ExactTensorSpec {
             return;
         }
-        let bytes = buffer_bytes_from_len(buffer.data.len());
+        let CpuBufferStorage::Dense(data) = buffer.storage else {
+            return;
+        };
+        let bytes = buffer_bytes_from_len(data.len());
         if self.state.cached_buffers >= self.policy.max_cached_buffers
             || self.state.cached_bytes.saturating_add(bytes) > self.policy.max_cached_bytes
         {
             return;
         }
-        self.cached
-            .entry(buffer.spec)
-            .or_default()
-            .push(buffer.data);
+        self.cached.entry(buffer.spec).or_default().push(data);
         self.state.cached_buffers += 1;
         self.state.cached_bytes = self.state.cached_bytes.saturating_add(bytes);
     }
@@ -659,6 +814,270 @@ fn buffer_bytes_from_len(len: usize) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
+fn quantized_row_byte_len(
+    shape: &Shape,
+    layout: mox_core::QuantizedBlockLayout,
+) -> Result<usize, RuntimeError> {
+    let dims = shape.dims();
+    let Some(&row_width) = dims.last() else {
+        return Err(RuntimeError::Backend(String::from(
+            "quantized storage requires a non-scalar shape",
+        )));
+    };
+    if row_width == 0 || row_width % layout.elements_per_block != 0 {
+        return Err(RuntimeError::Backend(format!(
+            "quantized row width {row_width} is not aligned to {}",
+            layout.elements_per_block
+        )));
+    }
+    Ok((row_width / layout.elements_per_block) * layout.bytes_per_block)
+}
+
+fn quantized_row_dot(
+    lhs: &[f32],
+    mode: QuantizationMode,
+    bytes: &[u8],
+) -> Result<f32, RuntimeError> {
+    let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+        return Err(RuntimeError::Backend(format!(
+            "quantized mode {mode:?} does not use GGML blocks"
+        )));
+    };
+    if lhs.len() % elements_per_block != 0 {
+        return Err(RuntimeError::Backend(format!(
+            "lhs row width {} is not divisible by {elements_per_block}",
+            lhs.len()
+        )));
+    }
+    if bytes.len() != (lhs.len() / elements_per_block) * bytes_per_block {
+        return Err(RuntimeError::Backend(format!(
+            "rhs row byte length mismatch: expected {}, actual {}",
+            (lhs.len() / elements_per_block) * bytes_per_block,
+            bytes.len()
+        )));
+    }
+
+    let mut sum = 0.0;
+    for (block_index, block_bytes) in bytes.chunks_exact(bytes_per_block).enumerate() {
+        let lhs_block_start = block_index * elements_per_block;
+        let lhs_block = &lhs[lhs_block_start..lhs_block_start + elements_per_block];
+        sum += match mode {
+            QuantizationMode::GgmlQ4_0 => dot_q4_0_block(lhs_block, block_bytes)?,
+            QuantizationMode::GgmlQ4_1 => dot_q4_1_block(lhs_block, block_bytes)?,
+            QuantizationMode::GgmlQ8_0 => dot_q8_0_block(lhs_block, block_bytes)?,
+            QuantizationMode::None | QuantizationMode::Int8Symmetric => {
+                return Err(RuntimeError::Backend(format!(
+                    "unsupported quantized matmul mode {mode:?}",
+                )));
+            }
+        };
+    }
+    Ok(sum)
+}
+
+fn decode_quantized_values(
+    shape: &Shape,
+    mode: QuantizationMode,
+    layout: mox_core::QuantizedBlockLayout,
+    bytes: &[u8],
+) -> Result<Vec<f32>, RuntimeError> {
+    let dims = shape.dims();
+    let Some(&row_width) = dims.last() else {
+        return Err(RuntimeError::Backend(String::from(
+            "quantized storage requires a non-scalar shape",
+        )));
+    };
+    let row_count = if dims.len() == 1 {
+        1
+    } else {
+        dims[..dims.len() - 1].iter().product()
+    };
+    let row_bytes = quantized_row_byte_len(shape, layout)?;
+    if bytes.len() != row_count * row_bytes {
+        return Err(RuntimeError::Backend(format!(
+            "quantized tensor byte length mismatch: expected {}, actual {}",
+            row_count * row_bytes,
+            bytes.len()
+        )));
+    }
+
+    let mut output = Vec::with_capacity(shape.element_count());
+    for row_bytes in bytes.chunks_exact(row_bytes) {
+        decode_quantized_row_into(mode, row_bytes, &mut output)?;
+    }
+    if output.len() != shape.element_count() {
+        return Err(RuntimeError::Backend(format!(
+            "quantized tensor decode length mismatch: expected {}, actual {}",
+            shape.element_count(),
+            output.len()
+        )));
+    }
+    if row_width == 0 {
+        return Err(RuntimeError::Backend(String::from(
+            "quantized row width must be non-zero",
+        )));
+    }
+    Ok(output)
+}
+
+fn decode_quantized_row_into(
+    mode: QuantizationMode,
+    bytes: &[u8],
+    output: &mut Vec<f32>,
+) -> Result<(), RuntimeError> {
+    let Some((_, bytes_per_block)) = mode.ggml_block_spec() else {
+        return Err(RuntimeError::Backend(format!(
+            "quantized mode {mode:?} does not use GGML blocks"
+        )));
+    };
+    for block_bytes in bytes.chunks_exact(bytes_per_block) {
+        match mode {
+            QuantizationMode::GgmlQ4_0 => decode_q4_0_block_into(block_bytes, output)?,
+            QuantizationMode::GgmlQ4_1 => decode_q4_1_block_into(block_bytes, output)?,
+            QuantizationMode::GgmlQ8_0 => decode_q8_0_block_into(block_bytes, output)?,
+            QuantizationMode::None | QuantizationMode::Int8Symmetric => {
+                return Err(RuntimeError::Backend(format!(
+                    "unsupported quantized decode mode {mode:?}",
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn dot_q4_0_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
+    if bytes.len() != 18 || lhs.len() != 32 {
+        return Err(RuntimeError::Backend(String::from(
+            "q4_0 block dot requires 32 lhs values and 18 bytes",
+        )));
+    }
+    let scale = decode_f16_le(bytes[0], bytes[1]);
+    let quants = &bytes[2..];
+    let mut sum = 0.0;
+    for (pair_index, quant) in quants.iter().copied().enumerate() {
+        let low = f32::from((quant & 0x0f) as i8 - 8);
+        let high = f32::from((quant >> 4) as i8 - 8);
+        sum += lhs[pair_index] * (low * scale);
+        sum += lhs[pair_index + 16] * (high * scale);
+    }
+    Ok(sum)
+}
+
+fn dot_q4_1_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
+    if bytes.len() != 20 || lhs.len() != 32 {
+        return Err(RuntimeError::Backend(String::from(
+            "q4_1 block dot requires 32 lhs values and 20 bytes",
+        )));
+    }
+    let scale = decode_f16_le(bytes[0], bytes[1]);
+    let min = decode_f16_le(bytes[2], bytes[3]);
+    let quants = &bytes[4..];
+    let mut sum = 0.0;
+    for (pair_index, quant) in quants.iter().copied().enumerate() {
+        let low = min + f32::from(quant & 0x0f) * scale;
+        let high = min + f32::from(quant >> 4) * scale;
+        sum += lhs[pair_index] * low;
+        sum += lhs[pair_index + 16] * high;
+    }
+    Ok(sum)
+}
+
+fn dot_q8_0_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
+    if bytes.len() != 34 || lhs.len() != 32 {
+        return Err(RuntimeError::Backend(String::from(
+            "q8_0 block dot requires 32 lhs values and 34 bytes",
+        )));
+    }
+    let scale = decode_f16_le(bytes[0], bytes[1]);
+    let mut sum = 0.0;
+    for (lhs, quant) in lhs.iter().zip(bytes[2..].iter().copied()) {
+        let quant = i8::from_le_bytes([quant]);
+        sum += lhs * (f32::from(quant) * scale);
+    }
+    Ok(sum)
+}
+
+fn decode_q4_0_block_into(bytes: &[u8], output: &mut Vec<f32>) -> Result<(), RuntimeError> {
+    if bytes.len() != 18 {
+        return Err(RuntimeError::Backend(String::from(
+            "q4_0 block decode requires 18 bytes",
+        )));
+    }
+    let scale = decode_f16_le(bytes[0], bytes[1]);
+    let quants = &bytes[2..];
+    let start = output.len();
+    output.resize(start + 32, 0.0);
+    for (pair_index, quant) in quants.iter().copied().enumerate() {
+        output[start + pair_index] = f32::from((quant & 0x0f) as i8 - 8) * scale;
+        output[start + pair_index + 16] = f32::from((quant >> 4) as i8 - 8) * scale;
+    }
+    Ok(())
+}
+
+fn decode_q4_1_block_into(bytes: &[u8], output: &mut Vec<f32>) -> Result<(), RuntimeError> {
+    if bytes.len() != 20 {
+        return Err(RuntimeError::Backend(String::from(
+            "q4_1 block decode requires 20 bytes",
+        )));
+    }
+    let scale = decode_f16_le(bytes[0], bytes[1]);
+    let min = decode_f16_le(bytes[2], bytes[3]);
+    let quants = &bytes[4..];
+    let start = output.len();
+    output.resize(start + 32, 0.0);
+    for (pair_index, quant) in quants.iter().copied().enumerate() {
+        output[start + pair_index] = min + f32::from(quant & 0x0f) * scale;
+        output[start + pair_index + 16] = min + f32::from(quant >> 4) * scale;
+    }
+    Ok(())
+}
+
+fn decode_q8_0_block_into(bytes: &[u8], output: &mut Vec<f32>) -> Result<(), RuntimeError> {
+    if bytes.len() != 34 {
+        return Err(RuntimeError::Backend(String::from(
+            "q8_0 block decode requires 34 bytes",
+        )));
+    }
+    let scale = decode_f16_le(bytes[0], bytes[1]);
+    output.extend(
+        bytes[2..]
+            .iter()
+            .copied()
+            .map(|quant| f32::from(i8::from_le_bytes([quant])) * scale),
+    );
+    Ok(())
+}
+
+fn decode_f16_le(low: u8, high: u8) -> f32 {
+    half_to_f32(u16::from_le_bytes([low, high]))
+}
+
+fn half_to_f32(bits: u16) -> f32 {
+    let sign = u32::from(bits & 0x8000) << 16;
+    let exponent = (bits >> 10) & 0x1f;
+    let mantissa = bits & 0x03ff;
+
+    let value = match exponent {
+        0 => {
+            if mantissa == 0 {
+                sign
+            } else {
+                let mut mantissa = u32::from(mantissa);
+                let mut exponent = -14_i32;
+                while (mantissa & 0x0400) == 0 {
+                    mantissa <<= 1;
+                    exponent -= 1;
+                }
+                mantissa &= 0x03ff;
+                sign | (((exponent + 127) as u32) << 23) | (mantissa << 13)
+            }
+        }
+        0x1f => sign | 0x7f80_0000 | (u32::from(mantissa) << 13),
+        _ => sign | ((u32::from(exponent) + 112) << 23) | (u32::from(mantissa) << 13),
+    };
+    f32::from_bits(value)
+}
+
 impl DeviceDiscovery for CpuBackend {
     fn backend_name(&self) -> BackendName {
         "cpu"
@@ -680,6 +1099,21 @@ impl DeviceDiscovery for CpuBackend {
                     mode: mox_core::QuantizationMode::Int8Symmetric,
                     load_path: QuantizationLoadPath::DequantizedF32,
                     execution: QuantizationExecution::DequantizeToF32,
+                },
+                QuantizationSupport {
+                    mode: mox_core::QuantizationMode::GgmlQ4_0,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: mox_core::QuantizationMode::GgmlQ4_1,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: mox_core::QuantizationMode::GgmlQ8_0,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::Native,
                 },
             ],
             memory_capacity_bytes: None,
@@ -857,7 +1291,22 @@ mod tests {
                     mode: mox_core::QuantizationMode::Int8Symmetric,
                     load_path: super::QuantizationLoadPath::DequantizedF32,
                     execution: super::QuantizationExecution::DequantizeToF32,
-                }
+                },
+                super::QuantizationSupport {
+                    mode: mox_core::QuantizationMode::GgmlQ4_0,
+                    load_path: super::QuantizationLoadPath::BackendQuantized,
+                    execution: super::QuantizationExecution::Native,
+                },
+                super::QuantizationSupport {
+                    mode: mox_core::QuantizationMode::GgmlQ4_1,
+                    load_path: super::QuantizationLoadPath::BackendQuantized,
+                    execution: super::QuantizationExecution::Native,
+                },
+                super::QuantizationSupport {
+                    mode: mox_core::QuantizationMode::GgmlQ8_0,
+                    load_path: super::QuantizationLoadPath::BackendQuantized,
+                    execution: super::QuantizationExecution::Native,
+                },
             ]
         );
         Ok(())
@@ -949,7 +1398,7 @@ mod tests {
         let Some(output) = result.outputs.get(&shifted.id()) else {
             return Err(RuntimeError::Backend(String::from("missing output")));
         };
-        assert_eq!(output.as_f32_slice(), &[1.5, 2.5, 3.5, 4.5]);
+        assert_eq!(output.as_f32_slice(), Some(&[1.5, 2.5, 3.5, 4.5][..]));
         assert_eq!(result.metrics.steps_executed, 5);
         Ok(())
     }
@@ -975,7 +1424,7 @@ mod tests {
         let Some(output) = result.outputs.get(&reduced.id()) else {
             return Err(RuntimeError::Backend(String::from("missing output")));
         };
-        assert_eq!(output.as_f32_slice(), &[10.0]);
+        assert_eq!(output.as_f32_slice(), Some(&[10.0][..]));
         Ok(())
     }
 
@@ -1014,7 +1463,7 @@ mod tests {
         let Some(output) = result.outputs.get(&reduced.id()) else {
             return Err(RuntimeError::Backend(String::from("missing output")));
         };
-        assert_eq!(output.as_f32_slice(), &[8.0, 12.0]);
+        assert_eq!(output.as_f32_slice(), Some(&[8.0, 12.0][..]));
         Ok(())
     }
 
@@ -1023,7 +1472,7 @@ mod tests {
         let mut backend = CpuBackend::new();
         let spec = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
         let buffer = backend.allocate(&spec)?;
-        assert_eq!(buffer.as_f32_slice(), &[0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(buffer.as_f32_slice(), Some(&[0.0, 0.0, 0.0, 0.0][..]));
         assert_eq!(buffer.spec(), &spec);
         Ok(())
     }
@@ -1062,40 +1511,39 @@ mod tests {
         let after = runtime_resources.allocator_pool.state.cached_buffers;
 
         assert!(after < before);
-        assert_eq!(buffer.as_f32_slice(), &[0.0, 0.0, 0.0, 0.0]);
+        assert_eq!(buffer.as_f32_slice(), Some(&[0.0, 0.0, 0.0, 0.0][..]));
         Ok(())
     }
 
     #[test]
     fn cpu_backend_executes_backend_extension_reference_ops() -> Result<(), RuntimeError> {
         let mut builder = GraphBuilder::new(Device::cpu());
-        let input = builder.input("input", Shape::new(vec![1, 1, 2, 4]), DType::F32);
-        let weight = builder
+        let input = builder.input("input", Shape::new(vec![1, 1, 2, 32]), DType::F32);
+        let norm_weight = builder
+            .constant_f32(Shape::new(vec![32]), vec![1.0; 32])
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let output_weight = builder
             .constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0])
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
-        let bias = builder
+        let output_bias = builder
             .constant_f32(Shape::new(vec![4]), vec![0.1, 0.1, 0.1, 0.1])
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let cos = builder
-            .constant_f32(Shape::new(vec![2, 2]), vec![1.0, 0.0, 1.0, 0.0])
+            .constant_f32(Shape::new(vec![2, 16]), vec![1.0f32; 32])
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let sin = builder
-            .constant_f32(Shape::new(vec![2, 2]), vec![0.0, 1.0, 0.0, 1.0])
+            .constant_f32(Shape::new(vec![2, 16]), vec![0.0f32; 32])
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let rhs = builder
-            .constant_f32(
-                Shape::new(vec![4, 4]),
-                vec![
-                    1.0, 0.0, 0.0, 0.0, //
-                    0.0, 1.0, 0.0, 0.0, //
-                    0.0, 0.0, 1.0, 0.0, //
-                    0.0, 0.0, 0.0, 1.0,
-                ],
+            .constant_quantized_blocks(
+                Shape::new(vec![4, 32]),
+                QuantizationMode::GgmlQ4_0,
+                sample_repeated_q4_0_rows(4),
             )
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
 
         let normed = builder
-            .rms_norm(&input, &weight, 1e-5)
+            .rms_norm(&input, &norm_weight, 1e-5)
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let roped = builder
             .rope(&normed, &cos, &sin, true)
@@ -1104,13 +1552,13 @@ mod tests {
             .scaled_dot_product_attention(&roped, &roped, &roped, 0.5, true)
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let flattened = builder
-            .reshape(&attended, Shape::new(vec![2, 4]))
+            .reshape(&attended, Shape::new(vec![2, 32]))
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let quantized = builder
             .quantized_matmul(&flattened, &rhs, QuantizationMode::GgmlQ4_0)
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let output = builder
-            .layer_norm(&quantized, &weight, &bias, 1e-5)
+            .layer_norm(&quantized, &output_weight, &output_bias, 1e-5)
             .map_err(|error| RuntimeError::Backend(error.to_string()))?;
         let graph = builder.finish(vec![output.clone()]);
 
@@ -1119,11 +1567,8 @@ mod tests {
         inputs.insert(
             input.id(),
             backend.input_buffer(
-                Shape::new(vec![1, 1, 2, 4]),
-                vec![
-                    1.0, 2.0, 3.0, 4.0, //
-                    4.0, 3.0, 2.0, 1.0,
-                ],
+                Shape::new(vec![1, 1, 2, 32]),
+                (1..=64).map(|value| value as f32).collect::<Vec<_>>(),
             )?,
         );
 
@@ -1132,9 +1577,186 @@ mod tests {
             .outputs
             .get(&output.id())
             .ok_or_else(|| RuntimeError::Backend(String::from("extension output")))?;
-        let values = output_buffer.logical_values();
+        let values = output_buffer.logical_values()?;
         assert_eq!(values.len(), 8);
         assert!(values.iter().all(|value| value.is_finite()));
         Ok(())
+    }
+
+    #[test]
+    fn cpu_backend_executes_quantized_matmul_for_supported_ggml_modes() -> Result<(), RuntimeError>
+    {
+        assert_quantized_matmul_matches_dense_reference(
+            QuantizationMode::GgmlQ4_0,
+            sample_repeated_q4_0_rows(3),
+        )?;
+        assert_quantized_matmul_matches_dense_reference(
+            QuantizationMode::GgmlQ4_1,
+            sample_repeated_q4_1_rows(3),
+        )?;
+        assert_quantized_matmul_matches_dense_reference(
+            QuantizationMode::GgmlQ8_0,
+            sample_repeated_q8_0_rows(3),
+        )?;
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_backend_outputs_quantized_constant_storage_truth() -> Result<(), RuntimeError> {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let rhs = builder
+            .constant_quantized_blocks(
+                Shape::new(vec![2, 32]),
+                QuantizationMode::GgmlQ8_0,
+                sample_repeated_q8_0_rows(2),
+            )
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![rhs.clone()]);
+
+        let mut backend = CpuBackend::new();
+        let result = backend.compile_and_execute(&graph, &BTreeMap::new())?;
+        let output = result
+            .outputs
+            .get(&rhs.id())
+            .ok_or_else(|| RuntimeError::Backend(String::from("quantized constant output")))?;
+        assert_eq!(
+            output.storage_kind(),
+            mox_runtime::BufferStorageKind::QuantizedBlocks {
+                mode: QuantizationMode::GgmlQ8_0,
+                layout: QuantizationMode::GgmlQ8_0
+                    .ggml_block_layout(&Shape::new(vec![2, 32]))
+                    .ok_or_else(|| RuntimeError::Backend(String::from("q8 layout")))?,
+                residency: mox_runtime::BufferResidency::Host,
+            }
+        );
+        Ok(())
+    }
+
+    fn assert_quantized_matmul_matches_dense_reference(
+        mode: QuantizationMode,
+        bytes: Vec<u8>,
+    ) -> Result<(), RuntimeError> {
+        let right_shape = Shape::new(vec![3, 32]);
+        let left_shape = Shape::new(vec![2, 32]);
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", left_shape.clone(), DType::F32);
+        let rhs = builder
+            .constant_quantized_blocks(right_shape.clone(), mode, bytes.clone())
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let output = builder
+            .quantized_matmul(&input, &rhs, mode)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![output.clone()]);
+
+        let mut backend = CpuBackend::new();
+        let left_values = (0..64)
+            .map(|index| (index as f32 / 8.0) - 4.0)
+            .collect::<Vec<_>>();
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(left_shape.clone(), left_values.clone())?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let output = result
+            .outputs
+            .get(&output.id())
+            .ok_or_else(|| RuntimeError::Backend(String::from("quantized matmul output")))?;
+        let actual = output
+            .as_f32_slice()
+            .ok_or_else(|| RuntimeError::Backend(String::from("dense quantized output")))?;
+
+        let layout = mode
+            .ggml_block_layout(&right_shape)
+            .ok_or_else(|| RuntimeError::Backend(String::from("quantized rhs layout")))?;
+        let dequantized = super::decode_quantized_values(&right_shape, mode, layout, &bytes)?;
+        let expected = dense_reference_quantized_rhs(&left_values, 2, &dequantized, 3, 32);
+
+        for (actual, expected) in actual.iter().zip(expected.iter()) {
+            let diff = (actual - expected).abs();
+            assert!(
+                diff <= 0.01,
+                "mode {mode:?} drifted by {diff}: actual={actual} expected={expected}"
+            );
+        }
+        Ok(())
+    }
+
+    fn dense_reference_quantized_rhs(
+        lhs: &[f32],
+        lhs_rows: usize,
+        rhs_rows: &[f32],
+        rhs_row_count: usize,
+        width: usize,
+    ) -> Vec<f32> {
+        let mut output = vec![0.0; lhs_rows * rhs_row_count];
+        for row in 0..lhs_rows {
+            let lhs_row = &lhs[row * width..(row + 1) * width];
+            for rhs_row in 0..rhs_row_count {
+                let rhs = &rhs_rows[rhs_row * width..(rhs_row + 1) * width];
+                output[row * rhs_row_count + rhs_row] = lhs_row
+                    .iter()
+                    .zip(rhs.iter())
+                    .map(|(lhs, rhs)| lhs * rhs)
+                    .sum();
+            }
+        }
+        output
+    }
+
+    fn sample_repeated_q4_0_rows(rows: usize) -> Vec<u8> {
+        sample_q4_0_row()
+            .into_iter()
+            .cycle()
+            .take(rows * 18)
+            .collect()
+    }
+
+    fn sample_repeated_q4_1_rows(rows: usize) -> Vec<u8> {
+        sample_q4_1_row()
+            .into_iter()
+            .cycle()
+            .take(rows * 20)
+            .collect()
+    }
+
+    fn sample_repeated_q8_0_rows(rows: usize) -> Vec<u8> {
+        sample_q8_0_row()
+            .into_iter()
+            .cycle()
+            .take(rows * 34)
+            .collect()
+    }
+
+    fn sample_q4_0_row() -> Vec<u8> {
+        [0x00_u8, 0x40]
+            .into_iter()
+            .chain(
+                [0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+                    .into_iter()
+                    .cycle()
+                    .take(16),
+            )
+            .collect()
+    }
+
+    fn sample_q4_1_row() -> Vec<u8> {
+        [0x00_u8, 0x40, 0x00, 0xbc]
+            .into_iter()
+            .chain(
+                [0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+                    .into_iter()
+                    .cycle()
+                    .take(16),
+            )
+            .collect()
+    }
+
+    fn sample_q8_0_row() -> Vec<u8> {
+        std::iter::once(0x00)
+            .chain(std::iter::once(0x40))
+            .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
+            .collect()
     }
 }

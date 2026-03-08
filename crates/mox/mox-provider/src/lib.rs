@@ -1044,6 +1044,21 @@ mod tests {
                                 "mode": "int8_symmetric",
                                 "load_path": "dequantized_f32",
                                 "execution": "dequantize_to_f32"
+                            },
+                            {
+                                "mode": "ggml_q4_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q4_1",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q8_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
                             }
                         ],
                         "memory_capacity_bytes": null,
@@ -1125,6 +1140,21 @@ mod tests {
                                 "mode": "int8_symmetric",
                                 "load_path": "dequantized_f32",
                                 "execution": "dequantize_to_f32"
+                            },
+                            {
+                                "mode": "ggml_q4_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q4_1",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q8_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
                             }
                         ],
                         "memory_capacity_bytes": null,
@@ -1945,6 +1975,21 @@ mod tests {
                     mode: RuntimeQuantizationMode::Int8Symmetric,
                     load_path: QuantizationLoadPath::DequantizedF32,
                     execution: QuantizationExecution::DequantizeToF32,
+                },
+                QuantizationSupport {
+                    mode: RuntimeQuantizationMode::GgmlQ4_0,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: RuntimeQuantizationMode::GgmlQ4_1,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: RuntimeQuantizationMode::GgmlQ8_0,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::Native,
                 },
             ],
             memory_capacity_bytes: None,
