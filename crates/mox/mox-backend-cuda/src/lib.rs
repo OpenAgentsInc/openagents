@@ -1,16 +1,20 @@
-//! CUDA backend discovery and readiness reporting for Mox.
+//! CUDA backend discovery, allocation, and submission substrate for Mox.
 
-use std::{io::ErrorKind, process::Command};
+#![allow(clippy::result_large_err)]
 
-use mox_core::{DType, Device, DeviceKind};
+use std::{fmt, io::ErrorKind, process::Command};
+
+use mox_core::{DType, Device, DeviceKind, TensorSpec};
 use mox_runtime::{
-    BackendName, DeviceDescriptor, DeviceDiscovery, HealthStatus, NvidiaBackendReport,
+    Allocator, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendName,
+    BackendRuntimeResources, BufferHandle, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
+    HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, NvidiaBackendReport,
     NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
     NvidiaRiskProfile, NvidiaTopologyInfo, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
-pub const CRATE_ROLE: &str = "CUDA backend discovery and truthful readiness";
+pub const CRATE_ROLE: &str = "CUDA backend discovery, allocation, and submission";
 
 const NVIDIA_SMI_BINARY: &str = "nvidia-smi";
 const INVENTORY_QUERY: &str = concat!(
@@ -19,6 +23,8 @@ const INVENTORY_QUERY: &str = concat!(
 );
 const OFFLINE_NO_DRIVER_MESSAGE: &str =
     "cuda backend unavailable: nvidia-smi is not installed or the NVIDIA driver is not reachable";
+const CUDA_POOL_MAX_CACHED_BUFFERS: usize = 128;
+const CUDA_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct NvidiaInventoryRow {
@@ -46,44 +52,334 @@ struct NvidiaQueryError {
     message: String,
 }
 
-/// CUDA backend probe backed by `nvidia-smi` discovery.
-#[derive(Clone, Debug, Default)]
-pub struct CudaBackend;
+/// CUDA-visible backing memory class.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CudaMemorySpace {
+    /// Ordinary device-only memory allocated by the CUDA runtime.
+    Device,
+}
+
+/// How long Mox should wait after a CUDA submission.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CudaCommandWait {
+    /// Wait until the CUDA stream completes.
+    Completed,
+}
+
+/// Stable submission lifecycle state exposed by Mox.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CudaCommandStatus {
+    /// The submission was recorded onto a CUDA stream.
+    Submitted,
+    /// The CUDA stream completed successfully.
+    Completed,
+    /// The CUDA stream failed.
+    Error,
+}
+
+/// Submission metadata returned after a CUDA stream is synchronized.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CudaSubmissionReport {
+    /// Final stream status observed by Mox.
+    pub status: CudaCommandStatus,
+    /// Number of explicit operations recorded in the submission.
+    pub encoded_operations: usize,
+}
+
+/// CUDA-backed tensor buffer.
+#[derive(Clone)]
+pub struct CudaBuffer {
+    spec: TensorSpec,
+    byte_len: usize,
+    memory_space: CudaMemorySpace,
+    host_visible: bool,
+    platform: platform::PlatformBuffer,
+}
+
+impl fmt::Debug for CudaBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CudaBuffer")
+            .field("spec", &self.spec)
+            .field("byte_len", &self.byte_len)
+            .field("memory_space", &self.memory_space)
+            .field("host_visible", &self.host_visible)
+            .field("platform", &"<cuda platform buffer>")
+            .finish()
+    }
+}
+
+impl CudaBuffer {
+    /// Returns the backing allocation size in bytes.
+    #[must_use]
+    pub const fn byte_len(&self) -> usize {
+        self.byte_len
+    }
+
+    /// Returns the CUDA memory space backing the buffer.
+    #[must_use]
+    pub const fn memory_space(&self) -> CudaMemorySpace {
+        self.memory_space
+    }
+
+    /// Returns whether the CPU can directly map the backing storage.
+    #[must_use]
+    pub const fn host_visible(&self) -> bool {
+        self.host_visible
+    }
+
+    /// Writes raw bytes into the CUDA buffer via an explicit host-to-device transfer.
+    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), RuntimeError> {
+        if bytes.len() != self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda buffer write length mismatch: expected {}, actual {}",
+                self.byte_len,
+                bytes.len()
+            )));
+        }
+        self.platform.write_bytes(bytes)
+    }
+
+    /// Reads raw bytes from the CUDA buffer via an explicit device-to-host transfer.
+    pub fn read_bytes(&self) -> Result<Vec<u8>, RuntimeError> {
+        self.platform.read_bytes(self.byte_len)
+    }
+
+    /// Writes contiguous `f32` values into an `f32` buffer.
+    pub fn write_f32(&mut self, values: &[f32]) -> Result<(), RuntimeError> {
+        if self.spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "write_f32 requires F32 buffer, actual {:?}",
+                self.spec.dtype()
+            )));
+        }
+        if values.len() != self.spec.storage_size() {
+            return Err(RuntimeError::Backend(format!(
+                "cuda buffer write length mismatch: expected {} values, actual {}",
+                self.spec.storage_size(),
+                values.len()
+            )));
+        }
+        let mut bytes = Vec::with_capacity(self.byte_len);
+        for value in values {
+            bytes.extend_from_slice(&value.to_ne_bytes());
+        }
+        self.write_bytes(&bytes)
+    }
+
+    /// Reads contiguous `f32` values from an `f32` buffer.
+    pub fn read_f32(&self) -> Result<Vec<f32>, RuntimeError> {
+        if self.spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "read_f32 requires F32 buffer, actual {:?}",
+                self.spec.dtype()
+            )));
+        }
+        let bytes = self.read_bytes()?;
+        let mut values = Vec::with_capacity(bytes.len() / size_of_dtype(self.spec.dtype()));
+        for chunk in bytes.chunks_exact(size_of_dtype(self.spec.dtype())) {
+            values.push(f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        }
+        Ok(values)
+    }
+}
+
+impl BufferHandle for CudaBuffer {
+    fn spec(&self) -> &TensorSpec {
+        &self.spec
+    }
+}
+
+/// CUDA stream submission that keeps fill/copy operations explicit.
+pub struct CudaSubmission {
+    encoded_operations: usize,
+    platform: platform::PlatformSubmission,
+}
+
+impl CudaSubmission {
+    /// Fills a buffer with a constant byte value using an async CUDA memset.
+    pub fn fill_buffer(&mut self, buffer: &CudaBuffer, value: u8) -> Result<(), RuntimeError> {
+        self.platform
+            .fill_buffer(&buffer.platform, buffer.byte_len, value)?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Copies one CUDA buffer into another with explicit size checking.
+    pub fn copy_buffer(
+        &mut self,
+        source: &CudaBuffer,
+        destination: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        if source.byte_len != destination.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda buffer copy length mismatch: source {}, destination {}",
+                source.byte_len, destination.byte_len
+            )));
+        }
+        self.platform
+            .copy_buffer(&source.platform, &destination.platform, source.byte_len)?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Synchronizes the CUDA stream and returns explicit submission metadata.
+    pub fn commit(self, wait: CudaCommandWait) -> Result<CudaSubmissionReport, RuntimeError> {
+        let status = self.platform.commit(wait)?;
+        Ok(CudaSubmissionReport {
+            status,
+            encoded_operations: self.encoded_operations,
+        })
+    }
+}
+
+enum CudaBackendState {
+    Available(Box<AvailableCudaBackend>),
+    Unavailable(RuntimeHealth),
+}
+
+struct AvailableCudaBackend {
+    descriptor: DeviceDescriptor,
+    platform: platform::ConfiguredBackend,
+    allocator_pool: AllocatorPoolReport,
+    kernel_cache: KernelCacheReport,
+}
+
+/// CUDA backend probe backed by `nvidia-smi` discovery plus `libcudart` buffer
+/// and stream substrate.
+pub struct CudaBackend {
+    state: CudaBackendState,
+}
+
+impl Default for CudaBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
 
 impl CudaBackend {
-    /// Creates a CUDA backend probe.
+    /// Creates a CUDA backend and selects the first discovered device when the
+    /// CUDA runtime substrate is available.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        match discovery_report_internal() {
+            Ok(report) => {
+                let Some(descriptor) = report.devices.first().cloned() else {
+                    return Self {
+                        state: CudaBackendState::Unavailable(report.health),
+                    };
+                };
+                let allocator_pool = AllocatorPoolReport {
+                    policy: cuda_allocator_pool_policy(),
+                    state: AllocatorPoolState::default(),
+                };
+                let kernel_cache = KernelCacheReport {
+                    policy: KernelCachePolicy::disabled(),
+                    state: KernelCacheState::default(),
+                };
+                match platform::configure_backend(descriptor.clone()) {
+                    Ok(platform) => Self {
+                        state: CudaBackendState::Available(Box::new(AvailableCudaBackend {
+                            descriptor,
+                            platform,
+                            allocator_pool,
+                            kernel_cache,
+                        })),
+                    },
+                    Err(error) => Self {
+                        state: CudaBackendState::Unavailable(RuntimeHealth {
+                            status: report.health.status,
+                            message: format!("cuda runtime substrate unavailable: {error}"),
+                        }),
+                    },
+                }
+            }
+            Err(error) => Self {
+                state: CudaBackendState::Unavailable(RuntimeHealth {
+                    status: HealthStatus::Offline,
+                    message: error.to_string(),
+                }),
+            },
+        }
     }
 
     /// Returns the backend-local NVIDIA discovery report.
     pub fn discovery_report(&self) -> Result<NvidiaBackendReport, RuntimeError> {
-        match query_inventory() {
-            Ok(rows) => {
-                let devices = rows
-                    .into_iter()
-                    .map(NvidiaInventoryRow::into_device_descriptor)
-                    .collect::<Result<Vec<_>, _>>()?;
-                let health = cuda_health(&devices);
-                Ok(NvidiaBackendReport { devices, health })
-            }
-            Err(error) if error.kind == NvidiaQueryErrorKind::NotInstalled => {
-                Ok(NvidiaBackendReport {
-                    devices: Vec::new(),
-                    health: RuntimeHealth {
-                        status: HealthStatus::Offline,
-                        message: String::from(OFFLINE_NO_DRIVER_MESSAGE),
-                    },
-                })
-            }
-            Err(error) => Ok(NvidiaBackendReport {
-                devices: Vec::new(),
-                health: RuntimeHealth {
-                    status: HealthStatus::Offline,
-                    message: error.message,
-                },
+        discovery_report_internal()
+    }
+
+    /// Returns the device selected for allocation/submission, when available.
+    #[must_use]
+    pub fn selected_device(&self) -> Option<&DeviceDescriptor> {
+        match &self.state {
+            CudaBackendState::Available(backend) => Some(&backend.descriptor),
+            CudaBackendState::Unavailable(_) => None,
+        }
+    }
+
+    /// Returns explicit runtime resource posture for the selected CUDA device.
+    #[must_use]
+    pub fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        match &self.state {
+            CudaBackendState::Available(backend) => Some(BackendRuntimeResources {
+                allocator_pool: backend.allocator_pool.clone(),
+                kernel_cache: backend.kernel_cache.clone(),
+                device_memory_budget: Some(DeviceMemoryBudget::new(
+                    backend.descriptor.memory_capacity_bytes,
+                    backend.allocator_pool.policy.max_cached_bytes,
+                    backend
+                        .kernel_cache
+                        .policy
+                        .max_cached_bytes
+                        .unwrap_or(backend.kernel_cache.state.cached_bytes),
+                )),
             }),
+            CudaBackendState::Unavailable(_) => None,
+        }
+    }
+
+    /// Allocates a CUDA buffer for the provided tensor specification.
+    pub fn allocate_buffer(&mut self, spec: &TensorSpec) -> Result<CudaBuffer, RuntimeError> {
+        let Some(backend) = self.selected_backend() else {
+            let message = match &self.state {
+                CudaBackendState::Unavailable(health) => health.message.clone(),
+                CudaBackendState::Available(_) => String::from("cuda backend unavailable"),
+            };
+            return Err(RuntimeError::Backend(message));
+        };
+        let byte_len = spec
+            .storage_size()
+            .checked_mul(size_of_dtype(spec.dtype()))
+            .ok_or_else(|| {
+                RuntimeError::Backend(format!(
+                    "cuda buffer size overflow for tensor storage size {}",
+                    spec.storage_size()
+                ))
+            })?;
+        let platform_buffer = backend.platform.allocate(byte_len)?;
+        Ok(CudaBuffer {
+            spec: spec.clone(),
+            byte_len,
+            memory_space: CudaMemorySpace::Device,
+            host_visible: false,
+            platform: platform_buffer,
+        })
+    }
+
+    /// Begins a CUDA submission on a fresh stream.
+    pub fn begin_submission(&self) -> Result<CudaSubmission, RuntimeError> {
+        let Some(backend) = self.selected_backend() else {
+            return Err(RuntimeError::Backend(self.health().message));
+        };
+        Ok(CudaSubmission {
+            encoded_operations: 0,
+            platform: backend.platform.begin_submission()?,
+        })
+    }
+
+    fn selected_backend(&self) -> Option<&AvailableCudaBackend> {
+        match &self.state {
+            CudaBackendState::Available(backend) => Some(backend),
+            CudaBackendState::Unavailable(_) => None,
         }
     }
 }
@@ -98,18 +394,33 @@ impl DeviceDiscovery for CudaBackend {
     }
 
     fn health(&self) -> RuntimeHealth {
-        match self.discovery_report() {
-            Ok(report) => report.health,
-            Err(error) => RuntimeHealth {
-                status: HealthStatus::Degraded,
-                message: format!("cuda discovery failed: {error}"),
+        match &self.state {
+            CudaBackendState::Available(_) => match self.discovery_report() {
+                Ok(report) => report.health,
+                Err(error) => RuntimeHealth {
+                    status: HealthStatus::Degraded,
+                    message: format!("cuda discovery failed: {error}"),
+                },
             },
+            CudaBackendState::Unavailable(health) => health.clone(),
         }
+    }
+
+    fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        CudaBackend::runtime_resources(self)
+    }
+}
+
+impl Allocator for CudaBackend {
+    type Buffer = CudaBuffer;
+
+    fn allocate(&mut self, spec: &TensorSpec) -> Result<Self::Buffer, RuntimeError> {
+        self.allocate_buffer(spec)
     }
 }
 
 impl NvidiaInventoryRow {
-    fn into_device_descriptor(self) -> Result<DeviceDescriptor, RuntimeError> {
+    fn into_device_descriptor(self) -> DeviceDescriptor {
         let architecture = architecture_from_compute_capability(self.compute_capability.as_deref());
         let risk = risk_profile(
             self.display_attached,
@@ -139,7 +450,7 @@ impl NvidiaInventoryRow {
             ));
         }
 
-        Ok(DeviceDescriptor {
+        DeviceDescriptor {
             backend: String::from("cuda"),
             device: Device::new(
                 DeviceKind::Cuda,
@@ -165,7 +476,42 @@ impl NvidiaInventoryRow {
                 risk,
                 recovery,
             }),
-        })
+        }
+    }
+}
+
+fn cuda_allocator_pool_policy() -> AllocatorPoolPolicy {
+    AllocatorPoolPolicy::exact_tensor_spec(CUDA_POOL_MAX_CACHED_BUFFERS, CUDA_POOL_MAX_CACHED_BYTES)
+}
+
+fn size_of_dtype(dtype: DType) -> usize {
+    dtype.element_size_bytes()
+}
+
+fn discovery_report_internal() -> Result<NvidiaBackendReport, RuntimeError> {
+    match query_inventory() {
+        Ok(rows) => {
+            let devices = rows
+                .into_iter()
+                .map(NvidiaInventoryRow::into_device_descriptor)
+                .collect::<Vec<_>>();
+            let health = cuda_health(&devices);
+            Ok(NvidiaBackendReport { devices, health })
+        }
+        Err(error) if error.kind == NvidiaQueryErrorKind::NotInstalled => Ok(NvidiaBackendReport {
+            devices: Vec::new(),
+            health: RuntimeHealth {
+                status: HealthStatus::Offline,
+                message: String::from(OFFLINE_NO_DRIVER_MESSAGE),
+            },
+        }),
+        Err(error) => Ok(NvidiaBackendReport {
+            devices: Vec::new(),
+            health: RuntimeHealth {
+                status: HealthStatus::Offline,
+                message: error.message,
+            },
+        }),
     }
 }
 
@@ -420,13 +766,415 @@ fn parse_memory_bytes(value: &str) -> Option<u64> {
         .map(|mebibytes| mebibytes * 1024 * 1024)
 }
 
+#[cfg(target_os = "linux")]
+mod platform {
+    use std::{
+        ffi::{CStr, c_char, c_int, c_void},
+        sync::Arc,
+    };
+
+    use libloading::Library;
+
+    use super::{CudaCommandStatus, CudaCommandWait};
+    use mox_runtime::RuntimeError;
+
+    type CudaError = i32;
+    type CudaStream = *mut c_void;
+    const CUDA_SUCCESS: CudaError = 0;
+    const CUDA_MEMCPY_HOST_TO_DEVICE: c_int = 1;
+    const CUDA_MEMCPY_DEVICE_TO_HOST: c_int = 2;
+    const CUDA_MEMCPY_DEVICE_TO_DEVICE: c_int = 3;
+
+    type CudaGetErrorString = unsafe extern "C" fn(CudaError) -> *const c_char;
+    type CudaSetDevice = unsafe extern "C" fn(c_int) -> CudaError;
+    type CudaMalloc = unsafe extern "C" fn(*mut *mut c_void, usize) -> CudaError;
+    type CudaFree = unsafe extern "C" fn(*mut c_void) -> CudaError;
+    type CudaMemcpy = unsafe extern "C" fn(*mut c_void, *const c_void, usize, c_int) -> CudaError;
+    type CudaMemcpyAsync =
+        unsafe extern "C" fn(*mut c_void, *const c_void, usize, c_int, CudaStream) -> CudaError;
+    type CudaMemsetAsync = unsafe extern "C" fn(*mut c_void, c_int, usize, CudaStream) -> CudaError;
+    type CudaStreamCreate = unsafe extern "C" fn(*mut CudaStream) -> CudaError;
+    type CudaStreamDestroy = unsafe extern "C" fn(CudaStream) -> CudaError;
+    type CudaStreamSynchronize = unsafe extern "C" fn(CudaStream) -> CudaError;
+
+    pub(super) struct ConfiguredBackend {
+        runtime: Arc<CudaRuntime>,
+        ordinal: u16,
+    }
+
+    #[derive(Clone)]
+    pub(super) struct PlatformBuffer {
+        inner: Arc<PlatformBufferInner>,
+    }
+
+    pub(super) struct PlatformSubmission {
+        runtime: Arc<CudaRuntime>,
+        ordinal: u16,
+        stream: CudaStream,
+        status: CudaCommandStatus,
+    }
+
+    struct PlatformBufferInner {
+        runtime: Arc<CudaRuntime>,
+        ordinal: u16,
+        device_ptr: *mut c_void,
+    }
+
+    struct CudaRuntime {
+        _library: Library,
+        cuda_get_error_string: CudaGetErrorString,
+        cuda_set_device: CudaSetDevice,
+        cuda_malloc: CudaMalloc,
+        cuda_free: CudaFree,
+        cuda_memcpy: CudaMemcpy,
+        cuda_memcpy_async: CudaMemcpyAsync,
+        cuda_memset_async: CudaMemsetAsync,
+        cuda_stream_create: CudaStreamCreate,
+        cuda_stream_destroy: CudaStreamDestroy,
+        cuda_stream_synchronize: CudaStreamSynchronize,
+    }
+
+    impl ConfiguredBackend {
+        pub(super) fn allocate(&self, byte_len: usize) -> Result<PlatformBuffer, RuntimeError> {
+            self.runtime.set_device(self.ordinal)?;
+            let mut device_ptr = std::ptr::null_mut();
+            let allocation_len = byte_len.max(1);
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_malloc)(&mut device_ptr, allocation_len) },
+                "cudaMalloc",
+            )?;
+            Ok(PlatformBuffer {
+                inner: Arc::new(PlatformBufferInner {
+                    runtime: Arc::clone(&self.runtime),
+                    ordinal: self.ordinal,
+                    device_ptr,
+                }),
+            })
+        }
+
+        pub(super) fn begin_submission(&self) -> Result<PlatformSubmission, RuntimeError> {
+            self.runtime.set_device(self.ordinal)?;
+            let mut stream = std::ptr::null_mut();
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_stream_create)(&mut stream) },
+                "cudaStreamCreate",
+            )?;
+            Ok(PlatformSubmission {
+                runtime: Arc::clone(&self.runtime),
+                ordinal: self.ordinal,
+                stream,
+                status: CudaCommandStatus::Submitted,
+            })
+        }
+    }
+
+    impl PlatformBuffer {
+        pub(super) fn write_bytes(&self, bytes: &[u8]) -> Result<(), RuntimeError> {
+            if bytes.is_empty() {
+                return Ok(());
+            }
+            self.inner.runtime.set_device(self.inner.ordinal)?;
+            self.inner.runtime.check(
+                unsafe {
+                    (self.inner.runtime.cuda_memcpy)(
+                        self.inner.device_ptr,
+                        bytes.as_ptr().cast(),
+                        bytes.len(),
+                        CUDA_MEMCPY_HOST_TO_DEVICE,
+                    )
+                },
+                "cudaMemcpy host_to_device",
+            )
+        }
+
+        pub(super) fn read_bytes(&self, byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+            if byte_len == 0 {
+                return Ok(Vec::new());
+            }
+            self.inner.runtime.set_device(self.inner.ordinal)?;
+            let mut bytes = vec![0u8; byte_len];
+            self.inner.runtime.check(
+                unsafe {
+                    (self.inner.runtime.cuda_memcpy)(
+                        bytes.as_mut_ptr().cast(),
+                        self.inner.device_ptr,
+                        byte_len,
+                        CUDA_MEMCPY_DEVICE_TO_HOST,
+                    )
+                },
+                "cudaMemcpy device_to_host",
+            )?;
+            Ok(bytes)
+        }
+    }
+
+    impl PlatformSubmission {
+        pub(super) fn fill_buffer(
+            &mut self,
+            buffer: &PlatformBuffer,
+            byte_len: usize,
+            value: u8,
+        ) -> Result<(), RuntimeError> {
+            if byte_len == 0 {
+                return Ok(());
+            }
+            self.runtime.set_device(self.ordinal)?;
+            self.runtime.check(
+                unsafe {
+                    (self.runtime.cuda_memset_async)(
+                        buffer.inner.device_ptr,
+                        i32::from(value),
+                        byte_len,
+                        self.stream,
+                    )
+                },
+                "cudaMemsetAsync",
+            )
+        }
+
+        pub(super) fn copy_buffer(
+            &mut self,
+            source: &PlatformBuffer,
+            destination: &PlatformBuffer,
+            byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            if byte_len == 0 {
+                return Ok(());
+            }
+            self.runtime.set_device(self.ordinal)?;
+            self.runtime.check(
+                unsafe {
+                    (self.runtime.cuda_memcpy_async)(
+                        destination.inner.device_ptr,
+                        source.inner.device_ptr,
+                        byte_len,
+                        CUDA_MEMCPY_DEVICE_TO_DEVICE,
+                        self.stream,
+                    )
+                },
+                "cudaMemcpyAsync device_to_device",
+            )
+        }
+
+        pub(super) fn commit(
+            mut self,
+            wait: CudaCommandWait,
+        ) -> Result<CudaCommandStatus, RuntimeError> {
+            match wait {
+                CudaCommandWait::Completed => {
+                    self.runtime.set_device(self.ordinal)?;
+                    self.runtime.check(
+                        unsafe { (self.runtime.cuda_stream_synchronize)(self.stream) },
+                        "cudaStreamSynchronize",
+                    )?;
+                    self.status = CudaCommandStatus::Completed;
+                }
+            }
+            Ok(self.status)
+        }
+    }
+
+    impl Drop for PlatformSubmission {
+        fn drop(&mut self) {
+            if !self.stream.is_null() {
+                let _ = self.runtime.set_device(self.ordinal);
+                let _ = self.runtime.check(
+                    unsafe { (self.runtime.cuda_stream_destroy)(self.stream) },
+                    "cudaStreamDestroy",
+                );
+                self.stream = std::ptr::null_mut();
+            }
+        }
+    }
+
+    impl Drop for PlatformBufferInner {
+        fn drop(&mut self) {
+            if !self.device_ptr.is_null() {
+                let _ = self.runtime.set_device(self.ordinal);
+                let _ = self.runtime.check(
+                    unsafe { (self.runtime.cuda_free)(self.device_ptr) },
+                    "cudaFree",
+                );
+                self.device_ptr = std::ptr::null_mut();
+            }
+        }
+    }
+
+    impl CudaRuntime {
+        fn load() -> Result<Arc<Self>, RuntimeError> {
+            let library = load_library()?;
+            Ok(Arc::new(Self {
+                cuda_get_error_string: unsafe { load_symbol(&library, b"cudaGetErrorString\0")? },
+                cuda_set_device: unsafe { load_symbol(&library, b"cudaSetDevice\0")? },
+                cuda_malloc: unsafe { load_symbol(&library, b"cudaMalloc\0")? },
+                cuda_free: unsafe { load_symbol(&library, b"cudaFree\0")? },
+                cuda_memcpy: unsafe { load_symbol(&library, b"cudaMemcpy\0")? },
+                cuda_memcpy_async: unsafe { load_symbol(&library, b"cudaMemcpyAsync\0")? },
+                cuda_memset_async: unsafe { load_symbol(&library, b"cudaMemsetAsync\0")? },
+                cuda_stream_create: unsafe { load_symbol(&library, b"cudaStreamCreate\0")? },
+                cuda_stream_destroy: unsafe { load_symbol(&library, b"cudaStreamDestroy\0")? },
+                cuda_stream_synchronize: unsafe {
+                    load_symbol(&library, b"cudaStreamSynchronize\0")?
+                },
+                _library: library,
+            }))
+        }
+
+        fn set_device(&self, ordinal: u16) -> Result<(), RuntimeError> {
+            self.check(
+                unsafe { (self.cuda_set_device)(i32::from(ordinal)) },
+                "cudaSetDevice",
+            )
+        }
+
+        fn check(&self, code: CudaError, operation: &str) -> Result<(), RuntimeError> {
+            if code == CUDA_SUCCESS {
+                return Ok(());
+            }
+            let message = unsafe {
+                let error_ptr = (self.cuda_get_error_string)(code);
+                if error_ptr.is_null() {
+                    None
+                } else {
+                    Some(CStr::from_ptr(error_ptr).to_string_lossy().into_owned())
+                }
+            }
+            .unwrap_or_else(|| format!("CUDA error code {code}"));
+            Err(RuntimeError::Backend(format!(
+                "{operation} failed: {message}"
+            )))
+        }
+    }
+
+    pub(super) fn configure_backend(
+        _descriptor: super::DeviceDescriptor,
+    ) -> Result<ConfiguredBackend, RuntimeError> {
+        let runtime = CudaRuntime::load()?;
+        runtime.set_device(_descriptor.device.ordinal())?;
+        Ok(ConfiguredBackend {
+            runtime,
+            ordinal: _descriptor.device.ordinal(),
+        })
+    }
+
+    unsafe fn load_symbol<T: Copy>(library: &Library, name: &[u8]) -> Result<T, RuntimeError> {
+        unsafe { library.get::<T>(name) }
+            .map(|symbol| *symbol)
+            .map_err(|error| {
+                RuntimeError::Backend(format!(
+                    "failed to load CUDA runtime symbol {}: {error}",
+                    String::from_utf8_lossy(name).trim_end_matches('\0')
+                ))
+            })
+    }
+
+    fn load_library() -> Result<Library, RuntimeError> {
+        for candidate in ["libcudart.so.13", "libcudart.so"] {
+            let library = unsafe { Library::new(candidate) };
+            if let Ok(library) = library {
+                return Ok(library);
+            }
+        }
+        Err(RuntimeError::Backend(String::from(
+            "failed to load libcudart.so.13 or libcudart.so",
+        )))
+    }
+}
+
+#[cfg(not(target_os = "linux"))]
+mod platform {
+    use super::{CudaCommandStatus, CudaCommandWait};
+    use mox_runtime::RuntimeError;
+
+    #[derive(Clone)]
+    pub(super) struct PlatformBuffer;
+
+    pub(super) struct PlatformSubmission;
+
+    pub(super) struct ConfiguredBackend;
+
+    impl ConfiguredBackend {
+        pub(super) fn allocate(&self, _byte_len: usize) -> Result<PlatformBuffer, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn begin_submission(&self) -> Result<PlatformSubmission, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+    }
+
+    impl PlatformBuffer {
+        pub(super) fn write_bytes(&self, _bytes: &[u8]) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn read_bytes(&self, _byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+    }
+
+    impl PlatformSubmission {
+        pub(super) fn fill_buffer(
+            &mut self,
+            _buffer: &PlatformBuffer,
+            _byte_len: usize,
+            _value: u8,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn copy_buffer(
+            &mut self,
+            _source: &PlatformBuffer,
+            _destination: &PlatformBuffer,
+            _byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn commit(
+            self,
+            _wait: CudaCommandWait,
+        ) -> Result<CudaCommandStatus, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+    }
+
+    pub(super) fn configure_backend(
+        _descriptor: super::DeviceDescriptor,
+    ) -> Result<ConfiguredBackend, RuntimeError> {
+        Err(RuntimeError::Backend(String::from(
+            "cuda runtime substrate currently requires Linux libcudart",
+        )))
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use mox_core::{DType, Shape, TensorSpec};
+
+    use super::CudaMemorySpace;
     use super::{
-        CudaBackend, HealthStatus, architecture_from_compute_capability, cuda_health,
-        parse_inventory_row, parse_mig_profile, recovery_profile, risk_profile,
+        CudaBackend, CudaCommandStatus, CudaCommandWait, HealthStatus,
+        architecture_from_compute_capability, cuda_health, parse_inventory_row, parse_mig_profile,
+        recovery_profile, risk_profile,
     };
-    use mox_runtime::{DeviceDiscovery, NvidiaRecoveryAction, NvidiaRiskLevel};
+    use mox_core::Device;
+    use mox_runtime::{Allocator, DeviceDiscovery, NvidiaRecoveryAction, NvidiaRiskLevel};
 
     #[test]
     fn inventory_row_parses_into_expected_descriptor_inputs() {
@@ -502,8 +1250,7 @@ mod tests {
                 "0, NVIDIA GeForce RTX 4080, 00000000:01:00.0, 16376, 8.9, Yes, [N/A], Disabled, HMM",
             )
             .expect("inventory row should parse")
-            .into_device_descriptor()
-            .expect("device descriptor should build"),
+            .into_device_descriptor(),
         ];
         let health = cuda_health(&devices);
         assert_eq!(health.status, HealthStatus::Degraded);
@@ -521,5 +1268,61 @@ mod tests {
             HealthStatus::Offline => {}
         }
         Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_runtime_resources_are_explicit_when_available() {
+        let backend = CudaBackend::new();
+        if let Some(descriptor) = backend.selected_device() {
+            let resources = backend
+                .runtime_resources()
+                .expect("available cuda backend should surface runtime resources");
+            assert_eq!(resources.allocator_pool.policy.max_cached_buffers, 128);
+            assert!(!resources.kernel_cache.policy.enabled);
+            assert_eq!(
+                resources
+                    .device_memory_budget
+                    .as_ref()
+                    .and_then(|budget| budget.total_bytes),
+                descriptor.memory_capacity_bytes
+            );
+        } else {
+            assert!(backend.runtime_resources().is_none());
+        }
+    }
+
+    #[test]
+    fn cuda_backend_allocates_and_submits_copy_when_available()
+    -> Result<(), mox_runtime::RuntimeError> {
+        let mut backend = CudaBackend::new();
+        let Some(device) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+
+        let spec = TensorSpec::new(Shape::new(vec![4]), DType::F32, device.device.clone());
+        let mut left = backend.allocate(&spec)?;
+        let right = backend.allocate(&spec)?;
+        assert_eq!(left.memory_space(), CudaMemorySpace::Device);
+        assert!(!left.host_visible());
+        left.write_f32(&[1.0, 2.0, 3.0, 4.0])?;
+
+        let mut submission = backend.begin_submission()?;
+        submission.copy_buffer(&left, &right)?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.status, CudaCommandStatus::Completed);
+        assert_eq!(report.encoded_operations, 1);
+        assert_eq!(right.read_f32()?, vec![1.0, 2.0, 3.0, 4.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_refuses_allocation_when_unavailable() {
+        let mut backend = CudaBackend::new();
+        if backend.selected_device().is_some() {
+            return;
+        }
+        let spec = TensorSpec::new(Shape::new(vec![1]), DType::F32, Device::cpu());
+        assert!(backend.allocate(&spec).is_err());
     }
 }
