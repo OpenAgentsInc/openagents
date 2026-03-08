@@ -85,6 +85,7 @@ This prevents two opposite mistakes:
 The policy is wired into:
 
 - `crates/mox/mox-serve/tests/metal_embeddings_parity.rs`
+- `crates/mox/mox-serve/tests/metal_text_generation_parity.rs`
 - `crates/mox/mox-serve/src/conformance.rs` embed comparisons
 - `crates/mox/mox-backend-metal/src/lib.rs` policy documentation tests
 

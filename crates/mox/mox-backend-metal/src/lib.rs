@@ -9,8 +9,6 @@ use std::{
 };
 
 use mox_compiler::compile_graph;
-#[cfg(target_os = "macos")]
-use mox_core::QuantizationMode;
 use mox_core::{DType, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
@@ -20,10 +18,7 @@ use mox_runtime::{
     HealthStatus, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
 };
 #[cfg(target_os = "macos")]
-use mox_runtime::{
-    KernelCachePolicy, KernelCacheReport, KernelCacheState, QuantizationExecution,
-    QuantizationLoadPath, QuantizationSupport,
-};
+use mox_runtime::{KernelCachePolicy, KernelCacheReport, KernelCacheState};
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submission";
@@ -960,7 +955,8 @@ mod platform {
     use mox_core::{DType, Device, DeviceKind, QuantizationMode};
     use mox_runtime::{
         BufferHandle, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCacheReport,
-        QuantizationExecution, QuantizationSupport, RuntimeError, RuntimeHealth,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeError,
+        RuntimeHealth,
     };
 
     use super::{
