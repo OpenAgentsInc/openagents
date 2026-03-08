@@ -17,6 +17,7 @@ path = "src/lib.rs"
 hex = { workspace = true }
 memmap2 = "0.9"
 serde = { workspace = true }
+serde_json = { workspace = true }
 sha2 = { workspace = true }
 thiserror = { workspace = true }
 

@@ -1,5 +1,7 @@
 //! Local blob and catalog substrate for Mox.
 
+mod ollama;
+
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -9,6 +11,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+pub use ollama::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "local blob access and catalog substrate";
@@ -487,7 +491,7 @@ fn open_blob_backing(
     }
 }
 
-fn canonical_ollama_digest(digest: &str) -> Result<String, BlobError> {
+pub(crate) fn canonical_ollama_digest(digest: &str) -> Result<String, BlobError> {
     let normalized = digest.trim();
     let (prefix, value) = if let Some(value) = normalized.strip_prefix("sha256:") {
         ("sha256", value)
