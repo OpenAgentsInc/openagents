@@ -31,6 +31,7 @@ pub use mox_models::{
 use mox_runtime::{
     BackendSelection, DeviceDiscovery, HealthStatus, LoadedModelResidency, RuntimeError,
 };
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -164,21 +165,47 @@ pub enum GenerationInput {
     Tokens(TokenSequence),
 }
 
-/// Deterministic decode strategy.
+/// Decode strategy for text generation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum DecodeStrategy {
     /// Greedy argmax decode.
     Greedy,
+    /// Probability sampling with optional temperature, top-k, and top-p controls.
+    Sample,
 }
 
 /// Generation options for the phase-1 reference path.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GenerationOptions {
     /// Maximum number of output tokens to emit.
     pub max_output_tokens: usize,
     /// Decode strategy.
     pub decode_strategy: DecodeStrategy,
+    /// Temperature override for stochastic sampling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Top-k sampling cap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
+    /// Top-p / nucleus sampling threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    /// Repeat penalty applied to previously seen tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+    /// Presence penalty applied once to previously seen tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    /// Frequency penalty scaled by prior token count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    /// Deterministic seed for stochastic decode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+    /// Explicit stop sequences to truncate from generated text.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stop_sequences: Vec<String>,
 }
 
 impl GenerationOptions {
@@ -188,12 +215,53 @@ impl GenerationOptions {
         Self {
             max_output_tokens,
             decode_strategy: DecodeStrategy::Greedy,
+            temperature: None,
+            top_k: None,
+            top_p: None,
+            repeat_penalty: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            seed: None,
+            stop_sequences: Vec::new(),
         }
+    }
+
+    /// Creates stochastic sampling options with Ollama-aligned default posture.
+    #[must_use]
+    pub fn sample(max_output_tokens: usize) -> Self {
+        Self {
+            decode_strategy: DecodeStrategy::Sample,
+            ..Self::greedy(max_output_tokens)
+        }
+    }
+
+    fn effective_temperature(&self) -> f32 {
+        self.temperature.unwrap_or(0.8)
+    }
+
+    fn effective_top_k(&self) -> Option<usize> {
+        self.top_k.or(Some(40))
+    }
+
+    fn effective_top_p(&self) -> Option<f32> {
+        self.top_p.or(Some(0.9))
+    }
+
+    fn effective_repeat_penalty(&self) -> f32 {
+        self.repeat_penalty.unwrap_or(1.0)
+    }
+
+    fn effective_presence_penalty(&self) -> f32 {
+        self.presence_penalty.unwrap_or(0.0)
+    }
+
+    fn effective_frequency_penalty(&self) -> f32 {
+        self.frequency_penalty.unwrap_or(0.0)
     }
 }
 
 /// Text-generation request contract.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GenerationRequest {
     /// Stable request identifier.
     pub request_id: String,
@@ -1501,6 +1569,34 @@ impl TextGenerationExecutor for CpuModelTextGenerationService {
 /// Honest CPU product alias for model-backed text generation.
 pub type CpuProductTextGenerationService = CpuModelTextGenerationService;
 
+struct GenerationSampler {
+    options: GenerationOptions,
+    rng: StdRng,
+}
+
+impl GenerationSampler {
+    fn new(options: &GenerationOptions) -> Self {
+        let rng = options
+            .seed
+            .map_or_else(StdRng::from_os_rng, StdRng::seed_from_u64);
+        Self {
+            options: options.clone(),
+            rng,
+        }
+    }
+
+    fn select_next_token(&mut self, logits: &[f32], cache: &InMemoryKvCache) -> Option<TokenId> {
+        let mut adjusted_logits = logits.to_vec();
+        apply_generation_penalties(&mut adjusted_logits, cache, &self.options);
+        if self.options.decode_strategy == DecodeStrategy::Greedy
+            || self.options.effective_temperature() <= 1e-6
+        {
+            return select_argmax(&adjusted_logits);
+        }
+        sample_next_token(&mut self.rng, &adjusted_logits, &self.options)
+    }
+}
+
 fn run_generation_request<M>(
     backend: &mut CpuBackend,
     models: &mut InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
@@ -1572,6 +1668,7 @@ where
         }
 
         let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
+        let mut sampler = GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
@@ -1581,7 +1678,8 @@ where
                 break TerminationReason::ContextLimit;
             }
 
-            let next_token = select_argmax(&last_logits)
+            let next_token = sampler
+                .select_next_token(&last_logits, &cache)
                 .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
             if next_token == eos_id {
                 break TerminationReason::EndOfSequence;
@@ -1592,6 +1690,16 @@ where
             let step = loaded_model.execute_step(backend, next_token, cache.len(), &context)?;
             cache.append(next_token, step.hidden.clone(), step.hidden)?;
             last_logits = step.logits;
+
+            if truncate_generated_text(
+                loaded_model.model().tokenizer(),
+                &mut generated_tokens,
+                &request.options.stop_sequences,
+            )
+            .is_some()
+            {
+                break TerminationReason::EndOfSequence;
+            }
         };
 
         if let Some(session_id) = &request.session_id {
@@ -1616,6 +1724,123 @@ where
 
     let _ = models.finish_request(model_id, current_time_millis());
     result
+}
+
+fn apply_generation_penalties(
+    logits: &mut [f32],
+    cache: &InMemoryKvCache,
+    options: &GenerationOptions,
+) {
+    let repeat_penalty = options.effective_repeat_penalty();
+    let presence_penalty = options.effective_presence_penalty();
+    let frequency_penalty = options.effective_frequency_penalty();
+    if (repeat_penalty - 1.0).abs() <= f32::EPSILON
+        && presence_penalty.abs() <= f32::EPSILON
+        && frequency_penalty.abs() <= f32::EPSILON
+    {
+        return;
+    }
+
+    let mut counts = BTreeMap::<u32, usize>::new();
+    for entry in cache.entries() {
+        *counts.entry(entry.token.as_u32()).or_default() += 1;
+    }
+
+    for (token_id, count) in counts {
+        let Some(logit) = logits.get_mut(token_id as usize) else {
+            continue;
+        };
+        if repeat_penalty > 0.0 && (repeat_penalty - 1.0).abs() > f32::EPSILON {
+            if *logit >= 0.0 {
+                *logit /= repeat_penalty;
+            } else {
+                *logit *= repeat_penalty;
+            }
+        }
+        if presence_penalty.abs() > f32::EPSILON {
+            *logit -= presence_penalty;
+        }
+        if frequency_penalty.abs() > f32::EPSILON {
+            *logit -= frequency_penalty * (count as f32);
+        }
+    }
+}
+
+fn sample_next_token(
+    rng: &mut StdRng,
+    logits: &[f32],
+    options: &GenerationOptions,
+) -> Option<TokenId> {
+    let temperature = options.effective_temperature();
+    if temperature <= 1e-6 {
+        return select_argmax(logits);
+    }
+
+    let max_logit = logits.iter().copied().max_by(f32::total_cmp)?;
+    let mut probabilities = logits
+        .iter()
+        .enumerate()
+        .map(|(index, logit)| (index, ((*logit - max_logit) / temperature).exp()))
+        .collect::<Vec<_>>();
+    probabilities.sort_by(|left, right| right.1.total_cmp(&left.1));
+
+    if let Some(top_k) = options.effective_top_k() {
+        if top_k > 0 && top_k < probabilities.len() {
+            probabilities.truncate(top_k);
+        }
+    }
+
+    if let Some(top_p) = options.effective_top_p() {
+        if top_p > 0.0 && top_p < 1.0 {
+            let total = probabilities.iter().map(|(_, value)| *value).sum::<f32>();
+            let mut cumulative = 0.0;
+            let mut truncated = Vec::new();
+            for (index, probability) in probabilities {
+                cumulative += probability / total.max(f32::EPSILON);
+                truncated.push((index, probability));
+                if cumulative >= top_p {
+                    break;
+                }
+            }
+            probabilities = truncated;
+        }
+    }
+
+    let total = probabilities.iter().map(|(_, value)| *value).sum::<f32>();
+    if total <= 0.0 {
+        return select_argmax(logits);
+    }
+
+    let mut target = rng.random::<f32>() * total;
+    for (index, probability) in &probabilities {
+        target -= *probability;
+        if target <= 0.0 {
+            return Some(TokenId(*index as u32));
+        }
+    }
+    probabilities
+        .last()
+        .map(|(index, _)| TokenId(*index as u32))
+}
+
+fn truncate_generated_text(
+    tokenizer: &FixtureWordTokenizer,
+    generated_tokens: &mut Vec<TokenId>,
+    stop_sequences: &[String],
+) -> Option<String> {
+    if stop_sequences.is_empty() {
+        return None;
+    }
+
+    let text = tokenizer.decode(generated_tokens);
+    let stop_index = stop_sequences
+        .iter()
+        .filter(|stop| !stop.is_empty())
+        .filter_map(|stop| text.find(stop))
+        .min()?;
+    let truncated = text[..stop_index].trim_end().to_string();
+    *generated_tokens = tokenizer.encode(truncated.as_str()).as_slice().to_vec();
+    Some(truncated)
 }
 
 fn build_generation_graph<M>(
@@ -2170,7 +2395,7 @@ mod tests {
         GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
         InMemoryGenerationSessionStore, ModelDescriptor, ReferenceTextGenerationError,
         ReferenceWordDecoder, SessionId, SmokeByteEmbedder, SmokeEmbeddingsService,
-        TerminationReason, TextGenerationExecutor, WeightBundleMetadata, WeightFormat,
+        TerminationReason, TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat,
         WeightSource, WeightTensorMetadata,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
@@ -2322,6 +2547,54 @@ mod tests {
         let decoded: GenerationResponse = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, response);
         assert_eq!(decoded.usage.output_tokens, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn generation_sampling_options_round_trip() -> Result<(), Box<dyn std::error::Error>> {
+        let options = GenerationOptions {
+            max_output_tokens: 16,
+            decode_strategy: super::DecodeStrategy::Sample,
+            temperature: Some(0.7),
+            top_k: Some(32),
+            top_p: Some(0.85),
+            repeat_penalty: Some(1.2),
+            presence_penalty: Some(0.4),
+            frequency_penalty: Some(0.3),
+            seed: Some(17),
+            stop_sequences: vec![String::from("</end>"), String::from("STOP")],
+        };
+
+        let encoded = serde_json::to_value(&options)?;
+        assert_eq!(encoded["decode_strategy"], "sample");
+        assert!(
+            (encoded["temperature"].as_f64().expect("temperature") - 0.7).abs() < 1e-6,
+            "temperature should round-trip as 0.7"
+        );
+        assert_eq!(encoded["top_k"], 32);
+        assert!((encoded["top_p"].as_f64().expect("top_p") - 0.85).abs() < 1e-6);
+        assert!((encoded["repeat_penalty"].as_f64().expect("repeat_penalty") - 1.2).abs() < 1e-6);
+        assert!(
+            (encoded["presence_penalty"]
+                .as_f64()
+                .expect("presence_penalty")
+                - 0.4)
+                .abs()
+                < 1e-6
+        );
+        assert!(
+            (encoded["frequency_penalty"]
+                .as_f64()
+                .expect("frequency_penalty")
+                - 0.3)
+                .abs()
+                < 1e-6
+        );
+        assert_eq!(encoded["seed"], 17);
+        assert_eq!(
+            encoded["stop_sequences"],
+            serde_json::json!(["</end>", "STOP"])
+        );
         Ok(())
     }
 
@@ -2526,6 +2799,60 @@ mod tests {
     }
 
     #[test]
+    fn seeded_sampling_is_replayable() {
+        let options = GenerationOptions {
+            max_output_tokens: 4,
+            decode_strategy: super::DecodeStrategy::Sample,
+            temperature: Some(0.9),
+            top_k: Some(3),
+            top_p: Some(0.95),
+            repeat_penalty: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            seed: Some(42),
+            stop_sequences: Vec::new(),
+        };
+        let cache = super::InMemoryKvCache::new(8, 1);
+        let logits = vec![3.0, 2.9, 2.8];
+        let mut left = super::GenerationSampler::new(&options);
+        let mut right = super::GenerationSampler::new(&options);
+
+        let left_draws = (0..4)
+            .map(|_| left.select_next_token(&logits, &cache).expect("sample"))
+            .collect::<Vec<_>>();
+        let right_draws = (0..4)
+            .map(|_| right.select_next_token(&logits, &cache).expect("sample"))
+            .collect::<Vec<_>>();
+
+        assert_eq!(left_draws, right_draws);
+    }
+
+    #[test]
+    fn penalties_shift_token_selection() -> Result<(), Box<dyn std::error::Error>> {
+        let options = GenerationOptions {
+            max_output_tokens: 4,
+            decode_strategy: super::DecodeStrategy::Greedy,
+            temperature: None,
+            top_k: None,
+            top_p: None,
+            repeat_penalty: Some(2.0),
+            presence_penalty: Some(0.5),
+            frequency_penalty: Some(0.5),
+            seed: None,
+            stop_sequences: Vec::new(),
+        };
+        let mut cache = super::InMemoryKvCache::new(8, 1);
+        cache.append(TokenId(1), vec![0.0], vec![0.0])?;
+        cache.append(TokenId(1), vec![0.0], vec![0.0])?;
+
+        let mut logits = vec![1.0, 3.0, 2.5];
+        super::apply_generation_penalties(&mut logits, &cache, &options);
+
+        assert_eq!(super::select_argmax(&logits), Some(TokenId(2)));
+        Ok(())
+    }
+
+    #[test]
     fn cpu_reference_text_generation_is_deterministic() -> Result<(), Box<dyn std::error::Error>> {
         let mut service = CpuReferenceTextGenerationService::new()?;
         let request = GenerationRequest::new_text(
@@ -2596,6 +2923,31 @@ mod tests {
         let reset = service.generate(&reset_request)?;
         assert_eq!(reset.output.text, "grad");
         assert_eq!(reset.usage.cache_tokens, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_text_generation_truncates_stop_sequences()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let request = GenerationRequest::new_text(
+            "gen-ref-stop",
+            service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions {
+                stop_sequences: vec![String::from("agents")],
+                ..GenerationOptions::greedy(4)
+            },
+        );
+
+        let response = service.generate(&request)?;
+        assert_eq!(response.output.text, "open");
+        assert_eq!(
+            response.output.tokens.as_slice(),
+            &[FixtureWordTokenizer::OPEN_ID]
+        );
+        assert_eq!(response.termination, TerminationReason::EndOfSequence);
         Ok(())
     }
 

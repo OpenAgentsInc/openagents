@@ -4533,6 +4533,7 @@ dependencies = [
  "mox-models",
  "mox-provider",
  "mox-runtime",
+ "rand 0.9.2",
  "reqwest",
  "serde",
  "serde_json",

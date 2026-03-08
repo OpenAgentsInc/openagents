@@ -22,6 +22,7 @@ mox-core = { path = "../mox-core" }
 mox-ir = { path = "../mox-ir" }
 mox-models = { path = "../mox-models" }
 mox-runtime = { path = "../mox-runtime" }
+rand = { workspace = true }
 reqwest = { workspace = true, features = ["blocking"] }
 serde = { workspace = true }
 serde_json = { workspace = true }
