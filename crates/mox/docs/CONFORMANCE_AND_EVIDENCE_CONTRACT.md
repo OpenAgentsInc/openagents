@@ -389,6 +389,17 @@ Required execution-plan and cache fields:
 
 - `execution_plan_digest`
 - `compile_digest`
+- `runtime_resources.execution_plan_cache`
+  - `policy.enabled`
+  - `policy.max_cached_entries`
+  - `policy.max_cached_bytes`
+  - `state.cached_entries`
+  - `state.cached_bytes`
+- `compile_path`
+  - `temperature`
+    - `cold_compile` or `warm_reuse`
+  - `execution_plan_cache`
+  - `kernel_cache`
 - `plan_cache_state`
   - `hit`, `miss`, or `rebuilt`
 - `prefix_cache_state`

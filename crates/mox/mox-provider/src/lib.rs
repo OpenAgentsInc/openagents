@@ -7,12 +7,12 @@ use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
     BackendProbeState, BackendSelection, BackendToolchainIdentity, CacheAction,
     CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    DeviceInventoryQualifiers, ExecutionCapabilityProfile, ExecutionTopologyPlan, HealthStatus,
-    KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability,
-    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata,
-    NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, ServedArtifactIdentity, ValidationMatrixReference,
-    validation_reference_for_served_product,
+    CompilePathEvidence, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
+    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
+    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
+    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, ServedArtifactIdentity,
+    ValidationMatrixReference, validation_reference_for_served_product,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -668,6 +668,9 @@ pub struct ExecutionReceipt {
     /// Explicit cache actions surfaced for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
+    /// Explicit warm/cold compile-path evidence for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_path: Option<CompilePathEvidence>,
     /// Output dimensions.
     pub output_dimensions: usize,
     /// Number of request inputs.
@@ -733,7 +736,15 @@ impl ExecutionReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
-            cache_observations: cache_observations_for_embedding_model(&request.model),
+            cache_observations: response
+                .provenance
+                .as_ref()
+                .map(|value| value.cache_observations.clone())
+                .unwrap_or_else(|| cache_observations_for_embedding_model(&request.model, None)),
+            compile_path: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.compile_path.clone()),
             output_dimensions: response.metadata.dimensions,
             input_count: response.metadata.input_count,
             output_vector_count: response.metadata.vector_count,
@@ -801,7 +812,8 @@ impl ExecutionReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
-            cache_observations: cache_observations_for_embedding_model(&request.model),
+            cache_observations: cache_observations_for_embedding_model(&request.model, None),
+            compile_path: None,
             output_dimensions: request
                 .output_dimensions
                 .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions)
@@ -1022,6 +1034,9 @@ pub struct TextGenerationReceipt {
     /// Explicit cache actions surfaced for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
+    /// Explicit warm/cold compile-path evidence for the realized request path, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_path: Option<CompilePathEvidence>,
     /// Explicit resident-memory plan for the loaded model, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_plan: Option<ModelMemoryPlan>,
@@ -1142,6 +1157,10 @@ impl TextGenerationReceipt {
                 .as_ref()
                 .map(|value| value.cache_observations.clone())
                 .unwrap_or_default(),
+            compile_path: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.compile_path.clone()),
             memory_plan: response
                 .provenance
                 .as_ref()
@@ -1256,6 +1275,7 @@ impl TextGenerationReceipt {
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
             cache_observations: failed_generation_cache_observations(request),
+            compile_path: None,
             memory_plan: None,
             residency_policy: None,
             residency_snapshot: None,
@@ -3117,6 +3137,7 @@ mod tests {
                     prefix_digest: String::from("prefix-digest"),
                     prefix_tokens: 1,
                 }),
+                compile_path: None,
                 cache_observations: Vec::new(),
             },
         );
@@ -3266,6 +3287,7 @@ mod tests {
                 prefix_cache_state: Some(PrefixCacheState::None),
                 prefix_cache_policy: Some(default_prefix_cache_policy()),
                 prefix_cache_identity: None,
+                compile_path: None,
                 cache_observations: Vec::new(),
             },
         );
@@ -3593,6 +3615,13 @@ mod tests {
 
     fn sample_backend_runtime_resources() -> BackendRuntimeResources {
         BackendRuntimeResources {
+            execution_plan_cache: mox_runtime::ExecutionPlanCacheReport {
+                policy: mox_runtime::ExecutionPlanCachePolicy::bounded(8, Some(4096)),
+                state: mox_runtime::ExecutionPlanCacheState {
+                    cached_entries: 2,
+                    cached_bytes: 512,
+                },
+            },
             allocator_pool: AllocatorPoolReport {
                 policy: AllocatorPoolPolicy::exact_tensor_spec(64, 8 * 1024 * 1024),
                 state: AllocatorPoolState {

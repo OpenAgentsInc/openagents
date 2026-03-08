@@ -14,7 +14,9 @@ use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
     BackendDegradedPolicy, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
-    DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult,
+    CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
+    DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics,
+    ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult,
     HealthStatus, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
 };
 #[cfg(target_os = "macos")]
@@ -30,6 +32,8 @@ const LEGACY_FAMILY_FLAG: &str = "family_legacy";
 
 const METAL_POOL_MAX_CACHED_BUFFERS: usize = 128;
 const METAL_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
+const METAL_EXECUTION_PLAN_CACHE_MAX_ENTRIES: usize = 64;
+const METAL_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
 #[cfg(target_os = "macos")]
 const METAL_KERNEL_CACHE_MAX_ENTRIES: usize = 1;
 #[cfg(target_os = "macos")]
@@ -300,6 +304,7 @@ struct AvailableMetalBackend {
     descriptor: DeviceDescriptor,
     platform: platform::ConfiguredBackend,
     pool: MetalAllocatorPool,
+    execution_plan_cache: MetalExecutionPlanCache,
 }
 
 /// Metal backend discovery, allocation, and submission implementation.
@@ -439,6 +444,9 @@ impl MetalBackend {
                         descriptor,
                         platform: platform_backend,
                         pool: MetalAllocatorPool::new(metal_allocator_pool_policy()),
+                        execution_plan_cache: MetalExecutionPlanCache::new(
+                            metal_execution_plan_cache_policy(),
+                        ),
                     })),
                 }
             }
@@ -453,6 +461,13 @@ impl MetalBackend {
     pub fn selected_device(&self) -> Option<&DeviceDescriptor> {
         match &self.state {
             MetalBackendState::Available(backend) => Some(&backend.descriptor),
+            MetalBackendState::Unavailable(_) => None,
+        }
+    }
+
+    fn selected_backend_mut(&mut self) -> Option<&mut AvailableMetalBackend> {
+        match &mut self.state {
+            MetalBackendState::Available(backend) => Some(backend),
             MetalBackendState::Unavailable(_) => None,
         }
     }
@@ -487,9 +502,16 @@ impl MetalBackend {
         graph: &Graph,
         inputs: &BTreeMap<TensorId, MetalBuffer>,
     ) -> Result<ExecutionResult<MetalBuffer>, RuntimeError> {
-        let plan =
-            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
-        self.execute(&plan, inputs)
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        let (plan, plan_digest, compile_path) = backend.lookup_or_compile(graph)?;
+        let mut result = backend.execute(&plan, inputs)?;
+        result.metrics.execution_plan_digest = Some(plan_digest);
+        result.metrics.compile_path = Some(compile_path);
+        Ok(result)
     }
 
     /// Begins an explicit command submission on the selected Metal device.
@@ -610,6 +632,7 @@ impl DeviceDiscovery for MetalBackend {
     fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
         match &self.state {
             MetalBackendState::Available(backend) => Some(BackendRuntimeResources {
+                execution_plan_cache: backend.execution_plan_cache.report(),
                 allocator_pool: backend.pool.report(),
                 kernel_cache: backend.platform.kernel_cache_report(),
                 device_memory_budget: Some(
@@ -657,6 +680,21 @@ impl ExecutionBackend for MetalBackend {
 }
 
 impl AvailableMetalBackend {
+    fn lookup_or_compile(
+        &mut self,
+        graph: &Graph,
+    ) -> Result<(ExecutionPlan, String, CompilePathEvidence), RuntimeError> {
+        let kernel_cache_before = self.platform.kernel_cache_report();
+        let (plan, plan_digest, plan_cache_hit) =
+            self.execution_plan_cache.lookup_or_compile(graph)?;
+        let kernel_cache_after = self.platform.kernel_cache_report();
+        Ok((
+            plan,
+            plan_digest,
+            metal_compile_path_evidence(plan_cache_hit, &kernel_cache_before, &kernel_cache_after),
+        ))
+    }
+
     fn allocate(&mut self, spec: &TensorSpec) -> Result<MetalBuffer, RuntimeError> {
         if spec.device().kind() != DeviceKind::Metal {
             return Err(RuntimeError::Backend(format!(
@@ -819,9 +857,140 @@ impl AvailableMetalBackend {
             outputs,
             metrics: ExecutionMetrics {
                 steps_executed: plan.steps.len(),
+                execution_plan_digest: None,
+                compile_path: None,
             },
         })
     }
+}
+
+fn metal_execution_plan_cache_policy() -> ExecutionPlanCachePolicy {
+    ExecutionPlanCachePolicy::bounded(
+        METAL_EXECUTION_PLAN_CACHE_MAX_ENTRIES,
+        Some(METAL_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES),
+    )
+}
+
+#[derive(Clone, Debug)]
+struct CachedMetalExecutionPlan {
+    plan: ExecutionPlan,
+    plan_digest: String,
+}
+
+#[derive(Clone, Debug)]
+struct MetalExecutionPlanCache {
+    policy: ExecutionPlanCachePolicy,
+    cached: HashMap<String, CachedMetalExecutionPlan>,
+    state: ExecutionPlanCacheState,
+}
+
+impl MetalExecutionPlanCache {
+    fn new(policy: ExecutionPlanCachePolicy) -> Self {
+        Self {
+            policy,
+            cached: HashMap::new(),
+            state: ExecutionPlanCacheState::default(),
+        }
+    }
+
+    fn report(&self) -> ExecutionPlanCacheReport {
+        ExecutionPlanCacheReport {
+            policy: self.policy.clone(),
+            state: self.state.clone(),
+        }
+    }
+
+    fn lookup_or_compile(
+        &mut self,
+        graph: &Graph,
+    ) -> Result<(ExecutionPlan, String, bool), RuntimeError> {
+        let cache_key = graph.stable_digest();
+        if let Some(cached) = self.cached.get(&cache_key) {
+            return Ok((cached.plan.clone(), cached.plan_digest.clone(), true));
+        }
+
+        let plan =
+            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let plan_digest = plan.stable_digest();
+        let estimated_bytes = estimate_execution_plan_bytes(&plan, &plan_digest);
+        if self.policy.enabled
+            && self.cached.len() < self.policy.max_cached_entries
+            && self
+                .policy
+                .max_cached_bytes
+                .map(|limit| self.state.cached_bytes.saturating_add(estimated_bytes) <= limit)
+                .unwrap_or(true)
+        {
+            self.cached.insert(
+                cache_key,
+                CachedMetalExecutionPlan {
+                    plan: plan.clone(),
+                    plan_digest: plan_digest.clone(),
+                },
+            );
+            self.state.cached_entries = self.cached.len();
+            self.state.cached_bytes = self.state.cached_bytes.saturating_add(estimated_bytes);
+        }
+        Ok((plan, plan_digest, false))
+    }
+}
+
+fn metal_compile_path_evidence(
+    plan_cache_hit: bool,
+    kernel_cache_before: &mox_runtime::KernelCacheReport,
+    kernel_cache_after: &mox_runtime::KernelCacheReport,
+) -> CompilePathEvidence {
+    let execution_plan_cache = if plan_cache_hit {
+        CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            CacheAction::Reuse,
+            "reused a cached metal execution plan",
+        )
+    } else {
+        CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            CacheAction::Rebuild,
+            "compiled a new metal execution plan",
+        )
+    };
+    let kernel_cache = if !kernel_cache_after.policy.enabled {
+        CacheObservation::new(
+            CacheKind::KernelCache,
+            CacheAction::Bypass,
+            "metal kernel cache is disabled for this backend path",
+        )
+    } else if kernel_cache_after.state.cached_entries > kernel_cache_before.state.cached_entries
+        || kernel_cache_after.state.cached_bytes > kernel_cache_before.state.cached_bytes
+    {
+        CacheObservation::new(
+            CacheKind::KernelCache,
+            CacheAction::Rebuild,
+            "compiled at least one new metal kernel or pipeline",
+        )
+    } else {
+        CacheObservation::new(
+            CacheKind::KernelCache,
+            CacheAction::Reuse,
+            "reused the existing metal kernel cache",
+        )
+    };
+    CompilePathEvidence {
+        temperature: if plan_cache_hit {
+            CompilePathTemperature::WarmReuse
+        } else {
+            CompilePathTemperature::ColdCompile
+        },
+        execution_plan_cache,
+        kernel_cache,
+    }
+}
+
+fn estimate_execution_plan_bytes(plan: &ExecutionPlan, plan_digest: &str) -> u64 {
+    plan.stable_debug()
+        .len()
+        .saturating_add(plan_digest.len())
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 fn size_of_dtype(dtype: DType) -> usize {

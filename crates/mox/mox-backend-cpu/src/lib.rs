@@ -11,8 +11,10 @@ use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
     BackendExtensionSupport, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
-    BufferResidency, BufferStorageKind, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-    ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport,
+    BufferResidency, BufferStorageKind, CacheAction, CacheKind, CacheObservation,
+    CompilePathEvidence, CompilePathTemperature, DeviceDescriptor, DeviceDiscovery,
+    ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
+    ExecutionPlanCacheState, ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport,
     KernelCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     RuntimeError, RuntimeHealth,
 };
@@ -22,6 +24,8 @@ pub const CRATE_ROLE: &str = "CPU reference backend";
 
 const CPU_POOL_MAX_CACHED_BUFFERS: usize = 64;
 const CPU_POOL_MAX_CACHED_BYTES: u64 = 8 * 1024 * 1024;
+const CPU_EXECUTION_PLAN_CACHE_MAX_ENTRIES: usize = 64;
+const CPU_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
 
 /// Host-resident tensor buffer for CPU execution.
 #[derive(Clone, Debug, PartialEq)]
@@ -230,6 +234,7 @@ impl BufferHandle for CpuBuffer {
 #[derive(Clone, Debug)]
 pub struct CpuBackend {
     pool: CpuAllocatorPool,
+    execution_plan_cache: CpuExecutionPlanCache,
 }
 
 impl CpuBackend {
@@ -238,6 +243,7 @@ impl CpuBackend {
     pub fn new() -> Self {
         Self {
             pool: CpuAllocatorPool::new(cpu_allocator_pool_policy()),
+            execution_plan_cache: CpuExecutionPlanCache::new(cpu_execution_plan_cache_policy()),
         }
     }
 
@@ -256,9 +262,12 @@ impl CpuBackend {
         graph: &Graph,
         inputs: &BTreeMap<TensorId, CpuBuffer>,
     ) -> Result<ExecutionResult<CpuBuffer>, RuntimeError> {
-        let plan =
-            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
-        self.execute(&plan, inputs)
+        let (plan, plan_digest, compile_path) =
+            self.execution_plan_cache.lookup_or_compile(graph)?;
+        let mut result = self.execute(&plan, inputs)?;
+        result.metrics.execution_plan_digest = Some(plan_digest);
+        result.metrics.compile_path = Some(compile_path);
+        Ok(result)
     }
 
     /// Returns truthful provider/runtime backend selection for a CPU product path.
@@ -801,11 +810,128 @@ fn cpu_allocator_pool_policy() -> AllocatorPoolPolicy {
     AllocatorPoolPolicy::exact_tensor_spec(CPU_POOL_MAX_CACHED_BUFFERS, CPU_POOL_MAX_CACHED_BYTES)
 }
 
+fn cpu_execution_plan_cache_policy() -> ExecutionPlanCachePolicy {
+    ExecutionPlanCachePolicy::bounded(
+        CPU_EXECUTION_PLAN_CACHE_MAX_ENTRIES,
+        Some(CPU_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES),
+    )
+}
+
 fn cpu_kernel_cache_report() -> KernelCacheReport {
     KernelCacheReport {
         policy: KernelCachePolicy::disabled(),
         state: KernelCacheState::default(),
     }
+}
+
+#[derive(Clone, Debug)]
+struct CachedCpuExecutionPlan {
+    plan: ExecutionPlan,
+    plan_digest: String,
+}
+
+#[derive(Clone, Debug)]
+struct CpuExecutionPlanCache {
+    policy: ExecutionPlanCachePolicy,
+    cached: HashMap<String, CachedCpuExecutionPlan>,
+    state: ExecutionPlanCacheState,
+}
+
+impl CpuExecutionPlanCache {
+    fn new(policy: ExecutionPlanCachePolicy) -> Self {
+        Self {
+            policy,
+            cached: HashMap::new(),
+            state: ExecutionPlanCacheState::default(),
+        }
+    }
+
+    fn report(&self) -> ExecutionPlanCacheReport {
+        ExecutionPlanCacheReport {
+            policy: self.policy.clone(),
+            state: self.state.clone(),
+        }
+    }
+
+    fn lookup_or_compile(
+        &mut self,
+        graph: &Graph,
+    ) -> Result<(ExecutionPlan, String, CompilePathEvidence), RuntimeError> {
+        let cache_key = graph.stable_digest();
+        if let Some(cached) = self.cached.get(&cache_key) {
+            return Ok((
+                cached.plan.clone(),
+                cached.plan_digest.clone(),
+                CompilePathEvidence {
+                    temperature: CompilePathTemperature::WarmReuse,
+                    execution_plan_cache: CacheObservation::new(
+                        CacheKind::ExecutionPlan,
+                        CacheAction::Reuse,
+                        format!(
+                            "reused cached cpu execution plan for graph {}",
+                            graph.stable_digest()
+                        ),
+                    ),
+                    kernel_cache: CacheObservation::new(
+                        CacheKind::KernelCache,
+                        CacheAction::Bypass,
+                        "cpu backend does not retain a kernel cache",
+                    ),
+                },
+            ));
+        }
+
+        let plan =
+            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let plan_digest = plan.stable_digest();
+        let estimated_bytes = estimate_execution_plan_bytes(&plan, &plan_digest);
+        if self.policy.enabled
+            && self.cached.len() < self.policy.max_cached_entries
+            && self
+                .policy
+                .max_cached_bytes
+                .map(|limit| self.state.cached_bytes.saturating_add(estimated_bytes) <= limit)
+                .unwrap_or(true)
+        {
+            self.cached.insert(
+                cache_key,
+                CachedCpuExecutionPlan {
+                    plan: plan.clone(),
+                    plan_digest: plan_digest.clone(),
+                },
+            );
+            self.state.cached_entries = self.cached.len();
+            self.state.cached_bytes = self.state.cached_bytes.saturating_add(estimated_bytes);
+        }
+        Ok((
+            plan,
+            plan_digest,
+            CompilePathEvidence {
+                temperature: CompilePathTemperature::ColdCompile,
+                execution_plan_cache: CacheObservation::new(
+                    CacheKind::ExecutionPlan,
+                    CacheAction::Rebuild,
+                    format!(
+                        "compiled a new cpu execution plan for graph {}",
+                        graph.stable_digest()
+                    ),
+                ),
+                kernel_cache: CacheObservation::new(
+                    CacheKind::KernelCache,
+                    CacheAction::Bypass,
+                    "cpu backend does not retain a kernel cache",
+                ),
+            },
+        ))
+    }
+}
+
+fn estimate_execution_plan_bytes(plan: &ExecutionPlan, plan_digest: &str) -> u64 {
+    plan.stable_debug()
+        .len()
+        .saturating_add(plan_digest.len())
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 fn buffer_bytes_from_len(len: usize) -> u64 {
@@ -1133,6 +1259,7 @@ impl DeviceDiscovery for CpuBackend {
 
     fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
         Some(BackendRuntimeResources {
+            execution_plan_cache: self.execution_plan_cache.report(),
             allocator_pool: self.pool.report(),
             kernel_cache: cpu_kernel_cache_report(),
             device_memory_budget: None,
@@ -1193,6 +1320,8 @@ impl ExecutionBackend for CpuBackend {
             outputs,
             metrics: ExecutionMetrics {
                 steps_executed: plan.steps.len(),
+                execution_plan_digest: None,
+                compile_path: None,
             },
         })
     }
