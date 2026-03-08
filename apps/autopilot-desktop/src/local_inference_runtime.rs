@@ -124,6 +124,11 @@ pub trait LocalInferenceRuntime {
     fn drain_updates(&mut self) -> Vec<LocalInferenceRuntimeUpdate>;
 }
 
+pub fn default_local_inference_runtime() -> Result<Box<dyn LocalInferenceRuntime>, String> {
+    MoxRuntimeAdapter::new_reference()
+        .map(|adapter| Box::new(adapter) as Box<dyn LocalInferenceRuntime>)
+}
+
 /// Adapter that keeps the current Ollama worker behind the app-owned runtime seam.
 pub struct OllamaRuntimeAdapter {
     worker: OllamaExecutionWorker,
@@ -498,6 +503,7 @@ mod tests {
     use super::{
         LocalInferenceGenerateJob, LocalInferenceRuntime, LocalInferenceRuntimeCommand,
         LocalInferenceRuntimeUpdate, MoxRuntimeAdapter, OllamaRuntimeAdapter,
+        default_local_inference_runtime,
     };
     use crate::ollama_execution::OllamaExecutionConfig;
     use crate::state::job_inbox::JobExecutionParam;
@@ -714,5 +720,26 @@ mod tests {
         assert_eq!(completed.model, ReferenceWordDecoder::MODEL_ID);
         assert_eq!(completed.provenance.backend, "mox");
         assert!(!completed.output.is_empty());
+    }
+
+    #[test]
+    fn default_local_inference_runtime_uses_mox_reference_runtime() {
+        let mut runtime = default_local_inference_runtime().expect("default local runtime");
+        runtime
+            .enqueue(LocalInferenceRuntimeCommand::Refresh)
+            .expect("refresh");
+        let snapshot = runtime
+            .drain_updates()
+            .into_iter()
+            .find_map(|update| match update {
+                LocalInferenceRuntimeUpdate::Snapshot(value) => Some(value),
+                _ => None,
+            })
+            .expect("snapshot");
+        assert_eq!(snapshot.base_url, "in-process://mox");
+        assert_eq!(
+            snapshot.ready_model.as_deref(),
+            Some(ReferenceWordDecoder::MODEL_ID)
+        );
     }
 }

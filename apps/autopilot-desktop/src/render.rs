@@ -21,7 +21,9 @@ use crate::bitcoin_display::{format_btc_amount_from_sats, format_sats_amount};
 use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
-use crate::local_inference_runtime::{LocalInferenceRuntimeCommand, OllamaRuntimeAdapter};
+use crate::local_inference_runtime::{
+    LocalInferenceRuntimeCommand, default_local_inference_runtime,
+};
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::ollama_execution::OllamaExecutionSnapshot;
 use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
@@ -198,7 +200,9 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
         let ac_lane_worker = AcLaneWorker::spawn();
         let provider_nip90_lane_worker = ProviderNip90LaneWorker::spawn(initial_relay_urls.clone());
         let apple_fm_execution_worker = AppleFmBridgeWorker::spawn();
-        let local_inference_runtime = Box::new(OllamaRuntimeAdapter::spawn());
+        let local_inference_runtime = default_local_inference_runtime().map_err(|error| {
+            anyhow::anyhow!("failed to start default local inference runtime: {error}")
+        })?;
         let (provider_admin_runtime, provider_admin_listen_addr, provider_admin_last_error) =
             match crate::provider_admin::spawn_runtime() {
                 Ok(runtime) => {
