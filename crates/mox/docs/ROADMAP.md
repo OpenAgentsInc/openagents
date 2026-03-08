@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, after `MOX-123` / [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) landed in commit `cf986e282`, after `MOX-124` / [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) landed in commit `27273f837`, after `MOX-125` / [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) landed in commit `877112111`, after `MOX-126` / [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) landed in commit `cd3987928`, after `MOX-126A` / [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) landed in commit `0dfcf3f7c`, after `MOX-126B` / [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) landed in commit `2bd89d48f`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, after `MOX-123` / [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) landed in commit `cf986e282`, after `MOX-124` / [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) landed in commit `27273f837`, after `MOX-125` / [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) landed in commit `877112111`, after `MOX-126` / [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) landed in commit `cd3987928`, after `MOX-126A` / [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) landed in commit `0dfcf3f7c`, after `MOX-126B` / [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) landed in commit `2bd89d48f`, after `MOX-165` / [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) landed in commit `e4ffbee5b`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -251,6 +251,13 @@ per-issue commit anchors.
   longest-safe prefix reuse on the CPU reference path, stale-entry rebuild
   handling, and provider/receipt evidence carrying prefix-cache state,
   identity, policy, and reused-token counts
+- `MOX-165` / [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236):
+  OCI/Docker-v2 registry pull and ingestion in `mox-catalog`, with
+  Ollama-compatible manifest/blob URLs, manifest validation shared with local
+  scans, digest/size-checked blob writes into the existing local store,
+  explicit pull reports that distinguish reused-versus-downloaded blobs, and
+  a `mox-models` GGUF loader path that can consume a resolved local Ollama
+  manifest directly after pull
 
 ### GitHub issue status
 
@@ -279,6 +286,7 @@ checks via `gh issue view`:
 | [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) | Closed | `MOX-126` landed: deterministic text-generation session ownership in `mox-serve`, with descriptor-bound KV ownership, token-sequence ownership alongside KV state, explicit cache-plus-token commit on successful generation, and descriptor-drift refusal coverage. |
 | [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | Closed | `MOX-126A` landed: runtime-owned paged-KV policy/accounting, a logically paged per-session KV cache in `mox-serve` with explicit `refuse_new_pages` behavior, session metadata bound to KV policy/state, and generation/provider evidence carrying KV pages, bytes, and growth. |
 | [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) | Closed | `MOX-126B` landed: explicit shared prefix-cache policy/state/identity in `mox-runtime`, longest-safe prefix reuse plus stale rebuild and bypass handling in `mox-serve`, and provider/receipt truth for prefix reuse and reused-token counts. |
+| [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) | Closed | `MOX-165` landed: OCI/Docker-v2 registry pull into the local Ollama-style manifest/blob store, shared manifest validation for remote and local paths, digest/size-checked blob ingestion with reuse reporting, and `mox-models` loading from a resolved local manifest. |
 | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Closed | `MOX-110` landed: reusable GGUF metadata/tensor parsing, `WeightFormat::Gguf`, `GgufWeightBundleLoader`, and truthful GGUF tensor-type coverage for currently supported dense and quantized families. |
 | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Closed | `MOX-111` landed: reusable GGUF tokenizer metadata loading for SentencePiece and GPT-style BPE families, stable tokenizer digests, preserved BOS/EOS/add-bos/add-eos and pretokenizer truth, and validation for missing or invalid tokenizer metadata. |
 | [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174), [#3175](https://github.com/OpenAgentsInc/openagents/issues/3175), [#3176](https://github.com/OpenAgentsInc/openagents/issues/3176), [#3221](https://github.com/OpenAgentsInc/openagents/issues/3221) | Closed | Historical roadmap-seeded duplicates for `MOX-117`, `MOX-118`, `MOX-119`, and `MOX-161`; use the open detailed issues `#3166`, `#3167`, `#3168`, and `#3171` instead. |
@@ -307,7 +315,8 @@ state:
 | 17 | `MOX-126` | [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) | Closed | Deterministic text-generation session ownership is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 18 | `MOX-126A` | [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | Closed | Paged KV layout, accounting, and explicit refusal policy are now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 19 | `MOX-126B` | [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) | Closed | Shared prefix reuse truth is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
-| 20 | `MOX-165` | [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) | Open | This is now the next unresolved dependency because remote OCI ingestion is the remaining Epic B catalog/runtime population gap after local discovery, lifecycle, sessions, paged KV, and shared prefix truth landed. |
+| 20 | `MOX-165` | [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) | Closed | Remote OCI ingestion is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 21 | `MOX-127` | [#3187](https://github.com/OpenAgentsInc/openagents/issues/3187) | Open | This is now the next unresolved dependency because context budgeting, truncation, and over-limit refusal semantics are the first remaining behavioral-contract gap after the catalog/runtime ingestion path landed. |
 
 ## Current Reality
 
@@ -322,6 +331,10 @@ baseline on `main` is:
 - local Ollama manifests can now be discovered and resolved through a
   non-mutating `mox-catalog` surface with explicit scan warnings, normalized
   model names, parsed layer/media-type records, and blob-presence truth
+- remote OCI/Docker-v2 registries can now populate that same local
+  Ollama-style manifest/blob store through explicit pull reports, shared
+  manifest validation, digest/size-checked blob ingestion, and manifest-based
+  GGUF loading in `mox-models`
 - local installed-model `tags` / `show` parity now exists in `mox-serve`
   without the Ollama daemon, backed by the shared catalog plus explicit GGUF
   model-info and capability derivation
@@ -566,7 +579,7 @@ called out in the status section above.
 | `MOX-126` | [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) | Closed | Add GGUF-backed KV-cache ownership and deterministic session lifecycle for text generation | `mox-serve` | Landed in `cd3987928`: deterministic session ownership bound to full decoder identity, token-sequence ownership alongside KV state, explicit cache-plus-token commits, and descriptor-drift refusal coverage. |
 | `MOX-126A` | [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | Closed | Add paged KV-cache layout, accounting, and spill policy for long-context text generation | `mox-serve`, `mox-runtime`, `mox-provider` | Landed in `0dfcf3f7c`: runtime-owned paged-KV policy/accounting, logically paged per-session KV state, explicit `refuse_new_pages` behavior, and generation/provider evidence for KV pages, bytes, and growth. |
 | `MOX-126B` | [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) | Closed | Add shared prompt-prefix cache identity, reuse policy, accounting, and truth surfaces | `mox-serve`, `mox-runtime`, `mox-provider` | Landed in `2bd89d48f`: runtime-owned prefix-cache policy/state/identity, longest-safe shared prefix reuse with stale rebuild and bypass handling in `mox-serve`, and provider/receipt evidence for prefix reuse and reused-token counts. |
-| `MOX-165` | [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) | Open | Add OCI-distribution registry pull and model-ingestion pipeline (Ollama-compatible manifest + blobs) | `mox-catalog`, `mox-models` | Enables populating the model store from a remote OCI registry (self-hosted or third-party) or from GGUF sourced elsewhere (e.g. Hugging Face) without depending on Ollama's hosted registry. Reference: Ollama uses Docker v2 manifest + blobs at `GET /v2/<namespace>/<model>/manifests/<tag>` and `GET .../blobs/<digest>`; create/push in `~/code/ollama` (server/create.go, server/images.go, manifest/layer.go) shows the layer media types and manifest shape. |
+| `MOX-165` | [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) | Closed | Add OCI-distribution registry pull and model-ingestion pipeline (Ollama-compatible manifest + blobs) | `mox-catalog`, `mox-models` | Landed in `e4ffbee5b`: OCI/Docker-v2 manifest/blob pull into the local Ollama-style store, shared manifest validation for local and remote paths, digest/size-checked blob ingestion with reuse reporting, and manifest-based GGUF loading in `mox-models`. |
 
 ### Epic C: Behavioral contract and serving policy
 
@@ -645,9 +658,9 @@ for the minimum conformance harness scope and runtime evidence schema that
 
 The shortest honest path from today's `main` is:
 
-1. Land `MOX-165` next so the now-local Mox catalog/runtime boundary can be
-   populated from an OCI-distribution registry instead of only from an
-   existing Ollama-managed local store.
+1. Land `MOX-127` next so the now-local catalog/runtime boundary has explicit
+   context budgeting, truncation, and over-limit refusal semantics instead of
+   still inheriting fuzzy behavior from the old Ollama boundary.
 2. Land `MOX-127` through `MOX-139`, plus `MOX-157` through `MOX-159`, before
    app cutover so context, sampling, streaming, embeddings, integrity,
    fallback, allocator policy, fused-kernel escape hatches, observability, and
