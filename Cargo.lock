@@ -4408,6 +4408,7 @@ dependencies = [
 name = "mox-backend-amd-kfd"
 version = "0.1.0"
 dependencies = [
+ "mox-backend-cpu",
  "mox-core",
  "mox-runtime",
 ]
@@ -4416,6 +4417,7 @@ dependencies = [
 name = "mox-backend-amd-userspace"
 version = "0.1.0"
 dependencies = [
+ "mox-backend-cpu",
  "mox-core",
  "mox-runtime",
 ]

@@ -5,7 +5,7 @@ edition.workspace = true
 authors.workspace = true
 license.workspace = true
 publish.workspace = true
-description = "AMD KFD backend placeholder for Mox"
+description = "AMD KFD backend discovery and submission substrate for Mox"
 
 [lints]
 workspace = true
@@ -16,3 +16,6 @@ path = "src/lib.rs"
 [dependencies]
 mox-core = { path = "../mox-core" }
 mox-runtime = { path = "../mox-runtime" }
+
+[dev-dependencies]
+mox-backend-cpu = { path = "../mox-backend-cpu" }
