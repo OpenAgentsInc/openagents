@@ -6,6 +6,7 @@ use std::{
 };
 
 use mox_models::{GoldenPromptRole, digest_chat_template, golden_prompt_fixture};
+use mox_runtime::{EmbeddingParityBudget, compare_embedding_vectors};
 use reqwest::blocking::{Client, Response};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 use serde_json::{Map, Value, json};
@@ -617,8 +618,8 @@ pub struct EmbedConformanceCase {
     pub truncate: Option<bool>,
     /// Requested output dimensions when the backend supports that control.
     pub output_dimensions: Option<usize>,
-    /// Maximum allowed absolute embedding delta per element.
-    pub max_abs_delta: f32,
+    /// Explicit drift budget to use for the compared vectors.
+    pub drift_budget: EmbeddingParityBudget,
     /// Explicitly allowed candidate difference.
     pub expected_candidate_difference: Option<String>,
 }
@@ -1732,32 +1733,27 @@ fn compare_embed(
                 baseline_vector.index, candidate_vector.index
             ));
         }
-        if baseline_vector.values.len() != candidate_vector.values.len() {
+        let summary = compare_embedding_vectors(
+            baseline_vector.values.as_slice(),
+            candidate_vector.values.as_slice(),
+            case.drift_budget,
+        )
+        .map_err(|error| {
+            format!(
+                "embed parity comparison failed for vector {}: {error}",
+                baseline_vector.index
+            )
+        })?;
+        if !summary.within_budget {
             return Err(format!(
-                "embed vector dimension mismatch for vector {}: baseline={}, candidate={}",
+                "embed vector {} exceeded drift budget: max_abs_delta={}, max_rel_delta={}, cosine_similarity={}, first_failing_index={:?}, budget={:?}",
                 baseline_vector.index,
-                baseline_vector.values.len(),
-                candidate_vector.values.len()
+                summary.max_abs_delta,
+                summary.max_rel_delta,
+                summary.cosine_similarity,
+                summary.first_failing_index,
+                case.drift_budget,
             ));
-        }
-        for (element_index, (baseline_value, candidate_value)) in baseline_vector
-            .values
-            .iter()
-            .zip(candidate_vector.values.iter())
-            .enumerate()
-        {
-            let delta = (baseline_value - candidate_value).abs();
-            if delta > case.max_abs_delta {
-                return Err(format!(
-                    "embed value drift exceeded tolerance for vector {} element {}: baseline={}, candidate={}, delta={}, tolerance={}",
-                    baseline_vector.index,
-                    element_index,
-                    baseline_value,
-                    candidate_value,
-                    delta,
-                    case.max_abs_delta
-                ));
-            }
         }
     }
 
@@ -1984,6 +1980,9 @@ mod tests {
         thread,
     };
 
+    use mox_core::QuantizationMode;
+    use mox_runtime::BackendParityPolicy;
+
     #[test]
     fn generate_case_builder_uses_real_qwen2_fixture() -> Result<(), Box<dyn std::error::Error>> {
         let case = GenerateConformanceCase::from_generate_compatible_prompt_fixture(
@@ -2080,7 +2079,8 @@ mod tests {
                 inputs: vec![String::from("hello")],
                 truncate: None,
                 output_dimensions: None,
-                max_abs_delta: 0.01,
+                drift_budget: BackendParityPolicy::default()
+                    .embedding_budget(QuantizationMode::None),
                 expected_candidate_difference: None,
             }],
         };
@@ -2216,7 +2216,7 @@ mod tests {
             inputs: vec![String::from("hello"), String::from("world")],
             truncate: Some(true),
             output_dimensions: None,
-            max_abs_delta: 0.001,
+            drift_budget: BackendParityPolicy::default().embedding_budget(QuantizationMode::None),
             expected_candidate_difference: None,
         })?;
         match embed {

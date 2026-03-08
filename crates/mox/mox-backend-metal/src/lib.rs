@@ -29,10 +29,6 @@ const LEGACY_FAMILY_FLAG: &str = "family_legacy";
 /// `mox.embeddings` milestone.
 pub const EMBEDDINGS_SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "add"];
 
-/// Absolute tolerance used when comparing CPU and Metal outputs for the
-/// supported embeddings product path.
-pub const EMBEDDINGS_PARITY_ABS_TOLERANCE: f32 = 1.0e-5;
-
 /// Metal buffer storage mode visible to Mox.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum MetalStorageMode {
@@ -1536,13 +1532,13 @@ mod platform {
 mod tests {
     use mox_backend_cpu::CpuBackend;
     use mox_compiler::compile_graph;
-    use mox_core::{DType, Device, DeviceKind, Shape, TensorSpec};
+    use mox_core::{DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
-    use mox_runtime::{Allocator, HealthStatus};
+    use mox_runtime::{Allocator, BackendParityPolicy, HealthStatus};
 
     use super::{
-        DeviceSupportTier, EMBEDDINGS_PARITY_ABS_TOLERANCE, EMBEDDINGS_SUPPORTED_OPS,
-        FamilySupport, MetalBackend, classify_support, validate_supported_plan,
+        DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend, classify_support,
+        validate_supported_plan,
     };
 
     #[test]
@@ -1574,12 +1570,14 @@ mod tests {
     }
 
     #[test]
-    fn metal_embeddings_surface_is_documented() {
+    fn metal_embeddings_surface_and_parity_policy_are_documented() {
         assert_eq!(
             EMBEDDINGS_SUPPORTED_OPS,
             &["input", "constant", "matmul", "add"]
         );
-        assert_eq!(EMBEDDINGS_PARITY_ABS_TOLERANCE, 1.0e-5);
+        let budget = BackendParityPolicy::default().embedding_budget(QuantizationMode::None);
+        assert_eq!(budget.numeric.max_abs_delta, 1.0e-5);
+        assert_eq!(budget.numeric.max_rel_delta, 1.0e-5);
     }
 
     #[test]
