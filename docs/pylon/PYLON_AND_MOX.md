@@ -1,9 +1,20 @@
 # Pylon and Mox: How They Relate
 
-Status: summary  
+Status: summary
 Date: 2026-03-07
 
 This document summarizes how **Pylon** (the standalone provider connector) and **Mox** (the in-repo inference/embeddings runtime) fit together for the OpenAgents Compute Market.
+
+## In very simple language
+
+**What Pylon does**  
+Pylon is the program you run on your computer so that your computer can **sell** its AI capacity (text generation, embeddings) to the OpenAgents network. You install Pylon, turn it on, and it tells the network “this machine can do X.” When someone buys that capacity, Pylon runs the job on your machine and reports back. So: **Pylon = “put my machine on the market.”**
+
+**What Mox does**  
+Mox is the **engine** that actually runs the AI model on your machine. It loads the model file, does the math (inference or embeddings), and returns the result. Today we use Ollama for that; Mox will replace Ollama so everything stays in our own code and we can prove exactly what ran. So: **Mox = “the thing that runs the model.”**
+
+**Together**  
+You run Pylon so your machine joins the market. When a job comes in, Pylon asks something on your machine to run the model — today that’s Ollama, later it’ll be Mox. Pylon is the connector; Mox is the runner.
 
 ## One-sentence version
 
