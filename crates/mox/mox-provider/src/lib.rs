@@ -8,10 +8,10 @@ use mox_runtime::{
     BackendSelection, HealthStatus,
 };
 use mox_serve::{
-    DecoderModelDescriptor, EmbeddingModelDescriptor, EmbeddingRequest, EmbeddingResponse,
-    GenerationInput, GenerationRequest, GenerationResponse, QuantizationMode, SessionId,
-    TerminationReason, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
-    EMBEDDINGS_PRODUCT_ID, TEXT_GENERATION_PRODUCT_ID,
+    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
+    EmbeddingResponse, GenerationInput, GenerationRequest, GenerationResponse, QuantizationMode,
+    SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata,
+    WeightBundleMetadata, WeightFormat, WeightSource,
 };
 
 /// Human-readable crate ownership summary.
@@ -663,7 +663,7 @@ mod tests {
     use mox_runtime::{
         AmdDeviceMetadata, AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
         AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendSelection, DeviceDescriptor,
-        HealthStatus, QuantizationExecution, QuantizationSupport,
+        HealthStatus, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     };
     use mox_serve::{
         EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationOptions, GenerationRequest,
@@ -672,9 +672,9 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        digest_embedding_request, digest_generation_request, BatchPosture, CapabilityEnvelope,
-        ExecutionReceipt, KvCacheMode, ProviderReadiness, ReceiptStatus,
-        TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
+        BatchPosture, CapabilityEnvelope, ExecutionReceipt, KvCacheMode, ProviderReadiness,
+        ReceiptStatus, TextGenerationCapabilityEnvelope, TextGenerationReceipt,
+        WeightBundleEvidence, digest_embedding_request, digest_generation_request,
     };
 
     #[test]
@@ -707,10 +707,12 @@ mod tests {
                         "supported_quantization": [
                             {
                                 "mode": "none",
+                                "load_path": "dense_f32",
                                 "execution": "native"
                             },
                             {
                                 "mode": "int8_symmetric",
+                                "load_path": "dequantized_f32",
                                 "execution": "dequantize_to_f32"
                             }
                         ],
@@ -773,10 +775,12 @@ mod tests {
                         "supported_quantization": [
                             {
                                 "mode": "none",
+                                "load_path": "dense_f32",
                                 "execution": "native"
                             },
                             {
                                 "mode": "int8_symmetric",
+                                "load_path": "dequantized_f32",
                                 "execution": "dequantize_to_f32"
                             }
                         ],
@@ -810,8 +814,8 @@ mod tests {
     }
 
     #[test]
-    fn fallback_capability_reports_requested_metal_but_effective_cpu(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn fallback_capability_reports_requested_metal_but_effective_cpu()
+    -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             metal_fallback_selection(),
@@ -837,8 +841,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_kfd_capability_reports_mode_topology_and_recovery(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_kfd_capability_reports_mode_topology_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_kfd_selection(),
             &sample_embedding_descriptor(),
@@ -864,8 +868,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_userspace_capability_reports_disabled_risk_posture(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_userspace_capability_reports_disabled_risk_posture()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_userspace_selection(),
             &sample_embedding_descriptor(),
@@ -1067,8 +1071,7 @@ mod tests {
         let generation_digest = digest_generation_request(&generation_request);
 
         embedding_request.model.weights.digest = String::from("different-embedding-bundle");
-        generation_request.model.weights.quantization =
-            mox_serve::QuantizationMode::Int8Symmetric;
+        generation_request.model.weights.quantization = mox_serve::QuantizationMode::Int8Symmetric;
 
         assert_ne!(
             digest_embedding_request(&embedding_request),
@@ -1132,10 +1135,12 @@ mod tests {
             supported_quantization: vec![
                 QuantizationSupport {
                     mode: RuntimeQuantizationMode::None,
+                    load_path: QuantizationLoadPath::DenseF32,
                     execution: QuantizationExecution::Native,
                 },
                 QuantizationSupport {
                     mode: RuntimeQuantizationMode::Int8Symmetric,
+                    load_path: QuantizationLoadPath::DequantizedF32,
                     execution: QuantizationExecution::DequantizeToF32,
                 },
             ],

@@ -1,14 +1,15 @@
 //! Model abstractions for Mox.
 
 use std::{
+    borrow::Cow,
     collections::BTreeMap,
     fs,
     mem::size_of,
     path::{Path, PathBuf},
 };
 
-use mox_core::{DType, QuantizationMode, Shape};
-use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
+use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
+use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType, SafeTensors};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -516,6 +517,9 @@ pub struct WeightTensorMetadata {
     pub dtype: DType,
     /// Storage quantization mode for the tensor.
     pub quantization: QuantizationMode,
+    /// Stable GGML block layout when the tensor keeps quantized block storage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub quantized_layout: Option<QuantizedBlockLayout>,
 }
 
 impl WeightTensorMetadata {
@@ -527,6 +531,7 @@ impl WeightTensorMetadata {
             shape,
             dtype,
             quantization: QuantizationMode::None,
+            quantized_layout: None,
         }
     }
 
@@ -534,6 +539,13 @@ impl WeightTensorMetadata {
     #[must_use]
     pub fn with_quantization(mut self, quantization: QuantizationMode) -> Self {
         self.quantization = quantization;
+        self
+    }
+
+    /// Returns a copy tagged with an explicit quantized block layout.
+    #[must_use]
+    pub fn with_quantized_layout(mut self, quantized_layout: QuantizedBlockLayout) -> Self {
+        self.quantized_layout = Some(quantized_layout);
         self
     }
 
@@ -569,18 +581,126 @@ impl WeightBundleMetadata {
     }
 }
 
+/// Backend-neutral quantized GGML/GGUF block storage preserved by the loader.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuantizedTensorStorage {
+    quantization: QuantizationMode,
+    layout: QuantizedBlockLayout,
+    bytes: Vec<u8>,
+    digest: String,
+}
+
+impl QuantizedTensorStorage {
+    /// Creates quantized storage from validated GGML/GGUF block bytes.
+    pub fn from_ggml_blocks(
+        quantization: QuantizationMode,
+        element_count: usize,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<Self, ModelLoadError> {
+        let bytes = bytes.into();
+        let Some(layout) = quantization.ggml_block_layout(element_count) else {
+            return Err(ModelLoadError::InvalidQuantizedTensorLayout {
+                quantization,
+                element_count,
+            });
+        };
+        if bytes.len() != layout.byte_len() {
+            return Err(ModelLoadError::InvalidQuantizedTensorByteLength {
+                quantization,
+                expected: layout.byte_len(),
+                actual: bytes.len(),
+            });
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update(format!("{quantization:?}").as_bytes());
+        hasher.update(b"|");
+        hasher.update((layout.elements_per_block as u64).to_be_bytes());
+        hasher.update((layout.bytes_per_block as u64).to_be_bytes());
+        hasher.update((layout.block_count as u64).to_be_bytes());
+        hasher.update(b"|");
+        hasher.update(&bytes);
+
+        Ok(Self {
+            quantization,
+            layout,
+            bytes,
+            digest: hex::encode(hasher.finalize()),
+        })
+    }
+
+    /// Returns the quantization family for the storage.
+    #[must_use]
+    pub const fn quantization(&self) -> QuantizationMode {
+        self.quantization
+    }
+
+    /// Returns the stable block layout.
+    #[must_use]
+    pub const fn layout(&self) -> QuantizedBlockLayout {
+        self.layout
+    }
+
+    /// Returns the serialized block bytes.
+    #[must_use]
+    pub fn bytes(&self) -> &[u8] {
+        self.bytes.as_slice()
+    }
+
+    /// Returns the stable storage digest.
+    #[must_use]
+    pub fn digest(&self) -> &str {
+        self.digest.as_str()
+    }
+
+    /// Dequantizes the stored GGML/GGUF blocks into logical `f32` values.
+    pub fn dequantize_values(&self) -> Result<Vec<f32>, ModelLoadError> {
+        decode_ggml_quantized_values(self.quantization, self.layout, self.bytes())
+    }
+}
+
+/// Explicit tensor storage returned by a loader.
+#[derive(Clone, Debug, PartialEq)]
+pub enum WeightTensorStorage {
+    /// Dense `f32` values already materialized on the host.
+    DequantizedF32(Vec<f32>),
+    /// Quantized GGML/GGUF blocks preserved by the loader.
+    QuantizedBlocks(QuantizedTensorStorage),
+}
+
 /// Loaded tensor values for a weight bundle.
 #[derive(Clone, Debug, PartialEq)]
 pub struct LoadedWeightTensor {
     metadata: WeightTensorMetadata,
-    values: Vec<f32>,
+    storage: WeightTensorStorage,
 }
 
 impl LoadedWeightTensor {
     /// Creates a loaded tensor payload.
     #[must_use]
     pub fn new(metadata: WeightTensorMetadata, values: Vec<f32>) -> Self {
-        Self { metadata, values }
+        Self {
+            metadata,
+            storage: WeightTensorStorage::DequantizedF32(values),
+        }
+    }
+
+    /// Creates a tensor payload that preserves quantized GGML/GGUF block storage.
+    pub fn from_ggml_blocks(
+        name: impl Into<String>,
+        shape: Shape,
+        quantization: QuantizationMode,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<Self, ModelLoadError> {
+        let storage =
+            QuantizedTensorStorage::from_ggml_blocks(quantization, shape.element_count(), bytes)?;
+        let metadata = WeightTensorMetadata::new(name, shape, DType::F32)
+            .with_quantization(quantization)
+            .with_quantized_layout(storage.layout());
+        Ok(Self {
+            metadata,
+            storage: WeightTensorStorage::QuantizedBlocks(storage),
+        })
     }
 
     /// Returns the stable tensor metadata.
@@ -589,10 +709,20 @@ impl LoadedWeightTensor {
         &self.metadata
     }
 
-    /// Returns the tensor values as `f32`.
+    /// Returns the explicit storage representation.
     #[must_use]
-    pub fn values(&self) -> &[f32] {
-        &self.values
+    pub fn storage(&self) -> &WeightTensorStorage {
+        &self.storage
+    }
+
+    /// Returns the logical tensor values as `f32`.
+    pub fn values(&self) -> Result<Cow<'_, [f32]>, ModelLoadError> {
+        match &self.storage {
+            WeightTensorStorage::DequantizedF32(values) => Ok(Cow::Borrowed(values.as_slice())),
+            WeightTensorStorage::QuantizedBlocks(storage) => {
+                Ok(Cow::Owned(storage.dequantize_values()?))
+            }
+        }
     }
 }
 
@@ -667,16 +797,31 @@ impl SafeTensorsWeightBundleLoader {
                     format: String::from("safetensors"),
                     message: error.to_string(),
                 })?;
-            let (dtype, quantization, values) = match tensor.dtype() {
+            let (dtype, quantization, loaded_tensor) = match tensor.dtype() {
                 SafeTensorsDType::F32 => (
                     DType::F32,
                     QuantizationMode::None,
-                    decode_f32_values(name, tensor.data())?,
+                    LoadedWeightTensor::new(
+                        WeightTensorMetadata::new(
+                            name,
+                            Shape::new(tensor.shape().to_vec()),
+                            DType::F32,
+                        ),
+                        decode_f32_values(name, tensor.data())?,
+                    ),
                 ),
                 SafeTensorsDType::I8 => (
                     DType::I8,
                     QuantizationMode::Int8Symmetric,
-                    decode_int8_symmetric_values(name, tensor.data(), &tensors)?,
+                    LoadedWeightTensor::new(
+                        WeightTensorMetadata::new(
+                            name,
+                            Shape::new(tensor.shape().to_vec()),
+                            DType::I8,
+                        )
+                        .with_quantization(QuantizationMode::Int8Symmetric),
+                        decode_int8_symmetric_values(name, tensor.data(), &tensors)?,
+                    ),
                 ),
                 other => {
                     return Err(ModelLoadError::UnsupportedTensorDType {
@@ -688,15 +833,12 @@ impl SafeTensorsWeightBundleLoader {
             if quantization != QuantizationMode::None {
                 bundle_quantization = quantization;
             }
-            let shape = Shape::new(tensor.shape().to_vec());
-            let tensor_metadata =
-                WeightTensorMetadata::new(name, shape, dtype).with_quantization(quantization);
-            digest_tensor(&mut hasher, &tensor_metadata, &values);
-            metadata.push(tensor_metadata.clone());
-            loaded.insert(
-                name.to_string(),
-                LoadedWeightTensor::new(tensor_metadata, values),
-            );
+            let tensor_metadata = loaded_tensor.metadata().clone();
+            debug_assert_eq!(tensor_metadata.dtype, dtype);
+            debug_assert_eq!(tensor_metadata.quantization, quantization);
+            digest_loaded_tensor(&mut hasher, &loaded_tensor)?;
+            metadata.push(tensor_metadata);
+            loaded.insert(name.to_string(), loaded_tensor);
         }
 
         Ok(LoadedWeightBundle::new(
@@ -903,6 +1045,34 @@ pub enum ModelLoadError {
         name: String,
         /// Actual dimensions from the scale tensor.
         actual: Vec<usize>,
+    },
+    /// A GGML/GGUF quantized tensor was requested with an invalid logical layout.
+    #[error(
+        "quantized tensor mode `{quantization:?}` requires a GGML block-aligned element count, got {element_count}"
+    )]
+    InvalidQuantizedTensorLayout {
+        /// Quantization family that requires block alignment.
+        quantization: QuantizationMode,
+        /// Logical tensor element count requested.
+        element_count: usize,
+    },
+    /// The serialized byte length for a quantized tensor does not match its block layout.
+    #[error(
+        "quantized tensor mode `{quantization:?}` expected {expected} bytes from its block layout, got {actual}"
+    )]
+    InvalidQuantizedTensorByteLength {
+        /// Quantization family that was being decoded.
+        quantization: QuantizationMode,
+        /// Expected serialized byte length.
+        expected: usize,
+        /// Actual serialized byte length.
+        actual: usize,
+    },
+    /// The quantized tensor mode is not backed by a GGML/GGUF block decoder.
+    #[error("quantized tensor mode `{quantization:?}` does not use GGML/GGUF block storage")]
+    UnsupportedQuantizedTensorMode {
+        /// Quantization family requested for GGML/GGUF block decode.
+        quantization: QuantizationMode,
     },
     /// Loaded bundle metadata does not match the requested descriptor.
     #[error("weight bundle digest mismatch: expected `{expected}`, actual `{actual}`")]
@@ -1410,8 +1580,8 @@ fn build_embedding_weight_bundle_metadata(
     ];
 
     let mut hasher = Sha256::new();
-    digest_tensor(&mut hasher, &tensors[0], bias);
-    digest_tensor(&mut hasher, &tensors[1], projection);
+    digest_tensor_values(&mut hasher, &tensors[0], bias);
+    digest_tensor_values(&mut hasher, &tensors[1], projection);
     WeightBundleMetadata {
         format: WeightFormat::ProgrammaticFixture,
         source: WeightSource::Fixture,
@@ -1606,7 +1776,7 @@ fn build_weight_bundle_metadata(
 
     let mut hasher = Sha256::new();
     for (metadata, values) in &entries {
-        digest_tensor(&mut hasher, metadata, values);
+        digest_tensor_values(&mut hasher, metadata, values);
     }
 
     WeightBundleMetadata {
@@ -1619,7 +1789,7 @@ fn build_weight_bundle_metadata(
     }
 }
 
-fn digest_tensor(hasher: &mut Sha256, metadata: &WeightTensorMetadata, values: &[f32]) {
+fn digest_tensor_values(hasher: &mut Sha256, metadata: &WeightTensorMetadata, values: &[f32]) {
     hasher.update(metadata.name.as_bytes());
     hasher.update(b"|");
     hasher.update(format!("{:?}", metadata.dtype).as_bytes());
@@ -1635,6 +1805,46 @@ fn digest_tensor(hasher: &mut Sha256, metadata: &WeightTensorMetadata, values: &
         hasher.update(value.to_bits().to_be_bytes());
     }
     hasher.update(b"\n");
+}
+
+fn digest_quantized_tensor(
+    hasher: &mut Sha256,
+    metadata: &WeightTensorMetadata,
+    storage: &QuantizedTensorStorage,
+) {
+    hasher.update(metadata.name.as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", metadata.dtype).as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", metadata.quantization).as_bytes());
+    hasher.update(b"|");
+    for dim in metadata.shape.dims() {
+        hasher.update(dim.to_string().as_bytes());
+        hasher.update(b",");
+    }
+    hasher.update(b"|");
+    let layout = storage.layout();
+    hasher.update((layout.elements_per_block as u64).to_be_bytes());
+    hasher.update((layout.bytes_per_block as u64).to_be_bytes());
+    hasher.update((layout.block_count as u64).to_be_bytes());
+    hasher.update(b"|");
+    hasher.update(storage.bytes());
+    hasher.update(b"\n");
+}
+
+fn digest_loaded_tensor(
+    hasher: &mut Sha256,
+    tensor: &LoadedWeightTensor,
+) -> Result<(), ModelLoadError> {
+    match tensor.storage() {
+        WeightTensorStorage::DequantizedF32(values) => {
+            digest_tensor_values(hasher, tensor.metadata(), values);
+        }
+        WeightTensorStorage::QuantizedBlocks(storage) => {
+            digest_quantized_tensor(hasher, tensor.metadata(), storage);
+        }
+    }
+    Ok(())
 }
 
 fn validate_loaded_bundle(
@@ -1681,7 +1891,122 @@ fn load_tensor_values(
             actual: actual_shape,
         });
     }
-    Ok(tensor.values().to_vec())
+    Ok(tensor.values()?.into_owned())
+}
+
+fn decode_ggml_quantized_values(
+    quantization: QuantizationMode,
+    layout: QuantizedBlockLayout,
+    bytes: &[u8],
+) -> Result<Vec<f32>, ModelLoadError> {
+    match quantization {
+        QuantizationMode::GgmlQ4_0 => decode_q4_0_blocks(layout, bytes),
+        QuantizationMode::GgmlQ4_1 => decode_q4_1_blocks(layout, bytes),
+        QuantizationMode::GgmlQ8_0 => decode_q8_0_blocks(layout, bytes),
+        QuantizationMode::None | QuantizationMode::Int8Symmetric => {
+            Err(ModelLoadError::UnsupportedQuantizedTensorMode { quantization })
+        }
+    }
+}
+
+fn decode_q8_0_blocks(
+    layout: QuantizedBlockLayout,
+    bytes: &[u8],
+) -> Result<Vec<f32>, ModelLoadError> {
+    decode_fixed_width_blocks(layout, bytes, 34, |block, output| {
+        let scale = decode_f16([block[0], block[1]]);
+        for quantized in &block[2..34] {
+            output.push(f32::from(i8::from_le_bytes([*quantized])) * scale);
+        }
+    })
+}
+
+fn decode_q4_0_blocks(
+    layout: QuantizedBlockLayout,
+    bytes: &[u8],
+) -> Result<Vec<f32>, ModelLoadError> {
+    decode_fixed_width_blocks(layout, bytes, 18, |block, output| {
+        let scale = decode_f16([block[0], block[1]]);
+        for packed in &block[2..18] {
+            let low = (packed & 0x0f) as i8 - 8;
+            let high = ((packed >> 4) & 0x0f) as i8 - 8;
+            output.push(f32::from(low) * scale);
+            output.push(f32::from(high) * scale);
+        }
+    })
+}
+
+fn decode_q4_1_blocks(
+    layout: QuantizedBlockLayout,
+    bytes: &[u8],
+) -> Result<Vec<f32>, ModelLoadError> {
+    decode_fixed_width_blocks(layout, bytes, 20, |block, output| {
+        let scale = decode_f16([block[0], block[1]]);
+        let minimum = decode_f16([block[2], block[3]]);
+        for packed in &block[4..20] {
+            let low = f32::from((packed & 0x0f) as i8) * scale + minimum;
+            let high = f32::from(((packed >> 4) & 0x0f) as i8) * scale + minimum;
+            output.push(low);
+            output.push(high);
+        }
+    })
+}
+
+fn decode_fixed_width_blocks(
+    layout: QuantizedBlockLayout,
+    bytes: &[u8],
+    expected_bytes_per_block: usize,
+    mut decode_block: impl FnMut(&[u8], &mut Vec<f32>),
+) -> Result<Vec<f32>, ModelLoadError> {
+    if layout.bytes_per_block != expected_bytes_per_block || bytes.len() != layout.byte_len() {
+        return Err(ModelLoadError::InvalidQuantizedTensorByteLength {
+            quantization: quantization_from_block_bytes(expected_bytes_per_block),
+            expected: layout.byte_len(),
+            actual: bytes.len(),
+        });
+    }
+
+    let mut values = Vec::with_capacity(layout.element_count());
+    for block in bytes.chunks_exact(expected_bytes_per_block) {
+        decode_block(block, &mut values);
+    }
+    Ok(values)
+}
+
+fn quantization_from_block_bytes(bytes_per_block: usize) -> QuantizationMode {
+    match bytes_per_block {
+        18 => QuantizationMode::GgmlQ4_0,
+        20 => QuantizationMode::GgmlQ4_1,
+        34 => QuantizationMode::GgmlQ8_0,
+        _ => QuantizationMode::None,
+    }
+}
+
+fn decode_f16(bytes: [u8; 2]) -> f32 {
+    let bits = u16::from_le_bytes(bytes);
+    let sign = u32::from(bits & 0x8000) << 16;
+    let exponent = (bits >> 10) & 0x1f;
+    let mantissa = bits & 0x03ff;
+
+    let f32_bits = match (exponent, mantissa) {
+        (0, 0) => sign,
+        (0, mantissa) => {
+            let mut mantissa = u32::from(mantissa);
+            let mut exponent = 113_u32;
+            while mantissa & 0x0400 == 0 {
+                mantissa <<= 1;
+                exponent -= 1;
+            }
+            mantissa &= 0x03ff;
+            sign | (exponent << 23) | (mantissa << 13)
+        }
+        (0x1f, mantissa) => sign | 0x7f80_0000 | (u32::from(mantissa) << 13),
+        (exponent, mantissa) => {
+            sign | ((u32::from(exponent) + 112) << 23) | (u32::from(mantissa) << 13)
+        }
+    };
+
+    f32::from_bits(f32_bits)
 }
 
 fn decode_f32_values(name: &str, data: &[u8]) -> Result<Vec<f32>, ModelLoadError> {
@@ -1737,15 +2062,15 @@ fn decode_int8_symmetric_values(
 mod tests {
     use std::{collections::BTreeMap, path::Path};
 
-    use mox_core::{DType, QuantizationMode};
-    use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
+    use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
+    use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType};
     use tempfile::tempdir;
 
     use super::{
         ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader,
-        FixtureWordTokenizer, LocalWeightBundleLoader, ReferenceWordDecoder,
-        SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader, SmokeByteEmbedder,
-        TokenizerBoundary, WeightFormat, WeightSource,
+        FixtureWordTokenizer, LoadedWeightTensor, LocalWeightBundleLoader, QuantizedTensorStorage,
+        ReferenceWordDecoder, SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader,
+        SmokeByteEmbedder, TokenizerBoundary, WeightFormat, WeightSource, WeightTensorStorage,
     };
 
     #[test]
@@ -1837,8 +2162,8 @@ mod tests {
     }
 
     #[test]
-    fn safetensors_bundle_loader_reports_external_artifact_metadata()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn safetensors_bundle_loader_reports_external_artifact_metadata(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = ReferenceWordDecoder::new();
         let temp = tempdir()?;
         let path = temp.path().join("reference_decoder.safetensors");
@@ -1861,7 +2186,7 @@ mod tests {
         let Some(tensor) = bundle.tensor("lm_bias") else {
             return Err("missing lm_bias tensor".into());
         };
-        assert_eq!(tensor.values().len(), model.descriptor().config.vocab_size);
+        assert_eq!(tensor.values()?.len(), model.descriptor().config.vocab_size);
         Ok(())
     }
 
@@ -1888,8 +2213,8 @@ mod tests {
     }
 
     #[test]
-    fn safetensors_loader_reports_and_dequantizes_int8_weights()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn safetensors_loader_reports_and_dequantizes_int8_weights(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let path = temp.path().join("quantized.safetensors");
         let tensors = BTreeMap::from([
@@ -1917,7 +2242,106 @@ mod tests {
             tensor.metadata().quantization,
             QuantizationMode::Int8Symmetric
         );
-        assert_eq!(tensor.values(), &[0.5, -0.5, 1.0, -1.0]);
+        assert_eq!(tensor.values()?.as_ref(), &[0.5, -0.5, 1.0, -1.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn ggml_q8_0_block_decode_matches_reference() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = std::iter::once(0x00)
+            .chain(std::iter::once(0x40))
+            .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
+            .collect::<Vec<_>>();
+        let storage =
+            QuantizedTensorStorage::from_ggml_blocks(QuantizationMode::GgmlQ8_0, 32, bytes)?;
+
+        let expected = (1..=32).map(|value| value as f32 * 2.0).collect::<Vec<_>>();
+        assert_eq!(storage.layout(), QuantizedBlockLayout::new(32, 34, 1));
+        assert_eq!(storage.dequantize_values()?, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn ggml_q4_0_block_decode_matches_reference() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = [0x00_u8, 0x40]
+            .into_iter()
+            .chain(
+                [0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+                    .into_iter()
+                    .cycle()
+                    .take(16),
+            )
+            .collect::<Vec<_>>();
+        let tensor = LoadedWeightTensor::from_ggml_blocks(
+            "weight",
+            Shape::new(vec![32]),
+            QuantizationMode::GgmlQ4_0,
+            bytes,
+        )?;
+
+        let expected = [
+            -16.0, -14.0, -12.0, -10.0, -8.0, -6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0, 8.0, 10.0,
+            12.0, 14.0,
+        ]
+        .into_iter()
+        .cycle()
+        .take(32)
+        .collect::<Vec<_>>();
+        assert_eq!(
+            tensor.metadata().quantized_layout,
+            Some(QuantizedBlockLayout::new(32, 18, 1))
+        );
+        assert!(matches!(
+            tensor.storage(),
+            WeightTensorStorage::QuantizedBlocks(_)
+        ));
+        assert_eq!(tensor.values()?.as_ref(), expected.as_slice());
+        Ok(())
+    }
+
+    #[test]
+    fn ggml_q4_1_block_decode_matches_reference() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = [0x00_u8, 0x40, 0x00, 0xbc]
+            .into_iter()
+            .chain(
+                [0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+                    .into_iter()
+                    .cycle()
+                    .take(16),
+            )
+            .collect::<Vec<_>>();
+        let storage =
+            QuantizedTensorStorage::from_ggml_blocks(QuantizationMode::GgmlQ4_1, 32, bytes)?;
+
+        let expected = [
+            -1.0, 1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0, 17.0, 19.0, 21.0, 23.0, 25.0, 27.0,
+            29.0,
+        ]
+        .into_iter()
+        .cycle()
+        .take(32)
+        .collect::<Vec<_>>();
+        assert_eq!(storage.dequantize_values()?, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn ggml_quantized_storage_is_digest_stable_across_reloads(
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = [0x00_u8, 0x40]
+            .into_iter()
+            .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
+            .collect::<Vec<_>>();
+        let first = QuantizedTensorStorage::from_ggml_blocks(
+            QuantizationMode::GgmlQ8_0,
+            32,
+            bytes.clone(),
+        )?;
+        let second =
+            QuantizedTensorStorage::from_ggml_blocks(QuantizationMode::GgmlQ8_0, 32, bytes)?;
+
+        assert_eq!(first.layout(), second.layout());
+        assert_eq!(first.digest(), second.digest());
         Ok(())
     }
 

@@ -8,7 +8,7 @@ use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, BackendName, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
     ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
-    QuantizationSupport, RuntimeError, RuntimeHealth,
+    QuantizationLoadPath, QuantizationSupport, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -334,10 +334,12 @@ impl DeviceDiscovery for CpuBackend {
             supported_quantization: vec![
                 QuantizationSupport {
                     mode: mox_core::QuantizationMode::None,
+                    load_path: QuantizationLoadPath::DenseF32,
                     execution: QuantizationExecution::Native,
                 },
                 QuantizationSupport {
                     mode: mox_core::QuantizationMode::Int8Symmetric,
+                    load_path: QuantizationLoadPath::DequantizedF32,
                     execution: QuantizationExecution::DequantizeToF32,
                 },
             ],
@@ -478,10 +480,12 @@ mod tests {
             vec![
                 super::QuantizationSupport {
                     mode: mox_core::QuantizationMode::None,
+                    load_path: super::QuantizationLoadPath::DenseF32,
                     execution: super::QuantizationExecution::Native,
                 },
                 super::QuantizationSupport {
                     mode: mox_core::QuantizationMode::Int8Symmetric,
+                    load_path: super::QuantizationLoadPath::DequantizedF32,
                     execution: super::QuantizationExecution::DequantizeToF32,
                 }
             ]

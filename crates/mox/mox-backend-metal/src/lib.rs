@@ -6,12 +6,16 @@
 use std::{collections::BTreeMap, fmt};
 
 use mox_compiler::compile_graph;
+#[cfg(target_os = "macos")]
+use mox_core::QuantizationMode;
 use mox_core::{DType, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, BackendName, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
     ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
 };
+#[cfg(target_os = "macos")]
+use mox_runtime::{QuantizationExecution, QuantizationLoadPath, QuantizationSupport};
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submission";
@@ -737,9 +741,9 @@ mod platform {
     };
 
     use super::{
-        classify_support, DeviceSupportTier, FamilySupport, MetalBuffer, MetalCommandStatus,
-        MetalCommandWait, MetalDiscoveryReport, MetalStorageMode, LEGACY_FAMILY_FLAG,
-        MODERN_FAMILY_FLAG,
+        DeviceSupportTier, FamilySupport, LEGACY_FAMILY_FLAG, MODERN_FAMILY_FLAG, MetalBuffer,
+        MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalStorageMode,
+        classify_support,
     };
 
     #[derive(Clone)]
@@ -1067,10 +1071,7 @@ mod platform {
         };
 
         let command_queue = record.device.new_command_queue();
-        command_queue.set_label(&format!(
-            "mox.metal.queue.{}",
-            record.descriptor.device
-        ));
+        command_queue.set_label(&format!("mox.metal.queue.{}", record.descriptor.device));
         let storage_mode = if record.descriptor.unified_memory == Some(true) {
             MetalStorageMode::Shared
         } else {
@@ -1202,6 +1203,7 @@ mod platform {
             supported_dtypes: vec![DType::F32],
             supported_quantization: vec![QuantizationSupport {
                 mode: QuantizationMode::None,
+                load_path: QuantizationLoadPath::DenseF32,
                 execution: QuantizationExecution::Native,
             }],
             memory_capacity_bytes,
@@ -1280,11 +1282,9 @@ mod platform {
         let add = library
             .get_function("mox_add", None)
             .map_err(|error| RuntimeError::Backend(format!("missing Metal add kernel: {error}")))?;
-        let matmul = library
-            .get_function("mox_matmul", None)
-            .map_err(|error| {
-                RuntimeError::Backend(format!("missing Metal matmul kernel: {error}"))
-            })?;
+        let matmul = library.get_function("mox_matmul", None).map_err(|error| {
+            RuntimeError::Backend(format!("missing Metal matmul kernel: {error}"))
+        })?;
 
         Ok(EmbeddingsPipelines {
             add: device
@@ -1521,8 +1521,7 @@ mod platform {
         })
     }
 
-    pub(super) fn discovery_report() -> Result<MetalDiscoveryReport, mox_runtime::RuntimeError>
-    {
+    pub(super) fn discovery_report() -> Result<MetalDiscoveryReport, mox_runtime::RuntimeError> {
         Ok(MetalDiscoveryReport {
             devices: Vec::new(),
             health: RuntimeHealth {
@@ -1542,8 +1541,8 @@ mod tests {
     use mox_runtime::{Allocator, HealthStatus};
 
     use super::{
-        classify_support, validate_supported_plan, DeviceSupportTier, FamilySupport, MetalBackend,
-        EMBEDDINGS_PARITY_ABS_TOLERANCE, EMBEDDINGS_SUPPORTED_OPS,
+        DeviceSupportTier, EMBEDDINGS_PARITY_ABS_TOLERANCE, EMBEDDINGS_SUPPORTED_OPS,
+        FamilySupport, MetalBackend, classify_support, validate_supported_plan,
     };
 
     #[test]
@@ -1602,8 +1601,8 @@ mod tests {
 
     #[cfg(not(target_os = "macos"))]
     #[test]
-    fn metal_backend_reports_offline_on_unsupported_platform(
-    ) -> Result<(), mox_runtime::RuntimeError> {
+    fn metal_backend_reports_offline_on_unsupported_platform()
+    -> Result<(), mox_runtime::RuntimeError> {
         let backend = MetalBackend::new();
         let report = backend.discovery_report()?;
         assert!(report.devices.is_empty());
@@ -1618,8 +1617,8 @@ mod tests {
 
     #[cfg(not(target_os = "macos"))]
     #[test]
-    fn metal_backend_fallback_selection_reports_explicit_cpu_fallback(
-    ) -> Result<(), mox_runtime::RuntimeError> {
+    fn metal_backend_fallback_selection_reports_explicit_cpu_fallback()
+    -> Result<(), mox_runtime::RuntimeError> {
         let backend = MetalBackend::new();
         let cpu = CpuBackend::new();
         let selection = backend.fallback_selection(&cpu, EMBEDDINGS_SUPPORTED_OPS)?;
@@ -1684,8 +1683,8 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn metal_backend_selection_reports_ready_metal_or_explicit_cpu_fallback(
-    ) -> Result<(), mox_runtime::RuntimeError> {
+    fn metal_backend_selection_reports_ready_metal_or_explicit_cpu_fallback()
+    -> Result<(), mox_runtime::RuntimeError> {
         let backend = MetalBackend::new();
         let cpu = CpuBackend::new();
         match backend.backend_selection(EMBEDDINGS_SUPPORTED_OPS) {
@@ -1709,8 +1708,8 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn metal_backend_allocates_and_submits_copy_on_supported_hardware(
-    ) -> Result<(), mox_runtime::RuntimeError> {
+    fn metal_backend_allocates_and_submits_copy_on_supported_hardware()
+    -> Result<(), mox_runtime::RuntimeError> {
         use super::{MetalCommandStatus, MetalCommandWait};
 
         let mut backend = MetalBackend::new();
@@ -1736,8 +1735,8 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
-    fn metal_backend_executes_embedding_surface_on_supported_hardware(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_backend_executes_embedding_surface_on_supported_hardware()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = MetalBackend::new();
         let Some(selected) = backend.selected_device().cloned() else {
             assert_ne!(backend.health().status, HealthStatus::Ready);
