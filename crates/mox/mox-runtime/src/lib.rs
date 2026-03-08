@@ -942,6 +942,55 @@ pub struct CompilePathEvidence {
     pub kernel_cache: CacheObservation,
 }
 
+/// Delivery-proof facts surfaced for one realized execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionDeliveryProof {
+    /// Stable execution-plan digest used for the realized path.
+    pub execution_plan_digest: String,
+    /// Total kernel or step dispatch count surfaced by the backend path.
+    pub kernel_count: usize,
+    /// Total bytes moved or written by the backend path.
+    pub bytes_moved: u64,
+    /// Number of execution-plan cache hits observed during the request path.
+    pub plan_cache_hits: usize,
+    /// Number of execution-plan cache misses or rebuilds observed during the request path.
+    pub plan_cache_misses: usize,
+    /// KV-cache growth surfaced for the request path, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_growth: Option<KvCacheGrowth>,
+}
+
+/// Provider-facing settlement-linkage inputs derived from a realized execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementLinkageInput {
+    /// Stable request digest used for settlement correlation.
+    pub request_digest: String,
+    /// Product family executed for the request.
+    pub product_id: String,
+    /// Stable model identifier executed for the request.
+    pub model_id: String,
+    /// Stable served-artifact digest for the realized model/backend path.
+    pub served_artifact_digest: String,
+    /// Stable execution-plan digest used for the realized path.
+    pub execution_plan_digest: String,
+    /// Runtime backend that actually executed the work.
+    pub runtime_backend: String,
+    /// Total kernel or step dispatch count surfaced by the backend path.
+    pub kernel_count: usize,
+    /// Total bytes moved or written by the backend path.
+    pub bytes_moved: u64,
+    /// Number of execution-plan cache hits observed during the request path.
+    pub plan_cache_hits: usize,
+    /// Number of execution-plan cache misses or rebuilds observed during the request path.
+    pub plan_cache_misses: usize,
+    /// KV-cache growth surfaced for the request path, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_growth: Option<KvCacheGrowth>,
+    /// Output token count when the product family emits tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<usize>,
+}
+
 /// Returns the current runtime cache invalidation policy.
 #[must_use]
 pub fn default_cache_invalidation_policy() -> CacheInvalidationPolicy {
@@ -3550,6 +3599,14 @@ impl BackendSelection {
 pub struct ExecutionMetrics {
     /// Number of plan steps executed.
     pub steps_executed: usize,
+    /// Total kernel or step dispatch count surfaced by the backend path.
+    pub kernel_count: usize,
+    /// Total bytes moved or written by the backend path.
+    pub bytes_moved: u64,
+    /// Number of execution-plan cache hits observed during this execution.
+    pub plan_cache_hits: usize,
+    /// Number of execution-plan cache misses observed during this execution.
+    pub plan_cache_misses: usize,
     /// Stable digest of the execution plan used for this run, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_plan_digest: Option<String>,
@@ -3913,6 +3970,10 @@ mod tests {
                 outputs: BTreeMap::new(),
                 metrics: ExecutionMetrics {
                     steps_executed: plan.steps.len(),
+                    kernel_count: plan.steps.len(),
+                    bytes_moved: 0,
+                    plan_cache_hits: 0,
+                    plan_cache_misses: 0,
                     execution_plan_digest: None,
                     compile_path: None,
                 },
