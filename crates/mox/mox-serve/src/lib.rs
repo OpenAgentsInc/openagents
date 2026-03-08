@@ -9,6 +9,7 @@ use std::{
 
 pub use conformance::*;
 use mox_backend_cpu::CpuBackend;
+use mox_backend_cuda::{CudaBackend, EMBEDDINGS_SUPPORTED_OPS as CUDA_EMBEDDINGS_SUPPORTED_OPS};
 use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend, TEXT_GENERATION_SUPPORTED_OPS};
 use mox_compiler::{CompileError, compile_graph};
 pub use mox_core::QuantizationMode;
@@ -4812,6 +4813,97 @@ impl MetalEmbeddingsError {
     }
 }
 
+/// CUDA-backed embeddings execution error.
+#[derive(Debug, Error)]
+pub enum CudaEmbeddingsError {
+    /// The request targeted the wrong product.
+    #[error("unsupported product id `{0}`")]
+    UnsupportedProduct(String),
+    /// The request targeted the wrong model.
+    #[error("unsupported model `{0}`")]
+    UnsupportedModel(String),
+    /// The model produced an invalid output vector.
+    #[error("invalid embedding output for input {index}: {message}")]
+    InvalidOutput {
+        /// Input index in the request batch.
+        index: usize,
+        /// Plain-text failure summary.
+        message: String,
+    },
+    /// CUDA is not available for the requested product path on this machine.
+    #[error("cuda backend unavailable ({status:?}): {message}")]
+    BackendUnavailable {
+        /// Honest backend status.
+        status: HealthStatus,
+        /// Plain-text reason.
+        message: String,
+    },
+    /// Loading or validating the model failed.
+    #[error(transparent)]
+    Model(#[from] ModelLoadError),
+    /// Graph construction failed.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// CUDA runtime execution failed.
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+}
+
+impl CudaEmbeddingsError {
+    /// Returns the backend-neutral diagnostic for the error.
+    #[must_use]
+    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+        match self {
+            Self::UnsupportedProduct(_) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedProduct,
+                400,
+                self.to_string(),
+            )
+            .with_backend("cuda"),
+            Self::UnsupportedModel(model_id) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::ModelNotFound,
+                404,
+                self.to_string(),
+            )
+            .with_model_id(model_id.clone())
+            .with_backend("cuda"),
+            Self::InvalidOutput { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::InvalidOutput,
+                500,
+                self.to_string(),
+            )
+            .with_backend("cuda"),
+            Self::BackendUnavailable { status, .. } => LocalRuntimeDiagnostic::new(
+                if *status == HealthStatus::Degraded {
+                    LocalRuntimeErrorCode::BackendDegraded
+                } else {
+                    LocalRuntimeErrorCode::BackendUnavailable
+                },
+                503,
+                self.to_string(),
+            )
+            .with_backend("cuda")
+            .with_backend_health(*status),
+            Self::Model(error) => model_load_error_diagnostic(error).with_backend("cuda"),
+            Self::Graph(_) => {
+                LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, self.to_string())
+                    .with_backend("cuda")
+            }
+            Self::Runtime(error) => runtime_error_diagnostic(error).with_backend("cuda"),
+        }
+    }
+
+    /// Returns the diagnostic annotated with request context.
+    #[must_use]
+    pub fn diagnostic_for_request(&self, request: &EmbeddingRequest) -> LocalRuntimeDiagnostic {
+        diagnostic_with_request_context(
+            self.diagnostic(),
+            &request.product_id,
+            &request.model.model.model_id,
+        )
+    }
+}
+
 /// CPU-backed embeddings smoke service.
 #[derive(Clone, Debug)]
 pub struct SmokeEmbeddingsService {
@@ -5167,6 +5259,142 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
 /// Honest Metal product alias for model-backed embeddings.
 pub type MetalProductEmbeddingsService = MetalModelEmbeddingsService;
 
+/// CUDA-backed embeddings service for the supported model-backed product path.
+pub struct CudaModelEmbeddingsService {
+    backend: CudaBackend,
+    backend_selection: BackendSelection,
+    model: ByteProjectionEmbedder,
+    graph: Graph,
+    input_shape: Shape,
+    input_id: TensorId,
+    output_id: TensorId,
+}
+
+impl CudaModelEmbeddingsService {
+    /// Loads the first model-backed embeddings family on CUDA when the local
+    /// machine exposes a genuinely supported CUDA execution device.
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, CudaEmbeddingsError> {
+        let backend = CudaBackend::new();
+        let backend_selection = backend
+            .backend_selection(CUDA_EMBEDDINGS_SUPPORTED_OPS)
+            .map_err(|error| CudaEmbeddingsError::BackendUnavailable {
+                status: backend.health().status,
+                message: error.to_string(),
+            })?;
+        let selected_device = backend_selection
+            .selected_device
+            .as_ref()
+            .map(|device| device.device.clone())
+            .ok_or_else(|| CudaEmbeddingsError::BackendUnavailable {
+                status: backend.health().status,
+                message: String::from("cuda backend selected no execution device"),
+            })?;
+
+        let model = ByteProjectionEmbedder::from_safetensors_artifact(path)?;
+        let input_shape = Shape::new(vec![1, model.input_dimensions()]);
+        let (graph, input_id, output_id) = build_embedding_graph(
+            selected_device,
+            model.input_dimensions(),
+            model.descriptor().dimensions,
+            model.weights().projection(),
+            model.weights().bias(),
+            input_shape.clone(),
+        )?;
+        Ok(Self {
+            backend,
+            backend_selection,
+            model,
+            graph,
+            input_shape,
+            input_id,
+            output_id,
+        })
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &EmbeddingModelDescriptor {
+        self.model.descriptor()
+    }
+
+    /// Returns truthful backend-selection data for the loaded CUDA product.
+    #[must_use]
+    pub fn backend_selection(&self) -> &BackendSelection {
+        &self.backend_selection
+    }
+
+    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, CudaEmbeddingsError> {
+        execute_cuda_embedding_graph(
+            &mut self.backend,
+            &self.graph,
+            self.input_id,
+            self.output_id,
+            &self.input_shape,
+            self.model.featurize(input),
+        )
+        .map_err(CudaEmbeddingsError::Runtime)
+    }
+}
+
+impl EmbeddingsExecutor for CudaModelEmbeddingsService {
+    type Error = CudaEmbeddingsError;
+
+    fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        let embed_start = Instant::now();
+        if request.product_id != EMBEDDINGS_PRODUCT_ID {
+            return Err(CudaEmbeddingsError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+        if request.model != *self.model.descriptor() {
+            return Err(CudaEmbeddingsError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+        if request.inputs.is_empty() {
+            return Ok(EmbeddingResponse::new(request, Vec::new()).with_metrics(
+                EmbeddingMetrics {
+                    total_duration_ns: Some(0),
+                    load_duration_ns: Some(0),
+                    prompt_eval_count: None,
+                    prompt_eval_duration_ns: None,
+                },
+            ));
+        }
+
+        let mut embeddings = Vec::with_capacity(request.inputs.len());
+        for (index, input) in request.inputs.iter().enumerate() {
+            let values = finalize_embedding_values(
+                self.embed_one(input)?,
+                request.model.normalization,
+                request.output_dimensions,
+            )
+            .map_err(|message| CudaEmbeddingsError::InvalidOutput { index, message })?;
+            embeddings.push(EmbeddingVector { index, values });
+        }
+
+        Ok(
+            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
+                total_duration_ns: Some(
+                    embed_start
+                        .elapsed()
+                        .as_nanos()
+                        .try_into()
+                        .unwrap_or(u64::MAX),
+                ),
+                load_duration_ns: Some(0),
+                prompt_eval_count: None,
+                prompt_eval_duration_ns: None,
+            }),
+        )
+    }
+}
+
+/// Honest CUDA product alias for model-backed embeddings.
+pub type CudaProductEmbeddingsService = CudaModelEmbeddingsService;
+
 fn build_embedding_graph(
     device: Device,
     input_dimensions: usize,
@@ -5217,6 +5445,28 @@ fn execute_cpu_embedding_graph(
 
 fn execute_metal_embedding_graph(
     backend: &mut MetalBackend,
+    graph: &Graph,
+    input_id: TensorId,
+    output_id: TensorId,
+    input_shape: &Shape,
+    features: Vec<f32>,
+) -> Result<Vec<f32>, RuntimeError> {
+    let mut runtime_inputs = BTreeMap::new();
+    runtime_inputs.insert(
+        input_id,
+        backend.input_buffer(input_shape.clone(), features)?,
+    );
+    let result = backend.compile_and_execute(graph, &runtime_inputs)?;
+    let Some(output) = result.outputs.get(&output_id) else {
+        return Err(RuntimeError::Backend(String::from(
+            "missing embedding output",
+        )));
+    };
+    output.read_f32()
+}
+
+fn execute_cuda_embedding_graph(
+    backend: &mut CudaBackend,
     graph: &Graph,
     input_id: TensorId,
     output_id: TensorId,
