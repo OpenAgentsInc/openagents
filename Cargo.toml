@@ -27,6 +27,7 @@ members = [
     "crates/mox/mox-provider",
     "crates/mox/mox-backend-cpu",
     "crates/mox/mox-backend-metal",
+    "crates/mox/mox-backend-cuda",
     "crates/mox/mox-backend-amd-kfd",
     "crates/mox/mox-backend-amd-userspace",
     "apps/nexus-control",
