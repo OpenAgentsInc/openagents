@@ -167,6 +167,53 @@ Generation provenance and generation receipts should carry the realized cache
 observations for the request path so the runtime can explain whether state was
 reused, rebuilt, bypassed, invalidated, or restored.
 
+## Artifact Provenance And License Gating
+
+`MOX-164` defines a separate governance contract for whether a local artifact
+may be advertised or served into compute-market supply. This is not the same as
+blob integrity:
+
+- integrity answers "are these bytes present and uncorrupted?"
+- provenance answers "what local source did this artifact come from?"
+- license facts answer "what, if anything, was declared about its usage terms?"
+
+At minimum the reusable Mox surfaces must carry, when known:
+
+- artifact provenance kind
+  - `fixture`, `local_path`, `ollama_blob`, `ollama_manifest`, or
+    `ollama_remote_alias`
+- a source label
+  - file path, blob name, or canonical Ollama model name
+- manifest digest when the artifact came from a resolved Ollama manifest
+- declared upstream alias facts
+  - `remote_host`, `remote_model`, and `base_model` when present
+- declared license payloads in source order
+  - including stable per-license digests
+
+Provider capability envelopes must also carry:
+
+- the explicit compute-market supply policy being applied
+- the resulting machine-checkable advertise/serve decision
+- explicit refusal reasons when the policy denies supply
+
+The default compute-market supply policy for Mox must refuse external artifacts
+that lack declared license facts, and it must distinguish at least:
+
+- refusal because provenance class is disallowed
+- refusal because governance metadata is missing entirely
+- refusal because no license was declared
+- refusal because licenses fail an allowlist or hit a denylist
+
+Those policy-driven refusals must remain distinct from:
+
+- integrity failures
+- unsupported-format failures
+- backend-readiness failures
+
+So a caller can tell whether a model was rejected because it is corrupt,
+unsupported, or policy-disallowed even when all three surfaces are exercised in
+the same workflow.
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or

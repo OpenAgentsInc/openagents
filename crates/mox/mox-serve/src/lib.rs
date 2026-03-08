@@ -25,10 +25,12 @@ pub use mox_models::{
     GgufDecoderTensorLayout, GgufEmbeddingAdapter, GgufEmbeddingAdapterLoader, GgufEmbeddingFamily,
     GgufEmbeddingFamilyMetadata, GgufEmbeddingLayerTensorLayout, GgufEmbeddingPooling,
     GgufEmbeddingTensorLayout, GgufPromptTemplateFamily, GgufPromptTemplateRenderer,
-    ModelDescriptor, ModelLoadError, PromptMessage, PromptMessageRole, PromptRenderError,
-    ReferenceWordDecoder, RenderedPrompt, SmokeByteEmbedder, TokenId, TokenSequence,
-    TokenVocabulary, TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat,
-    WeightSource, WeightTensorMetadata, apply_context_window, digest_generation_defaults,
+    ModelArtifactGovernance, ModelArtifactLicenseEntry, ModelArtifactLicenseFacts,
+    ModelArtifactProvenance, ModelArtifactProvenanceKind, ModelDescriptor, ModelLoadError,
+    PromptMessage, PromptMessageRole, PromptRenderError, ReferenceWordDecoder, RenderedPrompt,
+    SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
+    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
+    apply_context_window, digest_generation_defaults,
 };
 use mox_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,

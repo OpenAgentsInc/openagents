@@ -23,3 +23,4 @@ sha2 = { workspace = true }
 
 [dev-dependencies]
 mox-core = { path = "../mox-core" }
+tempfile = "3"
