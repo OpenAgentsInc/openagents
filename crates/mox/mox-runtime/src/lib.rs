@@ -179,6 +179,9 @@ pub struct DeviceDescriptor {
     /// AMD-specific topology/risk metadata when the device belongs to an AMD backend.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd_metadata: Option<AmdDeviceMetadata>,
+    /// NVIDIA-specific topology/risk metadata when the device belongs to a CUDA backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia_metadata: Option<NvidiaDeviceMetadata>,
 }
 
 /// Exact allocator-pool reuse posture for one backend.
@@ -499,6 +502,87 @@ pub struct AmdBackendReport {
     /// Discovered devices for the mode.
     pub devices: Vec<DeviceDescriptor>,
     /// Honest readiness/health for the mode.
+    pub health: RuntimeHealth,
+}
+
+/// High-level NVIDIA operational risk posture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NvidiaRiskLevel {
+    /// Lower-risk dedicated compute posture.
+    Standard,
+    /// Higher-risk posture such as display-attached or MIG-partitioned operation.
+    Elevated,
+}
+
+/// Stable NVIDIA topology fields relevant to backend discovery and later capability reporting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaTopologyInfo {
+    /// Stable architecture label such as `ada`, when known.
+    pub architecture: Option<String>,
+    /// Stable CUDA compute capability such as `8.9`, when known.
+    pub compute_capability: Option<String>,
+    /// PCI bus/device/function address, when known.
+    pub pci_bdf: Option<String>,
+    /// Number of streaming multiprocessors, when known.
+    pub sm_count: Option<u16>,
+    /// Total VRAM bytes, when known.
+    pub vram_bytes: Option<u64>,
+    /// Active MIG profile or partition label, when known.
+    pub mig_profile: Option<String>,
+}
+
+/// Stable NVIDIA risk posture derived from the current topology and host role.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaRiskProfile {
+    /// High-level risk classification.
+    pub level: NvidiaRiskLevel,
+    /// Whether the GPU is believed to be attached to a live display, when known.
+    pub display_attached: Option<bool>,
+    /// Whether the device is a MIG partition or otherwise sharing the physical GPU.
+    pub mig_partitioned: bool,
+    /// Plain-text warnings the operator should preserve in logs or inventory surfaces.
+    pub warnings: Vec<String>,
+}
+
+/// Expected operator-level recovery step for a CUDA backend/device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NvidiaRecoveryAction {
+    /// Restart the affected process/runtime first.
+    ProcessRestart,
+    /// Attempt a GPU reset when the platform/driver permits it.
+    GpuReset,
+    /// Reboot the host when the runtime cannot recover in place.
+    RebootHost,
+}
+
+/// Stable NVIDIA recovery posture derived from the current device and host mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaRecoveryProfile {
+    /// Whether the runtime believes GPU reset is available on this host, when known.
+    pub supports_gpu_reset: Option<bool>,
+    /// Ordered recovery actions Mox expects the operator/runtime to consider.
+    pub expected_actions: Vec<NvidiaRecoveryAction>,
+}
+
+/// NVIDIA-specific device metadata carried through runtime and provider truth surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaDeviceMetadata {
+    /// Stable topology snapshot.
+    pub topology: NvidiaTopologyInfo,
+    /// Risk posture for the selected NVIDIA device.
+    pub risk: NvidiaRiskProfile,
+    /// Recovery posture for the selected NVIDIA device.
+    pub recovery: NvidiaRecoveryProfile,
+}
+
+/// Backend-local NVIDIA discovery report that preserves topology/risk truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaBackendReport {
+    /// Discovered devices for the CUDA backend.
+    pub devices: Vec<DeviceDescriptor>,
+    /// Honest readiness/health for the backend.
     pub health: RuntimeHealth,
 }
 
@@ -2200,11 +2284,13 @@ mod tests {
         LoadedModelResidency, LoadedModelState, LocalRuntimeObservability, MemoryBudget,
         MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
         ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction,
-        RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
-        RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy,
-        TokenSampler, apply_sampling_penalties, plan_model_admission,
+        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction, RuntimeError,
+        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+        SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy, TokenSampler,
+        apply_sampling_penalties, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2240,6 +2326,7 @@ mod tests {
                 unified_memory: Some(true),
                 feature_flags: vec![String::from("mock_execution")],
                 amd_metadata: None,
+                nvidia_metadata: None,
             }])
         }
 
@@ -2277,6 +2364,30 @@ mod tests {
             unified_memory: Some(false),
             feature_flags: vec![String::from("cuda_architecture_surface")],
             amd_metadata: None,
+            nvidia_metadata: Some(NvidiaDeviceMetadata {
+                topology: NvidiaTopologyInfo {
+                    architecture: Some(String::from("ada")),
+                    compute_capability: Some(String::from("8.9")),
+                    pci_bdf: Some(String::from("00000000:01:00.0")),
+                    sm_count: Some(76),
+                    vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                    mig_profile: None,
+                },
+                risk: NvidiaRiskProfile {
+                    level: NvidiaRiskLevel::Standard,
+                    display_attached: Some(false),
+                    mig_partitioned: false,
+                    warnings: Vec::new(),
+                },
+                recovery: NvidiaRecoveryProfile {
+                    supports_gpu_reset: Some(true),
+                    expected_actions: vec![
+                        NvidiaRecoveryAction::ProcessRestart,
+                        NvidiaRecoveryAction::GpuReset,
+                        NvidiaRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
         }
     }
 
@@ -3018,6 +3129,7 @@ mod tests {
                     ],
                 },
             }),
+            nvidia_metadata: None,
         };
         let report = AmdBackendReport {
             mode: AmdRuntimeMode::Userspace,
@@ -3075,6 +3187,104 @@ mod tests {
                 "health": {
                     "status": "Degraded",
                     "message": "amdgpu is still loaded; userspace mode not yet ready"
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn nvidia_backend_model_serializes_topology_risk_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let device = DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(mox_core::DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("NVIDIA GeForce RTX 4080")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: Some(NvidiaDeviceMetadata {
+                topology: NvidiaTopologyInfo {
+                    architecture: Some(String::from("ada")),
+                    compute_capability: Some(String::from("8.9")),
+                    pci_bdf: Some(String::from("00000000:01:00.0")),
+                    sm_count: Some(76),
+                    vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                    mig_profile: None,
+                },
+                risk: NvidiaRiskProfile {
+                    level: NvidiaRiskLevel::Elevated,
+                    display_attached: Some(true),
+                    mig_partitioned: false,
+                    warnings: vec![String::from(
+                        "display-attached NVIDIA devices may show variable latency under local desktop load",
+                    )],
+                },
+                recovery: NvidiaRecoveryProfile {
+                    supports_gpu_reset: Some(true),
+                    expected_actions: vec![
+                        NvidiaRecoveryAction::ProcessRestart,
+                        NvidiaRecoveryAction::GpuReset,
+                        NvidiaRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
+        };
+        let report = NvidiaBackendReport {
+            devices: vec![device],
+            health: RuntimeHealth {
+                status: HealthStatus::Degraded,
+                message: String::from(
+                    "cuda detected a display-attached GPU; provider execution should keep latency caveats explicit",
+                ),
+            },
+        };
+
+        assert_eq!(
+            serde_json::to_value(&report)?,
+            json!({
+                "devices": [{
+                    "backend": "cuda",
+                    "device": {
+                        "kind": "Cuda",
+                        "ordinal": 0,
+                        "label": "cuda:0"
+                    },
+                    "device_name": "NVIDIA GeForce RTX 4080",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [],
+                    "memory_capacity_bytes": 17179869184u64,
+                    "unified_memory": false,
+                    "feature_flags": ["cuda_architecture_surface"],
+                    "nvidia_metadata": {
+                        "topology": {
+                            "architecture": "ada",
+                            "compute_capability": "8.9",
+                            "pci_bdf": "00000000:01:00.0",
+                            "sm_count": 76,
+                            "vram_bytes": 17179869184u64,
+                            "mig_profile": null
+                        },
+                        "risk": {
+                            "level": "elevated",
+                            "display_attached": true,
+                            "mig_partitioned": false,
+                            "warnings": [
+                                "display-attached NVIDIA devices may show variable latency under local desktop load"
+                            ]
+                        },
+                        "recovery": {
+                            "supports_gpu_reset": true,
+                            "expected_actions": ["process_restart", "gpu_reset", "reboot_host"]
+                        }
+                    }
+                }],
+                "health": {
+                    "status": "Degraded",
+                    "message": "cuda detected a display-attached GPU; provider execution should keep latency caveats explicit"
                 }
             })
         );

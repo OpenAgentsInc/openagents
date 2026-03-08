@@ -7,6 +7,7 @@ use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
     BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
     LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
+    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
     PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
 };
 use mox_serve::{
@@ -89,6 +90,39 @@ impl AmdCapabilityContext {
     }
 }
 
+/// NVIDIA-specific provider truth derived from reusable runtime/backend state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaCapabilityContext {
+    /// Stable NVIDIA topology snapshot.
+    pub topology: NvidiaTopologyInfo,
+    /// Risk posture for the CUDA device.
+    pub risk: NvidiaRiskProfile,
+    /// Recovery posture for the CUDA device.
+    pub recovery: NvidiaRecoveryProfile,
+}
+
+impl NvidiaCapabilityContext {
+    /// Derives NVIDIA capability context from a runtime backend selection.
+    #[must_use]
+    pub fn from_backend_selection(backend_selection: &BackendSelection) -> Option<Self> {
+        backend_selection
+            .selected_device
+            .as_ref()
+            .and_then(|device| device.nvidia_metadata.as_ref())
+            .map(Self::from_metadata)
+    }
+
+    /// Derives NVIDIA capability context directly from runtime device metadata.
+    #[must_use]
+    pub fn from_metadata(metadata: &NvidiaDeviceMetadata) -> Self {
+        Self {
+            topology: metadata.topology.clone(),
+            risk: metadata.risk.clone(),
+            recovery: metadata.recovery.clone(),
+        }
+    }
+}
+
 /// Provider-facing wrapper for live local-runtime observability.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalRuntimeObservabilityEnvelope {
@@ -123,6 +157,9 @@ pub struct CapabilityEnvelope {
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
+    /// NVIDIA-specific capability context when the selected backend is CUDA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia: Option<NvidiaCapabilityContext>,
     /// Model identifier.
     pub model_id: String,
     /// Model family.
@@ -165,6 +202,7 @@ impl CapabilityEnvelope {
             product_id: String::from(EMBEDDINGS_PRODUCT_ID),
             runtime_backend: backend_selection.effective_backend.clone(),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             model_id: model_id.into(),
             model_family: model_family.into(),
@@ -247,6 +285,9 @@ pub struct ExecutionReceipt {
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
+    /// NVIDIA-specific execution context when the selected backend is CUDA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia: Option<NvidiaCapabilityContext>,
     /// Request identifier.
     pub request_id: String,
     /// Stable request digest.
@@ -305,6 +346,7 @@ impl ExecutionReceipt {
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
@@ -360,6 +402,7 @@ impl ExecutionReceipt {
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: digest_embedding_request(request),
@@ -436,6 +479,9 @@ pub struct TextGenerationCapabilityEnvelope {
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
+    /// NVIDIA-specific capability context when the selected backend is CUDA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia: Option<NvidiaCapabilityContext>,
     /// Model identifier.
     pub model_id: String,
     /// Model family.
@@ -483,6 +529,7 @@ impl TextGenerationCapabilityEnvelope {
             product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
             runtime_backend: backend_selection.effective_backend.clone(),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             model_id: model.model.model_id.clone(),
             model_family: model.model.family.clone(),
@@ -516,6 +563,9 @@ pub struct TextGenerationReceipt {
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
+    /// NVIDIA-specific execution context when the selected backend is CUDA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia: Option<NvidiaCapabilityContext>,
     /// Request identifier.
     pub request_id: String,
     /// Stable request digest.
@@ -620,6 +670,7 @@ impl TextGenerationReceipt {
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
@@ -721,6 +772,7 @@ impl TextGenerationReceipt {
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: digest_generation_request(request),
@@ -986,8 +1038,10 @@ mod tests {
         BackendSelection, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy,
         KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
         LocalRuntimeErrorCode, LocalRuntimeObservability, MemoryResidencySnapshot,
-        ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheState, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
+        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeTransitionEvent, RuntimeTransitionKind,
     };
     use mox_serve::{
         EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
@@ -1445,7 +1499,7 @@ mod tests {
     }
 
     #[test]
-    fn cuda_capability_reports_backend_identity_without_amd_context()
+    fn cuda_capability_reports_topology_risk_and_recovery_without_amd_context()
     -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_backend_selection(),
@@ -1471,6 +1525,15 @@ mod tests {
         assert_eq!(
             encoded["backend_selection"]["selected_device"]["device"]["kind"],
             json!("Cuda")
+        );
+        assert_eq!(
+            encoded["nvidia"]["topology"]["compute_capability"],
+            json!("8.9")
+        );
+        assert_eq!(encoded["nvidia"]["risk"]["display_attached"], json!(false));
+        assert_eq!(
+            encoded["nvidia"]["recovery"]["expected_actions"],
+            json!(["process_restart", "gpu_reset", "reboot_host"])
         );
         assert_eq!(encoded["amd"], serde_json::Value::Null);
         Ok(())
@@ -1833,6 +1896,32 @@ mod tests {
     }
 
     #[test]
+    fn nvidia_receipt_carries_execution_context() -> Result<(), Box<dyn std::error::Error>> {
+        let request = EmbeddingRequest::new(
+            "req-cuda-1",
+            sample_embedding_descriptor(),
+            vec![String::from("hello")],
+        );
+
+        let receipt = ExecutionReceipt::failed_for_request(
+            cuda_backend_selection(),
+            &request,
+            10,
+            11,
+            "backend still architecture-only",
+        );
+        let Some(nvidia) = receipt.nvidia else {
+            return Err("nvidia context missing".into());
+        };
+        assert_eq!(nvidia.topology.compute_capability.as_deref(), Some("8.9"));
+        assert_eq!(nvidia.risk.level, NvidiaRiskLevel::Standard);
+        assert_eq!(nvidia.recovery.supports_gpu_reset, Some(true));
+        assert_eq!(receipt.input_count, 1);
+        assert_eq!(receipt.normalization, EmbeddingNormalization::None);
+        Ok(())
+    }
+
+    #[test]
     fn request_digests_are_deterministic() {
         let embedding_request = EmbeddingRequest::new(
             "req-5",
@@ -2028,6 +2117,7 @@ mod tests {
             unified_memory: Some(true),
             feature_flags: vec![String::from("host_memory")],
             amd_metadata: None,
+            nvidia_metadata: None,
         }
     }
 
@@ -2090,6 +2180,7 @@ mod tests {
                     ],
                 },
             }),
+            nvidia_metadata: None,
         }
     }
 
@@ -2104,6 +2195,30 @@ mod tests {
             unified_memory: Some(false),
             feature_flags: vec![String::from("cuda_architecture_surface")],
             amd_metadata: None,
+            nvidia_metadata: Some(NvidiaDeviceMetadata {
+                topology: NvidiaTopologyInfo {
+                    architecture: Some(String::from("ada")),
+                    compute_capability: Some(String::from("8.9")),
+                    pci_bdf: Some(String::from("00000000:01:00.0")),
+                    sm_count: Some(76),
+                    vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                    mig_profile: None,
+                },
+                risk: NvidiaRiskProfile {
+                    level: NvidiaRiskLevel::Standard,
+                    display_attached: Some(false),
+                    mig_partitioned: false,
+                    warnings: Vec::new(),
+                },
+                recovery: NvidiaRecoveryProfile {
+                    supports_gpu_reset: Some(true),
+                    expected_actions: vec![
+                        NvidiaRecoveryAction::ProcessRestart,
+                        NvidiaRecoveryAction::GpuReset,
+                        NvidiaRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
         }
     }
 
@@ -2149,6 +2264,7 @@ mod tests {
                     ],
                 },
             }),
+            nvidia_metadata: None,
         }
     }
 }

@@ -236,6 +236,7 @@ fn probe_device(
             risk: risk_profile(),
             recovery: recovery_profile(binding),
         }),
+        nvidia_metadata: None,
     })
 }
 
