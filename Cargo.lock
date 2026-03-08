@@ -4531,6 +4531,7 @@ dependencies = [
  "mox-models",
  "mox-provider",
  "mox-runtime",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",

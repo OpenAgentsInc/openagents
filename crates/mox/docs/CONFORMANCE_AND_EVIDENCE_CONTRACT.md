@@ -22,6 +22,8 @@ Mox-owned reusable runtime behavior plus the app-owned adapter seam.
 
 `MOX-117` should produce a repeatable harness that can run the same scenarios
 against the current Ollama-backed path and the Mox path and compare results.
+See `crates/mox/docs/CONFORMANCE_HARNESS.md` for the concrete harness/report
+shape that landed for this contract.
 
 The harness must cover:
 
