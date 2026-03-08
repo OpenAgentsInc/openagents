@@ -1392,9 +1392,124 @@ impl MemoryResidencySnapshot {
     }
 }
 
+/// How the local serving runtime crosses the backend boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendInterfaceMode {
+    /// Backend code runs in the same process as the caller.
+    InProcess,
+    /// Backend work is isolated behind a dedicated subprocess boundary.
+    Subprocess,
+}
+
+/// Process boundary that contains a backend or runtime crash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationFailureBoundary {
+    /// A crash can take down the shared host process.
+    SharedHostProcess,
+    /// A crash is contained to a dedicated runtime subprocess.
+    DedicatedRuntimeSubprocess,
+}
+
+/// State that must be discarded when the runtime performs an isolation reset.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationResetScope {
+    /// Discard loaded-model state and residency.
+    LoadedModels,
+    /// Discard live generation sessions.
+    Sessions,
+    /// Discard shared prefix-cache entries.
+    PrefixCache,
+    /// Discard paged KV state.
+    KvState,
+    /// Discard backend-owned allocator and kernel-cache state.
+    BackendRuntimeResources,
+}
+
+/// Recovery action the runtime must take after an isolation-relevant failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationRecoveryAction {
+    /// Refuse the affected request and preserve the rest of the runtime state.
+    RefuseRequest,
+    /// Reset runtime-owned loaded-model, session, cache, and backend-resource state.
+    ResetRuntimeState,
+    /// Restart only the dedicated runtime subprocess.
+    RestartRuntimeSubprocess,
+    /// Restart the whole host process because no smaller crash boundary exists.
+    RestartHostProcess,
+}
+
+/// Explicit isolation policy for local Mox serving.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalServingIsolationPolicy {
+    /// Whether the backend boundary is in-process or subprocess-isolated.
+    pub backend_interface_mode: BackendInterfaceMode,
+    /// Smallest process boundary that contains a crash.
+    pub failure_boundary: IsolationFailureBoundary,
+    /// Recovery action for request-local failures such as invalid input or unsupported capability.
+    pub request_failure_recovery: IsolationRecoveryAction,
+    /// Recovery action for backend execution failures that return control to the caller.
+    pub backend_error_recovery: IsolationRecoveryAction,
+    /// Recovery action when the backend/runtime crashes outright.
+    pub crash_recovery: IsolationRecoveryAction,
+    /// State that is considered unsafe and must be discarded during an isolation reset.
+    pub reset_scopes: Vec<IsolationResetScope>,
+}
+
+impl LocalServingIsolationPolicy {
+    /// Returns the current in-process Mox serving policy.
+    #[must_use]
+    pub fn in_process_runtime() -> Self {
+        Self {
+            backend_interface_mode: BackendInterfaceMode::InProcess,
+            failure_boundary: IsolationFailureBoundary::SharedHostProcess,
+            request_failure_recovery: IsolationRecoveryAction::RefuseRequest,
+            backend_error_recovery: IsolationRecoveryAction::ResetRuntimeState,
+            crash_recovery: IsolationRecoveryAction::RestartHostProcess,
+            reset_scopes: vec![
+                IsolationResetScope::LoadedModels,
+                IsolationResetScope::Sessions,
+                IsolationResetScope::PrefixCache,
+                IsolationResetScope::KvState,
+                IsolationResetScope::BackendRuntimeResources,
+            ],
+        }
+    }
+
+    /// Returns the target policy if Mox later isolates execution behind a subprocess.
+    #[must_use]
+    pub fn subprocess_runtime() -> Self {
+        Self {
+            backend_interface_mode: BackendInterfaceMode::Subprocess,
+            failure_boundary: IsolationFailureBoundary::DedicatedRuntimeSubprocess,
+            request_failure_recovery: IsolationRecoveryAction::RefuseRequest,
+            backend_error_recovery: IsolationRecoveryAction::RestartRuntimeSubprocess,
+            crash_recovery: IsolationRecoveryAction::RestartRuntimeSubprocess,
+            reset_scopes: vec![
+                IsolationResetScope::LoadedModels,
+                IsolationResetScope::Sessions,
+                IsolationResetScope::PrefixCache,
+                IsolationResetScope::KvState,
+                IsolationResetScope::BackendRuntimeResources,
+            ],
+        }
+    }
+}
+
+impl Default for LocalServingIsolationPolicy {
+    fn default() -> Self {
+        Self::in_process_runtime()
+    }
+}
+
 /// Explicit local-runtime observability snapshot for app cutover and debugging.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalRuntimeObservability {
+    /// Explicit runtime crash/reset isolation policy.
+    pub isolation_policy: LocalServingIsolationPolicy,
     /// Number of requests currently queued behind active execution.
     pub queue_depth: usize,
     /// Maximum queued requests admitted by policy, when bounded.
@@ -2283,16 +2398,16 @@ mod tests {
         ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
         KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
         KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability, MemoryBudget,
-        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
-        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
-        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction, RuntimeError,
-        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-        SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy, TokenSampler,
-        apply_sampling_penalties, plan_model_admission,
+        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction,
+        RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
+        RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy,
+        TokenSampler, apply_sampling_penalties, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3411,6 +3526,7 @@ mod tests {
     #[test]
     fn local_runtime_observability_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
         let observability = LocalRuntimeObservability {
+            isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             queue_depth: 0,
             queue_capacity: None,
             active_sessions: 2,
@@ -3442,6 +3558,20 @@ mod tests {
         assert_eq!(
             serde_json::to_value(&observability)?,
             json!({
+                "isolation_policy": {
+                    "backend_interface_mode": "in_process",
+                    "failure_boundary": "shared_host_process",
+                    "request_failure_recovery": "refuse_request",
+                    "backend_error_recovery": "reset_runtime_state",
+                    "crash_recovery": "restart_host_process",
+                    "reset_scopes": [
+                        "loaded_models",
+                        "sessions",
+                        "prefix_cache",
+                        "kv_state",
+                        "backend_runtime_resources"
+                    ]
+                },
                 "queue_depth": 0,
                 "active_sessions": 2,
                 "active_requests": 1,
@@ -3471,6 +3601,33 @@ mod tests {
                         "message": "ready",
                         "observed_at_millis": 10
                     }
+                ]
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_serving_isolation_policy_helpers_are_stable() -> Result<(), Box<dyn std::error::Error>>
+    {
+        assert_eq!(
+            LocalServingIsolationPolicy::default(),
+            LocalServingIsolationPolicy::in_process_runtime()
+        );
+        assert_eq!(
+            serde_json::to_value(LocalServingIsolationPolicy::subprocess_runtime())?,
+            json!({
+                "backend_interface_mode": "subprocess",
+                "failure_boundary": "dedicated_runtime_subprocess",
+                "request_failure_recovery": "refuse_request",
+                "backend_error_recovery": "restart_runtime_subprocess",
+                "crash_recovery": "restart_runtime_subprocess",
+                "reset_scopes": [
+                    "loaded_models",
+                    "sessions",
+                    "prefix_cache",
+                    "kv_state",
+                    "backend_runtime_resources"
                 ]
             })
         );
