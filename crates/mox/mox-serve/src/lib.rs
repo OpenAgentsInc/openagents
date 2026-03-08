@@ -8129,6 +8129,7 @@ mod tests {
                 format: WeightFormat::ProgrammaticFixture,
                 source: WeightSource::Fixture,
                 quantization: mox_core::QuantizationMode::None,
+                quantization_modes: Vec::new(),
                 digest: String::from("fixture-digest"),
                 tensors: vec![WeightTensorMetadata::new(
                     "lm_head",

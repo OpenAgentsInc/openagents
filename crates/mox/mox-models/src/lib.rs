@@ -956,6 +956,9 @@ pub struct WeightBundleMetadata {
     pub source: WeightSource,
     /// Dominant quantization mode for logical model weights.
     pub quantization: QuantizationMode,
+    /// All quantization modes observed across the logical model weights.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quantization_modes: Vec<QuantizationMode>,
     /// Stable digest over tensor metadata and values.
     pub digest: String,
     /// Ordered tensor metadata.
@@ -1521,6 +1524,8 @@ pub enum GgufTensorType {
     F16,
     /// 16-bit bfloat tensor.
     BF16,
+    /// GGML MXFP4 tensor.
+    MXFP4,
     /// GGML Q4_0 tensor.
     Q4_0,
     /// GGML Q4_1 tensor.
@@ -1567,6 +1572,7 @@ impl GgufTensorType {
             14 => Self::Q6K,
             15 => Self::Q8K,
             30 => Self::BF16,
+            39 => Self::MXFP4,
             other => Self::Unknown(other),
         }
     }
@@ -1576,7 +1582,8 @@ impl GgufTensorType {
             Self::F32 => Some(DType::F32),
             Self::F16 => Some(DType::F16),
             Self::BF16 => Some(DType::BF16),
-            Self::Q4_0
+            Self::MXFP4
+            | Self::Q4_0
             | Self::Q4_1
             | Self::Q5_0
             | Self::Q5_1
@@ -1594,6 +1601,7 @@ impl GgufTensorType {
 
     fn quantization_mode(self) -> Option<QuantizationMode> {
         match self {
+            Self::MXFP4 => Some(QuantizationMode::GgmlMxfp4),
             Self::Q4_0 => Some(QuantizationMode::GgmlQ4_0),
             Self::Q4_1 => Some(QuantizationMode::GgmlQ4_1),
             Self::Q8_0 => Some(QuantizationMode::GgmlQ8_0),
@@ -1620,6 +1628,7 @@ impl fmt::Display for GgufTensorType {
             Self::F32 => f.write_str("f32"),
             Self::F16 => f.write_str("f16"),
             Self::BF16 => f.write_str("bf16"),
+            Self::MXFP4 => f.write_str("mxfp4"),
             Self::Q4_0 => f.write_str("q4_0"),
             Self::Q4_1 => f.write_str("q4_1"),
             Self::Q5_0 => f.write_str("q5_0"),
@@ -1919,7 +1928,8 @@ impl GgufContent {
                 GgufTensorType::F32 => decode_f32_values("gguf", name, data)?,
                 GgufTensorType::F16 => decode_f16_values("gguf", name, data)?,
                 GgufTensorType::BF16 => decode_bf16_values("gguf", name, data)?,
-                GgufTensorType::Q4_0
+                GgufTensorType::MXFP4
+                | GgufTensorType::Q4_0
                 | GgufTensorType::Q4_1
                 | GgufTensorType::Q5_0
                 | GgufTensorType::Q5_1
@@ -2894,6 +2904,8 @@ pub enum GgufDecoderFamily {
     Qwen,
     /// Mistral-family decoder behavior, including legacy Mistral models carried through `llama` GGUF metadata.
     Mistral,
+    /// GPT-OSS / OpenAI-MoE decoder behavior.
+    GptOss,
 }
 
 impl GgufDecoderFamily {
@@ -2902,6 +2914,7 @@ impl GgufDecoderFamily {
             Self::Llama => "llama",
             Self::Qwen => "qwen",
             Self::Mistral => "mistral",
+            Self::GptOss => "gpt_oss",
         }
     }
 }
@@ -2923,10 +2936,25 @@ pub struct GgufDecoderFamilyMetadata {
     /// Sliding-window attention bound when the artifact declares one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub sliding_window: Option<usize>,
+    /// Per-head key/query width when the artifact declares it explicitly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_key_length: Option<usize>,
+    /// Per-head value width when the artifact declares it explicitly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_value_length: Option<usize>,
     /// Whether the artifact uses tied token embedding / LM head weights.
     pub tie_word_embeddings: bool,
     /// Whether the adapter expects explicit Q/K/V bias tensors.
     pub attention_qkv_biases: bool,
+    /// Mixture-of-experts expert count when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expert_count: Option<usize>,
+    /// Routed expert count per token when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expert_used_count: Option<usize>,
+    /// Expert feed-forward width when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expert_feed_forward_length: Option<usize>,
 }
 
 /// Family-specific tensor naming for one GGUF decoder layer.
@@ -2953,14 +2981,51 @@ pub struct GgufDecoderLayerTensorLayout {
     pub attention_value_bias: Option<String>,
     /// Attention output projection tensor.
     pub attention_output_weight: String,
+    /// Attention output projection bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_output_bias: Option<String>,
+    /// Post-attention norm tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_post_norm: Option<String>,
+    /// Attention sinks tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_sinks_weight: Option<String>,
     /// Feed-forward gate projection tensor.
-    pub feed_forward_gate_weight: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_gate_weight: Option<String>,
     /// Feed-forward down projection tensor.
-    pub feed_forward_down_weight: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_down_weight: Option<String>,
     /// Feed-forward up projection tensor.
-    pub feed_forward_up_weight: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_up_weight: Option<String>,
     /// Feed-forward norm tensor.
-    pub feed_forward_norm: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_norm: Option<String>,
+    /// Router tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_router_weight: Option<String>,
+    /// Router bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_router_bias: Option<String>,
+    /// Expert gate tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_gate_experts_weight: Option<String>,
+    /// Expert gate bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_gate_experts_bias: Option<String>,
+    /// Expert up tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_up_experts_weight: Option<String>,
+    /// Expert up bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_up_experts_bias: Option<String>,
+    /// Expert down tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_down_experts_weight: Option<String>,
+    /// Expert down bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_down_experts_bias: Option<String>,
 }
 
 /// Reusable tensor-name layout for a GGUF-backed decoder family.
@@ -3415,6 +3480,9 @@ impl SafeTensorsWeightBundleLoader {
                 format: WeightFormat::SafeTensors,
                 source: WeightSource::ExternalArtifact,
                 quantization: bundle_quantization,
+                quantization_modes: (bundle_quantization != QuantizationMode::None)
+                    .then_some(vec![bundle_quantization])
+                    .unwrap_or_default(),
                 digest: hex::encode(hasher.finalize()),
                 tensors: metadata,
                 artifacts: vec![artifact],
@@ -3471,6 +3539,7 @@ impl GgufWeightBundleLoader {
                 format: WeightFormat::Gguf,
                 source: WeightSource::ExternalArtifact,
                 quantization: dominant_quantization_mode(&quantized_bytes),
+                quantization_modes: quantization_modes_from_counts(&quantized_bytes),
                 digest: hex::encode(hasher.finalize()),
                 tensors: metadata,
                 artifacts: vec![artifact.artifact_metadata().clone()],
@@ -3819,12 +3888,8 @@ impl GgufDecoderAdapterLoader {
             content,
         )?
         .with_artifact_governance(artifact_governance);
-        let tensor_layout = build_gguf_decoder_tensor_layout(
-            content,
-            descriptor.config.layer_count,
-            family_metadata.attention_qkv_biases,
-            family_metadata.tie_word_embeddings,
-        )?;
+        let tensor_layout =
+            build_gguf_decoder_tensor_layout(content, &family_metadata, &descriptor.config)?;
 
         Ok(GgufDecoderAdapter {
             descriptor,
@@ -4414,6 +4479,7 @@ fn classify_gguf_decoder_family(
         }
         "mistral" | "mistral3" => Ok(GgufDecoderFamily::Mistral),
         "qwen2" => Ok(GgufDecoderFamily::Qwen),
+        "gpt-oss" => Ok(GgufDecoderFamily::GptOss),
         other => Err(ModelLoadError::UnsupportedGgufArchitecture {
             architecture: other.to_string(),
         }),
@@ -4426,7 +4492,8 @@ fn validate_supported_decoder_family_features(
     architecture: &str,
 ) -> Result<(), ModelLoadError> {
     let expert_count_key = format!("{architecture}.expert_count");
-    if read_optional_gguf_usize(metadata, expert_count_key.as_str())?.unwrap_or(0) > 0 {
+    let expert_count = read_optional_gguf_usize(metadata, expert_count_key.as_str())?.unwrap_or(0);
+    if expert_count > 0 && !matches!(family, GgufDecoderFamily::GptOss) {
         return Err(ModelLoadError::UnsupportedGgufDecoderFamilyFeature {
             family: family.as_str().to_string(),
             feature: String::from("mixture_of_experts"),
@@ -4444,7 +4511,12 @@ fn build_gguf_decoder_family_metadata(
     let rope_theta_key = format!("{architecture}.rope.freq_base");
     let rms_norm_key = format!("{architecture}.attention.layer_norm_rms_epsilon");
     let sliding_window_key = format!("{architecture}.attention.sliding_window");
+    let attention_key_length_key = format!("{architecture}.attention.key_length");
+    let attention_value_length_key = format!("{architecture}.attention.value_length");
     let tie_word_embeddings_key = format!("{architecture}.tie_word_embeddings");
+    let expert_count_key = format!("{architecture}.expert_count");
+    let expert_used_count_key = format!("{architecture}.expert_used_count");
+    let expert_feed_forward_length_key = format!("{architecture}.expert_feed_forward_length");
 
     Ok(GgufDecoderFamilyMetadata {
         family: *family,
@@ -4453,10 +4525,24 @@ fn build_gguf_decoder_family_metadata(
         rope_theta: read_optional_gguf_f32(metadata, rope_theta_key.as_str())?.unwrap_or(10_000.0),
         rms_norm_epsilon: read_required_gguf_f32(metadata, rms_norm_key.as_str())?,
         sliding_window: read_optional_gguf_usize(metadata, sliding_window_key.as_str())?,
+        attention_key_length: read_optional_gguf_usize(
+            metadata,
+            attention_key_length_key.as_str(),
+        )?,
+        attention_value_length: read_optional_gguf_usize(
+            metadata,
+            attention_value_length_key.as_str(),
+        )?,
         tie_word_embeddings: read_optional_gguf_bool(metadata, tie_word_embeddings_key.as_str())?
             .unwrap_or(false)
             || content.tensor_info("output.weight").is_none(),
-        attention_qkv_biases: matches!(family, GgufDecoderFamily::Qwen),
+        attention_qkv_biases: matches!(family, GgufDecoderFamily::Qwen | GgufDecoderFamily::GptOss),
+        expert_count: read_optional_gguf_usize(metadata, expert_count_key.as_str())?,
+        expert_used_count: read_optional_gguf_usize(metadata, expert_used_count_key.as_str())?,
+        expert_feed_forward_length: read_optional_gguf_usize(
+            metadata,
+            expert_feed_forward_length_key.as_str(),
+        )?,
     })
 }
 
@@ -4478,10 +4564,13 @@ fn build_gguf_decoder_descriptor(
         read_required_gguf_usize(metadata, format!("{architecture}.block_count").as_str())?;
     let max_context =
         read_required_gguf_usize(metadata, format!("{architecture}.context_length").as_str())?;
-    let intermediate_size = read_required_gguf_usize(
-        metadata,
-        format!("{architecture}.feed_forward_length").as_str(),
-    )?;
+    let intermediate_size =
+        family_metadata
+            .expert_feed_forward_length
+            .unwrap_or(read_required_gguf_usize(
+                metadata,
+                format!("{architecture}.feed_forward_length").as_str(),
+            )?);
     let head_count = read_required_gguf_usize(
         metadata,
         format!("{architecture}.attention.head_count").as_str(),
@@ -4491,15 +4580,25 @@ fn build_gguf_decoder_descriptor(
         format!("{architecture}.attention.head_count_kv").as_str(),
     )?
     .unwrap_or(head_count);
-    if head_count == 0 || hidden_size % head_count != 0 {
+    let head_dim = if let Some(key_length) = family_metadata.attention_key_length {
+        key_length
+    } else if head_count == 0 || hidden_size % head_count != 0 {
         return Err(ModelLoadError::InvalidGgufMetadata {
             key: format!("{architecture}.attention.head_count"),
             message: format!(
                 "hidden size {hidden_size} is not divisible by attention head count {head_count}"
             ),
         });
+    } else {
+        hidden_size / head_count
+    };
+    let value_length = family_metadata.attention_value_length.unwrap_or(head_dim);
+    if value_length != head_dim {
+        return Err(ModelLoadError::UnsupportedGgufDecoderFamilyFeature {
+            family: family_metadata.family.as_str().to_string(),
+            feature: String::from("distinct_value_head_width"),
+        });
     }
-    let head_dim = hidden_size / head_count;
     let rotary_dim = read_optional_gguf_usize(
         metadata,
         format!("{architecture}.rope.dimension_count").as_str(),
@@ -4578,22 +4677,21 @@ fn build_gguf_decoder_descriptor(
 
 fn build_gguf_decoder_tensor_layout(
     content: &GgufContent,
-    layer_count: usize,
-    attention_qkv_biases: bool,
-    tie_word_embeddings: bool,
+    family_metadata: &GgufDecoderFamilyMetadata,
+    config: &DecoderConfig,
 ) -> Result<GgufDecoderTensorLayout, ModelLoadError> {
     required_tensor_info(content, "token_embd.weight")?;
     required_tensor_info(content, "output_norm.weight")?;
     let output = match content.tensor_info("output.weight") {
         Some(_) => Some(String::from("output.weight")),
-        None if tie_word_embeddings => None,
+        None if family_metadata.tie_word_embeddings => None,
         None => return Err(ModelLoadError::MissingTensor(String::from("output.weight"))),
     };
 
-    let mut layers = Vec::with_capacity(layer_count);
-    for layer_index in 0..layer_count {
+    let mut layers = Vec::with_capacity(config.layer_count);
+    for layer_index in 0..config.layer_count {
         let prefix = format!("blk.{layer_index}");
-        let query_bias = if attention_qkv_biases {
+        let query_bias = if family_metadata.attention_qkv_biases {
             Some(
                 required_tensor_info(content, &format!("{prefix}.attn_q.bias"))?
                     .name
@@ -4602,7 +4700,7 @@ fn build_gguf_decoder_tensor_layout(
         } else {
             None
         };
-        let key_bias = if attention_qkv_biases {
+        let key_bias = if family_metadata.attention_qkv_biases {
             Some(
                 required_tensor_info(content, &format!("{prefix}.attn_k.bias"))?
                     .name
@@ -4611,7 +4709,7 @@ fn build_gguf_decoder_tensor_layout(
         } else {
             None
         };
-        let value_bias = if attention_qkv_biases {
+        let value_bias = if family_metadata.attention_qkv_biases {
             Some(
                 required_tensor_info(content, &format!("{prefix}.attn_v.bias"))?
                     .name
@@ -4620,6 +4718,182 @@ fn build_gguf_decoder_tensor_layout(
         } else {
             None
         };
+        if matches!(family_metadata.family, GgufDecoderFamily::GptOss) {
+            let query_width = config
+                .block
+                .attention
+                .head_count
+                .saturating_mul(config.block.attention.head_dim);
+            let kv_width = config.kv_width();
+            let expert_count = family_metadata.expert_count.ok_or_else(|| {
+                ModelLoadError::MissingGgufMetadata {
+                    key: format!("{}.expert_count", family_metadata.architecture),
+                }
+            })?;
+            let expert_width = family_metadata
+                .expert_feed_forward_length
+                .unwrap_or(config.block.feed_forward.intermediate_size);
+            let query_weight = required_tensor_info(content, &format!("{prefix}.attn_q.weight"))?;
+            let (query_rows, query_columns) = tensor_matrix_shape(query_weight)?;
+            if query_rows != query_width || query_columns != config.hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{query_rows}, {query_columns}] does not match expected [{query_width}, {}]",
+                        query_weight.name, config.hidden_size
+                    ),
+                ));
+            }
+            let key_weight = required_tensor_info(content, &format!("{prefix}.attn_k.weight"))?;
+            let (key_rows, key_columns) = tensor_matrix_shape(key_weight)?;
+            if key_rows != kv_width || key_columns != config.hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{key_rows}, {key_columns}] does not match expected [{kv_width}, {}]",
+                        key_weight.name, config.hidden_size
+                    ),
+                ));
+            }
+            let value_weight = required_tensor_info(content, &format!("{prefix}.attn_v.weight"))?;
+            let (value_rows, value_columns) = tensor_matrix_shape(value_weight)?;
+            if value_rows != kv_width || value_columns != config.hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{value_rows}, {value_columns}] does not match expected [{kv_width}, {}]",
+                        value_weight.name, config.hidden_size
+                    ),
+                ));
+            }
+            let output_weight =
+                required_tensor_info(content, &format!("{prefix}.attn_output.weight"))?;
+            let (output_rows, output_columns) = tensor_matrix_shape(output_weight)?;
+            if output_rows != config.hidden_size || output_columns != query_width {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{output_rows}, {output_columns}] does not match expected [{}, {query_width}]",
+                        output_weight.name, config.hidden_size
+                    ),
+                ));
+            }
+            let router_weight =
+                required_tensor_info(content, &format!("{prefix}.ffn_gate_inp.weight"))?;
+            let (router_rows, router_columns) = tensor_matrix_shape(router_weight)?;
+            if router_rows != expert_count || router_columns != config.hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{router_rows}, {router_columns}] does not match expected [{expert_count}, {}]",
+                        router_weight.name, config.hidden_size
+                    ),
+                ));
+            }
+            let gate_experts =
+                required_tensor_info(content, &format!("{prefix}.ffn_gate_exps.weight"))?;
+            let (gate_expert_count, gate_rows, gate_columns) = tensor_rank3_shape(gate_experts)?;
+            if gate_expert_count != expert_count
+                || gate_rows != expert_width
+                || gate_columns != config.hidden_size
+            {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{gate_expert_count}, {gate_rows}, {gate_columns}] does not match expected [{expert_count}, {expert_width}, {}]",
+                        gate_experts.name, config.hidden_size
+                    ),
+                ));
+            }
+            let up_experts =
+                required_tensor_info(content, &format!("{prefix}.ffn_up_exps.weight"))?;
+            let (up_expert_count, up_rows, up_columns) = tensor_rank3_shape(up_experts)?;
+            if up_expert_count != expert_count
+                || up_rows != expert_width
+                || up_columns != config.hidden_size
+            {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{up_expert_count}, {up_rows}, {up_columns}] does not match expected [{expert_count}, {expert_width}, {}]",
+                        up_experts.name, config.hidden_size
+                    ),
+                ));
+            }
+            let down_experts =
+                required_tensor_info(content, &format!("{prefix}.ffn_down_exps.weight"))?;
+            let (down_expert_count, down_rows, down_columns) = tensor_rank3_shape(down_experts)?;
+            if down_expert_count != expert_count
+                || down_rows != expert_width
+                || down_columns != config.hidden_size
+            {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{down_expert_count}, {down_rows}, {down_columns}] does not match expected [{expert_count}, {expert_width}, {}]",
+                        down_experts.name, config.hidden_size
+                    ),
+                ));
+            }
+
+            layers.push(GgufDecoderLayerTensorLayout {
+                layer_index,
+                attention_norm: required_tensor_info(
+                    content,
+                    &format!("{prefix}.attn_norm.weight"),
+                )?
+                .name
+                .clone(),
+                attention_query_weight: query_weight.name.clone(),
+                attention_query_bias: query_bias,
+                attention_key_weight: key_weight.name.clone(),
+                attention_key_bias: key_bias,
+                attention_value_weight: value_weight.name.clone(),
+                attention_value_bias: value_bias,
+                attention_output_weight: output_weight.name.clone(),
+                attention_output_bias: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.attn_output.bias"),
+                ),
+                attention_post_norm: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.post_attention_norm.weight"),
+                ),
+                attention_sinks_weight: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.attn_sinks.weight"),
+                ),
+                feed_forward_gate_weight: None,
+                feed_forward_down_weight: None,
+                feed_forward_up_weight: None,
+                feed_forward_norm: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.post_attention_norm.weight"),
+                ),
+                feed_forward_router_weight: Some(router_weight.name.clone()),
+                feed_forward_router_bias: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.ffn_gate_inp.bias"),
+                ),
+                feed_forward_gate_experts_weight: Some(gate_experts.name.clone()),
+                feed_forward_gate_experts_bias: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.ffn_gate_exps.bias"),
+                ),
+                feed_forward_up_experts_weight: Some(up_experts.name.clone()),
+                feed_forward_up_experts_bias: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.ffn_up_exps.bias"),
+                ),
+                feed_forward_down_experts_weight: Some(down_experts.name.clone()),
+                feed_forward_down_experts_bias: optional_tensor_name(
+                    content,
+                    &format!("{prefix}.ffn_down_exps.bias"),
+                ),
+            });
+            continue;
+        }
+
         layers.push(GgufDecoderLayerTensorLayout {
             layer_index,
             attention_norm: required_tensor_info(content, &format!("{prefix}.attn_norm.weight"))?
@@ -4652,27 +4926,37 @@ fn build_gguf_decoder_tensor_layout(
             )?
             .name
             .clone(),
-            feed_forward_gate_weight: required_tensor_info(
-                content,
-                &format!("{prefix}.ffn_gate.weight"),
-            )?
-            .name
-            .clone(),
-            feed_forward_down_weight: required_tensor_info(
-                content,
-                &format!("{prefix}.ffn_down.weight"),
-            )?
-            .name
-            .clone(),
-            feed_forward_up_weight: required_tensor_info(
-                content,
-                &format!("{prefix}.ffn_up.weight"),
-            )?
-            .name
-            .clone(),
-            feed_forward_norm: required_tensor_info(content, &format!("{prefix}.ffn_norm.weight"))?
-                .name
-                .clone(),
+            attention_output_bias: None,
+            attention_post_norm: None,
+            attention_sinks_weight: None,
+            feed_forward_gate_weight: Some(
+                required_tensor_info(content, &format!("{prefix}.ffn_gate.weight"))?
+                    .name
+                    .clone(),
+            ),
+            feed_forward_down_weight: Some(
+                required_tensor_info(content, &format!("{prefix}.ffn_down.weight"))?
+                    .name
+                    .clone(),
+            ),
+            feed_forward_up_weight: Some(
+                required_tensor_info(content, &format!("{prefix}.ffn_up.weight"))?
+                    .name
+                    .clone(),
+            ),
+            feed_forward_norm: Some(
+                required_tensor_info(content, &format!("{prefix}.ffn_norm.weight"))?
+                    .name
+                    .clone(),
+            ),
+            feed_forward_router_weight: None,
+            feed_forward_router_bias: None,
+            feed_forward_gate_experts_weight: None,
+            feed_forward_gate_experts_bias: None,
+            feed_forward_up_experts_weight: None,
+            feed_forward_up_experts_bias: None,
+            feed_forward_down_experts_weight: None,
+            feed_forward_down_experts_bias: None,
         });
     }
 
@@ -4715,6 +4999,19 @@ fn tensor_matrix_shape(tensor: &GgufTensorInfo) -> Result<(usize, usize), ModelL
             "gguf",
             format!(
                 "tensor `{}` expected rank-2 shape, got {actual:?}",
+                tensor.name
+            ),
+        )),
+    }
+}
+
+fn tensor_rank3_shape(tensor: &GgufTensorInfo) -> Result<(usize, usize, usize), ModelLoadError> {
+    match tensor.shape.dims() {
+        [outer, rows, columns] => Ok((*outer, *rows, *columns)),
+        actual => Err(artifact_format_error(
+            "gguf",
+            format!(
+                "tensor `{}` expected rank-3 shape, got {actual:?}",
                 tensor.name
             ),
         )),
@@ -5581,6 +5878,7 @@ fn build_embedding_weight_bundle_metadata(
         format: WeightFormat::ProgrammaticFixture,
         source: WeightSource::Fixture,
         quantization: QuantizationMode::None,
+        quantization_modes: Vec::new(),
         digest: hex::encode(hasher.finalize()),
         tensors,
         artifacts: Vec::new(),
@@ -5778,6 +6076,7 @@ fn build_weight_bundle_metadata(
         format: WeightFormat::ProgrammaticFixture,
         source: WeightSource::Fixture,
         quantization: QuantizationMode::None,
+        quantization_modes: Vec::new(),
         digest: hex::encode(hasher.finalize()),
         tensors,
         artifacts: Vec::new(),
@@ -5925,7 +6224,15 @@ fn quantization_priority(quantization: QuantizationMode) -> u8 {
         QuantizationMode::GgmlQ4_0 => 2,
         QuantizationMode::GgmlQ4_1 => 3,
         QuantizationMode::GgmlQ8_0 => 4,
+        QuantizationMode::GgmlMxfp4 => 5,
     }
+}
+
+fn quantization_modes_from_counts(counts: &[(QuantizationMode, usize)]) -> Vec<QuantizationMode> {
+    let mut modes = counts.iter().map(|(mode, _)| *mode).collect::<Vec<_>>();
+    modes.sort_by_key(|mode| quantization_priority(*mode));
+    modes.dedup();
+    modes
 }
 
 fn read_tokenizer_string_array(
@@ -6503,6 +6810,7 @@ fn decode_ggml_quantized_values(
     bytes: &[u8],
 ) -> Result<Vec<f32>, ModelLoadError> {
     match quantization {
+        QuantizationMode::GgmlMxfp4 => decode_mxfp4_blocks(layout, bytes),
         QuantizationMode::GgmlQ4_0 => decode_q4_0_blocks(layout, bytes),
         QuantizationMode::GgmlQ4_1 => decode_q4_1_blocks(layout, bytes),
         QuantizationMode::GgmlQ8_0 => decode_q8_0_blocks(layout, bytes),
@@ -6510,6 +6818,25 @@ fn decode_ggml_quantized_values(
             Err(ModelLoadError::UnsupportedQuantizedTensorMode { quantization })
         }
     }
+}
+
+fn decode_mxfp4_blocks(
+    layout: QuantizedBlockLayout,
+    bytes: &[u8],
+) -> Result<Vec<f32>, ModelLoadError> {
+    const KVALUES: [i8; 16] = [0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12];
+    let half_block = layout.elements_per_block / 2;
+    decode_fixed_width_blocks(layout, bytes, 17, |block, output| {
+        let scale = decode_e8m0_to_fp32_half(block[0]);
+        let start = output.len();
+        output.resize(start + (half_block * 2), 0.0);
+        for (j, packed) in block[1..17].iter().enumerate() {
+            let low = usize::from(packed & 0x0f);
+            let high = usize::from((packed >> 4) & 0x0f);
+            output[start + j] = f32::from(KVALUES[low]) * scale;
+            output[start + j + half_block] = f32::from(KVALUES[high]) * scale;
+        }
+    })
 }
 
 fn decode_q8_0_blocks(
@@ -6584,11 +6911,21 @@ fn decode_fixed_width_blocks(
 
 fn quantization_from_block_bytes(bytes_per_block: usize) -> QuantizationMode {
     match bytes_per_block {
+        17 => QuantizationMode::GgmlMxfp4,
         18 => QuantizationMode::GgmlQ4_0,
         20 => QuantizationMode::GgmlQ4_1,
         34 => QuantizationMode::GgmlQ8_0,
         _ => QuantizationMode::None,
     }
+}
+
+fn decode_e8m0_to_fp32_half(value: u8) -> f32 {
+    let bits = if value < 2 {
+        0x0020_0000_u32 << u32::from(value)
+    } else {
+        u32::from(value - 1) << 23
+    };
+    f32::from_bits(bits)
 }
 
 fn decode_f16(bytes: [u8; 2]) -> f32 {
@@ -7654,6 +7991,10 @@ mod tests {
         assert_eq!(bundle.metadata().format, WeightFormat::Gguf);
         assert_eq!(bundle.metadata().source, WeightSource::ExternalArtifact);
         assert_eq!(bundle.metadata().quantization, QuantizationMode::GgmlQ8_0);
+        assert_eq!(
+            bundle.metadata().quantization_modes,
+            vec![QuantizationMode::GgmlQ8_0]
+        );
         assert_eq!(bundle.metadata().artifacts[0].name, "bundle.gguf");
 
         let dense_f32 = bundle.tensor("dense_f32").ok_or("missing dense_f32")?;
@@ -8202,6 +8543,94 @@ mod tests {
     }
 
     #[test]
+    fn gguf_decoder_adapter_loader_maps_gpt_oss_family_and_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("tiny_gpt_oss.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &gpt_oss_decoder_metadata("Tiny GPT-OSS", Some("{{ prompt }}")),
+            &gpt_oss_decoder_tensors(),
+        )?;
+
+        let adapter = GgufDecoderAdapterLoader.load_path(&path)?;
+        assert_eq!(adapter.descriptor().model.family, "gpt_oss");
+        assert_eq!(
+            adapter.descriptor().tokenizer_family,
+            "gpt2_bpe:custom:gpt-4o"
+        );
+        assert_eq!(adapter.family_metadata().family, GgufDecoderFamily::GptOss);
+        assert_eq!(adapter.family_metadata().architecture, "gpt-oss");
+        assert_eq!(adapter.family_metadata().attention_key_length, Some(16));
+        assert_eq!(adapter.family_metadata().attention_value_length, Some(16));
+        assert_eq!(adapter.family_metadata().expert_count, Some(3));
+        assert_eq!(adapter.family_metadata().expert_used_count, Some(2));
+        assert_eq!(
+            adapter.family_metadata().expert_feed_forward_length,
+            Some(32)
+        );
+        assert!(adapter.family_metadata().attention_qkv_biases);
+        assert!(!adapter.family_metadata().tie_word_embeddings);
+        assert_eq!(adapter.descriptor().config.hidden_size, 32);
+        assert_eq!(adapter.descriptor().config.layer_count, 1);
+        assert_eq!(adapter.descriptor().config.block.attention.head_count, 4);
+        assert_eq!(adapter.descriptor().config.block.attention.kv_head_count, 1);
+        assert_eq!(adapter.descriptor().config.block.attention.head_dim, 16);
+        assert_eq!(
+            adapter
+                .descriptor()
+                .config
+                .block
+                .feed_forward
+                .intermediate_size,
+            32
+        );
+        assert_eq!(
+            adapter.descriptor().weights.quantization,
+            QuantizationMode::GgmlMxfp4
+        );
+        assert_eq!(
+            adapter.descriptor().weights.quantization_modes,
+            vec![QuantizationMode::GgmlQ8_0, QuantizationMode::GgmlMxfp4]
+        );
+        assert_eq!(
+            adapter.chat_templates().default_template(),
+            Some("{{ prompt }}")
+        );
+
+        let layer = &adapter.tensor_layout().layers[0];
+        assert_eq!(
+            layer.attention_post_norm.as_deref(),
+            Some("blk.0.post_attention_norm.weight")
+        );
+        assert_eq!(
+            layer.attention_sinks_weight.as_deref(),
+            Some("blk.0.attn_sinks.weight")
+        );
+        assert_eq!(
+            layer.feed_forward_router_weight.as_deref(),
+            Some("blk.0.ffn_gate_inp.weight")
+        );
+        assert_eq!(
+            layer.feed_forward_gate_experts_weight.as_deref(),
+            Some("blk.0.ffn_gate_exps.weight")
+        );
+        assert_eq!(
+            layer.feed_forward_up_experts_weight.as_deref(),
+            Some("blk.0.ffn_up_exps.weight")
+        );
+        assert_eq!(
+            layer.feed_forward_down_experts_weight.as_deref(),
+            Some("blk.0.ffn_down_exps.weight")
+        );
+        assert!(layer.feed_forward_gate_weight.is_none());
+        assert!(layer.feed_forward_up_weight.is_none());
+        assert!(layer.feed_forward_down_weight.is_none());
+        Ok(())
+    }
+
+    #[test]
     fn gguf_decoder_adapter_loader_loads_ollama_manifest_with_governance()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
@@ -8681,6 +9110,86 @@ mod tests {
         metadata
     }
 
+    fn gpt_oss_decoder_metadata(
+        name: &str,
+        chat_template: Option<&str>,
+    ) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("gpt-oss")),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(name.to_string()),
+            ),
+            (
+                String::from("gpt-oss.context_length"),
+                GgufMetadataValue::U32(128),
+            ),
+            (
+                String::from("gpt-oss.embedding_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.feed_forward_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.expert_feed_forward_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.block_count"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("gpt-oss.attention.head_count"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                String::from("gpt-oss.attention.head_count_kv"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("gpt-oss.attention.key_length"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.attention.value_length"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.attention.layer_norm_rms_epsilon"),
+                GgufMetadataValue::F32(1e-5),
+            ),
+            (
+                String::from("gpt-oss.rope.dimension_count"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.rope.freq_base"),
+                GgufMetadataValue::F32(10_000.0),
+            ),
+            (
+                String::from("gpt-oss.expert_count"),
+                GgufMetadataValue::U32(3),
+            ),
+            (
+                String::from("gpt-oss.expert_used_count"),
+                GgufMetadataValue::U32(2),
+            ),
+        ];
+        metadata.extend(gpt_oss_tokenizer_metadata_entries());
+        if let Some(chat_template) = chat_template {
+            metadata.push((
+                String::from("tokenizer.chat_template"),
+                GgufMetadataValue::String(chat_template.to_string()),
+            ));
+        }
+        metadata
+    }
+
     fn sentencepiece_tokenizer_metadata_entries() -> Vec<(String, GgufMetadataValue)> {
         vec![
             (
@@ -8756,6 +9265,57 @@ mod tests {
             (
                 String::from("tokenizer.ggml.eos_token_id"),
                 GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+        ]
+    }
+
+    fn gpt_oss_tokenizer_metadata_entries() -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("gpt2")),
+            ),
+            (
+                String::from("tokenizer.ggml.pre"),
+                GgufMetadataValue::String(String::from("gpt-4o")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("<|start|>")),
+                    GgufMetadataValue::String(String::from("<|end|>")),
+                    GgufMetadataValue::String(String::from("hello")),
+                    GgufMetadataValue::String(String::from("world")),
+                    GgufMetadataValue::String(String::from("mox")),
+                    GgufMetadataValue::String(String::from("gpt-oss")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.merges"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("hello world")),
+                    GgufMetadataValue::String(String::from("mox gpt-oss")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.unknown_token_id"),
+                GgufMetadataValue::U32(0),
             ),
             (
                 String::from("tokenizer.ggml.add_bos_token"),
@@ -8970,6 +9530,58 @@ mod tests {
         tensors
     }
 
+    fn gpt_oss_decoder_tensors() -> Vec<TestGgufTensor> {
+        vec![
+            TestGgufTensor::new(
+                "token_embd.weight",
+                vec![6, 32],
+                GgufTensorType::Q8_0,
+                repeated_q8_0_bytes(6),
+            ),
+            dense_f32_tensor("output_norm.weight", vec![32]),
+            TestGgufTensor::new(
+                "output.weight",
+                vec![6, 32],
+                GgufTensorType::Q8_0,
+                repeated_q8_0_bytes(6),
+            ),
+            dense_f32_tensor("blk.0.attn_norm.weight", vec![32]),
+            dense_f32_tensor("blk.0.attn_q.weight", vec![64, 32]),
+            dense_f32_tensor("blk.0.attn_q.bias", vec![64]),
+            dense_f32_tensor("blk.0.attn_k.weight", vec![16, 32]),
+            dense_f32_tensor("blk.0.attn_k.bias", vec![16]),
+            dense_f32_tensor("blk.0.attn_v.weight", vec![16, 32]),
+            dense_f32_tensor("blk.0.attn_v.bias", vec![16]),
+            dense_f32_tensor("blk.0.attn_output.weight", vec![32, 64]),
+            dense_f32_tensor("blk.0.attn_output.bias", vec![32]),
+            dense_f32_tensor("blk.0.post_attention_norm.weight", vec![32]),
+            dense_f32_tensor("blk.0.attn_sinks.weight", vec![16]),
+            dense_f32_tensor("blk.0.ffn_gate_inp.weight", vec![3, 32]),
+            dense_f32_tensor("blk.0.ffn_gate_inp.bias", vec![3]),
+            TestGgufTensor::new(
+                "blk.0.ffn_gate_exps.weight",
+                vec![3, 32, 32],
+                GgufTensorType::MXFP4,
+                repeated_mxfp4_bytes(96),
+            ),
+            dense_f32_tensor("blk.0.ffn_gate_exps.bias", vec![3, 32]),
+            TestGgufTensor::new(
+                "blk.0.ffn_up_exps.weight",
+                vec![3, 32, 32],
+                GgufTensorType::MXFP4,
+                repeated_mxfp4_bytes(96),
+            ),
+            dense_f32_tensor("blk.0.ffn_up_exps.bias", vec![3, 32]),
+            TestGgufTensor::new(
+                "blk.0.ffn_down_exps.weight",
+                vec![3, 32, 32],
+                GgufTensorType::MXFP4,
+                repeated_mxfp4_bytes(96),
+            ),
+            dense_f32_tensor("blk.0.ffn_down_exps.bias", vec![3, 32]),
+        ]
+    }
+
     fn bert_embedding_tensors(layer_count: usize) -> Vec<TestGgufTensor> {
         let mut tensors = vec![
             dense_f32_tensor("token_embd.weight", vec![6, 4]),
@@ -9098,6 +9710,25 @@ mod tests {
         )
     }
 
+    fn repeated_q8_0_bytes(block_count: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(block_count * 34);
+        for _ in 0..block_count {
+            bytes.extend([0x00, 0x3c]);
+            bytes.extend([0_u8; 32]);
+        }
+        bytes
+    }
+
+    fn repeated_mxfp4_bytes(block_count: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(block_count * 17);
+        for _ in 0..block_count {
+            bytes.push(128_u8);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+        }
+        bytes
+    }
+
     #[test]
     fn ggml_q8_0_block_decode_matches_reference() -> Result<(), Box<dyn std::error::Error>> {
         let bytes = std::iter::once(0x00)
@@ -9177,6 +9808,35 @@ mod tests {
             .cycle()
             .take(16);
         let high_half = [1.0, 5.0, 9.0, 13.0, 17.0, 21.0, 25.0, 29.0]
+            .into_iter()
+            .cycle()
+            .take(16);
+        let expected = low_half.chain(high_half).collect::<Vec<_>>();
+        assert_eq!(storage.dequantize_values()?, expected);
+        Ok(())
+    }
+
+    #[test]
+    fn ggml_mxfp4_block_decode_matches_reference() -> Result<(), Box<dyn std::error::Error>> {
+        let bytes = std::iter::once(128_u8)
+            .chain(
+                [0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+                    .into_iter()
+                    .cycle()
+                    .take(16),
+            )
+            .collect::<Vec<_>>();
+        let storage = QuantizedTensorStorage::from_ggml_blocks(
+            QuantizationMode::GgmlMxfp4,
+            &Shape::new(vec![32]),
+            bytes,
+        )?;
+
+        let low_half = [0.0, 2.0, 4.0, 8.0, 0.0, -2.0, -4.0, -8.0]
+            .into_iter()
+            .cycle()
+            .take(16);
+        let high_half = [1.0, 3.0, 6.0, 12.0, -1.0, -3.0, -6.0, -12.0]
             .into_iter()
             .cycle()
             .take(16);
@@ -9605,6 +10265,7 @@ mod tests {
         match tensor_type {
             GgufTensorType::F32 => 0,
             GgufTensorType::F16 => 1,
+            GgufTensorType::MXFP4 => 39,
             GgufTensorType::Q4_0 => 2,
             GgufTensorType::Q4_1 => 3,
             GgufTensorType::Q5_0 => 6,

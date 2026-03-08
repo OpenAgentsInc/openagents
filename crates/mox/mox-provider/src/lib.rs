@@ -48,6 +48,9 @@ pub struct WeightBundleEvidence {
     pub source: WeightSource,
     /// Weight quantization posture.
     pub quantization: QuantizationMode,
+    /// All quantization modes observed across the loaded logical weights.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub quantization_modes: Vec<QuantizationMode>,
     /// Stable bundle digest.
     pub digest: String,
     /// External artifacts that backed the bundle, if any.
@@ -62,6 +65,7 @@ impl WeightBundleEvidence {
             format: metadata.format,
             source: metadata.source,
             quantization: metadata.quantization,
+            quantization_modes: metadata.quantization_modes.clone(),
             digest: metadata.digest.clone(),
             artifacts: metadata.artifacts.clone(),
         }
@@ -735,6 +739,7 @@ impl CapabilityEnvelope {
                 format: weight_bundle.format,
                 source: weight_bundle.source,
                 quantization: weight_bundle.quantization,
+                quantization_modes: weight_bundle.quantization_modes.clone(),
                 digest: weight_bundle.digest.clone(),
                 tensors: Vec::new(),
                 artifacts: weight_bundle.artifacts.clone(),
