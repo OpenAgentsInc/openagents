@@ -2323,6 +2323,9 @@ fn termination_reason_label(reason: TerminationReason) -> String {
         TerminationReason::EndOfSequence => String::from("stop"),
         TerminationReason::MaxOutputTokens => String::from("length"),
         TerminationReason::ContextLimit => String::from("context_limit"),
+        TerminationReason::Cancelled => String::from("cancelled"),
+        TerminationReason::Disconnected => String::from("disconnected"),
+        TerminationReason::Error => String::from("error"),
     }
 }
 
