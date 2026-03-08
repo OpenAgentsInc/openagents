@@ -1,7 +1,10 @@
 //! Served compute product contracts for Mox.
 
+mod conformance;
+
 use std::collections::BTreeMap;
 
+pub use conformance::*;
 use mox_backend_cpu::CpuBackend;
 use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend};
 use mox_compiler::{CompileError, compile_graph};
