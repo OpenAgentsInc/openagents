@@ -1,7 +1,8 @@
 use std::borrow::Cow;
 
 use crate::{
-    GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, TokenId, TokenSequence,
+    GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, PromptReasoningEffort,
+    TokenId, TokenSequence,
 };
 
 /// Stable tokenizer sample used by the golden corpus.
@@ -53,6 +54,8 @@ pub struct GoldenTokenizerFixture {
 pub enum GoldenPromptRole {
     /// System/developer-style instruction.
     System,
+    /// Developer instruction.
+    Developer,
     /// End-user message.
     User,
     /// Assistant response.
@@ -70,6 +73,19 @@ pub struct GoldenPromptMessage {
     pub content: &'static str,
 }
 
+/// GPT-OSS / Harmony context captured for one golden render case.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct GoldenPromptHarmonyContext {
+    /// Conversation date rendered into the Harmony system message.
+    pub conversation_start_date: Option<&'static str>,
+    /// Knowledge cutoff rendered into the Harmony system message.
+    pub knowledge_cutoff: Option<&'static str>,
+    /// Reasoning-effort label rendered into the Harmony system message.
+    pub reasoning_effort: Option<PromptReasoningEffort>,
+    /// Explicit valid channels carried by the Harmony system message.
+    pub valid_channels: &'static [&'static str],
+}
+
 /// Exact rendered prompt case captured from a real template family.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct GoldenPromptRenderCase {
@@ -77,6 +93,8 @@ pub struct GoldenPromptRenderCase {
     pub id: &'static str,
     /// Input message history.
     pub messages: &'static [GoldenPromptMessage],
+    /// Harmony render context when the family requires it.
+    pub harmony_context: Option<GoldenPromptHarmonyContext>,
     /// Whether generation prompt emission is requested.
     pub add_generation_prompt: bool,
     /// Exact rendered prompt bytes as a UTF-8 string.
@@ -363,16 +381,48 @@ const COMMAND_R_MESSAGES_WITH_SYSTEM: [GoldenPromptMessage; 4] = [
     },
 ];
 
+const GPT_OSS_MESSAGES_REASONING_WITH_DEVELOPER: [GoldenPromptMessage; 2] = [
+    GoldenPromptMessage {
+        role: GoldenPromptRole::Developer,
+        content: "Be concise.",
+    },
+    GoldenPromptMessage {
+        role: GoldenPromptRole::User,
+        content: "What is 17 times 19? Answer with just the number.",
+    },
+];
+
+const GPT_OSS_MESSAGES_USER_ONLY: [GoldenPromptMessage; 1] = [GoldenPromptMessage {
+    role: GoldenPromptRole::User,
+    content: "What is 42 * pi?",
+}];
+
+const GPT_OSS_REASONING_CONTEXT: GoldenPromptHarmonyContext = GoldenPromptHarmonyContext {
+    conversation_start_date: Some("2026-03-08"),
+    knowledge_cutoff: Some("2024-06"),
+    reasoning_effort: Some(PromptReasoningEffort::Low),
+    valid_channels: &["analysis", "commentary", "final"],
+};
+
+const GPT_OSS_USER_ONLY_CONTEXT: GoldenPromptHarmonyContext = GoldenPromptHarmonyContext {
+    conversation_start_date: Some("2026-03-08"),
+    knowledge_cutoff: Some("2024-06"),
+    reasoning_effort: Some(PromptReasoningEffort::Medium),
+    valid_channels: &["analysis", "final"],
+};
+
 const PHI3_RENDER_CASES: [GoldenPromptRenderCase; 2] = [
     GoldenPromptRenderCase {
         id: "phi3.user_only",
         messages: &PHI3_MESSAGES_USER_ONLY,
+        harmony_context: None,
         add_generation_prompt: true,
         expected_rendered: "<s><|user|>\nExplain rust ownership.<|end|>\n<|assistant|>\n",
     },
     GoldenPromptRenderCase {
         id: "phi3.multi_turn",
         messages: &PHI3_MESSAGES_MULTI_TURN,
+        harmony_context: None,
         add_generation_prompt: true,
         expected_rendered: "<s><|user|>\nSay hello.<|end|>\n<|assistant|>\nHello there.<|end|>\n<|user|>\nNow say goodbye.<|end|>\n<|assistant|>\n",
     },
@@ -382,18 +432,21 @@ const QWEN2_RENDER_CASES: [GoldenPromptRenderCase; 3] = [
     GoldenPromptRenderCase {
         id: "qwen2.default_system",
         messages: &QWEN2_MESSAGES_DEFAULT_SYSTEM,
+        harmony_context: None,
         add_generation_prompt: true,
         expected_rendered: "<|im_start|>system\nYou are a helpful assistant<|im_end|>\n<|im_start|>user\nSummarize the roadmap.<|im_end|>\n<|im_start|>assistant\n",
     },
     GoldenPromptRenderCase {
         id: "qwen2.with_system_history",
         messages: &QWEN2_MESSAGES_WITH_SYSTEM,
+        harmony_context: None,
         add_generation_prompt: true,
         expected_rendered: "<|im_start|>system\nBe terse.<|im_end|>\n<|im_start|>user\nHi<|im_end|>\n<|im_start|>assistant\nHello.<|im_end|>\n<|im_start|>user\nSummarize.<|im_end|>\n<|im_start|>assistant\n",
     },
     GoldenPromptRenderCase {
         id: "qwen2.without_generation_prompt",
         messages: &QWEN2_MESSAGES_DEFAULT_SYSTEM,
+        harmony_context: None,
         add_generation_prompt: false,
         expected_rendered: "<|im_start|>system\nYou are a helpful assistant<|im_end|>\n<|im_start|>user\nSummarize the roadmap.<|im_end|>\n",
     },
@@ -403,18 +456,37 @@ const COMMAND_R_RENDER_CASES: [GoldenPromptRenderCase; 2] = [
     GoldenPromptRenderCase {
         id: "command_r.user_only",
         messages: &COMMAND_R_MESSAGES_USER_ONLY,
+        harmony_context: None,
         add_generation_prompt: true,
         expected_rendered: "<BOS_TOKEN><|START_OF_TURN_TOKEN|><|USER_TOKEN|>Hello<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>",
     },
     GoldenPromptRenderCase {
         id: "command_r.with_system_history",
         messages: &COMMAND_R_MESSAGES_WITH_SYSTEM,
+        harmony_context: None,
         add_generation_prompt: true,
         expected_rendered: "<BOS_TOKEN><|START_OF_TURN_TOKEN|><|SYSTEM_TOKEN|>Keep it short.<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|USER_TOKEN|>Hello<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>Hi<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|USER_TOKEN|>More<|END_OF_TURN_TOKEN|><|START_OF_TURN_TOKEN|><|CHATBOT_TOKEN|>",
     },
 ];
 
 const EMPTY_RENDER_CASES: [GoldenPromptRenderCase; 0] = [];
+
+const GPT_OSS_RENDER_CASES: [GoldenPromptRenderCase; 2] = [
+    GoldenPromptRenderCase {
+        id: "gpt_oss.reasoning_with_developer",
+        messages: &GPT_OSS_MESSAGES_REASONING_WITH_DEVELOPER,
+        harmony_context: Some(GPT_OSS_REASONING_CONTEXT),
+        add_generation_prompt: true,
+        expected_rendered: "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-03-08\n\nReasoning: low\n\n# Valid channels: analysis, commentary, final. Channel must be included for every message.<|end|><|start|>developer<|message|># Instructions\n\nBe concise.<|end|><|start|>user<|message|>What is 17 times 19? Answer with just the number.<|end|><|start|>assistant",
+    },
+    GoldenPromptRenderCase {
+        id: "gpt_oss.user_only_with_date",
+        messages: &GPT_OSS_MESSAGES_USER_ONLY,
+        harmony_context: Some(GPT_OSS_USER_ONLY_CONTEXT),
+        add_generation_prompt: true,
+        expected_rendered: "<|start|>system<|message|>You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-03-08\n\nReasoning: medium\n\n# Valid channels: analysis, final. Channel must be included for every message.<|end|><|start|>user<|message|>What is 42 * pi?<|end|><|start|>assistant",
+    },
+];
 
 const PHI3_VARIANTS: [GoldenPromptTemplateVariant; 1] = [GoldenPromptTemplateVariant {
     id: "phi3.default",
@@ -490,8 +562,8 @@ const GPT_OSS_VARIANTS: [GoldenPromptTemplateVariant; 1] = [GoldenPromptTemplate
     raw_template: None,
     template_excerpt: "{#- In addition to the normal inputs of `messages` and `tools`, this template also accepts the following kwargs: ...",
     stop_sequences: &[],
-    render_cases: &EMPTY_RENDER_CASES,
-    notes: "Digest-only because the real GPT-OSS template is large and its rendered output includes dynamic date/tool surfaces.",
+    render_cases: &GPT_OSS_RENDER_CASES,
+    notes: "Real GPT-OSS template digest plus stable Harmony render cases with explicit date/channel context.",
 }];
 
 const PHI3_WINDOW_CASES: [GoldenPromptWindowCase; 1] = [GoldenPromptWindowCase {
@@ -584,7 +656,7 @@ pub const GOLDEN_PROMPT_FIXTURES: [GoldenPromptFixture; 4] = [
         source_sha256: None,
         template_variants: &GPT_OSS_VARIANTS,
         window_cases: &GPT_OSS_WINDOW_CASES,
-        notes: "Real GPT-OSS prompt-family anchor from the user-provided local GGUF; kept digest-only because rendering is date/tool-schema sensitive.",
+        notes: "Real GPT-OSS prompt-family anchor from the user-provided local GGUF with stable Harmony render cases pinned by explicit context.",
     },
 ];
 

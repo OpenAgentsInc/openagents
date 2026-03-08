@@ -25,12 +25,12 @@ pub use mox_models::{
     GgufDecoderTensorLayout, GgufEmbeddingAdapter, GgufEmbeddingAdapterLoader, GgufEmbeddingFamily,
     GgufEmbeddingFamilyMetadata, GgufEmbeddingLayerTensorLayout, GgufEmbeddingPooling,
     GgufEmbeddingTensorLayout, GgufPromptTemplateFamily, GgufPromptTemplateRenderer,
-    ModelArtifactGovernance, ModelArtifactLicenseEntry, ModelArtifactLicenseFacts,
-    ModelArtifactProvenance, ModelArtifactProvenanceKind, ModelDescriptor, ModelLoadError,
-    PromptMessage, PromptMessageRole, PromptRenderError, ReferenceWordDecoder, RenderedPrompt,
-    SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
-    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
-    apply_context_window, digest_generation_defaults,
+    GptOssHarmonyParsedOutput, ModelArtifactGovernance, ModelArtifactLicenseEntry,
+    ModelArtifactLicenseFacts, ModelArtifactProvenance, ModelArtifactProvenanceKind,
+    ModelDescriptor, ModelLoadError, PromptMessage, PromptMessageRole, PromptRenderError,
+    ReferenceWordDecoder, RenderedPrompt, SmokeByteEmbedder, TokenId, TokenSequence,
+    TokenVocabulary, TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat,
+    WeightSource, WeightTensorMetadata, apply_context_window, digest_generation_defaults,
 };
 use mox_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
@@ -828,6 +828,18 @@ pub struct GenerationOutput {
     pub tokens: TokenSequence,
     /// Output text rendering.
     pub text: String,
+    /// Structured GPT-OSS / Harmony output when parsing succeeded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub harmony: Option<GptOssHarmonyParsedOutput>,
+}
+
+impl GenerationOutput {
+    /// Attaches structured GPT-OSS / Harmony output while preserving raw text and token lanes.
+    #[must_use]
+    pub fn with_harmony(mut self, harmony: GptOssHarmonyParsedOutput) -> Self {
+        self.harmony = Some(harmony);
+        self
+    }
 }
 
 /// Usage counters for generation execution.
@@ -1052,6 +1064,7 @@ impl GenerationResponse {
             output: GenerationOutput {
                 tokens,
                 text: text.into(),
+                harmony: None,
             },
             metrics: GenerationMetrics::from_usage(&usage),
             usage,
@@ -4341,6 +4354,7 @@ where
             output: GenerationOutput {
                 tokens: TokenSequence::new(delta_tokens),
                 text: delta_text,
+                harmony: None,
             },
             cumulative_output_tokens: self.emitted_token_count,
         })
