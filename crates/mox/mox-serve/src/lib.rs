@@ -1825,6 +1825,8 @@ mod tests {
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
         ActivationFunction, DecoderAttentionConfig, DecoderFeedForwardConfig, TokenSequence,
+        assert_prompt_window_case, assert_rendered_prompt_case, golden_prompt_fixture,
+        golden_prompt_fixtures, golden_tokenizer_fixture,
     };
 
     #[test]
@@ -1969,6 +1971,46 @@ mod tests {
         let decoded: GenerationResponse = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, response);
         assert_eq!(decoded.usage.output_tokens, 2);
+        Ok(())
+    }
+
+    #[test]
+    fn golden_fixture_corpus_is_visible_from_serve() {
+        assert_eq!(golden_prompt_fixtures().len(), 4);
+        let tokenizer = golden_tokenizer_fixture("qwen2").expect("qwen2 fixture");
+        assert_eq!(tokenizer.family, "qwen2");
+    }
+
+    #[test]
+    fn golden_prompt_render_cases_are_reusable_from_serve() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let fixture = golden_prompt_fixture("qwen2").expect("qwen2 fixture");
+        let variant = fixture.template_variant("qwen2.default").expect("variant");
+        let render_case = variant
+            .render_case("qwen2.with_system_history")
+            .expect("render case");
+
+        assert_rendered_prompt_case(render_case, render_case.expected_rendered)?;
+        Ok(())
+    }
+
+    #[test]
+    fn golden_prompt_window_cases_are_reusable_from_serve() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let fixture = golden_prompt_fixture("command_r").expect("command-r fixture");
+        let variant = fixture
+            .template_variant("command_r.default")
+            .expect("variant");
+        let window_case = fixture
+            .window_cases
+            .iter()
+            .find(|case| case.id == "command_r.system_history_over_small_window")
+            .expect("window case");
+        let render_case = variant
+            .render_case(window_case.render_case_id)
+            .expect("render case");
+
+        assert_prompt_window_case(window_case, render_case.expected_rendered)?;
         Ok(())
     }
 
