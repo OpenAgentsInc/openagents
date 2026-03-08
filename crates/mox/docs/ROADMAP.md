@@ -623,8 +623,8 @@ state:
 | 61 | `MOX-174` | [#3226](https://github.com/OpenAgentsInc/openagents/issues/3226) | Closed | Execution-plan cache policy/state plus compile-path evidence are now landed on `main`; keep this in sequence but skip it when choosing the next issue. |
 | 62 | `MOX-175` | [#3227](https://github.com/OpenAgentsInc/openagents/issues/3227) | Closed | Delivery-proof and settlement-linkage evidence are now landed on `main`; keep this in sequence but skip it when choosing the next issue. |
 | 63 | `OA-200` | [#3216](https://github.com/OpenAgentsInc/openagents/issues/3216) | Closed | The app-owned local-execution evidence rename is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
-| 64 | `OA-201` | [#3217](https://github.com/OpenAgentsInc/openagents/issues/3217) | Open | This is now the next unresolved dependency: the app-owned runtime seam should exist before switching the desktop default to Mox. |
-| 65 | `OA-202` | [#3218](https://github.com/OpenAgentsInc/openagents/issues/3218) | Open | The actual desktop cutover depends on the app-owned runtime seam and the earlier engine/runtime truth work. |
+| 64 | `OA-201` | [#3217](https://github.com/OpenAgentsInc/openagents/issues/3217) | Closed | The app-owned local inference runtime seam is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 65 | `OA-202` | [#3218](https://github.com/OpenAgentsInc/openagents/issues/3218) | Open | This is now the next unresolved dependency: the desktop default should switch to the in-process Mox runtime now that the app-owned seam exists. |
 | 66 | `OA-203` | [#3219](https://github.com/OpenAgentsInc/openagents/issues/3219) | Open | External Ollama removal and wording cleanup come after the default runtime actually switches. |
 | 67 | `MOX-176` | [#3228](https://github.com/OpenAgentsInc/openagents/issues/3228) | Open | Bounded `sandbox_execution` should only start after the inference/embeddings and app-cutover work is explicit and truthful. |
 | 68 | `MOX-177` | [#3229](https://github.com/OpenAgentsInc/openagents/issues/3229) | Open | Sandbox receipt/evidence contracts depend on the execution-profile model. |
@@ -662,6 +662,9 @@ baseline on `main` is:
   `mox-provider`, with bounded transition logs for cold-load, first-request
   warm, unload, and backend-health changes, plus active-session, queue-depth,
   active-request, and memory-footprint snapshots on the managed runtime seam
+- `autopilot-desktop` now owns a backend-neutral `LocalInferenceRuntime` seam,
+  with adapters for the current Ollama worker and the in-process Mox reference
+  runtime while preserving the existing app-facing execution snapshot flow
 - generation option handling now exists in `mox-serve` for temperature, top-k,
   top-p, seed, stop sequences, and repeat/presence/frequency penalties, with
   seeded sampling and explicit stop-sequence truncation on the CPU reference
@@ -971,7 +974,7 @@ called out in the status section above.
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `OA-200` | [#3216](https://github.com/OpenAgentsInc/openagents/issues/3216) | Closed | Rename `OllamaExecutionMetrics` and `OllamaExecutionProvenance` to backend-neutral names | `apps/autopilot-desktop` | Landed in `3de54fdb4`: app-owned local execution evidence types are now backend-neutral while the current worker implementation remains explicitly Ollama-backed. |
-| `OA-201` | [#3217](https://github.com/OpenAgentsInc/openagents/issues/3217) | Open | Introduce an app-owned `LocalInferenceRuntime` trait and `MoxRuntimeAdapter` | `apps/autopilot-desktop` | Preserves the app seam while swapping runtime implementations. |
+| `OA-201` | [#3217](https://github.com/OpenAgentsInc/openagents/issues/3217) | Closed | Introduce an app-owned `LocalInferenceRuntime` trait and `MoxRuntimeAdapter` | `apps/autopilot-desktop` | Landed in `9c2d1f9d1`: added an app-owned local inference runtime seam, an Ollama-backed adapter for the current worker, an in-process Mox adapter, and desktop plumbing that now routes refresh/generate/warm/unload through the trait instead of the concrete worker. |
 | `OA-202` | [#3218](https://github.com/OpenAgentsInc/openagents/issues/3218) | Open | Switch desktop default from external Ollama HTTP calls to the in-process Mox runtime | `apps/autopilot-desktop` | This is the actual product cutover. |
 | `OA-203` | [#3219](https://github.com/OpenAgentsInc/openagents/issues/3219) | Open | Remove the external Ollama dependency and clean up provider/UI wording | `apps/autopilot-desktop` | Finishes product truth cleanup after parity is proven. |
 | `MOX-160` | [#3220](https://github.com/OpenAgentsInc/openagents/issues/3220) | Closed | Define in-process vs subprocess isolation policy for Mox local serving | `mox-serve`, `mox-runtime`, backend crates | Landed in `90224ae2e`: reusable local-serving isolation policy, explicit `in_process` crash/reset truth in observability and generation provenance, aggregate runtime isolation reporting, and documented cutover/evidence implications for the no-subprocess decision on current Mox. |
