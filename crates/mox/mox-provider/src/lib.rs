@@ -5,12 +5,13 @@ use sha2::{Digest, Sha256};
 
 use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
-    BackendSelection, CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind,
-    CacheObservation, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
-    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
-    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, ServedArtifactIdentity,
-    ValidationMatrixReference, validation_reference_for_served_product,
+    BackendProbeState, BackendSelection, BackendToolchainIdentity, CacheAction,
+    CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
+    DeviceInventoryQualifiers, HealthStatus, KvCacheAccounting, KvCachePolicy,
+    LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
+    ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
+    NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    ServedArtifactIdentity, ValidationMatrixReference, validation_reference_for_served_product,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -57,6 +58,59 @@ impl WeightBundleEvidence {
             artifacts: metadata.artifacts.clone(),
         }
     }
+}
+
+fn compiled_backend_features_for_selection(backend_selection: &BackendSelection) -> Vec<String> {
+    let mut features = backend_selection
+        .backend_extensions
+        .iter()
+        .map(|support| {
+            format!(
+                "{}:{}",
+                support.kind.label(),
+                match support.execution {
+                    mox_runtime::BackendExtensionExecution::Reference => "reference",
+                    mox_runtime::BackendExtensionExecution::BackendSpecialized =>
+                        "backend_specialized",
+                }
+            )
+        })
+        .collect::<Vec<_>>();
+    features.sort();
+    features.dedup();
+    features
+}
+
+fn backend_toolchain_identity_for_selection(
+    backend_selection: &BackendSelection,
+) -> BackendToolchainIdentity {
+    let probe_state = if backend_selection.selected_device.is_some() {
+        BackendProbeState::CompiledAndProbed
+    } else {
+        BackendProbeState::CompiledOnly
+    };
+    let probed_backend_features = backend_selection
+        .selected_device
+        .as_ref()
+        .map(|device| device.feature_flags.clone())
+        .unwrap_or_default();
+
+    BackendToolchainIdentity::new(
+        backend_selection.effective_backend.as_str(),
+        format!(
+            "{}@{}",
+            backend_selection.effective_backend,
+            env!("CARGO_PKG_VERSION")
+        ),
+        compiled_backend_features_for_selection(backend_selection),
+    )
+    .with_probe(probe_state, probed_backend_features)
+}
+
+fn selected_device_inventory_for_selection(
+    backend_selection: &BackendSelection,
+) -> Option<DeviceInventoryQualifiers> {
+    backend_selection.selected_device_inventory()
 }
 
 /// Explicit policy for whether one model artifact may be advertised or served into compute-market supply.
@@ -377,6 +431,11 @@ pub struct CapabilityEnvelope {
     pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// Explicit compile-vs-probe backend/toolchain truth for the selected path.
+    pub backend_toolchain: BackendToolchainIdentity,
+    /// Reusable selected-device inventory and performance qualifiers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -454,6 +513,8 @@ impl CapabilityEnvelope {
                 &backend_selection,
                 EMBEDDINGS_PRODUCT_ID,
             ),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -546,6 +607,11 @@ pub struct ExecutionReceipt {
     pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// Explicit compile-vs-probe backend/toolchain truth for the realized path.
+    pub backend_toolchain: BackendToolchainIdentity,
+    /// Reusable selected-device inventory and performance qualifiers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -620,6 +686,8 @@ impl ExecutionReceipt {
                 &backend_selection,
                 request.product_id.as_str(),
             ),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -684,6 +752,8 @@ impl ExecutionReceipt {
                 &backend_selection,
                 request.product_id.as_str(),
             ),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -763,6 +833,11 @@ pub struct TextGenerationCapabilityEnvelope {
     pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// Explicit compile-vs-probe backend/toolchain truth for the selected path.
+    pub backend_toolchain: BackendToolchainIdentity,
+    /// Reusable selected-device inventory and performance qualifiers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -837,6 +912,8 @@ impl TextGenerationCapabilityEnvelope {
                 &backend_selection,
                 TEXT_GENERATION_PRODUCT_ID,
             ),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -876,6 +953,11 @@ pub struct TextGenerationReceipt {
     pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
+    /// Explicit compile-vs-probe backend/toolchain truth for the realized path.
+    pub backend_toolchain: BackendToolchainIdentity,
+    /// Reusable selected-device inventory and performance qualifiers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -1001,6 +1083,8 @@ impl TextGenerationReceipt {
                 &backend_selection,
                 request.product_id.as_str(),
             ),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1115,6 +1199,8 @@ impl TextGenerationReceipt {
                 &backend_selection,
                 request.product_id.as_str(),
             ),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1497,14 +1583,15 @@ mod tests {
         AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata,
         AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
         AmdRuntimeMode, AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport,
-        BackendRuntimeResources, BackendSelection, DeviceDescriptor, DeviceMemoryBudget,
-        HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelResidencyPolicy,
-        NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
-        NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent,
-        RuntimeTransitionKind, ServedProductBackendPolicy, ValidationCoverage,
+        BackendProbeState, BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
+        DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
+        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeTransitionEvent, RuntimeTransitionKind, ServedProductBackendPolicy,
+        ValidationCoverage,
     };
     use mox_serve::{
         ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
@@ -1613,6 +1700,17 @@ mod tests {
                     "degraded_reason": null,
                     "retry_attempt": null
                 },
+                "backend_toolchain": {
+                    "effective_backend": "cpu",
+                    "toolchain_version": "cpu@0.1.0",
+                    "probe_state": "compiled_and_probed",
+                    "probed_backend_features": ["host_memory"]
+                },
+                "selected_device_inventory": {
+                    "stable_device_id": "cpu:0",
+                    "performance_class": "reference",
+                    "memory_class": "host_only"
+                },
                 "model_id": "smoke-byte-embed-v0",
                 "model_family": "smoke",
                 "model_revision": "v0",
@@ -1633,7 +1731,8 @@ mod tests {
                     "quantization_family": "none",
                     "backend": {
                         "effective_backend": "cpu",
-                        "toolchain_version": "cpu@0.1.0"
+                        "toolchain_version": "cpu@0.1.0",
+                        "probe_state": "compiled_only"
                     }
                 },
                 "supply_policy": {
@@ -1825,6 +1924,17 @@ mod tests {
                     "degraded_reason": null,
                     "retry_attempt": null
                 },
+                "backend_toolchain": {
+                    "effective_backend": "cpu",
+                    "toolchain_version": "cpu@0.1.0",
+                    "probe_state": "compiled_and_probed",
+                    "probed_backend_features": ["host_memory"]
+                },
+                "selected_device_inventory": {
+                    "stable_device_id": "cpu:0",
+                    "performance_class": "reference",
+                    "memory_class": "host_only"
+                },
                 "model_id": "fixture-word-decoder-v0",
                 "model_family": "fixture_decoder",
                 "model_revision": "v0",
@@ -1846,7 +1956,8 @@ mod tests {
                     "quantization_family": "none",
                     "backend": {
                         "effective_backend": "cpu",
-                        "toolchain_version": "cpu@0.1.0"
+                        "toolchain_version": "cpu@0.1.0",
+                        "probe_state": "compiled_only"
                     }
                 },
                 "supply_policy": {
@@ -2112,7 +2223,47 @@ mod tests {
                 }
             ])
         );
+        assert_eq!(
+            encoded["backend_toolchain"]["compiled_backend_features"],
+            json!(["rms_norm:reference", "rotary_embedding:reference"])
+        );
+        assert_eq!(
+            encoded["backend_toolchain"]["probe_state"],
+            json!("compiled_and_probed")
+        );
+        assert_eq!(
+            encoded["selected_device_inventory"]["stable_device_id"],
+            json!("cpu:0")
+        );
         Ok(())
+    }
+
+    #[test]
+    fn capability_envelope_without_probe_reports_compiled_only_toolchain_truth() {
+        let model = sample_embedding_descriptor();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            BackendSelection::direct("cuda", None, dense_supported_ops()).with_backend_extensions(
+                vec![BackendExtensionSupport::backend_specialized(
+                    BackendExtensionKind::QuantizedMatmul,
+                )],
+            ),
+            &model,
+            ProviderReadiness::ready("cuda compiled but unprobed"),
+        );
+
+        assert_eq!(
+            envelope.backend_toolchain,
+            BackendToolchainIdentity {
+                effective_backend: String::from("cuda"),
+                toolchain_version: String::from("cuda@0.1.0"),
+                compiled_backend_features: vec![String::from(
+                    "quantized_matmul:backend_specialized"
+                )],
+                probe_state: BackendProbeState::CompiledOnly,
+                probed_backend_features: Vec::new(),
+            }
+        );
+        assert_eq!(envelope.selected_device_inventory, None);
     }
 
     #[test]
@@ -2616,6 +2767,21 @@ mod tests {
         assert_eq!(decoded, receipt);
         assert_eq!(decoded.runtime_backend, "cpu");
         assert_eq!(decoded.backend_selection.requested_backend, "cpu");
+        assert_eq!(
+            decoded.backend_toolchain.probe_state,
+            BackendProbeState::CompiledAndProbed
+        );
+        assert_eq!(
+            decoded.backend_toolchain.probed_backend_features,
+            vec![String::from("host_memory")]
+        );
+        assert_eq!(
+            decoded
+                .selected_device_inventory
+                .as_ref()
+                .map(|value| value.performance_class),
+            Some(mox_runtime::DevicePerformanceClass::Reference)
+        );
         assert_eq!(decoded.output_vector_count, 1);
         assert_eq!(decoded.input_count, 1);
         assert_eq!(decoded.normalization, EmbeddingNormalization::None);
@@ -2782,6 +2948,21 @@ mod tests {
         assert_eq!(decoded, receipt);
         assert_eq!(decoded.runtime_backend, "cpu");
         assert_eq!(decoded.backend_selection.requested_backend, "cpu");
+        assert_eq!(
+            decoded.backend_toolchain.probe_state,
+            BackendProbeState::CompiledAndProbed
+        );
+        assert_eq!(
+            decoded.backend_toolchain.probed_backend_features,
+            vec![String::from("host_memory")]
+        );
+        assert_eq!(
+            decoded
+                .selected_device_inventory
+                .as_ref()
+                .map(|value| value.performance_class),
+            Some(mox_runtime::DevicePerformanceClass::Reference)
+        );
         assert_eq!(decoded.model_family, "fixture_decoder");
         assert_eq!(decoded.model_revision, "v0");
         assert_eq!(

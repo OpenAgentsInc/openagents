@@ -249,6 +249,37 @@ This keeps Ollama compatibility support honest as migration substrate instead of
 letting the compatibility layer silently become the architectural source of
 truth for Mox execution.
 
+## Capability Inventory Schema
+
+`MOX-171` defines the minimum compute-market inventory and qualifier truth that
+provider capability envelopes and execution receipts must expose.
+
+At minimum those surfaces must carry:
+
+- `backend_toolchain`
+  - `effective_backend`
+  - `toolchain_version`
+  - `compiled_backend_features`
+  - `probe_state`
+    - `compiled_only` or `compiled_and_probed`
+  - `probed_backend_features`
+- `selected_device_inventory` when a concrete device was chosen
+  - `stable_device_id`
+  - `topology_key` when available
+  - `performance_class`
+    - `reference`, `integrated_accelerator`, `discrete_accelerator`, or
+      `partitioned_accelerator`
+  - `memory_class`
+    - `host_only`, `shared_host_device`, or `dedicated_device`
+  - `total_memory_bytes` when known
+  - `free_memory_bytes` when the runtime can surface current budget truth
+
+Those qualifier fields complement, rather than replace, the backend-specific
+topology and risk metadata already surfaced through the AMD and NVIDIA context
+objects. The generic qualifiers are for reusable inventory comparison and
+compute-market filtering; the backend-specific contexts remain the source of
+truth for vendor detail such as PCI topology, MIG state, or recovery posture.
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or
