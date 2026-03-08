@@ -3,13 +3,13 @@
 use std::{
     borrow::Cow,
     collections::BTreeMap,
-    fs,
+    fmt, fs,
     mem::size_of,
     path::{Path, PathBuf},
 };
 
 use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
-use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType, SafeTensors};
+use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -463,6 +463,8 @@ pub enum WeightFormat {
     ProgrammaticFixture,
     /// Future safetensors import boundary.
     SafeTensors,
+    /// GGUF artifact-backed weights.
+    Gguf,
 }
 
 /// Weight source authority.
@@ -578,6 +580,620 @@ impl WeightBundleMetadata {
     #[must_use]
     pub fn is_artifact_backed(&self) -> bool {
         !self.artifacts.is_empty()
+    }
+}
+
+/// Supported GGUF file versions.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GgufVersion {
+    /// GGUF v1.
+    V1,
+    /// GGUF v2.
+    V2,
+    /// GGUF v3.
+    V3,
+}
+
+impl GgufVersion {
+    fn read_count(self, reader: &mut GgufBytesReader<'_>) -> Result<usize, ModelLoadError> {
+        let raw = match self {
+            Self::V1 => u64::from(reader.read_u32()?),
+            Self::V2 | Self::V3 => reader.read_u64()?,
+        };
+        usize::try_from(raw).map_err(|_| {
+            artifact_format_error(
+                "gguf",
+                format!("count `{raw}` does not fit into usize on this platform"),
+            )
+        })
+    }
+}
+
+/// A GGUF metadata value.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GgufMetadataValue {
+    /// Unsigned 8-bit integer.
+    U8(u8),
+    /// Signed 8-bit integer.
+    I8(i8),
+    /// Unsigned 16-bit integer.
+    U16(u16),
+    /// Signed 16-bit integer.
+    I16(i16),
+    /// Unsigned 32-bit integer.
+    U32(u32),
+    /// Signed 32-bit integer.
+    I32(i32),
+    /// Unsigned 64-bit integer.
+    U64(u64),
+    /// Signed 64-bit integer.
+    I64(i64),
+    /// 32-bit float.
+    F32(f32),
+    /// 64-bit float.
+    F64(f64),
+    /// Boolean.
+    Bool(bool),
+    /// UTF-8 string.
+    String(String),
+    /// Homogeneous array value.
+    Array(Vec<GgufMetadataValue>),
+}
+
+impl GgufMetadataValue {
+    /// Returns this value as a string when applicable.
+    #[must_use]
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            Self::String(value) => Some(value.as_str()),
+            Self::U8(_)
+            | Self::I8(_)
+            | Self::U16(_)
+            | Self::I16(_)
+            | Self::U32(_)
+            | Self::I32(_)
+            | Self::U64(_)
+            | Self::I64(_)
+            | Self::F32(_)
+            | Self::F64(_)
+            | Self::Bool(_)
+            | Self::Array(_) => None,
+        }
+    }
+
+    /// Returns this value as an array when applicable.
+    #[must_use]
+    pub fn as_array(&self) -> Option<&[GgufMetadataValue]> {
+        match self {
+            Self::Array(values) => Some(values.as_slice()),
+            Self::U8(_)
+            | Self::I8(_)
+            | Self::U16(_)
+            | Self::I16(_)
+            | Self::U32(_)
+            | Self::I32(_)
+            | Self::U64(_)
+            | Self::I64(_)
+            | Self::F32(_)
+            | Self::F64(_)
+            | Self::Bool(_)
+            | Self::String(_) => None,
+        }
+    }
+
+    /// Returns this value as a non-negative integer when possible.
+    #[must_use]
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            Self::U8(value) => Some(u64::from(*value)),
+            Self::U16(value) => Some(u64::from(*value)),
+            Self::U32(value) => Some(u64::from(*value)),
+            Self::U64(value) => Some(*value),
+            Self::I8(value) if *value >= 0 => Some(*value as u64),
+            Self::I16(value) if *value >= 0 => Some(*value as u64),
+            Self::I32(value) if *value >= 0 => Some(*value as u64),
+            Self::I64(value) if *value >= 0 => Some(*value as u64),
+            Self::F32(_)
+            | Self::F64(_)
+            | Self::Bool(_)
+            | Self::String(_)
+            | Self::Array(_)
+            | Self::I8(_)
+            | Self::I16(_)
+            | Self::I32(_)
+            | Self::I64(_) => None,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GgufMetadataValueType {
+    U8,
+    I8,
+    U16,
+    I16,
+    U32,
+    I32,
+    F32,
+    Bool,
+    String,
+    Array,
+    U64,
+    I64,
+    F64,
+}
+
+impl GgufMetadataValueType {
+    fn from_u32(value: u32) -> Result<Self, ModelLoadError> {
+        let value_type = match value {
+            0 => Self::U8,
+            1 => Self::I8,
+            2 => Self::U16,
+            3 => Self::I16,
+            4 => Self::U32,
+            5 => Self::I32,
+            6 => Self::F32,
+            7 => Self::Bool,
+            8 => Self::String,
+            9 => Self::Array,
+            10 => Self::U64,
+            11 => Self::I64,
+            12 => Self::F64,
+            _ => {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!("unsupported metadata value type `{value}`"),
+                ));
+            }
+        };
+        Ok(value_type)
+    }
+
+    fn read_value(
+        self,
+        reader: &mut GgufBytesReader<'_>,
+        version: GgufVersion,
+    ) -> Result<GgufMetadataValue, ModelLoadError> {
+        let value = match self {
+            Self::U8 => GgufMetadataValue::U8(reader.read_u8()?),
+            Self::I8 => GgufMetadataValue::I8(reader.read_i8()?),
+            Self::U16 => GgufMetadataValue::U16(reader.read_u16()?),
+            Self::I16 => GgufMetadataValue::I16(reader.read_i16()?),
+            Self::U32 => GgufMetadataValue::U32(reader.read_u32()?),
+            Self::I32 => GgufMetadataValue::I32(reader.read_i32()?),
+            Self::U64 => GgufMetadataValue::U64(reader.read_u64()?),
+            Self::I64 => GgufMetadataValue::I64(reader.read_i64()?),
+            Self::F32 => GgufMetadataValue::F32(reader.read_f32()?),
+            Self::F64 => GgufMetadataValue::F64(reader.read_f64()?),
+            Self::Bool => match reader.read_u8()? {
+                0 => GgufMetadataValue::Bool(false),
+                1 => GgufMetadataValue::Bool(true),
+                other => {
+                    return Err(artifact_format_error(
+                        "gguf",
+                        format!("invalid boolean metadata value `{other}`"),
+                    ));
+                }
+            },
+            Self::String => GgufMetadataValue::String(read_gguf_string(reader, version)?),
+            Self::Array => {
+                let element_type = GgufMetadataValueType::from_u32(reader.read_u32()?)?;
+                let length = version.read_count(reader)?;
+                let mut values = Vec::with_capacity(length);
+                for _ in 0..length {
+                    values.push(element_type.read_value(reader, version)?);
+                }
+                GgufMetadataValue::Array(values)
+            }
+        };
+        Ok(value)
+    }
+}
+
+/// GGUF tensor type descriptor.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GgufTensorType {
+    /// 32-bit float tensor.
+    F32,
+    /// 16-bit float tensor.
+    F16,
+    /// 16-bit bfloat tensor.
+    BF16,
+    /// GGML Q4_0 tensor.
+    Q4_0,
+    /// GGML Q4_1 tensor.
+    Q4_1,
+    /// GGML Q5_0 tensor.
+    Q5_0,
+    /// GGML Q5_1 tensor.
+    Q5_1,
+    /// GGML Q8_0 tensor.
+    Q8_0,
+    /// GGML Q8_1 tensor.
+    Q8_1,
+    /// GGML Q2_K tensor.
+    Q2K,
+    /// GGML Q3_K tensor.
+    Q3K,
+    /// GGML Q4_K tensor.
+    Q4K,
+    /// GGML Q5_K tensor.
+    Q5K,
+    /// GGML Q6_K tensor.
+    Q6K,
+    /// GGML Q8_K tensor.
+    Q8K,
+    /// Unknown tensor type code.
+    Unknown(u32),
+}
+
+impl GgufTensorType {
+    fn from_u32(value: u32) -> Self {
+        match value {
+            0 => Self::F32,
+            1 => Self::F16,
+            2 => Self::Q4_0,
+            3 => Self::Q4_1,
+            6 => Self::Q5_0,
+            7 => Self::Q5_1,
+            8 => Self::Q8_0,
+            9 => Self::Q8_1,
+            10 => Self::Q2K,
+            11 => Self::Q3K,
+            12 => Self::Q4K,
+            13 => Self::Q5K,
+            14 => Self::Q6K,
+            15 => Self::Q8K,
+            30 => Self::BF16,
+            other => Self::Unknown(other),
+        }
+    }
+
+    fn dense_dtype(self) -> Option<DType> {
+        match self {
+            Self::F32 => Some(DType::F32),
+            Self::F16 => Some(DType::F16),
+            Self::BF16 => Some(DType::BF16),
+            Self::Q4_0
+            | Self::Q4_1
+            | Self::Q5_0
+            | Self::Q5_1
+            | Self::Q8_0
+            | Self::Q8_1
+            | Self::Q2K
+            | Self::Q3K
+            | Self::Q4K
+            | Self::Q5K
+            | Self::Q6K
+            | Self::Q8K
+            | Self::Unknown(_) => None,
+        }
+    }
+
+    fn quantization_mode(self) -> Option<QuantizationMode> {
+        match self {
+            Self::Q4_0 => Some(QuantizationMode::GgmlQ4_0),
+            Self::Q4_1 => Some(QuantizationMode::GgmlQ4_1),
+            Self::Q8_0 => Some(QuantizationMode::GgmlQ8_0),
+            Self::F32
+            | Self::F16
+            | Self::BF16
+            | Self::Q5_0
+            | Self::Q5_1
+            | Self::Q8_1
+            | Self::Q2K
+            | Self::Q3K
+            | Self::Q4K
+            | Self::Q5K
+            | Self::Q6K
+            | Self::Q8K
+            | Self::Unknown(_) => None,
+        }
+    }
+}
+
+impl fmt::Display for GgufTensorType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::F32 => f.write_str("f32"),
+            Self::F16 => f.write_str("f16"),
+            Self::BF16 => f.write_str("bf16"),
+            Self::Q4_0 => f.write_str("q4_0"),
+            Self::Q4_1 => f.write_str("q4_1"),
+            Self::Q5_0 => f.write_str("q5_0"),
+            Self::Q5_1 => f.write_str("q5_1"),
+            Self::Q8_0 => f.write_str("q8_0"),
+            Self::Q8_1 => f.write_str("q8_1"),
+            Self::Q2K => f.write_str("q2_k"),
+            Self::Q3K => f.write_str("q3_k"),
+            Self::Q4K => f.write_str("q4_k"),
+            Self::Q5K => f.write_str("q5_k"),
+            Self::Q6K => f.write_str("q6_k"),
+            Self::Q8K => f.write_str("q8_k"),
+            Self::Unknown(value) => write!(f, "unknown({value})"),
+        }
+    }
+}
+
+/// GGUF tensor metadata entry.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GgufTensorInfo {
+    /// Stable tensor name.
+    pub name: String,
+    /// Logical tensor shape.
+    pub shape: Shape,
+    /// Raw GGUF tensor type.
+    pub tensor_type: GgufTensorType,
+    /// Byte offset from the start of the GGUF tensor data section.
+    pub offset: u64,
+}
+
+impl GgufTensorInfo {
+    fn byte_len(&self) -> Result<usize, ModelLoadError> {
+        if let Some(dtype) = self.tensor_type.dense_dtype() {
+            return self
+                .shape
+                .element_count()
+                .checked_mul(dtype.element_size_bytes())
+                .ok_or_else(|| {
+                    artifact_format_error(
+                        "gguf",
+                        format!(
+                            "tensor `{}` byte length overflow for shape {:?}",
+                            self.name,
+                            self.shape.dims()
+                        ),
+                    )
+                });
+        }
+
+        if let Some(quantization) = self.tensor_type.quantization_mode() {
+            return quantization.ggml_block_layout(&self.shape).map_or_else(
+                || {
+                    Err(ModelLoadError::InvalidQuantizedTensorShape {
+                        quantization,
+                        shape: self.shape.dims().to_vec(),
+                    })
+                },
+                |layout| Ok(layout.byte_len()),
+            );
+        }
+
+        Err(ModelLoadError::UnsupportedGgufTensorType {
+            name: self.name.clone(),
+            tensor_type: self.tensor_type,
+        })
+    }
+}
+
+/// Reusable GGUF metadata and tensor table parsed from an artifact.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GgufContent {
+    version: GgufVersion,
+    alignment: u64,
+    metadata: BTreeMap<String, GgufMetadataValue>,
+    tensor_infos: BTreeMap<String, GgufTensorInfo>,
+    tensor_data_offset: u64,
+}
+
+impl GgufContent {
+    /// Parses GGUF metadata and tensor descriptors from raw bytes.
+    pub fn read(bytes: &[u8]) -> Result<Self, ModelLoadError> {
+        const DEFAULT_ALIGNMENT: u64 = 32;
+
+        let mut reader = GgufBytesReader::new(bytes);
+        let magic = reader.read_u32()?;
+        let version = reader.read_u32()?;
+        let version = match (magic, version) {
+            (0x4655_4747 | 0x4747_5546, 1) => GgufVersion::V1,
+            (0x4655_4747 | 0x4747_5546, 2) => GgufVersion::V2,
+            (0x4655_4747 | 0x4747_5546, 3) => GgufVersion::V3,
+            _ => {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!("unsupported magic/version 0x{magic:08x}/{version}"),
+                ));
+            }
+        };
+
+        let tensor_count = version.read_count(&mut reader)?;
+        let metadata_kv_count = version.read_count(&mut reader)?;
+
+        let mut metadata = BTreeMap::new();
+        for _ in 0..metadata_kv_count {
+            let key = read_gguf_string(&mut reader, version)?;
+            let value_type = GgufMetadataValueType::from_u32(reader.read_u32()?)?;
+            let value = value_type.read_value(&mut reader, version)?;
+            if metadata.insert(key.clone(), value).is_some() {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!("duplicate metadata key `{key}`"),
+                ));
+            }
+        }
+
+        let mut tensor_infos = BTreeMap::new();
+        for _ in 0..tensor_count {
+            let name = read_gguf_string(&mut reader, version)?;
+            let dimension_count = reader.read_u32()?;
+            let mut dimensions = Vec::with_capacity(dimension_count as usize);
+            for _ in 0..dimension_count {
+                let dimension = match version {
+                    GgufVersion::V1 => u64::from(reader.read_u32()?),
+                    GgufVersion::V2 | GgufVersion::V3 => reader.read_u64()?,
+                };
+                dimensions.push(usize::try_from(dimension).map_err(|_| {
+                    artifact_format_error(
+                        "gguf",
+                        format!("tensor `{name}` dimension `{dimension}` does not fit into usize"),
+                    )
+                })?);
+            }
+            dimensions.reverse();
+
+            let tensor_info = GgufTensorInfo {
+                name: name.clone(),
+                shape: Shape::new(dimensions),
+                tensor_type: GgufTensorType::from_u32(reader.read_u32()?),
+                offset: reader.read_u64()?,
+            };
+
+            if tensor_infos.insert(name.clone(), tensor_info).is_some() {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!("duplicate tensor entry `{name}`"),
+                ));
+            }
+        }
+
+        let alignment = metadata
+            .get("general.alignment")
+            .and_then(GgufMetadataValue::as_u64)
+            .filter(|value| *value > 0)
+            .unwrap_or(DEFAULT_ALIGNMENT);
+        let tensor_data_offset = align_offset(reader.position() as u64, alignment);
+
+        Ok(Self {
+            version,
+            alignment,
+            metadata,
+            tensor_infos,
+            tensor_data_offset,
+        })
+    }
+
+    /// Reads GGUF metadata and tensor descriptors from a local file.
+    pub fn read_path(path: &Path) -> Result<Self, ModelLoadError> {
+        let bytes = fs::read(path).map_err(|error| ModelLoadError::ArtifactRead {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })?;
+        Self::read(&bytes)
+    }
+
+    /// Returns the parsed GGUF version.
+    #[must_use]
+    pub const fn version(&self) -> GgufVersion {
+        self.version
+    }
+
+    /// Returns the effective tensor-data alignment.
+    #[must_use]
+    pub const fn alignment(&self) -> u64 {
+        self.alignment
+    }
+
+    /// Returns parsed GGUF metadata.
+    #[must_use]
+    pub fn metadata(&self) -> &BTreeMap<String, GgufMetadataValue> {
+        &self.metadata
+    }
+
+    /// Returns parsed GGUF tensor descriptors in stable name order.
+    pub fn tensor_infos(&self) -> impl Iterator<Item = &GgufTensorInfo> {
+        self.tensor_infos.values()
+    }
+
+    /// Returns a parsed GGUF tensor descriptor by stable name.
+    #[must_use]
+    pub fn tensor_info(&self, name: &str) -> Option<&GgufTensorInfo> {
+        self.tensor_infos.get(name)
+    }
+
+    /// Returns the byte offset of the aligned tensor-data section.
+    #[must_use]
+    pub const fn tensor_data_offset(&self) -> u64 {
+        self.tensor_data_offset
+    }
+
+    /// Returns the exact serialized bytes for a tensor.
+    pub fn tensor_bytes<'a>(
+        &self,
+        artifact_bytes: &'a [u8],
+        name: &str,
+    ) -> Result<&'a [u8], ModelLoadError> {
+        let tensor = self
+            .tensor_info(name)
+            .ok_or_else(|| ModelLoadError::MissingTensor(String::from(name)))?;
+        let byte_len = tensor.byte_len()?;
+        let start = usize::try_from(self.tensor_data_offset)
+            .map_err(|_| artifact_format_error("gguf", "tensor data offset does not fit usize"))?
+            .checked_add(usize::try_from(tensor.offset).map_err(|_| {
+                artifact_format_error("gguf", format!("tensor `{name}` offset does not fit usize"))
+            })?)
+            .ok_or_else(|| {
+                artifact_format_error(
+                    "gguf",
+                    format!("tensor `{name}` start offset overflows usize"),
+                )
+            })?;
+        let end = start.checked_add(byte_len).ok_or_else(|| {
+            artifact_format_error(
+                "gguf",
+                format!("tensor `{name}` byte range overflows usize"),
+            )
+        })?;
+        artifact_bytes.get(start..end).ok_or_else(|| {
+            artifact_format_error(
+                "gguf",
+                format!(
+                    "tensor `{name}` byte range [{start}, {end}) is out of bounds for artifact length {}",
+                    artifact_bytes.len()
+                ),
+            )
+        })
+    }
+
+    /// Loads a single tensor from GGUF bytes into Mox loader storage.
+    pub fn load_tensor(
+        &self,
+        artifact_bytes: &[u8],
+        name: &str,
+    ) -> Result<LoadedWeightTensor, ModelLoadError> {
+        let tensor = self
+            .tensor_info(name)
+            .ok_or_else(|| ModelLoadError::MissingTensor(String::from(name)))?;
+        let data = self.tensor_bytes(artifact_bytes, name)?;
+
+        if let Some(dtype) = tensor.tensor_type.dense_dtype() {
+            let values = match tensor.tensor_type {
+                GgufTensorType::F32 => decode_f32_values("gguf", name, data)?,
+                GgufTensorType::F16 => decode_f16_values("gguf", name, data)?,
+                GgufTensorType::BF16 => decode_bf16_values("gguf", name, data)?,
+                GgufTensorType::Q4_0
+                | GgufTensorType::Q4_1
+                | GgufTensorType::Q5_0
+                | GgufTensorType::Q5_1
+                | GgufTensorType::Q8_0
+                | GgufTensorType::Q8_1
+                | GgufTensorType::Q2K
+                | GgufTensorType::Q3K
+                | GgufTensorType::Q4K
+                | GgufTensorType::Q5K
+                | GgufTensorType::Q6K
+                | GgufTensorType::Q8K
+                | GgufTensorType::Unknown(_) => unreachable!("dense dtype already filtered"),
+            };
+            return Ok(LoadedWeightTensor::new(
+                WeightTensorMetadata::new(name, tensor.shape.clone(), dtype),
+                values,
+            ));
+        }
+
+        if let Some(quantization) = tensor.tensor_type.quantization_mode() {
+            return LoadedWeightTensor::from_ggml_blocks(
+                name,
+                tensor.shape.clone(),
+                quantization,
+                data.to_vec(),
+            );
+        }
+
+        Err(ModelLoadError::UnsupportedGgufTensorType {
+            name: String::from(name),
+            tensor_type: tensor.tensor_type,
+        })
     }
 }
 
@@ -806,7 +1422,7 @@ impl SafeTensorsWeightBundleLoader {
                             Shape::new(tensor.shape().to_vec()),
                             DType::F32,
                         ),
-                        decode_f32_values(name, tensor.data())?,
+                        decode_f32_values("safetensors", name, tensor.data())?,
                     ),
                 ),
                 SafeTensorsDType::I8 => (
@@ -855,6 +1471,63 @@ impl SafeTensorsWeightBundleLoader {
 }
 
 impl LocalWeightBundleLoader for SafeTensorsWeightBundleLoader {
+    type Error = ModelLoadError;
+
+    fn load_path(&self, path: &Path) -> Result<LoadedWeightBundle, Self::Error> {
+        let bytes = fs::read(path).map_err(|error| ModelLoadError::ArtifactRead {
+            path: path.display().to_string(),
+            message: error.to_string(),
+        })?;
+        self.load_bytes(&bytes, WeightArtifactMetadata::for_path(path, &bytes))
+    }
+}
+
+/// GGUF-backed local weight bundle loader.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GgufWeightBundleLoader;
+
+impl GgufWeightBundleLoader {
+    fn load_bytes(
+        &self,
+        bytes: &[u8],
+        artifact: WeightArtifactMetadata,
+    ) -> Result<LoadedWeightBundle, ModelLoadError> {
+        let content = GgufContent::read(bytes)?;
+        let mut metadata = Vec::with_capacity(content.tensor_infos.len());
+        let mut loaded = BTreeMap::new();
+        let mut hasher = Sha256::new();
+        let mut quantized_bytes = Vec::new();
+
+        for tensor_info in content.tensor_infos() {
+            let tensor = content.load_tensor(bytes, &tensor_info.name)?;
+            if let WeightTensorStorage::QuantizedBlocks(storage) = tensor.storage() {
+                track_quantized_bytes(
+                    &mut quantized_bytes,
+                    storage.quantization(),
+                    storage.bytes().len(),
+                );
+            }
+            let tensor_metadata = tensor.metadata().clone();
+            digest_loaded_tensor(&mut hasher, &tensor)?;
+            metadata.push(tensor_metadata);
+            loaded.insert(tensor_info.name.clone(), tensor);
+        }
+
+        Ok(LoadedWeightBundle::new(
+            WeightBundleMetadata {
+                format: WeightFormat::Gguf,
+                source: WeightSource::ExternalArtifact,
+                quantization: dominant_quantization_mode(&quantized_bytes),
+                digest: hex::encode(hasher.finalize()),
+                tensors: metadata,
+                artifacts: vec![artifact],
+            },
+            loaded,
+        ))
+    }
+}
+
+impl LocalWeightBundleLoader for GgufWeightBundleLoader {
     type Error = ModelLoadError;
 
     fn load_path(&self, path: &Path) -> Result<LoadedWeightBundle, Self::Error> {
@@ -1020,6 +1693,14 @@ pub enum ModelLoadError {
         name: String,
         /// Dtype label.
         dtype: String,
+    },
+    /// A GGUF tensor type is known but not yet supported by the Mox loader.
+    #[error("unsupported gguf tensor type `{tensor_type}` for `{name}`")]
+    UnsupportedGgufTensorType {
+        /// Tensor name.
+        name: String,
+        /// GGUF tensor type label.
+        tensor_type: GgufTensorType,
     },
     /// A required tensor is missing from the artifact bundle.
     #[error("missing required tensor `{0}` in artifact bundle")]
@@ -1894,6 +2575,159 @@ fn load_tensor_values(
     Ok(tensor.values()?.into_owned())
 }
 
+fn artifact_format_error(format: &str, message: impl Into<String>) -> ModelLoadError {
+    ModelLoadError::ArtifactFormat {
+        format: String::from(format),
+        message: message.into(),
+    }
+}
+
+fn track_quantized_bytes(
+    counts: &mut Vec<(QuantizationMode, usize)>,
+    quantization: QuantizationMode,
+    bytes: usize,
+) {
+    if let Some((_, total_bytes)) = counts
+        .iter_mut()
+        .find(|(candidate, _)| *candidate == quantization)
+    {
+        *total_bytes += bytes;
+    } else {
+        counts.push((quantization, bytes));
+    }
+}
+
+fn dominant_quantization_mode(counts: &[(QuantizationMode, usize)]) -> QuantizationMode {
+    counts
+        .iter()
+        .max_by_key(|(quantization, bytes)| (*bytes, quantization_priority(*quantization)))
+        .map_or(QuantizationMode::None, |(quantization, _)| *quantization)
+}
+
+fn quantization_priority(quantization: QuantizationMode) -> u8 {
+    match quantization {
+        QuantizationMode::None => 0,
+        QuantizationMode::Int8Symmetric => 1,
+        QuantizationMode::GgmlQ4_0 => 2,
+        QuantizationMode::GgmlQ4_1 => 3,
+        QuantizationMode::GgmlQ8_0 => 4,
+    }
+}
+
+struct GgufBytesReader<'a> {
+    bytes: &'a [u8],
+    offset: usize,
+}
+
+impl<'a> GgufBytesReader<'a> {
+    fn new(bytes: &'a [u8]) -> Self {
+        Self { bytes, offset: 0 }
+    }
+
+    fn position(&self) -> usize {
+        self.offset
+    }
+
+    fn read_exact(&mut self, len: usize) -> Result<&'a [u8], ModelLoadError> {
+        let end = self.offset.checked_add(len).ok_or_else(|| {
+            artifact_format_error("gguf", "reader offset overflow while parsing artifact")
+        })?;
+        let bytes = self.bytes.get(self.offset..end).ok_or_else(|| {
+            artifact_format_error(
+                "gguf",
+                format!(
+                    "unexpected end of file while parsing gguf at byte {}",
+                    self.offset
+                ),
+            )
+        })?;
+        self.offset = end;
+        Ok(bytes)
+    }
+
+    fn read_u8(&mut self) -> Result<u8, ModelLoadError> {
+        Ok(self.read_exact(1)?[0])
+    }
+
+    fn read_i8(&mut self) -> Result<i8, ModelLoadError> {
+        Ok(i8::from_le_bytes([self.read_u8()?]))
+    }
+
+    fn read_u16(&mut self) -> Result<u16, ModelLoadError> {
+        let mut bytes = [0_u8; 2];
+        bytes.copy_from_slice(self.read_exact(2)?);
+        Ok(u16::from_le_bytes(bytes))
+    }
+
+    fn read_i16(&mut self) -> Result<i16, ModelLoadError> {
+        let mut bytes = [0_u8; 2];
+        bytes.copy_from_slice(self.read_exact(2)?);
+        Ok(i16::from_le_bytes(bytes))
+    }
+
+    fn read_u32(&mut self) -> Result<u32, ModelLoadError> {
+        let mut bytes = [0_u8; 4];
+        bytes.copy_from_slice(self.read_exact(4)?);
+        Ok(u32::from_le_bytes(bytes))
+    }
+
+    fn read_i32(&mut self) -> Result<i32, ModelLoadError> {
+        let mut bytes = [0_u8; 4];
+        bytes.copy_from_slice(self.read_exact(4)?);
+        Ok(i32::from_le_bytes(bytes))
+    }
+
+    fn read_u64(&mut self) -> Result<u64, ModelLoadError> {
+        let mut bytes = [0_u8; 8];
+        bytes.copy_from_slice(self.read_exact(8)?);
+        Ok(u64::from_le_bytes(bytes))
+    }
+
+    fn read_i64(&mut self) -> Result<i64, ModelLoadError> {
+        let mut bytes = [0_u8; 8];
+        bytes.copy_from_slice(self.read_exact(8)?);
+        Ok(i64::from_le_bytes(bytes))
+    }
+
+    fn read_f32(&mut self) -> Result<f32, ModelLoadError> {
+        let mut bytes = [0_u8; 4];
+        bytes.copy_from_slice(self.read_exact(4)?);
+        Ok(f32::from_le_bytes(bytes))
+    }
+
+    fn read_f64(&mut self) -> Result<f64, ModelLoadError> {
+        let mut bytes = [0_u8; 8];
+        bytes.copy_from_slice(self.read_exact(8)?);
+        Ok(f64::from_le_bytes(bytes))
+    }
+}
+
+fn read_gguf_string(
+    reader: &mut GgufBytesReader<'_>,
+    version: GgufVersion,
+) -> Result<String, ModelLoadError> {
+    let raw_len = match version {
+        GgufVersion::V1 => u64::from(reader.read_u32()?),
+        GgufVersion::V2 | GgufVersion::V3 => reader.read_u64()?,
+    };
+    let len = usize::try_from(raw_len).map_err(|_| {
+        artifact_format_error(
+            "gguf",
+            format!("string length `{raw_len}` does not fit into usize"),
+        )
+    })?;
+    let mut bytes = reader.read_exact(len)?.to_vec();
+    while bytes.last() == Some(&0) {
+        bytes.pop();
+    }
+    Ok(String::from_utf8_lossy(&bytes).into_owned())
+}
+
+fn align_offset(position: u64, alignment: u64) -> u64 {
+    let alignment = alignment.max(1);
+    position.div_ceil(alignment) * alignment
+}
+
 fn decode_ggml_quantized_values(
     quantization: QuantizationMode,
     layout: QuantizedBlockLayout,
@@ -2015,13 +2849,13 @@ fn decode_f16(bytes: [u8; 2]) -> f32 {
     f32::from_bits(f32_bits)
 }
 
-fn decode_f32_values(name: &str, data: &[u8]) -> Result<Vec<f32>, ModelLoadError> {
+fn decode_f32_values(format: &str, name: &str, data: &[u8]) -> Result<Vec<f32>, ModelLoadError> {
     let chunks = data.chunks_exact(size_of::<f32>());
     if !chunks.remainder().is_empty() {
-        return Err(ModelLoadError::ArtifactFormat {
-            format: String::from("safetensors"),
-            message: format!("tensor `{name}` byte length is not a multiple of 4"),
-        });
+        return Err(artifact_format_error(
+            format,
+            format!("tensor `{name}` byte length is not a multiple of 4"),
+        ));
     }
     Ok(chunks
         .map(|chunk| {
@@ -2030,6 +2864,44 @@ fn decode_f32_values(name: &str, data: &[u8]) -> Result<Vec<f32>, ModelLoadError
             f32::from_le_bytes(bytes)
         })
         .collect())
+}
+
+fn decode_f16_values(format: &str, name: &str, data: &[u8]) -> Result<Vec<f32>, ModelLoadError> {
+    let chunks = data.chunks_exact(size_of::<u16>());
+    if !chunks.remainder().is_empty() {
+        return Err(artifact_format_error(
+            format,
+            format!("tensor `{name}` byte length is not a multiple of 2"),
+        ));
+    }
+    Ok(chunks
+        .map(|chunk| {
+            let mut bytes = [0_u8; size_of::<u16>()];
+            bytes.copy_from_slice(chunk);
+            decode_f16(bytes)
+        })
+        .collect())
+}
+
+fn decode_bf16_values(format: &str, name: &str, data: &[u8]) -> Result<Vec<f32>, ModelLoadError> {
+    let chunks = data.chunks_exact(size_of::<u16>());
+    if !chunks.remainder().is_empty() {
+        return Err(artifact_format_error(
+            format,
+            format!("tensor `{name}` byte length is not a multiple of 2"),
+        ));
+    }
+    Ok(chunks
+        .map(|chunk| {
+            let mut bytes = [0_u8; size_of::<u16>()];
+            bytes.copy_from_slice(chunk);
+            decode_bf16(bytes)
+        })
+        .collect())
+}
+
+fn decode_bf16(bytes: [u8; 2]) -> f32 {
+    f32::from_bits(u32::from(u16::from_le_bytes(bytes)) << 16)
 }
 
 fn decode_int8_symmetric_values(
@@ -2054,7 +2926,7 @@ fn decode_int8_symmetric_values(
             dtype: scale_tensor.dtype().to_string(),
         });
     }
-    let scale = decode_f32_values(name, scale_tensor.data())?
+    let scale = decode_f32_values("safetensors", name, scale_tensor.data())?
         .into_iter()
         .next()
         .ok_or_else(|| ModelLoadError::MissingTensorScale(String::from(name)))?;
@@ -2069,14 +2941,16 @@ mod tests {
     use std::{collections::BTreeMap, path::Path};
 
     use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
-    use safetensors::{serialize_to_file, tensor::TensorView, Dtype as SafeTensorsDType};
+    use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
     use tempfile::tempdir;
 
     use super::{
         ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader,
-        FixtureWordTokenizer, LoadedWeightTensor, LocalWeightBundleLoader, QuantizedTensorStorage,
-        ReferenceWordDecoder, SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader,
-        SmokeByteEmbedder, TokenizerBoundary, WeightFormat, WeightSource, WeightTensorStorage,
+        FixtureWordTokenizer, GgufContent, GgufMetadataValue, GgufTensorType, GgufVersion,
+        GgufWeightBundleLoader, LoadedWeightTensor, LocalWeightBundleLoader,
+        QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
+        SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenizerBoundary, WeightFormat,
+        WeightSource, WeightTensorStorage,
     };
 
     #[test]
@@ -2168,8 +3042,8 @@ mod tests {
     }
 
     #[test]
-    fn safetensors_bundle_loader_reports_external_artifact_metadata(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn safetensors_bundle_loader_reports_external_artifact_metadata()
+    -> Result<(), Box<dyn std::error::Error>> {
         let model = ReferenceWordDecoder::new();
         let temp = tempdir()?;
         let path = temp.path().join("reference_decoder.safetensors");
@@ -2219,8 +3093,8 @@ mod tests {
     }
 
     #[test]
-    fn safetensors_loader_reports_and_dequantizes_int8_weights(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn safetensors_loader_reports_and_dequantizes_int8_weights()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let path = temp.path().join("quantized.safetensors");
         let tensors = BTreeMap::from([
@@ -2249,6 +3123,165 @@ mod tests {
             QuantizationMode::Int8Symmetric
         );
         assert_eq!(tensor.values()?.as_ref(), &[0.5, -0.5, 1.0, -1.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_content_reads_metadata_and_tensor_infos() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("sample_v2.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V2,
+            &[
+                (
+                    String::from("general.architecture"),
+                    GgufMetadataValue::String(String::from("llama")),
+                ),
+                (
+                    String::from("general.alignment"),
+                    GgufMetadataValue::U32(64),
+                ),
+                (
+                    String::from("tokenizer.ggml.tokens"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::String(String::from("hello")),
+                        GgufMetadataValue::String(String::from("world")),
+                    ]),
+                ),
+            ],
+            &[TestGgufTensor::new(
+                "dense",
+                vec![2, 2],
+                GgufTensorType::F32,
+                super::encode_f32_bytes(&[1.0, 2.0, 3.0, 4.0]),
+            )],
+        )?;
+
+        let content = GgufContent::read_path(&path)?;
+        let bytes = std::fs::read(&path)?;
+
+        assert_eq!(content.version(), GgufVersion::V2);
+        assert_eq!(content.alignment(), 64);
+        assert_eq!(content.tensor_data_offset() % 64, 0);
+        assert_eq!(
+            content
+                .metadata()
+                .get("general.architecture")
+                .and_then(GgufMetadataValue::as_str),
+            Some("llama")
+        );
+
+        let token_values = content
+            .metadata()
+            .get("tokenizer.ggml.tokens")
+            .and_then(GgufMetadataValue::as_array)
+            .ok_or("missing tokenizer tokens")?;
+        assert_eq!(
+            token_values,
+            &[
+                GgufMetadataValue::String(String::from("hello")),
+                GgufMetadataValue::String(String::from("world")),
+            ]
+        );
+
+        let tensor = content.tensor_info("dense").ok_or("missing dense tensor")?;
+        assert_eq!(tensor.shape, Shape::new(vec![2, 2]));
+        assert_eq!(tensor.tensor_type, GgufTensorType::F32);
+        assert_eq!(content.tensor_bytes(&bytes, "dense")?.len(), 16);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_weight_bundle_loader_loads_dense_half_and_quantized_tensors()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("bundle.gguf");
+        let q8_bytes = std::iter::once(0x00)
+            .chain(std::iter::once(0x40))
+            .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
+            .collect::<Vec<_>>();
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[
+                (
+                    String::from("general.architecture"),
+                    GgufMetadataValue::String(String::from("llama")),
+                ),
+                (
+                    String::from("general.alignment"),
+                    GgufMetadataValue::U32(32),
+                ),
+            ],
+            &[
+                TestGgufTensor::new(
+                    "dense_f32",
+                    vec![2],
+                    GgufTensorType::F32,
+                    super::encode_f32_bytes(&[1.0, -2.0]),
+                ),
+                TestGgufTensor::new(
+                    "dense_f16",
+                    vec![2],
+                    GgufTensorType::F16,
+                    vec![0x00, 0x3c, 0x00, 0x38],
+                ),
+                TestGgufTensor::new("quantized", vec![32], GgufTensorType::Q8_0, q8_bytes),
+            ],
+        )?;
+
+        let bundle = GgufWeightBundleLoader.load_path(&path)?;
+        assert_eq!(bundle.metadata().format, WeightFormat::Gguf);
+        assert_eq!(bundle.metadata().source, WeightSource::ExternalArtifact);
+        assert_eq!(bundle.metadata().quantization, QuantizationMode::GgmlQ8_0);
+        assert_eq!(bundle.metadata().artifacts[0].name, "bundle.gguf");
+
+        let dense_f32 = bundle.tensor("dense_f32").ok_or("missing dense_f32")?;
+        assert_eq!(dense_f32.metadata().dtype, DType::F32);
+        assert_eq!(dense_f32.values()?.as_ref(), &[1.0, -2.0]);
+
+        let dense_f16 = bundle.tensor("dense_f16").ok_or("missing dense_f16")?;
+        assert_eq!(dense_f16.metadata().dtype, DType::F16);
+        assert_eq!(dense_f16.values()?.as_ref(), &[1.0, 0.5]);
+
+        let quantized = bundle.tensor("quantized").ok_or("missing quantized")?;
+        assert!(matches!(
+            quantized.storage(),
+            WeightTensorStorage::QuantizedBlocks(_)
+        ));
+        let expected = (1..=32).map(|value| value as f32 * 2.0).collect::<Vec<_>>();
+        assert_eq!(quantized.values()?.as_ref(), expected.as_slice());
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_weight_bundle_loader_rejects_unsupported_tensor_types()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("unsupported.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[],
+            &[TestGgufTensor::new(
+                "unsupported",
+                vec![32],
+                GgufTensorType::Q6K,
+                Vec::new(),
+            )],
+        )?;
+
+        let error = GgufWeightBundleLoader
+            .load_path(&path)
+            .expect_err("q6_k should remain unsupported in MOX-110");
+        assert!(matches!(
+            error,
+            super::ModelLoadError::UnsupportedGgufTensorType {
+                name,
+                tensor_type: GgufTensorType::Q6K
+            } if name == "unsupported"
+        ));
         Ok(())
     }
 
@@ -2340,8 +3373,8 @@ mod tests {
     }
 
     #[test]
-    fn ggml_quantized_storage_is_digest_stable_across_reloads(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn ggml_quantized_storage_is_digest_stable_across_reloads()
+    -> Result<(), Box<dyn std::error::Error>> {
         let bytes = [0x00_u8, 0x40]
             .into_iter()
             .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
@@ -2517,5 +3550,218 @@ mod tests {
             .into_boxed_slice();
         let leaked = Box::leak(bytes);
         Ok(TensorView::new(SafeTensorsDType::I8, shape, leaked)?)
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestGgufTensor {
+        name: String,
+        shape: Vec<usize>,
+        tensor_type: GgufTensorType,
+        bytes: Vec<u8>,
+    }
+
+    impl TestGgufTensor {
+        fn new(
+            name: impl Into<String>,
+            shape: Vec<usize>,
+            tensor_type: GgufTensorType,
+            bytes: Vec<u8>,
+        ) -> Self {
+            Self {
+                name: name.into(),
+                shape,
+                tensor_type,
+                bytes,
+            }
+        }
+    }
+
+    fn write_test_gguf(
+        path: &Path,
+        version: GgufVersion,
+        metadata: &[(String, GgufMetadataValue)],
+        tensors: &[TestGgufTensor],
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        std::fs::write(path, build_test_gguf(version, metadata, tensors)?)?;
+        Ok(())
+    }
+
+    fn build_test_gguf(
+        version: GgufVersion,
+        metadata: &[(String, GgufMetadataValue)],
+        tensors: &[TestGgufTensor],
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let alignment = metadata
+            .iter()
+            .find(|(key, _)| key == "general.alignment")
+            .and_then(|(_, value)| value.as_u64())
+            .unwrap_or(32);
+        let alignment = alignment.max(1);
+
+        let mut bytes = Vec::new();
+        bytes.extend(b"GGUF");
+        push_u32(
+            &mut bytes,
+            match version {
+                GgufVersion::V1 => 1,
+                GgufVersion::V2 => 2,
+                GgufVersion::V3 => 3,
+            },
+        );
+        push_count(&mut bytes, version, tensors.len())?;
+        push_count(&mut bytes, version, metadata.len())?;
+
+        for (key, value) in metadata {
+            push_gguf_string(&mut bytes, version, key)?;
+            push_u32(&mut bytes, gguf_metadata_value_type(value));
+            push_gguf_value(&mut bytes, version, value)?;
+        }
+
+        let mut next_offset = 0_usize;
+        let mut tensor_offsets = Vec::with_capacity(tensors.len());
+        for tensor in tensors {
+            tensor_offsets.push(next_offset);
+            next_offset = align_usize(next_offset + tensor.bytes.len(), alignment as usize);
+        }
+
+        for (tensor, offset) in tensors.iter().zip(&tensor_offsets) {
+            push_gguf_string(&mut bytes, version, &tensor.name)?;
+            push_u32(
+                &mut bytes,
+                u32::try_from(tensor.shape.len()).map_err(|_| "tensor rank does not fit in u32")?,
+            );
+            for dimension in tensor.shape.iter().rev() {
+                push_u64(
+                    &mut bytes,
+                    u64::try_from(*dimension)
+                        .map_err(|_| "tensor dimension does not fit in u64")?,
+                );
+            }
+            push_u32(&mut bytes, gguf_tensor_type_code(tensor.tensor_type));
+            push_u64(
+                &mut bytes,
+                u64::try_from(*offset).map_err(|_| "tensor offset does not fit in u64")?,
+            );
+        }
+
+        let tensor_data_offset = super::align_offset(bytes.len() as u64, alignment);
+        bytes.resize(tensor_data_offset as usize, 0);
+
+        for (tensor, offset) in tensors.iter().zip(&tensor_offsets) {
+            let start = tensor_data_offset as usize + offset;
+            if bytes.len() < start {
+                bytes.resize(start, 0);
+            }
+            bytes.extend_from_slice(&tensor.bytes);
+            bytes.resize(align_usize(bytes.len(), alignment as usize), 0);
+        }
+
+        Ok(bytes)
+    }
+
+    fn push_count(
+        bytes: &mut Vec<u8>,
+        version: GgufVersion,
+        value: usize,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match version {
+            GgufVersion::V1 => push_u32(bytes, u32::try_from(value)?),
+            GgufVersion::V2 | GgufVersion::V3 => push_u64(bytes, u64::try_from(value)?),
+        }
+        Ok(())
+    }
+
+    fn push_gguf_string(
+        bytes: &mut Vec<u8>,
+        version: GgufVersion,
+        value: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match version {
+            GgufVersion::V1 => push_u32(bytes, u32::try_from(value.len())?),
+            GgufVersion::V2 | GgufVersion::V3 => push_u64(bytes, u64::try_from(value.len())?),
+        }
+        bytes.extend_from_slice(value.as_bytes());
+        Ok(())
+    }
+
+    fn push_gguf_value(
+        bytes: &mut Vec<u8>,
+        version: GgufVersion,
+        value: &GgufMetadataValue,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match value {
+            GgufMetadataValue::U8(value) => bytes.push(*value),
+            GgufMetadataValue::I8(value) => bytes.push(value.to_le_bytes()[0]),
+            GgufMetadataValue::U16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::Bool(value) => bytes.push(u8::from(*value)),
+            GgufMetadataValue::String(value) => push_gguf_string(bytes, version, value)?,
+            GgufMetadataValue::Array(values) => {
+                let value_type = values.first().map_or(4, gguf_metadata_value_type);
+                push_u32(bytes, value_type);
+                push_count(bytes, version, values.len())?;
+                for value in values {
+                    push_gguf_value(bytes, version, value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn gguf_metadata_value_type(value: &GgufMetadataValue) -> u32 {
+        match value {
+            GgufMetadataValue::U8(_) => 0,
+            GgufMetadataValue::I8(_) => 1,
+            GgufMetadataValue::U16(_) => 2,
+            GgufMetadataValue::I16(_) => 3,
+            GgufMetadataValue::U32(_) => 4,
+            GgufMetadataValue::I32(_) => 5,
+            GgufMetadataValue::F32(_) => 6,
+            GgufMetadataValue::Bool(_) => 7,
+            GgufMetadataValue::String(_) => 8,
+            GgufMetadataValue::Array(_) => 9,
+            GgufMetadataValue::U64(_) => 10,
+            GgufMetadataValue::I64(_) => 11,
+            GgufMetadataValue::F64(_) => 12,
+        }
+    }
+
+    fn gguf_tensor_type_code(tensor_type: GgufTensorType) -> u32 {
+        match tensor_type {
+            GgufTensorType::F32 => 0,
+            GgufTensorType::F16 => 1,
+            GgufTensorType::Q4_0 => 2,
+            GgufTensorType::Q4_1 => 3,
+            GgufTensorType::Q5_0 => 6,
+            GgufTensorType::Q5_1 => 7,
+            GgufTensorType::Q8_0 => 8,
+            GgufTensorType::Q8_1 => 9,
+            GgufTensorType::Q2K => 10,
+            GgufTensorType::Q3K => 11,
+            GgufTensorType::Q4K => 12,
+            GgufTensorType::Q5K => 13,
+            GgufTensorType::Q6K => 14,
+            GgufTensorType::Q8K => 15,
+            GgufTensorType::BF16 => 30,
+            GgufTensorType::Unknown(value) => value,
+        }
+    }
+
+    fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_u64(bytes: &mut Vec<u8>, value: u64) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn align_usize(value: usize, alignment: usize) -> usize {
+        super::align_offset(value as u64, alignment as u64) as usize
     }
 }

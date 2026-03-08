@@ -27,6 +27,10 @@ impl fmt::Display for TensorId {
 pub enum DType {
     /// 32-bit floating point values.
     F32,
+    /// 16-bit IEEE 754 half-precision floating point values.
+    F16,
+    /// 16-bit bfloat values.
+    BF16,
     /// 8-bit signed integer values.
     I8,
 }
@@ -37,6 +41,7 @@ impl DType {
     pub const fn element_size_bytes(self) -> usize {
         match self {
             Self::F32 => 4,
+            Self::F16 | Self::BF16 => 2,
             Self::I8 => 1,
         }
     }
