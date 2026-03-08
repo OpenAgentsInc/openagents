@@ -1,5 +1,5 @@
 use crate::app_state::{ActiveJobRecord, JobInboxDecision, RenderState};
-use crate::ollama_execution::OllamaExecutionMetrics;
+use crate::ollama_execution::LocalInferenceExecutionMetrics;
 use crate::state::job_inbox::JobInboxRequest;
 use crate::state::operations::{
     AcceptedForwardComputeOrder, AcceptedSpotComputeOrder, ForwardComputeQuoteCandidate,
@@ -104,9 +104,9 @@ struct LaunchDeliveryContext {
     provider_thread_id: Option<String>,
     provider_turn_id: Option<String>,
     ollama_ready_model: Option<String>,
-    ollama_metrics: Option<OllamaExecutionMetrics>,
+    ollama_metrics: Option<LocalInferenceExecutionMetrics>,
     apple_ready_model: Option<String>,
-    apple_metrics: Option<OllamaExecutionMetrics>,
+    apple_metrics: Option<LocalInferenceExecutionMetrics>,
     apple_model_available: bool,
     apple_bridge_status: Option<String>,
 }
@@ -2115,7 +2115,7 @@ fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
 }
 
 fn latency_from_provenance(
-    provenance: &crate::ollama_execution::OllamaExecutionProvenance,
+    provenance: &crate::ollama_execution::LocalInferenceExecutionProvenance,
 ) -> Option<u32> {
     provenance
         .total_duration_ns
@@ -2123,7 +2123,7 @@ fn latency_from_provenance(
         .and_then(|duration_ms| u32::try_from(duration_ms).ok())
 }
 
-fn latency_from_metrics(metrics: Option<&OllamaExecutionMetrics>) -> Option<u32> {
+fn latency_from_metrics(metrics: Option<&LocalInferenceExecutionMetrics>) -> Option<u32> {
     metrics
         .and_then(|metrics| metrics.total_duration_ns)
         .map(|duration| duration / 1_000_000)
@@ -2131,7 +2131,7 @@ fn latency_from_metrics(metrics: Option<&OllamaExecutionMetrics>) -> Option<u32>
 }
 
 fn throughput_from_provenance(
-    provenance: &crate::ollama_execution::OllamaExecutionProvenance,
+    provenance: &crate::ollama_execution::LocalInferenceExecutionProvenance,
     quantity_hint: u64,
 ) -> Option<u32> {
     let duration_ns = provenance.total_duration_ns?;
@@ -2147,7 +2147,7 @@ fn throughput_from_provenance(
 }
 
 fn throughput_from_metrics(
-    metrics: Option<&OllamaExecutionMetrics>,
+    metrics: Option<&LocalInferenceExecutionMetrics>,
     quantity_hint: u64,
 ) -> Option<u32> {
     let duration_ns = metrics.and_then(|metrics| metrics.total_duration_ns)?;
@@ -2211,7 +2211,7 @@ fn backend_family_from_runtime_label(value: &str) -> Option<ComputeBackendFamily
 fn context_metrics_for_binding(
     binding: LaunchComputeBinding,
     context: &LaunchDeliveryContext,
-) -> Option<&OllamaExecutionMetrics> {
+) -> Option<&LocalInferenceExecutionMetrics> {
     match binding.backend_family {
         ComputeBackendFamily::Ollama => context.ollama_metrics.as_ref(),
         ComputeBackendFamily::AppleFoundationModels => context.apple_metrics.as_ref(),
@@ -3441,20 +3441,22 @@ mod tests {
             execution_prompt: Some("Write a haiku about rust".to_string()),
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
-            execution_provenance: Some(crate::ollama_execution::OllamaExecutionProvenance {
-                backend: "ollama".to_string(),
-                requested_model: Some("llama3.2:latest".to_string()),
-                served_model: "llama3.2:latest".to_string(),
-                normalized_prompt_digest: "sha256:prompt".to_string(),
-                normalized_options_json: "{\"num_predict\":64}".to_string(),
-                normalized_options_digest: "sha256:options".to_string(),
-                base_url: "http://127.0.0.1:11434".to_string(),
-                total_duration_ns: Some(1_000_000),
-                load_duration_ns: Some(0),
-                prompt_token_count: Some(11),
-                generated_token_count: Some(7),
-                warm_start: Some(true),
-            }),
+            execution_provenance: Some(
+                crate::ollama_execution::LocalInferenceExecutionProvenance {
+                    backend: "ollama".to_string(),
+                    requested_model: Some("llama3.2:latest".to_string()),
+                    served_model: "llama3.2:latest".to_string(),
+                    normalized_prompt_digest: "sha256:prompt".to_string(),
+                    normalized_options_json: "{\"num_predict\":64}".to_string(),
+                    normalized_options_digest: "sha256:options".to_string(),
+                    base_url: "http://127.0.0.1:11434".to_string(),
+                    total_duration_ns: Some(1_000_000),
+                    load_duration_ns: Some(0),
+                    prompt_token_count: Some(11),
+                    generated_token_count: Some(7),
+                    warm_start: Some(true),
+                },
+            ),
             skill_scope_id: None,
             skl_manifest_a: None,
             skl_manifest_event_id: None,
@@ -3492,7 +3494,7 @@ mod tests {
             provider_thread_id: Some("thread-1".to_string()),
             provider_turn_id: Some("turn-1".to_string()),
             ollama_ready_model: Some("llama3.2:latest".to_string()),
-            ollama_metrics: Some(crate::ollama_execution::OllamaExecutionMetrics {
+            ollama_metrics: Some(crate::ollama_execution::LocalInferenceExecutionMetrics {
                 total_duration_ns: Some(1_000_000_000),
                 load_duration_ns: Some(10_000_000),
                 prompt_eval_count: Some(11),

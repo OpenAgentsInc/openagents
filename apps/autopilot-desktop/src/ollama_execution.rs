@@ -50,7 +50,7 @@ pub struct OllamaExecutionSnapshot {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub last_request_id: Option<String>,
-    pub last_metrics: Option<OllamaExecutionMetrics>,
+    pub last_metrics: Option<LocalInferenceExecutionMetrics>,
     pub refreshed_at: Option<Instant>,
 }
 
@@ -61,7 +61,7 @@ impl OllamaExecutionSnapshot {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OllamaExecutionMetrics {
+pub struct LocalInferenceExecutionMetrics {
     pub total_duration_ns: Option<u64>,
     pub load_duration_ns: Option<u64>,
     pub prompt_eval_count: Option<u64>,
@@ -71,7 +71,7 @@ pub struct OllamaExecutionMetrics {
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub struct OllamaExecutionProvenance {
+pub struct LocalInferenceExecutionProvenance {
     pub backend: String,
     pub requested_model: Option<String>,
     pub served_model: String,
@@ -86,7 +86,7 @@ pub struct OllamaExecutionProvenance {
     pub warm_start: Option<bool>,
 }
 
-impl OllamaExecutionProvenance {
+impl LocalInferenceExecutionProvenance {
     pub fn receipt_payload(&self) -> Value {
         json!({
             "backend": self.backend,
@@ -139,8 +139,8 @@ pub struct OllamaExecutionCompleted {
     pub request_id: String,
     pub model: String,
     pub output: String,
-    pub metrics: OllamaExecutionMetrics,
-    pub provenance: OllamaExecutionProvenance,
+    pub metrics: LocalInferenceExecutionMetrics,
+    pub provenance: LocalInferenceExecutionProvenance,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -435,7 +435,7 @@ impl OllamaExecutionState {
                         .load_duration_ns
                         .map(|duration_ns| duration_ns == 0)
                 };
-                let provenance = OllamaExecutionProvenance {
+                let provenance = LocalInferenceExecutionProvenance {
                     backend: "ollama".to_string(),
                     requested_model: job.requested_model.clone(),
                     served_model: model.clone(),
@@ -1003,7 +1003,7 @@ fn execute_generate(
         .ok_or_else(|| "Ollama returned an empty text-generation response".to_string())?;
     Ok(OllamaGenerateResult {
         output,
-        metrics: OllamaExecutionMetrics {
+        metrics: LocalInferenceExecutionMetrics {
             total_duration_ns: payload.total_duration,
             load_duration_ns: payload.load_duration,
             prompt_eval_count: payload.prompt_eval_count,
@@ -1072,7 +1072,7 @@ struct OllamaGenerateResponse {
 
 struct OllamaGenerateResult {
     output: String,
-    metrics: OllamaExecutionMetrics,
+    metrics: LocalInferenceExecutionMetrics,
 }
 
 #[cfg(test)]

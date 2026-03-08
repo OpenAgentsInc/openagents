@@ -506,7 +506,7 @@ fn infer_request_id_from_job_id(job_id: &str) -> String {
 mod tests {
     use super::{infer_product_id_for_history_row, snapshot_signature};
     use crate::app_state::{JobDemandSource, JobHistoryReceiptRow, JobHistoryStatus};
-    use crate::ollama_execution::OllamaExecutionProvenance;
+    use crate::ollama_execution::LocalInferenceExecutionProvenance;
     use openagents_provider_substrate::{
         ProviderAvailability, ProviderPersistedSnapshot, ProviderRuntimeStatusSnapshot,
         ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,
@@ -539,7 +539,7 @@ mod tests {
             result_hash: "sha256:test".to_string(),
             payment_pointer: "pending:req-1".to_string(),
             failure_reason: None,
-            execution_provenance: Some(OllamaExecutionProvenance {
+            execution_provenance: Some(LocalInferenceExecutionProvenance {
                 backend: "ollama".to_string(),
                 requested_model: Some("nomic-embed-text".to_string()),
                 served_model: "nomic-embed-text".to_string(),
