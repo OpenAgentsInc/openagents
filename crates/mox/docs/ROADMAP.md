@@ -1,16 +1,31 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, after `MOX-123` / [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) landed in commit `cf986e282`, after `MOX-124` / [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) landed in commit `27273f837`, after `MOX-125` / [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) landed in commit `877112111`, after `MOX-126` / [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) landed in commit `cd3987928`, after `MOX-126A` / [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) landed in commit `0dfcf3f7c`, after `MOX-126B` / [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) landed in commit `2bd89d48f`, after `MOX-165` / [#3236](https://github.com/OpenAgentsInc/openagents/issues/3236) landed in commit `e4ffbee5b`, after `MOX-127` / [#3187](https://github.com/OpenAgentsInc/openagents/issues/3187) landed in commit `bf0cf75a8`, after `MOX-128` / [#3188](https://github.com/OpenAgentsInc/openagents/issues/3188) landed in commits `9e283787a` and `875de50b9`, after `MOX-129` / [#3189](https://github.com/OpenAgentsInc/openagents/issues/3189) landed in commit `a12badddb`, after `MOX-133` / [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) landed in commit `eb0f84af2`, after `MOX-134` / [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) landed in commit `1600ec4bc`, after `MOX-135` / [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) landed in commit `2516c70e3`, after `MOX-136` / [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) landed in commit `74ebe5cf9`, after `MOX-137` / [#3194](https://github.com/OpenAgentsInc/openagents/issues/3194) landed in commit `b91fe2c4d`, after `MOX-138` / [#3195](https://github.com/OpenAgentsInc/openagents/issues/3195) landed in commit `f488763b0`, after `MOX-139` / [#3196](https://github.com/OpenAgentsInc/openagents/issues/3196) landed in commit `cbfc30a6d`, after `MOX-157` / [#3197](https://github.com/OpenAgentsInc/openagents/issues/3197) landed in commit `d54614807`, after `MOX-158` / [#3198](https://github.com/OpenAgentsInc/openagents/issues/3198) landed in commit `1f6c6e9fe`, after `MOX-159` / [#3199](https://github.com/OpenAgentsInc/openagents/issues/3199) landed in commit `a7b73314f`, after `MOX-156` / [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) landed in commit `d3329e658`, after `MOX-130` / [#3200](https://github.com/OpenAgentsInc/openagents/issues/3200) landed in commit `5d775fd13`, after `MOX-131` / [#3201](https://github.com/OpenAgentsInc/openagents/issues/3201) landed in commit `ef1c503fa`, after `MOX-132` / [#3202](https://github.com/OpenAgentsInc/openagents/issues/3202) landed in commit `7466a16b1`, after `MOX-140` / [#3203](https://github.com/OpenAgentsInc/openagents/issues/3203) landed in commit `c10e32dbf`, after `MOX-141` / [#3204](https://github.com/OpenAgentsInc/openagents/issues/3204) landed in commit `c3ff379b1`, after `MOX-142` / [#3205](https://github.com/OpenAgentsInc/openagents/issues/3205) landed in commit `c02562325`, after `MOX-143` / [#3206](https://github.com/OpenAgentsInc/openagents/issues/3206) landed in commit `0ceef490d`, after `MOX-144` / [#3207](https://github.com/OpenAgentsInc/openagents/issues/3207) landed in commit `a9a35c44b`, after `MOX-145` / [#3208](https://github.com/OpenAgentsInc/openagents/issues/3208) landed in commit `50a9d3c63`, after `MOX-146` / [#3209](https://github.com/OpenAgentsInc/openagents/issues/3209) landed in commit `a29f797b4`, after `MOX-147` / [#3210](https://github.com/OpenAgentsInc/openagents/issues/3210) landed in commit `181d1127e`, after `MOX-148` / [#3232](https://github.com/OpenAgentsInc/openagents/issues/3232) landed in commit `0a8e3b700`, after `MOX-150` / [#3211](https://github.com/OpenAgentsInc/openagents/issues/3211) landed in commit `2b46505f8`, after `MOX-151` / [#3212](https://github.com/OpenAgentsInc/openagents/issues/3212), `MOX-152` / [#3213](https://github.com/OpenAgentsInc/openagents/issues/3213), `MOX-153` / [#3214](https://github.com/OpenAgentsInc/openagents/issues/3214), and `MOX-154` / [#3215](https://github.com/OpenAgentsInc/openagents/issues/3215) were closed as not planned for the current NVIDIA-only host path, after `MOX-160` / [#3220](https://github.com/OpenAgentsInc/openagents/issues/3220) landed in commit `90224ae2e`, after `MOX-161` / [#3171](https://github.com/OpenAgentsInc/openagents/issues/3171) landed in commit `220286d8a`, after `MOX-162` / [#3233](https://github.com/OpenAgentsInc/openagents/issues/3233) landed in commit `0dfeb6023`, after `MOX-163` / [#3234](https://github.com/OpenAgentsInc/openagents/issues/3234) landed in commit `60f5831d5`, after `MOX-164` / [#3235](https://github.com/OpenAgentsInc/openagents/issues/3235) landed in commit `6524685a0`, after `MOX-170` / [#3222](https://github.com/OpenAgentsInc/openagents/issues/3222) landed in commit `279c1763f`, after `MOX-171` / [#3223](https://github.com/OpenAgentsInc/openagents/issues/3223) landed in commit `2f07676d8`, after `MOX-172` / [#3224](https://github.com/OpenAgentsInc/openagents/issues/3224) landed in commit `232e36c60`, after `MOX-173` / [#3225](https://github.com/OpenAgentsInc/openagents/issues/3225) landed in commit `e3fff595d`, after `MOX-174` / [#3226](https://github.com/OpenAgentsInc/openagents/issues/3226) landed in commit `ba3a0d1dd`, after `MOX-175` / [#3227](https://github.com/OpenAgentsInc/openagents/issues/3227) landed in commit `caff38666`, after `OA-200` / [#3216](https://github.com/OpenAgentsInc/openagents/issues/3216) landed in commit `3de54fdb4`, after `OA-201` / [#3217](https://github.com/OpenAgentsInc/openagents/issues/3217) landed in commit `9c2d1f9d1`, after `OA-202` / [#3218](https://github.com/OpenAgentsInc/openagents/issues/3218) landed in commit `22c25d2f4`, after `OA-203` / [#3219](https://github.com/OpenAgentsInc/openagents/issues/3219) landed in commit `b651786e7`, after `MOX-176` / [#3228](https://github.com/OpenAgentsInc/openagents/issues/3228) landed in commit `75521fbef`, after `MOX-177` / [#3229](https://github.com/OpenAgentsInc/openagents/issues/3229) landed in commit `4fc690916`, after `MOX-178` / [#3230](https://github.com/OpenAgentsInc/openagents/issues/3230) landed in commit `707072ba5`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
+> Status: updated 2026-03-08 after verifying the current GitHub issue set with
+> `gh issue list --state all` / `gh issue view`, after confirming the generic
+> Mox replacement track through `MOX-178` and `OA-203` is landed on `main`, and
+> after creating the GPT-OSS follow-on issues `MOX-179` / [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239),
+> `MOX-180` / [#3240](https://github.com/OpenAgentsInc/openagents/issues/3240),
+> `MOX-181` / [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237),
+> `MOX-182` / [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238),
+> and `MOX-183` / [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241)
+> for the Mox-only GPT-OSS completion track on the NVIDIA host.
 >
-> This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
-> merged. The remaining work below is the gap between "we have a local Rust
-> runtime subtree" and "the desktop fully replaces Ollama with Mox and uses it
-> as truthful compute-market substrate."
+> This is the live roadmap for `crates/mox/`. The generic phase-2/3/4 and
+> desktop-cutover baseline is now merged. The remaining work below is the gap
+> between "we have a generic local Rust runtime and app cutover" and "Mox can
+> truthfully execute the real GPT-OSS/NVIDIA path without external
+> `llama.cpp`, while remaining valid as compute-market substrate."
 >
 > Host execution note: on this computer, active backend execution and hardware
 > validation work is NVIDIA-only. The AMD follow-on issues `MOX-151` through
 > `MOX-154` were intentionally closed as not planned and are excluded from the
 > active dependency queue unless a future reprioritization reopens them.
+>
+> GPT-OSS host note: the local
+> `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file has been
+> verified to run on this machine via `~/code/llama.cpp`, but not yet via Mox.
+> The open `MOX-179` through `MOX-183` track below is the remaining work needed
+> to make that flow Mox-only.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the
@@ -46,6 +61,11 @@ Choose the primary reference intentionally:
   backend/runtime structure
 - start with `~/code/tinygrad` for GGUF decode math cross-checks, KV-cache or
   JIT/runtime-plan behavior, and execution-evidence patterns
+- start with `~/code/llama.cpp` for deployed GGUF tensor-type coverage and
+  block-layout truth beyond the current Rust crates, GPT-OSS / OpenAI-MoE
+  architecture metadata and tensor naming, Harmony prompt/render/parse
+  semantics, tokenizer control-token behavior, and local NVIDIA execution
+  behavior for the exact GGUFs carried on this host
 - start with `~/code/ollama` for API-visible behavior such as prompt
   rendering, BOS/EOS defaults, truncation, streaming, catalog/lifecycle, and
   error semantics
@@ -629,15 +649,27 @@ state:
 | 67 | `MOX-176` | [#3228](https://github.com/OpenAgentsInc/openagents/issues/3228) | Closed | Bounded sandbox execution now has a reusable runtime-owned capability profile and provider envelope, with explicit isolation, filesystem, network, process, resource, and accelerator-access bounds instead of leaving sandbox posture implicit. |
 | 68 | `MOX-177` | [#3229](https://github.com/OpenAgentsInc/openagents/issues/3229) | Closed | Sandbox execution now has reusable request-identity, evidence, and provider-receipt contracts with explicit digests, resource summaries, delivery-proof passthrough, and terminal exit reasons instead of leaving compute-market receipts to reconstruct that state later. |
 | 69 | `MOX-178` | [#3230](https://github.com/OpenAgentsInc/openagents/issues/3230) | Closed | Topology-aware substitution and deliverability checks now exist in the reusable runtime/provider layer, so accelerator-sensitive offers can distinguish exact delivery, compatible substitution, and underdelivery from explicit promised-versus-delivered facts. |
+| 70 | `MOX-179` | [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239) | Open | The next real gap is loader truth: Mox still rejects `gpt-oss` / OpenAI-MoE GGUFs and does not model `MXFP4`, so GPT-OSS cannot even enter the runtime honestly yet. |
+| 71 | `MOX-180` | [#3240](https://github.com/OpenAgentsInc/openagents/issues/3240) | Open | Once Mox can ingest GPT-OSS artifacts, it still needs Harmony prompt rendering and structured channel parsing before the served surface can match GPT-OSS semantics. |
+| 72 | `MOX-181` | [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237) | Open | After load + prompt/parse truth exist, Mox still needs a real GGUF-backed decoder execution model instead of the current fixture decoder path. |
+| 73 | `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Open | The real decoder then needs NVIDIA text-generation kernel coverage; the current CUDA surface is still embeddings-only for product use. |
+| 74 | `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Open | The final step is proving the full Mox-only GPT-OSS 20B flow on this NVIDIA host and pinning it with conformance plus hardware-validation evidence. |
 
-There are no remaining open non-AMD roadmap issues in the current execution
-queue on this host.
+The next active roadmap item on this host is `MOX-179` / [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239).
 
 ## Current Reality
 
 The checked-in repo is no longer at "phase 0 bootstrap." The current truthful
 baseline on `main` is:
 
+- the generic Mox/Ollama-replacement track is landed, but the real GPT-OSS
+  path is not: Mox still does not load `gpt-oss` / OpenAI-MoE GGUFs, does not
+  model `MXFP4`, does not parse Harmony channel output, and does not expose a
+  real GGUF-backed NVIDIA text-generation path
+- this NVIDIA host can run the local
+  `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
+  external `~/code/llama.cpp`, which is now the practical reference baseline
+  for the `MOX-179` through `MOX-183` follow-on work
 - CPU model-backed embeddings and text generation exist and are tested
 - initial GGML quantized tensor storage and decode coverage now extends to
   CPU-native `Q4_0`, `Q4_1`, and `Q8_0` execution over preserved GGML block
@@ -1005,6 +1037,21 @@ for the minimum conformance harness scope and runtime evidence schema that
 | `MOX-177` | [#3229](https://github.com/OpenAgentsInc/openagents/issues/3229) | Closed | Add reusable sandbox-execution receipt and evidence contracts compatible with compute-market supply | `mox-runtime`, `mox-provider` | Landed in `4fc690916`: added runtime-owned sandbox request identity, evidence, exit, and resource-summary contracts with explicit command/environment/input/output digests plus optional execution delivery proof, and a provider-facing `SandboxExecutionReceipt` with deterministic request digests and failure/diagnostic mapping for compute-market supply. |
 | `MOX-178` | [#3230](https://github.com/OpenAgentsInc/openagents/issues/3230) | Closed | Add topology-aware substitution and deliverability checks for accelerator-sensitive compute offers | `mox-provider`, `mox-runtime` | Landed in `707072ba5`: added reusable promised accelerator requirements, delivered execution contexts, and exact/compatible-substitution/underdelivered reports in `mox-runtime`, plus provider receipt support so accelerator-sensitive sandbox offers can surface machine-checkable promised-versus-delivered topology and capability differences. |
 
+### Epic G: GPT-OSS Mox-only completion track
+
+This epic exists because the generic Mox cutover is landed, but the concrete
+`gpt-oss-20b-mxfp4.gguf` inference path on this NVIDIA host still depends on
+external `~/code/llama.cpp`. The follow-on work here is specifically what Mox
+still lacks after the generic Ollama-replacement milestones have closed.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `MOX-179` | [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239) | Open | Add GPT-OSS / OpenAI-MoE GGUF loading and truthful MXFP4/Q8_0 storage | `mox-core`, `mox-models`, `mox-runtime` | Mox still refuses `general.architecture = gpt-oss`, refuses supported MoE decoder families, and does not recognize GGUF `MXFP4`, so the local GPT-OSS 20B artifact cannot enter the runtime honestly. |
+| `MOX-180` | [#3240](https://github.com/OpenAgentsInc/openagents/issues/3240) | Open | Implement Harmony prompt rendering and GPT-OSS channel parsing | `mox-models`, `mox-serve`, `mox-runtime` | GPT-OSS uses Harmony-style prompt and response semantics that `llama.cpp` handles with dedicated logic; Mox currently has only digest-only GPT-OSS fixture coverage and no structured channel parser. |
+| `MOX-181` | [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237) | Open | Add a real GGUF-backed decoder execution model for GPT-OSS in Mox | `mox-models`, `mox-compiler`, `mox-runtime`, `mox-serve` | Mox text generation still runs through the toy fixture decoder path, so even a fully parsed GPT-OSS artifact cannot execute as a real model yet. |
+| `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Open | Add NVIDIA text-generation kernel coverage for the real GPT-OSS decoder path | `mox-backend-cuda`, `mox-compiler`, `mox-runtime`, `mox-serve` | The current CUDA product path is embeddings-only and the current CUDA primitive surface is too small for GPT-OSS/OpenAI-MoE text generation. |
+| `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Open | Ship and validate a Mox-only GPT-OSS 20B inference flow on the NVIDIA host | `mox-serve`, `mox-provider`, `mox-runtime`, docs/tests | After the substrate lands, we still need an end-to-end proof that Mox alone can load the local GPT-OSS 20B GGUF, serve completions with Harmony semantics, and validate behavior against local `llama.cpp`. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -1027,6 +1074,9 @@ The shortest honest path from today's `main` is:
 7. Cut the app over via `OA-200` through `OA-203`.
 8. Only after inference and embeddings are truthful, consider
    `MOX-176` through `MOX-178` for bounded `sandbox_execution`.
+9. The generic cutover is landed, but GPT-OSS on this NVIDIA host is still
+   external to Mox; finish the GPT-OSS completion track in strict order:
+   `MOX-179` -> `MOX-180` -> `MOX-181` -> `MOX-182` -> `MOX-183`.
 
 ## Definition Of Done For "Replace Ollama"
 
