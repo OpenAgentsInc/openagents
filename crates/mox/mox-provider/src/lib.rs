@@ -9,9 +9,9 @@ use mox_runtime::{
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
-    EmbeddingResponse, GenerationInput, GenerationRequest, GenerationResponse, QuantizationMode,
-    SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata,
-    WeightBundleMetadata, WeightFormat, WeightSource,
+    EmbeddingResponse, GenerationInput, GenerationLoadState, GenerationRequest, GenerationResponse,
+    QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason,
+    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
 };
 
 /// Human-readable crate ownership summary.
@@ -430,6 +430,15 @@ pub struct TextGenerationReceipt {
     pub output_tokens: usize,
     /// Cached token count after execution.
     pub cache_tokens: usize,
+    /// End-to-end generation duration in nanoseconds, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_duration_ns: Option<u64>,
+    /// Model-load or compile duration attributable to this request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load_duration_ns: Option<u64>,
+    /// Whether the request took a warm or cold model path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load_state: Option<GenerationLoadState>,
     /// Terminal termination reason when execution succeeded.
     pub termination: Option<TerminationReason>,
     /// Timestamp when execution started.
@@ -454,6 +463,11 @@ impl TextGenerationReceipt {
         started_at_unix_ms: u64,
         ended_at_unix_ms: u64,
     ) -> Self {
+        let execution_plan_digest = response
+            .provenance
+            .as_ref()
+            .map(|value| value.execution_plan_digest.clone())
+            .unwrap_or_else(|| execution_plan_digest.into());
         Self {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
@@ -462,7 +476,7 @@ impl TextGenerationReceipt {
             backend_selection,
             request_id: request.request_id.clone(),
             request_digest: request_digest.into(),
-            execution_plan_digest: Some(execution_plan_digest.into()),
+            execution_plan_digest: Some(execution_plan_digest),
             model_id: response.model_id.clone(),
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
@@ -471,6 +485,9 @@ impl TextGenerationReceipt {
             input_tokens: response.usage.input_tokens,
             output_tokens: response.usage.output_tokens,
             cache_tokens: response.usage.cache_tokens,
+            total_duration_ns: response.metrics.total_duration_ns,
+            load_duration_ns: response.metrics.load_duration_ns,
+            load_state: response.provenance.as_ref().map(|value| value.load_state),
             termination: Some(response.termination),
             started_at_unix_ms,
             ended_at_unix_ms,
@@ -532,6 +549,9 @@ impl TextGenerationReceipt {
             input_tokens,
             output_tokens: 0,
             cache_tokens: 0,
+            total_duration_ns: None,
+            load_duration_ns: None,
+            load_state: None,
             termination: None,
             started_at_unix_ms,
             ended_at_unix_ms,
@@ -601,6 +621,39 @@ pub fn digest_generation_request(request: &GenerationRequest) -> String {
     hasher.update(b"|");
     hasher.update(format!("{:?}", request.options.decode_strategy).as_bytes());
     hasher.update(b"|");
+    if let Some(temperature) = request.options.temperature {
+        hasher.update(format!("temperature={temperature}").as_bytes());
+    }
+    hasher.update(b"|");
+    if let Some(top_k) = request.options.top_k {
+        hasher.update(format!("top_k={top_k}").as_bytes());
+    }
+    hasher.update(b"|");
+    if let Some(top_p) = request.options.top_p {
+        hasher.update(format!("top_p={top_p}").as_bytes());
+    }
+    hasher.update(b"|");
+    if let Some(repeat_penalty) = request.options.repeat_penalty {
+        hasher.update(format!("repeat_penalty={repeat_penalty}").as_bytes());
+    }
+    hasher.update(b"|");
+    if let Some(presence_penalty) = request.options.presence_penalty {
+        hasher.update(format!("presence_penalty={presence_penalty}").as_bytes());
+    }
+    hasher.update(b"|");
+    if let Some(frequency_penalty) = request.options.frequency_penalty {
+        hasher.update(format!("frequency_penalty={frequency_penalty}").as_bytes());
+    }
+    hasher.update(b"|");
+    if let Some(seed) = request.options.seed {
+        hasher.update(format!("seed={seed}").as_bytes());
+    }
+    hasher.update(b"|");
+    for stop_sequence in &request.options.stop_sequences {
+        hasher.update(stop_sequence.as_bytes());
+        hasher.update(b"\x1f");
+    }
+    hasher.update(b"|");
     hasher.update(if request.reset_session { b"1" } else { b"0" });
     hex::encode(hasher.finalize())
 }
@@ -666,7 +719,8 @@ mod tests {
         HealthStatus, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     };
     use mox_serve::{
-        EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationOptions, GenerationRequest,
+        EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationLoadState,
+        GenerationMetrics, GenerationOptions, GenerationProvenance, GenerationRequest,
         GenerationResponse, ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TokenSequence,
     };
     use serde_json::json;
@@ -954,6 +1008,18 @@ mod tests {
             1,
             2,
             mox_serve::TerminationReason::EndOfSequence,
+        )
+        .with_metrics_and_provenance(
+            GenerationMetrics {
+                total_duration_ns: Some(75),
+                load_duration_ns: Some(25),
+                prompt_eval_count: Some(1),
+                eval_count: Some(1),
+            },
+            GenerationProvenance {
+                execution_plan_digest: String::from("plan-digest-from-response"),
+                load_state: GenerationLoadState::Cold,
+            },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
             cpu_backend_selection(),
@@ -970,6 +1036,13 @@ mod tests {
             receipt.termination,
             Some(mox_serve::TerminationReason::EndOfSequence)
         );
+        assert_eq!(
+            receipt.execution_plan_digest.as_deref(),
+            Some("plan-digest-from-response")
+        );
+        assert_eq!(receipt.total_duration_ns, Some(75));
+        assert_eq!(receipt.load_duration_ns, Some(25));
+        assert_eq!(receipt.load_state, Some(GenerationLoadState::Cold));
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: TextGenerationReceipt = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, receipt);
@@ -1081,6 +1154,30 @@ mod tests {
             digest_generation_request(&generation_request),
             generation_digest
         );
+    }
+
+    #[test]
+    fn generation_request_digest_changes_when_options_change() {
+        let request = GenerationRequest::new_tokens(
+            "gen-7",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-00000007")),
+            TokenSequence::new(vec![mox_serve::FixtureWordTokenizer::HELLO_ID]),
+            GenerationOptions::sample(2),
+        );
+        let baseline = digest_generation_request(&request);
+
+        let mut with_seed = request.clone();
+        with_seed.options.seed = Some(17);
+        assert_ne!(digest_generation_request(&with_seed), baseline);
+
+        let mut with_temperature = request.clone();
+        with_temperature.options.temperature = Some(0.7);
+        assert_ne!(digest_generation_request(&with_temperature), baseline);
+
+        let mut with_stop = request;
+        with_stop.options.stop_sequences = vec![String::from("</end>")];
+        assert_ne!(digest_generation_request(&with_stop), baseline);
     }
 
     #[test]
