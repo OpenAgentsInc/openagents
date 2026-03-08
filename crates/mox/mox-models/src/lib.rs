@@ -1,5 +1,7 @@
 //! Model abstractions for Mox.
 
+mod fixtures;
+
 use std::{
     borrow::Cow,
     collections::BTreeMap,
@@ -17,6 +19,8 @@ use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, ten
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
+
+pub use fixtures::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "reusable model definitions and metadata";
@@ -1507,6 +1511,44 @@ impl GgufContent {
             digest,
         })
     }
+
+    /// Loads default and named chat-template metadata from GGUF.
+    pub fn load_chat_templates(&self) -> Result<GgufChatTemplateMetadata, ModelLoadError> {
+        let default_template =
+            read_optional_gguf_string(&self.metadata, "tokenizer.chat_template")?;
+        let declared_names =
+            read_optional_gguf_string_array(&self.metadata, "tokenizer.chat_templates")?;
+
+        let mut named_templates = BTreeMap::new();
+        for name in declared_names {
+            let key = format!("tokenizer.chat_template.{name}");
+            let value = read_optional_gguf_string(&self.metadata, &key)?.ok_or_else(|| {
+                artifact_format_error(
+                    "gguf",
+                    format!(
+                        "missing named chat template `{key}` declared in tokenizer.chat_templates"
+                    ),
+                )
+            })?;
+            named_templates.insert(name, value);
+        }
+        for key in self.metadata.keys() {
+            let Some(name) = key.strip_prefix("tokenizer.chat_template.") else {
+                continue;
+            };
+            if name.is_empty() || named_templates.contains_key(name) {
+                continue;
+            }
+            if let Some(value) = read_optional_gguf_string(&self.metadata, key)? {
+                named_templates.insert(name.to_string(), value);
+            }
+        }
+
+        Ok(GgufChatTemplateMetadata::new(
+            default_template,
+            named_templates,
+        ))
+    }
 }
 
 /// Paged tensor bytes backed by a local model blob.
@@ -1840,6 +1882,58 @@ pub struct GgufTokenizerMetadata {
 
 impl GgufTokenizerMetadata {
     /// Returns the stable tokenizer digest.
+    #[must_use]
+    pub fn digest(&self) -> &str {
+        self.digest.as_str()
+    }
+}
+
+/// Reusable GGUF chat-template metadata reconstructed from a GGUF artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GgufChatTemplateMetadata {
+    default_template: Option<String>,
+    named_templates: BTreeMap<String, String>,
+    digest: String,
+}
+
+impl GgufChatTemplateMetadata {
+    fn new(default_template: Option<String>, named_templates: BTreeMap<String, String>) -> Self {
+        let digest = digest_gguf_chat_templates(default_template.as_deref(), &named_templates);
+        Self {
+            default_template,
+            named_templates,
+            digest,
+        }
+    }
+
+    /// Returns the default chat template when present.
+    #[must_use]
+    pub fn default_template(&self) -> Option<&str> {
+        self.default_template.as_deref()
+    }
+
+    /// Returns all named templates in stable key order.
+    #[must_use]
+    pub fn named_templates(&self) -> &BTreeMap<String, String> {
+        &self.named_templates
+    }
+
+    /// Returns a template by name, or the default template when `name` is `None`.
+    #[must_use]
+    pub fn template(&self, name: Option<&str>) -> Option<&str> {
+        match name {
+            Some(name) => self.named_templates.get(name).map(String::as_str),
+            None => self.default_template(),
+        }
+    }
+
+    /// Returns whether the artifact carries no chat templates.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.default_template.is_none() && self.named_templates.is_empty()
+    }
+
+    /// Returns the stable digest over all carried chat templates.
     #[must_use]
     pub fn digest(&self) -> &str {
         self.digest.as_str()
@@ -3323,6 +3417,54 @@ fn read_optional_tokenizer_string_array(
     )
 }
 
+fn read_optional_gguf_string(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Option<String>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(None),
+        |value| {
+            value
+                .as_str()
+                .map(|value| Some(value.to_string()))
+                .ok_or_else(|| {
+                    artifact_format_error("gguf", format!("metadata key `{key}` must be a string"))
+                })
+        },
+    )
+}
+
+fn read_optional_gguf_string_array(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Vec<String>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(Vec::new()),
+        |value| {
+            let Some(values) = value.as_array() else {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!("metadata key `{key}` must be an array of strings"),
+                ));
+            };
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    entry.as_str().map(str::to_string).ok_or_else(|| {
+                        artifact_format_error(
+                            "gguf",
+                            format!(
+                                "metadata key `{key}` expected string element at index {index}"
+                            ),
+                        )
+                    })
+                })
+                .collect()
+        },
+    )
+}
+
 fn read_tokenizer_string_values(
     key: &str,
     value: &GgufMetadataValue,
@@ -3533,6 +3675,26 @@ fn digest_gguf_tokenizer(
     hasher.update(b"\n");
     for token_id in eos_token_ids {
         hasher.update(token_id.as_u32().to_be_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn digest_gguf_chat_templates(
+    default_template: Option<&str>,
+    named_templates: &BTreeMap<String, String>,
+) -> String {
+    let mut hasher = Sha256::new();
+    match default_template {
+        Some(template) => {
+            hasher.update([1]);
+            update_digest_string(&mut hasher, template);
+        }
+        None => hasher.update([0]),
+    }
+    hasher.update(b"\n");
+    for (name, template) in named_templates {
+        update_digest_string(&mut hasher, name);
+        update_digest_string(&mut hasher, template);
     }
     hex::encode(hasher.finalize())
 }
@@ -3887,11 +4049,15 @@ mod tests {
     use super::{
         ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader,
         FixtureWordTokenizer, GgufBlobArtifact, GgufContent, GgufMetadataValue, GgufTensorType,
-        GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion, GgufWeightBundleLoader,
-        LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader, QuantizedTensorStorage,
-        ReferenceWordDecoder, SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader,
-        SmokeByteEmbedder, TokenId, TokenizerBoundary, WeightArtifactBlobKind,
-        WeightArtifactReadPath, WeightFormat, WeightSource, WeightTensorStorage,
+        GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion,
+        GgufWeightBundleLoader, LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader,
+        QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
+        SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId, TokenizerBoundary,
+        WeightArtifactBlobKind, WeightArtifactReadPath, WeightFormat, WeightSource,
+        WeightTensorStorage, apply_special_token_defaults, assert_prompt_template_fixture_matches,
+        assert_prompt_window_case, assert_rendered_prompt_case, assert_tokenizer_fixture_matches,
+        digest_chat_template, golden_prompt_fixture, golden_prompt_fixtures,
+        golden_tokenizer_fixture, golden_tokenizer_fixtures,
     };
 
     #[test]
@@ -4390,6 +4556,161 @@ mod tests {
     }
 
     #[test]
+    fn gguf_content_loads_chat_template_metadata_and_named_variants()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("chat_templates.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[
+                (
+                    String::from("tokenizer.chat_template"),
+                    GgufMetadataValue::String(String::from("{{ prompt }}")),
+                ),
+                (
+                    String::from("tokenizer.chat_templates"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::String(String::from("tool_use")),
+                        GgufMetadataValue::String(String::from("rag")),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.chat_template.tool_use"),
+                    GgufMetadataValue::String(String::from("{{ tool_prompt }}")),
+                ),
+                (
+                    String::from("tokenizer.chat_template.rag"),
+                    GgufMetadataValue::String(String::from("{{ rag_prompt }}")),
+                ),
+            ],
+            &[],
+        )?;
+
+        let content = GgufContent::read_path(&path)?;
+        let templates = content.load_chat_templates()?;
+
+        assert_eq!(templates.default_template(), Some("{{ prompt }}"));
+        assert_eq!(
+            templates.template(Some("tool_use")),
+            Some("{{ tool_prompt }}")
+        );
+        assert_eq!(templates.template(Some("rag")), Some("{{ rag_prompt }}"));
+        assert_eq!(templates.named_templates().len(), 2);
+        assert!(!templates.is_empty());
+        assert_eq!(templates, content.load_chat_templates()?);
+        assert!(!templates.digest().is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn golden_tokenizer_fixtures_are_available_and_reviewable() {
+        let ids = golden_tokenizer_fixtures()
+            .iter()
+            .map(|fixture| fixture.id)
+            .collect::<Vec<_>>();
+        assert_eq!(ids, vec!["llama_spm", "qwen2", "gpt_oss_20b"]);
+
+        let gpt_oss = golden_tokenizer_fixture("gpt_oss_20b").expect("gpt-oss fixture");
+        assert_eq!(gpt_oss.pretokenizer, Some("gpt-4o"));
+        assert_eq!(gpt_oss.sample_tokens.len(), 3);
+    }
+
+    #[test]
+    fn golden_prompt_fixtures_hash_to_expected_digests() -> Result<(), Box<dyn std::error::Error>> {
+        let prompt_fixtures = golden_prompt_fixtures();
+        assert_eq!(prompt_fixtures.len(), 4);
+
+        for fixture in prompt_fixtures {
+            for variant in fixture.template_variants {
+                assert!(!variant.template_digest.is_empty());
+                assert!(!variant.template_excerpt.is_empty());
+                if let Some(raw_template) = variant.raw_template {
+                    assert_prompt_template_fixture_matches(variant, raw_template)?;
+                    assert_eq!(digest_chat_template(raw_template), variant.template_digest);
+                }
+            }
+        }
+
+        let command_r = golden_prompt_fixture("command_r").expect("command-r fixture");
+        assert!(command_r.template_variant("command_r.tool_use").is_some());
+        assert!(command_r.template_variant("command_r.rag").is_some());
+
+        let gpt_oss = golden_prompt_fixture("gpt_oss").expect("gpt-oss fixture");
+        assert_eq!(gpt_oss.template_variants[0].render_cases.len(), 0);
+        Ok(())
+    }
+
+    #[test]
+    fn golden_prompt_window_cases_reference_real_render_cases()
+    -> Result<(), Box<dyn std::error::Error>> {
+        for fixture in golden_prompt_fixtures() {
+            for window_case in fixture.window_cases {
+                let variant = fixture
+                    .template_variant(window_case.template_variant_id)
+                    .expect("variant");
+                let render_case = variant
+                    .render_case(window_case.render_case_id)
+                    .expect("render case");
+                assert_rendered_prompt_case(render_case, render_case.expected_rendered)?;
+                assert_prompt_window_case(window_case, render_case.expected_rendered)?;
+            }
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn apply_special_token_defaults_handles_bos_and_eos_paths() {
+        let with_both = build_test_tokenizer_metadata(true, true);
+        let without_both = build_test_tokenizer_metadata(false, false);
+
+        let tokens = [TokenId(4), TokenId(5)];
+        assert_eq!(
+            apply_special_token_defaults(&with_both, &tokens).as_slice(),
+            &[TokenId(1), TokenId(4), TokenId(5), TokenId(2)]
+        );
+        assert_eq!(
+            apply_special_token_defaults(&without_both, &tokens).as_slice(),
+            &[TokenId(4), TokenId(5)]
+        );
+    }
+
+    #[test]
+    fn tokenizer_fixture_assertion_helper_reports_expected_fields()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = golden_tokenizer_fixture("llama_spm").expect("llama fixture");
+        let metadata = GgufTokenizerMetadata {
+            model: GgufTokenizerModel::SentencePiece,
+            vocabulary: super::GgufTokenizerVocabulary {
+                tokens: vec![
+                    String::from("<unk>"),
+                    String::from("<s>"),
+                    String::from("</s>"),
+                    String::from("<0x00>"),
+                    String::from("<0x01>"),
+                    String::from("<0x02>"),
+                ],
+                bos_token_id: Some(TokenId(1)),
+                eos_token_ids: vec![TokenId(2)],
+                pad_token_id: None,
+                unknown_token_id: Some(TokenId(0)),
+            },
+            scores: Vec::new(),
+            token_types: Vec::new(),
+            merges: Vec::new(),
+            add_bos: true,
+            add_eos: false,
+            pretokenizer: None,
+            digest: String::from("fixture"),
+        };
+
+        let error = assert_tokenizer_fixture_matches(fixture, &metadata)
+            .expect_err("full fixture should reject truncated vocabulary");
+        assert!(error.contains("vocabulary length mismatch"));
+        Ok(())
+    }
+
+    #[test]
     fn gguf_weight_bundle_loader_loads_dense_half_and_quantized_tensors()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
@@ -4643,6 +4964,33 @@ mod tests {
             super::ModelLoadError::ArtifactFormat { format, .. } if format == "gguf"
         ));
         Ok(())
+    }
+
+    fn build_test_tokenizer_metadata(add_bos: bool, add_eos: bool) -> GgufTokenizerMetadata {
+        GgufTokenizerMetadata {
+            model: GgufTokenizerModel::SentencePiece,
+            vocabulary: super::GgufTokenizerVocabulary {
+                tokens: vec![
+                    String::from("<unk>"),
+                    String::from("<s>"),
+                    String::from("</s>"),
+                    String::from("hello"),
+                    String::from("world"),
+                    String::from("mox"),
+                ],
+                bos_token_id: Some(TokenId(1)),
+                eos_token_ids: vec![TokenId(2)],
+                pad_token_id: None,
+                unknown_token_id: Some(TokenId(0)),
+            },
+            scores: Vec::new(),
+            token_types: Vec::new(),
+            merges: Vec::new(),
+            add_bos,
+            add_eos,
+            pretokenizer: None,
+            digest: String::from("fixture"),
+        }
     }
 
     #[test]
