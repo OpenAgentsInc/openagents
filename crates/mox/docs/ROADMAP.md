@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, after `MOX-116` / [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) landed in commit `6878068ef`, after `MOX-118` / [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) landed in commit `fcb8d3ae5`, after `MOX-117` / [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) landed in commit `51a1bee40`, after `MOX-119` / [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) landed in commit `ac6fc3b8f`, after `MOX-112` / [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) landed in commit `4f6a7663c`, after `MOX-113` / [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) landed in commit `48ed03a62`, after `MOX-114` / [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) landed in commit `af6d82a42`, after `MOX-120` / [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) landed in commit `859dc16c5`, after `MOX-121` / [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) landed in commit `d78ac7965`, after `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) landed in commit `eb921c9e8`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -230,6 +230,11 @@ commit `9f395ead7`, plus the `MOX-111` follow-up that closed
   local GGUF model-info and capability derivation without the Ollama daemon,
   Ollama-aligned skipping of bad config blobs during listing, and fixture-backed
   list/show tests for local parity and missing-model errors
+- `MOX-122` / [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182):
+  reusable loaded-model lifecycle truth in `mox-runtime` and `mox-serve`, with
+  explicit loading/ready state, active-request counts, keepalive windows,
+  `ps`-style ordering, warm/load/unload operations, and Ollama-aligned idle
+  expiry semantics including zero-keepalive unload after requests go idle
 
 ### GitHub issue status
 
@@ -251,6 +256,7 @@ checks via `gh issue view`:
 | [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) | Closed | `MOX-114` landed: reusable GGUF prompt rendering for the supported Phi-3, Qwen2, and Command-R template digests, explicit prompt/render/error types, `GgufDecoderAdapter` render helpers, `mox-serve` re-exports, and conformance coverage that removed the old prompt-render gap. |
 | [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) | Closed | `MOX-120` landed: local Ollama manifest/blob discovery and model resolution in `mox-catalog`, including default name normalization, parsed manifest/media-type/layer records, blob-presence truth, non-mutating scan warnings, and direct resolved-manifest APIs. |
 | [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) | Closed | `MOX-121` landed: reusable manifest-layer config/text/json decode helpers in `mox-catalog`, plus a local `tags` / `show` subject in `mox-serve` that reads the shared Ollama catalog directly, derives GGUF model-info facts and capabilities without the Ollama daemon, skips bad config blobs during listing like Ollama does, and includes fixture-backed local list/show tests. |
+| [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) | Closed | `MOX-122` landed: explicit loaded-model residency truth in `mox-runtime`, an in-memory warm/load/unload registry in `mox-serve` with `ps`-style ordering and zero-keepalive unload behavior, request lifecycle hooks that clear/reset expiry like Ollama scheduler warmups, and regression tests for keepalive ordering and idle expiry. |
 | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Closed | `MOX-110` landed: reusable GGUF metadata/tensor parsing, `WeightFormat::Gguf`, `GgufWeightBundleLoader`, and truthful GGUF tensor-type coverage for currently supported dense and quantized families. |
 | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Closed | `MOX-111` landed: reusable GGUF tokenizer metadata loading for SentencePiece and GPT-style BPE families, stable tokenizer digests, preserved BOS/EOS/add-bos/add-eos and pretokenizer truth, and validation for missing or invalid tokenizer metadata. |
 | [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174), [#3175](https://github.com/OpenAgentsInc/openagents/issues/3175), [#3176](https://github.com/OpenAgentsInc/openagents/issues/3176), [#3221](https://github.com/OpenAgentsInc/openagents/issues/3221) | Closed | Historical roadmap-seeded duplicates for `MOX-117`, `MOX-118`, `MOX-119`, and `MOX-161`; use the open detailed issues `#3166`, `#3167`, `#3168`, and `#3171` instead. |
@@ -272,8 +278,8 @@ state:
 | 10 | `MOX-114` | [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) | Closed | Supported GGUF prompt rendering is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 11 | `MOX-120` | [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) | Closed | Local Ollama manifest/blob discovery and model resolution are now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 12 | `MOX-121` | [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) | Closed | Installed-model list/show parity is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
-| 13 | `MOX-122` | [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) | Open | This is now the next unresolved dependency because list/show parity exists and loaded-model lifecycle can sit directly on the shared catalog and runtime substrate. |
-| 14 | `MOX-123` | [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) | Open | Generation options expand the serve boundary once lifecycle exists. |
+| 13 | `MOX-122` | [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) | Closed | Loaded-model lifecycle is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 14 | `MOX-123` | [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) | Open | This is now the next unresolved dependency because generation options depend on the real warm/load/unload and keepalive lifecycle surface that just landed. |
 | 15 | `MOX-124` | [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) | Open | Metrics and provenance should track the real generation path, not a pre-lifecycle stub. |
 | 16 | `MOX-125` | [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) | Open | The app-facing library API should follow the underlying catalog and serve semantics. |
 | 17 | `MOX-126` | [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) | Open | Deterministic text-generation sessions belong after the serve API boundary is real. |
@@ -296,6 +302,9 @@ baseline on `main` is:
 - local installed-model `tags` / `show` parity now exists in `mox-serve`
   without the Ollama daemon, backed by the shared catalog plus explicit GGUF
   model-info and capability derivation
+- loaded-model warm/load/unload and keepalive lifecycle now exists in
+  `mox-serve` and `mox-runtime`, with explicit residency truth, active-request
+  counts, `ps`-style ordering, and zero-keepalive idle unload semantics
 - GGUF tokenizer metadata loading exists for SentencePiece and GPT-style BPE
   families, and a real golden tokenizer/prompt-template fixture corpus now
   exists with GGUF chat-template extraction, stop-default references, and
@@ -329,8 +338,8 @@ contract, compatibility, lifecycle, and cutover work.
 
 ### Catalog and lifecycle
 
-- `tags` / `show` / `ps` equivalent local catalog APIs
-- warm / unload / keepalive / loaded-model lifecycle
+- library-first local runtime API exposure for `list_models`, `show_model`,
+  `loaded_models`, `warm_model`, `unload_model`, `generate`, and `embed`
 - deterministic KV-cache ownership and session lifecycle
 
 ### Behavioral contract
@@ -506,7 +515,7 @@ called out in the status section above.
 | --- | --- | --- | --- | --- | --- |
 | `MOX-120` | [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) | Closed | Add Ollama manifest/blob discovery and model resolution on top of `mox-catalog` | `mox-catalog` | Landed in `859dc16c5`: non-mutating local manifest discovery and model resolution, Ollama-compatible default name normalization, parsed layer/media-type records, blob-presence truth, and explicit scan warnings for invalid entries. |
 | `MOX-121` | [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) | Closed | Implement installed-model listing and inspection APIs equivalent to `tags` and `show` | `mox-catalog`, `mox-serve` | Landed in `d78ac7965`: manifest-layer config/text/json decode helpers in `mox-catalog`, plus a local `tags` / `show` subject in `mox-serve` that reads the shared catalog directly, derives GGUF model-info/capability truth without the Ollama daemon, skips bad config blobs during listing, and adds fixture-backed local list/show tests. |
-| `MOX-122` | [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) | Open | Implement loaded-model registry, warm/load/unload, and keepalive semantics equivalent to `ps` and warmups | `mox-serve`, `mox-runtime` | Replaces the local lifecycle subset the desktop actually depends on. |
+| `MOX-122` | [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) | Closed | Implement loaded-model registry, warm/load/unload, and keepalive semantics equivalent to `ps` and warmups | `mox-serve`, `mox-runtime` | Landed in `eb921c9e8`: explicit loaded-model residency truth, warm/load/unload registry operations, `ps`-style ordering, and Ollama-aligned idle expiry semantics. |
 | `MOX-123` | [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) | Open | Expand generation options to cover `temperature`, `top_k`, `top_p`, penalties, `seed`, and `stop` | `mox-serve` | Matches the option surface already normalized by the app. |
 | `MOX-124` | [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) | Open | Add generation metrics and provenance for prompt tokens, output tokens, load time, total time, warm/cold state, and plan digest | `mox-serve`, `mox-provider` | Preserves truthful receipts and UI projections after cutover. |
 | `MOX-125` | [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) | Open | Publish a library-first local runtime API for `list_models`, `show_model`, `loaded_models`, `warm_model`, `unload_model`, `generate`, and `embed` | `mox-serve`, `mox-provider` | Creates the in-process replacement boundary the app can call directly. |
