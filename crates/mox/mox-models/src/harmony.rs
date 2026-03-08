@@ -13,7 +13,10 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use thiserror::Error;
 
-use crate::{PromptMessage, PromptMessageRole, TokenId};
+use crate::{
+    GgufTokenizerMetadata, GgufTokenizerModel, PromptMessage, PromptMessageRole, TokenId,
+    TokenSequence, TokenVocabulary, TokenizerBoundary,
+};
 
 /// GPT-OSS / Harmony reasoning-effort label.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -265,7 +268,8 @@ impl GptOssHarmonyStreamParser {
     }
 }
 
-pub(crate) fn render_gpt_oss_harmony_prompt(
+/// Renders prompt messages into the GPT-OSS Harmony completion prompt format.
+pub fn render_gpt_oss_harmony_prompt(
     messages: &[PromptMessage],
     add_generation_prompt: bool,
     options: Option<&PromptRenderOptions>,
@@ -357,6 +361,143 @@ fn load_gpt_oss_harmony_encoding() -> Result<openai_harmony::HarmonyEncoding, Gp
             message: error.to_string(),
         }
     })
+}
+
+/// Runtime tokenizer for GPT-OSS models backed by the published Harmony encoding.
+#[derive(Clone)]
+pub struct GptOssTokenizer {
+    encoding: openai_harmony::HarmonyEncoding,
+    vocabulary: TokenVocabulary,
+    add_bos: bool,
+    add_eos: bool,
+    eos_token_ids: Vec<TokenId>,
+}
+
+impl std::fmt::Debug for GptOssTokenizer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GptOssTokenizer")
+            .field("encoding", &self.encoding.name())
+            .field("vocabulary_len", &self.vocabulary.len())
+            .field("add_bos", &self.add_bos)
+            .field("add_eos", &self.add_eos)
+            .field("eos_token_ids", &self.eos_token_ids)
+            .finish()
+    }
+}
+
+impl GptOssTokenizer {
+    /// Builds the GPT-OSS runtime tokenizer from GGUF tokenizer metadata.
+    pub fn from_gguf(tokenizer: &GgufTokenizerMetadata) -> Result<Self, GptOssHarmonyError> {
+        if tokenizer.model != GgufTokenizerModel::Gpt2Bpe {
+            return Err(GptOssHarmonyError::InvalidConversation {
+                message: format!(
+                    "gpt-oss harmony tokenizer requires gguf gpt2 metadata, found {:?}",
+                    tokenizer.model
+                ),
+            });
+        }
+
+        let bos_id = tokenizer
+            .vocabulary
+            .bos_token_id()
+            .or_else(|| tokenizer.vocabulary.pad_token_id())
+            .or_else(|| tokenizer.vocabulary.unknown_token_id())
+            .unwrap_or(TokenId(0));
+        let eos_id = tokenizer
+            .vocabulary
+            .eos_token_ids()
+            .first()
+            .copied()
+            .or_else(|| tokenizer.vocabulary.pad_token_id())
+            .or_else(|| tokenizer.vocabulary.bos_token_id())
+            .unwrap_or(TokenId(0));
+        let pad_id = tokenizer
+            .vocabulary
+            .pad_token_id()
+            .or_else(|| tokenizer.vocabulary.bos_token_id())
+            .or_else(|| tokenizer.vocabulary.unknown_token_id())
+            .unwrap_or(eos_id);
+        let unknown_id = tokenizer
+            .vocabulary
+            .unknown_token_id()
+            .or_else(|| tokenizer.vocabulary.pad_token_id())
+            .or_else(|| tokenizer.vocabulary.bos_token_id())
+            .unwrap_or(eos_id);
+
+        Ok(Self {
+            encoding: load_gpt_oss_harmony_encoding()?,
+            vocabulary: TokenVocabulary::new(
+                tokenizer.vocabulary.tokens().to_vec(),
+                pad_id,
+                bos_id,
+                eos_id,
+                unknown_id,
+            ),
+            add_bos: tokenizer.add_bos,
+            add_eos: tokenizer.add_eos,
+            eos_token_ids: tokenizer.vocabulary.eos_token_ids().to_vec(),
+        })
+    }
+
+    /// Encodes text and optionally prepends/appends GGUF-declared BOS/EOS tokens.
+    #[must_use]
+    pub fn encode_with_special_tokens(
+        &self,
+        text: &str,
+        add_bos: bool,
+        add_eos: bool,
+    ) -> TokenSequence {
+        let mut tokens = Vec::new();
+        if add_bos {
+            tokens.push(self.vocabulary.bos_id());
+        }
+        tokens.extend(
+            self.encoding
+                .tokenizer()
+                .encode_with_special_tokens(text)
+                .into_iter()
+                .map(TokenId),
+        );
+        if add_eos {
+            tokens.push(self.vocabulary.eos_id());
+        }
+        TokenSequence::new(tokens)
+    }
+
+    /// Encodes text using the GGUF tokenizer defaults.
+    #[must_use]
+    pub fn encode_with_defaults(&self, text: &str) -> TokenSequence {
+        self.encode_with_special_tokens(text, self.add_bos, self.add_eos)
+    }
+
+    /// Returns whether the token is one of the declared EOS IDs.
+    #[must_use]
+    pub fn is_end_of_sequence(&self, token: TokenId) -> bool {
+        self.eos_token_ids.contains(&token) || token == self.vocabulary.eos_id()
+    }
+}
+
+impl TokenizerBoundary for GptOssTokenizer {
+    fn encode(&self, text: &str) -> TokenSequence {
+        self.encode_with_special_tokens(text, false, false)
+    }
+
+    fn decode(&self, tokens: &[TokenId]) -> String {
+        self.encoding
+            .tokenizer()
+            .decode_utf8(tokens.iter().map(|token| token.as_u32()))
+            .unwrap_or_else(|_| {
+                tokens
+                    .iter()
+                    .filter_map(|token| self.vocabulary.token(*token))
+                    .collect::<Vec<_>>()
+                    .join("")
+            })
+    }
+
+    fn vocabulary(&self) -> &TokenVocabulary {
+        &self.vocabulary
+    }
 }
 
 fn build_gpt_oss_harmony_conversation(

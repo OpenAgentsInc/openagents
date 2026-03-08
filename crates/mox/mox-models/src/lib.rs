@@ -3026,6 +3026,12 @@ pub struct GgufDecoderFamilyMetadata {
     pub display_name: Option<String>,
     /// Effective RoPE frequency base.
     pub rope_theta: f32,
+    /// Effective RoPE scaling factor when the artifact declares scaled context behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rope_scaling_factor: Option<f32>,
+    /// Original training context length for scaled RoPE when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rope_original_context_length: Option<usize>,
     /// Effective RMSNorm epsilon.
     pub rms_norm_epsilon: f32,
     /// Sliding-window attention bound when the artifact declares one.
@@ -4625,6 +4631,8 @@ fn build_gguf_decoder_family_metadata(
     architecture: String,
 ) -> Result<GgufDecoderFamilyMetadata, ModelLoadError> {
     let rope_theta_key = format!("{architecture}.rope.freq_base");
+    let rope_scaling_factor_key = format!("{architecture}.rope.scaling.factor");
+    let rope_original_context_key = format!("{architecture}.rope.scaling.original_context_length");
     let rms_norm_key = format!("{architecture}.attention.layer_norm_rms_epsilon");
     let sliding_window_key = format!("{architecture}.attention.sliding_window");
     let attention_key_length_key = format!("{architecture}.attention.key_length");
@@ -4639,6 +4647,11 @@ fn build_gguf_decoder_family_metadata(
         architecture,
         display_name: read_optional_gguf_string(metadata, "general.name")?,
         rope_theta: read_optional_gguf_f32(metadata, rope_theta_key.as_str())?.unwrap_or(10_000.0),
+        rope_scaling_factor: read_optional_gguf_f32(metadata, rope_scaling_factor_key.as_str())?,
+        rope_original_context_length: read_optional_gguf_usize(
+            metadata,
+            rope_original_context_key.as_str(),
+        )?,
         rms_norm_epsilon: read_required_gguf_f32(metadata, rms_norm_key.as_str())?,
         sliding_window: read_optional_gguf_usize(metadata, sliding_window_key.as_str())?,
         attention_key_length: read_optional_gguf_usize(
@@ -4940,13 +4953,13 @@ fn build_gguf_decoder_tensor_layout(
                 required_tensor_info(content, &format!("{prefix}.ffn_down_exps.weight"))?;
             let (down_expert_count, down_rows, down_columns) = tensor_rank3_shape(down_experts)?;
             if down_expert_count != expert_count
-                || down_rows != expert_width
-                || down_columns != config.hidden_size
+                || down_rows != config.hidden_size
+                || down_columns != expert_width
             {
                 return Err(artifact_format_error(
                     "gguf",
                     format!(
-                        "{} shape [{down_expert_count}, {down_rows}, {down_columns}] does not match expected [{expert_count}, {expert_width}, {}]",
+                        "{} shape [{down_expert_count}, {down_rows}, {down_columns}] does not match expected [{expert_count}, {}, {expert_width}]",
                         down_experts.name, config.hidden_size
                     ),
                 ));
@@ -8807,8 +8820,8 @@ mod tests {
         write_test_gguf(
             &path,
             GgufVersion::V3,
-            &gpt_oss_decoder_metadata("Tiny GPT-OSS", Some("{{ prompt }}")),
-            &gpt_oss_decoder_tensors(),
+            &gpt_oss_decoder_metadata("Tiny GPT-OSS", Some("{{ prompt }}"), 64),
+            &gpt_oss_decoder_tensors(64),
         )?;
 
         let adapter = GgufDecoderAdapterLoader.load_path(&path)?;
@@ -8825,7 +8838,12 @@ mod tests {
         assert_eq!(adapter.family_metadata().expert_used_count, Some(2));
         assert_eq!(
             adapter.family_metadata().expert_feed_forward_length,
-            Some(32)
+            Some(64)
+        );
+        assert_eq!(adapter.family_metadata().rope_scaling_factor, Some(32.0));
+        assert_eq!(
+            adapter.family_metadata().rope_original_context_length,
+            Some(4096)
         );
         assert!(adapter.family_metadata().attention_qkv_biases);
         assert!(!adapter.family_metadata().tie_word_embeddings);
@@ -8841,7 +8859,7 @@ mod tests {
                 .block
                 .feed_forward
                 .intermediate_size,
-            32
+            64
         );
         assert_eq!(
             adapter.descriptor().weights.quantization,
@@ -9391,6 +9409,7 @@ mod tests {
     fn gpt_oss_decoder_metadata(
         name: &str,
         chat_template: Option<&str>,
+        expert_feed_forward_length: u32,
     ) -> Vec<(String, GgufMetadataValue)> {
         let mut metadata = vec![
             (
@@ -9415,7 +9434,7 @@ mod tests {
             ),
             (
                 String::from("gpt-oss.expert_feed_forward_length"),
-                GgufMetadataValue::U32(32),
+                GgufMetadataValue::U32(expert_feed_forward_length),
             ),
             (
                 String::from("gpt-oss.block_count"),
@@ -9448,6 +9467,14 @@ mod tests {
             (
                 String::from("gpt-oss.rope.freq_base"),
                 GgufMetadataValue::F32(10_000.0),
+            ),
+            (
+                String::from("gpt-oss.rope.scaling.factor"),
+                GgufMetadataValue::F32(32.0),
+            ),
+            (
+                String::from("gpt-oss.rope.scaling.original_context_length"),
+                GgufMetadataValue::U32(4096),
             ),
             (
                 String::from("gpt-oss.expert_count"),
@@ -9594,6 +9621,10 @@ mod tests {
             (
                 String::from("tokenizer.ggml.unknown_token_id"),
                 GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.padding_token_id"),
+                GgufMetadataValue::U32(1),
             ),
             (
                 String::from("tokenizer.ggml.add_bos_token"),
@@ -9808,7 +9839,8 @@ mod tests {
         tensors
     }
 
-    fn gpt_oss_decoder_tensors() -> Vec<TestGgufTensor> {
+    fn gpt_oss_decoder_tensors(expert_width: usize) -> Vec<TestGgufTensor> {
+        let expert_blocks = 3 * expert_width;
         vec![
             TestGgufTensor::new(
                 "token_embd.weight",
@@ -9838,23 +9870,23 @@ mod tests {
             dense_f32_tensor("blk.0.ffn_gate_inp.bias", vec![3]),
             TestGgufTensor::new(
                 "blk.0.ffn_gate_exps.weight",
-                vec![3, 32, 32],
+                vec![3, expert_width, 32],
                 GgufTensorType::MXFP4,
-                repeated_mxfp4_bytes(96),
+                repeated_mxfp4_bytes(expert_blocks),
             ),
-            dense_f32_tensor("blk.0.ffn_gate_exps.bias", vec![3, 32]),
+            dense_f32_tensor("blk.0.ffn_gate_exps.bias", vec![3, expert_width]),
             TestGgufTensor::new(
                 "blk.0.ffn_up_exps.weight",
-                vec![3, 32, 32],
+                vec![3, expert_width, 32],
                 GgufTensorType::MXFP4,
-                repeated_mxfp4_bytes(96),
+                repeated_mxfp4_bytes(expert_blocks),
             ),
-            dense_f32_tensor("blk.0.ffn_up_exps.bias", vec![3, 32]),
+            dense_f32_tensor("blk.0.ffn_up_exps.bias", vec![3, expert_width]),
             TestGgufTensor::new(
                 "blk.0.ffn_down_exps.weight",
-                vec![3, 32, 32],
+                vec![3, 32, expert_width],
                 GgufTensorType::MXFP4,
-                repeated_mxfp4_bytes(96),
+                repeated_mxfp4_bytes(expert_blocks),
             ),
             dense_f32_tensor("blk.0.ffn_down_exps.bias", vec![3, 32]),
         ]

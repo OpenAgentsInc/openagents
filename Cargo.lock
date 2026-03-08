@@ -4731,6 +4731,7 @@ dependencies = [
 name = "mox-backend-cuda"
 version = "0.1.0"
 dependencies = [
+ "cc",
  "libloading",
  "mox-backend-cpu",
  "mox-compiler",
@@ -4841,6 +4842,7 @@ dependencies = [
 name = "mox-serve"
 version = "0.1.0"
 dependencies = [
+ "axum 0.8.8",
  "hex",
  "mox-backend-cpu",
  "mox-backend-cuda",
@@ -4859,6 +4861,8 @@ dependencies = [
  "sha2",
  "tempfile",
  "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
 ]
 
 [[package]]
