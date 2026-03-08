@@ -128,6 +128,67 @@ pub enum OllamaRepairAction {
     RemoveCorruptBlobAndRePull,
 }
 
+/// Provenance class for one resolved local Ollama manifest.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OllamaProvenanceKind {
+    /// A normal locally resolved manifest without an explicit remote alias.
+    LocalManifest,
+    /// A locally resolved manifest that also declares an upstream remote alias.
+    RemoteAlias,
+}
+
+/// Stable provenance facts for one locally discovered Ollama manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaProvenanceFacts {
+    /// Provenance class for the manifest.
+    pub kind: OllamaProvenanceKind,
+    /// Canonical fully qualified Ollama model name.
+    pub canonical_name: String,
+    /// Shortest display form for the same model.
+    pub short_name: String,
+    /// Stable digest over the manifest bytes.
+    pub manifest_sha256: String,
+    /// Declared remote host when the manifest is a remote alias.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_host: Option<String>,
+    /// Declared remote model when the manifest is a remote alias.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_model: Option<String>,
+    /// Declared base model when present in config.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_model: Option<String>,
+}
+
+/// One declared license payload from an Ollama manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaLicenseEntry {
+    /// Stable digest over the license text.
+    pub sha256: String,
+    /// Exact declared license text.
+    pub text: String,
+}
+
+/// Stable license facts for one locally discovered Ollama manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaLicenseFacts {
+    /// Whether the manifest declared any license text layers.
+    pub declared: bool,
+    /// Declared license payloads in manifest order.
+    pub entries: Vec<OllamaLicenseEntry>,
+}
+
+impl OllamaLicenseFacts {
+    /// Returns declared license digests in manifest order.
+    #[must_use]
+    pub fn digests(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .map(|entry| entry.sha256.clone())
+            .collect()
+    }
+}
+
 /// One explicit integrity diagnostic for the local Ollama store.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OllamaIntegrityDiagnostic {
@@ -670,6 +731,53 @@ impl OllamaManifest {
             licenses.push(layer.read_text(options.clone())?);
         }
         Ok(licenses)
+    }
+
+    /// Returns stable provenance facts for the resolved manifest, separate from integrity checks.
+    #[must_use]
+    pub fn provenance_facts(&self, config: Option<&OllamaModelConfig>) -> OllamaProvenanceFacts {
+        let remote_host = config
+            .and_then(OllamaModelConfig::remote_host)
+            .map(str::to_string);
+        let remote_model = config
+            .and_then(OllamaModelConfig::remote_model)
+            .map(str::to_string);
+
+        OllamaProvenanceFacts {
+            kind: if remote_host.is_some() || remote_model.is_some() {
+                OllamaProvenanceKind::RemoteAlias
+            } else {
+                OllamaProvenanceKind::LocalManifest
+            },
+            canonical_name: self.name.canonical_name(),
+            short_name: self.short_name.clone(),
+            manifest_sha256: self.manifest_sha256.clone(),
+            remote_host,
+            remote_model,
+            base_model: config
+                .and_then(OllamaModelConfig::base_name)
+                .map(str::to_string),
+        }
+    }
+
+    /// Loads stable license facts from the manifest, separate from integrity checks.
+    pub fn load_license_facts(
+        &self,
+        options: LocalBlobOpenOptions,
+    ) -> Result<OllamaLicenseFacts, CatalogError> {
+        let entries = self
+            .load_licenses(options)?
+            .into_iter()
+            .map(|text| OllamaLicenseEntry {
+                sha256: hex::encode(Sha256::digest(text.as_bytes())),
+                text,
+            })
+            .collect::<Vec<_>>();
+
+        Ok(OllamaLicenseFacts {
+            declared: !entries.is_empty(),
+            entries,
+        })
     }
 
     fn load_last_text_layer(
@@ -1435,8 +1543,8 @@ mod tests {
     use super::{
         CatalogError, OLLAMA_DEFAULT_HOST, OLLAMA_DEFAULT_NAMESPACE, OLLAMA_DEFAULT_TAG,
         OllamaAdapterPolicy, OllamaIntegrityScope, OllamaLayerKind, OllamaMediaType,
-        OllamaModelCatalog, OllamaModelConfig, OllamaModelName, OllamaRepairAction,
-        OllamaStoredMessage,
+        OllamaModelCatalog, OllamaModelConfig, OllamaModelName, OllamaProvenanceKind,
+        OllamaRepairAction, OllamaStoredMessage,
     };
 
     #[test]
@@ -1865,6 +1973,77 @@ mod tests {
             vec![String::from("Apache-2.0")]
         );
         assert!(manifest.modified_at()?.elapsed().is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_manifest_surfaces_provenance_and_license_facts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let config_digest = write_blob(
+            temp.path(),
+            br#"{
+                "model_format":"gguf",
+                "model_family":"qwen2",
+                "remote_host":"cloud.example",
+                "remote_model":"team/qwen2-licensed",
+                "base_name":"qwen2-base"
+            }"#,
+        )?;
+        let model_digest = write_blob(temp.path(), b"GGUF")?;
+        let license_digest = write_blob(temp.path(), b"Apache-2.0")?;
+
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2/latest",
+            serde_json::json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "digest": config_digest,
+                    "size": 1
+                },
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                        "size": 4
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.license",
+                        "digest": license_digest,
+                        "size": 10
+                    }
+                ]
+            }),
+        )?;
+
+        let manifest = OllamaModelCatalog::new(temp.path()).resolve_model("qwen2")?;
+        let config = manifest.load_config(LocalBlobOpenOptions::default())?;
+        let provenance = manifest.provenance_facts(config.as_ref());
+        let licenses = manifest.load_license_facts(LocalBlobOpenOptions::default())?;
+
+        assert_eq!(provenance.kind, OllamaProvenanceKind::RemoteAlias);
+        assert_eq!(
+            provenance.canonical_name,
+            "registry.ollama.ai/library/qwen2:latest"
+        );
+        assert_eq!(provenance.short_name, "qwen2:latest");
+        assert_eq!(provenance.remote_host.as_deref(), Some("cloud.example"));
+        assert_eq!(
+            provenance.remote_model.as_deref(),
+            Some("team/qwen2-licensed")
+        );
+        assert_eq!(provenance.base_model.as_deref(), Some("qwen2-base"));
+
+        assert!(licenses.declared);
+        assert_eq!(licenses.entries.len(), 1);
+        assert_eq!(licenses.entries[0].text, "Apache-2.0");
+        assert_eq!(
+            licenses.entries[0].sha256,
+            hex::encode(Sha256::digest(b"Apache-2.0"))
+        );
         Ok(())
     }
 

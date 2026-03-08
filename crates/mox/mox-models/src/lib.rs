@@ -12,7 +12,8 @@ use std::{
 
 use mox_catalog::{
     BlobError, BlobReadPath, LocalBlob, LocalBlobKind, LocalBlobMetadata, LocalBlobOpenOptions,
-    OllamaAdapterPolicy, OllamaManifest, PagedBlobRange,
+    OllamaAdapterPolicy, OllamaLicenseFacts, OllamaManifest, OllamaProvenanceFacts,
+    OllamaProvenanceKind, PagedBlobRange,
 };
 use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
 use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
@@ -75,6 +76,9 @@ pub struct EmbeddingModelDescriptor {
     /// Stable model-side artifact identity inputs used by serving/evidence layers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_identity: Option<ServedModelArtifactMetadata>,
+    /// Stable provenance and license facts for the backing artifact when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_governance: Option<ModelArtifactGovernance>,
 }
 
 impl EmbeddingModelDescriptor {
@@ -92,6 +96,7 @@ impl EmbeddingModelDescriptor {
             normalization,
             weights,
             artifact_identity: None,
+            artifact_governance: None,
         }
     }
 
@@ -102,6 +107,16 @@ impl EmbeddingModelDescriptor {
         artifact_identity: ServedModelArtifactMetadata,
     ) -> Self {
         self.artifact_identity = Some(artifact_identity);
+        self
+    }
+
+    /// Attaches provenance and license facts for the backing artifact.
+    #[must_use]
+    pub fn with_artifact_governance(
+        mut self,
+        artifact_governance: ModelArtifactGovernance,
+    ) -> Self {
+        self.artifact_governance = Some(artifact_governance);
         self
     }
 }
@@ -933,6 +948,189 @@ impl ServedModelArtifactMetadata {
             tokenizer_digest,
             chat_template_digest,
             generation_defaults_digest: generation_defaults_digest.into(),
+        }
+    }
+}
+
+/// Provenance class for one backing artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactProvenanceKind {
+    /// Programmatic fixture owned by Mox itself.
+    Fixture,
+    /// Direct local file path supplied by the caller.
+    LocalPath,
+    /// Raw blob discovered inside an Ollama store but not tied to a resolved manifest.
+    OllamaBlob,
+    /// Resolved local Ollama manifest without an explicit remote alias.
+    OllamaManifest,
+    /// Resolved local Ollama manifest that also declares an upstream remote alias.
+    OllamaRemoteAlias,
+}
+
+/// Stable provenance facts for one backing artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelArtifactProvenance {
+    /// Provenance class for the artifact.
+    pub kind: ModelArtifactProvenanceKind,
+    /// Human-readable source label such as a file path, blob name, or canonical model name.
+    pub source: String,
+    /// Stable manifest digest when provenance came from a resolved Ollama manifest.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest_sha256: Option<String>,
+    /// Declared remote host when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_host: Option<String>,
+    /// Declared remote model when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub remote_model: Option<String>,
+    /// Declared base model when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub base_model: Option<String>,
+}
+
+impl ModelArtifactProvenance {
+    /// Returns fixture provenance for one model identifier.
+    #[must_use]
+    pub fn fixture(model_id: impl Into<String>) -> Self {
+        Self {
+            kind: ModelArtifactProvenanceKind::Fixture,
+            source: model_id.into(),
+            manifest_sha256: None,
+            remote_host: None,
+            remote_model: None,
+            base_model: None,
+        }
+    }
+
+    fn local_path(path: &Path) -> Self {
+        Self {
+            kind: ModelArtifactProvenanceKind::LocalPath,
+            source: path.display().to_string(),
+            manifest_sha256: None,
+            remote_host: None,
+            remote_model: None,
+            base_model: None,
+        }
+    }
+
+    fn ollama_blob(blob: &LocalBlobMetadata) -> Self {
+        Self {
+            kind: ModelArtifactProvenanceKind::OllamaBlob,
+            source: blob.name.clone(),
+            manifest_sha256: None,
+            remote_host: None,
+            remote_model: None,
+            base_model: None,
+        }
+    }
+
+    fn from_ollama_provenance(facts: OllamaProvenanceFacts) -> Self {
+        Self {
+            kind: match facts.kind {
+                OllamaProvenanceKind::LocalManifest => ModelArtifactProvenanceKind::OllamaManifest,
+                OllamaProvenanceKind::RemoteAlias => ModelArtifactProvenanceKind::OllamaRemoteAlias,
+            },
+            source: facts.canonical_name,
+            manifest_sha256: Some(facts.manifest_sha256),
+            remote_host: facts.remote_host,
+            remote_model: facts.remote_model,
+            base_model: facts.base_model,
+        }
+    }
+}
+
+/// One declared license payload for the backing artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelArtifactLicenseEntry {
+    /// Stable digest over the license text.
+    pub sha256: String,
+    /// Exact declared license text.
+    pub text: String,
+}
+
+/// Stable license facts for the backing artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelArtifactLicenseFacts {
+    /// Whether any license text was declared.
+    pub declared: bool,
+    /// Declared licenses in source order.
+    pub entries: Vec<ModelArtifactLicenseEntry>,
+}
+
+impl ModelArtifactLicenseFacts {
+    /// Returns the declared license digests in source order.
+    #[must_use]
+    pub fn digests(&self) -> Vec<String> {
+        self.entries
+            .iter()
+            .map(|entry| entry.sha256.clone())
+            .collect()
+    }
+}
+
+/// Stable provenance and license facts for a backing artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelArtifactGovernance {
+    /// Stable provenance facts.
+    pub provenance: ModelArtifactProvenance,
+    /// Stable declared license facts.
+    pub licenses: ModelArtifactLicenseFacts,
+}
+
+impl ModelArtifactGovernance {
+    /// Returns governance facts for a fixture-owned model.
+    #[must_use]
+    pub fn fixture(model_id: impl Into<String>) -> Self {
+        Self {
+            provenance: ModelArtifactProvenance::fixture(model_id),
+            licenses: ModelArtifactLicenseFacts {
+                declared: false,
+                entries: Vec::new(),
+            },
+        }
+    }
+
+    fn local_path(path: &Path) -> Self {
+        Self {
+            provenance: ModelArtifactProvenance::local_path(path),
+            licenses: ModelArtifactLicenseFacts {
+                declared: false,
+                entries: Vec::new(),
+            },
+        }
+    }
+
+    fn ollama_blob(blob: &LocalBlobMetadata) -> Self {
+        Self {
+            provenance: ModelArtifactProvenance::ollama_blob(blob),
+            licenses: ModelArtifactLicenseFacts {
+                declared: false,
+                entries: Vec::new(),
+            },
+        }
+    }
+
+    fn from_ollama_manifest(
+        manifest: &OllamaManifest,
+        config: Option<&mox_catalog::OllamaModelConfig>,
+        licenses: OllamaLicenseFacts,
+    ) -> Self {
+        Self {
+            provenance: ModelArtifactProvenance::from_ollama_provenance(
+                manifest.provenance_facts(config),
+            ),
+            licenses: ModelArtifactLicenseFacts {
+                declared: licenses.declared,
+                entries: licenses
+                    .entries
+                    .into_iter()
+                    .map(|entry| ModelArtifactLicenseEntry {
+                        sha256: entry.sha256,
+                        text: entry.text,
+                    })
+                    .collect(),
+            },
         }
     }
 }
@@ -3219,6 +3417,9 @@ pub struct DecoderModelDescriptor {
     /// Stable model-side artifact identity inputs used by serving/evidence layers.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub artifact_identity: Option<ServedModelArtifactMetadata>,
+    /// Stable provenance and license facts for the backing artifact when known.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_governance: Option<ModelArtifactGovernance>,
 }
 
 impl DecoderModelDescriptor {
@@ -3236,6 +3437,7 @@ impl DecoderModelDescriptor {
             tokenizer_family: tokenizer_family.into(),
             weights,
             artifact_identity: None,
+            artifact_governance: None,
         }
     }
 
@@ -3246,6 +3448,16 @@ impl DecoderModelDescriptor {
         artifact_identity: ServedModelArtifactMetadata,
     ) -> Self {
         self.artifact_identity = Some(artifact_identity);
+        self
+    }
+
+    /// Attaches provenance and license facts for the backing artifact.
+    #[must_use]
+    pub fn with_artifact_governance(
+        mut self,
+        artifact_governance: ModelArtifactGovernance,
+    ) -> Self {
+        self.artifact_governance = Some(artifact_governance);
         self
     }
 }
@@ -3290,10 +3502,10 @@ impl GgufEmbeddingAdapter {
 pub struct GgufEmbeddingAdapterLoader;
 
 impl GgufEmbeddingAdapterLoader {
-    /// Loads an embeddings-family adapter from an already-open GGUF blob artifact.
-    pub fn load_blob_artifact(
+    fn load_blob_artifact_with_governance(
         &self,
         artifact: &GgufBlobArtifact,
+        artifact_governance: ModelArtifactGovernance,
     ) -> Result<GgufEmbeddingAdapter, ModelLoadError> {
         let content = artifact.content();
         let metadata = content.metadata();
@@ -3311,7 +3523,8 @@ impl GgufEmbeddingAdapterLoader {
             &family_metadata,
             &tokenizer,
             content,
-        )?;
+        )?
+        .with_artifact_governance(artifact_governance);
         let tensor_layout =
             build_gguf_embedding_tensor_layout(content, &family_metadata, &tokenizer)?;
 
@@ -3321,6 +3534,22 @@ impl GgufEmbeddingAdapterLoader {
             tokenizer,
             tensor_layout,
         })
+    }
+
+    /// Loads an embeddings-family adapter from an already-open GGUF blob artifact.
+    pub fn load_blob_artifact(
+        &self,
+        artifact: &GgufBlobArtifact,
+    ) -> Result<GgufEmbeddingAdapter, ModelLoadError> {
+        let artifact_governance = match artifact.blob_metadata().kind {
+            LocalBlobKind::GgufFile => {
+                ModelArtifactGovernance::local_path(&artifact.blob_metadata().path)
+            }
+            LocalBlobKind::OllamaBlob => {
+                ModelArtifactGovernance::ollama_blob(artifact.blob_metadata())
+            }
+        };
+        self.load_blob_artifact_with_governance(artifact, artifact_governance)
     }
 
     /// Loads an embeddings-family adapter from a local GGUF path.
@@ -3338,6 +3567,37 @@ impl GgufEmbeddingAdapterLoader {
     ) -> Result<GgufEmbeddingAdapter, ModelLoadError> {
         let artifact = GgufBlobArtifact::open_ollama_blob(models_root, digest, options)?;
         self.load_blob_artifact(&artifact)
+    }
+
+    /// Loads an embeddings-family adapter from a resolved Ollama manifest.
+    pub fn load_ollama_manifest(
+        &self,
+        manifest: &OllamaManifest,
+        options: LocalBlobOpenOptions,
+    ) -> Result<GgufEmbeddingAdapter, ModelLoadError> {
+        let config = manifest
+            .load_config(
+                LocalBlobOpenOptions::default()
+                    .with_read_preference(mox_catalog::BlobReadPreference::PreferBuffered),
+            )
+            .map_err(|error| ModelLoadError::ArtifactRead {
+                path: manifest.manifest_path.display().to_string(),
+                message: error.to_string(),
+            })?;
+        let licenses = manifest
+            .load_license_facts(
+                LocalBlobOpenOptions::default()
+                    .with_read_preference(mox_catalog::BlobReadPreference::PreferBuffered),
+            )
+            .map_err(|error| ModelLoadError::ArtifactRead {
+                path: manifest.manifest_path.display().to_string(),
+                message: error.to_string(),
+            })?;
+        let artifact = GgufBlobArtifact::open_ollama_manifest(manifest, options)?;
+        self.load_blob_artifact_with_governance(
+            &artifact,
+            ModelArtifactGovernance::from_ollama_manifest(manifest, config.as_ref(), licenses),
+        )
     }
 }
 
@@ -3405,10 +3665,10 @@ impl GgufDecoderAdapter {
 pub struct GgufDecoderAdapterLoader;
 
 impl GgufDecoderAdapterLoader {
-    /// Loads a decoder-family adapter from an already-open GGUF blob artifact.
-    pub fn load_blob_artifact(
+    fn load_blob_artifact_with_governance(
         &self,
         artifact: &GgufBlobArtifact,
+        artifact_governance: ModelArtifactGovernance,
     ) -> Result<GgufDecoderAdapter, ModelLoadError> {
         let content = artifact.content();
         let metadata = content.metadata();
@@ -3428,7 +3688,8 @@ impl GgufDecoderAdapterLoader {
             &tokenizer,
             &chat_templates,
             content,
-        )?;
+        )?
+        .with_artifact_governance(artifact_governance);
         let tensor_layout = build_gguf_decoder_tensor_layout(
             content,
             descriptor.config.layer_count,
@@ -3443,6 +3704,22 @@ impl GgufDecoderAdapterLoader {
             chat_templates,
             tensor_layout,
         })
+    }
+
+    /// Loads a decoder-family adapter from an already-open GGUF blob artifact.
+    pub fn load_blob_artifact(
+        &self,
+        artifact: &GgufBlobArtifact,
+    ) -> Result<GgufDecoderAdapter, ModelLoadError> {
+        let artifact_governance = match artifact.blob_metadata().kind {
+            LocalBlobKind::GgufFile => {
+                ModelArtifactGovernance::local_path(&artifact.blob_metadata().path)
+            }
+            LocalBlobKind::OllamaBlob => {
+                ModelArtifactGovernance::ollama_blob(artifact.blob_metadata())
+            }
+        };
+        self.load_blob_artifact_with_governance(artifact, artifact_governance)
     }
 
     /// Loads a decoder-family adapter from a local GGUF path.
@@ -3460,6 +3737,37 @@ impl GgufDecoderAdapterLoader {
     ) -> Result<GgufDecoderAdapter, ModelLoadError> {
         let artifact = GgufBlobArtifact::open_ollama_blob(models_root, digest, options)?;
         self.load_blob_artifact(&artifact)
+    }
+
+    /// Loads a decoder-family adapter from a resolved Ollama manifest.
+    pub fn load_ollama_manifest(
+        &self,
+        manifest: &OllamaManifest,
+        options: LocalBlobOpenOptions,
+    ) -> Result<GgufDecoderAdapter, ModelLoadError> {
+        let config = manifest
+            .load_config(
+                LocalBlobOpenOptions::default()
+                    .with_read_preference(mox_catalog::BlobReadPreference::PreferBuffered),
+            )
+            .map_err(|error| ModelLoadError::ArtifactRead {
+                path: manifest.manifest_path.display().to_string(),
+                message: error.to_string(),
+            })?;
+        let licenses = manifest
+            .load_license_facts(
+                LocalBlobOpenOptions::default()
+                    .with_read_preference(mox_catalog::BlobReadPreference::PreferBuffered),
+            )
+            .map_err(|error| ModelLoadError::ArtifactRead {
+                path: manifest.manifest_path.display().to_string(),
+                message: error.to_string(),
+            })?;
+        let artifact = GgufBlobArtifact::open_ollama_manifest(manifest, options)?;
+        self.load_blob_artifact_with_governance(
+            &artifact,
+            ModelArtifactGovernance::from_ollama_manifest(manifest, config.as_ref(), licenses),
+        )
     }
 }
 
@@ -4854,7 +5162,8 @@ impl ArtifactWordDecoder {
             Some(digest_fixture_tokenizer(&tokenizer)),
             None,
             digest_generation_defaults(false, false, &[]),
-        ));
+        ))
+        .with_artifact_governance(ModelArtifactGovernance::local_path(path.as_ref()));
         let weights = SafeTensorsDecoderLoader::new(path.as_ref()).load(&descriptor)?;
         Ok(Self {
             descriptor,
@@ -5041,7 +5350,8 @@ impl ByteProjectionEmbedder {
             None,
             None,
             digest_generation_defaults(false, false, &[]),
-        ));
+        ))
+        .with_artifact_governance(ModelArtifactGovernance::local_path(path.as_ref()));
         Ok(Self {
             descriptor,
             input_dimensions,
@@ -6273,6 +6583,7 @@ mod tests {
     use mox_catalog::{BlobReadPreference, OllamaModelCatalog};
     use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
     use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
+    use serde_json::json;
     use sha2::{Digest, Sha256};
     use tempfile::tempdir;
 
@@ -7647,6 +7958,17 @@ mod tests {
                 .is_none()
         );
         assert!(adapter.chat_templates().is_empty());
+        let governance = adapter
+            .descriptor()
+            .artifact_governance
+            .as_ref()
+            .expect("local path governance");
+        assert_eq!(
+            governance.provenance.kind,
+            super::ModelArtifactProvenanceKind::LocalPath
+        );
+        assert_eq!(governance.provenance.source, path.display().to_string());
+        assert!(!governance.licenses.declared);
         Ok(())
     }
 
@@ -7733,6 +8055,109 @@ mod tests {
             super::ModelLoadError::UnsupportedGgufDecoderFamilyFeature { family, feature }
                 if family == "llama" && feature == "mixture_of_experts"
         ));
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_decoder_adapter_loader_loads_ollama_manifest_with_governance()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let model_path = temp.path().join("tiny_qwen2.gguf");
+        write_test_gguf(
+            &model_path,
+            GgufVersion::V3,
+            &qwen2_decoder_metadata("Tiny Qwen2", Some("{{ prompt }}")),
+            &decoder_family_tensors(1, true, false),
+        )?;
+        let model_bytes = std::fs::read(&model_path)?;
+        let model_digest = hex::encode(Sha256::digest(model_bytes.as_slice()));
+        let blob_path = temp
+            .path()
+            .join("blobs")
+            .join(format!("sha256-{model_digest}"));
+        std::fs::create_dir_all(blob_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(&blob_path, &model_bytes)?;
+
+        let config_bytes = br#"{
+            "model_format":"gguf",
+            "model_family":"qwen2",
+            "remote_host":"cloud.example",
+            "remote_model":"team/qwen2-licensed",
+            "base_name":"qwen2-base"
+        }"#;
+        let config_digest = hex::encode(Sha256::digest(config_bytes));
+        let config_path = temp
+            .path()
+            .join("blobs")
+            .join(format!("sha256-{config_digest}"));
+        std::fs::write(&config_path, config_bytes)?;
+
+        let license_bytes = b"Apache-2.0";
+        let license_digest = hex::encode(Sha256::digest(license_bytes));
+        let license_path = temp
+            .path()
+            .join("blobs")
+            .join(format!("sha256-{license_digest}"));
+        std::fs::write(&license_path, license_bytes)?;
+
+        let manifest_path = temp
+            .path()
+            .join("manifests/registry.ollama.ai/library/qwen2/latest");
+        std::fs::create_dir_all(manifest_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_vec(&json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "digest": format!("sha256:{config_digest}"),
+                    "size": config_bytes.len()
+                },
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": format!("sha256:{model_digest}"),
+                        "size": model_bytes.len()
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.license",
+                        "digest": format!("sha256:{license_digest}"),
+                        "size": license_bytes.len()
+                    }
+                ]
+            }))?,
+        )?;
+
+        let manifest = OllamaModelCatalog::new(temp.path()).resolve_model("qwen2")?;
+        let adapter = GgufDecoderAdapterLoader.load_ollama_manifest(
+            &manifest,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::PreferBuffered),
+        )?;
+
+        let governance = adapter
+            .descriptor()
+            .artifact_governance
+            .as_ref()
+            .expect("manifest governance");
+        assert_eq!(
+            governance.provenance.kind,
+            super::ModelArtifactProvenanceKind::OllamaRemoteAlias
+        );
+        assert_eq!(
+            governance.provenance.source,
+            "registry.ollama.ai/library/qwen2:latest"
+        );
+        assert_eq!(
+            governance.provenance.remote_host.as_deref(),
+            Some("cloud.example")
+        );
+        assert_eq!(
+            governance.provenance.remote_model.as_deref(),
+            Some("team/qwen2-licensed")
+        );
+        assert_eq!(governance.licenses.digests(), vec![license_digest]);
         Ok(())
     }
 
@@ -8674,6 +9099,17 @@ mod tests {
             model.descriptor().normalization,
             super::EmbeddingNormalization::UnitLength
         );
+        let governance = model
+            .descriptor()
+            .artifact_governance
+            .as_ref()
+            .expect("local path governance");
+        assert_eq!(
+            governance.provenance.kind,
+            super::ModelArtifactProvenanceKind::LocalPath
+        );
+        assert_eq!(governance.provenance.source, path.display().to_string());
+        assert!(!governance.licenses.declared);
         Ok(())
     }
 
@@ -8705,6 +9141,17 @@ mod tests {
             model.tokenizer().decode(&[FixtureWordTokenizer::OPEN_ID]),
             "open"
         );
+        let governance = model
+            .descriptor()
+            .artifact_governance
+            .as_ref()
+            .expect("local path governance");
+        assert_eq!(
+            governance.provenance.kind,
+            super::ModelArtifactProvenanceKind::LocalPath
+        );
+        assert_eq!(governance.provenance.source, path.display().to_string());
+        assert!(!governance.licenses.declared);
         Ok(())
     }
 

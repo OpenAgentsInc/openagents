@@ -16,9 +16,10 @@ use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
     EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, GenerationInput,
     GenerationLoadState, GenerationRequest, GenerationResponse, GenerationStreamStatus,
-    GenerationStreamTerminal, GenerationStreamingPolicy, QuantizationMode, SessionId,
-    TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata, WeightBundleMetadata,
-    WeightFormat, WeightSource, cache_invalidation_policy, cache_observations_for_embedding_model,
+    GenerationStreamTerminal, GenerationStreamingPolicy, ModelArtifactGovernance,
+    ModelArtifactProvenanceKind, QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID,
+    TerminationReason, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
+    cache_invalidation_policy, cache_observations_for_embedding_model,
     default_decoder_kv_cache_policy, default_prefix_cache_policy,
     served_artifact_identity_for_decoder_model, served_artifact_identity_for_embedding_model,
 };
@@ -56,6 +57,222 @@ impl WeightBundleEvidence {
             artifacts: metadata.artifacts.clone(),
         }
     }
+}
+
+/// Explicit policy for whether one model artifact may be advertised or served into compute-market supply.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComputeMarketSupplyPolicy {
+    /// Whether Mox-owned fixture models may be advertised.
+    pub allow_fixture_models: bool,
+    /// Whether direct caller-supplied local files may be advertised.
+    pub allow_local_path_artifacts: bool,
+    /// Whether raw Ollama blobs without a resolved manifest may be advertised.
+    pub allow_unbound_ollama_blobs: bool,
+    /// Whether resolved local Ollama manifests may be advertised.
+    pub allow_ollama_manifests: bool,
+    /// Whether resolved local Ollama remote aliases may be advertised.
+    pub allow_ollama_remote_aliases: bool,
+    /// Whether external artifacts must declare at least one license payload.
+    pub require_declared_license_for_external_artifacts: bool,
+    /// Optional exact-license allowlist by stable digest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_license_digests: Vec<String>,
+    /// Explicit exact-license denylist by stable digest.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub denied_license_digests: Vec<String>,
+}
+
+/// Stable refusal code for one compute-market supply policy violation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ComputeMarketSupplyViolationCode {
+    /// External artifact governance facts were missing entirely.
+    MissingArtifactGovernance,
+    /// The artifact provenance class is not allowed by policy.
+    DisallowedProvenance,
+    /// The artifact did not declare any license payloads when policy required them.
+    MissingDeclaredLicense,
+    /// The artifact declared licenses, but none matched the configured allowlist.
+    LicenseNotAllowlisted,
+    /// One declared license matched the configured denylist.
+    LicenseDenied,
+}
+
+/// One explicit compute-market supply policy violation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComputeMarketSupplyViolation {
+    /// Stable refusal code.
+    pub code: ComputeMarketSupplyViolationCode,
+    /// Plain-language refusal detail.
+    pub message: String,
+}
+
+impl ComputeMarketSupplyViolation {
+    fn new(code: ComputeMarketSupplyViolationCode, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            message: message.into(),
+        }
+    }
+}
+
+/// Machine-checkable advertise/serve decision for compute-market supply.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ComputeMarketSupplyDecision {
+    /// Whether the artifact may be advertised into the compute market.
+    pub advertise_allowed: bool,
+    /// Whether the artifact may be served for compute-market work.
+    pub serve_allowed: bool,
+    /// Explicit policy violations that forced refusal.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub violations: Vec<ComputeMarketSupplyViolation>,
+}
+
+impl ComputeMarketSupplyDecision {
+    fn allowed() -> Self {
+        Self {
+            advertise_allowed: true,
+            serve_allowed: true,
+            violations: Vec::new(),
+        }
+    }
+
+    fn refused(violations: Vec<ComputeMarketSupplyViolation>) -> Self {
+        Self {
+            advertise_allowed: false,
+            serve_allowed: false,
+            violations,
+        }
+    }
+
+    /// Returns whether the artifact is admissible for both advertise and serve paths.
+    #[must_use]
+    pub fn is_allowed(&self) -> bool {
+        self.advertise_allowed && self.serve_allowed
+    }
+}
+
+/// Returns the default explicit compute-market supply policy for provider-advertised Mox artifacts.
+#[must_use]
+pub fn default_compute_market_supply_policy() -> ComputeMarketSupplyPolicy {
+    ComputeMarketSupplyPolicy {
+        allow_fixture_models: true,
+        allow_local_path_artifacts: false,
+        allow_unbound_ollama_blobs: false,
+        allow_ollama_manifests: true,
+        allow_ollama_remote_aliases: true,
+        require_declared_license_for_external_artifacts: true,
+        allowed_license_digests: Vec::new(),
+        denied_license_digests: Vec::new(),
+    }
+}
+
+/// Evaluates compute-market supply policy for one model artifact.
+#[must_use]
+pub fn evaluate_compute_market_supply(
+    weights: &WeightBundleMetadata,
+    artifact_governance: Option<&ModelArtifactGovernance>,
+    policy: &ComputeMarketSupplyPolicy,
+) -> ComputeMarketSupplyDecision {
+    if weights.source == WeightSource::Fixture {
+        return if policy.allow_fixture_models {
+            ComputeMarketSupplyDecision::allowed()
+        } else {
+            ComputeMarketSupplyDecision::refused(vec![ComputeMarketSupplyViolation::new(
+                ComputeMarketSupplyViolationCode::DisallowedProvenance,
+                "fixture models are not allowed for compute-market supply",
+            )])
+        };
+    }
+
+    let Some(artifact_governance) = artifact_governance else {
+        return ComputeMarketSupplyDecision::refused(vec![ComputeMarketSupplyViolation::new(
+            ComputeMarketSupplyViolationCode::MissingArtifactGovernance,
+            "external artifact is missing provenance and license governance metadata",
+        )]);
+    };
+
+    let mut violations = Vec::new();
+    let provenance_allowed = match artifact_governance.provenance.kind {
+        ModelArtifactProvenanceKind::Fixture => policy.allow_fixture_models,
+        ModelArtifactProvenanceKind::LocalPath => policy.allow_local_path_artifacts,
+        ModelArtifactProvenanceKind::OllamaBlob => policy.allow_unbound_ollama_blobs,
+        ModelArtifactProvenanceKind::OllamaManifest => policy.allow_ollama_manifests,
+        ModelArtifactProvenanceKind::OllamaRemoteAlias => policy.allow_ollama_remote_aliases,
+    };
+    if !provenance_allowed {
+        violations.push(ComputeMarketSupplyViolation::new(
+            ComputeMarketSupplyViolationCode::DisallowedProvenance,
+            format!(
+                "artifact provenance `{}` is not allowed by compute-market supply policy",
+                provenance_kind_label(artifact_governance.provenance.kind)
+            ),
+        ));
+    }
+
+    let license_digests = artifact_governance.licenses.digests();
+    if policy.require_declared_license_for_external_artifacts
+        && !artifact_governance.licenses.declared
+    {
+        violations.push(ComputeMarketSupplyViolation::new(
+            ComputeMarketSupplyViolationCode::MissingDeclaredLicense,
+            "external artifact does not declare any license payloads",
+        ));
+    }
+    if !policy.allowed_license_digests.is_empty()
+        && !license_digests
+            .iter()
+            .any(|digest| policy.allowed_license_digests.contains(digest))
+    {
+        violations.push(ComputeMarketSupplyViolation::new(
+            ComputeMarketSupplyViolationCode::LicenseNotAllowlisted,
+            "declared licenses do not match the configured allowlist",
+        ));
+    }
+    if let Some(digest) = license_digests
+        .iter()
+        .find(|digest| policy.denied_license_digests.contains(*digest))
+    {
+        violations.push(ComputeMarketSupplyViolation::new(
+            ComputeMarketSupplyViolationCode::LicenseDenied,
+            format!("declared license digest `{digest}` is explicitly denied"),
+        ));
+    }
+
+    if violations.is_empty() {
+        ComputeMarketSupplyDecision::allowed()
+    } else {
+        ComputeMarketSupplyDecision::refused(violations)
+    }
+}
+
+/// Returns a structured refusal diagnostic when compute-market supply policy disallows an artifact.
+pub fn compute_market_supply_refusal_diagnostic(
+    product_id: &str,
+    model_id: &str,
+    runtime_backend: &str,
+    decision: &ComputeMarketSupplyDecision,
+) -> Option<LocalRuntimeDiagnostic> {
+    if decision.is_allowed() {
+        return None;
+    }
+
+    let detail = decision
+        .violations
+        .iter()
+        .map(|violation| violation.message.as_str())
+        .collect::<Vec<_>>()
+        .join("; ");
+    Some(
+        LocalRuntimeDiagnostic::new(
+            mox_runtime::LocalRuntimeErrorCode::AdmissionRefused,
+            403,
+            format!("compute-market supply policy refused artifact: {detail}"),
+        )
+        .with_product_id(product_id)
+        .with_model_id(model_id)
+        .with_backend(runtime_backend),
+    )
 }
 
 /// AMD-specific provider truth derived from reusable runtime/backend state.
@@ -176,6 +393,13 @@ pub struct CapabilityEnvelope {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable served-artifact identity for the active model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Stable provenance and license facts for the backing artifact when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_governance: Option<ModelArtifactGovernance>,
+    /// Explicit compute-market supply policy applied to the artifact.
+    pub supply_policy: ComputeMarketSupplyPolicy,
+    /// Explicit advertise/serve decision under the current policy.
+    pub supply_decision: ComputeMarketSupplyDecision,
     /// Explicit runtime-owned cache invalidation policy.
     pub cache_invalidation_policy: CacheInvalidationPolicy,
     /// Stable output dimensions.
@@ -204,10 +428,24 @@ impl CapabilityEnvelope {
         model_revision: impl Into<String>,
         weight_bundle: WeightBundleEvidence,
         served_artifact: ServedArtifactIdentity,
+        artifact_governance: Option<ModelArtifactGovernance>,
         dimensions: usize,
         normalization: EmbeddingNormalization,
         readiness: ProviderReadiness,
     ) -> Self {
+        let supply_policy = default_compute_market_supply_policy();
+        let supply_decision = evaluate_compute_market_supply(
+            &WeightBundleMetadata {
+                format: weight_bundle.format,
+                source: weight_bundle.source,
+                quantization: weight_bundle.quantization,
+                digest: weight_bundle.digest.clone(),
+                tensors: Vec::new(),
+                artifacts: weight_bundle.artifacts.clone(),
+            },
+            artifact_governance.as_ref(),
+            &supply_policy,
+        );
         Self {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(EMBEDDINGS_PRODUCT_ID),
@@ -224,6 +462,9 @@ impl CapabilityEnvelope {
             model_revision: model_revision.into(),
             weight_bundle,
             served_artifact,
+            artifact_governance,
+            supply_policy,
+            supply_decision,
             cache_invalidation_policy: cache_invalidation_policy(),
             dimensions,
             normalization,
@@ -251,6 +492,7 @@ impl CapabilityEnvelope {
             model.model.revision.clone(),
             WeightBundleEvidence::from_metadata(&model.weights),
             served_artifact,
+            model.artifact_governance.clone(),
             model.dimensions,
             model.normalization,
             readiness,
@@ -537,6 +779,13 @@ pub struct TextGenerationCapabilityEnvelope {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable served-artifact identity for the active model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Stable provenance and license facts for the backing artifact when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_governance: Option<ModelArtifactGovernance>,
+    /// Explicit compute-market supply policy applied to the artifact.
+    pub supply_policy: ComputeMarketSupplyPolicy,
+    /// Explicit advertise/serve decision under the current policy.
+    pub supply_decision: ComputeMarketSupplyDecision,
     /// Explicit runtime-owned cache invalidation policy.
     pub cache_invalidation_policy: CacheInvalidationPolicy,
     /// Maximum supported context length.
@@ -574,6 +823,12 @@ impl TextGenerationCapabilityEnvelope {
         readiness: ProviderReadiness,
     ) -> Self {
         let served_artifact = served_artifact_identity_for_decoder_model(model, &backend_selection);
+        let supply_policy = default_compute_market_supply_policy();
+        let supply_decision = evaluate_compute_market_supply(
+            &model.weights,
+            model.artifact_governance.as_ref(),
+            &supply_policy,
+        );
         Self {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
@@ -590,6 +845,9 @@ impl TextGenerationCapabilityEnvelope {
             model_revision: model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&model.weights),
             served_artifact,
+            artifact_governance: model.artifact_governance.clone(),
+            supply_policy,
+            supply_decision,
             cache_invalidation_policy: cache_invalidation_policy(),
             max_context: model.config.max_context,
             memory_plan,
@@ -1135,6 +1393,16 @@ pub trait TextGenerationProviderAdapter {
     fn readiness(&self) -> ProviderReadiness;
 }
 
+fn provenance_kind_label(kind: ModelArtifactProvenanceKind) -> &'static str {
+    match kind {
+        ModelArtifactProvenanceKind::Fixture => "fixture",
+        ModelArtifactProvenanceKind::LocalPath => "local_path",
+        ModelArtifactProvenanceKind::OllamaBlob => "ollama_blob",
+        ModelArtifactProvenanceKind::OllamaManifest => "ollama_manifest",
+        ModelArtifactProvenanceKind::OllamaRemoteAlias => "ollama_remote_alias",
+    }
+}
+
 fn digest_generation_input(hasher: &mut Sha256, input: &GenerationInput) {
     match input {
         GenerationInput::Text(text) => {
@@ -1239,22 +1507,26 @@ mod tests {
         RuntimeTransitionKind, ServedProductBackendPolicy, ValidationCoverage,
     };
     use mox_serve::{
-        EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
-        EmbeddingVector, GenerationLoadState, GenerationMetrics, GenerationOptions,
-        GenerationProvenance, GenerationRequest, GenerationResponse, GenerationStreamStatus,
-        GenerationStreamTerminal, ReferenceWordDecoder, SessionId, SmokeByteEmbedder,
-        TerminationReason, TokenSequence, default_decoder_kv_cache_policy,
-        default_decoder_memory_plan, default_generation_streaming_policy,
-        default_prefix_cache_policy,
+        ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
+        EmbeddingResponse, EmbeddingVector, GenerationLoadState, GenerationMetrics,
+        GenerationOptions, GenerationProvenance, GenerationRequest, GenerationResponse,
+        GenerationStreamStatus, GenerationStreamTerminal, ModelArtifactGovernance,
+        ModelArtifactLicenseEntry, ModelArtifactLicenseFacts, ModelArtifactProvenance,
+        ModelArtifactProvenanceKind, ReferenceWordDecoder, SessionId, SmokeByteEmbedder,
+        TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
+        default_decoder_kv_cache_policy, default_decoder_memory_plan,
+        default_generation_streaming_policy, default_prefix_cache_policy,
     };
     use serde_json::json;
+    use tempfile::tempdir;
 
     use super::{
-        BatchPosture, CapabilityEnvelope, ExecutionReceipt, KvCacheMode,
-        LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
+        BatchPosture, CapabilityEnvelope, ComputeMarketSupplyViolationCode, ExecutionReceipt,
+        KvCacheMode, LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
         TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
-        cache_invalidation_policy, digest_embedding_request, digest_generation_request,
-        served_artifact_identity_for_decoder_model,
+        cache_invalidation_policy, compute_market_supply_refusal_diagnostic,
+        default_compute_market_supply_policy, digest_embedding_request, digest_generation_request,
+        evaluate_compute_market_supply, served_artifact_identity_for_decoder_model,
     };
 
     #[test]
@@ -1363,6 +1635,18 @@ mod tests {
                         "effective_backend": "cpu",
                         "toolchain_version": "cpu@0.1.0"
                     }
+                },
+                "supply_policy": {
+                    "allow_fixture_models": true,
+                    "allow_local_path_artifacts": false,
+                    "allow_unbound_ollama_blobs": false,
+                    "allow_ollama_manifests": true,
+                    "allow_ollama_remote_aliases": true,
+                    "require_declared_license_for_external_artifacts": true
+                },
+                "supply_decision": {
+                    "advertise_allowed": true,
+                    "serve_allowed": true
                 },
                 "cache_invalidation_policy": {
                     "runtime_binary_version": "0.1.0",
@@ -1565,6 +1849,18 @@ mod tests {
                         "toolchain_version": "cpu@0.1.0"
                     }
                 },
+                "supply_policy": {
+                    "allow_fixture_models": true,
+                    "allow_local_path_artifacts": false,
+                    "allow_unbound_ollama_blobs": false,
+                    "allow_ollama_manifests": true,
+                    "allow_ollama_remote_aliases": true,
+                    "require_declared_license_for_external_artifacts": true
+                },
+                "supply_decision": {
+                    "advertise_allowed": true,
+                    "serve_allowed": true
+                },
                 "cache_invalidation_policy": {
                     "runtime_binary_version": "0.1.0",
                     "execution_plan": {
@@ -1686,6 +1982,85 @@ mod tests {
             })
         );
         Ok(())
+    }
+
+    #[test]
+    fn compute_market_supply_refuses_unlicensed_local_path_artifacts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("byte_projection.safetensors");
+        ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
+        let model = ByteProjectionEmbedder::from_safetensors_artifact(&path)?;
+
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cpu_backend_selection(),
+            model.descriptor(),
+            ProviderReadiness::ready("cpu backend ready"),
+        );
+
+        assert!(!envelope.supply_decision.advertise_allowed);
+        assert!(!envelope.supply_decision.serve_allowed);
+        assert!(matches!(
+            envelope.supply_decision.violations.as_slice(),
+            [
+                super::ComputeMarketSupplyViolation {
+                    code: ComputeMarketSupplyViolationCode::DisallowedProvenance,
+                    ..
+                },
+                super::ComputeMarketSupplyViolation {
+                    code: ComputeMarketSupplyViolationCode::MissingDeclaredLicense,
+                    ..
+                }
+            ]
+        ));
+
+        let diagnostic = compute_market_supply_refusal_diagnostic(
+            envelope.product_id.as_str(),
+            envelope.model_id.as_str(),
+            envelope.runtime_backend.as_str(),
+            &envelope.supply_decision,
+        )
+        .expect("policy refusal diagnostic");
+        assert_eq!(diagnostic.code, LocalRuntimeErrorCode::AdmissionRefused);
+        assert_eq!(diagnostic.status, 403);
+        assert!(
+            diagnostic
+                .message
+                .contains("compute-market supply policy refused artifact")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn compute_market_supply_allows_remote_alias_with_declared_license() {
+        let mut model = sample_embedding_descriptor();
+        model.weights.source = WeightSource::ExternalArtifact;
+        model.weights.artifacts = vec![WeightArtifactMetadata::new("licensed.gguf", 16, "abc123")];
+        model.artifact_governance = Some(ModelArtifactGovernance {
+            provenance: ModelArtifactProvenance {
+                kind: ModelArtifactProvenanceKind::OllamaRemoteAlias,
+                source: String::from("registry.ollama.ai/library/qwen2:latest"),
+                manifest_sha256: Some(String::from("manifest123")),
+                remote_host: Some(String::from("cloud.example")),
+                remote_model: Some(String::from("team/qwen2-licensed")),
+                base_model: Some(String::from("qwen2-base")),
+            },
+            licenses: ModelArtifactLicenseFacts {
+                declared: true,
+                entries: vec![ModelArtifactLicenseEntry {
+                    sha256: String::from("apache-digest"),
+                    text: String::from("Apache-2.0"),
+                }],
+            },
+        });
+
+        let decision = evaluate_compute_market_supply(
+            &model.weights,
+            model.artifact_governance.as_ref(),
+            &default_compute_market_supply_policy(),
+        );
+        assert!(decision.is_allowed());
+        assert!(decision.violations.is_empty());
     }
 
     #[test]
