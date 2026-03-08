@@ -741,7 +741,7 @@ impl BackendHealthTracker {
         };
         let changed = previous != health;
         entry.status = health.status;
-        entry.message = health.message.clone();
+        entry.message.clone_from(&health.message);
         entry.observed_at_millis = observed_at_millis;
         if changed {
             entry.changed_at_millis = observed_at_millis;

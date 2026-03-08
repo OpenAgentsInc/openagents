@@ -40,11 +40,15 @@ const METAL_KERNEL_CACHE_MAX_ENTRIES: usize = 1;
 #[cfg(target_os = "macos")]
 const METAL_KERNEL_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
 #[cfg(target_os = "macos")]
-const METAL_EMBEDDINGS_PIPELINE_ESTIMATED_BYTES: u64 = 1 * 1024 * 1024;
+const METAL_DENSE_PIPELINE_ESTIMATED_BYTES: u64 = 1 * 1024 * 1024;
 
 /// Exact plan surface currently supported for the first accelerated
 /// `mox.embeddings` milestone.
 pub const EMBEDDINGS_SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "add"];
+
+/// Dense plan surface currently covered for the first Metal-backed
+/// `mox.text_generation` milestone.
+pub const TEXT_GENERATION_SUPPORTED_OPS: &[&str] = EMBEDDINGS_SUPPORTED_OPS;
 
 /// Metal buffer storage mode visible to Mox.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -394,10 +398,10 @@ impl MetalKernelCache {
         }
     }
 
-    fn record_embeddings_pipelines(&mut self) {
+    fn record_dense_pipelines(&mut self) {
         if self.state.cached_entries == 0 {
             self.state.cached_entries = 1;
-            self.state.cached_bytes = METAL_EMBEDDINGS_PIPELINE_ESTIMATED_BYTES
+            self.state.cached_bytes = METAL_DENSE_PIPELINE_ESTIMATED_BYTES
                 .min(self.policy.max_cached_bytes.unwrap_or(u64::MAX));
         }
     }
@@ -482,7 +486,7 @@ impl MetalBackend {
         Ok(buffer)
     }
 
-    /// Compiles and executes a graph on the supported Metal embeddings surface.
+    /// Compiles and executes a graph on the supported dense Metal surface.
     pub fn compile_and_execute(
         &mut self,
         graph: &Graph,
@@ -895,19 +899,19 @@ fn validate_supported_step(step: &ExecutionStep) -> Result<(), RuntimeError> {
 fn ensure_supported_spec(spec: &TensorSpec) -> Result<(), RuntimeError> {
     if spec.dtype() != DType::F32 {
         return Err(RuntimeError::Backend(format!(
-            "metal embeddings surface only supports F32 tensors, actual {:?}",
+            "metal dense surface only supports F32 tensors, actual {:?}",
             spec.dtype()
         )));
     }
     if spec.device().kind() != DeviceKind::Metal {
         return Err(RuntimeError::Backend(format!(
-            "metal embeddings surface requires Metal tensor specs, actual device kind {}",
+            "metal dense surface requires Metal tensor specs, actual device kind {}",
             spec.device().kind()
         )));
     }
     if !spec.layout().is_contiguous() || spec.layout().offset() != 0 {
         return Err(RuntimeError::Backend(String::from(
-            "metal embeddings surface requires contiguous zero-offset tensors",
+            "metal dense surface requires contiguous zero-offset tensors",
         )));
     }
     Ok(())
@@ -970,7 +974,7 @@ mod platform {
         raw: Buffer,
     }
 
-    struct EmbeddingsPipelines {
+    struct DensePipelines {
         add: ComputePipelineState,
         matmul: ComputePipelineState,
     }
@@ -1173,7 +1177,7 @@ mod platform {
         device: MetalDevice,
         command_queue: CommandQueue,
         storage_mode: MetalStorageMode,
-        pipelines: Option<EmbeddingsPipelines>,
+        pipelines: Option<DensePipelines>,
         kernel_cache: MetalKernelCache,
     }
 
@@ -1208,14 +1212,14 @@ mod platform {
             Ok(PlatformSubmission { command_buffer })
         }
 
-        fn pipelines(&mut self) -> Result<&EmbeddingsPipelines, RuntimeError> {
+        fn pipelines(&mut self) -> Result<&DensePipelines, RuntimeError> {
             if self.pipelines.is_none() {
-                self.pipelines = Some(compile_embeddings_pipelines(&self.device)?);
-                self.kernel_cache.record_embeddings_pipelines();
+                self.pipelines = Some(compile_dense_pipelines(&self.device)?);
+                self.kernel_cache.record_dense_pipelines();
             }
             let Some(pipelines) = self.pipelines.as_ref() else {
                 return Err(RuntimeError::Backend(String::from(
-                    "metal embeddings pipelines were not initialized",
+                    "metal dense pipelines were not initialized",
                 )));
             };
             Ok(pipelines)
@@ -1511,9 +1515,7 @@ mod platform {
         }
     }
 
-    fn compile_embeddings_pipelines(
-        device: &MetalDeviceRef,
-    ) -> Result<EmbeddingsPipelines, RuntimeError> {
+    fn compile_dense_pipelines(device: &MetalDeviceRef) -> Result<DensePipelines, RuntimeError> {
         let options = CompileOptions::new();
         options.set_fast_math_enabled(false);
         let library = device
@@ -1528,7 +1530,7 @@ mod platform {
             RuntimeError::Backend(format!("missing Metal matmul kernel: {error}"))
         })?;
 
-        Ok(EmbeddingsPipelines {
+        Ok(DensePipelines {
             add: device
                 .new_compute_pipeline_state_with_function(&add)
                 .map_err(|error| {
@@ -1807,8 +1809,8 @@ mod tests {
     };
 
     use super::{
-        DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend, classify_support,
-        validate_supported_plan,
+        DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend,
+        TEXT_GENERATION_SUPPORTED_OPS, classify_support, validate_supported_plan,
     };
 
     #[test]
@@ -1840,11 +1842,12 @@ mod tests {
     }
 
     #[test]
-    fn metal_embeddings_surface_and_parity_policy_are_documented() {
+    fn metal_dense_surfaces_and_parity_policy_are_documented() {
         assert_eq!(
             EMBEDDINGS_SUPPORTED_OPS,
             &["input", "constant", "matmul", "add"]
         );
+        assert_eq!(TEXT_GENERATION_SUPPORTED_OPS, EMBEDDINGS_SUPPORTED_OPS);
         let budget = BackendParityPolicy::default().embedding_budget(QuantizationMode::None);
         assert_eq!(budget.numeric.max_abs_delta, 1.0e-5);
         assert_eq!(budget.numeric.max_rel_delta, 1.0e-5);
@@ -1899,6 +1902,41 @@ mod tests {
         assert_eq!(
             selection.supported_ops,
             EMBEDDINGS_SUPPORTED_OPS
+                .iter()
+                .map(|label| String::from(*label))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            selection.policy,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            selection.selection_state,
+            BackendSelectionState::CrossBackendFallback
+        );
+        assert!(selection.degraded_reason.is_none());
+        assert!(selection.runtime_resources.is_some());
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn metal_text_generation_fallback_selection_reports_explicit_cpu_fallback()
+    -> Result<(), mox_runtime::RuntimeError> {
+        let backend = MetalBackend::new();
+        let cpu = CpuBackend::new();
+        let selection = backend.fallback_selection(&cpu, TEXT_GENERATION_SUPPORTED_OPS)?;
+        assert_eq!(selection.requested_backend, "metal");
+        assert_eq!(selection.effective_backend, "cpu");
+        assert_eq!(
+            selection.fallback_reason.as_deref(),
+            Some("metal backend unavailable: metal backend is only available on macOS")
+        );
+        assert_eq!(
+            selection.supported_ops,
+            TEXT_GENERATION_SUPPORTED_OPS
                 .iter()
                 .map(|label| String::from(*label))
                 .collect::<Vec<_>>()
@@ -2051,6 +2089,47 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn metal_backend_selection_supports_text_generation_surface()
+    -> Result<(), mox_runtime::RuntimeError> {
+        let backend = MetalBackend::new();
+        let cpu = CpuBackend::new();
+        match backend.backend_selection(TEXT_GENERATION_SUPPORTED_OPS) {
+            Ok(selection) => {
+                assert_eq!(selection.requested_backend, "metal");
+                assert_eq!(selection.effective_backend, "metal");
+                assert_eq!(
+                    selection.supported_ops,
+                    TEXT_GENERATION_SUPPORTED_OPS
+                        .iter()
+                        .map(|label| String::from(*label))
+                        .collect::<Vec<_>>()
+                );
+                assert!(selection.selected_device.is_some());
+                assert!(selection.fallback_reason.is_none());
+                assert!(selection.runtime_resources.is_some());
+            }
+            Err(error) => {
+                assert!(error.to_string().starts_with("metal backend unavailable: "));
+                let fallback = backend.fallback_selection(&cpu, TEXT_GENERATION_SUPPORTED_OPS)?;
+                assert_eq!(fallback.requested_backend, "metal");
+                assert_eq!(fallback.effective_backend, "cpu");
+                assert_eq!(
+                    fallback.supported_ops,
+                    TEXT_GENERATION_SUPPORTED_OPS
+                        .iter()
+                        .map(|label| String::from(*label))
+                        .collect::<Vec<_>>()
+                );
+                assert!(fallback.selected_device.is_some());
+                assert!(fallback.fallback_reason.is_some());
+                assert!(fallback.runtime_resources.is_some());
+            }
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn metal_backend_executes_embedding_surface_on_supported_hardware()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = MetalBackend::new();
@@ -2079,6 +2158,68 @@ mod tests {
             .ok_or("missing metal embedding output")?;
         assert_eq!(output.read_f32()?, vec![1.5, 2.5]);
         assert_eq!(result.metrics.steps_executed, 5);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_executes_text_generation_dense_surface_on_supported_hardware()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let token_input = builder.input("token", Shape::new(vec![1, 2]), DType::F32);
+        let position_input = builder.input("position", Shape::new(vec![1, 2]), DType::F32);
+        let context_input = builder.input("context", Shape::new(vec![1, 2]), DType::F32);
+        let token_embedding =
+            builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])?;
+        let position_embedding =
+            builder.constant_f32(Shape::new(vec![2, 2]), vec![0.5, 1.5, 2.5, 3.5])?;
+        let context_projection =
+            builder.constant_f32(Shape::new(vec![2, 2]), vec![2.0, 0.0, 0.0, 2.0])?;
+        let lm_head =
+            builder.constant_f32(Shape::new(vec![2, 3]), vec![1.0, 0.0, 2.0, 0.5, 1.0, -1.0])?;
+        let lm_bias = builder.constant_f32(Shape::new(vec![1, 3]), vec![0.25, -0.5, 1.0])?;
+
+        let token_hidden = builder.matmul(&token_input, &token_embedding)?;
+        let position_hidden = builder.matmul(&position_input, &position_embedding)?;
+        let context_hidden = builder.matmul(&context_input, &context_projection)?;
+        let hidden = builder.add(&token_hidden, &position_hidden)?;
+        let hidden = builder.add(&hidden, &context_hidden)?;
+        let logits = builder.matmul(&hidden, &lm_head)?;
+        let logits = builder.add(&logits, &lm_bias)?;
+        let graph = builder.finish(vec![hidden.clone(), logits.clone()]);
+
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            token_input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![1.0, 0.0])?,
+        );
+        inputs.insert(
+            position_input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![0.0, 1.0])?,
+        );
+        inputs.insert(
+            context_input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![0.5, 0.25])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let hidden_output = result
+            .outputs
+            .get(&hidden.id())
+            .ok_or("missing metal hidden output")?;
+        let logits_output = result
+            .outputs
+            .get(&logits.id())
+            .ok_or("missing metal logits output")?;
+        assert_eq!(hidden_output.read_f32()?, vec![4.5, 6.0]);
+        assert_eq!(logits_output.read_f32()?, vec![7.75, 5.5, 4.0]);
+        assert_eq!(result.metrics.steps_executed, 11);
         Ok(())
     }
 }
