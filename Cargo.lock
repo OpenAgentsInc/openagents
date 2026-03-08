@@ -6967,6 +6967,10 @@ dependencies = [
 [[package]]
 name = "rustygrad-backend-amd-userspace"
 version = "0.1.0"
+dependencies = [
+ "rustygrad-core",
+ "rustygrad-runtime",
+]
 
 [[package]]
 name = "rustygrad-backend-cpu"
