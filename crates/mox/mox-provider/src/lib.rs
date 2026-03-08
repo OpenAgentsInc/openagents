@@ -1086,6 +1086,7 @@ mod tests {
                 total_duration_ns: Some(75),
                 load_duration_ns: Some(25),
                 prompt_eval_count: Some(1),
+                context_window: None,
                 eval_count: Some(1),
                 kv_cache: Some(KvCacheAccounting {
                     current: mox_runtime::KvCacheState {

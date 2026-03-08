@@ -99,7 +99,7 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
         service.model_descriptor().clone(),
         Some(session.session_id.clone()),
         "rusty",
-        GenerationOptions::greedy(4),
+        GenerationOptions::greedy(1),
     );
     let continued = service.generate(&follow_up)?;
     assert_eq!(continued.output.text, "grad");
@@ -110,7 +110,7 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
         service.model_descriptor().clone(),
         Some(session.session_id.clone()),
         "rusty",
-        GenerationOptions::greedy(4),
+        GenerationOptions::greedy(1),
     )
     .with_reset_session(true);
     let reset_response = service.generate(&reset)?;

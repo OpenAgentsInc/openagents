@@ -15,18 +15,19 @@ pub use mox_core::QuantizationMode;
 use mox_core::{DType, Device, Shape, TensorId};
 use mox_ir::{Graph, GraphBuilder, GraphError};
 pub use mox_models::{
-    ActivationFunction, ArtifactWordDecoder, ByteProjectionEmbedder, DecoderAttentionConfig,
-    DecoderBlockConfig, DecoderConfig, DecoderFeedForwardConfig, DecoderFixtureWeights,
-    DecoderModelDescriptor, DecoderWeightLoader, EmbeddingModelDescriptor, EmbeddingNormalization,
-    EmbeddingWeights, FixtureDecoderLoader, FixtureWordTokenizer, GgufDecoderAdapter,
-    GgufDecoderAdapterLoader, GgufDecoderFamily, GgufDecoderFamilyMetadata,
-    GgufDecoderLayerTensorLayout, GgufDecoderTensorLayout, GgufEmbeddingAdapter,
-    GgufEmbeddingAdapterLoader, GgufEmbeddingFamily, GgufEmbeddingFamilyMetadata,
-    GgufEmbeddingLayerTensorLayout, GgufEmbeddingPooling, GgufEmbeddingTensorLayout,
-    GgufPromptTemplateFamily, GgufPromptTemplateRenderer, ModelDescriptor, ModelLoadError,
-    PromptMessage, PromptMessageRole, PromptRenderError, ReferenceWordDecoder, RenderedPrompt,
-    SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
-    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
+    ActivationFunction, ArtifactWordDecoder, ByteProjectionEmbedder, ContextOverflowPolicy,
+    ContextWindowAccounting, ContextWindowError, DecoderAttentionConfig, DecoderBlockConfig,
+    DecoderConfig, DecoderFeedForwardConfig, DecoderFixtureWeights, DecoderModelDescriptor,
+    DecoderWeightLoader, EmbeddingModelDescriptor, EmbeddingNormalization, EmbeddingWeights,
+    FixtureDecoderLoader, FixtureWordTokenizer, GgufDecoderAdapter, GgufDecoderAdapterLoader,
+    GgufDecoderFamily, GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout,
+    GgufDecoderTensorLayout, GgufEmbeddingAdapter, GgufEmbeddingAdapterLoader, GgufEmbeddingFamily,
+    GgufEmbeddingFamilyMetadata, GgufEmbeddingLayerTensorLayout, GgufEmbeddingPooling,
+    GgufEmbeddingTensorLayout, GgufPromptTemplateFamily, GgufPromptTemplateRenderer,
+    ModelDescriptor, ModelLoadError, PromptMessage, PromptMessageRole, PromptRenderError,
+    ReferenceWordDecoder, RenderedPrompt, SmokeByteEmbedder, TokenId, TokenSequence,
+    TokenVocabulary, TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat,
+    WeightSource, WeightTensorMetadata, apply_context_window,
 };
 use mox_runtime::{
     BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
@@ -220,6 +221,9 @@ pub enum DecodeStrategy {
 pub struct GenerationOptions {
     /// Maximum number of output tokens to emit.
     pub max_output_tokens: usize,
+    /// Explicit posture when the prompt would exceed the available context window.
+    #[serde(default)]
+    pub context_overflow_policy: ContextOverflowPolicy,
     /// Decode strategy.
     pub decode_strategy: DecodeStrategy,
     /// Temperature override for stochastic sampling.
@@ -254,6 +258,7 @@ impl GenerationOptions {
     pub fn greedy(max_output_tokens: usize) -> Self {
         Self {
             max_output_tokens,
+            context_overflow_policy: ContextOverflowPolicy::Refuse,
             decode_strategy: DecodeStrategy::Greedy,
             temperature: None,
             top_k: None,
@@ -400,6 +405,9 @@ pub struct GenerationMetrics {
     /// Prompt token count surfaced in the metrics lane.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_eval_count: Option<usize>,
+    /// Explicit prompt-budget accounting for the request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context_window: Option<ContextWindowAccounting>,
     /// Output token count surfaced in the metrics lane.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eval_count: Option<usize>,
@@ -533,6 +541,7 @@ impl GenerationMetrics {
             total_duration_ns: None,
             load_duration_ns: None,
             prompt_eval_count: Some(usage.input_tokens),
+            context_window: None,
             eval_count: Some(usage.output_tokens),
             kv_cache: None,
             prefix_tokens_reused: None,
@@ -544,6 +553,7 @@ impl GenerationMetrics {
         self.total_duration_ns.is_none()
             && self.load_duration_ns.is_none()
             && self.prompt_eval_count.is_none()
+            && self.context_window.is_none()
             && self.eval_count.is_none()
             && self.kv_cache.is_none()
             && self.prefix_tokens_reused.is_none()
@@ -1700,6 +1710,9 @@ pub enum ReferenceTextGenerationError {
     /// Loading or validating a model artifact failed.
     #[error(transparent)]
     Model(#[from] ModelLoadError),
+    /// Prompt context-window budgeting failed before execution.
+    #[error(transparent)]
+    ContextWindow(#[from] ContextWindowError),
     /// The compiler rejected the reference graph.
     #[error(transparent)]
     Compile(#[from] CompileError),
@@ -2283,11 +2296,9 @@ where
     models.begin_request(model_id, request_start)?;
 
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
+        let tokenizer = loaded_model.model().tokenizer();
         let prompt_tokens = match &request.prompt {
-            GenerationInput::Text(text) => loaded_model
-                .model()
-                .tokenizer()
-                .encode_with_special_tokens(text, true, false),
+            GenerationInput::Text(text) => tokenizer.encode_with_special_tokens(text, true, false),
             GenerationInput::Tokens(tokens) => tokens.clone(),
         };
         if prompt_tokens.is_empty() {
@@ -2319,6 +2330,17 @@ where
             shared_prefix_eligible = true;
             KvCacheState::default()
         };
+        let preserve_prefix_tokens = usize::from(
+            prompt_tokens.as_slice().first().copied() == Some(tokenizer.vocabulary().bos_id()),
+        );
+        let (prompt_tokens, context_window) = apply_context_window(
+            &prompt_tokens,
+            loaded_model.descriptor().config.max_context,
+            previous_kv_state.tokens,
+            request.options.max_output_tokens,
+            request.options.context_overflow_policy,
+            preserve_prefix_tokens,
+        )?;
         let mut prompt_logits = Vec::new();
         let mut last_logits = Vec::new();
         let mut cache = if shared_prefix_eligible {
@@ -2438,6 +2460,7 @@ where
                 GenerationLoadState::Warm => 0,
             }),
             prompt_eval_count: Some(usage.input_tokens),
+            context_window: Some(context_window),
             eval_count: Some(usage.output_tokens),
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
@@ -3133,15 +3156,16 @@ mod tests {
     };
 
     use super::{
-        CpuReferenceTextGenerationService, CpuWordGenerationModel, EmbeddingRequest,
-        EmbeddingResponse, EmbeddingVector, EmbeddingsExecutor, FixtureWordTokenizer,
-        GenerationLoadState, GenerationModelHandle, GenerationOptions, GenerationRequest,
-        GenerationResponse, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
-        InMemoryKvCache, KvCacheError, ListModelsObservation, LocalModelCatalog, ModelDescriptor,
-        ModelSummary, MoxLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder,
-        SessionId, SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
-        TerminationReason, TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat,
-        WeightSource, WeightTensorMetadata, prefix_compatibility,
+        ContextOverflowPolicy, ContextWindowError, CpuReferenceTextGenerationService,
+        CpuWordGenerationModel, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
+        EmbeddingsExecutor, FixtureWordTokenizer, GenerationLoadState, GenerationModelHandle,
+        GenerationOptions, GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
+        InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
+        LocalModelCatalog, ModelDescriptor, ModelSummary, MoxLocalRuntime,
+        ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, SharedPrefixStore,
+        ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason,
+        TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat, WeightSource,
+        WeightTensorMetadata, prefix_compatibility,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -3304,6 +3328,7 @@ mod tests {
     fn generation_sampling_options_round_trip() -> Result<(), Box<dyn std::error::Error>> {
         let options = GenerationOptions {
             max_output_tokens: 16,
+            context_overflow_policy: ContextOverflowPolicy::TruncateOldest,
             decode_strategy: super::DecodeStrategy::Sample,
             temperature: Some(0.7),
             top_k: Some(32),
@@ -3316,6 +3341,7 @@ mod tests {
         };
 
         let encoded = serde_json::to_value(&options)?;
+        assert_eq!(encoded["context_overflow_policy"], "truncate_oldest");
         assert_eq!(encoded["decode_strategy"], "sample");
         assert!(
             (encoded["temperature"].as_f64().expect("temperature") - 0.7).abs() < 1e-6,
@@ -3801,6 +3827,7 @@ mod tests {
     fn seeded_sampling_is_replayable() {
         let options = GenerationOptions {
             max_output_tokens: 4,
+            context_overflow_policy: ContextOverflowPolicy::Refuse,
             decode_strategy: super::DecodeStrategy::Sample,
             temperature: Some(0.9),
             top_k: Some(3),
@@ -3830,6 +3857,7 @@ mod tests {
     fn penalties_shift_token_selection() -> Result<(), Box<dyn std::error::Error>> {
         let options = GenerationOptions {
             max_output_tokens: 4,
+            context_overflow_policy: ContextOverflowPolicy::Refuse,
             decode_strategy: super::DecodeStrategy::Greedy,
             temperature: None,
             top_k: None,
@@ -3927,6 +3955,22 @@ mod tests {
             first.metrics.prompt_eval_count,
             Some(first.usage.input_tokens)
         );
+        assert_eq!(
+            first
+                .metrics
+                .context_window
+                .as_ref()
+                .map(|value| value.input_prompt_tokens),
+            Some(first.usage.input_tokens)
+        );
+        assert_eq!(
+            first
+                .metrics
+                .context_window
+                .as_ref()
+                .map(|value| value.truncated_prompt_tokens),
+            Some(0)
+        );
         assert_eq!(first.metrics.eval_count, Some(first.usage.output_tokens));
         assert_eq!(
             first
@@ -3975,6 +4019,14 @@ mod tests {
         assert_eq!(
             second.metrics.prompt_eval_count,
             Some(second.usage.input_tokens)
+        );
+        assert_eq!(
+            second
+                .metrics
+                .context_window
+                .as_ref()
+                .map(|value| value.truncated_prompt_tokens),
+            Some(0)
         );
         assert_eq!(second.metrics.eval_count, Some(second.usage.output_tokens));
         assert_eq!(
@@ -4058,7 +4110,7 @@ mod tests {
             service.model_descriptor().clone(),
             Some(session.session_id),
             "rusty",
-            GenerationOptions::greedy(4),
+            GenerationOptions::greedy(1),
         ))?;
         assert_eq!(
             bypassed
@@ -4069,6 +4121,132 @@ mod tests {
         );
         assert_eq!(bypassed.metrics.prefix_tokens_reused, Some(0));
         assert_eq!(bypassed.output.text, "grad");
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_text_generation_refuses_prompt_context_overflow() {
+        let mut service = CpuReferenceTextGenerationService::new().expect("service");
+        let request = GenerationRequest::new_text(
+            "gen-ref-context-refuse",
+            service.model_descriptor().clone(),
+            None,
+            "hello world",
+            GenerationOptions::greedy(6),
+        );
+
+        let error = service
+            .generate(&request)
+            .expect_err("context overflow should refuse");
+        assert!(matches!(
+            error,
+            ReferenceTextGenerationError::ContextWindow(
+                ContextWindowError::CannotTruncateFurther {
+                    max_context_tokens: 8,
+                    existing_context_tokens: 0,
+                    reserved_output_tokens: 6,
+                    input_prompt_tokens: 3,
+                    available_prompt_tokens: 2,
+                    policy: ContextOverflowPolicy::Refuse,
+                }
+            )
+        ));
+    }
+
+    #[test]
+    fn cpu_reference_text_generation_can_truncate_oldest_prompt_tokens()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let request = GenerationRequest::new_tokens(
+            "gen-ref-context-truncate",
+            service.model_descriptor().clone(),
+            None,
+            TokenSequence::new(vec![
+                FixtureWordTokenizer::HELLO_ID,
+                FixtureWordTokenizer::OPEN_ID,
+                FixtureWordTokenizer::AGENTS_ID,
+            ]),
+            GenerationOptions {
+                max_output_tokens: 6,
+                context_overflow_policy: ContextOverflowPolicy::TruncateOldest,
+                ..GenerationOptions::greedy(6)
+            },
+        );
+
+        let response = service.generate(&request)?;
+        assert_eq!(response.usage.input_tokens, 2);
+        assert_eq!(
+            response
+                .metrics
+                .context_window
+                .as_ref()
+                .map(|value| value.input_prompt_tokens),
+            Some(3)
+        );
+        assert_eq!(
+            response
+                .metrics
+                .context_window
+                .as_ref()
+                .map(|value| value.retained_prompt_tokens),
+            Some(2)
+        );
+        assert_eq!(
+            response
+                .metrics
+                .context_window
+                .as_ref()
+                .map(|value| value.truncated_prompt_tokens),
+            Some(1)
+        );
+        assert_eq!(
+            response
+                .metrics
+                .context_window
+                .as_ref()
+                .map(|value| value.preserved_prefix_tokens),
+            Some(0)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_text_generation_session_budget_counts_existing_context()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
+        service.generate(&GenerationRequest::new_text(
+            "gen-ref-context-session-prime",
+            service.model_descriptor().clone(),
+            Some(session.session_id.clone()),
+            "hello",
+            GenerationOptions::greedy(1),
+        ))?;
+
+        let request = GenerationRequest::new_text(
+            "gen-ref-context-session-overflow",
+            service.model_descriptor().clone(),
+            Some(session.session_id),
+            "hello",
+            GenerationOptions::greedy(5),
+        );
+        let error = service
+            .generate(&request)
+            .expect_err("session context overflow");
+
+        assert!(matches!(
+            error,
+            ReferenceTextGenerationError::ContextWindow(
+                ContextWindowError::CannotTruncateFurther {
+                    max_context_tokens: 8,
+                    existing_context_tokens: 3,
+                    reserved_output_tokens: 5,
+                    input_prompt_tokens: 2,
+                    available_prompt_tokens: 0,
+                    policy: ContextOverflowPolicy::Refuse,
+                }
+            )
+        ));
         Ok(())
     }
 
@@ -4102,7 +4280,7 @@ mod tests {
             service.model_descriptor().clone(),
             Some(session.session_id.clone()),
             "rusty",
-            GenerationOptions::greedy(4),
+            GenerationOptions::greedy(1),
         );
         let second = service.generate(&second_request)?;
         assert_eq!(second.output.text, "grad");
@@ -4121,7 +4299,7 @@ mod tests {
             service.model_descriptor().clone(),
             Some(session.session_id.clone()),
             "rusty",
-            GenerationOptions::greedy(4),
+            GenerationOptions::greedy(1),
         )
         .with_reset_session(true);
         let reset = service.generate(&reset_request)?;
