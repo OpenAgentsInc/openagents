@@ -1,6 +1,7 @@
 //! Model abstractions for Mox.
 
 mod fixtures;
+mod harmony;
 
 use std::{
     borrow::Cow,
@@ -22,6 +23,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub use fixtures::*;
+pub use harmony::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "reusable model definitions and metadata";
@@ -2020,10 +2022,7 @@ impl GgufContent {
             };
         let unknown_token_id =
             read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.unknown_token_id")?.or(
-                match read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.unk_token_id")? {
-                    Some(id) => Some(id),
-                    None => None,
-                },
+                read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.unk_token_id")?,
             );
         let add_bos = self
             .metadata
@@ -2593,8 +2592,10 @@ impl GgufChatTemplateMetadata {
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptMessageRole {
-    /// System/developer instruction.
+    /// System instruction.
     System,
+    /// Developer instruction.
+    Developer,
     /// End-user input.
     User,
     /// Assistant output already present in history.
@@ -2607,6 +2608,7 @@ impl PromptMessageRole {
     fn as_str(self) -> &'static str {
         match self {
             Self::System => "system",
+            Self::Developer => "developer",
             Self::User => "user",
             Self::Assistant => "assistant",
             Self::Tool => "tool",
@@ -2621,6 +2623,21 @@ pub struct PromptMessage {
     pub role: PromptMessageRole,
     /// Message content.
     pub content: String,
+    /// Author name when the role carries one, such as a named tool result.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub author_name: Option<String>,
+    /// Explicit recipient when the message targets a specific tool or assistant.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub recipient: Option<String>,
+    /// Explicit Harmony channel when the message already carries one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub channel: Option<String>,
+    /// Explicit content-type suffix when the message needs one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub content_type: Option<String>,
+    /// Assistant reasoning content that should map to the Harmony analysis channel.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_content: Option<String>,
 }
 
 impl PromptMessage {
@@ -2630,7 +2647,47 @@ impl PromptMessage {
         Self {
             role,
             content: content.into(),
+            author_name: None,
+            recipient: None,
+            channel: None,
+            content_type: None,
+            reasoning_content: None,
         }
+    }
+
+    /// Attaches an explicit author name.
+    #[must_use]
+    pub fn with_author_name(mut self, author_name: impl Into<String>) -> Self {
+        self.author_name = Some(author_name.into());
+        self
+    }
+
+    /// Attaches an explicit recipient.
+    #[must_use]
+    pub fn with_recipient(mut self, recipient: impl Into<String>) -> Self {
+        self.recipient = Some(recipient.into());
+        self
+    }
+
+    /// Attaches an explicit Harmony channel.
+    #[must_use]
+    pub fn with_channel(mut self, channel: impl Into<String>) -> Self {
+        self.channel = Some(channel.into());
+        self
+    }
+
+    /// Attaches an explicit content type suffix.
+    #[must_use]
+    pub fn with_content_type(mut self, content_type: impl Into<String>) -> Self {
+        self.content_type = Some(content_type.into());
+        self
+    }
+
+    /// Attaches assistant reasoning content for GPT-OSS / Harmony prompts.
+    #[must_use]
+    pub fn with_reasoning_content(mut self, reasoning_content: impl Into<String>) -> Self {
+        self.reasoning_content = Some(reasoning_content.into());
+        self
     }
 }
 
@@ -2644,6 +2701,8 @@ pub enum GgufPromptTemplateFamily {
     Qwen2,
     /// Command-R template family.
     CommandR,
+    /// GPT-OSS template family rendered through Harmony semantics.
+    GptOss,
 }
 
 impl GgufPromptTemplateFamily {
@@ -2652,6 +2711,7 @@ impl GgufPromptTemplateFamily {
             Self::Phi3 => &["<|end|>", "<|system|>", "<|user|>", "<|assistant|>"],
             Self::Qwen2 => &[],
             Self::CommandR => &["<|START_OF_TURN_TOKEN|>", "<|END_OF_TURN_TOKEN|>"],
+            Self::GptOss => &[],
         }
     }
 }
@@ -2696,6 +2756,12 @@ pub enum PromptRenderError {
         /// Validation failure summary.
         message: String,
     },
+    /// The GPT-OSS / Harmony render path failed.
+    #[error("failed to render gpt-oss harmony prompt: {message}")]
+    HarmonyRendering {
+        /// Lower-level failure summary.
+        message: String,
+    },
 }
 
 /// Supported GGUF prompt renderer over extracted tokenizer and chat-template metadata.
@@ -2722,6 +2788,22 @@ impl GgufPromptTemplateRenderer {
         messages: &[PromptMessage],
         add_generation_prompt: bool,
     ) -> Result<RenderedPrompt, PromptRenderError> {
+        self.render_with_options(
+            template_name,
+            messages,
+            add_generation_prompt,
+            &PromptRenderOptions::default(),
+        )
+    }
+
+    /// Renders a prompt for a supported chat template with explicit family options.
+    pub fn render_with_options(
+        &self,
+        template_name: Option<&str>,
+        messages: &[PromptMessage],
+        add_generation_prompt: bool,
+        options: &PromptRenderOptions,
+    ) -> Result<RenderedPrompt, PromptRenderError> {
         let template_name_owned = template_name.map(str::to_string);
         let raw_template = match template_name {
             Some(name) => self.chat_templates.template(Some(name)).ok_or_else(|| {
@@ -2746,6 +2828,12 @@ impl GgufPromptTemplateRenderer {
             GgufPromptTemplateFamily::Qwen2 => self.render_qwen2(messages, add_generation_prompt),
             GgufPromptTemplateFamily::CommandR => {
                 self.render_command_r(messages, add_generation_prompt)
+            }
+            GgufPromptTemplateFamily::GptOss => {
+                render_gpt_oss_harmony_prompt(messages, add_generation_prompt, Some(options))
+                    .map_err(|error| PromptRenderError::HarmonyRendering {
+                        message: error.to_string(),
+                    })
             }
         }?;
 
@@ -2775,7 +2863,9 @@ impl GgufPromptTemplateRenderer {
                     rendered.push_str(message.content.as_str());
                     rendered.push_str("<|end|>\n");
                 }
-                PromptMessageRole::System | PromptMessageRole::Tool => {}
+                PromptMessageRole::System
+                | PromptMessageRole::Developer
+                | PromptMessageRole::Tool => {}
             }
         }
         Ok(rendered)
@@ -2856,7 +2946,9 @@ impl GgufPromptTemplateRenderer {
                     rendered.push_str(message.content.trim());
                     rendered.push_str("<|END_OF_TURN_TOKEN|>");
                 }
-                PromptMessageRole::System | PromptMessageRole::Tool => {
+                PromptMessageRole::System
+                | PromptMessageRole::Developer
+                | PromptMessageRole::Tool => {
                     return Err(PromptRenderError::InvalidConversation {
                         message: String::from(
                             "command-r only supports user and assistant turns after the optional leading system message",
@@ -2889,6 +2981,9 @@ fn supported_prompt_template_family(digest: &str) -> Option<GgufPromptTemplateFa
         }
         "9db2cf47ce03bfd0aab6ec59942503714fa0372f09f7e1d54cbcd71a1110b863" => {
             Some(GgufPromptTemplateFamily::CommandR)
+        }
+        "a4c9919cbbd4acdd51ccffe22da049264b1b73e59055fa58811a99efbd7c8146" => {
+            Some(GgufPromptTemplateFamily::GptOss)
         }
         _ => None,
     }
@@ -3847,8 +3942,28 @@ impl GgufDecoderAdapter {
         messages: &[PromptMessage],
         add_generation_prompt: bool,
     ) -> Result<RenderedPrompt, PromptRenderError> {
-        self.prompt_renderer()
-            .render(template_name, messages, add_generation_prompt)
+        self.render_prompt_with_options(
+            template_name,
+            messages,
+            add_generation_prompt,
+            &PromptRenderOptions::default(),
+        )
+    }
+
+    /// Renders a prompt through the adapter's supported chat-template families with explicit options.
+    pub fn render_prompt_with_options(
+        &self,
+        template_name: Option<&str>,
+        messages: &[PromptMessage],
+        add_generation_prompt: bool,
+        options: &PromptRenderOptions,
+    ) -> Result<RenderedPrompt, PromptRenderError> {
+        self.prompt_renderer().render_with_options(
+            template_name,
+            messages,
+            add_generation_prompt,
+            options,
+        )
     }
 
     /// Returns the reusable GGUF tensor-name layout for the decoder family.
@@ -4215,13 +4330,14 @@ fn build_gguf_embedding_tensor_layout(
         }
     }
 
-    let position_embedding = match family_metadata.uses_position_embeddings {
-        true => Some(
+    let position_embedding = if family_metadata.uses_position_embeddings {
+        Some(
             required_tensor_info(content, "position_embd.weight")?
                 .name
                 .clone(),
-        ),
-        false => optional_tensor_name(content, "position_embd.weight"),
+        )
+    } else {
+        optional_tensor_name(content, "position_embd.weight")
     };
 
     let mut layers = Vec::with_capacity(family_metadata.layer_count);
@@ -6556,6 +6672,7 @@ fn validate_tokenizer_id(
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn digest_gguf_tokenizer(
     model: GgufTokenizerModel,
     tokens: &[String],
@@ -7043,6 +7160,12 @@ fn decode_int8_symmetric_values(
 }
 
 #[cfg(test)]
+#[allow(
+    clippy::expect_used,
+    clippy::panic,
+    clippy::panic_in_result_fn,
+    clippy::unwrap_used
+)]
 mod tests {
     use std::{collections::BTreeMap, path::Path};
 
@@ -7060,15 +7183,17 @@ mod tests {
         GgufEmbeddingAdapterLoader, GgufEmbeddingFamily, GgufEmbeddingPooling, GgufMetadataValue,
         GgufPromptTemplateFamily, GgufPromptTemplateRenderer, GgufTensorType,
         GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion,
-        GgufWeightBundleLoader, LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader,
-        PromptMessage, PromptMessageRole, QuantizedTensorStorage, ReferenceWordDecoder,
-        SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId,
-        TokenSequence, TokenizerBoundary, WeightArtifactBlobKind, WeightArtifactReadPath,
-        WeightFormat, WeightSource, WeightTensorStorage, apply_context_window,
-        apply_special_token_defaults, assert_prompt_template_fixture_matches,
-        assert_prompt_window_case, assert_rendered_prompt_case, assert_tokenizer_fixture_matches,
-        digest_chat_template, golden_prompt_fixture, golden_prompt_fixtures,
-        golden_tokenizer_fixture, golden_tokenizer_fixtures,
+        GgufWeightBundleLoader, GptOssHarmonyParseOptions, GptOssHarmonyParseSource,
+        GptOssHarmonyStreamParser, LoadedWeightTensor, LocalBlobOpenOptions,
+        LocalWeightBundleLoader, PromptMessage, PromptMessageRole, PromptRenderOptions,
+        QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
+        SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId, TokenSequence,
+        TokenizerBoundary, WeightArtifactBlobKind, WeightArtifactReadPath, WeightFormat,
+        WeightSource, WeightTensorStorage, apply_context_window, apply_special_token_defaults,
+        assert_prompt_template_fixture_matches, assert_prompt_window_case,
+        assert_rendered_prompt_case, assert_tokenizer_fixture_matches, digest_chat_template,
+        golden_prompt_fixture, golden_prompt_fixtures, golden_tokenizer_fixture,
+        golden_tokenizer_fixtures, parse_gpt_oss_harmony_text, parse_gpt_oss_harmony_tokens,
     };
 
     #[test]
@@ -7753,7 +7878,7 @@ mod tests {
         assert!(command_r.template_variant("command_r.rag").is_some());
 
         let gpt_oss = golden_prompt_fixture("gpt_oss").expect("gpt-oss fixture");
-        assert_eq!(gpt_oss.template_variants[0].render_cases.len(), 0);
+        assert_eq!(gpt_oss.template_variants[0].render_cases.len(), 2);
         Ok(())
     }
 
@@ -7869,6 +7994,138 @@ mod tests {
 
         assert_eq!(rendered.family, GgufPromptTemplateFamily::Qwen2);
         assert_eq!(rendered.text, render_case.expected_rendered);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_prompt_template_renderer_matches_gpt_oss_fixture_render_case()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let fixture = golden_prompt_fixture("gpt_oss").expect("gpt-oss fixture");
+        let variant = fixture
+            .template_variant("gpt_oss.default")
+            .expect("variant");
+        let render_case = variant
+            .render_case("gpt_oss.reasoning_with_developer")
+            .expect("render case");
+        let content = GgufContent::read_path(Path::new(fixture.source_path))?;
+        let renderer = GgufPromptTemplateRenderer::new(
+            content.load_tokenizer()?,
+            content.load_chat_templates()?,
+        );
+
+        let rendered = renderer.render_with_options(
+            None,
+            prompt_messages_from_fixture(render_case.messages).as_slice(),
+            render_case.add_generation_prompt,
+            &prompt_render_options_from_fixture(render_case.harmony_context),
+        )?;
+
+        assert_eq!(rendered.family, GgufPromptTemplateFamily::GptOss);
+        assert_eq!(rendered.text, render_case.expected_rendered);
+        Ok(())
+    }
+
+    #[test]
+    fn gpt_oss_harmony_parser_parses_final_only_output() -> Result<(), Box<dyn std::error::Error>> {
+        let output = "<|channel|>final<|message|>323";
+        let encoding = openai_harmony::load_harmony_encoding(
+            openai_harmony::HarmonyEncodingName::HarmonyGptOss,
+        )?;
+        let tokens = encoding
+            .tokenizer()
+            .encode_with_special_tokens(output)
+            .into_iter()
+            .map(TokenId)
+            .collect::<Vec<_>>();
+        let parsed = parse_gpt_oss_harmony_tokens(
+            &tokens,
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: true,
+            },
+        )?;
+
+        assert_eq!(parsed.source, GptOssHarmonyParseSource::Tokens);
+        assert_eq!(
+            parsed.messages,
+            vec![PromptMessage::new(PromptMessageRole::Assistant, "323").with_channel("final")]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gpt_oss_harmony_parser_parses_analysis_then_final_output()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let text = "<|channel|>analysis<|message|>working<|end|><|start|>assistant<|channel|>final<|message|>323";
+        let parsed = parse_gpt_oss_harmony_text(
+            text,
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: true,
+            },
+        )?;
+
+        assert_eq!(
+            parsed.messages,
+            vec![
+                PromptMessage::new(PromptMessageRole::Assistant, "working")
+                    .with_channel("analysis"),
+                PromptMessage::new(PromptMessageRole::Assistant, "323").with_channel("final"),
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gpt_oss_harmony_parser_parses_tool_call_forms() -> Result<(), Box<dyn std::error::Error>> {
+        let parsed = parse_gpt_oss_harmony_text(
+            "<|start|>assistant<|channel|>commentary to=functions.get_weather<|constrain|>json<|message|>{\"latitude\":48.8566,\"longitude\":2.3522}<|call|>",
+            GptOssHarmonyParseOptions::default(),
+        )?;
+
+        assert_eq!(
+            parsed.messages,
+            vec![
+                PromptMessage::new(
+                    PromptMessageRole::Assistant,
+                    "{\"latitude\":48.8566,\"longitude\":2.3522}",
+                )
+                .with_recipient("functions.get_weather")
+                .with_channel("commentary")
+                .with_content_type("<|constrain|>json"),
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gpt_oss_harmony_stream_parser_tracks_partial_output()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let text = "<|channel|>analysis<|message|>thinking<|end|><|start|>assistant<|channel|>final<|message|>323";
+        let tokens = openai_harmony::load_harmony_encoding(
+            openai_harmony::HarmonyEncodingName::HarmonyGptOss,
+        )?
+        .tokenizer()
+        .encode_with_special_tokens(text);
+        let mut parser = GptOssHarmonyStreamParser::new(GptOssHarmonyParseOptions {
+            role_hint: Some(PromptMessageRole::Assistant),
+            strict: true,
+        })?;
+
+        for token in tokens {
+            parser.process_token(TokenId(token))?;
+        }
+        parser.process_eos()?;
+
+        assert_eq!(parser.current_role(), None);
+        assert_eq!(
+            parser.messages(),
+            vec![
+                PromptMessage::new(PromptMessageRole::Assistant, "thinking")
+                    .with_channel("analysis"),
+                PromptMessage::new(PromptMessageRole::Assistant, "323").with_channel("final"),
+            ]
+        );
         Ok(())
     }
 
@@ -8987,6 +9244,7 @@ mod tests {
             .map(|message| {
                 let role = match message.role {
                     super::GoldenPromptRole::System => PromptMessageRole::System,
+                    super::GoldenPromptRole::Developer => PromptMessageRole::Developer,
                     super::GoldenPromptRole::User => PromptMessageRole::User,
                     super::GoldenPromptRole::Assistant => PromptMessageRole::Assistant,
                     super::GoldenPromptRole::Tool => PromptMessageRole::Tool,
@@ -8994,6 +9252,26 @@ mod tests {
                 PromptMessage::new(role, message.content)
             })
             .collect()
+    }
+
+    fn prompt_render_options_from_fixture(
+        context: Option<super::GoldenPromptHarmonyContext>,
+    ) -> PromptRenderOptions {
+        let Some(context) = context else {
+            return PromptRenderOptions::default();
+        };
+        PromptRenderOptions {
+            gpt_oss_harmony: Some(super::GptOssHarmonyRenderContext {
+                model_identity: None,
+                reasoning_effort: context.reasoning_effort,
+                tool_namespaces: Vec::new(),
+                conversation_start_date: context.conversation_start_date.map(str::to_string),
+                knowledge_cutoff: context.knowledge_cutoff.map(str::to_string),
+                channel_config: Some(super::PromptChannelConfig::require(
+                    context.valid_channels.iter().copied(),
+                )),
+            }),
+        }
     }
 
     fn llama_decoder_metadata(
