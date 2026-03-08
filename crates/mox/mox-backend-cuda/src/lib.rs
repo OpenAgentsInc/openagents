@@ -1,16 +1,20 @@
-//! CUDA backend discovery, allocation, and submission substrate for Mox.
+//! CUDA backend discovery, allocation, submission, and dense execution surface
+//! for Mox.
 
 #![allow(clippy::result_large_err)]
 
-use std::{fmt, io::ErrorKind, process::Command};
+use std::{collections::BTreeMap, fmt, io::ErrorKind, process::Command};
 
-use mox_core::{DType, Device, DeviceKind, TensorSpec};
+use mox_compiler::compile_graph;
+use mox_core::{DType, Device, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
+use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendName,
     BackendRuntimeResources, BufferHandle, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
-    HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, NvidiaBackendReport,
-    NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
-    NvidiaRiskProfile, NvidiaTopologyInfo, RuntimeError, RuntimeHealth,
+    ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
+    KernelCacheReport, KernelCacheState, NvidiaBackendReport, NvidiaDeviceMetadata,
+    NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile,
+    NvidiaTopologyInfo, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -25,6 +29,10 @@ const OFFLINE_NO_DRIVER_MESSAGE: &str =
     "cuda backend unavailable: nvidia-smi is not installed or the NVIDIA driver is not reachable";
 const CUDA_POOL_MAX_CACHED_BUFFERS: usize = 128;
 const CUDA_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
+
+/// Exact plan surface currently covered by the first CUDA-backed served-product
+/// milestone.
+pub const SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "add"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct NvidiaInventoryRow {
@@ -337,6 +345,36 @@ impl CudaBackend {
         }
     }
 
+    /// Creates a dense `f32` input buffer on the selected CUDA device.
+    pub fn input_buffer(
+        &mut self,
+        shape: Shape,
+        values: impl Into<Vec<f32>>,
+    ) -> Result<CudaBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda backend unavailable: no selected execution device",
+            )));
+        };
+        let mut buffer = self.allocate(&TensorSpec::new(shape, DType::F32, device))?;
+        buffer.write_f32(values.into().as_slice())?;
+        Ok(buffer)
+    }
+
+    /// Compiles and executes a graph on the supported dense CUDA surface.
+    pub fn compile_and_execute(
+        &mut self,
+        graph: &Graph,
+        inputs: &BTreeMap<TensorId, CudaBuffer>,
+    ) -> Result<ExecutionResult<CudaBuffer>, RuntimeError> {
+        let plan =
+            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        self.execute(&plan, inputs)
+    }
+
     /// Allocates a CUDA buffer for the provided tensor specification.
     pub fn allocate_buffer(&mut self, spec: &TensorSpec) -> Result<CudaBuffer, RuntimeError> {
         let Some(backend) = self.selected_backend() else {
@@ -346,6 +384,25 @@ impl CudaBackend {
             };
             return Err(RuntimeError::Backend(message));
         };
+        if spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "cuda dense surface only supports F32 buffers, actual {:?}",
+                spec.dtype()
+            )));
+        }
+        if spec.device().kind() != DeviceKind::Cuda {
+            return Err(RuntimeError::Backend(format!(
+                "cuda allocator requires a CUDA tensor spec, actual device kind {}",
+                spec.device().kind()
+            )));
+        }
+        if spec.device().ordinal() != backend.descriptor.device.ordinal() {
+            return Err(RuntimeError::Backend(format!(
+                "cuda allocator requires device ordinal {}, actual {}",
+                backend.descriptor.device.ordinal(),
+                spec.device().ordinal()
+            )));
+        }
         let byte_len = spec
             .storage_size()
             .checked_mul(size_of_dtype(spec.dtype()))
@@ -419,6 +476,154 @@ impl Allocator for CudaBackend {
     }
 }
 
+impl ExecutionBackend for CudaBackend {
+    type Buffer = CudaBuffer;
+
+    fn execute(
+        &mut self,
+        plan: &ExecutionPlan,
+        inputs: &BTreeMap<TensorId, Self::Buffer>,
+    ) -> Result<ExecutionResult<Self::Buffer>, RuntimeError> {
+        validate_supported_plan(plan)?;
+        match &self.state {
+            CudaBackendState::Available(backend) => backend.execute(plan, inputs),
+            CudaBackendState::Unavailable(health) => Err(RuntimeError::Backend(format!(
+                "cuda backend unavailable: {}",
+                health.message
+            ))),
+        }
+    }
+}
+
+impl AvailableCudaBackend {
+    fn allocate(&self, spec: &TensorSpec) -> Result<CudaBuffer, RuntimeError> {
+        let byte_len = spec
+            .storage_size()
+            .checked_mul(size_of_dtype(spec.dtype()))
+            .ok_or_else(|| {
+                RuntimeError::Backend(format!(
+                    "cuda buffer size overflow for tensor storage size {}",
+                    spec.storage_size()
+                ))
+            })?;
+        let platform_buffer = self.platform.allocate(byte_len)?;
+        Ok(CudaBuffer {
+            spec: spec.clone(),
+            byte_len,
+            memory_space: CudaMemorySpace::Device,
+            host_visible: false,
+            platform: platform_buffer,
+        })
+    }
+
+    fn buffer_from_tensor_data(
+        &self,
+        spec: &TensorSpec,
+        data: &TensorData,
+    ) -> Result<CudaBuffer, RuntimeError> {
+        let Some(values) = data.as_f32_slice() else {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda constant storage must use dense f32 payloads",
+            )));
+        };
+        if values.len() != spec.storage_size() {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda constant payload length mismatch",
+            )));
+        }
+        let mut buffer = self.allocate(spec)?;
+        buffer.write_f32(values)?;
+        Ok(buffer)
+    }
+
+    fn execute(
+        &self,
+        plan: &ExecutionPlan,
+        inputs: &BTreeMap<TensorId, CudaBuffer>,
+    ) -> Result<ExecutionResult<CudaBuffer>, RuntimeError> {
+        let mut submission = CudaSubmission {
+            encoded_operations: 0,
+            platform: self.platform.begin_submission()?,
+        };
+        let mut values = BTreeMap::new();
+
+        for step in &plan.steps {
+            match &step.op {
+                ExecutionOp::Input { .. } => {
+                    let input = inputs
+                        .get(&step.output)
+                        .ok_or(RuntimeError::MissingInput(step.output))?;
+                    if input.spec() != &step.spec {
+                        return Err(RuntimeError::InvalidBuffer {
+                            tensor: step.output,
+                            expected: step.spec.clone(),
+                            actual: input.spec().clone(),
+                        });
+                    }
+                    values.insert(step.output, input.clone());
+                }
+                ExecutionOp::Constant { data } => {
+                    values.insert(step.output, self.buffer_from_tensor_data(&step.spec, data)?);
+                }
+                ExecutionOp::Add => {
+                    let (left, right) = binary_inputs(step, &values)?;
+                    let output = self.allocate(&step.spec)?;
+                    submission.platform.encode_add(
+                        &left.platform,
+                        &right.platform,
+                        &output.platform,
+                        step.spec.element_count(),
+                    )?;
+                    submission.encoded_operations += 1;
+                    values.insert(step.output, output);
+                }
+                ExecutionOp::Matmul => {
+                    let (left, right) = binary_inputs(step, &values)?;
+                    let left_dims = left.spec().shape().dims();
+                    let right_dims = right.spec().shape().dims();
+                    if left_dims.len() != 2
+                        || right_dims.len() != 2
+                        || left_dims[1] != right_dims[0]
+                    {
+                        return Err(RuntimeError::Backend(String::from(
+                            "invalid matmul shapes at runtime",
+                        )));
+                    }
+                    let output = self.allocate(&step.spec)?;
+                    submission.platform.encode_matmul(
+                        &left.platform,
+                        &right.platform,
+                        &output.platform,
+                        left_dims[0],
+                        left_dims[1],
+                        right_dims[1],
+                    )?;
+                    submission.encoded_operations += 1;
+                    values.insert(step.output, output);
+                }
+                _ => {
+                    return Err(RuntimeError::UnsupportedStep(step.op.label().to_string()));
+                }
+            }
+        }
+
+        let _report = submission.commit(CudaCommandWait::Completed)?;
+        let mut outputs = BTreeMap::new();
+        for output_id in &plan.outputs {
+            let Some(buffer) = values.remove(output_id) else {
+                return Err(RuntimeError::MissingInput(*output_id));
+            };
+            outputs.insert(*output_id, buffer);
+        }
+        Ok(ExecutionResult {
+            outputs,
+            metrics: ExecutionMetrics {
+                steps_executed: plan.steps.len(),
+            },
+        })
+    }
+}
+
 impl NvidiaInventoryRow {
     fn into_device_descriptor(self) -> DeviceDescriptor {
         let architecture = architecture_from_compute_capability(self.compute_capability.as_deref());
@@ -486,6 +691,121 @@ fn cuda_allocator_pool_policy() -> AllocatorPoolPolicy {
 
 fn size_of_dtype(dtype: DType) -> usize {
     dtype.element_size_bytes()
+}
+
+fn validate_supported_plan(plan: &ExecutionPlan) -> Result<(), RuntimeError> {
+    for step in &plan.steps {
+        validate_supported_step(step)?;
+    }
+    Ok(())
+}
+
+fn validate_supported_step(step: &ExecutionStep) -> Result<(), RuntimeError> {
+    ensure_supported_spec(&step.spec)?;
+    match &step.op {
+        ExecutionOp::Input { .. } => {
+            if !step.inputs.is_empty() {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda input step {} unexpectedly has inputs",
+                    step.output
+                )));
+            }
+        }
+        ExecutionOp::Constant { data } => {
+            let Some(values) = data.as_f32_slice() else {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda constant {} must use dense f32 storage",
+                    step.output
+                )));
+            };
+            if values.len() != step.spec.storage_size() {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda constant {} payload length mismatch",
+                    step.output
+                )));
+            }
+        }
+        ExecutionOp::Add => {
+            if step.inputs.len() != 2 {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda add step {} requires two inputs",
+                    step.output
+                )));
+            }
+        }
+        ExecutionOp::Matmul => {
+            if step.inputs.len() != 2 {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda matmul step {} requires two inputs",
+                    step.output
+                )));
+            }
+            let dims = step.spec.shape().dims();
+            if dims.len() != 2 {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda matmul step {} requires a rank-2 output, actual rank {}",
+                    step.output,
+                    dims.len()
+                )));
+            }
+        }
+        _ => {
+            return Err(RuntimeError::UnsupportedStep(step.op.label().to_string()));
+        }
+    }
+    Ok(())
+}
+
+fn ensure_supported_spec(spec: &TensorSpec) -> Result<(), RuntimeError> {
+    if spec.dtype() != DType::F32 {
+        return Err(RuntimeError::Backend(format!(
+            "cuda dense surface only supports F32 tensors, actual {:?}",
+            spec.dtype()
+        )));
+    }
+    if spec.device().kind() != DeviceKind::Cuda {
+        return Err(RuntimeError::Backend(format!(
+            "cuda dense surface requires CUDA tensor specs, actual device kind {}",
+            spec.device().kind()
+        )));
+    }
+    if !spec.layout().is_contiguous() || spec.layout().offset() != 0 {
+        return Err(RuntimeError::Backend(String::from(
+            "cuda dense surface requires contiguous zero-offset tensors",
+        )));
+    }
+    Ok(())
+}
+
+fn binary_inputs<'a>(
+    step: &ExecutionStep,
+    values: &'a BTreeMap<TensorId, CudaBuffer>,
+) -> Result<(&'a CudaBuffer, &'a CudaBuffer), RuntimeError> {
+    let Some(left_id) = step.inputs.first().copied() else {
+        return Err(RuntimeError::Backend(format!(
+            "missing left input for step {}",
+            step.output
+        )));
+    };
+    let Some(right_id) = step.inputs.get(1).copied() else {
+        return Err(RuntimeError::Backend(format!(
+            "missing right input for step {}",
+            step.output
+        )));
+    };
+    let left = values
+        .get(&left_id)
+        .ok_or(RuntimeError::MissingInput(left_id))?;
+    let right = values
+        .get(&right_id)
+        .ok_or(RuntimeError::MissingInput(right_id))?;
+    if left.spec() != right.spec() && !matches!(step.op, ExecutionOp::Matmul) {
+        return Err(RuntimeError::Backend(format!(
+            "cuda {} requires matching input specs",
+            step.op.label()
+        )));
+    }
+    Ok((left, right))
 }
 
 fn discovery_report_internal() -> Result<NvidiaBackendReport, RuntimeError> {
@@ -780,10 +1100,15 @@ mod platform {
 
     type CudaError = i32;
     type CudaStream = *mut c_void;
+    type CublasStatus = i32;
+    type CublasHandle = *mut c_void;
+
     const CUDA_SUCCESS: CudaError = 0;
+    const CUBLAS_STATUS_SUCCESS: CublasStatus = 0;
     const CUDA_MEMCPY_HOST_TO_DEVICE: c_int = 1;
     const CUDA_MEMCPY_DEVICE_TO_HOST: c_int = 2;
     const CUDA_MEMCPY_DEVICE_TO_DEVICE: c_int = 3;
+    const CUBLAS_OP_N: c_int = 0;
 
     type CudaGetErrorString = unsafe extern "C" fn(CudaError) -> *const c_char;
     type CudaSetDevice = unsafe extern "C" fn(c_int) -> CudaError;
@@ -796,10 +1121,43 @@ mod platform {
     type CudaStreamCreate = unsafe extern "C" fn(*mut CudaStream) -> CudaError;
     type CudaStreamDestroy = unsafe extern "C" fn(CudaStream) -> CudaError;
     type CudaStreamSynchronize = unsafe extern "C" fn(CudaStream) -> CudaError;
+    type CublasCreate = unsafe extern "C" fn(*mut CublasHandle) -> CublasStatus;
+    type CublasDestroy = unsafe extern "C" fn(CublasHandle) -> CublasStatus;
+    type CublasSetStream = unsafe extern "C" fn(CublasHandle, CudaStream) -> CublasStatus;
+    type CublasSgemm = unsafe extern "C" fn(
+        CublasHandle,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        *const f32,
+        *const f32,
+        c_int,
+        *const f32,
+        c_int,
+        *const f32,
+        *mut f32,
+        c_int,
+    ) -> CublasStatus;
+    type CublasSgeam = unsafe extern "C" fn(
+        CublasHandle,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        *const f32,
+        *const f32,
+        c_int,
+        *const f32,
+        *const f32,
+        c_int,
+        *mut f32,
+        c_int,
+    ) -> CublasStatus;
 
     pub(super) struct ConfiguredBackend {
         runtime: Arc<CudaRuntime>,
-        ordinal: u16,
     }
 
     #[derive(Clone)]
@@ -809,19 +1167,19 @@ mod platform {
 
     pub(super) struct PlatformSubmission {
         runtime: Arc<CudaRuntime>,
-        ordinal: u16,
         stream: CudaStream,
         status: CudaCommandStatus,
     }
 
     struct PlatformBufferInner {
         runtime: Arc<CudaRuntime>,
-        ordinal: u16,
         device_ptr: *mut c_void,
     }
 
     struct CudaRuntime {
-        _library: Library,
+        ordinal: u16,
+        _cudart_library: Library,
+        _cublas_library: Library,
         cuda_get_error_string: CudaGetErrorString,
         cuda_set_device: CudaSetDevice,
         cuda_malloc: CudaMalloc,
@@ -832,11 +1190,17 @@ mod platform {
         cuda_stream_create: CudaStreamCreate,
         cuda_stream_destroy: CudaStreamDestroy,
         cuda_stream_synchronize: CudaStreamSynchronize,
+        cublas_handle: CublasHandle,
+        cublas_create: CublasCreate,
+        cublas_destroy: CublasDestroy,
+        cublas_set_stream: CublasSetStream,
+        cublas_sgemm: CublasSgemm,
+        cublas_sgeam: CublasSgeam,
     }
 
     impl ConfiguredBackend {
         pub(super) fn allocate(&self, byte_len: usize) -> Result<PlatformBuffer, RuntimeError> {
-            self.runtime.set_device(self.ordinal)?;
+            self.runtime.set_device()?;
             let mut device_ptr = std::ptr::null_mut();
             let allocation_len = byte_len.max(1);
             self.runtime.check(
@@ -846,14 +1210,13 @@ mod platform {
             Ok(PlatformBuffer {
                 inner: Arc::new(PlatformBufferInner {
                     runtime: Arc::clone(&self.runtime),
-                    ordinal: self.ordinal,
                     device_ptr,
                 }),
             })
         }
 
         pub(super) fn begin_submission(&self) -> Result<PlatformSubmission, RuntimeError> {
-            self.runtime.set_device(self.ordinal)?;
+            self.runtime.set_device()?;
             let mut stream = std::ptr::null_mut();
             self.runtime.check(
                 unsafe { (self.runtime.cuda_stream_create)(&mut stream) },
@@ -861,7 +1224,6 @@ mod platform {
             )?;
             Ok(PlatformSubmission {
                 runtime: Arc::clone(&self.runtime),
-                ordinal: self.ordinal,
                 stream,
                 status: CudaCommandStatus::Submitted,
             })
@@ -873,7 +1235,7 @@ mod platform {
             if bytes.is_empty() {
                 return Ok(());
             }
-            self.inner.runtime.set_device(self.inner.ordinal)?;
+            self.inner.runtime.set_device()?;
             self.inner.runtime.check(
                 unsafe {
                     (self.inner.runtime.cuda_memcpy)(
@@ -891,7 +1253,7 @@ mod platform {
             if byte_len == 0 {
                 return Ok(Vec::new());
             }
-            self.inner.runtime.set_device(self.inner.ordinal)?;
+            self.inner.runtime.set_device()?;
             let mut bytes = vec![0u8; byte_len];
             self.inner.runtime.check(
                 unsafe {
@@ -918,7 +1280,7 @@ mod platform {
             if byte_len == 0 {
                 return Ok(());
             }
-            self.runtime.set_device(self.ordinal)?;
+            self.runtime.set_device()?;
             self.runtime.check(
                 unsafe {
                     (self.runtime.cuda_memset_async)(
@@ -941,7 +1303,7 @@ mod platform {
             if byte_len == 0 {
                 return Ok(());
             }
-            self.runtime.set_device(self.ordinal)?;
+            self.runtime.set_device()?;
             self.runtime.check(
                 unsafe {
                     (self.runtime.cuda_memcpy_async)(
@@ -956,13 +1318,102 @@ mod platform {
             )
         }
 
+        pub(super) fn encode_add(
+            &mut self,
+            left: &PlatformBuffer,
+            right: &PlatformBuffer,
+            output: &PlatformBuffer,
+            element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            if element_count == 0 {
+                return Ok(());
+            }
+            let m = c_int::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda add element count exceeds cublas limits"))
+            })?;
+            let alpha = 1.0_f32;
+            let beta = 1.0_f32;
+            self.runtime.bind_stream(self.stream)?;
+            self.runtime.check_cublas(
+                unsafe {
+                    (self.runtime.cublas_sgeam)(
+                        self.runtime.cublas_handle,
+                        CUBLAS_OP_N,
+                        CUBLAS_OP_N,
+                        m,
+                        1,
+                        &alpha,
+                        left.inner.device_ptr.cast(),
+                        m,
+                        &beta,
+                        right.inner.device_ptr.cast(),
+                        m,
+                        output.inner.device_ptr.cast(),
+                        m,
+                    )
+                },
+                "cublasSgeam",
+            )
+        }
+
+        pub(super) fn encode_matmul(
+            &mut self,
+            left: &PlatformBuffer,
+            right: &PlatformBuffer,
+            output: &PlatformBuffer,
+            rows: usize,
+            inner: usize,
+            cols: usize,
+        ) -> Result<(), RuntimeError> {
+            if rows == 0 || inner == 0 || cols == 0 {
+                return Ok(());
+            }
+            let m = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda matmul column count exceeds cublas limits",
+                ))
+            })?;
+            let n = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda matmul row count exceeds cublas limits"))
+            })?;
+            let k = c_int::try_from(inner).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda matmul inner dimension exceeds cublas limits",
+                ))
+            })?;
+            let alpha = 1.0_f32;
+            let beta = 0.0_f32;
+            self.runtime.bind_stream(self.stream)?;
+            self.runtime.check_cublas(
+                unsafe {
+                    (self.runtime.cublas_sgemm)(
+                        self.runtime.cublas_handle,
+                        CUBLAS_OP_N,
+                        CUBLAS_OP_N,
+                        m,
+                        n,
+                        k,
+                        &alpha,
+                        right.inner.device_ptr.cast(),
+                        m,
+                        left.inner.device_ptr.cast(),
+                        k,
+                        &beta,
+                        output.inner.device_ptr.cast(),
+                        m,
+                    )
+                },
+                "cublasSgemm_v2",
+            )
+        }
+
         pub(super) fn commit(
             mut self,
             wait: CudaCommandWait,
         ) -> Result<CudaCommandStatus, RuntimeError> {
             match wait {
                 CudaCommandWait::Completed => {
-                    self.runtime.set_device(self.ordinal)?;
+                    self.runtime.set_device()?;
                     self.runtime.check(
                         unsafe { (self.runtime.cuda_stream_synchronize)(self.stream) },
                         "cudaStreamSynchronize",
@@ -977,7 +1428,7 @@ mod platform {
     impl Drop for PlatformSubmission {
         fn drop(&mut self) {
             if !self.stream.is_null() {
-                let _ = self.runtime.set_device(self.ordinal);
+                let _ = self.runtime.set_device();
                 let _ = self.runtime.check(
                     unsafe { (self.runtime.cuda_stream_destroy)(self.stream) },
                     "cudaStreamDestroy",
@@ -990,7 +1441,7 @@ mod platform {
     impl Drop for PlatformBufferInner {
         fn drop(&mut self) {
             if !self.device_ptr.is_null() {
-                let _ = self.runtime.set_device(self.ordinal);
+                let _ = self.runtime.set_device();
                 let _ = self.runtime.check(
                     unsafe { (self.runtime.cuda_free)(self.device_ptr) },
                     "cudaFree",
@@ -1001,29 +1452,60 @@ mod platform {
     }
 
     impl CudaRuntime {
-        fn load() -> Result<Arc<Self>, RuntimeError> {
-            let library = load_library()?;
-            Ok(Arc::new(Self {
-                cuda_get_error_string: unsafe { load_symbol(&library, b"cudaGetErrorString\0")? },
-                cuda_set_device: unsafe { load_symbol(&library, b"cudaSetDevice\0")? },
-                cuda_malloc: unsafe { load_symbol(&library, b"cudaMalloc\0")? },
-                cuda_free: unsafe { load_symbol(&library, b"cudaFree\0")? },
-                cuda_memcpy: unsafe { load_symbol(&library, b"cudaMemcpy\0")? },
-                cuda_memcpy_async: unsafe { load_symbol(&library, b"cudaMemcpyAsync\0")? },
-                cuda_memset_async: unsafe { load_symbol(&library, b"cudaMemsetAsync\0")? },
-                cuda_stream_create: unsafe { load_symbol(&library, b"cudaStreamCreate\0")? },
-                cuda_stream_destroy: unsafe { load_symbol(&library, b"cudaStreamDestroy\0")? },
-                cuda_stream_synchronize: unsafe {
-                    load_symbol(&library, b"cudaStreamSynchronize\0")?
+        fn load(ordinal: u16) -> Result<Arc<Self>, RuntimeError> {
+            let cudart_library = load_cudart_library()?;
+            let cublas_library = load_cublas_library()?;
+            let mut runtime = Self {
+                ordinal,
+                cuda_get_error_string: unsafe {
+                    load_symbol(&cudart_library, b"cudaGetErrorString\0")?
                 },
-                _library: library,
-            }))
+                cuda_set_device: unsafe { load_symbol(&cudart_library, b"cudaSetDevice\0")? },
+                cuda_malloc: unsafe { load_symbol(&cudart_library, b"cudaMalloc\0")? },
+                cuda_free: unsafe { load_symbol(&cudart_library, b"cudaFree\0")? },
+                cuda_memcpy: unsafe { load_symbol(&cudart_library, b"cudaMemcpy\0")? },
+                cuda_memcpy_async: unsafe { load_symbol(&cudart_library, b"cudaMemcpyAsync\0")? },
+                cuda_memset_async: unsafe { load_symbol(&cudart_library, b"cudaMemsetAsync\0")? },
+                cuda_stream_create: unsafe { load_symbol(&cudart_library, b"cudaStreamCreate\0")? },
+                cuda_stream_destroy: unsafe {
+                    load_symbol(&cudart_library, b"cudaStreamDestroy\0")?
+                },
+                cuda_stream_synchronize: unsafe {
+                    load_symbol(&cudart_library, b"cudaStreamSynchronize\0")?
+                },
+                cublas_handle: std::ptr::null_mut(),
+                cublas_create: unsafe { load_symbol(&cublas_library, b"cublasCreate_v2\0")? },
+                cublas_destroy: unsafe { load_symbol(&cublas_library, b"cublasDestroy_v2\0")? },
+                cublas_set_stream: unsafe {
+                    load_symbol(&cublas_library, b"cublasSetStream_v2\0")?
+                },
+                cublas_sgemm: unsafe { load_symbol(&cublas_library, b"cublasSgemm_v2\0")? },
+                cublas_sgeam: unsafe { load_symbol(&cublas_library, b"cublasSgeam\0")? },
+                _cudart_library: cudart_library,
+                _cublas_library: cublas_library,
+            };
+            runtime.set_device()?;
+            let mut handle = std::ptr::null_mut();
+            runtime.check_cublas(
+                unsafe { (runtime.cublas_create)(&mut handle) },
+                "cublasCreate_v2",
+            )?;
+            runtime.cublas_handle = handle;
+            Ok(Arc::new(runtime))
         }
 
-        fn set_device(&self, ordinal: u16) -> Result<(), RuntimeError> {
+        fn set_device(&self) -> Result<(), RuntimeError> {
             self.check(
-                unsafe { (self.cuda_set_device)(i32::from(ordinal)) },
+                unsafe { (self.cuda_set_device)(i32::from(self.ordinal)) },
                 "cudaSetDevice",
+            )
+        }
+
+        fn bind_stream(&self, stream: CudaStream) -> Result<(), RuntimeError> {
+            self.set_device()?;
+            self.check_cublas(
+                unsafe { (self.cublas_set_stream)(self.cublas_handle, stream) },
+                "cublasSetStream_v2",
             )
         }
 
@@ -1044,17 +1526,35 @@ mod platform {
                 "{operation} failed: {message}"
             )))
         }
+
+        fn check_cublas(&self, status: CublasStatus, operation: &str) -> Result<(), RuntimeError> {
+            if status == CUBLAS_STATUS_SUCCESS {
+                return Ok(());
+            }
+            Err(RuntimeError::Backend(format!(
+                "{operation} failed with cuBLAS status {status}"
+            )))
+        }
+    }
+
+    impl Drop for CudaRuntime {
+        fn drop(&mut self) {
+            if !self.cublas_handle.is_null() {
+                let _ = self.set_device();
+                let _ = self.check_cublas(
+                    unsafe { (self.cublas_destroy)(self.cublas_handle) },
+                    "cublasDestroy_v2",
+                );
+                self.cublas_handle = std::ptr::null_mut();
+            }
+        }
     }
 
     pub(super) fn configure_backend(
-        _descriptor: super::DeviceDescriptor,
+        descriptor: super::DeviceDescriptor,
     ) -> Result<ConfiguredBackend, RuntimeError> {
-        let runtime = CudaRuntime::load()?;
-        runtime.set_device(_descriptor.device.ordinal())?;
-        Ok(ConfiguredBackend {
-            runtime,
-            ordinal: _descriptor.device.ordinal(),
-        })
+        let runtime = CudaRuntime::load(descriptor.device.ordinal())?;
+        Ok(ConfiguredBackend { runtime })
     }
 
     unsafe fn load_symbol<T: Copy>(library: &Library, name: &[u8]) -> Result<T, RuntimeError> {
@@ -1068,16 +1568,28 @@ mod platform {
             })
     }
 
-    fn load_library() -> Result<Library, RuntimeError> {
-        for candidate in ["libcudart.so.13", "libcudart.so"] {
+    fn load_cudart_library() -> Result<Library, RuntimeError> {
+        load_library(
+            &["libcudart.so.13", "libcudart.so"],
+            "failed to load libcudart.so.13 or libcudart.so",
+        )
+    }
+
+    fn load_cublas_library() -> Result<Library, RuntimeError> {
+        load_library(
+            &["libcublas.so.13", "libcublas.so"],
+            "failed to load libcublas.so.13 or libcublas.so",
+        )
+    }
+
+    fn load_library(candidates: &[&str], failure: &str) -> Result<Library, RuntimeError> {
+        for candidate in candidates {
             let library = unsafe { Library::new(candidate) };
             if let Ok(library) = library {
                 return Ok(library);
             }
         }
-        Err(RuntimeError::Backend(String::from(
-            "failed to load libcudart.so.13 or libcudart.so",
-        )))
+        Err(RuntimeError::Backend(String::from(failure)))
     }
 }
 
@@ -1144,6 +1656,32 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_add(
+            &mut self,
+            _left: &PlatformBuffer,
+            _right: &PlatformBuffer,
+            _output: &PlatformBuffer,
+            _element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn encode_matmul(
+            &mut self,
+            _left: &PlatformBuffer,
+            _right: &PlatformBuffer,
+            _output: &PlatformBuffer,
+            _rows: usize,
+            _inner: usize,
+            _cols: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
         pub(super) fn commit(
             self,
             _wait: CudaCommandWait,
@@ -1165,13 +1703,15 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-    use mox_core::{DType, Shape, TensorSpec};
+    use mox_compiler::compile_graph;
+    use mox_core::{DType, DeviceKind, Shape, TensorSpec};
+    use mox_ir::GraphBuilder;
 
     use super::CudaMemorySpace;
     use super::{
-        CudaBackend, CudaCommandStatus, CudaCommandWait, HealthStatus,
+        CudaBackend, CudaCommandStatus, CudaCommandWait, HealthStatus, SUPPORTED_OPS,
         architecture_from_compute_capability, cuda_health, parse_inventory_row, parse_mig_profile,
-        recovery_profile, risk_profile,
+        recovery_profile, risk_profile, validate_supported_plan,
     };
     use mox_core::Device;
     use mox_runtime::{Allocator, DeviceDiscovery, NvidiaRecoveryAction, NvidiaRiskLevel};
@@ -1241,6 +1781,28 @@ mod tests {
                 NvidiaRecoveryAction::RebootHost,
             ]
         );
+    }
+
+    #[test]
+    fn cuda_dense_surface_is_documented() {
+        assert_eq!(SUPPORTED_OPS, &["input", "constant", "matmul", "add"]);
+    }
+
+    #[test]
+    fn cuda_plan_validation_rejects_unsupported_ops() -> Result<(), Box<dyn std::error::Error>> {
+        let device = Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0")));
+        let mut builder = GraphBuilder::new(device);
+        let input = builder.input("features", Shape::new(vec![1, 2]), DType::F32);
+        let weights = builder.constant_f32(Shape::new(vec![1, 2]), vec![1.0, 0.0])?;
+        let unsupported = builder.mul(&input, &weights)?;
+        let graph = builder.finish(vec![unsupported]);
+        let plan = compile_graph(&graph)?;
+        let error = validate_supported_plan(&plan).expect_err("mul should be rejected");
+        assert_eq!(
+            error,
+            mox_runtime::RuntimeError::UnsupportedStep(String::from("mul"))
+        );
+        Ok(())
     }
 
     #[test]
@@ -1317,11 +1879,116 @@ mod tests {
     }
 
     #[test]
+    fn cuda_backend_executes_dense_surface_when_available() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut backend = CudaBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let input = builder.input("features", Shape::new(vec![1, 2]), DType::F32);
+        let weights = builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])?;
+        let bias = builder.constant_f32(Shape::new(vec![1, 2]), vec![0.5, 0.5])?;
+        let projected = builder.matmul(&input, &weights)?;
+        let shifted = builder.add(&projected, &bias)?;
+        let graph = builder.finish(vec![shifted.clone()]);
+
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![1.0, 0.0])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let output = result
+            .outputs
+            .get(&shifted.id())
+            .ok_or("missing cuda dense output")?;
+        assert_eq!(output.read_f32()?, vec![1.5, 2.5]);
+        assert_eq!(result.metrics.steps_executed, 5);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_executes_multiple_matmuls_and_adds_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let token_input = builder.input("token", Shape::new(vec![1, 2]), DType::F32);
+        let position_input = builder.input("position", Shape::new(vec![1, 2]), DType::F32);
+        let context_input = builder.input("context", Shape::new(vec![1, 2]), DType::F32);
+        let token_embedding =
+            builder.constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])?;
+        let position_embedding =
+            builder.constant_f32(Shape::new(vec![2, 2]), vec![0.5, 1.5, 2.5, 3.5])?;
+        let context_projection =
+            builder.constant_f32(Shape::new(vec![2, 2]), vec![2.0, 0.0, 0.0, 2.0])?;
+        let lm_head =
+            builder.constant_f32(Shape::new(vec![2, 3]), vec![1.0, 0.0, 2.0, 0.5, 1.0, -1.0])?;
+        let lm_bias = builder.constant_f32(Shape::new(vec![1, 3]), vec![0.25, -0.5, 1.0])?;
+
+        let token_hidden = builder.matmul(&token_input, &token_embedding)?;
+        let position_hidden = builder.matmul(&position_input, &position_embedding)?;
+        let context_hidden = builder.matmul(&context_input, &context_projection)?;
+        let hidden = builder.add(&token_hidden, &position_hidden)?;
+        let hidden = builder.add(&hidden, &context_hidden)?;
+        let logits = builder.matmul(&hidden, &lm_head)?;
+        let logits = builder.add(&logits, &lm_bias)?;
+        let graph = builder.finish(vec![hidden.clone(), logits.clone()]);
+
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            token_input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![1.0, 0.0])?,
+        );
+        inputs.insert(
+            position_input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![0.0, 1.0])?,
+        );
+        inputs.insert(
+            context_input.id(),
+            backend.input_buffer(Shape::new(vec![1, 2]), vec![0.5, 0.25])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let hidden_output = result
+            .outputs
+            .get(&hidden.id())
+            .ok_or("missing cuda hidden output")?;
+        let logits_output = result
+            .outputs
+            .get(&logits.id())
+            .ok_or("missing cuda logits output")?;
+        assert_eq!(hidden_output.read_f32()?, vec![4.5, 6.0]);
+        assert_eq!(logits_output.read_f32()?, vec![7.75, 5.5, 4.0]);
+        assert_eq!(result.metrics.steps_executed, 15);
+        Ok(())
+    }
+
+    #[test]
     fn cuda_backend_refuses_allocation_when_unavailable() {
         let mut backend = CudaBackend::new();
         if backend.selected_device().is_some() {
             return;
         }
+        let spec = TensorSpec::new(Shape::new(vec![1]), DType::F32, Device::cpu());
+        assert!(backend.allocate(&spec).is_err());
+    }
+
+    #[test]
+    fn cuda_backend_rejects_non_cuda_tensor_specs_when_available() {
+        let mut backend = CudaBackend::new();
+        let Some(_) = backend.selected_device() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return;
+        };
         let spec = TensorSpec::new(Shape::new(vec![1]), DType::F32, Device::cpu());
         assert!(backend.allocate(&spec).is_err());
     }
