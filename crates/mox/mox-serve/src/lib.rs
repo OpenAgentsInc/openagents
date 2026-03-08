@@ -497,6 +497,141 @@ pub trait TextGenerationExecutor {
     fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error>;
 }
 
+/// Library-first catalog surface for local installed-model inspection.
+pub trait LocalModelCatalog {
+    /// Returns the local installed-model observation.
+    fn list_models(&self) -> ListModelsObservation;
+
+    /// Returns the local model-inspection observation for one model name.
+    fn show_model(&self, model: &str) -> ShowObservation;
+}
+
+/// Library-first generation surface that also exposes local model lifecycle.
+pub trait ManagedTextGenerationRuntime: TextGenerationExecutor {
+    /// Returns the current loaded-model observation.
+    fn loaded_models(&mut self) -> LoadedModelsObservation;
+
+    /// Refreshes or overrides keepalive for one already-loaded model.
+    fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, Self::Error>;
+
+    /// Unloads one currently loaded model.
+    fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, Self::Error>;
+}
+
+/// Library-first aggregate runtime boundary over catalog, generation, and embeddings.
+///
+/// This wrapper is intentionally thin: it forwards to existing reusable Mox
+/// surfaces so downstream code can depend on one in-process library API
+/// without reaching through multiple crates or speaking Ollama HTTP.
+#[derive(Clone, Debug)]
+pub struct MoxLocalRuntime<C, G, E> {
+    catalog: C,
+    generation: G,
+    embeddings: E,
+}
+
+impl<C, G, E> MoxLocalRuntime<C, G, E> {
+    /// Creates a new aggregate local runtime.
+    #[must_use]
+    pub fn new(catalog: C, generation: G, embeddings: E) -> Self {
+        Self {
+            catalog,
+            generation,
+            embeddings,
+        }
+    }
+
+    /// Returns the underlying catalog surface.
+    #[must_use]
+    pub fn catalog(&self) -> &C {
+        &self.catalog
+    }
+
+    /// Returns the underlying generation surface.
+    #[must_use]
+    pub fn generation(&self) -> &G {
+        &self.generation
+    }
+
+    /// Returns the underlying embeddings surface.
+    #[must_use]
+    pub fn embeddings(&self) -> &E {
+        &self.embeddings
+    }
+
+    /// Returns mutable access to the underlying generation surface.
+    pub fn generation_mut(&mut self) -> &mut G {
+        &mut self.generation
+    }
+
+    /// Returns mutable access to the underlying embeddings surface.
+    pub fn embeddings_mut(&mut self) -> &mut E {
+        &mut self.embeddings
+    }
+
+    /// Consumes the aggregate runtime and returns its component parts.
+    #[must_use]
+    pub fn into_parts(self) -> (C, G, E) {
+        (self.catalog, self.generation, self.embeddings)
+    }
+}
+
+impl<C, G, E> MoxLocalRuntime<C, G, E>
+where
+    C: LocalModelCatalog,
+    G: ManagedTextGenerationRuntime,
+    E: EmbeddingsExecutor,
+{
+    /// Returns the installed-model observation through the catalog surface.
+    #[must_use]
+    pub fn list_models(&self) -> ListModelsObservation {
+        self.catalog.list_models()
+    }
+
+    /// Returns model inspection through the catalog surface.
+    #[must_use]
+    pub fn show_model(&self, model: &str) -> ShowObservation {
+        self.catalog.show_model(model)
+    }
+
+    /// Returns the currently loaded-model observation.
+    #[must_use]
+    pub fn loaded_models(&mut self) -> LoadedModelsObservation {
+        self.generation.loaded_models()
+    }
+
+    /// Refreshes keepalive for one loaded generation model.
+    pub fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, G::Error> {
+        self.generation.warm_model(model_id, keep_alive_millis)
+    }
+
+    /// Unloads one loaded generation model.
+    pub fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, G::Error> {
+        self.generation.unload_model(model_id)
+    }
+
+    /// Executes a text-generation request through the managed generation surface.
+    pub fn generate(
+        &mut self,
+        request: &GenerationRequest,
+    ) -> Result<GenerationResponse, G::Error> {
+        self.generation.generate(request)
+    }
+
+    /// Executes an embeddings request through the configured embeddings surface.
+    pub fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, E::Error> {
+        self.embeddings.embed(request)
+    }
+}
+
 /// Trait for loaded generation model handles kept active by the serve layer.
 pub trait GenerationModelHandle {
     /// Returns the active model descriptor.
@@ -808,6 +943,16 @@ fn current_time_millis() -> u64 {
         .as_millis()
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+impl LocalModelCatalog for LocalOllamaCatalogSubject {
+    fn list_models(&self) -> ListModelsObservation {
+        self.list_models_observation()
+    }
+
+    fn show_model(&self, model: &str) -> ShowObservation {
+        self.show_model_observation(model)
+    }
 }
 
 /// Single KV cache entry for one token position.
@@ -1519,6 +1664,24 @@ impl TextGenerationExecutor for CpuReferenceTextGenerationService {
     }
 }
 
+impl ManagedTextGenerationRuntime for CpuReferenceTextGenerationService {
+    fn loaded_models(&mut self) -> LoadedModelsObservation {
+        CpuReferenceTextGenerationService::loaded_models(self)
+    }
+
+    fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, Self::Error> {
+        CpuReferenceTextGenerationService::warm_model(self, model_id, keep_alive_millis)
+    }
+
+    fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, Self::Error> {
+        CpuReferenceTextGenerationService::unload_model(self, model_id)
+    }
+}
+
 /// CPU-backed model-backed text-generation service.
 #[derive(Clone, Debug)]
 pub struct CpuModelTextGenerationService {
@@ -1667,6 +1830,24 @@ impl TextGenerationExecutor for CpuModelTextGenerationService {
             &mut self.sessions,
             request,
         )
+    }
+}
+
+impl ManagedTextGenerationRuntime for CpuModelTextGenerationService {
+    fn loaded_models(&mut self) -> LoadedModelsObservation {
+        CpuModelTextGenerationService::loaded_models(self)
+    }
+
+    fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, Self::Error> {
+        CpuModelTextGenerationService::warm_model(self, model_id, keep_alive_millis)
+    }
+
+    fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, Self::Error> {
+        CpuModelTextGenerationService::unload_model(self, model_id)
     }
 }
 
@@ -2526,10 +2707,11 @@ mod tests {
         CpuReferenceTextGenerationService, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
         EmbeddingsExecutor, FixtureWordTokenizer, GenerationLoadState, GenerationModelHandle,
         GenerationOptions, GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
-        InMemoryGenerationSessionStore, ModelDescriptor, ReferenceTextGenerationError,
-        ReferenceWordDecoder, SessionId, SmokeByteEmbedder, SmokeEmbeddingsService,
-        TerminationReason, TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat,
-        WeightSource, WeightTensorMetadata,
+        InMemoryGenerationSessionStore, ListModelsObservation, LocalModelCatalog, ModelDescriptor,
+        ModelSummary, MoxLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder,
+        SessionId, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason,
+        TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat, WeightSource,
+        WeightTensorMetadata,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -2773,6 +2955,89 @@ mod tests {
             .expect("render case");
 
         assert_prompt_window_case(window_case, render_case.expected_rendered)?;
+        Ok(())
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestCatalog {
+        list_models: ListModelsObservation,
+        show_model: ShowObservation,
+    }
+
+    impl LocalModelCatalog for TestCatalog {
+        fn list_models(&self) -> ListModelsObservation {
+            self.list_models.clone()
+        }
+
+        fn show_model(&self, _model: &str) -> ShowObservation {
+            self.show_model.clone()
+        }
+    }
+
+    #[test]
+    fn mox_local_runtime_forwards_catalog_lifecycle_generation_and_embeddings()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let generation = CpuReferenceTextGenerationService::new()?;
+        let embeddings = SmokeEmbeddingsService::new()?;
+        let decoder_descriptor = generation.model_descriptor().clone();
+        let embedding_descriptor = embeddings.model_descriptor().clone();
+        let catalog = TestCatalog {
+            list_models: ListModelsObservation::new(vec![
+                ModelSummary::from_decoder_descriptor(
+                    decoder_descriptor.model.model_id.clone(),
+                    &decoder_descriptor,
+                ),
+                ModelSummary::from_embedding_descriptor(
+                    embedding_descriptor.model.model_id.clone(),
+                    &embedding_descriptor,
+                ),
+            ]),
+            show_model: ShowObservation::from_decoder_descriptor(
+                decoder_descriptor.model.model_id.clone(),
+                &decoder_descriptor,
+            ),
+        };
+        let mut runtime = MoxLocalRuntime::new(catalog, generation, embeddings);
+
+        let listed = runtime.list_models();
+        assert_eq!(listed.models.len(), 2);
+        assert_eq!(listed.models[0].name, decoder_descriptor.model.model_id);
+        assert_eq!(listed.models[1].name, embedding_descriptor.model.model_id);
+
+        let shown = runtime.show_model(ReferenceWordDecoder::MODEL_ID);
+        assert_eq!(shown.model, ReferenceWordDecoder::MODEL_ID);
+        assert_eq!(shown.family.as_deref(), Some("fixture_decoder"));
+
+        let loaded = runtime.loaded_models();
+        assert_eq!(loaded.models.len(), 1);
+        assert_eq!(loaded.models[0].model, ReferenceWordDecoder::MODEL_ID);
+
+        let warmed = runtime.warm_model(ReferenceWordDecoder::MODEL_ID, 0)?;
+        assert_eq!(warmed.summary.model, ReferenceWordDecoder::MODEL_ID);
+        assert_eq!(warmed.residency.keep_alive_millis, 0);
+
+        let generation_request = GenerationRequest::new_text(
+            "runtime-generate-1",
+            decoder_descriptor,
+            None,
+            "hello",
+            GenerationOptions::greedy(4),
+        );
+        let generation_response = runtime.generate(&generation_request)?;
+        assert_eq!(generation_response.output.text, "open agents");
+
+        let embedding_request = EmbeddingRequest::new(
+            "runtime-embed-1",
+            embedding_descriptor,
+            vec![String::from("hello world")],
+        );
+        let embedding_response = runtime.embed(&embedding_request)?;
+        assert_eq!(embedding_response.embeddings.len(), 1);
+        assert_eq!(embedding_response.metadata.vector_count, 1);
+
+        let unloaded = runtime.unload_model(ReferenceWordDecoder::MODEL_ID)?;
+        assert_eq!(unloaded.summary.model, ReferenceWordDecoder::MODEL_ID);
+        assert!(runtime.loaded_models().models.is_empty());
         Ok(())
     }
 
