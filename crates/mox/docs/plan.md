@@ -1365,7 +1365,7 @@ It is:
 
 > **Mox compiles cleanly, has a real CPU execution path, has a real crate architecture, and has explicit text-generation / embeddings / provider integration surfaces.**
 
-If you want, I can also turn this into a repo-ready `MOX_PLAN.md` and a GitHub master issue with numbered child issues.
+If you want, I can also turn this into a repo-ready `RUSTYGRAD_PLAN.md` and a GitHub master issue with numbered child issues.
 
 [1]: https://github.com/tinygrad/tinygrad?utm_source=chatgpt.com "GitHub - tinygrad/tinygrad: You like pytorch? You like micrograd? You love tinygrad! ❤️"
 [2]: https://docs.tinygrad.org/?utm_source=chatgpt.com "tinygrad documentation - tinygrad docs"

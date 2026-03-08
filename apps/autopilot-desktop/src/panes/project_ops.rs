@@ -1,6 +1,6 @@
 use crate::app_state::PaneLoadState;
 use crate::project_ops::{ProjectOpsPaneState, ProjectOpsPresentationMode};
-use wgpui::{theme, Bounds, PaintContext, Point, Quad};
+use wgpui::{Bounds, PaintContext, Point, Quad, theme};
 
 pub fn paint_project_ops_pane(
     bounds: Bounds,
@@ -34,14 +34,11 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "{} | {} | view:{} | team:{} | project:{} | presentation:{} | sort:{} | operator:{}",
+                "{} | {} | view:{} | presentation:{} | operator:{}",
                 state.source_badge,
                 state.load_state.label(),
                 state.active_saved_view,
-                state.active_team.title,
-                state.active_project.title,
                 state.presentation_mode.label(),
-                state.sort_preference.label(),
                 state.operator_label,
             )
             .as_str(),
@@ -116,15 +113,12 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Search: {} | sort:{} | team:{} | project:{}",
+                "Search: {}",
                 if state.search_query.trim().is_empty() {
                     "<empty>"
                 } else {
                     state.search_query.as_str()
-                },
-                state.sort_preference.label(),
-                state.active_team.team_key.as_str(),
-                state.active_project.project_id.as_str(),
+                }
             )
             .as_str(),
             Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 18.0),
@@ -152,9 +146,8 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Presentation: {} | bulk={} | {}",
+                "Presentation: {} | {}",
                 state.presentation_mode.label(),
-                state.bulk_selected_work_item_ids.len(),
                 if let Some(drag) = state.board_drag_state.as_ref() {
                     format!(
                         "drag={} from {}",
@@ -169,43 +162,6 @@ pub fn paint_project_ops_pane(
             )
             .as_str(),
             Point::new(toolbar.origin.x + 12.0, toolbar.max_y() - 36.0),
-            10.0,
-            theme::text::MUTED,
-        ),
-    );
-    paint.scene.draw_text(
-        paint.text.layout(
-            format!(
-                "Teams ({}): {} | Projects ({}): {}",
-                state.available_teams.len(),
-                state
-                    .available_teams
-                    .iter()
-                    .map(|team| {
-                        if team.team_key == state.active_team.team_key {
-                            format!("{}*", team.title)
-                        } else {
-                            team.title.clone()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", "),
-                state.available_projects.len(),
-                state
-                    .available_projects
-                    .iter()
-                    .map(|project| {
-                        if project.project_id == state.active_project.project_id {
-                            format!("{}*", project.title)
-                        } else {
-                            project.title.clone()
-                        }
-                    })
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            )
-            .as_str(),
-            Point::new(toolbar.origin.x + 72.0, toolbar.origin.y + 14.0),
             10.0,
             theme::text::MUTED,
         ),
@@ -282,32 +238,13 @@ pub fn paint_project_ops_pane(
         theme::text::MUTED,
     ));
     detail_y += 20.0;
-    paint.scene.draw_text(
-        paint.text.layout(
-            format!(
-                "Bulk: {} selected | {}",
-                state.bulk_selected_work_item_ids.len(),
-                state
-                    .bulk_action_status
-                    .as_deref()
-                    .unwrap_or("no bulk action applied")
-            )
-            .as_str(),
-            Point::new(detail.origin.x + 12.0, detail_y),
-            10.0,
-            theme::text::MUTED,
-        ),
-    );
-    detail_y += 18.0;
 
     let projection_counts = format!(
-        "Rows: work items={} | activity={} | cycles={} | views={} | projects={} | teams={}",
+        "Rows: work items={} | activity={} | cycles={} | views={}",
         state.local_store.work_items.len(),
         state.local_store.activity_rows.len(),
         state.local_store.cycles.len(),
-        state.local_store.saved_views.len(),
-        state.local_store.projects.len(),
-        state.local_store.teams.len()
+        state.local_store.saved_views.len()
     );
     paint.scene.draw_text(paint.text.layout(
         projection_counts.as_str(),
@@ -345,13 +282,11 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "PM sync: {} | lifecycle={} | {} | badge={} | project_badge={} | team_badge={}",
+                "PM sync: {} | lifecycle={} | {} | badge={}",
                 sync.bootstrap_state,
                 sync.lifecycle_state.as_deref().unwrap_or("idle"),
                 replay_summary,
                 sync.source_badge,
-                state.project_source_badge,
-                state.team_source_badge,
             )
             .as_str(),
             Point::new(detail.origin.x + 12.0, detail_y),
@@ -448,7 +383,7 @@ pub fn paint_project_ops_pane(
         ));
         detail_y += 18.0;
     }
-    for stream in sync.streams.iter().take(6) {
+    for stream in sync.streams.iter().take(4) {
         paint.scene.draw_text(
             paint.text.layout(
                 format!(
@@ -502,10 +437,6 @@ pub fn paint_project_ops_pane(
     }
 
     if let Some(detail_draft) = state.detail_draft.as_ref() {
-        let selected_team = state
-            .selected_work_item()
-            .map(|item| item.team_key.as_str().to_string())
-            .unwrap_or_else(|| state.active_team.team_key.as_str().to_string());
         let parent_summary = detail_draft
             .parent_id
             .as_ref()
@@ -534,17 +465,6 @@ pub fn paint_project_ops_pane(
                     .cycle_id
                     .as_ref()
                     .map(|cycle_id| cycle_id.as_str())
-                    .unwrap_or("none")
-            ),
-            format!(
-                "Team: {} ({}) | Project: {} ({})",
-                state.active_team.title,
-                selected_team,
-                state.active_project.title,
-                detail_draft
-                    .project_id
-                    .as_ref()
-                    .map(|project_id| project_id.as_str())
                     .unwrap_or("none")
             ),
             format!(
@@ -593,19 +513,12 @@ pub fn paint_project_ops_pane(
     paint.scene.draw_text(
         paint.text.layout(
             format!(
-                "Quick Create: title={} | team={} | project={} | priority={} | due={} | tags={} | desc={}",
+                "Quick Create: title={} | priority={} | due={} | tags={} | desc={}",
                 if state.quick_create_draft.title.is_empty() {
                     "<empty>"
                 } else {
                     state.quick_create_draft.title.as_str()
                 },
-                state.quick_create_draft.team_key.as_str(),
-                state
-                    .quick_create_draft
-                    .project_id
-                    .as_ref()
-                    .map(|project_id| project_id.as_str())
-                    .unwrap_or("none"),
                 state.quick_create_draft.priority.label(),
                 state
                     .quick_create_draft
@@ -715,8 +628,6 @@ fn compact_stream_label(stream_id: &str) -> &str {
         crate::project_ops::PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID => "activity",
         crate::project_ops::PROJECT_OPS_CYCLES_STREAM_ID => "cycles",
         crate::project_ops::PROJECT_OPS_SAVED_VIEWS_STREAM_ID => "saved_views",
-        crate::project_ops::PROJECT_OPS_PROJECTS_STREAM_ID => "projects",
-        crate::project_ops::PROJECT_OPS_TEAMS_STREAM_ID => "teams",
         _ => stream_id,
     }
 }
@@ -763,15 +674,10 @@ fn paint_list_presentation(list: Bounds, state: &ProjectOpsPaneState, paint: &mu
         paint.scene.draw_text(
             paint.text.layout(
                 format!(
-                    "{} | {} | {} | team:{} | project:{} | {} | {}{}",
+                    "{} | {} | {} | {} | {}{}",
                     item.title,
                     item.status.label(),
                     item.priority.label(),
-                    item.team_key.as_str(),
-                    item.project_id
-                        .as_ref()
-                        .map(|project_id| project_id.as_str())
-                        .unwrap_or("none"),
                     assignee,
                     cycle,
                     blocked

@@ -6,8 +6,9 @@ use mox_compiler::compile_graph;
 use mox_core::{DType, Device, Shape, TensorData, TensorId, TensorSpec};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
-    Allocator, BackendName, BufferHandle, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-    ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
+    Allocator, BackendName, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
+    ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
+    QuantizationSupport, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
@@ -134,6 +135,14 @@ impl CpuBackend {
         let plan =
             compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
         self.execute(&plan, inputs)
+    }
+
+    /// Returns truthful provider/runtime backend selection for a CPU product path.
+    pub fn backend_selection(
+        &self,
+        supported_ops: &[&str],
+    ) -> Result<BackendSelection, RuntimeError> {
+        BackendSelection::from_backend(self, supported_ops)
     }
 
     fn materialize_step(
@@ -320,8 +329,22 @@ impl DeviceDiscovery for CpuBackend {
         Ok(vec![DeviceDescriptor {
             backend: String::from(self.backend_name()),
             device: Device::cpu(),
+            device_name: Some(String::from("host cpu")),
             supported_dtypes: vec![DType::F32],
+            supported_quantization: vec![
+                QuantizationSupport {
+                    mode: mox_core::QuantizationMode::None,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: mox_core::QuantizationMode::Int8Symmetric,
+                    execution: QuantizationExecution::DequantizeToF32,
+                },
+            ],
             memory_capacity_bytes: None,
+            unified_memory: Some(true),
+            feature_flags: vec![String::from("host_memory")],
+            amd_metadata: None,
         }])
     }
 
@@ -436,7 +459,7 @@ mod tests {
 
     use mox_core::{DType, Device, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
-    use mox_runtime::{Allocator, BufferHandle, DeviceDiscovery, RuntimeError};
+    use mox_runtime::{Allocator, BufferHandle, DeviceDiscovery, HealthStatus, RuntimeError};
 
     use super::CpuBackend;
 
@@ -446,6 +469,50 @@ mod tests {
         let devices = backend.discover_devices()?;
         assert_eq!(devices.len(), 1);
         assert_eq!(devices[0].device, Device::cpu());
+        assert_eq!(devices[0].device_name.as_deref(), Some("host cpu"));
+        assert_eq!(devices[0].supported_dtypes, vec![DType::F32]);
+        assert_eq!(devices[0].unified_memory, Some(true));
+        assert_eq!(devices[0].feature_flags, vec![String::from("host_memory")]);
+        assert_eq!(
+            devices[0].supported_quantization,
+            vec![
+                super::QuantizationSupport {
+                    mode: mox_core::QuantizationMode::None,
+                    execution: super::QuantizationExecution::Native,
+                },
+                super::QuantizationSupport {
+                    mode: mox_core::QuantizationMode::Int8Symmetric,
+                    execution: super::QuantizationExecution::DequantizeToF32,
+                }
+            ]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_backend_selection_reports_direct_cpu_execution() -> Result<(), RuntimeError> {
+        let backend = CpuBackend::new();
+        let selection = backend.backend_selection(&["input", "constant", "matmul", "add"])?;
+        assert_eq!(selection.requested_backend, "cpu");
+        assert_eq!(selection.effective_backend, "cpu");
+        assert_eq!(
+            selection
+                .selected_device
+                .as_ref()
+                .map(|device| device.device_name.as_deref()),
+            Some(Some("host cpu"))
+        );
+        assert_eq!(
+            selection.supported_ops,
+            vec![
+                String::from("input"),
+                String::from("constant"),
+                String::from("matmul"),
+                String::from("add")
+            ]
+        );
+        assert!(selection.fallback_reason.is_none());
+        assert_eq!(backend.health().status, HealthStatus::Ready);
         Ok(())
     }
 

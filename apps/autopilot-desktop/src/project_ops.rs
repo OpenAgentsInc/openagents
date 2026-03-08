@@ -1,10 +1,8 @@
 use crate::app_state::PaneLoadState;
-use std::collections::BTreeSet;
 
 pub mod contract;
 pub mod editor;
 pub mod pilot;
-pub mod preferences;
 pub mod projection;
 pub mod schema;
 pub mod service;
@@ -15,33 +13,30 @@ pub const PROJECT_OPS_SOURCE_BADGE: &str = contract::PROJECT_OPS_PRIMARY_SOURCE_
 
 #[allow(unused_imports)]
 pub use contract::{
-    project_ops_error, project_ops_phase1_sync_contract, project_ops_required_stream_grants,
-    project_ops_stream_specs, project_ops_v1_contract_manifest, step0_stream_specs,
-    ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventContractSpec, ProjectOpsAcceptedEventEnvelope,
-    ProjectOpsAcceptedEventName, ProjectOpsActor, ProjectOpsCheckpointRule, ProjectOpsCommand,
-    ProjectOpsCommandContractSpec, ProjectOpsCommandEnvelope, ProjectOpsCommandId,
-    ProjectOpsCommandName, ProjectOpsContractManifest, ProjectOpsDeliveryPhase,
-    ProjectOpsEditWorkItemFieldsPatch, ProjectOpsEntityContractSpec, ProjectOpsEntityKind,
-    ProjectOpsErrorCode, ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract,
     PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_CYCLES_STREAM_ID,
-    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_PROJECTS_STREAM_ID,
-    PROJECT_OPS_PROJECT_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-    PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_TEAMS_STREAM_ID,
-    PROJECT_OPS_TEAM_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
-    PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+    PROJECT_OPS_PRIMARY_SOURCE_BADGE, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
+    PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE, PROJECT_OPS_V1_CONTRACT_VERSION,
+    PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsAcceptedEvent, ProjectOpsAcceptedEventContractSpec,
+    ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName, ProjectOpsActor,
+    ProjectOpsCheckpointRule, ProjectOpsCommand, ProjectOpsCommandContractSpec,
+    ProjectOpsCommandEnvelope, ProjectOpsCommandId, ProjectOpsCommandName,
+    ProjectOpsContractManifest, ProjectOpsDeliveryPhase, ProjectOpsEditWorkItemFieldsPatch,
+    ProjectOpsEntityContractSpec, ProjectOpsEntityKind, ProjectOpsErrorCode,
+    ProjectOpsSourceBadgeRule, ProjectOpsStreamSpec, ProjectOpsSyncContract, project_ops_error,
+    project_ops_phase1_sync_contract, project_ops_required_stream_grants,
+    project_ops_v1_contract_manifest, step0_stream_specs,
 };
 
 #[allow(unused_imports)]
 pub use schema::{
-    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
+    PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey,
     ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
-    PROJECT_OPS_STEP0_SCHEMA_VERSION,
 };
 
 #[allow(unused_imports)]
 pub use projection::{
-    ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectRow, ProjectOpsProjectionStore,
-    ProjectOpsSavedViewRow, ProjectOpsTeamRow, PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
+    PROJECT_OPS_PROJECTION_SCHEMA_VERSION, ProjectOpsActivityRow, ProjectOpsCycleRow,
+    ProjectOpsProjectionStore, ProjectOpsSavedViewRow,
 };
 
 #[allow(unused_imports)]
@@ -51,18 +46,15 @@ pub use editor::{ProjectOpsDetailDraft, ProjectOpsQuickCreateDraft};
 pub use service::{ProjectOpsCommandApplyResult, ProjectOpsCommandResult, ProjectOpsService};
 
 #[allow(unused_imports)]
-pub use pilot::{ProjectOpsPilotMetricsState, PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION};
-
-#[allow(unused_imports)]
-pub use preferences::{ProjectOpsPreferencesState, PROJECT_OPS_PREFERENCES_SCHEMA_VERSION};
+pub use pilot::{PROJECT_OPS_PILOT_METRICS_SCHEMA_VERSION, ProjectOpsPilotMetricsState};
 
 #[allow(unused_imports)]
 pub use views::{
-    builtin_saved_view_specs, current_operator_label, empty_state_copy_for_view,
-    filter_chips_for_view, filter_work_items_for_view, project_board_lanes, query_filter_chips,
-    view_title_for_id, ProjectOpsBoardLane, ProjectOpsBuiltinSavedViewSpec,
-    ProjectOpsSortPreference, PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CURRENT_CYCLE_VIEW_ID,
-    PROJECT_OPS_DEFAULT_VIEW_ID, PROJECT_OPS_MY_WORK_VIEW_ID, PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID,
+    PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CURRENT_CYCLE_VIEW_ID, PROJECT_OPS_DEFAULT_VIEW_ID,
+    PROJECT_OPS_MY_WORK_VIEW_ID, PROJECT_OPS_RECENTLY_UPDATED_VIEW_ID, ProjectOpsBoardLane,
+    ProjectOpsBuiltinSavedViewSpec, builtin_saved_view_specs, current_operator_label,
+    empty_state_copy_for_view, filter_chips_for_view, filter_work_items_for_view,
+    project_board_lanes, view_title_for_id,
 };
 
 pub fn project_ops_enabled_from_env() -> bool {
@@ -77,8 +69,7 @@ pub fn project_ops_enabled_from_env() -> bool {
         .unwrap_or(false)
 }
 
-#[derive(Clone, Copy, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "snake_case")]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProjectOpsPresentationMode {
     List,
     Board,
@@ -158,56 +149,20 @@ pub struct ProjectOpsBoardDragState {
     pub from_status: ProjectOpsWorkItemStatus,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub struct ProjectOpsBulkActionOutcome {
-    pub action_label: String,
-    pub targeted_work_item_ids: Vec<ProjectOpsWorkItemId>,
-    pub applied_count: usize,
-    pub skipped_count: usize,
-    pub failures: Vec<String>,
-}
-
-impl ProjectOpsBulkActionOutcome {
-    pub fn summary_line(&self) -> String {
-        let targeted = self.targeted_work_item_ids.len();
-        if self.failures.is_empty() {
-            format!(
-                "{} applied to {}/{} selected items",
-                self.action_label, self.applied_count, targeted
-            )
-        } else {
-            format!(
-                "{} applied to {}/{} selected items ({} failed)",
-                self.action_label,
-                self.applied_count,
-                targeted,
-                self.failures.len()
-            )
-        }
-    }
-}
-
 pub struct ProjectOpsPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub feature_enabled: bool,
     pub operator_label: String,
-    pub active_team: ProjectOpsTeamRow,
-    pub available_teams: Vec<ProjectOpsTeamRow>,
-    pub active_project: ProjectOpsProjectRow,
-    pub available_projects: Vec<ProjectOpsProjectRow>,
     pub active_saved_view_id: String,
     pub active_saved_view: String,
     pub search_query: String,
-    pub sort_preference: ProjectOpsSortPreference,
     pub active_filter_chips: Vec<String>,
     pub visible_work_items: Vec<ProjectOpsWorkItem>,
     pub presentation_mode: ProjectOpsPresentationMode,
     pub board_lanes: Vec<ProjectOpsBoardLane>,
     pub board_drag_state: Option<ProjectOpsBoardDragState>,
-    pub bulk_selected_work_item_ids: Vec<ProjectOpsWorkItemId>,
-    pub bulk_action_status: Option<String>,
     pub selected_work_item_id: Option<ProjectOpsWorkItemId>,
     pub empty_state_copy: String,
     pub visible_activity_rows: Vec<ProjectOpsActivityRow>,
@@ -218,10 +173,7 @@ pub struct ProjectOpsPaneState {
     pub detail_draft: Option<ProjectOpsDetailDraft>,
     pub detail_save_status: Option<String>,
     pub pilot_metrics: ProjectOpsPilotMetricsState,
-    pub preferences: ProjectOpsPreferencesState,
     pub source_badge: String,
-    pub project_source_badge: String,
-    pub team_source_badge: String,
     pub summary: String,
     pub status_note: String,
     pub sync_diagnostics: ProjectOpsSyncDiagnostics,
@@ -231,13 +183,7 @@ pub struct ProjectOpsPaneState {
 impl Default for ProjectOpsPaneState {
     fn default() -> Self {
         let feature_enabled = project_ops_enabled_from_env();
-        let preferences = if feature_enabled {
-            ProjectOpsPreferencesState::load_or_new_default()
-                .unwrap_or_else(|_| ProjectOpsPreferencesState::default_enabled())
-        } else {
-            ProjectOpsPreferencesState::disabled()
-        };
-        let active_saved_view_id = preferences.active_saved_view_id.clone();
+        let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
         let projection_load_started_at = std::time::Instant::now();
         let local_store = if feature_enabled {
             ProjectOpsProjectionStore::load_or_bootstrap_default()
@@ -258,10 +204,7 @@ impl Default for ProjectOpsPaneState {
             let _ = pilot_metrics.record_view(active_saved_view_id.as_str());
         }
         let operator_label = current_operator_label();
-        let active_team = resolve_active_team(&local_store, None);
-        let active_project = resolve_active_project(&local_store, &active_team.team_key, None);
-        let search_query = preferences.search_query.clone();
-        let sort_preference = preferences.sort_preference;
+        let search_query = String::new();
         let (
             active_saved_view,
             active_filter_chips,
@@ -275,13 +218,10 @@ impl Default for ProjectOpsPaneState {
         ) = if feature_enabled {
             derive_project_ops_view_state(
                 &local_store,
-                &active_team.team_key,
-                &active_project.project_id,
                 active_saved_view_id.as_str(),
                 operator_label.as_str(),
                 search_query.as_str(),
                 None,
-                sort_preference,
             )
         } else {
             (
@@ -306,21 +246,17 @@ impl Default for ProjectOpsPaneState {
                     local_store.last_action.clone(),
                     local_store.source_badge(),
                     format!(
-                        "PM projections ready with {} total work items, {} visible in {}, {} activity rows, {} cycles, {} saved views, {} projects, and {} teams (active team: {} / active project: {}) (schema v{}).",
+                        "Step 0 PM projections ready with {} total work items, {} visible in {}, {} activity rows, {} cycles, and {} saved views (schema v{}).",
                         local_store.work_items.len(),
                         visible_work_items.len(),
                         active_saved_view,
                         local_store.activity_rows.len(),
                         local_store.cycles.len(),
                         local_store.saved_views.len(),
-                        local_store.projects.len(),
-                        local_store.teams.len(),
-                        active_team.title,
-                        active_project.title,
                         PROJECT_OPS_PROJECTION_SCHEMA_VERSION,
                     ),
                     format!(
-                        "Step 0 schema v{} and PM contract {} are frozen with workflow {} and priorities {} across {} entities, {} commands, {} accepted events, and {} canonical PM streams. PM streams are registered as {}, {}, {}, {}, {}, and {} with local projection documents, shared checkpoint rows, source badge {}, project badge {}, team badge {}, sync badge {}, and a reserved grant set of {} streams for later bootstrap wiring.",
+                        "Step 0 schema v{} and PM contract {} are frozen with workflow {} and priorities {} across {} entities, {} commands, {} accepted events, and {} canonical PM streams. PM streams are registered as {}, {}, {}, and {} with local projection documents, shared checkpoint rows, source badge {}, sync badge {}, and a reserved grant set of {} streams for later bootstrap wiring.",
                         PROJECT_OPS_STEP0_SCHEMA_VERSION,
                         PROJECT_OPS_V1_CONTRACT_VERSION,
                         ProjectOpsWorkItemStatus::workflow_summary(),
@@ -333,11 +269,7 @@ impl Default for ProjectOpsPaneState {
                         PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
                         PROJECT_OPS_CYCLES_STREAM_ID,
                         PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-                        PROJECT_OPS_PROJECTS_STREAM_ID,
-                        PROJECT_OPS_TEAMS_STREAM_ID,
                         PROJECT_OPS_PRIMARY_SOURCE_BADGE,
-                        PROJECT_OPS_PROJECT_SOURCE_BADGE,
-                        PROJECT_OPS_TEAM_SOURCE_BADGE,
                         PROJECT_OPS_SYNC_LIFECYCLE_SOURCE_BADGE,
                         sync_contract.required_stream_grants.len(),
                     ),
@@ -371,7 +303,6 @@ impl Default for ProjectOpsPaneState {
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
         let board_lanes = project_board_lanes(visible_work_items.as_slice());
-        let available_projects = projects_for_team(&local_store, &active_team.team_key);
 
         let mut state = Self {
             load_state,
@@ -379,21 +310,14 @@ impl Default for ProjectOpsPaneState {
             last_action,
             feature_enabled,
             operator_label,
-            active_team,
-            available_teams: local_store.teams.clone(),
-            active_project,
-            available_projects,
             active_saved_view_id,
             active_saved_view,
             search_query,
-            sort_preference,
             active_filter_chips,
             visible_work_items,
-            presentation_mode: preferences.presentation_mode,
+            presentation_mode: ProjectOpsPresentationMode::List,
             board_lanes,
             board_drag_state: None,
-            bulk_selected_work_item_ids: Vec::new(),
-            bulk_action_status: None,
             selected_work_item_id,
             empty_state_copy,
             visible_activity_rows,
@@ -404,18 +328,12 @@ impl Default for ProjectOpsPaneState {
             detail_draft,
             detail_save_status: None,
             pilot_metrics,
-            preferences,
             source_badge,
-            project_source_badge: PROJECT_OPS_PROJECT_SOURCE_BADGE.to_string(),
-            team_source_badge: PROJECT_OPS_TEAM_SOURCE_BADGE.to_string(),
             summary,
             status_note,
             sync_diagnostics: ProjectOpsSyncDiagnostics::default(),
             local_store,
         };
-        if feature_enabled {
-            state.apply_active_team_defaults(true);
-        }
         if feature_enabled {
             state.sync_runtime_contract_state(None, None, &[], None);
         }
@@ -429,24 +347,8 @@ impl ProjectOpsPaneState {
         local_store: ProjectOpsProjectionStore,
         operator_label: &str,
     ) -> Self {
-        Self::from_local_store_and_preferences_for_tests(
-            local_store,
-            operator_label,
-            ProjectOpsPreferencesState::disabled(),
-        )
-    }
-
-    #[cfg(test)]
-    pub(crate) fn from_local_store_and_preferences_for_tests(
-        local_store: ProjectOpsProjectionStore,
-        operator_label: &str,
-        preferences: ProjectOpsPreferencesState,
-    ) -> Self {
-        let active_saved_view_id = preferences.active_saved_view_id.clone();
-        let search_query = preferences.search_query.clone();
-        let sort_preference = preferences.sort_preference;
-        let active_team = resolve_active_team(&local_store, None);
-        let active_project = resolve_active_project(&local_store, &active_team.team_key, None);
+        let active_saved_view_id = PROJECT_OPS_DEFAULT_VIEW_ID.to_string();
+        let search_query = String::new();
         let (
             active_saved_view,
             active_filter_chips,
@@ -459,13 +361,10 @@ impl ProjectOpsPaneState {
             available_saved_views,
         ) = derive_project_ops_view_state(
             &local_store,
-            &active_team.team_key,
-            &active_project.project_id,
             active_saved_view_id.as_str(),
             operator_label,
             search_query.as_str(),
             None,
-            sort_preference,
         );
         let detail_draft = selected_work_item_id
             .as_ref()
@@ -477,28 +376,20 @@ impl ProjectOpsPaneState {
             })
             .map(|item| ProjectOpsDetailDraft::from_work_item(&item));
         let board_lanes = project_board_lanes(visible_work_items.as_slice());
-        let available_projects = projects_for_team(&local_store, &active_team.team_key);
         let mut state = Self {
             load_state: local_store.load_state,
             last_error: local_store.last_error.clone(),
             last_action: local_store.last_action.clone(),
             feature_enabled: true,
             operator_label: operator_label.to_string(),
-            active_team,
-            available_teams: local_store.teams.clone(),
-            active_project,
-            available_projects,
             active_saved_view_id,
             active_saved_view,
             search_query,
-            sort_preference,
             active_filter_chips,
             visible_work_items,
-            presentation_mode: preferences.presentation_mode,
+            presentation_mode: ProjectOpsPresentationMode::List,
             board_lanes,
             board_drag_state: None,
-            bulk_selected_work_item_ids: Vec::new(),
-            bulk_action_status: None,
             selected_work_item_id,
             empty_state_copy,
             visible_activity_rows,
@@ -509,16 +400,12 @@ impl ProjectOpsPaneState {
             detail_draft,
             detail_save_status: None,
             pilot_metrics: ProjectOpsPilotMetricsState::disabled(),
-            preferences,
             source_badge: local_store.source_badge(),
-            project_source_badge: PROJECT_OPS_PROJECT_SOURCE_BADGE.to_string(),
-            team_source_badge: PROJECT_OPS_TEAM_SOURCE_BADGE.to_string(),
             summary: "Test PM pane".to_string(),
             status_note: "Test PM pane".to_string(),
             sync_diagnostics: ProjectOpsSyncDiagnostics::default(),
             local_store,
         };
-        state.apply_active_team_defaults(true);
         state.sync_runtime_contract_state(None, None, &[], None);
         state
     }
@@ -538,9 +425,6 @@ impl ProjectOpsPaneState {
         self.active_saved_view_id = normalized.to_string();
         self.refresh_derived_view_state();
         let _ = self
-            .preferences
-            .set_active_saved_view_id(self.active_saved_view_id.as_str());
-        let _ = self
             .pilot_metrics
             .record_view(self.active_saved_view_id.as_str());
         self.last_action = Some(format!("Project Ops view -> {}", self.active_saved_view));
@@ -554,89 +438,11 @@ impl ProjectOpsPaneState {
         }
         self.search_query = normalized;
         self.refresh_derived_view_state();
-        let _ = self
-            .preferences
-            .set_search_query(self.search_query.as_str());
         self.last_action = Some(if self.search_query.is_empty() {
             "Project Ops search cleared".to_string()
         } else {
             format!("Project Ops search -> {}", self.search_query)
         });
-        true
-    }
-
-    pub fn set_active_team(&mut self, team_key: &str) -> bool {
-        let normalized = team_key.trim();
-        if normalized.is_empty() || self.active_team.team_key.as_str() == normalized {
-            return false;
-        }
-        let Some(next_team) = self
-            .local_store
-            .teams
-            .iter()
-            .find(|team| team.team_key.as_str() == normalized)
-            .cloned()
-        else {
-            return false;
-        };
-        let previous_default_view_id = self.active_team.default_saved_view_id.clone();
-        self.active_team = next_team;
-        self.available_teams = self.local_store.teams.clone();
-        self.available_projects = projects_for_team(&self.local_store, &self.active_team.team_key);
-        self.active_project = resolve_active_project(&self.local_store, &self.active_team.team_key, None);
-        if self.active_saved_view_id == PROJECT_OPS_DEFAULT_VIEW_ID
-            || self.active_saved_view_id == previous_default_view_id
-        {
-            self.active_saved_view_id = self.active_project.default_saved_view_id.clone();
-        }
-        self.apply_active_team_defaults(true);
-        self.refresh_derived_view_state();
-        self.last_action = Some(format!(
-            "Project Ops team -> {} / project -> {}",
-            self.active_team.title, self.active_project.title
-        ));
-        true
-    }
-
-    pub fn set_active_project(&mut self, project_id: &str) -> bool {
-        let normalized = project_id.trim();
-        if normalized.is_empty() || self.active_project.project_id.as_str() == normalized {
-            return false;
-        }
-        let Some(next_project) = self
-            .local_store
-            .projects
-            .iter()
-            .find(|project| {
-                project.team_key == self.active_team.team_key
-                    && project.project_id.as_str() == normalized
-            })
-            .cloned()
-        else {
-            return false;
-        };
-        let previous_default_view_id = self.active_project.default_saved_view_id.clone();
-        self.active_project = next_project;
-        self.available_projects = projects_for_team(&self.local_store, &self.active_team.team_key);
-        if self.active_saved_view_id == PROJECT_OPS_DEFAULT_VIEW_ID
-            || self.active_saved_view_id == previous_default_view_id
-        {
-            self.active_saved_view_id = self.active_project.default_saved_view_id.clone();
-        }
-        self.apply_active_project_defaults(true);
-        self.refresh_derived_view_state();
-        self.last_action = Some(format!("Project Ops project -> {}", self.active_project.title));
-        true
-    }
-
-    pub fn set_sort_preference(&mut self, sort_preference: ProjectOpsSortPreference) -> bool {
-        if self.sort_preference == sort_preference {
-            return false;
-        }
-        self.sort_preference = sort_preference;
-        self.refresh_derived_view_state();
-        let _ = self.preferences.set_sort_preference(sort_preference);
-        self.last_action = Some(format!("Project Ops sort -> {}", sort_preference.label()));
         true
     }
 
@@ -652,7 +458,6 @@ impl ProjectOpsPaneState {
             return false;
         }
         self.selected_work_item_id = Some(work_item_id.clone());
-        self.bulk_selected_work_item_ids = vec![work_item_id.clone()];
         self.sync_detail_draft_from_selection();
         self.last_action = Some(format!("Selected {}", work_item_id.as_str()));
         true
@@ -685,7 +490,6 @@ impl ProjectOpsPaneState {
         if presentation_mode == ProjectOpsPresentationMode::List {
             self.board_drag_state = None;
         }
-        let _ = self.preferences.set_presentation_mode(presentation_mode);
         self.last_action = Some(format!(
             "Project Ops presentation -> {}",
             presentation_mode.label()
@@ -704,7 +508,6 @@ impl ProjectOpsPaneState {
         };
         self.presentation_mode = ProjectOpsPresentationMode::Board;
         self.selected_work_item_id = Some(dragged_work_item_id.clone());
-        self.bulk_selected_work_item_ids = vec![dragged_work_item_id.clone()];
         self.sync_detail_draft_from_selection();
         self.board_drag_state = Some(ProjectOpsBoardDragState {
             work_item_id: dragged_work_item_id.clone(),
@@ -747,154 +550,7 @@ impl ProjectOpsPaneState {
         Ok(moved)
     }
 
-    pub fn toggle_bulk_selection(&mut self, work_item_id: &str) -> bool {
-        let normalized = work_item_id.trim();
-        if normalized.is_empty() {
-            return false;
-        }
-        let Some(target_id) = self
-            .visible_work_items
-            .iter()
-            .find(|item| item.work_item_id.as_str() == normalized)
-            .map(|item| item.work_item_id.clone())
-        else {
-            return false;
-        };
-        if let Some(index) = self
-            .bulk_selected_work_item_ids
-            .iter()
-            .position(|item| item == &target_id)
-        {
-            self.bulk_selected_work_item_ids.remove(index);
-        } else {
-            self.bulk_selected_work_item_ids.push(target_id.clone());
-            self.bulk_selected_work_item_ids =
-                self.normalize_bulk_selection_ids(self.bulk_selected_work_item_ids.as_slice());
-        }
-        self.selected_work_item_id = Some(target_id);
-        self.sync_detail_draft_from_selection();
-        self.last_action = Some(format!(
-            "Bulk selection -> {} items",
-            self.bulk_selected_work_item_ids.len()
-        ));
-        true
-    }
-
-    pub fn set_bulk_selection(&mut self, work_item_ids: &[&str]) -> usize {
-        let candidate_ids = work_item_ids
-            .iter()
-            .filter_map(|work_item_id| ProjectOpsWorkItemId::new(*work_item_id).ok())
-            .collect::<Vec<_>>();
-        self.bulk_selected_work_item_ids =
-            self.normalize_bulk_selection_ids(candidate_ids.as_slice());
-        if let Some(selected) = self.bulk_selected_work_item_ids.first() {
-            self.selected_work_item_id = Some(selected.clone());
-        }
-        self.sync_detail_draft_from_selection();
-        self.last_action = Some(format!(
-            "Bulk selection -> {} items",
-            self.bulk_selected_work_item_ids.len()
-        ));
-        self.bulk_selected_work_item_ids.len()
-    }
-
-    pub fn select_all_visible_work_items(&mut self) -> usize {
-        self.bulk_selected_work_item_ids = self
-            .visible_work_items
-            .iter()
-            .map(|item| item.work_item_id.clone())
-            .collect();
-        if let Some(selected) = self.bulk_selected_work_item_ids.first() {
-            self.selected_work_item_id = Some(selected.clone());
-        }
-        self.sync_detail_draft_from_selection();
-        self.last_action = Some(format!(
-            "Bulk selection -> {} items",
-            self.bulk_selected_work_item_ids.len()
-        ));
-        self.bulk_selected_work_item_ids.len()
-    }
-
-    pub fn clear_bulk_selection(&mut self) -> bool {
-        if self.bulk_selected_work_item_ids.is_empty() {
-            return false;
-        }
-        self.bulk_selected_work_item_ids.clear();
-        self.bulk_action_status = None;
-        self.last_action = Some("Bulk selection cleared".to_string());
-        true
-    }
-
-    pub fn save_current_view_as_personal_saved_view(
-        &mut self,
-        view_id: &str,
-        title: &str,
-    ) -> Result<bool, String> {
-        let normalized_view_id = view_id.trim();
-        if normalized_view_id.is_empty() {
-            return Err(project_ops_error(
-                ProjectOpsErrorCode::InvalidCommand,
-                "saved view id must not be empty",
-            ));
-        }
-        if builtin_saved_view_specs()
-            .iter()
-            .any(|spec| spec.view_id == normalized_view_id)
-        {
-            return Err(project_ops_error(
-                ProjectOpsErrorCode::InvalidCommand,
-                format!("cannot overwrite built-in saved view {normalized_view_id}"),
-            ));
-        }
-        let normalized_title = title.trim();
-        if normalized_title.is_empty() {
-            return Err(project_ops_error(
-                ProjectOpsErrorCode::InvalidCommand,
-                "saved view title must not be empty",
-            ));
-        }
-        let query = self.snapshot_current_view_query();
-        let saved_view = ProjectOpsSavedViewRow {
-            view_id: normalized_view_id.to_string(),
-            title: normalized_title.to_string(),
-            query: query.clone(),
-            filters: query_filter_chips(query.as_str()),
-            built_in: false,
-        };
-        let persisted = self.local_store.upsert_personal_saved_view(saved_view)?;
-        self.refresh_derived_view_state();
-        let _ = self.set_active_saved_view(normalized_view_id);
-        self.last_action = Some(format!("Saved personal view {normalized_title}"));
-        Ok(persisted)
-    }
-
-    pub fn remove_personal_saved_view(&mut self, view_id: &str) -> Result<bool, String> {
-        let normalized_view_id = view_id.trim();
-        if normalized_view_id.is_empty() {
-            return Ok(false);
-        }
-        let removed = self
-            .local_store
-            .remove_personal_saved_view(normalized_view_id)?;
-        self.refresh_derived_view_state();
-        if removed && self.active_saved_view_id == normalized_view_id {
-            let _ = self.set_active_saved_view(PROJECT_OPS_DEFAULT_VIEW_ID);
-        }
-        if removed {
-            self.last_action = Some(format!("Removed personal view {normalized_view_id}"));
-        }
-        Ok(removed)
-    }
-
     fn refresh_derived_view_state(&mut self) {
-        self.available_teams = self.local_store.teams.clone();
-        self.active_team = resolve_active_team(&self.local_store, Some(&self.active_team.team_key));
-        self.available_projects = projects_for_team(&self.local_store, &self.active_team.team_key);
-        self.active_project = resolve_active_project(
-            &self.local_store,
-            &self.active_team.team_key,
-            Some(&self.active_project.project_id),
-        );
         let (
             active_saved_view,
             active_filter_chips,
@@ -907,20 +563,15 @@ impl ProjectOpsPaneState {
             available_saved_views,
         ) = derive_project_ops_view_state(
             &self.local_store,
-            &self.active_team.team_key,
-            &self.active_project.project_id,
             self.active_saved_view_id.as_str(),
             self.operator_label.as_str(),
             self.search_query.as_str(),
             self.selected_work_item_id.as_ref(),
-            self.sort_preference,
         );
         self.active_saved_view = active_saved_view;
         self.active_filter_chips = active_filter_chips;
         self.visible_work_items = visible_work_items;
         self.board_lanes = project_board_lanes(self.visible_work_items.as_slice());
-        self.bulk_selected_work_item_ids =
-            self.normalize_bulk_selection_ids(self.bulk_selected_work_item_ids.as_slice());
         if self.board_drag_state.as_ref().is_some_and(|drag| {
             !self.visible_work_items.iter().any(|item| {
                 item.work_item_id == drag.work_item_id && item.status == drag.from_status
@@ -936,7 +587,6 @@ impl ProjectOpsPaneState {
         self.available_saved_views = available_saved_views;
         self.load_state = self.local_store.load_state;
         self.last_error = self.local_store.last_error.clone();
-        self.apply_active_team_defaults(false);
         self.refresh_sync_diagnostic_stream_rows();
         self.sync_detail_draft_from_selection();
     }
@@ -1163,7 +813,6 @@ impl ProjectOpsPaneState {
         self.refresh_derived_view_state();
         let _ = self.pilot_metrics.record_command("CreateWorkItem");
         self.quick_create_draft = ProjectOpsQuickCreateDraft::default();
-        self.apply_active_team_defaults(true);
         self.detail_save_status = Some("Quick create applied".to_string());
         match result {
             ProjectOpsCommandResult::Applied(result) => {
@@ -1226,7 +875,6 @@ impl ProjectOpsPaneState {
         if detail_draft.title != current.title
             || detail_draft.description != current.description
             || detail_draft.priority != current.priority
-            || detail_draft.project_id != current.project_id
             || detail_draft.due_at_unix_ms != current.due_at_unix_ms
             || detail_draft.area_tags != current.area_tags
         {
@@ -1240,8 +888,6 @@ impl ProjectOpsPaneState {
                             .then(|| detail_draft.description.clone()),
                         priority: (detail_draft.priority != current.priority)
                             .then_some(detail_draft.priority),
-                        project_id: (detail_draft.project_id != current.project_id)
-                            .then(|| detail_draft.project_id.clone()),
                         due_at_unix_ms: (detail_draft.due_at_unix_ms != current.due_at_unix_ms)
                             .then_some(detail_draft.due_at_unix_ms),
                         area_tags: (detail_draft.area_tags != current.area_tags)
@@ -1344,81 +990,6 @@ impl ProjectOpsPaneState {
         Ok(applied_any)
     }
 
-    pub fn apply_bulk_status_change(
-        &mut self,
-        status: ProjectOpsWorkItemStatus,
-    ) -> Result<ProjectOpsBulkActionOutcome, String> {
-        self.apply_bulk_action(
-            format!("Bulk status -> {}", status.label()),
-            |work_item_id| {
-                ProjectOpsCommand::ChangeWorkItemStatus(contract::ProjectOpsChangeWorkItemStatus {
-                    work_item_id: work_item_id.clone(),
-                    status,
-                })
-            },
-        )
-    }
-
-    pub fn apply_bulk_assignee(
-        &mut self,
-        assignee: Option<&str>,
-    ) -> Result<ProjectOpsBulkActionOutcome, String> {
-        let normalized = assignee
-            .map(str::trim)
-            .filter(|value| !value.is_empty())
-            .map(ToString::to_string);
-        let action_label = normalized.as_deref().map_or_else(
-            || "Bulk assignee clear".to_string(),
-            |assignee| format!("Bulk assignee -> {assignee}"),
-        );
-        self.apply_bulk_action(action_label, move |work_item_id| {
-            if let Some(assignee) = normalized.clone() {
-                ProjectOpsCommand::AssignWorkItem(contract::ProjectOpsAssignWorkItem {
-                    work_item_id: work_item_id.clone(),
-                    assignee,
-                })
-            } else {
-                ProjectOpsCommand::ClearAssignee(contract::ProjectOpsWorkItemRef {
-                    work_item_id: work_item_id.clone(),
-                })
-            }
-        })
-    }
-
-    pub fn apply_bulk_cycle_change(
-        &mut self,
-        cycle_id: Option<ProjectOpsCycleId>,
-    ) -> Result<ProjectOpsBulkActionOutcome, String> {
-        let action_label = cycle_id.as_ref().map_or_else(
-            || "Bulk cycle clear".to_string(),
-            |cycle_id| format!("Bulk cycle -> {}", cycle_id.as_str()),
-        );
-        self.apply_bulk_action(action_label, move |work_item_id| {
-            if let Some(cycle_id) = cycle_id.clone() {
-                ProjectOpsCommand::SetWorkItemCycle(contract::ProjectOpsSetWorkItemCycle {
-                    work_item_id: work_item_id.clone(),
-                    cycle_id,
-                })
-            } else {
-                ProjectOpsCommand::ClearWorkItemCycle(contract::ProjectOpsWorkItemRef {
-                    work_item_id: work_item_id.clone(),
-                })
-            }
-        })
-    }
-
-    pub fn apply_bulk_archive(&mut self) -> Result<ProjectOpsBulkActionOutcome, String> {
-        self.apply_bulk_action("Bulk archive".to_string(), |work_item_id| {
-            ProjectOpsCommand::ArchiveWorkItem(contract::ProjectOpsWorkItemRef {
-                work_item_id: work_item_id.clone(),
-            })
-        })
-    }
-
-    pub fn apply_bulk_cancel(&mut self) -> Result<ProjectOpsBulkActionOutcome, String> {
-        self.apply_bulk_status_change(ProjectOpsWorkItemStatus::Cancelled)
-    }
-
     fn move_work_item_to_status(
         &mut self,
         work_item_id: &ProjectOpsWorkItemId,
@@ -1454,145 +1025,6 @@ impl ProjectOpsPaneState {
         Ok(matches!(result, ProjectOpsCommandResult::Applied(_)))
     }
 
-    fn apply_bulk_action<F>(
-        &mut self,
-        action_label: String,
-        build_command: F,
-    ) -> Result<ProjectOpsBulkActionOutcome, String>
-    where
-        F: Fn(&ProjectOpsWorkItemId) -> ProjectOpsCommand,
-    {
-        if !self.feature_enabled {
-            return Err(project_ops_error(
-                ProjectOpsErrorCode::InvalidCommand,
-                "project ops feature gate is disabled",
-            ));
-        }
-        let targeted_work_item_ids = self.effective_bulk_selection_ids();
-        if targeted_work_item_ids.is_empty() {
-            return Err(project_ops_error(
-                ProjectOpsErrorCode::InvalidCommand,
-                "select one or more visible work items before running a bulk action",
-            ));
-        }
-
-        let issued_at_unix_ms = now_unix_ms();
-        let mut applied_count = 0usize;
-        let mut skipped_count = 0usize;
-        let mut failures = Vec::new();
-        let mut applied_command_labels = Vec::new();
-
-        for (index, work_item_id) in targeted_work_item_ids.iter().enumerate() {
-            let command = build_command(work_item_id);
-            let command_label = command.name().label().to_string();
-            let envelope = ProjectOpsCommandEnvelope {
-                command_id: ProjectOpsCommandId::new(format!(
-                    "pm-bulk-{issued_at_unix_ms}-{index}-{}-{}",
-                    command_label,
-                    work_item_id.as_str()
-                ))?,
-                issued_at_unix_ms: issued_at_unix_ms.saturating_add(index as u64),
-                actor: ProjectOpsActor {
-                    actor_id: None,
-                    actor_label: Some(self.operator_label.clone()),
-                },
-                command,
-            };
-            match ProjectOpsService::apply_command_to_store(&mut self.local_store, envelope) {
-                Ok(ProjectOpsCommandResult::Applied(_)) => {
-                    applied_count = applied_count.saturating_add(1);
-                    applied_command_labels.push(command_label);
-                }
-                Ok(ProjectOpsCommandResult::DuplicateCommand { .. }) => {
-                    skipped_count = skipped_count.saturating_add(1);
-                }
-                Err(error) => failures.push(format!("{} -> {}", work_item_id.as_str(), error)),
-            }
-        }
-
-        self.selected_work_item_id = targeted_work_item_ids.first().cloned();
-        self.refresh_derived_view_state();
-        let command_labels = applied_command_labels
-            .iter()
-            .map(String::as_str)
-            .collect::<Vec<_>>();
-        let _ = self
-            .pilot_metrics
-            .record_commands(command_labels.as_slice());
-
-        let outcome = ProjectOpsBulkActionOutcome {
-            action_label,
-            targeted_work_item_ids,
-            applied_count,
-            skipped_count,
-            failures,
-        };
-        let summary = outcome.summary_line();
-        self.bulk_action_status = Some(summary.clone());
-        self.detail_save_status = Some(summary.clone());
-        self.last_action = Some(summary);
-        Ok(outcome)
-    }
-
-    fn effective_bulk_selection_ids(&self) -> Vec<ProjectOpsWorkItemId> {
-        if !self.bulk_selected_work_item_ids.is_empty() {
-            return self.normalize_bulk_selection_ids(self.bulk_selected_work_item_ids.as_slice());
-        }
-        self.selected_work_item_id
-            .as_ref()
-            .map(|selected| self.normalize_bulk_selection_ids(std::slice::from_ref(selected)))
-            .unwrap_or_default()
-    }
-
-    fn normalize_bulk_selection_ids(
-        &self,
-        candidate_ids: &[ProjectOpsWorkItemId],
-    ) -> Vec<ProjectOpsWorkItemId> {
-        let mut allowed = BTreeSet::new();
-        for candidate_id in candidate_ids {
-            allowed.insert(candidate_id.as_str().to_string());
-        }
-        let mut selected_ids = Vec::new();
-        for item in &self.visible_work_items {
-            if allowed.remove(item.work_item_id.as_str()) {
-                selected_ids.push(item.work_item_id.clone());
-            }
-        }
-        selected_ids
-    }
-
-    fn snapshot_current_view_query(&self) -> String {
-        let mut parts = Vec::new();
-        parts.push(format!("team:{}", self.active_team.team_key.as_str()));
-        parts.push(format!("project:{}", self.active_project.project_id.as_str()));
-        if let Some(saved_view_query) = self.active_saved_view_query() {
-            parts.push(saved_view_query);
-        }
-        if !self.search_query.trim().is_empty() {
-            parts.push(self.search_query.trim().to_string());
-        }
-        let mut snapshot = parts.join(" ");
-        if !snapshot
-            .split_whitespace()
-            .any(|token| token.to_ascii_lowercase().starts_with("sort:"))
-            && self.sort_preference != ProjectOpsSortPreference::UpdatedDesc
-        {
-            if !snapshot.is_empty() {
-                snapshot.push(' ');
-            }
-            snapshot.push_str(format!("sort:{}", self.sort_preference.label()).as_str());
-        }
-        snapshot.trim().to_string()
-    }
-
-    fn active_saved_view_query(&self) -> Option<String> {
-        self.available_saved_views
-            .iter()
-            .find(|view| view.view_id == self.active_saved_view_id)
-            .map(|view| view.query.trim().to_string())
-            .filter(|query| !query.is_empty())
-    }
-
     fn sync_detail_draft_from_selection(&mut self) {
         let Some(selected) = self.selected_work_item_id.as_ref() else {
             self.detail_draft = None;
@@ -1615,49 +1047,14 @@ impl ProjectOpsPaneState {
         }
         self.detail_draft = Some(ProjectOpsDetailDraft::from_work_item(current));
     }
-
-    fn apply_active_team_defaults(&mut self, force_area_tags: bool) {
-        self.quick_create_draft.team_key = self.active_team.team_key.clone();
-        self.quick_create_draft.project_id = Some(self.active_project.project_id.clone());
-        if force_area_tags
-            || (self.quick_create_draft.title.is_empty() && self.quick_create_draft.description.is_empty())
-        {
-            self.quick_create_draft.area_tags = if self.active_project.default_area_tags.is_empty() {
-                if self.active_team.default_area_tags.is_empty() {
-                    vec!["pm".to_string()]
-                } else {
-                    self.active_team.default_area_tags.clone()
-                }
-            } else {
-                self.active_project.default_area_tags.clone()
-            };
-        }
-    }
-
-    fn apply_active_project_defaults(&mut self, force_area_tags: bool) {
-        self.quick_create_draft.team_key = self.active_team.team_key.clone();
-        self.quick_create_draft.project_id = Some(self.active_project.project_id.clone());
-        if force_area_tags
-            || (self.quick_create_draft.title.is_empty() && self.quick_create_draft.description.is_empty())
-        {
-            self.quick_create_draft.area_tags = if self.active_project.default_area_tags.is_empty() {
-                vec!["pm".to_string()]
-            } else {
-                self.active_project.default_area_tags.clone()
-            };
-        }
-    }
 }
 
 fn derive_project_ops_view_state(
     local_store: &ProjectOpsProjectionStore,
-    active_team_key: &ProjectOpsTeamKey,
-    active_project_id: &ProjectOpsProjectId,
     active_saved_view_id: &str,
     operator_label: &str,
     search_query: &str,
     selected_work_item_id: Option<&ProjectOpsWorkItemId>,
-    sort_preference: ProjectOpsSortPreference,
 ) -> (
     String,
     Vec<String>,
@@ -1670,43 +1067,19 @@ fn derive_project_ops_view_state(
     Vec<ProjectOpsSavedViewRow>,
 ) {
     let available_saved_views = local_store.saved_views.clone();
-    let active_saved_view_row = available_saved_views
+    let active_saved_view = available_saved_views
         .iter()
         .find(|view| view.view_id == active_saved_view_id)
-        .cloned();
-    let active_saved_view = active_saved_view_row
-        .as_ref()
         .map(|view| view.title.clone())
         .or_else(|| view_title_for_id(active_saved_view_id).map(ToString::to_string))
         .unwrap_or_else(|| "Saved View".to_string());
-    let mut effective_search_parts = vec![
-        format!("team:{}", active_team_key.as_str()),
-        format!("project:{}", active_project_id.as_str()),
-    ];
-    if let Some(saved_view) = active_saved_view_row.as_ref() {
-        if !saved_view.query.trim().is_empty() {
-            effective_search_parts.push(saved_view.query.trim().to_string());
-        }
-    }
-    if !search_query.trim().is_empty() {
-        effective_search_parts.push(search_query.trim().to_string());
-    }
-    let effective_search_query = effective_search_parts.join(" ");
-    let mut active_filter_chips = active_saved_view_row
-        .as_ref()
-        .map(|view| view.filters.clone())
-        .unwrap_or_else(|| filter_chips_for_view(active_saved_view_id, ""));
-    active_filter_chips.extend(query_filter_chips(search_query));
-    active_filter_chips.push(format!("team:{}", active_team_key.as_str()));
-    active_filter_chips.push(format!("project:{}", active_project_id.as_str()));
-    dedupe_filter_chips(&mut active_filter_chips);
+    let active_filter_chips = filter_chips_for_view(active_saved_view_id, search_query);
     let visible_work_items = filter_work_items_for_view(
         local_store.work_items.as_slice(),
         local_store.cycles.as_slice(),
         active_saved_view_id,
         operator_label,
-        effective_search_query.as_str(),
-        sort_preference,
+        search_query,
     );
     let selection_notice = selected_work_item_id.and_then(|selected| {
         if visible_work_items
@@ -1775,74 +1148,6 @@ fn derive_project_ops_view_state(
     )
 }
 
-fn resolve_active_team(
-    local_store: &ProjectOpsProjectionStore,
-    requested_team_key: Option<&ProjectOpsTeamKey>,
-) -> ProjectOpsTeamRow {
-    if let Some(requested_team_key) = requested_team_key {
-        if let Some(team) = local_store.team_for_key(requested_team_key) {
-            return team.clone();
-        }
-    }
-    if let Some(default_team) = local_store.default_team() {
-        return default_team.clone();
-    }
-    ProjectOpsTeamRow {
-        team_key: ProjectOpsTeamKey::new("desktop").expect("static team key"),
-        title: "Desktop".to_string(),
-        summary: Some("0 active items / 0 total items".to_string()),
-        default_saved_view_id: PROJECT_OPS_DEFAULT_VIEW_ID.to_string(),
-        default_cycle_id: None,
-        default_area_tags: vec!["pm".to_string()],
-        is_default: true,
-    }
-}
-
-fn projects_for_team(
-    local_store: &ProjectOpsProjectionStore,
-    team_key: &ProjectOpsTeamKey,
-) -> Vec<ProjectOpsProjectRow> {
-    local_store
-        .projects
-        .iter()
-        .filter(|project| &project.team_key == team_key)
-        .cloned()
-        .collect()
-}
-
-fn resolve_active_project(
-    local_store: &ProjectOpsProjectionStore,
-    team_key: &ProjectOpsTeamKey,
-    requested_project_id: Option<&ProjectOpsProjectId>,
-) -> ProjectOpsProjectRow {
-    if let Some(requested_project_id) = requested_project_id {
-        if let Some(project) = local_store.project_for_id(requested_project_id) {
-            if &project.team_key == team_key {
-                return project.clone();
-            }
-        }
-    }
-    if let Some(default_project) = local_store.default_project_for_team(team_key) {
-        return default_project.clone();
-    }
-    ProjectOpsProjectRow {
-        project_id: ProjectOpsProjectId::new(format!("{}-pm", team_key.as_str()))
-            .expect("static project id"),
-        team_key: team_key.clone(),
-        title: format!("{} PM", resolve_active_team(local_store, Some(team_key)).title),
-        summary: Some("0 active items / 0 total items".to_string()),
-        default_saved_view_id: PROJECT_OPS_DEFAULT_VIEW_ID.to_string(),
-        default_cycle_id: None,
-        default_area_tags: vec!["pm".to_string()],
-        is_default: true,
-    }
-}
-
-fn dedupe_filter_chips(chips: &mut Vec<String>) {
-    let mut seen = BTreeSet::new();
-    chips.retain(|chip| seen.insert(chip.clone()));
-}
-
 fn next_work_item_id(work_items: &[ProjectOpsWorkItem]) -> Result<ProjectOpsWorkItemId, String> {
     let max_numeric = work_items
         .iter()
@@ -1869,13 +1174,11 @@ mod tests {
     use serde::{Deserialize, Serialize};
 
     use super::{
-        project_ops_required_stream_grants, ProjectOpsPaneState, ProjectOpsPilotMetricsState,
-        ProjectOpsPreferencesState, ProjectOpsPresentationMode, ProjectOpsService,
-        ProjectOpsSortPreference, PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
-        PROJECT_OPS_BLOCKED_VIEW_ID, PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
-        PROJECT_OPS_PROJECTS_STREAM_ID, PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-        PROJECT_OPS_TEAMS_STREAM_ID,
-        PROJECT_OPS_WORK_ITEMS_STREAM_ID,
+        PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID, PROJECT_OPS_BLOCKED_VIEW_ID,
+        PROJECT_OPS_CYCLES_STREAM_ID, PROJECT_OPS_MY_WORK_VIEW_ID,
+        PROJECT_OPS_SAVED_VIEWS_STREAM_ID, PROJECT_OPS_WORK_ITEMS_STREAM_ID, ProjectOpsPaneState,
+        ProjectOpsPilotMetricsState, ProjectOpsPresentationMode, ProjectOpsService,
+        project_ops_required_stream_grants,
     };
     use crate::project_ops::contract::{
         ProjectOpsAcceptedEventEnvelope, ProjectOpsAcceptedEventName,
@@ -1885,12 +1188,11 @@ mod tests {
         ProjectOpsWorkItemDraft,
     };
     use crate::project_ops::projection::{
-        ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectRow,
-        ProjectOpsProjectionStore, ProjectOpsTeamRow,
+        ProjectOpsActivityRow, ProjectOpsCycleRow, ProjectOpsProjectionStore,
     };
     use crate::project_ops::schema::{
-        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
-        ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+        ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
+        ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
     };
 
     static UNIQUE_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
@@ -1921,7 +1223,6 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: assignee.map(ToString::to_string),
             team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
-            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project id")),
             cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -1933,7 +1234,19 @@ mod tests {
         }
     }
 
-    fn seed_sample_store(store: &mut ProjectOpsProjectionStore) {
+    fn sample_store() -> ProjectOpsProjectionStore {
+        let work_items_path = unique_temp_path("work-items");
+        let activity_path = unique_temp_path("activity");
+        let cycles_path = unique_temp_path("cycles");
+        let saved_views_path = unique_temp_path("saved-views");
+        let checkpoint_path = unique_temp_path("checkpoints");
+        let mut store = ProjectOpsProjectionStore::from_paths_for_tests(
+            work_items_path,
+            activity_path,
+            cycles_path,
+            saved_views_path,
+            checkpoint_path,
+        );
         let cycle = ProjectOpsCycleRow {
             cycle_id: ProjectOpsCycleId::new("2026-w10").expect("cycle id"),
             title: "Week 10".to_string(),
@@ -2007,26 +1320,6 @@ mod tests {
                 ],
             )
             .expect("activity projection should apply");
-    }
-
-    fn sample_store() -> ProjectOpsProjectionStore {
-        let work_items_path = unique_temp_path("work-items");
-        let activity_path = unique_temp_path("activity");
-        let cycles_path = unique_temp_path("cycles");
-        let saved_views_path = unique_temp_path("saved-views");
-        let projects_path = unique_temp_path("projects");
-        let teams_path = unique_temp_path("teams");
-        let checkpoint_path = unique_temp_path("checkpoints");
-        let mut store = ProjectOpsProjectionStore::from_paths_for_tests(
-            work_items_path,
-            activity_path,
-            cycles_path,
-            saved_views_path,
-            projects_path,
-            teams_path,
-            checkpoint_path,
-        );
-        seed_sample_store(&mut store);
         store
     }
 
@@ -2036,8 +1329,6 @@ mod tests {
         activity_path: PathBuf,
         cycles_path: PathBuf,
         saved_views_path: PathBuf,
-        projects_path: PathBuf,
-        teams_path: PathBuf,
         checkpoint_path: PathBuf,
     }
 
@@ -2048,8 +1339,6 @@ mod tests {
                 activity_path: unique_temp_path(&format!("{tag}-activity")),
                 cycles_path: unique_temp_path(&format!("{tag}-cycles")),
                 saved_views_path: unique_temp_path(&format!("{tag}-saved-views")),
-                projects_path: unique_temp_path(&format!("{tag}-projects")),
-                teams_path: unique_temp_path(&format!("{tag}-teams")),
                 checkpoint_path: unique_temp_path(&format!("{tag}-checkpoints")),
             }
         }
@@ -2060,8 +1349,6 @@ mod tests {
                 self.activity_path.clone(),
                 self.cycles_path.clone(),
                 self.saved_views_path.clone(),
-                self.projects_path.clone(),
-                self.teams_path.clone(),
                 self.checkpoint_path.clone(),
             )
         }
@@ -2104,28 +1391,13 @@ mod tests {
     }
 
     #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-    struct ProjectOpsGoldenBoardLane {
-        status: String,
-        work_item_count: usize,
-        blocked_count: usize,
-        work_item_ids: Vec<String>,
-    }
-
-    #[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
     struct ProjectOpsGoldenSnapshot {
         source_badge: String,
-        project_source_badge: String,
-        team_source_badge: String,
-        active_team_key: String,
-        active_team_title: String,
-        active_project_id: String,
-        active_project_title: String,
         active_saved_view: String,
         selected_work_item_id: Option<String>,
         checkpoints: BTreeMap<String, u64>,
         accepted_events: Vec<ProjectOpsAcceptedEventEnvelope>,
         visible_work_items: Vec<ProjectOpsGoldenListRow>,
-        board_lanes: Vec<ProjectOpsGoldenBoardLane>,
         detail: Option<ProjectOpsGoldenDetail>,
         activity_rows: Vec<ProjectOpsGoldenActivity>,
     }
@@ -2185,7 +1457,6 @@ mod tests {
             priority,
             assignee: assignee.map(ToString::to_string),
             team_key: ProjectOpsTeamKey::new("desktop").expect("team key"),
-            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project id")),
             cycle_id: None,
             parent_id: None,
             area_tags: vec!["pm".to_string()],
@@ -2290,7 +1561,6 @@ mod tests {
                                 .to_string(),
                         ),
                         priority: Some(ProjectOpsPriority::Urgent),
-                        project_id: None,
                         due_at_unix_ms: Some(Some(1_762_500_000_000)),
                         area_tags: Some(vec!["pm".to_string(), "sync".to_string()]),
                     },
@@ -2325,8 +1595,6 @@ mod tests {
             PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID,
             PROJECT_OPS_CYCLES_STREAM_ID,
             PROJECT_OPS_SAVED_VIEWS_STREAM_ID,
-            PROJECT_OPS_PROJECTS_STREAM_ID,
-            PROJECT_OPS_TEAMS_STREAM_ID,
         ] {
             checkpoints.insert(
                 stream_id.to_string(),
@@ -2335,12 +1603,6 @@ mod tests {
         }
         ProjectOpsGoldenSnapshot {
             source_badge: pane.source_badge,
-            project_source_badge: pane.project_source_badge,
-            team_source_badge: pane.team_source_badge,
-            active_team_key: pane.active_team.team_key.as_str().to_string(),
-            active_team_title: pane.active_team.title.clone(),
-            active_project_id: pane.active_project.project_id.as_str().to_string(),
-            active_project_title: pane.active_project.title.clone(),
             active_saved_view: pane.active_saved_view,
             selected_work_item_id: pane
                 .selected_work_item_id
@@ -2363,20 +1625,6 @@ mod tests {
                         .as_ref()
                         .map(|cycle_id| cycle_id.as_str().to_string()),
                     updated_at_unix_ms: item.updated_at_unix_ms,
-                })
-                .collect(),
-            board_lanes: pane
-                .board_lanes
-                .iter()
-                .map(|lane| ProjectOpsGoldenBoardLane {
-                    status: lane.status.label().to_string(),
-                    work_item_count: lane.work_item_count,
-                    blocked_count: lane.blocked_count,
-                    work_item_ids: lane
-                        .items
-                        .iter()
-                        .map(|item| item.work_item_id.as_str().to_string())
-                        .collect(),
                 })
                 .collect(),
             detail: pane
@@ -2474,80 +1722,11 @@ mod tests {
     }
 
     #[test]
-    fn team_selection_scopes_visible_rows_and_applies_team_defaults() {
-        let mut store = sample_store();
-        store
-            .upsert_team(ProjectOpsTeamRow {
-                team_key: ProjectOpsTeamKey::new("ops").expect("team key"),
-                title: "Ops".to_string(),
-                summary: Some("1 active items / 1 total items".to_string()),
-                default_saved_view_id: PROJECT_OPS_BLOCKED_VIEW_ID.to_string(),
-                default_cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
-                default_area_tags: vec!["ops".to_string()],
-                is_default: false,
-            })
-            .expect("team row should upsert");
-        store
-            .upsert_project(ProjectOpsProjectRow {
-                project_id: ProjectOpsProjectId::new("ops-ops").expect("project id"),
-                team_key: ProjectOpsTeamKey::new("ops").expect("team key"),
-                title: "Ops Ops".to_string(),
-                summary: Some("1 active items / 1 total items".to_string()),
-                default_saved_view_id: PROJECT_OPS_BLOCKED_VIEW_ID.to_string(),
-                default_cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle id")),
-                default_area_tags: vec!["ops".to_string()],
-                is_default: true,
-            })
-            .expect("project row should upsert");
-        let mut next_rows = store.work_items.clone();
-        let target = next_rows
-            .iter_mut()
-            .find(|item| item.work_item_id.as_str() == "wi-2")
-            .expect("wi-2 should exist");
-        target.team_key = ProjectOpsTeamKey::new("ops").expect("team key");
-        target.project_id = Some(ProjectOpsProjectId::new("ops-ops").expect("project id"));
-        target.area_tags = vec!["ops".to_string()];
-        let next_seq = store
-            .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
-            .unwrap_or(0)
-            .saturating_add(1);
-        store
-            .apply_work_items_projection(next_seq, next_rows)
-            .expect("team-scoped work items should apply");
-
-        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(store, "cdavid");
-        assert_eq!(pane.active_team.team_key.as_str(), "desktop");
-        assert_eq!(pane.quick_create_draft.team_key.as_str(), "desktop");
-
-        assert!(pane.set_active_team("ops"));
-        assert_eq!(pane.active_team.team_key.as_str(), "ops");
-        assert_eq!(pane.active_project.project_id.as_str(), "ops-ops");
-        assert_eq!(pane.active_saved_view_id, PROJECT_OPS_BLOCKED_VIEW_ID);
-        assert_eq!(
-            pane.visible_work_items
-                .iter()
-                .map(|item| item.work_item_id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["wi-2"]
-        );
-        assert_eq!(pane.quick_create_draft.team_key.as_str(), "ops");
-        assert_eq!(
-            pane.quick_create_draft.project_id.as_ref().map(|id| id.as_str()),
-            Some("ops-ops")
-        );
-        assert_eq!(pane.quick_create_draft.area_tags, vec!["ops".to_string()]);
-        assert!(pane.active_filter_chips.iter().any(|chip| chip == "team:ops"));
-        assert!(pane.active_filter_chips.iter().any(|chip| chip == "project:ops-ops"));
-    }
-
-    #[test]
     fn sync_runtime_contract_state_mirrors_pm_grants_and_shared_checkpoints() {
         let work_items_path = unique_temp_path("sync-work-items");
         let activity_path = unique_temp_path("sync-activity");
         let cycles_path = unique_temp_path("sync-cycles");
         let saved_views_path = unique_temp_path("sync-saved-views");
-        let projects_path = unique_temp_path("sync-projects");
-        let teams_path = unique_temp_path("sync-teams");
         let checkpoint_path = unique_temp_path("sync-checkpoints");
 
         let store = ProjectOpsProjectionStore::from_paths_for_tests(
@@ -2555,8 +1734,6 @@ mod tests {
             activity_path,
             cycles_path,
             saved_views_path,
-            projects_path,
-            teams_path,
             checkpoint_path.clone(),
         );
         let mut pane = ProjectOpsPaneState::from_local_store_for_tests(store, "cdavid");
@@ -2654,8 +1831,6 @@ mod tests {
                 PROJECT_OPS_ACTIVITY_PROJECTION_STREAM_ID.to_string(),
                 PROJECT_OPS_CYCLES_STREAM_ID.to_string(),
                 PROJECT_OPS_SAVED_VIEWS_STREAM_ID.to_string(),
-                PROJECT_OPS_PROJECTS_STREAM_ID.to_string(),
-                PROJECT_OPS_TEAMS_STREAM_ID.to_string(),
             ]
         );
     }
@@ -2708,9 +1883,10 @@ mod tests {
         pane.set_detail_blocked_reason(Some("Waiting on design"));
         pane.set_detail_due_at(Some(1_762_600_000_000));
 
-        assert!(pane
-            .apply_detail_draft()
-            .expect("detail apply should succeed"));
+        assert!(
+            pane.apply_detail_draft()
+                .expect("detail apply should succeed")
+        );
 
         let updated = pane
             .local_store
@@ -2761,10 +1937,11 @@ mod tests {
                 .map(|item| item.as_str()),
             Some("wi-1")
         );
-        assert!(pane
-            .selection_notice
-            .as_deref()
-            .is_some_and(|notice| notice.contains("filtered out")));
+        assert!(
+            pane.selection_notice
+                .as_deref()
+                .is_some_and(|notice| notice.contains("filtered out"))
+        );
         assert_eq!(
             pane.visible_activity_rows
                 .iter()
@@ -2794,9 +1971,10 @@ mod tests {
             .unwrap_or(0);
         let activity_count_before = pane.local_store.activity_rows.len();
 
-        assert!(pane
-            .drop_board_drag(ProjectOpsWorkItemStatus::InReview)
-            .expect("board drop should succeed"));
+        assert!(
+            pane.drop_board_drag(ProjectOpsWorkItemStatus::InReview)
+                .expect("board drop should succeed")
+        );
 
         let updated = pane
             .local_store
@@ -2826,11 +2004,12 @@ mod tests {
                 .get("ChangeWorkItemStatus"),
             Some(&1)
         );
-        assert!(pane
-            .local_store
-            .activity_rows
-            .first()
-            .is_some_and(|row| row.summary.contains("in_review")));
+        assert!(
+            pane.local_store
+                .activity_rows
+                .first()
+                .is_some_and(|row| row.summary.contains("in_review"))
+        );
     }
 
     #[test]
@@ -2872,231 +2051,6 @@ mod tests {
     }
 
     #[test]
-    fn bulk_status_change_routes_explicit_commands_for_each_selected_row() {
-        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
-        let work_items_seq_before = pane
-            .local_store
-            .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
-            .unwrap_or(0);
-        let activity_count_before = pane.local_store.activity_rows.len();
-
-        assert_eq!(pane.set_bulk_selection(&["wi-1", "wi-2"]), 2);
-        let outcome = pane
-            .apply_bulk_cancel()
-            .expect("bulk cancel should execute through PM command path");
-
-        assert_eq!(
-            outcome
-                .targeted_work_item_ids
-                .iter()
-                .map(|work_item_id| work_item_id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["wi-2", "wi-1"]
-        );
-        assert_eq!(outcome.applied_count, 2);
-        assert!(outcome.failures.is_empty());
-        assert_eq!(
-            pane.local_store
-                .checkpoint_for(PROJECT_OPS_WORK_ITEMS_STREAM_ID)
-                .unwrap_or(0),
-            work_items_seq_before + 2
-        );
-        assert_eq!(
-            pane.local_store.activity_rows.len(),
-            activity_count_before + 2
-        );
-        assert_eq!(
-            pane.local_store
-                .work_items
-                .iter()
-                .filter(|item| {
-                    matches!(item.work_item_id.as_str(), "wi-1" | "wi-2")
-                        && item.status == ProjectOpsWorkItemStatus::Cancelled
-                })
-                .count(),
-            2
-        );
-        assert!(pane.visible_work_items.is_empty());
-        assert!(pane.bulk_selected_work_item_ids.is_empty());
-        assert_eq!(
-            pane.bulk_action_status.as_deref(),
-            Some("Bulk status -> cancelled applied to 2/2 selected items")
-        );
-        assert_eq!(
-            pane.pilot_metrics
-                .command_counts
-                .get("ChangeWorkItemStatus"),
-            Some(&2)
-        );
-    }
-
-    #[test]
-    fn bulk_assignment_and_cycle_change_follow_command_event_projection_path() {
-        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
-        assert!(pane.set_active_saved_view("all"));
-        assert_eq!(pane.set_bulk_selection(&["wi-1", "wi-2"]), 2);
-
-        let assign = pane
-            .apply_bulk_assignee(Some("teammate"))
-            .expect("bulk assign should succeed");
-        assert_eq!(assign.applied_count, 2);
-        assert!(assign.failures.is_empty());
-
-        let clear_cycle = pane
-            .apply_bulk_cycle_change(None)
-            .expect("bulk cycle clear should succeed");
-        assert_eq!(clear_cycle.applied_count, 2);
-        assert!(clear_cycle.failures.is_empty());
-
-        for item in pane
-            .local_store
-            .work_items
-            .iter()
-            .filter(|item| matches!(item.work_item_id.as_str(), "wi-1" | "wi-2"))
-        {
-            assert_eq!(item.assignee.as_deref(), Some("teammate"));
-            assert!(item.cycle_id.is_none());
-        }
-        assert_eq!(
-            pane.pilot_metrics.command_counts.get("AssignWorkItem"),
-            Some(&2)
-        );
-        assert_eq!(
-            pane.pilot_metrics.command_counts.get("ClearWorkItemCycle"),
-            Some(&2)
-        );
-        assert_eq!(
-            pane.bulk_action_status.as_deref(),
-            Some("Bulk cycle clear applied to 2/2 selected items")
-        );
-    }
-
-    #[test]
-    fn bulk_actions_report_partial_failures_without_hidden_mass_mutation() {
-        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
-        assert_eq!(pane.set_bulk_selection(&["wi-1", "wi-2"]), 2);
-
-        let outcome = pane
-            .apply_bulk_status_change(ProjectOpsWorkItemStatus::Backlog)
-            .expect("bulk status apply should return a truthful outcome");
-
-        assert_eq!(outcome.applied_count, 1);
-        assert_eq!(outcome.failures.len(), 1);
-        assert!(outcome.failures[0].contains("wi-2"));
-        assert!(outcome.failures[0].contains("invalid status transition"));
-        assert_eq!(
-            pane.local_store
-                .work_items
-                .iter()
-                .find(|item| item.work_item_id.as_str() == "wi-1")
-                .map(|item| item.status),
-            Some(ProjectOpsWorkItemStatus::Backlog)
-        );
-        assert_eq!(
-            pane.local_store
-                .work_items
-                .iter()
-                .find(|item| item.work_item_id.as_str() == "wi-2")
-                .map(|item| item.status),
-            Some(ProjectOpsWorkItemStatus::InProgress)
-        );
-        assert_eq!(
-            pane.bulk_action_status.as_deref(),
-            Some("Bulk status -> backlog applied to 1/2 selected items (1 failed)")
-        );
-    }
-
-    #[test]
-    fn bulk_archive_uses_archive_commands_and_clears_selection_when_rows_leave_view() {
-        let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
-        let activity_count_before = pane.local_store.activity_rows.len();
-        assert_eq!(pane.select_all_visible_work_items(), 2);
-
-        let outcome = pane
-            .apply_bulk_archive()
-            .expect("bulk archive should succeed");
-
-        assert_eq!(outcome.applied_count, 2);
-        assert!(outcome.failures.is_empty());
-        assert_eq!(
-            pane.local_store.activity_rows.len(),
-            activity_count_before + 2
-        );
-        assert_eq!(
-            pane.pilot_metrics.command_counts.get("ArchiveWorkItem"),
-            Some(&2)
-        );
-        assert!(pane.visible_work_items.is_empty());
-        assert!(pane.bulk_selected_work_item_ids.is_empty());
-        assert_eq!(
-            pane.bulk_action_status.as_deref(),
-            Some("Bulk archive applied to 2/2 selected items")
-        );
-    }
-
-    #[test]
-    fn personal_saved_views_and_preferences_persist_across_restart() {
-        let paths = ProjectOpsFixturePaths::new("preferences");
-        let mut store = paths.build_store();
-        seed_sample_store(&mut store);
-        let preferences_path = unique_temp_path("preferences-file");
-        let preferences =
-            ProjectOpsPreferencesState::from_preferences_path_for_tests(preferences_path.clone())
-                .expect("preferences should initialize");
-        let mut pane = ProjectOpsPaneState::from_local_store_and_preferences_for_tests(
-            store,
-            "cdavid",
-            preferences,
-        );
-
-        assert!(pane.set_active_saved_view("all"));
-        assert!(pane.set_search_query("blocked:true priority:high"));
-        assert!(pane.set_sort_preference(ProjectOpsSortPreference::PriorityDesc));
-        assert!(pane
-            .save_current_view_as_personal_saved_view("focus", "Focus")
-            .expect("personal saved view should persist"));
-        assert!(pane.set_search_query(""));
-        assert_eq!(pane.active_saved_view_id, "focus");
-        assert_eq!(
-            pane.visible_work_items
-                .iter()
-                .map(|item| item.work_item_id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["wi-2"]
-        );
-        assert!(pane.available_saved_views.iter().any(|view| {
-            view.view_id == "focus"
-                && view.query.contains("blocked:true")
-                && view.query.contains("priority:high")
-                && view.query.contains("sort:priority_desc")
-        }));
-
-        let reloaded_preferences =
-            ProjectOpsPreferencesState::from_preferences_path_for_tests(preferences_path)
-                .expect("preferences should reload");
-        let reloaded_pane = ProjectOpsPaneState::from_local_store_and_preferences_for_tests(
-            paths.build_store(),
-            "cdavid",
-            reloaded_preferences,
-        );
-
-        assert_eq!(reloaded_pane.active_saved_view_id, "focus");
-        assert_eq!(reloaded_pane.search_query, "");
-        assert_eq!(
-            reloaded_pane.sort_preference,
-            ProjectOpsSortPreference::PriorityDesc
-        );
-        assert_eq!(
-            reloaded_pane
-                .visible_work_items
-                .iter()
-                .map(|item| item.work_item_id.as_str())
-                .collect::<Vec<_>>(),
-            vec!["wi-2"]
-        );
-    }
-
-    #[test]
     fn scripted_pilot_cycle_records_command_and_view_usage() {
         let metrics_path = unique_temp_path("pilot-metrics");
         let mut pane = ProjectOpsPaneState::from_local_store_for_tests(sample_store(), "cdavid");
@@ -3108,9 +2062,10 @@ mod tests {
             .expect("default view should record");
 
         pane.edit_detail_title("Pilot cycle edit");
-        assert!(pane
-            .apply_detail_draft()
-            .expect("detail apply should succeed"));
+        assert!(
+            pane.apply_detail_draft()
+                .expect("detail apply should succeed")
+        );
 
         pane.set_quick_create_title("Pilot cycle task");
         pane.set_quick_create_description("Created during scripted pilot cycle");

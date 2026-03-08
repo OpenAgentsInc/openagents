@@ -15,6 +15,7 @@ path = "src/lib.rs"
 
 [dependencies]
 mox-backend-cpu = { path = "../mox-backend-cpu" }
+mox-backend-metal = { path = "../mox-backend-metal" }
 mox-compiler = { path = "../mox-compiler" }
 mox-core = { path = "../mox-core" }
 mox-ir = { path = "../mox-ir" }
@@ -26,3 +27,4 @@ thiserror = { workspace = true }
 
 [dev-dependencies]
 mox-provider = { path = "../mox-provider" }
+tempfile = "3"

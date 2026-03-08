@@ -3,18 +3,21 @@
 use std::collections::BTreeMap;
 
 use mox_backend_cpu::CpuBackend;
+use mox_backend_metal::{MetalBackend, EMBEDDINGS_SUPPORTED_OPS};
 use mox_compiler::{compile_graph, CompileError};
+pub use mox_core::QuantizationMode;
 use mox_core::{DType, Device, Shape, TensorId};
 use mox_ir::{Graph, GraphBuilder, GraphError};
 pub use mox_models::{
-    ActivationFunction, DecoderAttentionConfig, DecoderBlockConfig, DecoderConfig,
-    DecoderFeedForwardConfig, DecoderFixtureWeights, DecoderModelDescriptor, DecoderWeightLoader,
-    EmbeddingModelDescriptor, EmbeddingNormalization, FixtureDecoderLoader, FixtureWordTokenizer,
-    ModelDescriptor, ModelLoadError, ReferenceWordDecoder, SmokeByteEmbedder, TokenId,
-    TokenSequence, TokenVocabulary, TokenizerBoundary, WeightBundleMetadata, WeightFormat,
-    WeightSource, WeightTensorMetadata,
+    ActivationFunction, ArtifactWordDecoder, ByteProjectionEmbedder, DecoderAttentionConfig,
+    DecoderBlockConfig, DecoderConfig, DecoderFeedForwardConfig, DecoderFixtureWeights,
+    DecoderModelDescriptor, DecoderWeightLoader, EmbeddingModelDescriptor, EmbeddingNormalization,
+    EmbeddingWeights, FixtureDecoderLoader, FixtureWordTokenizer, ModelDescriptor, ModelLoadError,
+    ReferenceWordDecoder, SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary,
+    TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
+    WeightTensorMetadata,
 };
-use mox_runtime::RuntimeError;
+use mox_runtime::{BackendSelection, DeviceDiscovery, HealthStatus, RuntimeError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -348,6 +351,40 @@ impl GenerationModelHandle for ReferenceWordDecoder {
     }
 }
 
+trait WordDecoderExecutionModel: Clone {
+    fn descriptor(&self) -> &DecoderModelDescriptor;
+    fn tokenizer(&self) -> &FixtureWordTokenizer;
+    fn weights(&self) -> &DecoderFixtureWeights;
+}
+
+impl WordDecoderExecutionModel for ReferenceWordDecoder {
+    fn descriptor(&self) -> &DecoderModelDescriptor {
+        self.descriptor()
+    }
+
+    fn tokenizer(&self) -> &FixtureWordTokenizer {
+        self.tokenizer()
+    }
+
+    fn weights(&self) -> &DecoderFixtureWeights {
+        self.weights()
+    }
+}
+
+impl WordDecoderExecutionModel for ArtifactWordDecoder {
+    fn descriptor(&self) -> &DecoderModelDescriptor {
+        self.descriptor()
+    }
+
+    fn tokenizer(&self) -> &FixtureWordTokenizer {
+        self.tokenizer()
+    }
+
+    fn weights(&self) -> &DecoderFixtureWeights {
+        self.weights()
+    }
+}
+
 /// In-memory registry of loaded generation models.
 #[derive(Clone, Debug, Default)]
 pub struct InMemoryGenerationModelRegistry<M> {
@@ -562,7 +599,9 @@ pub enum SessionStoreError {
     #[error("generation session `{0}` was not found")]
     SessionNotFound(String),
     /// The caller attempted to use a session with the wrong model.
-    #[error("generation session `{session_id}` expects model `{expected_model}` but got `{actual_model}`")]
+    #[error(
+        "generation session `{session_id}` expects model `{expected_model}` but got `{actual_model}`"
+    )]
     ModelMismatch {
         /// Session identifier.
         session_id: String,
@@ -573,7 +612,9 @@ pub enum SessionStoreError {
     },
     /// The caller attempted to replace a session cache with incompatible
     /// geometry.
-    #[error("generation session `{session_id}` cache geometry mismatch: expected max_context={expected_max_context} width={expected_width}, actual max_context={actual_max_context} width={actual_width}")]
+    #[error(
+        "generation session `{session_id}` cache geometry mismatch: expected max_context={expected_max_context} width={expected_width}, actual max_context={actual_max_context} width={actual_width}"
+    )]
     CacheGeometryMismatch {
         /// Session identifier.
         session_id: String,
@@ -781,6 +822,9 @@ pub enum ReferenceTextGenerationError {
         /// Session KV width.
         kv_width: usize,
     },
+    /// Loading or validating a model artifact failed.
+    #[error(transparent)]
+    Model(#[from] ModelLoadError),
     /// The compiler rejected the reference graph.
     #[error(transparent)]
     Compile(#[from] CompileError),
@@ -807,10 +851,10 @@ struct GenerationStepOutput {
     logits: Vec<f32>,
 }
 
-/// Loaded CPU-backed reference generation model.
+/// Loaded CPU-backed generation model.
 #[derive(Clone, Debug)]
-pub struct CpuReferenceGenerationModel {
-    model: ReferenceWordDecoder,
+struct CpuWordGenerationModel<M> {
+    model: M,
     graph: Graph,
     token_input_id: TensorId,
     position_input_id: TensorId,
@@ -820,9 +864,12 @@ pub struct CpuReferenceGenerationModel {
     plan_digest: String,
 }
 
-impl CpuReferenceGenerationModel {
-    /// Loads and compiles the reference decoder model.
-    pub fn new(model: ReferenceWordDecoder) -> Result<Self, ReferenceTextGenerationError> {
+impl<M> CpuWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
+    /// Loads and compiles a decoder model.
+    fn new(model: M) -> Result<Self, ReferenceTextGenerationError> {
         let (
             graph,
             token_input_id,
@@ -830,7 +877,7 @@ impl CpuReferenceGenerationModel {
             context_input_id,
             hidden_output_id,
             logits_output_id,
-        ) = build_reference_generation_graph(&model)?;
+        ) = build_generation_graph(&model)?;
         let plan_digest = compile_graph(&graph)?.stable_digest();
         Ok(Self {
             model,
@@ -844,15 +891,15 @@ impl CpuReferenceGenerationModel {
         })
     }
 
-    /// Returns the underlying reference model.
+    /// Returns the underlying generation model.
     #[must_use]
-    pub fn model(&self) -> &ReferenceWordDecoder {
+    fn model(&self) -> &M {
         &self.model
     }
 
     /// Returns the stable compiled-plan digest.
     #[must_use]
-    pub fn plan_digest(&self) -> &str {
+    fn plan_digest(&self) -> &str {
         self.plan_digest.as_str()
     }
 
@@ -920,11 +967,20 @@ impl CpuReferenceGenerationModel {
     }
 }
 
-impl GenerationModelHandle for CpuReferenceGenerationModel {
+impl<M> GenerationModelHandle for CpuWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
     fn descriptor(&self) -> &DecoderModelDescriptor {
         self.model.descriptor()
     }
 }
+
+/// Reference-model alias for the phase-1 text-generation path.
+type CpuReferenceGenerationModel = CpuWordGenerationModel<ReferenceWordDecoder>;
+
+/// Artifact-backed model alias for the first model-backed text-generation path.
+type CpuModelGenerationModel = CpuWordGenerationModel<ArtifactWordDecoder>;
 
 /// CPU-backed deterministic text-generation reference service.
 #[derive(Clone, Debug)]
@@ -932,47 +988,45 @@ pub struct CpuReferenceTextGenerationService {
     backend: CpuBackend,
     models: InMemoryGenerationModelRegistry<CpuReferenceGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
+    model_descriptor: DecoderModelDescriptor,
 }
 
 impl CpuReferenceTextGenerationService {
     /// Creates a service with the default reference decoder loaded.
     pub fn new() -> Result<Self, ReferenceTextGenerationError> {
-        let mut service = Self {
+        let model = ReferenceWordDecoder::new();
+        let model_descriptor = model.descriptor().clone();
+        let mut models = InMemoryGenerationModelRegistry::new();
+        models.load(CpuReferenceGenerationModel::new(model)?);
+        Ok(Self {
             backend: CpuBackend::new(),
-            models: InMemoryGenerationModelRegistry::new(),
+            models,
             sessions: InMemoryGenerationSessionStore::new(),
-        };
-        service.load_model(ReferenceWordDecoder::new())?;
-        Ok(service)
+            model_descriptor,
+        })
     }
 
     /// Loads or replaces a reference decoder model.
     pub fn load_model(
         &mut self,
         model: ReferenceWordDecoder,
-    ) -> Result<Option<CpuReferenceGenerationModel>, ReferenceTextGenerationError> {
-        Ok(self.models.load(CpuReferenceGenerationModel::new(model)?))
+    ) -> Result<(), ReferenceTextGenerationError> {
+        self.model_descriptor = model.descriptor().clone();
+        self.models.load(CpuReferenceGenerationModel::new(model)?);
+        Ok(())
     }
 
     /// Returns the default reference model descriptor.
     #[must_use]
     pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
-        self.models
-            .active(ReferenceWordDecoder::MODEL_ID)
-            .expect("default reference decoder loaded")
-            .descriptor()
-    }
-
-    /// Returns a loaded model by ID.
-    #[must_use]
-    pub fn loaded_model(&self, model_id: &str) -> Option<&CpuReferenceGenerationModel> {
-        self.models.active(model_id)
+        &self.model_descriptor
     }
 
     /// Returns the compiled plan digest for a loaded model.
     #[must_use]
     pub fn plan_digest(&self, model_id: &str) -> Option<&str> {
-        self.loaded_model(model_id)
+        self.models
+            .active(model_id)
             .map(CpuReferenceGenerationModel::plan_digest)
     }
 
@@ -1005,126 +1059,222 @@ impl CpuReferenceTextGenerationService {
     }
 }
 
-impl Default for CpuReferenceTextGenerationService {
-    fn default() -> Self {
-        Self::new().expect("reference text-generation service should load")
-    }
-}
-
 impl TextGenerationExecutor for CpuReferenceTextGenerationService {
     type Error = ReferenceTextGenerationError;
 
     fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
-        if request.product_id != TEXT_GENERATION_PRODUCT_ID {
-            return Err(ReferenceTextGenerationError::UnsupportedProduct(
-                request.product_id.clone(),
-            ));
-        }
-
-        let loaded_model = self
-            .models
-            .active(request.model.model.model_id.as_str())
-            .ok_or_else(|| {
-                ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
-            })?
-            .clone();
-        if loaded_model.descriptor() != &request.model {
-            return Err(ReferenceTextGenerationError::UnsupportedModel(
-                request.model.model.model_id.clone(),
-            ));
-        }
-
-        let prompt_tokens = match &request.prompt {
-            GenerationInput::Text(text) => loaded_model
-                .model()
-                .tokenizer()
-                .encode_with_special_tokens(text, true, false),
-            GenerationInput::Tokens(tokens) => tokens.clone(),
-        };
-        if prompt_tokens.is_empty() {
-            return Err(ReferenceTextGenerationError::EmptyPrompt);
-        }
-
-        let hidden_size = loaded_model.descriptor().config.hidden_size;
-        let mut cache = if let Some(session_id) = &request.session_id {
-            if request.reset_session {
-                self.sessions.reset(session_id)?;
-            }
-            self.sessions.cache(session_id)?.clone()
-        } else {
-            InMemoryKvCache::new(
-                loaded_model.descriptor().config.max_context,
-                loaded_model.descriptor().config.hidden_size,
-            )
-        };
-        if cache.width() != hidden_size {
-            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
-                hidden_size,
-                kv_width: cache.width(),
-            });
-        }
-
-        let mut last_logits = Vec::new();
-        for token in prompt_tokens.as_slice() {
-            let context = mean_cache_value(&cache, hidden_size);
-            let step =
-                loaded_model.execute_step(&mut self.backend, *token, cache.len(), &context)?;
-            cache.append(*token, step.hidden.clone(), step.hidden)?;
-            last_logits = step.logits;
-        }
-
-        let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
-        let mut generated_tokens = Vec::new();
-        let termination = loop {
-            if generated_tokens.len() >= request.options.max_output_tokens {
-                break TerminationReason::MaxOutputTokens;
-            }
-            if cache.len() >= cache.max_context() {
-                break TerminationReason::ContextLimit;
-            }
-
-            let next_token = select_argmax(&last_logits)
-                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
-            if next_token == eos_id {
-                break TerminationReason::EndOfSequence;
-            }
-
-            generated_tokens.push(next_token);
-            let context = mean_cache_value(&cache, hidden_size);
-            let step =
-                loaded_model.execute_step(&mut self.backend, next_token, cache.len(), &context)?;
-            cache.append(next_token, step.hidden.clone(), step.hidden)?;
-            last_logits = step.logits;
-        };
-
-        if let Some(session_id) = &request.session_id {
-            self.sessions.replace_cache(
-                session_id,
-                request.model.model.model_id.as_str(),
-                cache.clone(),
-            )?;
-        }
-
-        let generated = TokenSequence::new(generated_tokens);
-        let text = loaded_model
-            .model()
-            .tokenizer()
-            .decode(generated.as_slice());
-        Ok(GenerationResponse::new(
-            request,
-            request.session_id.clone(),
-            generated,
-            text,
-            prompt_tokens.len(),
-            cache.len(),
-            termination,
-        ))
+        run_generation_request(&mut self.backend, &self.models, &mut self.sessions, request)
     }
 }
 
-fn build_reference_generation_graph(
-    model: &ReferenceWordDecoder,
-) -> Result<(Graph, TensorId, TensorId, TensorId, TensorId, TensorId), GraphError> {
+/// CPU-backed model-backed text-generation service.
+#[derive(Clone, Debug)]
+pub struct CpuModelTextGenerationService {
+    backend: CpuBackend,
+    models: InMemoryGenerationModelRegistry<CpuModelGenerationModel>,
+    sessions: InMemoryGenerationSessionStore,
+    model_descriptor: DecoderModelDescriptor,
+}
+
+impl CpuModelTextGenerationService {
+    /// Creates a service with the artifact-backed decoder loaded from a local safetensors file.
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, ReferenceTextGenerationError> {
+        let model = ArtifactWordDecoder::from_safetensors_artifact(path)?;
+        let model_descriptor = model.descriptor().clone();
+        let mut models = InMemoryGenerationModelRegistry::new();
+        models.load(CpuModelGenerationModel::new(model)?);
+        Ok(Self {
+            backend: CpuBackend::new(),
+            models,
+            sessions: InMemoryGenerationSessionStore::new(),
+            model_descriptor,
+        })
+    }
+
+    /// Loads or replaces an artifact-backed decoder model.
+    pub fn load_model(
+        &mut self,
+        model: ArtifactWordDecoder,
+    ) -> Result<(), ReferenceTextGenerationError> {
+        self.model_descriptor = model.descriptor().clone();
+        self.models.load(CpuModelGenerationModel::new(model)?);
+        Ok(())
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
+        &self.model_descriptor
+    }
+
+    /// Returns the compiled plan digest for the loaded model.
+    #[must_use]
+    pub fn plan_digest(&self, model_id: &str) -> Option<&str> {
+        self.models
+            .active(model_id)
+            .map(CpuModelGenerationModel::plan_digest)
+    }
+
+    /// Creates a reusable generation session for the provided model ID.
+    pub fn create_session(
+        &mut self,
+        model_id: &str,
+    ) -> Result<GenerationSession, ReferenceTextGenerationError> {
+        let model = self
+            .models
+            .active(model_id)
+            .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
+        Ok(self.sessions.create(model.descriptor()))
+    }
+
+    /// Resets an existing session.
+    pub fn reset_session(
+        &mut self,
+        session_id: &SessionId,
+    ) -> Result<GenerationSession, ReferenceTextGenerationError> {
+        Ok(self.sessions.reset(session_id)?)
+    }
+
+    /// Closes an existing session.
+    pub fn close_session(
+        &mut self,
+        session_id: &SessionId,
+    ) -> Result<GenerationSession, ReferenceTextGenerationError> {
+        Ok(self.sessions.close(session_id)?)
+    }
+}
+
+impl TextGenerationExecutor for CpuModelTextGenerationService {
+    type Error = ReferenceTextGenerationError;
+
+    fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
+        run_generation_request(&mut self.backend, &self.models, &mut self.sessions, request)
+    }
+}
+
+/// Honest CPU product alias for model-backed text generation.
+pub type CpuProductTextGenerationService = CpuModelTextGenerationService;
+
+fn run_generation_request<M>(
+    backend: &mut CpuBackend,
+    models: &InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
+    sessions: &mut InMemoryGenerationSessionStore,
+    request: &GenerationRequest,
+) -> Result<GenerationResponse, ReferenceTextGenerationError>
+where
+    M: WordDecoderExecutionModel,
+{
+    if request.product_id != TEXT_GENERATION_PRODUCT_ID {
+        return Err(ReferenceTextGenerationError::UnsupportedProduct(
+            request.product_id.clone(),
+        ));
+    }
+
+    let loaded_model = models
+        .active(request.model.model.model_id.as_str())
+        .ok_or_else(|| {
+            ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
+        })?
+        .clone();
+    if loaded_model.descriptor() != &request.model {
+        return Err(ReferenceTextGenerationError::UnsupportedModel(
+            request.model.model.model_id.clone(),
+        ));
+    }
+
+    let prompt_tokens = match &request.prompt {
+        GenerationInput::Text(text) => loaded_model
+            .model()
+            .tokenizer()
+            .encode_with_special_tokens(text, true, false),
+        GenerationInput::Tokens(tokens) => tokens.clone(),
+    };
+    if prompt_tokens.is_empty() {
+        return Err(ReferenceTextGenerationError::EmptyPrompt);
+    }
+
+    let hidden_size = loaded_model.descriptor().config.hidden_size;
+    let mut cache = if let Some(session_id) = &request.session_id {
+        if request.reset_session {
+            sessions.reset(session_id)?;
+        }
+        sessions.cache(session_id)?.clone()
+    } else {
+        InMemoryKvCache::new(
+            loaded_model.descriptor().config.max_context,
+            loaded_model.descriptor().config.hidden_size,
+        )
+    };
+    if cache.width() != hidden_size {
+        return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+            hidden_size,
+            kv_width: cache.width(),
+        });
+    }
+
+    let mut last_logits = Vec::new();
+    for token in prompt_tokens.as_slice() {
+        let context = mean_cache_value(&cache, hidden_size);
+        let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+        cache.append(*token, step.hidden.clone(), step.hidden)?;
+        last_logits = step.logits;
+    }
+
+    let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
+    let mut generated_tokens = Vec::new();
+    let termination = loop {
+        if generated_tokens.len() >= request.options.max_output_tokens {
+            break TerminationReason::MaxOutputTokens;
+        }
+        if cache.len() >= cache.max_context() {
+            break TerminationReason::ContextLimit;
+        }
+
+        let next_token = select_argmax(&last_logits)
+            .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+        if next_token == eos_id {
+            break TerminationReason::EndOfSequence;
+        }
+
+        generated_tokens.push(next_token);
+        let context = mean_cache_value(&cache, hidden_size);
+        let step = loaded_model.execute_step(backend, next_token, cache.len(), &context)?;
+        cache.append(next_token, step.hidden.clone(), step.hidden)?;
+        last_logits = step.logits;
+    };
+
+    if let Some(session_id) = &request.session_id {
+        sessions.replace_cache(
+            session_id,
+            request.model.model.model_id.as_str(),
+            cache.clone(),
+        )?;
+    }
+
+    let generated = TokenSequence::new(generated_tokens);
+    let text = loaded_model
+        .model()
+        .tokenizer()
+        .decode(generated.as_slice());
+    Ok(GenerationResponse::new(
+        request,
+        request.session_id.clone(),
+        generated,
+        text,
+        prompt_tokens.len(),
+        cache.len(),
+        termination,
+    ))
+}
+
+fn build_generation_graph<M>(
+    model: &M,
+) -> Result<(Graph, TensorId, TensorId, TensorId, TensorId, TensorId), GraphError>
+where
+    M: WordDecoderExecutionModel,
+{
     let descriptor = model.descriptor();
     let config = &descriptor.config;
     let weights = model.weights();
@@ -1236,6 +1386,60 @@ pub enum SmokeEmbeddingsError {
     Runtime(#[from] RuntimeError),
 }
 
+/// Model-backed embeddings execution error.
+#[derive(Debug, Error)]
+pub enum ModelEmbeddingsError {
+    /// The request targeted the wrong product.
+    #[error("unsupported product id `{0}`")]
+    UnsupportedProduct(String),
+    /// The request targeted the wrong model.
+    #[error("unsupported model `{0}`")]
+    UnsupportedModel(String),
+    /// The request carried no inputs.
+    #[error("embedding request must contain at least one input")]
+    EmptyInputBatch,
+    /// Loading or validating the model failed.
+    #[error(transparent)]
+    Model(#[from] ModelLoadError),
+    /// Graph construction failed.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// CPU runtime execution failed.
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+}
+
+/// Metal-backed embeddings execution error.
+#[derive(Debug, Error)]
+pub enum MetalEmbeddingsError {
+    /// The request targeted the wrong product.
+    #[error("unsupported product id `{0}`")]
+    UnsupportedProduct(String),
+    /// The request targeted the wrong model.
+    #[error("unsupported model `{0}`")]
+    UnsupportedModel(String),
+    /// The request carried no inputs.
+    #[error("embedding request must contain at least one input")]
+    EmptyInputBatch,
+    /// Metal is not available for the requested product path on this machine.
+    #[error("metal backend unavailable ({status:?}): {message}")]
+    BackendUnavailable {
+        /// Honest backend status.
+        status: HealthStatus,
+        /// Plain-text reason.
+        message: String,
+    },
+    /// Loading or validating the model failed.
+    #[error(transparent)]
+    Model(#[from] ModelLoadError),
+    /// Graph construction failed.
+    #[error(transparent)]
+    Graph(#[from] GraphError),
+    /// Metal runtime execution failed.
+    #[error(transparent)]
+    Runtime(#[from] RuntimeError),
+}
+
 /// CPU-backed embeddings smoke service.
 #[derive(Clone, Debug)]
 pub struct SmokeEmbeddingsService {
@@ -1252,7 +1456,14 @@ impl SmokeEmbeddingsService {
     pub fn new() -> Result<Self, SmokeEmbeddingsError> {
         let model = SmokeByteEmbedder::new();
         let input_shape = Shape::new(vec![1, model.input_dimensions()]);
-        let (graph, input_id, output_id) = build_smoke_graph(&model, input_shape.clone())?;
+        let (graph, input_id, output_id) = build_embedding_graph(
+            Device::cpu(),
+            model.input_dimensions(),
+            model.descriptor().dimensions,
+            model.projection(),
+            model.bias(),
+            input_shape.clone(),
+        )?;
         Ok(Self {
             backend: CpuBackend::new(),
             model,
@@ -1270,21 +1481,15 @@ impl SmokeEmbeddingsService {
     }
 
     fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, SmokeEmbeddingsError> {
-        let mut runtime_inputs = BTreeMap::new();
-        runtime_inputs.insert(
+        execute_cpu_embedding_graph(
+            &mut self.backend,
+            &self.graph,
             self.input_id,
-            self.backend
-                .input_buffer(self.input_shape.clone(), self.model.featurize(input))?,
-        );
-        let result = self
-            .backend
-            .compile_and_execute(&self.graph, &runtime_inputs)?;
-        let Some(output) = result.outputs.get(&self.output_id) else {
-            return Err(SmokeEmbeddingsError::Runtime(RuntimeError::Backend(
-                String::from("missing smoke embedding output"),
-            )));
-        };
-        Ok(output.as_f32_slice().to_vec())
+            self.output_id,
+            &self.input_shape,
+            self.model.featurize(input),
+        )
+        .map_err(SmokeEmbeddingsError::Runtime)
     }
 }
 
@@ -1318,29 +1523,291 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
     }
 }
 
-fn build_smoke_graph(
-    model: &SmokeByteEmbedder,
+/// CPU-backed model embeddings service for artifact-loaded embedding families.
+#[derive(Clone, Debug)]
+pub struct CpuModelEmbeddingsService {
+    backend: CpuBackend,
+    model: ByteProjectionEmbedder,
+    graph: Graph,
     input_shape: Shape,
-) -> Result<(Graph, TensorId, TensorId), GraphError> {
-    let mut builder = GraphBuilder::new(Device::cpu());
-    let input = builder.input("features", input_shape, DType::F32);
-    let weights = builder.constant_f32(
-        Shape::new(vec![
+    input_id: TensorId,
+    output_id: TensorId,
+}
+
+impl CpuModelEmbeddingsService {
+    /// Loads the first model-backed embeddings family from a local safetensors artifact.
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, ModelEmbeddingsError> {
+        let model = ByteProjectionEmbedder::from_safetensors_artifact(path)?;
+        let input_shape = Shape::new(vec![1, model.input_dimensions()]);
+        let (graph, input_id, output_id) = build_embedding_graph(
+            Device::cpu(),
             model.input_dimensions(),
             model.descriptor().dimensions,
-        ]),
-        model.projection().to_vec(),
+            model.weights().projection(),
+            model.weights().bias(),
+            input_shape.clone(),
+        )?;
+        Ok(Self {
+            backend: CpuBackend::new(),
+            model,
+            graph,
+            input_shape,
+            input_id,
+            output_id,
+        })
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &EmbeddingModelDescriptor {
+        self.model.descriptor()
+    }
+
+    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, ModelEmbeddingsError> {
+        let values = execute_cpu_embedding_graph(
+            &mut self.backend,
+            &self.graph,
+            self.input_id,
+            self.output_id,
+            &self.input_shape,
+            self.model.featurize(input),
+        )?;
+        Ok(normalize_embedding(
+            values,
+            self.model.descriptor().normalization,
+        ))
+    }
+}
+
+impl EmbeddingsExecutor for CpuModelEmbeddingsService {
+    type Error = ModelEmbeddingsError;
+
+    fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        if request.product_id != EMBEDDINGS_PRODUCT_ID {
+            return Err(ModelEmbeddingsError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+        if request.model != *self.model.descriptor() {
+            return Err(ModelEmbeddingsError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+        if request.inputs.is_empty() {
+            return Err(ModelEmbeddingsError::EmptyInputBatch);
+        }
+
+        let mut embeddings = Vec::with_capacity(request.inputs.len());
+        for (index, input) in request.inputs.iter().enumerate() {
+            embeddings.push(EmbeddingVector {
+                index,
+                values: self.embed_one(input)?,
+            });
+        }
+
+        Ok(EmbeddingResponse::new(request, embeddings))
+    }
+}
+
+/// Honest CPU product alias for model-backed embeddings.
+pub type CpuProductEmbeddingsService = CpuModelEmbeddingsService;
+
+/// Metal-backed embeddings service for the supported model-backed product path.
+///
+/// Text generation remains CPU-only today; this service exists only for the
+/// first accelerated `mox.embeddings` milestone.
+pub struct MetalModelEmbeddingsService {
+    backend: MetalBackend,
+    backend_selection: BackendSelection,
+    model: ByteProjectionEmbedder,
+    graph: Graph,
+    input_shape: Shape,
+    input_id: TensorId,
+    output_id: TensorId,
+}
+
+impl MetalModelEmbeddingsService {
+    /// Loads the first model-backed embeddings family on Metal when the local
+    /// machine exposes a genuinely supported Metal execution device.
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, MetalEmbeddingsError> {
+        let backend = MetalBackend::new();
+        let backend_selection = backend
+            .backend_selection(EMBEDDINGS_SUPPORTED_OPS)
+            .map_err(|error| MetalEmbeddingsError::BackendUnavailable {
+                status: backend.health().status,
+                message: error.to_string(),
+            })?;
+        let selected_device = backend_selection
+            .selected_device
+            .as_ref()
+            .map(|device| device.device.clone())
+            .ok_or_else(|| MetalEmbeddingsError::BackendUnavailable {
+                status: backend.health().status,
+                message: String::from("metal backend selected no execution device"),
+            })?;
+
+        let model = ByteProjectionEmbedder::from_safetensors_artifact(path)?;
+        let input_shape = Shape::new(vec![1, model.input_dimensions()]);
+        let (graph, input_id, output_id) = build_embedding_graph(
+            selected_device,
+            model.input_dimensions(),
+            model.descriptor().dimensions,
+            model.weights().projection(),
+            model.weights().bias(),
+            input_shape.clone(),
+        )?;
+        Ok(Self {
+            backend,
+            backend_selection,
+            model,
+            graph,
+            input_shape,
+            input_id,
+            output_id,
+        })
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &EmbeddingModelDescriptor {
+        self.model.descriptor()
+    }
+
+    /// Returns truthful backend-selection data for the loaded Metal product.
+    #[must_use]
+    pub fn backend_selection(&self) -> &BackendSelection {
+        &self.backend_selection
+    }
+
+    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, MetalEmbeddingsError> {
+        let values = execute_metal_embedding_graph(
+            &mut self.backend,
+            &self.graph,
+            self.input_id,
+            self.output_id,
+            &self.input_shape,
+            self.model.featurize(input),
+        )?;
+        Ok(normalize_embedding(
+            values,
+            self.model.descriptor().normalization,
+        ))
+    }
+}
+
+impl EmbeddingsExecutor for MetalModelEmbeddingsService {
+    type Error = MetalEmbeddingsError;
+
+    fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        if request.product_id != EMBEDDINGS_PRODUCT_ID {
+            return Err(MetalEmbeddingsError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+        if request.model != *self.model.descriptor() {
+            return Err(MetalEmbeddingsError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+        if request.inputs.is_empty() {
+            return Err(MetalEmbeddingsError::EmptyInputBatch);
+        }
+
+        let mut embeddings = Vec::with_capacity(request.inputs.len());
+        for (index, input) in request.inputs.iter().enumerate() {
+            embeddings.push(EmbeddingVector {
+                index,
+                values: self.embed_one(input)?,
+            });
+        }
+
+        Ok(EmbeddingResponse::new(request, embeddings))
+    }
+}
+
+/// Honest Metal product alias for model-backed embeddings.
+pub type MetalProductEmbeddingsService = MetalModelEmbeddingsService;
+
+fn build_embedding_graph(
+    device: Device,
+    input_dimensions: usize,
+    output_dimensions: usize,
+    projection: &[f32],
+    bias: &[f32],
+    input_shape: Shape,
+) -> Result<(Graph, TensorId, TensorId), GraphError> {
+    let mut builder = GraphBuilder::new(device);
+    let input = builder.input("features", input_shape, DType::F32);
+    let weights = builder.constant_f32(
+        Shape::new(vec![input_dimensions, output_dimensions]),
+        projection.to_vec(),
     )?;
-    let bias = builder.constant_f32(
-        Shape::new(vec![1, model.descriptor().dimensions]),
-        model.bias().to_vec(),
-    )?;
+    let bias = builder.constant_f32(Shape::new(vec![1, output_dimensions]), bias.to_vec())?;
     let projected = builder.matmul(&input, &weights)?;
     let shifted = builder.add(&projected, &bias)?;
     let output_id = shifted.id();
     let input_id = input.id();
     let graph = builder.finish(vec![shifted]);
     Ok((graph, input_id, output_id))
+}
+
+fn execute_cpu_embedding_graph(
+    backend: &mut CpuBackend,
+    graph: &Graph,
+    input_id: TensorId,
+    output_id: TensorId,
+    input_shape: &Shape,
+    features: Vec<f32>,
+) -> Result<Vec<f32>, RuntimeError> {
+    let mut runtime_inputs = BTreeMap::new();
+    runtime_inputs.insert(
+        input_id,
+        backend.input_buffer(input_shape.clone(), features)?,
+    );
+    let result = backend.compile_and_execute(graph, &runtime_inputs)?;
+    let Some(output) = result.outputs.get(&output_id) else {
+        return Err(RuntimeError::Backend(String::from(
+            "missing embedding output",
+        )));
+    };
+    Ok(output.as_f32_slice().to_vec())
+}
+
+fn execute_metal_embedding_graph(
+    backend: &mut MetalBackend,
+    graph: &Graph,
+    input_id: TensorId,
+    output_id: TensorId,
+    input_shape: &Shape,
+    features: Vec<f32>,
+) -> Result<Vec<f32>, RuntimeError> {
+    let mut runtime_inputs = BTreeMap::new();
+    runtime_inputs.insert(
+        input_id,
+        backend.input_buffer(input_shape.clone(), features)?,
+    );
+    let result = backend.compile_and_execute(graph, &runtime_inputs)?;
+    let Some(output) = result.outputs.get(&output_id) else {
+        return Err(RuntimeError::Backend(String::from(
+            "missing embedding output",
+        )));
+    };
+    output.read_f32()
+}
+
+fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) -> Vec<f32> {
+    if normalization != EmbeddingNormalization::UnitLength {
+        return values;
+    }
+    let norm = values.iter().map(|value| value * value).sum::<f32>().sqrt();
+    if norm == 0.0 {
+        return values;
+    }
+    values.into_iter().map(|value| value / norm).collect()
 }
 
 #[cfg(test)]
@@ -1352,8 +1819,8 @@ mod tests {
         EmbeddingsExecutor, FixtureWordTokenizer, GenerationOptions, GenerationRequest,
         GenerationResponse, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
         ModelDescriptor, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
-        SmokeEmbeddingsService, TerminationReason, TextGenerationExecutor, WeightBundleMetadata,
-        WeightFormat, WeightSource, WeightTensorMetadata,
+        SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason, TextGenerationExecutor,
+        WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -1364,11 +1831,7 @@ mod tests {
     fn embedding_request_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-1",
-            mox_models::EmbeddingModelDescriptor::new(
-                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-                8,
-                mox_models::EmbeddingNormalization::UnitLength,
-            ),
+            sample_embedding_descriptor(),
             vec![String::from("hello world"), String::from("open agents")],
         );
 
@@ -1383,7 +1846,37 @@ mod tests {
       "revision": "v0"
     },
     "dimensions": 8,
-    "normalization": "UnitLength"
+    "normalization": "None",
+    "weights": {
+      "format": "ProgrammaticFixture",
+      "source": "Fixture",
+      "quantization": "none",
+      "digest": "30a2fd0264ef45e96101268ae97cfbdffb79540210c88ab834117bc0111c0b00",
+      "tensors": [
+        {
+          "name": "bias",
+          "shape": {
+            "dims": [
+              8
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        },
+        {
+          "name": "projection",
+          "shape": {
+            "dims": [
+              16,
+              8
+            ]
+          },
+          "dtype": "F32",
+          "quantization": "none"
+        }
+      ],
+      "artifacts": []
+    }
   },
   "inputs": [
     "hello world",
@@ -1398,18 +1891,14 @@ mod tests {
     fn embedding_response_round_trips() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-2",
-            mox_models::EmbeddingModelDescriptor::new(
-                ModelDescriptor::new("smoke-byte-embed-v0", "smoke", "v0"),
-                4,
-                mox_models::EmbeddingNormalization::None,
-            ),
+            sample_embedding_descriptor(),
             vec![String::from("hi")],
         );
         let response = EmbeddingResponse::new(
             &request,
             vec![EmbeddingVector {
                 index: 0,
-                values: vec![0.0, 1.0, 2.0, 3.0],
+                values: vec![0.0; 8],
             }],
         );
 
@@ -1652,13 +2141,19 @@ mod tests {
             WeightBundleMetadata {
                 format: WeightFormat::ProgrammaticFixture,
                 source: WeightSource::Fixture,
+                quantization: mox_core::QuantizationMode::None,
                 digest: String::from("fixture-digest"),
                 tensors: vec![WeightTensorMetadata::new(
                     "lm_head",
                     Shape::new(vec![4, 4]),
                     DType::F32,
                 )],
+                artifacts: Vec::new(),
             },
         )
+    }
+
+    fn sample_embedding_descriptor() -> mox_models::EmbeddingModelDescriptor {
+        SmokeByteEmbedder::new().descriptor().clone()
     }
 }

@@ -12,3 +12,7 @@ workspace = true
 
 [lib]
 path = "src/lib.rs"
+
+[dependencies]
+mox-core = { path = "../mox-core" }
+mox-runtime = { path = "../mox-runtime" }
