@@ -9,7 +9,7 @@ use std::{
 
 pub use conformance::*;
 use mox_backend_cpu::CpuBackend;
-use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend};
+use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend, TEXT_GENERATION_SUPPORTED_OPS};
 use mox_compiler::{CompileError, compile_graph};
 pub use mox_core::QuantizationMode;
 use mox_core::{DType, Device, Shape, TensorId};
@@ -30,13 +30,14 @@ pub use mox_models::{
     WeightSource, WeightTensorMetadata, apply_context_window,
 };
 use mox_runtime::{
-    BackendHealthTracker, BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting,
-    KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-    LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-    LocalRuntimeObservability, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
-    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-    SamplingPolicy, SamplingStrategy, TokenSampler, plan_model_admission,
+    BackendHealthTracker, BackendSelection, BackendSelectionState, DeviceDiscovery, HealthStatus,
+    KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy,
+    KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
+    LocalRuntimeErrorCode, LocalRuntimeObservability, MemoryResidencySnapshot,
+    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, RuntimeTransitionEvent,
+    RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, TokenSampler,
+    plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -2093,19 +2094,19 @@ fn tokenizer_digest(tokenizer: &FixtureWordTokenizer) -> String {
     hex::encode(hasher.finalize())
 }
 
-fn prefix_compatibility<M>(model: &CpuWordGenerationModel<M>) -> SharedPrefixCompatibility
+fn prefix_compatibility<M>(model: &M) -> SharedPrefixCompatibility
 where
-    M: WordDecoderExecutionModel,
+    M: CompiledWordGenerationModel,
 {
     SharedPrefixCompatibility {
         model_id: model.descriptor().model.model_id.clone(),
         model_revision: model.descriptor().model.revision.clone(),
         weight_bundle_digest: model.descriptor().weights.digest.clone(),
         tokenizer_family: model.descriptor().tokenizer_family.clone(),
-        tokenizer_digest: Some(tokenizer_digest(model.model().tokenizer())),
+        tokenizer_digest: Some(tokenizer_digest(model.tokenizer())),
         chat_template_digest: None,
         generation_defaults_digest: None,
-        backend_compatibility: String::from("cpu"),
+        backend_compatibility: model.backend_compatibility().to_string(),
     }
 }
 
@@ -2399,9 +2400,7 @@ pub enum ReferenceTextGenerationError {
 }
 
 impl ReferenceTextGenerationError {
-    /// Returns the backend-neutral diagnostic for the error.
-    #[must_use]
-    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+    fn diagnostic_with_backend(&self, backend: &str) -> LocalRuntimeDiagnostic {
         let diagnostic = match self {
             Self::UnsupportedProduct(_) => LocalRuntimeDiagnostic::new(
                 LocalRuntimeErrorCode::UnsupportedProduct,
@@ -2440,7 +2439,7 @@ impl ReferenceTextGenerationError {
             Self::Session(error) => session_store_diagnostic(error),
             Self::LoadedModelRegistry(error) => loaded_model_registry_diagnostic(error),
             Self::Cache(error) => kv_cache_diagnostic(error),
-            Self::Runtime(error) => runtime_error_diagnostic(error).with_backend("cpu"),
+            Self::Runtime(error) => runtime_error_diagnostic(error).with_backend(backend),
         };
         match self {
             Self::LoadedModelRegistry(LoadedModelRegistryError::AdmissionRefused(refusal)) => {
@@ -2448,6 +2447,12 @@ impl ReferenceTextGenerationError {
             }
             _ => diagnostic,
         }
+    }
+
+    /// Returns the backend-neutral diagnostic for the error.
+    #[must_use]
+    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+        self.diagnostic_with_backend("cpu")
     }
 
     /// Returns the diagnostic annotated with request context.
@@ -2463,10 +2468,91 @@ impl ReferenceTextGenerationError {
     }
 }
 
+/// Metal-backed text-generation execution error.
+#[derive(Debug, Error)]
+pub enum MetalTextGenerationError {
+    /// Metal is not available for the requested product path on this machine.
+    #[error("metal backend unavailable ({status:?}): {message}")]
+    BackendUnavailable {
+        /// Honest backend status.
+        status: HealthStatus,
+        /// Plain-text reason.
+        message: String,
+    },
+    /// Request validation, model loading, session, or runtime execution failed.
+    #[error(transparent)]
+    Generation(#[from] ReferenceTextGenerationError),
+}
+
+impl MetalTextGenerationError {
+    /// Returns the backend-neutral diagnostic for the error.
+    #[must_use]
+    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+        match self {
+            Self::BackendUnavailable { status, .. } => LocalRuntimeDiagnostic::new(
+                if *status == HealthStatus::Degraded {
+                    LocalRuntimeErrorCode::BackendDegraded
+                } else {
+                    LocalRuntimeErrorCode::BackendUnavailable
+                },
+                503,
+                self.to_string(),
+            )
+            .with_backend("metal")
+            .with_backend_health(*status),
+            Self::Generation(error) => error.diagnostic_with_backend("metal"),
+        }
+    }
+
+    /// Returns the diagnostic annotated with request context.
+    #[must_use]
+    pub fn diagnostic_for_request(&self, request: &GenerationRequest) -> LocalRuntimeDiagnostic {
+        diagnostic_with_request_context(
+            self.diagnostic(),
+            &request.product_id,
+            &request.model.model.model_id,
+        )
+    }
+}
+
+impl From<ModelLoadError> for MetalTextGenerationError {
+    fn from(value: ModelLoadError) -> Self {
+        Self::Generation(ReferenceTextGenerationError::from(value))
+    }
+}
+
+impl From<LoadedModelRegistryError> for MetalTextGenerationError {
+    fn from(value: LoadedModelRegistryError) -> Self {
+        Self::Generation(ReferenceTextGenerationError::from(value))
+    }
+}
+
+impl From<SessionStoreError> for MetalTextGenerationError {
+    fn from(value: SessionStoreError) -> Self {
+        Self::Generation(ReferenceTextGenerationError::from(value))
+    }
+}
+
 #[derive(Clone, Debug)]
 struct GenerationStepOutput {
     hidden: Vec<f32>,
     logits: Vec<f32>,
+}
+
+trait CompiledWordGenerationModel: GenerationModelHandle + Clone {
+    type Backend;
+
+    fn tokenizer(&self) -> &FixtureWordTokenizer;
+    fn execute_step(
+        &self,
+        backend: &mut Self::Backend,
+        token: TokenId,
+        position: usize,
+        context: &[f32],
+    ) -> Result<GenerationStepOutput, ReferenceTextGenerationError>;
+    fn plan_digest(&self) -> &str;
+    fn load_duration_ns(&self) -> u64;
+    fn backend_compatibility(&self) -> &'static str;
 }
 
 /// Loaded CPU-backed generation model.
@@ -2533,74 +2619,6 @@ where
     fn load_duration_ns(&self) -> u64 {
         self.load_duration_ns
     }
-
-    fn execute_step(
-        &self,
-        backend: &mut CpuBackend,
-        token: TokenId,
-        position: usize,
-        context: &[f32],
-    ) -> Result<GenerationStepOutput, ReferenceTextGenerationError> {
-        let config = &self.model.descriptor().config;
-        if token.as_u32() as usize >= config.vocab_size {
-            return Err(ReferenceTextGenerationError::InvalidToken {
-                token: token.as_u32(),
-                vocab_size: config.vocab_size,
-            });
-        }
-        if position >= config.max_context {
-            return Err(ReferenceTextGenerationError::InvalidPosition {
-                position,
-                max_context: config.max_context,
-            });
-        }
-        if context.len() != config.hidden_size {
-            return Err(ReferenceTextGenerationError::InvalidContextWidth {
-                expected: config.hidden_size,
-                actual: context.len(),
-            });
-        }
-        if let Some(error) = self.model.injected_stream_failure(position) {
-            return Err(error);
-        }
-
-        let mut runtime_inputs = BTreeMap::new();
-        runtime_inputs.insert(
-            self.token_input_id,
-            backend.input_buffer(
-                Shape::new(vec![1, config.vocab_size]),
-                one_hot(config.vocab_size, token.as_u32() as usize),
-            )?,
-        );
-        runtime_inputs.insert(
-            self.position_input_id,
-            backend.input_buffer(
-                Shape::new(vec![1, config.max_context]),
-                one_hot(config.max_context, position),
-            )?,
-        );
-        runtime_inputs.insert(
-            self.context_input_id,
-            backend.input_buffer(Shape::new(vec![1, config.hidden_size]), context.to_vec())?,
-        );
-
-        let result = backend.compile_and_execute(&self.graph, &runtime_inputs)?;
-        let hidden = result
-            .outputs
-            .get(&self.hidden_output_id)
-            .ok_or(ReferenceTextGenerationError::MissingOutput("hidden"))?
-            .as_f32_slice()
-            .ok_or(ReferenceTextGenerationError::MissingOutput("hidden_dense"))?
-            .to_vec();
-        let logits = result
-            .outputs
-            .get(&self.logits_output_id)
-            .ok_or(ReferenceTextGenerationError::MissingOutput("logits"))?
-            .as_f32_slice()
-            .ok_or(ReferenceTextGenerationError::MissingOutput("logits_dense"))?
-            .to_vec();
-        Ok(GenerationStepOutput { hidden, logits })
-    }
 }
 
 impl<M> GenerationModelHandle for CpuWordGenerationModel<M>
@@ -2612,11 +2630,174 @@ where
     }
 }
 
+impl<M> CompiledWordGenerationModel for CpuWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
+    type Backend = CpuBackend;
+
+    fn tokenizer(&self) -> &FixtureWordTokenizer {
+        self.model.tokenizer()
+    }
+
+    fn execute_step(
+        &self,
+        backend: &mut Self::Backend,
+        token: TokenId,
+        position: usize,
+        context: &[f32],
+    ) -> Result<GenerationStepOutput, ReferenceTextGenerationError> {
+        validate_generation_step_request(&self.model, token, position, context)?;
+        if let Some(error) = self.model.injected_stream_failure(position) {
+            return Err(error);
+        }
+        execute_cpu_generation_graph(
+            backend,
+            &self.graph,
+            self.token_input_id,
+            self.position_input_id,
+            self.context_input_id,
+            self.hidden_output_id,
+            self.logits_output_id,
+            &self.model.descriptor().config,
+            token,
+            position,
+            context,
+        )
+    }
+
+    fn plan_digest(&self) -> &str {
+        self.plan_digest()
+    }
+
+    fn load_duration_ns(&self) -> u64 {
+        self.load_duration_ns()
+    }
+
+    fn backend_compatibility(&self) -> &'static str {
+        "cpu"
+    }
+}
+
+/// Loaded Metal-backed generation model.
+#[derive(Clone, Debug)]
+struct MetalWordGenerationModel<M> {
+    model: M,
+    graph: Graph,
+    token_input_id: TensorId,
+    position_input_id: TensorId,
+    context_input_id: TensorId,
+    hidden_output_id: TensorId,
+    logits_output_id: TensorId,
+    plan_digest: String,
+    load_duration_ns: u64,
+}
+
+impl<M> MetalWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
+    fn new(model: M, device: Device) -> Result<Self, ReferenceTextGenerationError> {
+        let load_start = Instant::now();
+        let (
+            graph,
+            token_input_id,
+            position_input_id,
+            context_input_id,
+            hidden_output_id,
+            logits_output_id,
+        ) = build_generation_graph_for_device(device, &model)?;
+        let plan_digest = compile_graph(&graph)?.stable_digest();
+        let load_duration_ns = load_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        Ok(Self {
+            model,
+            graph,
+            token_input_id,
+            position_input_id,
+            context_input_id,
+            hidden_output_id,
+            logits_output_id,
+            plan_digest,
+            load_duration_ns,
+        })
+    }
+
+    fn plan_digest(&self) -> &str {
+        self.plan_digest.as_str()
+    }
+
+    fn load_duration_ns(&self) -> u64 {
+        self.load_duration_ns
+    }
+}
+
+impl<M> GenerationModelHandle for MetalWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
+    fn descriptor(&self) -> &DecoderModelDescriptor {
+        self.model.descriptor()
+    }
+}
+
+impl<M> CompiledWordGenerationModel for MetalWordGenerationModel<M>
+where
+    M: WordDecoderExecutionModel,
+{
+    type Backend = MetalBackend;
+
+    fn tokenizer(&self) -> &FixtureWordTokenizer {
+        self.model.tokenizer()
+    }
+
+    fn execute_step(
+        &self,
+        backend: &mut Self::Backend,
+        token: TokenId,
+        position: usize,
+        context: &[f32],
+    ) -> Result<GenerationStepOutput, ReferenceTextGenerationError> {
+        validate_generation_step_request(&self.model, token, position, context)?;
+        execute_metal_generation_graph(
+            backend,
+            &self.graph,
+            self.token_input_id,
+            self.position_input_id,
+            self.context_input_id,
+            self.hidden_output_id,
+            self.logits_output_id,
+            &self.model.descriptor().config,
+            token,
+            position,
+            context,
+        )
+    }
+
+    fn plan_digest(&self) -> &str {
+        self.plan_digest()
+    }
+
+    fn load_duration_ns(&self) -> u64 {
+        self.load_duration_ns()
+    }
+
+    fn backend_compatibility(&self) -> &'static str {
+        "metal"
+    }
+}
+
 /// Reference-model alias for the phase-1 text-generation path.
 type CpuReferenceGenerationModel = CpuWordGenerationModel<ReferenceWordDecoder>;
 
 /// Artifact-backed model alias for the first model-backed text-generation path.
 type CpuModelGenerationModel = CpuWordGenerationModel<ArtifactWordDecoder>;
+
+/// Artifact-backed Metal model alias for the first accelerated text-generation path.
+type MetalModelGenerationModel = MetalWordGenerationModel<ArtifactWordDecoder>;
 
 /// CPU-backed deterministic text-generation reference service.
 #[derive(Clone, Debug)]
@@ -3050,6 +3231,224 @@ impl ManagedTextGenerationRuntime for CpuModelTextGenerationService {
 
 /// Honest CPU product alias for model-backed text generation.
 pub type CpuProductTextGenerationService = CpuModelTextGenerationService;
+
+fn backend_selection_fallback_state(selection: &BackendSelection) -> Option<String> {
+    match selection.selection_state {
+        BackendSelectionState::Direct => None,
+        BackendSelectionState::SameBackendDegraded => Some(String::from("same_backend_degraded")),
+        BackendSelectionState::CrossBackendFallback => Some(String::from("cross_backend_fallback")),
+    }
+}
+
+/// Metal-backed model-backed text-generation service for the supported dense product path.
+pub struct MetalModelTextGenerationService {
+    backend: MetalBackend,
+    backend_selection: BackendSelection,
+    models: InMemoryGenerationModelRegistry<MetalModelGenerationModel>,
+    sessions: InMemoryGenerationSessionStore,
+    shared_prefixes: SharedPrefixStore,
+    backend_health: BackendHealthTracker,
+    model_descriptor: DecoderModelDescriptor,
+}
+
+impl MetalModelTextGenerationService {
+    /// Loads the first model-backed text-generation family on Metal when the
+    /// local machine exposes a genuinely supported Metal execution device.
+    pub fn from_safetensors_artifact(
+        path: impl AsRef<std::path::Path>,
+    ) -> Result<Self, MetalTextGenerationError> {
+        let backend = MetalBackend::new();
+        let backend_selection = backend
+            .backend_selection(TEXT_GENERATION_SUPPORTED_OPS)
+            .map_err(|error| MetalTextGenerationError::BackendUnavailable {
+                status: backend.health().status,
+                message: error.to_string(),
+            })?;
+        let selected_device = backend_selection
+            .selected_device
+            .as_ref()
+            .map(|device| device.device.clone())
+            .ok_or_else(|| MetalTextGenerationError::BackendUnavailable {
+                status: backend.health().status,
+                message: String::from("metal backend selected no execution device"),
+            })?;
+
+        let model = ArtifactWordDecoder::from_safetensors_artifact(path)?;
+        let model_descriptor = model.descriptor().clone();
+        let mut models = InMemoryGenerationModelRegistry::new();
+        models.warm_with_metadata(
+            MetalModelGenerationModel::new(model, selected_device)?,
+            current_time_millis(),
+            DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from("metal")),
+            backend_selection_fallback_state(&backend_selection),
+        )?;
+        let mut backend_health = BackendHealthTracker::default();
+        backend_health.observe("metal", backend.health(), current_time_millis());
+        Ok(Self {
+            backend,
+            backend_selection,
+            models,
+            sessions: InMemoryGenerationSessionStore::new(),
+            shared_prefixes: SharedPrefixStore::default(),
+            backend_health,
+            model_descriptor,
+        })
+    }
+
+    /// Loads or replaces an artifact-backed decoder model.
+    pub fn load_model(
+        &mut self,
+        model: ArtifactWordDecoder,
+    ) -> Result<(), MetalTextGenerationError> {
+        let selected_device = self
+            .backend_selection
+            .selected_device
+            .as_ref()
+            .map(|device| device.device.clone())
+            .ok_or_else(|| MetalTextGenerationError::BackendUnavailable {
+                status: self.backend.health().status,
+                message: String::from("metal backend selected no execution device"),
+            })?;
+        self.model_descriptor = model.descriptor().clone();
+        self.models.warm_with_metadata(
+            MetalModelGenerationModel::new(model, selected_device)?,
+            current_time_millis(),
+            DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from("metal")),
+            backend_selection_fallback_state(&self.backend_selection),
+        )?;
+        Ok(())
+    }
+
+    /// Returns the loaded model descriptor.
+    #[must_use]
+    pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
+        &self.model_descriptor
+    }
+
+    /// Returns truthful backend-selection data for the loaded Metal product.
+    #[must_use]
+    pub fn backend_selection(&self) -> &BackendSelection {
+        &self.backend_selection
+    }
+
+    /// Returns the compiled plan digest for the loaded model.
+    #[must_use]
+    pub fn plan_digest(&self, model_id: &str) -> Option<&str> {
+        self.models
+            .active(model_id)
+            .map(MetalModelGenerationModel::plan_digest)
+    }
+
+    /// Refreshes keepalive for an already loaded model.
+    pub fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, MetalTextGenerationError> {
+        Ok(self
+            .models
+            .warm_loaded(model_id, current_time_millis(), keep_alive_millis)?)
+    }
+
+    /// Returns the currently loaded models after applying idle expiry.
+    #[must_use]
+    pub fn loaded_models(&mut self) -> LoadedModelsObservation {
+        self.loaded_models_at(current_time_millis())
+    }
+
+    /// Returns the currently loaded models at a caller-provided time.
+    #[must_use]
+    pub fn loaded_models_at(&mut self, now_millis: u64) -> LoadedModelsObservation {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_models_observation()
+    }
+
+    /// Returns runtime observability at a caller-provided time.
+    #[must_use]
+    pub fn observability_at(&mut self, now_millis: u64) -> LocalRuntimeObservability {
+        self.models.expire_idle(now_millis);
+        self.backend_health
+            .observe("metal", self.backend.health(), now_millis);
+        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+    }
+
+    /// Returns runtime observability after applying idle expiry.
+    #[must_use]
+    pub fn observability(&mut self) -> LocalRuntimeObservability {
+        self.observability_at(current_time_millis())
+    }
+
+    /// Returns explicit loaded-model residency views at a caller-provided time.
+    #[must_use]
+    pub fn loaded_model_views_at(&mut self, now_millis: u64) -> Vec<LoadedModelView> {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_model_views()
+    }
+
+    /// Returns explicit loaded-model residency views after applying idle expiry.
+    #[must_use]
+    pub fn loaded_model_views(&mut self) -> Vec<LoadedModelView> {
+        self.loaded_model_views_at(current_time_millis())
+    }
+
+    /// Unloads a currently loaded model explicitly.
+    pub fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, MetalTextGenerationError> {
+        Ok(self.models.unload_view(model_id, current_time_millis())?)
+    }
+
+    /// Creates a reusable generation session for the provided model ID.
+    pub fn create_session(
+        &mut self,
+        model_id: &str,
+    ) -> Result<GenerationSession, MetalTextGenerationError> {
+        let model = self
+            .models
+            .active(model_id)
+            .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
+        Ok(self.sessions.create(model.descriptor()))
+    }
+
+    /// Resets an existing session.
+    pub fn reset_session(
+        &mut self,
+        session_id: &SessionId,
+    ) -> Result<GenerationSession, MetalTextGenerationError> {
+        Ok(self.sessions.reset(session_id)?)
+    }
+
+    /// Closes an existing session.
+    pub fn close_session(
+        &mut self,
+        session_id: &SessionId,
+    ) -> Result<GenerationSession, MetalTextGenerationError> {
+        Ok(self.sessions.close(session_id)?)
+    }
+}
+
+impl TextGenerationExecutor for MetalModelTextGenerationService {
+    type Error = MetalTextGenerationError;
+
+    fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
+        run_generation_request(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            request,
+        )
+        .map_err(Into::into)
+    }
+}
+
+/// Honest Metal product alias for model-backed text generation.
+pub type MetalProductTextGenerationService = MetalModelTextGenerationService;
 
 struct GenerationSampler {
     sampler: TokenSampler,
@@ -3659,15 +4058,15 @@ where
     }
 }
 
-fn run_generation_request<M>(
-    backend: &mut CpuBackend,
-    models: &mut InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
+fn run_generation_request<B, M>(
+    backend: &mut B,
+    models: &mut InMemoryGenerationModelRegistry<M>,
     sessions: &mut InMemoryGenerationSessionStore,
     shared_prefixes: &mut SharedPrefixStore,
     request: &GenerationRequest,
 ) -> Result<GenerationResponse, ReferenceTextGenerationError>
 where
-    M: WordDecoderExecutionModel,
+    M: CompiledWordGenerationModel<Backend = B>,
 {
     if request.product_id != TEXT_GENERATION_PRODUCT_ID {
         return Err(ReferenceTextGenerationError::UnsupportedProduct(
@@ -3700,7 +4099,7 @@ where
 
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
         let prompt_eval_start = Instant::now();
-        let tokenizer = loaded_model.model().tokenizer();
+        let tokenizer = loaded_model.tokenizer();
         let prompt_tokens = match &request.prompt {
             GenerationInput::Text(text) => tokenizer.encode_with_special_tokens(text, true, false),
             GenerationInput::Tokens(tokens) => tokens.clone(),
@@ -3783,7 +4182,7 @@ where
         }
         let prompt_cache = cache.clone();
 
-        let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
+        let eos_id = loaded_model.tokenizer().vocabulary().eos_id();
         let mut sampler = GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
         let termination = loop {
@@ -3808,7 +4207,7 @@ where
             last_logits = step.logits;
 
             if truncate_generated_text(
-                loaded_model.model().tokenizer(),
+                loaded_model.tokenizer(),
                 &mut generated_tokens,
                 &request.options.stop_sequences,
             )
@@ -3847,10 +4246,7 @@ where
                 TokenSequence::new(session_tokens),
             )?;
         }
-        let text = loaded_model
-            .model()
-            .tokenizer()
-            .decode(generated.as_slice());
+        let text = loaded_model.tokenizer().decode(generated.as_slice());
         let usage = GenerationUsage {
             input_tokens: prompt_tokens.len(),
             output_tokens: generated.len(),
@@ -3961,11 +4357,21 @@ fn build_generation_graph<M>(
 where
     M: WordDecoderExecutionModel,
 {
+    build_generation_graph_for_device(Device::cpu(), model)
+}
+
+fn build_generation_graph_for_device<M>(
+    device: Device,
+    model: &M,
+) -> Result<(Graph, TensorId, TensorId, TensorId, TensorId, TensorId), GraphError>
+where
+    M: WordDecoderExecutionModel,
+{
     let descriptor = model.descriptor();
     let config = &descriptor.config;
     let weights = model.weights();
 
-    let mut builder = GraphBuilder::new(Device::cpu());
+    let mut builder = GraphBuilder::new(device);
     let token_input = builder.input(
         "token_one_hot",
         Shape::new(vec![1, config.vocab_size]),
@@ -4018,6 +4424,137 @@ where
         hidden.id(),
         logits.id(),
     ))
+}
+
+fn validate_generation_step_request<M>(
+    model: &M,
+    token: TokenId,
+    position: usize,
+    context: &[f32],
+) -> Result<(), ReferenceTextGenerationError>
+where
+    M: WordDecoderExecutionModel,
+{
+    let config = &model.descriptor().config;
+    if token.as_u32() as usize >= config.vocab_size {
+        return Err(ReferenceTextGenerationError::InvalidToken {
+            token: token.as_u32(),
+            vocab_size: config.vocab_size,
+        });
+    }
+    if position >= config.max_context {
+        return Err(ReferenceTextGenerationError::InvalidPosition {
+            position,
+            max_context: config.max_context,
+        });
+    }
+    if context.len() != config.hidden_size {
+        return Err(ReferenceTextGenerationError::InvalidContextWidth {
+            expected: config.hidden_size,
+            actual: context.len(),
+        });
+    }
+    Ok(())
+}
+
+fn execute_cpu_generation_graph(
+    backend: &mut CpuBackend,
+    graph: &Graph,
+    token_input_id: TensorId,
+    position_input_id: TensorId,
+    context_input_id: TensorId,
+    hidden_output_id: TensorId,
+    logits_output_id: TensorId,
+    config: &DecoderConfig,
+    token: TokenId,
+    position: usize,
+    context: &[f32],
+) -> Result<GenerationStepOutput, ReferenceTextGenerationError> {
+    let mut runtime_inputs = BTreeMap::new();
+    runtime_inputs.insert(
+        token_input_id,
+        backend.input_buffer(
+            Shape::new(vec![1, config.vocab_size]),
+            one_hot(config.vocab_size, token.as_u32() as usize),
+        )?,
+    );
+    runtime_inputs.insert(
+        position_input_id,
+        backend.input_buffer(
+            Shape::new(vec![1, config.max_context]),
+            one_hot(config.max_context, position),
+        )?,
+    );
+    runtime_inputs.insert(
+        context_input_id,
+        backend.input_buffer(Shape::new(vec![1, config.hidden_size]), context.to_vec())?,
+    );
+
+    let result = backend.compile_and_execute(graph, &runtime_inputs)?;
+    let hidden = result
+        .outputs
+        .get(&hidden_output_id)
+        .ok_or(ReferenceTextGenerationError::MissingOutput("hidden"))?
+        .as_f32_slice()
+        .ok_or(ReferenceTextGenerationError::MissingOutput("hidden_dense"))?
+        .to_vec();
+    let logits = result
+        .outputs
+        .get(&logits_output_id)
+        .ok_or(ReferenceTextGenerationError::MissingOutput("logits"))?
+        .as_f32_slice()
+        .ok_or(ReferenceTextGenerationError::MissingOutput("logits_dense"))?
+        .to_vec();
+    Ok(GenerationStepOutput { hidden, logits })
+}
+
+fn execute_metal_generation_graph(
+    backend: &mut MetalBackend,
+    graph: &Graph,
+    token_input_id: TensorId,
+    position_input_id: TensorId,
+    context_input_id: TensorId,
+    hidden_output_id: TensorId,
+    logits_output_id: TensorId,
+    config: &DecoderConfig,
+    token: TokenId,
+    position: usize,
+    context: &[f32],
+) -> Result<GenerationStepOutput, ReferenceTextGenerationError> {
+    let mut runtime_inputs = BTreeMap::new();
+    runtime_inputs.insert(
+        token_input_id,
+        backend.input_buffer(
+            Shape::new(vec![1, config.vocab_size]),
+            one_hot(config.vocab_size, token.as_u32() as usize),
+        )?,
+    );
+    runtime_inputs.insert(
+        position_input_id,
+        backend.input_buffer(
+            Shape::new(vec![1, config.max_context]),
+            one_hot(config.max_context, position),
+        )?,
+    );
+    runtime_inputs.insert(
+        context_input_id,
+        backend.input_buffer(Shape::new(vec![1, config.hidden_size]), context.to_vec())?,
+    );
+
+    let result = backend.compile_and_execute(graph, &runtime_inputs)?;
+    let hidden = result
+        .outputs
+        .get(&hidden_output_id)
+        .ok_or(ReferenceTextGenerationError::MissingOutput("hidden"))?
+        .read_f32()
+        .map_err(ReferenceTextGenerationError::Runtime)?;
+    let logits = result
+        .outputs
+        .get(&logits_output_id)
+        .ok_or(ReferenceTextGenerationError::MissingOutput("logits"))?
+        .read_f32()
+        .map_err(ReferenceTextGenerationError::Runtime)?;
+    Ok(GenerationStepOutput { hidden, logits })
 }
 
 fn one_hot(width: usize, index: usize) -> Vec<f32> {
@@ -4495,9 +5032,6 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
 pub type CpuProductEmbeddingsService = CpuModelEmbeddingsService;
 
 /// Metal-backed embeddings service for the supported model-backed product path.
-///
-/// Text generation remains CPU-only today; this service exists only for the
-/// first accelerated `mox.embeddings` milestone.
 pub struct MetalModelEmbeddingsService {
     backend: MetalBackend,
     backend_selection: BackendSelection,
