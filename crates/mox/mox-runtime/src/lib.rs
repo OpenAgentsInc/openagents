@@ -634,6 +634,310 @@ impl LoadedModelResidency {
     }
 }
 
+/// Explicit resident-memory plan for one served model.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelMemoryPlan {
+    /// Bytes attributable to model weights.
+    pub weights_bytes: u64,
+    /// Bytes attributable to the admitted KV-cache posture.
+    pub kv_cache_bytes: u64,
+    /// Bytes attributable to graph or runtime workspace planning.
+    pub graph_bytes: u64,
+    /// Resident host-memory bytes the runtime must admit for the model.
+    pub resident_host_bytes: u64,
+    /// Resident device-memory bytes the runtime must admit for the model.
+    pub resident_device_bytes: u64,
+}
+
+impl ModelMemoryPlan {
+    /// Creates a host-only memory plan for CPU-backed serving.
+    #[must_use]
+    pub fn host_only(weights_bytes: u64, kv_cache_bytes: u64, graph_bytes: u64) -> Self {
+        let resident_host_bytes = weights_bytes
+            .saturating_add(kv_cache_bytes)
+            .saturating_add(graph_bytes);
+        Self {
+            weights_bytes,
+            kv_cache_bytes,
+            graph_bytes,
+            resident_host_bytes,
+            resident_device_bytes: 0,
+        }
+    }
+
+    /// Creates a plan with an explicit host/device residency split.
+    #[must_use]
+    pub fn split_residency(
+        weights_bytes: u64,
+        kv_cache_bytes: u64,
+        graph_bytes: u64,
+        resident_host_bytes: u64,
+        resident_device_bytes: u64,
+    ) -> Self {
+        Self {
+            weights_bytes,
+            kv_cache_bytes,
+            graph_bytes,
+            resident_host_bytes,
+            resident_device_bytes,
+        }
+    }
+}
+
+/// Explicit resident-memory budgets for local-serving admission.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryBudget {
+    /// Maximum admitted resident host-memory bytes, when bounded.
+    pub resident_host_bytes: Option<u64>,
+    /// Maximum admitted resident device-memory bytes, when bounded.
+    pub resident_device_bytes: Option<u64>,
+}
+
+/// Policy to apply when a new model would exceed admitted residency.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResidencyPressureAction {
+    /// Refuse the new model instead of evicting anything implicitly.
+    RefuseNewModel,
+    /// Unload the oldest idle models first until the new model fits.
+    UnloadIdleOldestFirst,
+}
+
+/// Reusable local-serving residency and admission policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelResidencyPolicy {
+    /// Maximum number of simultaneously loaded models, when bounded.
+    pub max_loaded_models: Option<usize>,
+    /// Explicit admitted resident-memory budgets.
+    pub memory_budget: MemoryBudget,
+    /// What to do when the candidate would exceed the admitted budgets.
+    pub pressure_action: ResidencyPressureAction,
+}
+
+impl ModelResidencyPolicy {
+    /// Creates an explicit unbounded policy.
+    #[must_use]
+    pub fn unbounded() -> Self {
+        Self {
+            max_loaded_models: None,
+            memory_budget: MemoryBudget::default(),
+            pressure_action: ResidencyPressureAction::RefuseNewModel,
+        }
+    }
+}
+
+impl Default for ModelResidencyPolicy {
+    fn default() -> Self {
+        Self::unbounded()
+    }
+}
+
+/// Runtime-visible memory state for one loaded model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedModelMemoryState {
+    /// Stable model identifier.
+    pub model_id: String,
+    /// Explicit resident-memory plan for the model.
+    pub plan: ModelMemoryPlan,
+    /// Number of active requests currently using the model.
+    pub active_requests: usize,
+    /// Most recent activity time used for idle-eviction ordering.
+    pub last_used_at_millis: u64,
+}
+
+/// Aggregate resident-memory snapshot for the currently loaded model set.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryResidencySnapshot {
+    /// Number of loaded models in the snapshot.
+    pub loaded_models: usize,
+    /// Aggregate admitted host-memory bytes.
+    pub resident_host_bytes: u64,
+    /// Aggregate admitted device-memory bytes.
+    pub resident_device_bytes: u64,
+}
+
+impl MemoryResidencySnapshot {
+    /// Builds a snapshot from the currently loaded models.
+    #[must_use]
+    pub fn from_loaded_models(models: &[LoadedModelMemoryState]) -> Self {
+        Self {
+            loaded_models: models.len(),
+            resident_host_bytes: models
+                .iter()
+                .map(|model| model.plan.resident_host_bytes)
+                .sum(),
+            resident_device_bytes: models
+                .iter()
+                .map(|model| model.plan.resident_device_bytes)
+                .sum(),
+        }
+    }
+}
+
+/// Explicit reason admission was refused under the active residency policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Error)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRefusalReason {
+    /// The candidate would exceed the admitted loaded-model count.
+    #[error("loaded model count exceeds the admitted limit")]
+    MaxLoadedModels,
+    /// The candidate would exceed the admitted host-memory budget.
+    #[error("resident host-memory budget exceeded")]
+    HostMemoryBudget,
+    /// The candidate would exceed the admitted device-memory budget.
+    #[error("resident device-memory budget exceeded")]
+    DeviceMemoryBudget,
+}
+
+/// Refusal details for a candidate model under the active residency policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Error)]
+#[error("admission refused for model `{requested_model_id}`: {reason}")]
+pub struct ModelAdmissionRefusal {
+    /// Stable candidate model identifier.
+    pub requested_model_id: String,
+    /// Explicit refusal reason.
+    pub reason: AdmissionRefusalReason,
+    /// Active residency policy at refusal time.
+    pub policy: ModelResidencyPolicy,
+    /// Current loaded-model memory state before the attempted admission.
+    pub current: MemoryResidencySnapshot,
+    /// Requested plan for the candidate model.
+    pub requested_plan: ModelMemoryPlan,
+    /// Remaining loaded models that blocked the candidate after any evictions.
+    pub blocking_models: Vec<String>,
+}
+
+/// Admission decision for a candidate model under the active residency policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelAdmissionDecision {
+    /// Loaded-model residency before the candidate was considered.
+    pub current: MemoryResidencySnapshot,
+    /// Loaded-model residency after the candidate is admitted.
+    pub admitted: MemoryResidencySnapshot,
+    /// Idle models that must be evicted before admitting the candidate.
+    pub evicted_models: Vec<String>,
+}
+
+/// Plans local-serving admission for one candidate model.
+pub fn plan_model_admission(
+    loaded: &[LoadedModelMemoryState],
+    requested_model_id: &str,
+    requested_plan: &ModelMemoryPlan,
+    policy: &ModelResidencyPolicy,
+) -> Result<ModelAdmissionDecision, ModelAdmissionRefusal> {
+    let current = MemoryResidencySnapshot::from_loaded_models(loaded);
+    let mut remaining = loaded
+        .iter()
+        .filter(|model| model.model_id != requested_model_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut evicted_models = Vec::new();
+    let mut admitted = snapshot_with_candidate(&remaining, requested_plan);
+    if policy_admits_snapshot(policy, &admitted) {
+        return Ok(ModelAdmissionDecision {
+            current,
+            admitted,
+            evicted_models,
+        });
+    }
+
+    if policy.pressure_action == ResidencyPressureAction::UnloadIdleOldestFirst {
+        remaining.sort_by_key(|model| {
+            (
+                usize::from(model.active_requests > 0),
+                model.last_used_at_millis,
+                model.model_id.clone(),
+            )
+        });
+        while !policy_admits_snapshot(policy, &admitted) {
+            let Some(index) = remaining
+                .iter()
+                .position(|model| model.active_requests == 0)
+            else {
+                break;
+            };
+            let evicted = remaining.remove(index);
+            evicted_models.push(evicted.model_id);
+            admitted = snapshot_with_candidate(&remaining, requested_plan);
+        }
+        if policy_admits_snapshot(policy, &admitted) {
+            return Ok(ModelAdmissionDecision {
+                current,
+                admitted,
+                evicted_models,
+            });
+        }
+    }
+
+    Err(ModelAdmissionRefusal {
+        requested_model_id: requested_model_id.to_string(),
+        reason: first_policy_violation(policy, &admitted),
+        policy: policy.clone(),
+        current,
+        requested_plan: requested_plan.clone(),
+        blocking_models: remaining.into_iter().map(|model| model.model_id).collect(),
+    })
+}
+
+fn snapshot_with_candidate(
+    loaded: &[LoadedModelMemoryState],
+    requested_plan: &ModelMemoryPlan,
+) -> MemoryResidencySnapshot {
+    let mut snapshot = MemoryResidencySnapshot::from_loaded_models(loaded);
+    snapshot.loaded_models += 1;
+    snapshot.resident_host_bytes = snapshot
+        .resident_host_bytes
+        .saturating_add(requested_plan.resident_host_bytes);
+    snapshot.resident_device_bytes = snapshot
+        .resident_device_bytes
+        .saturating_add(requested_plan.resident_device_bytes);
+    snapshot
+}
+
+fn policy_admits_snapshot(
+    policy: &ModelResidencyPolicy,
+    snapshot: &MemoryResidencySnapshot,
+) -> bool {
+    if let Some(max_loaded_models) = policy.max_loaded_models {
+        if snapshot.loaded_models > max_loaded_models {
+            return false;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_host_bytes {
+        if snapshot.resident_host_bytes > limit {
+            return false;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_device_bytes {
+        if snapshot.resident_device_bytes > limit {
+            return false;
+        }
+    }
+    true
+}
+
+fn first_policy_violation(
+    policy: &ModelResidencyPolicy,
+    snapshot: &MemoryResidencySnapshot,
+) -> AdmissionRefusalReason {
+    if let Some(max_loaded_models) = policy.max_loaded_models {
+        if snapshot.loaded_models > max_loaded_models {
+            return AdmissionRefusalReason::MaxLoadedModels;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_host_bytes {
+        if snapshot.resident_host_bytes > limit {
+            return AdmissionRefusalReason::HostMemoryBudget;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_device_bytes {
+        if snapshot.resident_device_bytes > limit {
+            return AdmissionRefusalReason::DeviceMemoryBudget;
+        }
+    }
+    AdmissionRefusalReason::MaxLoadedModels
+}
+
 /// Whether KV pages stay bound to one backend/device posture or can move.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1135,17 +1439,19 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
-        AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
-        AmdTopologyInfo, ArtifactReadPath, BackendSelection, BufferHandle, BufferResidency,
-        BufferStorageKind, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
-        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KvCacheAccounting,
-        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-        LoadedModelResidency, LoadedModelState, ModelArtifactBlobKind, ModelArtifactStorage,
-        ModelArtifactStorageKind, PagedTensorStoragePlan, PrefixCacheIdentity,
-        PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
-        QuantizationSupport, RuntimeError, RuntimeHealth, SamplingPolicy, SamplingStrategy,
-        TokenSampler, apply_sampling_penalties,
+        AdmissionRefusalReason, Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding,
+        AmdOptInStatus, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
+        AmdRuntimeMode, AmdTopologyInfo, ArtifactReadPath, BackendSelection, BufferHandle,
+        BufferResidency, BufferStorageKind, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor,
+        DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus,
+        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+        LoadedModelState, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        ResidencyPressureAction, RuntimeError, RuntimeHealth, SamplingPolicy, SamplingStrategy,
+        TokenSampler, apply_sampling_penalties, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1478,6 +1784,130 @@ mod tests {
         residency.refresh_keep_alive(0, 8_500);
         assert_eq!(residency.expires_at_millis, Some(8_500));
         assert!(residency.is_expired(8_500));
+    }
+
+    #[test]
+    fn residency_policy_and_memory_plan_serialize_stably() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let plan = ModelMemoryPlan::split_residency(1024, 256, 128, 384, 2048);
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: Some(2),
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(4096),
+                resident_device_bytes: Some(8192),
+            },
+            pressure_action: ResidencyPressureAction::UnloadIdleOldestFirst,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&(plan, policy))?,
+            json!([
+                {
+                    "weights_bytes": 1024,
+                    "kv_cache_bytes": 256,
+                    "graph_bytes": 128,
+                    "resident_host_bytes": 384,
+                    "resident_device_bytes": 2048
+                },
+                {
+                    "max_loaded_models": 2,
+                    "memory_budget": {
+                        "resident_host_bytes": 4096,
+                        "resident_device_bytes": 8192
+                    },
+                    "pressure_action": "unload_idle_oldest_first"
+                }
+            ])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn model_admission_can_evict_oldest_idle_model_to_fit_budget() {
+        let loaded = vec![
+            LoadedModelMemoryState {
+                model_id: String::from("alpha"),
+                plan: ModelMemoryPlan::host_only(256, 128, 0),
+                active_requests: 0,
+                last_used_at_millis: 1_000,
+            },
+            LoadedModelMemoryState {
+                model_id: String::from("beta"),
+                plan: ModelMemoryPlan::host_only(256, 128, 0),
+                active_requests: 0,
+                last_used_at_millis: 2_000,
+            },
+        ];
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: Some(2),
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(800),
+                resident_device_bytes: None,
+            },
+            pressure_action: ResidencyPressureAction::UnloadIdleOldestFirst,
+        };
+
+        let decision = plan_model_admission(
+            &loaded,
+            "gamma",
+            &ModelMemoryPlan::host_only(256, 128, 0),
+            &policy,
+        )
+        .expect("gamma should fit after evicting alpha");
+
+        assert_eq!(
+            decision,
+            ModelAdmissionDecision {
+                current: MemoryResidencySnapshot {
+                    loaded_models: 2,
+                    resident_host_bytes: 768,
+                    resident_device_bytes: 0,
+                },
+                admitted: MemoryResidencySnapshot {
+                    loaded_models: 2,
+                    resident_host_bytes: 768,
+                    resident_device_bytes: 0,
+                },
+                evicted_models: vec![String::from("alpha")],
+            }
+        );
+    }
+
+    #[test]
+    fn model_admission_refuses_when_only_active_models_block_the_budget() {
+        let loaded = vec![LoadedModelMemoryState {
+            model_id: String::from("alpha"),
+            plan: ModelMemoryPlan::host_only(256, 128, 0),
+            active_requests: 1,
+            last_used_at_millis: 1_000,
+        }];
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: Some(1),
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(512),
+                resident_device_bytes: None,
+            },
+            pressure_action: ResidencyPressureAction::UnloadIdleOldestFirst,
+        };
+
+        let refusal = plan_model_admission(
+            &loaded,
+            "beta",
+            &ModelMemoryPlan::host_only(256, 128, 0),
+            &policy,
+        )
+        .expect_err("beta should be refused while alpha is active");
+
+        assert_eq!(refusal.reason, AdmissionRefusalReason::MaxLoadedModels);
+        assert_eq!(refusal.blocking_models, vec![String::from("alpha")]);
+        assert_eq!(
+            refusal.current,
+            MemoryResidencySnapshot {
+                loaded_models: 1,
+                resident_host_bytes: 384,
+                resident_device_bytes: 0,
+            }
+        );
     }
 
     #[test]

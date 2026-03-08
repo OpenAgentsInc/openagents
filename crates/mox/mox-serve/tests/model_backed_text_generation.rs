@@ -29,9 +29,16 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     );
 
     let response = service.generate(&request)?;
+    let loaded_view = service
+        .loaded_model_views()
+        .into_iter()
+        .find(|view| view.summary.model == ArtifactWordDecoder::MODEL_ID)
+        .expect("loaded model view");
     let capability = TextGenerationCapabilityEnvelope::from_decoder_model(
         cpu_backend_selection()?,
         service.model_descriptor(),
+        loaded_view.memory_plan.clone(),
+        loaded_view.residency_policy.clone(),
         KvCacheMode::Paged,
         BatchPosture::SingleRequestOnly,
         ProviderReadiness::ready("cpu backend ready"),
@@ -67,6 +74,7 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
         request.model.weights.digest
     );
     assert_eq!(capability.weight_bundle.artifacts.len(), 1);
+    assert!(capability.memory_plan.resident_host_bytes > 0);
     assert_eq!(capability.kv_cache_mode, KvCacheMode::Paged);
     assert!(capability.kv_cache_policy.is_some());
     assert_eq!(capability.batch_posture, BatchPosture::SingleRequestOnly);
@@ -80,6 +88,9 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert_eq!(receipt.model_family, ArtifactWordDecoder::MODEL_FAMILY);
     assert_eq!(receipt.model_revision, "v1");
     assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
+    assert!(receipt.memory_plan.is_some());
+    assert!(receipt.residency_policy.is_some());
+    assert!(receipt.residency_snapshot.is_some());
     assert_eq!(receipt.session_id, Some(session.session_id.clone()));
     assert_eq!(receipt.input_tokens, 2);
     assert_eq!(receipt.output_tokens, 2);
