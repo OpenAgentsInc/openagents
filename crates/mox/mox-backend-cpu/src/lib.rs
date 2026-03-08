@@ -969,7 +969,8 @@ fn buffer_bytes_from_len(len: usize) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-fn quantized_row_byte_len(
+/// Returns the byte length of one logical row for GGML/GGUF block storage.
+pub fn quantized_row_byte_len(
     shape: &Shape,
     layout: mox_core::QuantizedBlockLayout,
 ) -> Result<usize, RuntimeError> {
@@ -988,7 +989,8 @@ fn quantized_row_byte_len(
     Ok((row_width / layout.elements_per_block) * layout.bytes_per_block)
 }
 
-fn quantized_row_dot(
+/// Computes one dense-by-quantized row dot product without dequantizing the full row.
+pub fn quantized_row_dot(
     lhs: &[f32],
     mode: QuantizationMode,
     bytes: &[u8],
@@ -1017,11 +1019,7 @@ fn quantized_row_dot(
         let lhs_block_start = block_index * elements_per_block;
         let lhs_block = &lhs[lhs_block_start..lhs_block_start + elements_per_block];
         sum += match mode {
-            QuantizationMode::GgmlMxfp4 => {
-                return Err(RuntimeError::Backend(format!(
-                    "unsupported quantized matmul mode {mode:?}",
-                )));
-            }
+            QuantizationMode::GgmlMxfp4 => dot_mxfp4_block(lhs_block, block_bytes)?,
             QuantizationMode::GgmlQ4_0 => dot_q4_0_block(lhs_block, block_bytes)?,
             QuantizationMode::GgmlQ4_1 => dot_q4_1_block(lhs_block, block_bytes)?,
             QuantizationMode::GgmlQ8_0 => dot_q8_0_block(lhs_block, block_bytes)?,
@@ -1080,7 +1078,8 @@ fn decode_quantized_values(
     Ok(output)
 }
 
-fn decode_quantized_row_into(
+/// Decodes one quantized GGML/GGUF row into `output`.
+pub fn decode_quantized_row_into(
     mode: QuantizationMode,
     bytes: &[u8],
     output: &mut Vec<f32>,
@@ -1092,11 +1091,7 @@ fn decode_quantized_row_into(
     };
     for block_bytes in bytes.chunks_exact(bytes_per_block) {
         match mode {
-            QuantizationMode::GgmlMxfp4 => {
-                return Err(RuntimeError::Backend(format!(
-                    "unsupported quantized decode mode {mode:?}",
-                )));
-            }
+            QuantizationMode::GgmlMxfp4 => decode_mxfp4_block_into(block_bytes, output)?,
             QuantizationMode::GgmlQ4_0 => decode_q4_0_block_into(block_bytes, output)?,
             QuantizationMode::GgmlQ4_1 => decode_q4_1_block_into(block_bytes, output)?,
             QuantizationMode::GgmlQ8_0 => decode_q8_0_block_into(block_bytes, output)?,
@@ -1108,6 +1103,26 @@ fn decode_quantized_row_into(
         }
     }
     Ok(())
+}
+
+fn dot_mxfp4_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
+    const KVALUES: [i8; 16] = [0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12];
+
+    if bytes.len() != 17 || lhs.len() != 32 {
+        return Err(RuntimeError::Backend(String::from(
+            "mxfp4 block dot requires 32 lhs values and 17 bytes",
+        )));
+    }
+    let scale = decode_e8m0_to_fp32_half(bytes[0]);
+    let quants = &bytes[1..];
+    let mut sum = 0.0;
+    for (pair_index, quant) in quants.iter().copied().enumerate() {
+        let low = f32::from(KVALUES[usize::from(quant & 0x0f)]) * scale;
+        let high = f32::from(KVALUES[usize::from((quant >> 4) & 0x0f)]) * scale;
+        sum += lhs[pair_index] * low;
+        sum += lhs[pair_index + 16] * high;
+    }
+    Ok(sum)
 }
 
 fn dot_q4_0_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
@@ -1160,6 +1175,26 @@ fn dot_q8_0_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
         sum += lhs * (f32::from(quant) * scale);
     }
     Ok(sum)
+}
+
+fn decode_mxfp4_block_into(bytes: &[u8], output: &mut Vec<f32>) -> Result<(), RuntimeError> {
+    const KVALUES: [i8; 16] = [0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12];
+
+    if bytes.len() != 17 {
+        return Err(RuntimeError::Backend(String::from(
+            "mxfp4 block decode requires 17 bytes",
+        )));
+    }
+    let scale = decode_e8m0_to_fp32_half(bytes[0]);
+    let quants = &bytes[1..];
+    let start = output.len();
+    output.resize(start + 32, 0.0);
+    for (pair_index, quant) in quants.iter().copied().enumerate() {
+        output[start + pair_index] = f32::from(KVALUES[usize::from(quant & 0x0f)]) * scale;
+        output[start + pair_index + 16] =
+            f32::from(KVALUES[usize::from((quant >> 4) & 0x0f)]) * scale;
+    }
+    Ok(())
 }
 
 fn decode_q4_0_block_into(bytes: &[u8], output: &mut Vec<f32>) -> Result<(), RuntimeError> {
@@ -1215,6 +1250,15 @@ fn decode_q8_0_block_into(bytes: &[u8], output: &mut Vec<f32>) -> Result<(), Run
 
 fn decode_f16_le(low: u8, high: u8) -> f32 {
     half_to_f32(u16::from_le_bytes([low, high]))
+}
+
+fn decode_e8m0_to_fp32_half(value: u8) -> f32 {
+    let bits = if value < 2 {
+        0x0020_0000_u32 << u32::from(value)
+    } else {
+        u32::from(value - 1) << 23
+    };
+    f32::from_bits(bits)
 }
 
 fn half_to_f32(bits: u16) -> f32 {
@@ -1760,6 +1804,10 @@ mod tests {
     fn cpu_backend_executes_quantized_matmul_for_supported_ggml_modes() -> Result<(), RuntimeError>
     {
         assert_quantized_matmul_matches_dense_reference(
+            QuantizationMode::GgmlMxfp4,
+            sample_repeated_mxfp4_rows(3),
+        )?;
+        assert_quantized_matmul_matches_dense_reference(
             QuantizationMode::GgmlQ4_0,
             sample_repeated_q4_0_rows(3),
         )?;
@@ -1771,6 +1819,33 @@ mod tests {
             QuantizationMode::GgmlQ8_0,
             sample_repeated_q8_0_rows(3),
         )?;
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_quantized_row_helpers_cover_mxfp4() -> Result<(), RuntimeError> {
+        let shape = Shape::new(vec![2, 32]);
+        let layout = QuantizationMode::GgmlMxfp4
+            .ggml_block_layout(&shape)
+            .ok_or_else(|| RuntimeError::Backend(String::from("mxfp4 layout")))?;
+        assert_eq!(super::quantized_row_byte_len(&shape, layout)?, 17);
+
+        let row_bytes = sample_q8_0_like_reference_vector();
+        let quantized = sample_mxfp4_row();
+        let mut decoded = Vec::new();
+        super::decode_quantized_row_into(QuantizationMode::GgmlMxfp4, &quantized, &mut decoded)?;
+        let dot = super::quantized_row_dot(
+            row_bytes.as_slice(),
+            QuantizationMode::GgmlMxfp4,
+            &quantized,
+        )?;
+        let expected: f32 = row_bytes
+            .iter()
+            .zip(decoded.iter())
+            .map(|(lhs, rhs)| lhs * rhs)
+            .sum();
+        assert!((dot - expected).abs() <= 1e-5);
+        assert_eq!(decoded.len(), 32);
         Ok(())
     }
 
@@ -1886,6 +1961,14 @@ mod tests {
             .collect()
     }
 
+    fn sample_repeated_mxfp4_rows(rows: usize) -> Vec<u8> {
+        sample_mxfp4_row()
+            .into_iter()
+            .cycle()
+            .take(rows * 17)
+            .collect()
+    }
+
     fn sample_repeated_q4_1_rows(rows: usize) -> Vec<u8> {
         sample_q4_1_row()
             .into_iter()
@@ -1914,6 +1997,17 @@ mod tests {
             .collect()
     }
 
+    fn sample_mxfp4_row() -> Vec<u8> {
+        std::iter::once(128_u8)
+            .chain(
+                [0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]
+                    .into_iter()
+                    .cycle()
+                    .take(16),
+            )
+            .collect()
+    }
+
     fn sample_q4_1_row() -> Vec<u8> {
         [0x00_u8, 0x40, 0x00, 0xbc]
             .into_iter()
@@ -1931,5 +2025,9 @@ mod tests {
             .chain(std::iter::once(0x40))
             .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
             .collect()
+    }
+
+    fn sample_q8_0_like_reference_vector() -> Vec<f32> {
+        (0..32).map(|index| index as f32 / 8.0 - 2.0).collect()
     }
 }

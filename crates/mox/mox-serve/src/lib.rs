@@ -1,6 +1,8 @@
 //! Served compute product contracts for Mox.
 
 mod conformance;
+mod gpt_oss;
+mod openai_http;
 
 use std::{
     collections::BTreeMap,
@@ -8,6 +10,7 @@ use std::{
 };
 
 pub use conformance::*;
+pub use gpt_oss::*;
 use mox_backend_cpu::CpuBackend;
 use mox_backend_cuda::{CudaBackend, EMBEDDINGS_SUPPORTED_OPS as CUDA_EMBEDDINGS_SUPPORTED_OPS};
 use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend, TEXT_GENERATION_SUPPORTED_OPS};
@@ -45,6 +48,7 @@ use mox_runtime::{
     SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler,
     default_cache_invalidation_policy, plan_model_admission,
 };
+pub use openai_http::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -84,6 +88,15 @@ pub fn default_decoder_kv_cache_policy(model: &DecoderModelDescriptor) -> KvCach
     default_kv_cache_policy(model.config.max_context, model.config.kv_width())
 }
 
+/// Returns the default paged-KV policy for a loaded generation model handle.
+#[must_use]
+pub fn default_generation_kv_cache_policy<M>(model: &M) -> KvCachePolicy
+where
+    M: GenerationModelHandle,
+{
+    default_kv_cache_policy(model.descriptor().config.max_context, model.cache_width())
+}
+
 /// Returns the default resident-memory plan for one decoder model.
 #[must_use]
 pub fn default_decoder_memory_plan(
@@ -99,6 +112,30 @@ pub fn default_decoder_memory_plan(
         // Accelerated runtimes should override this split with a more exact
         // host/device breakdown when they know it; this keeps the current CPU
         // truth correct without double-counting device-resident models.
+        Some(device_bytes) => ModelMemoryPlan::split_residency(
+            weights_bytes,
+            kv_cache_bytes,
+            0,
+            kv_cache_bytes,
+            device_bytes,
+        ),
+        None => ModelMemoryPlan::host_only(weights_bytes, kv_cache_bytes, 0),
+    }
+}
+
+fn default_generation_memory_plan<M>(
+    model: &M,
+    weight_bytes: Option<u64>,
+    resident_device_bytes: Option<u64>,
+) -> ModelMemoryPlan
+where
+    M: GenerationModelHandle,
+{
+    let kv_cache_bytes = default_generation_kv_cache_policy(model)
+        .page_layout
+        .bytes_for_tokens(model.descriptor().config.max_context);
+    let weights_bytes = weight_bytes.unwrap_or(0);
+    match resident_device_bytes {
         Some(device_bytes) => ModelMemoryPlan::split_residency(
             weights_bytes,
             kv_cache_bytes,
@@ -1360,6 +1397,17 @@ where
 pub trait GenerationModelHandle {
     /// Returns the active model descriptor.
     fn descriptor(&self) -> &DecoderModelDescriptor;
+
+    /// Returns the actual per-token KV width owned by the loaded model path.
+    fn cache_width(&self) -> usize {
+        self.descriptor().config.kv_width()
+    }
+}
+
+impl GenerationModelHandle for DecoderModelDescriptor {
+    fn descriptor(&self) -> &DecoderModelDescriptor {
+        self
+    }
 }
 
 impl GenerationModelHandle for ReferenceWordDecoder {
@@ -1370,8 +1418,13 @@ impl GenerationModelHandle for ReferenceWordDecoder {
 
 trait WordDecoderExecutionModel: Clone {
     fn descriptor(&self) -> &DecoderModelDescriptor;
-    fn tokenizer(&self) -> &FixtureWordTokenizer;
+    fn tokenizer(&self) -> &dyn TokenizerBoundary;
     fn weights(&self) -> &DecoderFixtureWeights;
+    fn encode_prompt_text(&self, text: &str) -> TokenSequence;
+
+    fn is_end_of_sequence(&self, token: TokenId) -> bool {
+        token == self.tokenizer().vocabulary().eos_id()
+    }
 
     fn injected_stream_failure(&self, _position: usize) -> Option<ReferenceTextGenerationError> {
         None
@@ -1383,12 +1436,17 @@ impl WordDecoderExecutionModel for ReferenceWordDecoder {
         self.descriptor()
     }
 
-    fn tokenizer(&self) -> &FixtureWordTokenizer {
+    fn tokenizer(&self) -> &dyn TokenizerBoundary {
         self.tokenizer()
     }
 
     fn weights(&self) -> &DecoderFixtureWeights {
         self.weights()
+    }
+
+    fn encode_prompt_text(&self, text: &str) -> TokenSequence {
+        self.tokenizer()
+            .encode_with_special_tokens(text, true, false)
     }
 }
 
@@ -1397,12 +1455,17 @@ impl WordDecoderExecutionModel for ArtifactWordDecoder {
         self.descriptor()
     }
 
-    fn tokenizer(&self) -> &FixtureWordTokenizer {
+    fn tokenizer(&self) -> &dyn TokenizerBoundary {
         self.tokenizer()
     }
 
     fn weights(&self) -> &DecoderFixtureWeights {
         self.weights()
+    }
+
+    fn encode_prompt_text(&self, text: &str) -> TokenSequence {
+        self.tokenizer()
+            .encode_with_special_tokens(text, true, false)
     }
 }
 
@@ -1524,8 +1587,7 @@ where
     ) -> Result<Option<M>, LoadedModelRegistryError> {
         let model_id = model.descriptor().model.model_id.clone();
         let size_bytes = weight_bundle_size_bytes(&model.descriptor().weights);
-        let memory_plan =
-            default_decoder_memory_plan(model.descriptor(), size_bytes, size_vram_bytes);
+        let memory_plan = default_generation_memory_plan(&model, size_bytes, size_vram_bytes);
         let decision = plan_model_admission(
             &self.memory_states(),
             model_id.as_str(),
@@ -2152,34 +2214,35 @@ impl InMemoryGenerationSessionStore {
     }
 
     /// Creates a new session bound to a decoder model.
-    pub fn create(
+    pub fn create<M>(
         &mut self,
-        model: &DecoderModelDescriptor,
+        model: &M,
         served_artifact_digest: impl Into<String>,
-    ) -> GenerationSession {
+    ) -> GenerationSession
+    where
+        M: GenerationModelHandle,
+    {
         self.next_session += 1;
         let session_id = SessionId::new(format!("sess-{:08}", self.next_session));
-        let policy = default_decoder_kv_cache_policy(model);
+        let descriptor = model.descriptor();
+        let cache_width = model.cache_width();
+        let policy = default_generation_kv_cache_policy(model);
         let session = GenerationSession {
             session_id: session_id.clone(),
             served_artifact_digest: served_artifact_digest.into(),
-            model_id: model.model.model_id.clone(),
-            model_family: model.model.family.clone(),
-            model_revision: model.model.revision.clone(),
-            weight_bundle_digest: model.weights.digest.clone(),
-            max_context: model.config.max_context,
-            kv_width: model.config.kv_width(),
+            model_id: descriptor.model.model_id.clone(),
+            model_family: descriptor.model.family.clone(),
+            model_revision: descriptor.model.revision.clone(),
+            weight_bundle_digest: descriptor.weights.digest.clone(),
+            max_context: descriptor.config.max_context,
+            kv_width: cache_width,
             cached_tokens: 0,
             kv_cache_policy: policy.clone(),
             kv_cache: KvCacheState::default(),
         };
         let state = GenerationSessionState {
             session: session.clone(),
-            cache: InMemoryKvCache::with_policy(
-                model.config.max_context,
-                model.config.kv_width(),
-                policy,
-            ),
+            cache: InMemoryKvCache::with_policy(descriptor.config.max_context, cache_width, policy),
             tokens: Vec::new(),
         };
         self.sessions.insert(session_id, state);
@@ -2456,19 +2519,6 @@ fn shared_prefix_len(left: &[TokenId], right: &[TokenId]) -> usize {
         .count()
 }
 
-fn tokenizer_digest(tokenizer: &FixtureWordTokenizer) -> String {
-    let mut hasher = Sha256::new();
-    for token in tokenizer.vocabulary().tokens() {
-        hasher.update(token.as_bytes());
-        hasher.update([0]);
-    }
-    hasher.update(tokenizer.vocabulary().bos_id().as_u32().to_le_bytes());
-    hasher.update(tokenizer.vocabulary().eos_id().as_u32().to_le_bytes());
-    hasher.update(tokenizer.vocabulary().pad_id().as_u32().to_le_bytes());
-    hasher.update(tokenizer.vocabulary().unknown_id().as_u32().to_le_bytes());
-    hex::encode(hasher.finalize())
-}
-
 fn prefix_compatibility<M>(model: &M) -> SharedPrefixCompatibility
 where
     M: CompiledWordGenerationModel,
@@ -2484,9 +2534,21 @@ where
         model_revision: model.descriptor().model.revision.clone(),
         weight_bundle_digest: model.descriptor().weights.digest.clone(),
         tokenizer_family: model.descriptor().tokenizer_family.clone(),
-        tokenizer_digest: Some(tokenizer_digest(model.tokenizer())),
-        chat_template_digest: None,
-        generation_defaults_digest: None,
+        tokenizer_digest: model
+            .descriptor()
+            .artifact_identity
+            .as_ref()
+            .and_then(|value| value.tokenizer_digest.clone()),
+        chat_template_digest: model
+            .descriptor()
+            .artifact_identity
+            .as_ref()
+            .and_then(|value| value.chat_template_digest.clone()),
+        generation_defaults_digest: model
+            .descriptor()
+            .artifact_identity
+            .as_ref()
+            .map(|value| value.generation_defaults_digest.clone()),
         backend_compatibility: model.backend_compatibility().to_string(),
     }
 }
@@ -2749,10 +2811,12 @@ pub enum ReferenceTextGenerationError {
         actual: usize,
     },
     /// The active cache geometry is incompatible with the reference model.
-    #[error("unsupported cache geometry: hidden_size={hidden_size} kv_width={kv_width}")]
+    #[error(
+        "unsupported cache geometry: expected_kv_width={expected_kv_width} kv_width={kv_width}"
+    )]
     UnsupportedCacheGeometry {
-        /// Model hidden size.
-        hidden_size: usize,
+        /// Expected KV width for the active model.
+        expected_kv_width: usize,
         /// Session KV width.
         kv_width: usize,
     },
@@ -2921,7 +2985,8 @@ impl From<SessionStoreError> for MetalTextGenerationError {
 
 #[derive(Clone, Debug)]
 struct GenerationStepOutput {
-    hidden: Vec<f32>,
+    key: Vec<f32>,
+    value: Vec<f32>,
     logits: Vec<f32>,
     execution_plan_digest: Option<String>,
     compile_path: Option<CompilePathEvidence>,
@@ -2945,13 +3010,18 @@ struct EmbeddingStepOutput {
 trait CompiledWordGenerationModel: GenerationModelHandle + Clone {
     type Backend;
 
-    fn tokenizer(&self) -> &FixtureWordTokenizer;
+    fn tokenizer(&self) -> &dyn TokenizerBoundary;
+    fn encode_prompt_input(
+        &self,
+        input: &GenerationInput,
+    ) -> Result<TokenSequence, ReferenceTextGenerationError>;
+    fn is_end_of_sequence(&self, token: TokenId) -> bool;
     fn execute_step(
         &self,
         backend: &mut Self::Backend,
         token: TokenId,
         position: usize,
-        context: &[f32],
+        cache: &InMemoryKvCache,
     ) -> Result<GenerationStepOutput, ReferenceTextGenerationError>;
     fn plan_digest(&self) -> &str;
     fn load_duration_ns(&self) -> u64;
@@ -3039,8 +3109,22 @@ where
 {
     type Backend = CpuBackend;
 
-    fn tokenizer(&self) -> &FixtureWordTokenizer {
+    fn tokenizer(&self) -> &dyn TokenizerBoundary {
         self.model.tokenizer()
+    }
+
+    fn encode_prompt_input(
+        &self,
+        input: &GenerationInput,
+    ) -> Result<TokenSequence, ReferenceTextGenerationError> {
+        Ok(match input {
+            GenerationInput::Text(text) => self.model.encode_prompt_text(text),
+            GenerationInput::Tokens(tokens) => tokens.clone(),
+        })
+    }
+
+    fn is_end_of_sequence(&self, token: TokenId) -> bool {
+        self.model.is_end_of_sequence(token)
     }
 
     fn execute_step(
@@ -3048,12 +3132,13 @@ where
         backend: &mut Self::Backend,
         token: TokenId,
         position: usize,
-        context: &[f32],
+        cache: &InMemoryKvCache,
     ) -> Result<GenerationStepOutput, ReferenceTextGenerationError> {
-        validate_generation_step_request(&self.model, token, position, context)?;
+        validate_generation_step_request(&self.model, token, position)?;
         if let Some(error) = self.model.injected_stream_failure(position) {
             return Err(error);
         }
+        let context = mean_cache_value(cache, self.model.descriptor().config.hidden_size);
         execute_cpu_generation_graph(
             backend,
             &self.graph,
@@ -3065,7 +3150,7 @@ where
             &self.model.descriptor().config,
             token,
             position,
-            context,
+            context.as_slice(),
         )
     }
 
@@ -3153,8 +3238,22 @@ where
 {
     type Backend = MetalBackend;
 
-    fn tokenizer(&self) -> &FixtureWordTokenizer {
+    fn tokenizer(&self) -> &dyn TokenizerBoundary {
         self.model.tokenizer()
+    }
+
+    fn encode_prompt_input(
+        &self,
+        input: &GenerationInput,
+    ) -> Result<TokenSequence, ReferenceTextGenerationError> {
+        Ok(match input {
+            GenerationInput::Text(text) => self.model.encode_prompt_text(text),
+            GenerationInput::Tokens(tokens) => tokens.clone(),
+        })
+    }
+
+    fn is_end_of_sequence(&self, token: TokenId) -> bool {
+        self.model.is_end_of_sequence(token)
     }
 
     fn execute_step(
@@ -3162,9 +3261,10 @@ where
         backend: &mut Self::Backend,
         token: TokenId,
         position: usize,
-        context: &[f32],
+        cache: &InMemoryKvCache,
     ) -> Result<GenerationStepOutput, ReferenceTextGenerationError> {
-        validate_generation_step_request(&self.model, token, position, context)?;
+        validate_generation_step_request(&self.model, token, position)?;
+        let context = mean_cache_value(cache, self.model.descriptor().config.hidden_size);
         execute_metal_generation_graph(
             backend,
             &self.graph,
@@ -3176,7 +3276,7 @@ where
             &self.model.descriptor().config,
             token,
             position,
-            context,
+            context.as_slice(),
         )
     }
 
@@ -3341,7 +3441,7 @@ impl CpuReferenceTextGenerationService {
             .active(model_id)
             .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
         Ok(self.sessions.create(
-            model.descriptor(),
+            model,
             served_artifact_identity_for_decoder_backend(model.descriptor(), "cpu", &[])
                 .served_artifact_digest,
         ))
@@ -3561,7 +3661,7 @@ impl CpuModelTextGenerationService {
             .active(model_id)
             .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
         Ok(self.sessions.create(
-            model.descriptor(),
+            model,
             served_artifact_identity_for_decoder_backend(model.descriptor(), "cpu", &[])
                 .served_artifact_digest,
         ))
@@ -3833,7 +3933,7 @@ impl MetalModelTextGenerationService {
             .map(|device| device.feature_flags.clone())
             .unwrap_or_default();
         Ok(self.sessions.create(
-            model.descriptor(),
+            model,
             served_artifact_identity_for_decoder_backend(
                 model.descriptor(),
                 self.backend_selection.effective_backend.as_str(),
@@ -3992,18 +4092,13 @@ where
 
         let prepared = (|| -> Result<_, ReferenceTextGenerationError> {
             let prompt_eval_start = Instant::now();
-            let tokenizer = loaded_model.model().tokenizer();
-            let prompt_tokens = match &request.prompt {
-                GenerationInput::Text(text) => {
-                    tokenizer.encode_with_special_tokens(text, true, false)
-                }
-                GenerationInput::Tokens(tokens) => tokens.clone(),
-            };
+            let tokenizer = loaded_model.tokenizer();
+            let prompt_tokens = loaded_model.encode_prompt_input(&request.prompt)?;
             if prompt_tokens.is_empty() {
                 return Err(ReferenceTextGenerationError::EmptyPrompt);
             }
 
-            let hidden_size = loaded_model.descriptor().config.hidden_size;
+            let expected_kv_width = loaded_model.cache_width();
             let mut session_tokens = Vec::new();
             let compatibility = prefix_compatibility(&loaded_model);
             let prefix_policy = default_prefix_cache_policy();
@@ -4062,7 +4157,7 @@ where
                 lookup.cache.unwrap_or_else(|| {
                     InMemoryKvCache::new(
                         loaded_model.descriptor().config.max_context,
-                        loaded_model.descriptor().config.hidden_size,
+                        expected_kv_width,
                     )
                 })
             } else if let Some(session_id) = &request.session_id {
@@ -4070,18 +4165,17 @@ where
             } else {
                 InMemoryKvCache::new(
                     loaded_model.descriptor().config.max_context,
-                    loaded_model.descriptor().config.hidden_size,
+                    expected_kv_width,
                 )
             };
-            if cache.width() != hidden_size {
+            if cache.width() != expected_kv_width {
                 return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
-                    hidden_size,
+                    expected_kv_width,
                     kv_width: cache.width(),
                 });
             }
             for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
-                let context = mean_cache_value(&cache, hidden_size);
-                let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+                let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
                 if execution_plan_digest.is_none() {
                     execution_plan_digest = step.execution_plan_digest.clone();
                 }
@@ -4092,7 +4186,7 @@ where
                 bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
                 plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
                 plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
-                cache.append(*token, step.hidden.clone(), step.hidden)?;
+                cache.append(*token, step.key, step.value)?;
                 last_logits = step.logits;
                 prompt_logits.push(last_logits.clone());
             }
@@ -4436,7 +4530,7 @@ where
                     );
                 }
             };
-            if next_token == self.loaded_model.model().tokenizer().vocabulary().eos_id() {
+            if self.loaded_model.is_end_of_sequence(next_token) {
                 return Some(self.emit_terminal_or_chunk(
                     GenerationStreamStatus::Succeeded,
                     TerminationReason::EndOfSequence,
@@ -4446,15 +4540,11 @@ where
             }
 
             self.generated_tokens.push(next_token);
-            let context = mean_cache_value(
-                &self.cache,
-                self.loaded_model.descriptor().config.hidden_size,
-            );
             match self.loaded_model.execute_step(
                 self.backend,
                 next_token,
                 self.cache.len(),
-                &context,
+                &self.cache,
             ) {
                 Ok(step) => {
                     if self.compile_path.is_none() {
@@ -4470,10 +4560,7 @@ where
                     self.plan_cache_misses = self
                         .plan_cache_misses
                         .saturating_add(step.plan_cache_misses);
-                    if let Err(error) =
-                        self.cache
-                            .append(next_token, step.hidden.clone(), step.hidden)
-                    {
+                    if let Err(error) = self.cache.append(next_token, step.key, step.value) {
                         return Some(self.emit_terminal_or_chunk(
                             GenerationStreamStatus::Failed,
                             TerminationReason::Error,
@@ -4621,15 +4708,12 @@ where
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
         let prompt_eval_start = Instant::now();
         let tokenizer = loaded_model.tokenizer();
-        let prompt_tokens = match &request.prompt {
-            GenerationInput::Text(text) => tokenizer.encode_with_special_tokens(text, true, false),
-            GenerationInput::Tokens(tokens) => tokens.clone(),
-        };
+        let prompt_tokens = loaded_model.encode_prompt_input(&request.prompt)?;
         if prompt_tokens.is_empty() {
             return Err(ReferenceTextGenerationError::EmptyPrompt);
         }
 
-        let hidden_size = loaded_model.descriptor().config.hidden_size;
+        let expected_kv_width = loaded_model.cache_width();
         let mut session_tokens = Vec::new();
         let compatibility = prefix_compatibility(&loaded_model);
         let prefix_policy = default_prefix_cache_policy();
@@ -4688,7 +4772,7 @@ where
             lookup.cache.unwrap_or_else(|| {
                 InMemoryKvCache::new(
                     loaded_model.descriptor().config.max_context,
-                    loaded_model.descriptor().config.hidden_size,
+                    expected_kv_width,
                 )
             })
         } else if let Some(session_id) = &request.session_id {
@@ -4696,18 +4780,17 @@ where
         } else {
             InMemoryKvCache::new(
                 loaded_model.descriptor().config.max_context,
-                loaded_model.descriptor().config.hidden_size,
+                expected_kv_width,
             )
         };
-        if cache.width() != hidden_size {
+        if cache.width() != expected_kv_width {
             return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
-                hidden_size,
+                expected_kv_width,
                 kv_width: cache.width(),
             });
         }
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
-            let context = mean_cache_value(&cache, hidden_size);
-            let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+            let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
             if execution_plan_digest.is_none() {
                 execution_plan_digest = step.execution_plan_digest.clone();
             }
@@ -4718,13 +4801,12 @@ where
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
             plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
-            cache.append(*token, step.hidden.clone(), step.hidden)?;
+            cache.append(*token, step.key, step.value)?;
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
         }
         let prompt_cache = cache.clone();
 
-        let eos_id = loaded_model.tokenizer().vocabulary().eos_id();
         let mut sampler = GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
         let termination = loop {
@@ -4738,13 +4820,12 @@ where
             let next_token = sampler
                 .select_next_token(&last_logits, &cache)
                 .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
-            if next_token == eos_id {
+            if loaded_model.is_end_of_sequence(next_token) {
                 break TerminationReason::EndOfSequence;
             }
 
             generated_tokens.push(next_token);
-            let context = mean_cache_value(&cache, hidden_size);
-            let step = loaded_model.execute_step(backend, next_token, cache.len(), &context)?;
+            let step = loaded_model.execute_step(backend, next_token, cache.len(), &cache)?;
             if execution_plan_digest.is_none() {
                 execution_plan_digest = step.execution_plan_digest.clone();
             }
@@ -4755,7 +4836,7 @@ where
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
             plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
-            cache.append(next_token, step.hidden.clone(), step.hidden)?;
+            cache.append(next_token, step.key, step.value)?;
             last_logits = step.logits;
 
             if truncate_generated_text(
@@ -4877,7 +4958,7 @@ where
 }
 
 fn truncate_generated_text(
-    tokenizer: &FixtureWordTokenizer,
+    tokenizer: &dyn TokenizerBoundary,
     generated_tokens: &mut Vec<TokenId>,
     stop_sequences: &[String],
 ) -> Option<String> {
@@ -4911,7 +4992,7 @@ fn text_prefix_without_trailing_chars(text: &str, trailing_chars: usize) -> &str
 }
 
 fn token_count_for_decoded_prefix(
-    tokenizer: &FixtureWordTokenizer,
+    tokenizer: &dyn TokenizerBoundary,
     tokens: &[TokenId],
     prefix_text: &str,
 ) -> usize {
@@ -5006,7 +5087,6 @@ fn validate_generation_step_request<M>(
     model: &M,
     token: TokenId,
     position: usize,
-    context: &[f32],
 ) -> Result<(), ReferenceTextGenerationError>
 where
     M: WordDecoderExecutionModel,
@@ -5022,12 +5102,6 @@ where
         return Err(ReferenceTextGenerationError::InvalidPosition {
             position,
             max_context: config.max_context,
-        });
-    }
-    if context.len() != config.hidden_size {
-        return Err(ReferenceTextGenerationError::InvalidContextWidth {
-            expected: config.hidden_size,
-            actual: context.len(),
         });
     }
     Ok(())
@@ -5082,7 +5156,8 @@ fn execute_cpu_generation_graph(
         .ok_or(ReferenceTextGenerationError::MissingOutput("logits_dense"))?
         .to_vec();
     Ok(GenerationStepOutput {
-        hidden,
+        key: hidden.clone(),
+        value: hidden,
         logits,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
@@ -5140,7 +5215,8 @@ fn execute_metal_generation_graph(
         .read_f32()
         .map_err(ReferenceTextGenerationError::Runtime)?;
     Ok(GenerationStepOutput {
-        hidden,
+        key: hidden.clone(),
+        value: hidden,
         logits,
         execution_plan_digest: result.metrics.execution_plan_digest.clone(),
         compile_path: result.metrics.compile_path.clone(),
@@ -6346,7 +6422,7 @@ mod tests {
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
         ActivationFunction, DecoderAttentionConfig, DecoderFeedForwardConfig,
-        DecoderFixtureWeights, TokenSequence, assert_prompt_window_case,
+        DecoderFixtureWeights, TokenSequence, TokenizerBoundary, assert_prompt_window_case,
         assert_rendered_prompt_case, golden_prompt_fixture, golden_prompt_fixtures,
         golden_tokenizer_fixture,
     };
@@ -6989,12 +7065,18 @@ mod tests {
             self.inner.descriptor()
         }
 
-        fn tokenizer(&self) -> &FixtureWordTokenizer {
+        fn tokenizer(&self) -> &dyn TokenizerBoundary {
             self.inner.tokenizer()
         }
 
         fn weights(&self) -> &DecoderFixtureWeights {
             self.inner.weights()
+        }
+
+        fn encode_prompt_text(&self, text: &str) -> TokenSequence {
+            self.inner
+                .tokenizer()
+                .encode_with_special_tokens(text, true, false)
         }
 
         fn injected_stream_failure(&self, position: usize) -> Option<ReferenceTextGenerationError> {

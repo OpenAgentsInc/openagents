@@ -6,7 +6,9 @@
 use std::{collections::BTreeMap, fmt, io::ErrorKind, process::Command};
 
 use mox_compiler::compile_graph;
-use mox_core::{DType, Device, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
+use mox_core::{
+    DType, Device, DeviceKind, QuantizationMode, Shape, TensorData, TensorId, TensorSpec,
+};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendDegradedPolicy,
@@ -41,6 +43,11 @@ pub const SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "add"];
 /// Dense op surface currently covered for the first CUDA-backed embeddings
 /// product path.
 pub const EMBEDDINGS_SUPPORTED_OPS: &[&str] = SUPPORTED_OPS;
+
+/// CUDA-side quantized primitive surface required by the GPT-OSS text-generation
+/// path.
+pub const TEXT_GENERATION_SUPPORTED_OPS: &[&str] =
+    &["quantized_matvec_q8_0", "quantized_matvec_mxfp4"];
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct NvidiaInventoryRow {
@@ -238,6 +245,30 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Launches one quantized row-wise matrix-vector product.
+    pub fn quantized_matvec(
+        &mut self,
+        weights: &CudaBuffer,
+        byte_offset: usize,
+        mode: QuantizationMode,
+        rows: usize,
+        cols: usize,
+        input: &CudaBuffer,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_quantized_matvec(
+            &weights.platform,
+            byte_offset,
+            mode,
+            rows,
+            cols,
+            &input.platform,
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Synchronizes the CUDA stream and returns explicit submission metadata.
     pub fn commit(self, wait: CudaCommandWait) -> Result<CudaSubmissionReport, RuntimeError> {
         let status = self.platform.commit(wait)?;
@@ -375,6 +406,115 @@ impl CudaBackend {
         let mut buffer = self.allocate(&TensorSpec::new(shape, DType::F32, device))?;
         buffer.write_f32(values.into().as_slice())?;
         Ok(buffer)
+    }
+
+    /// Returns whether the Mox-owned CUDA quantized text-generation kernels are built.
+    #[must_use]
+    pub fn quantized_kernels_available(&self) -> bool {
+        platform::quantized_kernels_compiled()
+    }
+
+    /// Uploads raw bytes into device memory for backend-owned quantized storage.
+    pub fn byte_buffer(&mut self, bytes: &[u8]) -> Result<CudaBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda backend unavailable: no selected execution device",
+            )));
+        };
+        let spec = TensorSpec::new(Shape::new(vec![bytes.len()]), DType::I8, device);
+        let Some(backend) = self.selected_backend() else {
+            return Err(RuntimeError::Backend(self.health().message));
+        };
+        let mut buffer = backend.allocate(&spec)?;
+        buffer.write_bytes(bytes)?;
+        Ok(buffer)
+    }
+
+    /// Executes one quantized row-wise matrix-vector product on CUDA.
+    pub fn quantized_matvec(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        rows: usize,
+        cols: usize,
+        input: &[f32],
+    ) -> Result<Vec<f32>, RuntimeError> {
+        self.quantized_matvec_with_offset(weights, 0, mode, rows, cols, input)
+    }
+
+    /// Executes one quantized row-wise matrix-vector product from a byte offset.
+    pub fn quantized_matvec_with_offset(
+        &mut self,
+        weights: &CudaBuffer,
+        byte_offset: usize,
+        mode: QuantizationMode,
+        rows: usize,
+        cols: usize,
+        input: &[f32],
+    ) -> Result<Vec<f32>, RuntimeError> {
+        if !self.quantized_kernels_available() {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels are not available in this build",
+            )));
+        }
+        if weights.spec().dtype() != DType::I8 {
+            return Err(RuntimeError::Backend(format!(
+                "cuda quantized matvec requires raw byte weights, actual {:?}",
+                weights.spec().dtype()
+            )));
+        }
+        let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+            return Err(RuntimeError::Backend(format!(
+                "cuda quantized matvec does not support mode {mode:?}"
+            )));
+        };
+        if cols == 0 || cols % elements_per_block != 0 {
+            return Err(RuntimeError::Backend(format!(
+                "cuda quantized matvec requires block-aligned width {cols} for {mode:?}"
+            )));
+        }
+        if input.len() != cols {
+            return Err(RuntimeError::Backend(format!(
+                "cuda quantized matvec input width mismatch: expected {cols}, actual {}",
+                input.len()
+            )));
+        }
+        let row_stride = (cols / elements_per_block) * bytes_per_block;
+        let required_bytes = rows.saturating_mul(row_stride);
+        let expected_end = byte_offset.saturating_add(required_bytes);
+        if weights.byte_len() < expected_end {
+            return Err(RuntimeError::Backend(format!(
+                "cuda quantized matvec byte length mismatch: required {expected_end}, actual {}",
+                weights.byte_len(),
+            )));
+        }
+
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda backend unavailable: no selected execution device",
+            )));
+        };
+        let input_buffer = self.input_buffer(Shape::new(vec![cols]), input.to_vec())?;
+        let output =
+            self.allocate_buffer(&TensorSpec::new(Shape::new(vec![rows]), DType::F32, device))?;
+        let mut submission = self.begin_submission()?;
+        submission.quantized_matvec(
+            weights,
+            byte_offset,
+            mode,
+            rows,
+            cols,
+            &input_buffer,
+            &output,
+        )?;
+        let _ = submission.commit(CudaCommandWait::Completed)?;
+        output.read_f32()
     }
 
     /// Compiles and executes a graph on the supported dense CUDA surface.
@@ -1357,7 +1497,7 @@ mod platform {
 
     use libloading::Library;
 
-    use super::{CudaCommandStatus, CudaCommandWait};
+    use super::{CudaCommandStatus, CudaCommandWait, QuantizationMode};
     use mox_runtime::RuntimeError;
 
     type CudaError = i32;
@@ -1417,6 +1557,38 @@ mod platform {
         *mut f32,
         c_int,
     ) -> CublasStatus;
+
+    type QuantizedMatvecKernel = unsafe extern "C" fn(
+        *const c_void,
+        c_int,
+        c_int,
+        c_int,
+        *const c_void,
+        *mut c_void,
+        CudaStream,
+    ) -> CudaError;
+
+    unsafe extern "C" {
+        fn mox_cuda_quantized_kernels_compiled() -> c_int;
+        fn mox_cuda_q8_0_matvec(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            input: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn mox_cuda_mxfp4_matvec(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            input: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+    }
 
     pub(super) struct ConfiguredBackend {
         runtime: Arc<CudaRuntime>,
@@ -1490,6 +1662,10 @@ mod platform {
                 status: CudaCommandStatus::Submitted,
             })
         }
+    }
+
+    pub(super) fn quantized_kernels_compiled() -> bool {
+        unsafe { mox_cuda_quantized_kernels_compiled() != 0 }
     }
 
     impl PlatformBuffer {
@@ -1666,6 +1842,69 @@ mod platform {
                     )
                 },
                 "cublasSgemm_v2",
+            )
+        }
+
+        pub(super) fn encode_quantized_matvec(
+            &mut self,
+            weights: &PlatformBuffer,
+            byte_offset: usize,
+            mode: QuantizationMode,
+            rows: usize,
+            cols: usize,
+            input: &PlatformBuffer,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if !quantized_kernels_compiled() {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda quantized text-generation kernels are not available in this build",
+                )));
+            }
+            let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda quantized matvec does not support mode {mode:?}"
+                )));
+            };
+            let row_stride = (cols / elements_per_block) * bytes_per_block;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda quantized matvec rows exceed c_int"))
+            })?;
+            let cols = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda quantized matvec cols exceed c_int"))
+            })?;
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized matvec row stride exceeds c_int",
+                ))
+            })?;
+            let kernel: QuantizedMatvecKernel = match mode {
+                QuantizationMode::GgmlQ8_0 => mox_cuda_q8_0_matvec,
+                QuantizationMode::GgmlMxfp4 => mox_cuda_mxfp4_matvec,
+                _ => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda quantized matvec does not support mode {mode:?}"
+                    )));
+                }
+            };
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    kernel(
+                        weights
+                            .inner
+                            .device_ptr
+                            .cast::<u8>()
+                            .add(byte_offset)
+                            .cast(),
+                        rows,
+                        cols,
+                        row_stride,
+                        input.inner.device_ptr,
+                        output.inner.device_ptr,
+                        self.stream,
+                    )
+                },
+                "mox_cuda_quantized_matvec",
             )
         }
 
@@ -1857,7 +2096,7 @@ mod platform {
 
 #[cfg(not(target_os = "linux"))]
 mod platform {
-    use super::{CudaCommandStatus, CudaCommandWait};
+    use super::{CudaCommandStatus, CudaCommandWait, QuantizationMode};
     use mox_runtime::RuntimeError;
 
     #[derive(Clone)]
@@ -1879,6 +2118,10 @@ mod platform {
                 "cuda runtime substrate currently requires Linux libcudart",
             )))
         }
+    }
+
+    pub(super) fn quantized_kernels_compiled() -> bool {
+        false
     }
 
     impl PlatformBuffer {
@@ -1944,6 +2187,21 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_quantized_matvec(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _byte_offset: usize,
+            _mode: QuantizationMode,
+            _rows: usize,
+            _cols: usize,
+            _input: &PlatformBuffer,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
         pub(super) fn commit(
             self,
             _wait: CudaCommandWait,
@@ -1966,8 +2224,9 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use mox_backend_cpu::CpuBackend;
+    use mox_backend_cpu::quantized_row_dot;
     use mox_compiler::compile_graph;
-    use mox_core::{DType, DeviceKind, Shape, TensorSpec};
+    use mox_core::{DType, DeviceKind, QuantizationMode, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
 
     use super::CudaMemorySpace;
@@ -2331,6 +2590,62 @@ mod tests {
     }
 
     #[test]
+    fn cuda_backend_executes_q8_0_quantized_matvec_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = vec![1.0_f32; 32];
+        let row_a = sample_q8_0_row(0.25, 1);
+        let row_b = sample_q8_0_row(0.5, -1);
+        let expected = vec![
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_a)?,
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_b)?,
+        ];
+        let mut bytes = row_a.clone();
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let actual =
+            backend.quantized_matvec(&weights, QuantizationMode::GgmlQ8_0, 2, 32, &input)?;
+        assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_executes_mxfp4_quantized_matvec_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = sample_reference_vector();
+        let row_a = sample_mxfp4_row(4);
+        let row_b = sample_mxfp4_row(6);
+        let expected = vec![
+            quantized_row_dot(&input, QuantizationMode::GgmlMxfp4, &row_a)?,
+            quantized_row_dot(&input, QuantizationMode::GgmlMxfp4, &row_b)?,
+        ];
+        let mut bytes = row_a.clone();
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let actual =
+            backend.quantized_matvec(&weights, QuantizationMode::GgmlMxfp4, 2, 32, &input)?;
+        assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
     fn cuda_backend_rejects_non_cuda_tensor_specs_when_available() {
         let mut backend = CudaBackend::new();
         let Some(_) = backend.selected_device() else {
@@ -2339,5 +2654,53 @@ mod tests {
         };
         let spec = TensorSpec::new(Shape::new(vec![1]), DType::F32, Device::cpu());
         assert!(backend.allocate(&spec).is_err());
+    }
+
+    fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
+        assert_eq!(actual.len(), expected.len());
+        for (index, (actual, expected)) in actual.iter().zip(expected.iter()).enumerate() {
+            assert!(
+                (actual - expected).abs() <= tolerance,
+                "index {index}: actual={actual} expected={expected}"
+            );
+        }
+    }
+
+    fn sample_q8_0_row(scale: f32, multiplier: i8) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(34);
+        bytes.extend_from_slice(&f32_to_f16_bits(scale).to_le_bytes());
+        for index in 0_i8..32_i8 {
+            bytes.push(index.saturating_mul(multiplier).to_le_bytes()[0]);
+        }
+        bytes
+    }
+
+    fn sample_reference_vector() -> Vec<f32> {
+        (0..32).map(|index| (index as f32 + 1.0) * 0.25).collect()
+    }
+
+    fn sample_mxfp4_row(scale_exponent: u8) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(17);
+        bytes.push(scale_exponent);
+        for pair in 0..16_u8 {
+            let low = pair & 0x07;
+            let high = 0x0f_u8.saturating_sub(pair & 0x07);
+            bytes.push(low | (high << 4));
+        }
+        bytes
+    }
+
+    fn f32_to_f16_bits(value: f32) -> u16 {
+        let bits = value.to_bits();
+        let sign = ((bits >> 16) & 0x8000) as u16;
+        let exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
+        let mantissa = bits & 0x007f_ffff;
+        if exponent <= 0 {
+            return sign;
+        }
+        if exponent >= 0x1f {
+            return sign | 0x7c00;
+        }
+        sign | ((exponent as u16) << 10) | ((mantissa >> 13) as u16)
     }
 }
