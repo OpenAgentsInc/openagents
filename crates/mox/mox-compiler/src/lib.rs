@@ -1,6 +1,7 @@
 //! Lowering and scheduling boundaries for Mox.
 
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
+use mox_runtime::{BackendSelection, ExecutionTopologyPlan};
 use thiserror::Error;
 
 /// Human-readable crate ownership summary.
@@ -34,6 +35,48 @@ impl PlanBuilder {
             steps: self.steps,
             outputs: graph.outputs().to_vec(),
         }
+    }
+
+    /// Builds a compiled execution plan with an explicit topology.
+    #[must_use]
+    pub fn finish_with_topology(
+        self,
+        graph: &Graph,
+        topology: Option<ExecutionTopologyPlan>,
+    ) -> CompiledExecutionPlan {
+        CompiledExecutionPlan::new(self.finish(graph), topology)
+    }
+}
+
+/// Logical execution plan plus explicit topology planning for the effective backend path.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompiledExecutionPlan {
+    /// Logical execution steps.
+    pub plan: ExecutionPlan,
+    /// Concrete topology or sharding plan for the effective backend path.
+    pub topology: Option<ExecutionTopologyPlan>,
+}
+
+impl CompiledExecutionPlan {
+    /// Creates a compiled execution plan from a logical plan plus topology.
+    #[must_use]
+    pub fn new(plan: ExecutionPlan, topology: Option<ExecutionTopologyPlan>) -> Self {
+        Self { plan, topology }
+    }
+
+    /// Returns a stable digest over both the logical plan and the topology plan.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let topology_digest = self.topology.as_ref().map_or_else(
+            || String::from("none"),
+            ExecutionTopologyPlan::stable_digest,
+        );
+        let mut hasher = sha2::Sha256::new();
+        use sha2::Digest;
+        hasher.update(self.plan.stable_digest().as_bytes());
+        hasher.update(b"|");
+        hasher.update(topology_digest.as_bytes());
+        format!("{:x}", hasher.finalize())
     }
 }
 
@@ -110,12 +153,32 @@ pub fn compile_graph(graph: &Graph) -> Result<ExecutionPlan, CompileError> {
     CompilerPipeline::default().compile(graph)
 }
 
+/// Compiles a graph and attaches an explicit topology plan.
+pub fn compile_graph_with_topology(
+    graph: &Graph,
+    topology: Option<ExecutionTopologyPlan>,
+) -> Result<CompiledExecutionPlan, CompileError> {
+    let plan = compile_graph(graph)?;
+    Ok(CompiledExecutionPlan::new(plan, topology))
+}
+
+/// Compiles a graph using the explicit topology carried by the backend selection when one exists.
+pub fn compile_graph_for_selection(
+    graph: &Graph,
+    backend_selection: &BackendSelection,
+) -> Result<CompiledExecutionPlan, CompileError> {
+    compile_graph_with_topology(graph, backend_selection.execution_topology_plan())
+}
+
 #[cfg(test)]
 mod tests {
     use mox_core::{DType, Device, QuantizationMode, Shape};
     use mox_ir::GraphBuilder;
+    use mox_runtime::ExecutionTopologyPlan;
 
-    use super::{CompileError, compile_graph};
+    use super::{
+        CompileError, compile_graph, compile_graph_for_selection, compile_graph_with_topology,
+    };
 
     #[test]
     fn compile_graph_preserves_deterministic_digest() {
@@ -170,6 +233,83 @@ mod tests {
         assert!(debug.contains("quantized_matmul"));
     }
 
+    #[test]
+    fn compile_graph_with_topology_changes_digest_when_sharding_changes() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+        let devices = vec![
+            sample_inventory("cuda:0", Some("00000000:01:00.0")),
+            sample_inventory("cuda:1", Some("00000000:02:00.0")),
+        ];
+        let single = compile_graph_with_topology(
+            &graph,
+            Some(ExecutionTopologyPlan::single_device(
+                "cuda",
+                devices[0].clone(),
+            )),
+        );
+        let sharded = compile_graph_with_topology(
+            &graph,
+            Some(ExecutionTopologyPlan::layer_sharded(
+                "cuda",
+                vec![(devices[0].clone(), 0, 16), (devices[1].clone(), 16, 32)],
+            )),
+        );
+        assert!(single.is_ok());
+        assert!(sharded.is_ok());
+        let Ok(single) = single else {
+            return;
+        };
+        let Ok(sharded) = sharded else {
+            return;
+        };
+        assert_ne!(single.stable_digest(), sharded.stable_digest());
+    }
+
+    #[test]
+    fn compile_graph_for_selection_uses_explicit_execution_topology() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+        let primary = sample_device("cuda", 0, "cuda:0", "00000000:01:00.0");
+        let secondary = sample_device("cuda", 1, "cuda:1", "00000000:02:00.0");
+        let selection = mox_runtime::BackendSelection::direct(
+            "cuda",
+            Some(primary.clone()),
+            vec![String::from("matmul")],
+        )
+        .with_selected_devices(vec![primary.clone(), secondary.clone()])
+        .with_execution_topology(Some(ExecutionTopologyPlan::tensor_sharded(
+            "cuda",
+            1,
+            vec![
+                (primary.inventory_qualifiers(), 0, 32),
+                (secondary.inventory_qualifiers(), 32, 64),
+            ],
+        )));
+        let compiled = compile_graph_for_selection(&graph, &selection);
+        assert!(compiled.is_ok());
+        let Ok(compiled) = compiled else {
+            return;
+        };
+        assert_eq!(
+            compiled.topology.as_ref().map(|topology| topology.kind),
+            Some(mox_runtime::ExecutionTopologyKind::TensorSharded)
+        );
+        assert_eq!(
+            compiled
+                .topology
+                .as_ref()
+                .map(|topology| topology.assignments.len()),
+            Some(2)
+        );
+    }
+
     fn sample_graph() -> Result<mox_ir::Graph, mox_ir::GraphError> {
         let mut builder = GraphBuilder::new(Device::cpu());
         let input = builder.input("input", Shape::new(vec![2, 2]), DType::F32);
@@ -192,5 +332,66 @@ mod tests {
         let normed = builder.rms_norm(&input, &weight, 1e-5)?;
         let output = builder.quantized_matmul(&normed, &rhs, QuantizationMode::GgmlQ4_0)?;
         Ok(builder.finish(vec![output]))
+    }
+
+    fn sample_device(
+        backend: &str,
+        ordinal: usize,
+        label: &str,
+        pci_bdf: &str,
+    ) -> mox_runtime::DeviceDescriptor {
+        mox_runtime::DeviceDescriptor {
+            backend: String::from(backend),
+            device: Device::new(
+                mox_core::DeviceKind::Cuda,
+                ordinal.try_into().expect("sample ordinal fits in u16"),
+                Some(String::from(label)),
+            ),
+            device_name: Some(format!("CUDA Test Device {ordinal}")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: Some(mox_runtime::NvidiaDeviceMetadata {
+                topology: mox_runtime::NvidiaTopologyInfo {
+                    architecture: Some(String::from("ada")),
+                    compute_capability: Some(String::from("8.9")),
+                    pci_bdf: Some(String::from(pci_bdf)),
+                    sm_count: Some(76),
+                    vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                    mig_profile: None,
+                },
+                risk: mox_runtime::NvidiaRiskProfile {
+                    level: mox_runtime::NvidiaRiskLevel::Standard,
+                    display_attached: Some(false),
+                    mig_partitioned: false,
+                    warnings: Vec::new(),
+                },
+                recovery: mox_runtime::NvidiaRecoveryProfile {
+                    supports_gpu_reset: Some(true),
+                    expected_actions: vec![
+                        mox_runtime::NvidiaRecoveryAction::ProcessRestart,
+                        mox_runtime::NvidiaRecoveryAction::GpuReset,
+                        mox_runtime::NvidiaRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
+        }
+    }
+
+    fn sample_inventory(
+        stable_device_id: &str,
+        topology_key: Option<&str>,
+    ) -> mox_runtime::DeviceInventoryQualifiers {
+        mox_runtime::DeviceInventoryQualifiers {
+            stable_device_id: String::from(stable_device_id),
+            topology_key: topology_key.map(String::from),
+            performance_class: mox_runtime::DevicePerformanceClass::DiscreteAccelerator,
+            memory_class: mox_runtime::DeviceMemoryClass::DedicatedDevice,
+            total_memory_bytes: Some(16 * 1024 * 1024 * 1024),
+            free_memory_bytes: None,
+        }
     }
 }

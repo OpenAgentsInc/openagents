@@ -233,6 +233,249 @@ pub struct DeviceInventoryQualifiers {
     pub free_memory_bytes: Option<u64>,
 }
 
+/// Stable placement identifier for one device participating in an execution topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionDevicePlacement {
+    /// Stable device identifier used for cross-run comparison.
+    pub stable_device_id: String,
+    /// Stable topology key such as PCI BDF when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_key: Option<String>,
+    /// Deterministic placement order inside the topology plan.
+    pub placement_index: usize,
+}
+
+impl ExecutionDevicePlacement {
+    /// Creates a stable placement identifier from reusable inventory qualifiers.
+    #[must_use]
+    pub fn from_inventory(device: &DeviceInventoryQualifiers, placement_index: usize) -> Self {
+        Self {
+            stable_device_id: device.stable_device_id.clone(),
+            topology_key: device.topology_key.clone(),
+            placement_index,
+        }
+    }
+}
+
+/// High-level topology mode for one compiled or advertised execution path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionTopologyKind {
+    /// The whole model executes on one concrete device.
+    SingleDevice,
+    /// Multiple devices each hold a full replica of the executable state.
+    Replicated,
+    /// Model layers are partitioned across multiple devices.
+    LayerSharded,
+    /// One tensor axis is partitioned across multiple devices.
+    TensorSharded,
+}
+
+/// One logical partition assigned to a concrete device.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExecutionPartition {
+    /// One device owns the full executable state.
+    WholeModel,
+    /// One replica of a replicated plan.
+    Replica {
+        /// Stable replica index inside the topology plan.
+        replica_index: usize,
+    },
+    /// A contiguous block of layers owned by one device.
+    LayerRange {
+        /// Inclusive starting layer index.
+        start_layer: usize,
+        /// Exclusive ending layer index.
+        end_layer: usize,
+    },
+    /// A contiguous logical slice of one tensor axis.
+    TensorRange {
+        /// Tensor axis being partitioned.
+        axis: usize,
+        /// Inclusive starting logical element.
+        start: usize,
+        /// Exclusive ending logical element.
+        end: usize,
+    },
+}
+
+/// One stable shard or placement assignment inside an execution topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionShardAssignment {
+    /// Stable shard identifier within the topology plan.
+    pub shard_id: usize,
+    /// Concrete device placement that owns this partition.
+    pub device: ExecutionDevicePlacement,
+    /// Logical model or tensor partition mapped to that device.
+    pub partition: ExecutionPartition,
+}
+
+/// Explicit multi-device or sharded execution topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionTopologyPlan {
+    /// Backend that will execute this topology.
+    pub effective_backend: String,
+    /// High-level topology kind.
+    pub kind: ExecutionTopologyKind,
+    /// Ordered shard/placement assignments.
+    pub assignments: Vec<ExecutionShardAssignment>,
+}
+
+impl ExecutionTopologyPlan {
+    /// Creates a single-device topology.
+    #[must_use]
+    pub fn single_device(
+        effective_backend: impl Into<String>,
+        device: DeviceInventoryQualifiers,
+    ) -> Self {
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::SingleDevice,
+            assignments: vec![ExecutionShardAssignment {
+                shard_id: 0,
+                device: ExecutionDevicePlacement::from_inventory(&device, 0),
+                partition: ExecutionPartition::WholeModel,
+            }],
+        }
+    }
+
+    /// Creates a replicated multi-device topology.
+    #[must_use]
+    pub fn replicated(
+        effective_backend: impl Into<String>,
+        devices: Vec<DeviceInventoryQualifiers>,
+    ) -> Self {
+        let assignments = devices
+            .iter()
+            .enumerate()
+            .map(|(index, device)| ExecutionShardAssignment {
+                shard_id: index,
+                device: ExecutionDevicePlacement::from_inventory(device, index),
+                partition: ExecutionPartition::Replica {
+                    replica_index: index,
+                },
+            })
+            .collect();
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::Replicated,
+            assignments,
+        }
+    }
+
+    /// Creates a layer-sharded topology from explicit per-device layer ranges.
+    #[must_use]
+    pub fn layer_sharded(
+        effective_backend: impl Into<String>,
+        shards: Vec<(DeviceInventoryQualifiers, usize, usize)>,
+    ) -> Self {
+        let assignments = shards
+            .iter()
+            .enumerate()
+            .map(
+                |(index, (device, start_layer, end_layer))| ExecutionShardAssignment {
+                    shard_id: index,
+                    device: ExecutionDevicePlacement::from_inventory(device, index),
+                    partition: ExecutionPartition::LayerRange {
+                        start_layer: *start_layer,
+                        end_layer: *end_layer,
+                    },
+                },
+            )
+            .collect();
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::LayerSharded,
+            assignments,
+        }
+    }
+
+    /// Creates a tensor-sharded topology from explicit per-device axis ranges.
+    #[must_use]
+    pub fn tensor_sharded(
+        effective_backend: impl Into<String>,
+        axis: usize,
+        shards: Vec<(DeviceInventoryQualifiers, usize, usize)>,
+    ) -> Self {
+        let assignments = shards
+            .iter()
+            .enumerate()
+            .map(|(index, (device, start, end))| ExecutionShardAssignment {
+                shard_id: index,
+                device: ExecutionDevicePlacement::from_inventory(device, index),
+                partition: ExecutionPartition::TensorRange {
+                    axis,
+                    start: *start,
+                    end: *end,
+                },
+            })
+            .collect();
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::TensorSharded,
+            assignments,
+        }
+    }
+
+    /// Returns a stable digest for the topology assignments.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.effective_backend.as_bytes());
+        hasher.update(b"|");
+        hasher.update(match self.kind {
+            ExecutionTopologyKind::SingleDevice => b"single_device".as_slice(),
+            ExecutionTopologyKind::Replicated => b"replicated".as_slice(),
+            ExecutionTopologyKind::LayerSharded => b"layer_sharded".as_slice(),
+            ExecutionTopologyKind::TensorSharded => b"tensor_sharded".as_slice(),
+        });
+        for assignment in &self.assignments {
+            hasher.update(b"|");
+            hasher.update(assignment.shard_id.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(assignment.device.stable_device_id.as_bytes());
+            hasher.update(b"|");
+            hasher.update(
+                assignment
+                    .device
+                    .topology_key
+                    .as_deref()
+                    .unwrap_or_default()
+                    .as_bytes(),
+            );
+            hasher.update(b"|");
+            hasher.update(assignment.device.placement_index.to_string().as_bytes());
+            hasher.update(b"|");
+            match assignment.partition {
+                ExecutionPartition::WholeModel => hasher.update(b"whole_model"),
+                ExecutionPartition::Replica { replica_index } => {
+                    hasher.update(b"replica|");
+                    hasher.update(replica_index.to_string().as_bytes());
+                }
+                ExecutionPartition::LayerRange {
+                    start_layer,
+                    end_layer,
+                } => {
+                    hasher.update(b"layer_range|");
+                    hasher.update(start_layer.to_string().as_bytes());
+                    hasher.update(b"|");
+                    hasher.update(end_layer.to_string().as_bytes());
+                }
+                ExecutionPartition::TensorRange { axis, start, end } => {
+                    hasher.update(b"tensor_range|");
+                    hasher.update(axis.to_string().as_bytes());
+                    hasher.update(b"|");
+                    hasher.update(start.to_string().as_bytes());
+                    hasher.update(b"|");
+                    hasher.update(end.to_string().as_bytes());
+                }
+            }
+        }
+        format!("{:x}", hasher.finalize())
+    }
+}
+
 impl DeviceDescriptor {
     /// Returns stable inventory qualifiers derived from the current device/topology metadata.
     #[must_use]
@@ -2796,6 +3039,9 @@ pub struct BackendSelection {
     pub effective_backend: String,
     /// Selected device for the effective backend, when one exists.
     pub selected_device: Option<DeviceDescriptor>,
+    /// All concrete devices selected for the effective backend path, when the runtime chose more than one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceDescriptor>,
     /// Explicit runtime-owned allocator/kernel-cache/device-budget state for the effective backend.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_resources: Option<BackendRuntimeResources>,
@@ -2820,6 +3066,9 @@ pub struct BackendSelection {
     pub degraded_reason: Option<String>,
     /// Retry attempt count when the runtime retried explicitly.
     pub retry_attempt: Option<u32>,
+    /// Explicit multi-device or sharded topology when execution uses more than one concrete placement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
 }
 
 impl BackendSelection {
@@ -2847,9 +3096,14 @@ impl BackendSelection {
         policy: ServedProductBackendPolicy,
     ) -> Self {
         let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
         Self {
             requested_backend: backend.clone(),
             effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -2896,9 +3150,19 @@ impl BackendSelection {
         policy: ServedProductBackendPolicy,
         fallback_reason: impl Into<String>,
     ) -> Self {
+        let requested_backend = requested_backend.into();
+        let effective_backend = effective_backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(
+                effective_backend.clone(),
+                device.inventory_qualifiers(),
+            )
+        });
         Self {
-            requested_backend: requested_backend.into(),
-            effective_backend: effective_backend.into(),
+            requested_backend,
+            effective_backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -2924,9 +3188,14 @@ impl BackendSelection {
         degraded_reason: impl Into<String>,
     ) -> Self {
         let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
         Self {
             requested_backend: backend.clone(),
             effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -2953,9 +3222,14 @@ impl BackendSelection {
         reason: impl Into<String>,
     ) -> Self {
         let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
         Self {
             requested_backend: backend.clone(),
             effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -2983,9 +3257,14 @@ impl BackendSelection {
         reason: impl Into<String>,
     ) -> Self {
         let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
         Self {
             requested_backend: backend.clone(),
             effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -3012,9 +3291,17 @@ impl BackendSelection {
         reason: impl Into<String>,
     ) -> Self {
         let requested_backend = requested_backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(
+                requested_backend.clone(),
+                device.inventory_qualifiers(),
+            )
+        });
         Self {
             requested_backend: requested_backend.clone(),
             effective_backend: requested_backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -3094,16 +3381,93 @@ impl BackendSelection {
         self
     }
 
+    /// Replaces the selected-device set explicitly.
+    #[must_use]
+    pub fn with_selected_devices(mut self, selected_devices: Vec<DeviceDescriptor>) -> Self {
+        self.selected_devices = selected_devices;
+        if self.selected_device.is_none() {
+            self.selected_device = self.selected_devices.first().cloned();
+        }
+        if self.execution_topology.is_none() && self.selected_devices.len() == 1 {
+            if let Some(device) = self.selected_devices.first() {
+                self.execution_topology = Some(ExecutionTopologyPlan::single_device(
+                    self.effective_backend.clone(),
+                    device.inventory_qualifiers(),
+                ));
+            }
+        }
+        self
+    }
+
+    /// Attaches an explicit multi-device or sharded execution topology.
+    #[must_use]
+    pub fn with_execution_topology(
+        mut self,
+        execution_topology: Option<ExecutionTopologyPlan>,
+    ) -> Self {
+        self.execution_topology = execution_topology;
+        self
+    }
+
+    /// Returns the primary selected device, preserving legacy single-device callers.
+    #[must_use]
+    pub fn primary_selected_device(&self) -> Option<&DeviceDescriptor> {
+        self.selected_device
+            .as_ref()
+            .or_else(|| self.selected_devices.first())
+    }
+
+    /// Returns all selected devices participating in the effective backend path.
+    #[must_use]
+    pub fn selected_devices(&self) -> Vec<&DeviceDescriptor> {
+        if self.selected_devices.is_empty() {
+            self.selected_device.iter().collect()
+        } else {
+            self.selected_devices.iter().collect()
+        }
+    }
+
     /// Returns selected-device inventory qualifiers enriched with current runtime budget truth.
     #[must_use]
     pub fn selected_device_inventory(&self) -> Option<DeviceInventoryQualifiers> {
-        let mut qualifiers = self.selected_device.as_ref()?.inventory_qualifiers();
+        let mut qualifiers = self.primary_selected_device()?.inventory_qualifiers();
         qualifiers.free_memory_bytes = self
             .runtime_resources
             .as_ref()
             .and_then(|resources| resources.device_memory_budget.as_ref())
             .and_then(|budget| budget.available_execution_bytes);
         Some(qualifiers)
+    }
+
+    /// Returns all selected-device qualifiers enriched with current runtime budget truth.
+    #[must_use]
+    pub fn selected_devices_inventory(&self) -> Vec<DeviceInventoryQualifiers> {
+        let runtime_free_memory = self
+            .runtime_resources
+            .as_ref()
+            .and_then(|resources| resources.device_memory_budget.as_ref())
+            .and_then(|budget| budget.available_execution_bytes);
+        self.selected_devices()
+            .into_iter()
+            .map(|device| {
+                let mut qualifiers = device.inventory_qualifiers();
+                qualifiers.free_memory_bytes = runtime_free_memory;
+                qualifiers
+            })
+            .collect()
+    }
+
+    /// Returns the explicit execution topology, deriving the current single-device plan when possible.
+    #[must_use]
+    pub fn execution_topology_plan(&self) -> Option<ExecutionTopologyPlan> {
+        self.execution_topology.clone().or_else(|| {
+            self.primary_selected_device().map(|device| {
+                ExecutionTopologyPlan::single_device(
+                    self.effective_backend.clone(),
+                    device.inventory_qualifiers(),
+                )
+            })
+        })
     }
 }
 
@@ -3341,9 +3705,10 @@ mod tests {
         CacheObservation, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
         DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
         ExecutionBackend, ExecutionCapabilityProfile, ExecutionMetrics, ExecutionResult,
-        HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
+        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
         LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
         ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
         ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
@@ -3561,6 +3926,24 @@ mod tests {
                     "unified_memory": true,
                     "feature_flags": ["mock_execution"]
                 },
+                "selected_devices": [{
+                    "backend": "mock",
+                    "device": {
+                        "kind": "Cpu",
+                        "ordinal": 0,
+                        "label": "cpu:0"
+                    },
+                    "device_name": "mock cpu",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [{
+                        "mode": "none",
+                        "load_path": "dense_f32",
+                        "execution": "native"
+                    }],
+                    "memory_capacity_bytes": null,
+                    "unified_memory": true,
+                    "feature_flags": ["mock_execution"]
+                }],
                 "backend_extensions": [
                     {
                         "kind": "rms_norm",
@@ -3589,7 +3972,21 @@ mod tests {
                 "fallback_action": null,
                 "fallback_reason": null,
                 "degraded_reason": null,
-                "retry_attempt": null
+                "retry_attempt": null,
+                "execution_topology": {
+                    "effective_backend": "mock",
+                    "kind": "single_device",
+                    "assignments": [{
+                        "shard_id": 0,
+                        "device": {
+                            "stable_device_id": "cpu:0",
+                            "placement_index": 0
+                        },
+                        "partition": {
+                            "kind": "whole_model"
+                        }
+                    }]
+                }
             })
         );
 
@@ -4622,6 +5019,47 @@ mod tests {
                     (16 * 1024 * 1024 * 1024) - (4 * 1024 * 1024 * 1024) - 1024
                 ),
             })
+        );
+    }
+
+    #[test]
+    fn backend_selection_can_surface_multi_device_topology_truth() {
+        let first = sample_cuda_device();
+        let mut second = sample_cuda_device();
+        second.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        second.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let metadata = second
+            .nvidia_metadata
+            .as_mut()
+            .expect("sample cuda metadata");
+        metadata.topology.pci_bdf = Some(String::from("00000000:02:00.0"));
+
+        let selection =
+            BackendSelection::direct("cuda", Some(first.clone()), vec![String::from("matmul")])
+                .with_selected_devices(vec![first.clone(), second.clone()])
+                .with_execution_topology(Some(ExecutionTopologyPlan::layer_sharded(
+                    "cuda",
+                    vec![
+                        (first.inventory_qualifiers(), 0, 20),
+                        (second.inventory_qualifiers(), 20, 40),
+                    ],
+                )));
+
+        assert_eq!(selection.selected_devices().len(), 2);
+        assert_eq!(selection.selected_devices_inventory().len(), 2);
+        assert_eq!(
+            selection
+                .execution_topology_plan()
+                .as_ref()
+                .map(|plan| plan.kind),
+            Some(ExecutionTopologyKind::LayerSharded)
+        );
+        assert_eq!(
+            selection
+                .execution_topology_plan()
+                .as_ref()
+                .map(|plan| plan.assignments.len()),
+            Some(2)
         );
     }
 

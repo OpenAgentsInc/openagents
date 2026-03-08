@@ -7,11 +7,11 @@ use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
     BackendProbeState, BackendSelection, BackendToolchainIdentity, CacheAction,
     CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    DeviceInventoryQualifiers, ExecutionCapabilityProfile, HealthStatus, KvCacheAccounting,
-    KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot,
-    ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile,
-    NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy,
-    PrefixCacheState, ServedArtifactIdentity, ValidationMatrixReference,
+    DeviceInventoryQualifiers, ExecutionCapabilityProfile, ExecutionTopologyPlan, HealthStatus,
+    KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability,
+    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata,
+    NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState, ServedArtifactIdentity, ValidationMatrixReference,
     validation_reference_for_served_product,
 };
 use mox_serve::{
@@ -86,16 +86,18 @@ fn compiled_backend_features_for_selection(backend_selection: &BackendSelection)
 fn backend_toolchain_identity_for_selection(
     backend_selection: &BackendSelection,
 ) -> BackendToolchainIdentity {
-    let probe_state = if backend_selection.selected_device.is_some() {
-        BackendProbeState::CompiledAndProbed
-    } else {
+    let selected_devices = backend_selection.selected_devices();
+    let probe_state = if selected_devices.is_empty() {
         BackendProbeState::CompiledOnly
+    } else {
+        BackendProbeState::CompiledAndProbed
     };
-    let probed_backend_features = backend_selection
-        .selected_device
-        .as_ref()
-        .map(|device| device.feature_flags.clone())
-        .unwrap_or_default();
+    let mut probed_backend_features = selected_devices
+        .into_iter()
+        .flat_map(|device| device.feature_flags.iter().cloned())
+        .collect::<Vec<_>>();
+    probed_backend_features.sort();
+    probed_backend_features.dedup();
 
     BackendToolchainIdentity::new(
         backend_selection.effective_backend.as_str(),
@@ -113,6 +115,18 @@ fn selected_device_inventory_for_selection(
     backend_selection: &BackendSelection,
 ) -> Option<DeviceInventoryQualifiers> {
     backend_selection.selected_device_inventory()
+}
+
+fn selected_devices_inventory_for_selection(
+    backend_selection: &BackendSelection,
+) -> Vec<DeviceInventoryQualifiers> {
+    backend_selection.selected_devices_inventory()
+}
+
+fn execution_topology_for_selection(
+    backend_selection: &BackendSelection,
+) -> Option<ExecutionTopologyPlan> {
+    backend_selection.execution_topology_plan()
 }
 
 /// Explicit policy for whether one model artifact may be advertised or served into compute-market supply.
@@ -438,6 +452,12 @@ pub struct CapabilityEnvelope {
     /// Reusable selected-device inventory and performance qualifiers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
+    /// All selected devices participating in the effective backend path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+    /// Explicit multi-device or sharded execution topology when the path is planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -519,6 +539,8 @@ impl CapabilityEnvelope {
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -617,6 +639,12 @@ pub struct ExecutionReceipt {
     /// Reusable selected-device inventory and performance qualifiers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
+    /// All selected devices participating in the effective backend path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+    /// Explicit multi-device or sharded execution topology when the path is planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -693,6 +721,8 @@ impl ExecutionReceipt {
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -759,6 +789,8 @@ impl ExecutionReceipt {
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -831,6 +863,12 @@ pub struct TextGenerationCapabilityEnvelope {
     /// Reusable selected-device inventory and performance qualifiers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
+    /// All selected devices participating in the effective backend path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+    /// Explicit multi-device or sharded execution topology when the path is planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
     /// AMD-specific capability context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -907,6 +945,8 @@ impl TextGenerationCapabilityEnvelope {
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -951,6 +991,12 @@ pub struct TextGenerationReceipt {
     /// Reusable selected-device inventory and performance qualifiers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
+    /// All selected devices participating in the effective backend path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+    /// Explicit multi-device or sharded execution topology when the path is planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
     /// AMD-specific execution context when the selected backend is AMD.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub amd: Option<AmdCapabilityContext>,
@@ -1078,6 +1124,8 @@ impl TextGenerationReceipt {
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1194,6 +1242,8 @@ impl TextGenerationReceipt {
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1577,14 +1627,14 @@ mod tests {
         AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
         AmdRuntimeMode, AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport,
         BackendProbeState, BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
-        DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
-        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeTransitionEvent, RuntimeTransitionKind, ServedProductBackendPolicy,
-        ValidationCoverage,
+        DeviceDescriptor, DeviceMemoryBudget, ExecutionTopologyKind, ExecutionTopologyPlan,
+        HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelResidencyPolicy,
+        NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
+        NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent,
+        RuntimeTransitionKind, ServedProductBackendPolicy, ValidationCoverage,
     };
     use mox_serve::{
         ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
@@ -1674,6 +1724,46 @@ mod tests {
                         "unified_memory": true,
                         "feature_flags": ["host_memory"]
                     },
+                    "selected_devices": [{
+                        "backend": "cpu",
+                        "device": {
+                            "kind": "Cpu",
+                            "ordinal": 0,
+                            "label": "cpu:0"
+                        },
+                        "device_name": "host cpu",
+                        "supported_dtypes": ["F32"],
+                        "supported_quantization": [
+                            {
+                                "mode": "none",
+                                "load_path": "dense_f32",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "int8_symmetric",
+                                "load_path": "dequantized_f32",
+                                "execution": "dequantize_to_f32"
+                            },
+                            {
+                                "mode": "ggml_q4_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q4_1",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q8_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            }
+                        ],
+                        "memory_capacity_bytes": null,
+                        "unified_memory": true,
+                        "feature_flags": ["host_memory"]
+                    }],
                     "supported_ops": ["input", "constant", "matmul", "add"],
                     "policy": {
                         "unavailable": "refuse",
@@ -1692,7 +1782,21 @@ mod tests {
                     "fallback_action": null,
                     "fallback_reason": null,
                     "degraded_reason": null,
-                    "retry_attempt": null
+                    "retry_attempt": null,
+                    "execution_topology": {
+                        "effective_backend": "cpu",
+                        "kind": "single_device",
+                        "assignments": [{
+                            "shard_id": 0,
+                            "device": {
+                                "stable_device_id": "cpu:0",
+                                "placement_index": 0
+                            },
+                            "partition": {
+                                "kind": "whole_model"
+                            }
+                        }]
+                    }
                 },
                 "backend_toolchain": {
                     "effective_backend": "cpu",
@@ -1704,6 +1808,25 @@ mod tests {
                     "stable_device_id": "cpu:0",
                     "performance_class": "reference",
                     "memory_class": "host_only"
+                },
+                "selected_devices": [{
+                    "stable_device_id": "cpu:0",
+                    "performance_class": "reference",
+                    "memory_class": "host_only"
+                }],
+                "execution_topology": {
+                    "effective_backend": "cpu",
+                    "kind": "single_device",
+                    "assignments": [{
+                        "shard_id": 0,
+                        "device": {
+                            "stable_device_id": "cpu:0",
+                            "placement_index": 0
+                        },
+                        "partition": {
+                            "kind": "whole_model"
+                        }
+                    }]
                 },
                 "model_id": "smoke-byte-embed-v0",
                 "model_family": "smoke",
@@ -1908,6 +2031,46 @@ mod tests {
                         "unified_memory": true,
                         "feature_flags": ["host_memory"]
                     },
+                    "selected_devices": [{
+                        "backend": "cpu",
+                        "device": {
+                            "kind": "Cpu",
+                            "ordinal": 0,
+                            "label": "cpu:0"
+                        },
+                        "device_name": "host cpu",
+                        "supported_dtypes": ["F32"],
+                        "supported_quantization": [
+                            {
+                                "mode": "none",
+                                "load_path": "dense_f32",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "int8_symmetric",
+                                "load_path": "dequantized_f32",
+                                "execution": "dequantize_to_f32"
+                            },
+                            {
+                                "mode": "ggml_q4_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q4_1",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q8_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            }
+                        ],
+                        "memory_capacity_bytes": null,
+                        "unified_memory": true,
+                        "feature_flags": ["host_memory"]
+                    }],
                     "supported_ops": ["input", "constant", "matmul", "add"],
                     "policy": {
                         "unavailable": "refuse",
@@ -1926,7 +2089,21 @@ mod tests {
                     "fallback_action": null,
                     "fallback_reason": null,
                     "degraded_reason": null,
-                    "retry_attempt": null
+                    "retry_attempt": null,
+                    "execution_topology": {
+                        "effective_backend": "cpu",
+                        "kind": "single_device",
+                        "assignments": [{
+                            "shard_id": 0,
+                            "device": {
+                                "stable_device_id": "cpu:0",
+                                "placement_index": 0
+                            },
+                            "partition": {
+                                "kind": "whole_model"
+                            }
+                        }]
+                    }
                 },
                 "backend_toolchain": {
                     "effective_backend": "cpu",
@@ -1938,6 +2115,25 @@ mod tests {
                     "stable_device_id": "cpu:0",
                     "performance_class": "reference",
                     "memory_class": "host_only"
+                },
+                "selected_devices": [{
+                    "stable_device_id": "cpu:0",
+                    "performance_class": "reference",
+                    "memory_class": "host_only"
+                }],
+                "execution_topology": {
+                    "effective_backend": "cpu",
+                    "kind": "single_device",
+                    "assignments": [{
+                        "shard_id": 0,
+                        "device": {
+                            "stable_device_id": "cpu:0",
+                            "placement_index": 0
+                        },
+                        "partition": {
+                            "kind": "whole_model"
+                        }
+                    }]
                 },
                 "model_id": "fixture-word-decoder-v0",
                 "model_family": "fixture_decoder",
@@ -2277,6 +2473,30 @@ mod tests {
             }
         );
         assert_eq!(envelope.selected_device_inventory, None);
+    }
+
+    #[test]
+    fn capability_envelope_can_surface_multi_device_topology_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cuda_multi_device_selection(),
+            &model,
+            ProviderReadiness::ready("cuda multi-device ready"),
+        );
+        assert_eq!(envelope.selected_devices.len(), 2);
+        assert_eq!(
+            envelope.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(ExecutionTopologyKind::LayerSharded)
+        );
+        assert_eq!(
+            envelope
+                .execution_topology
+                .as_ref()
+                .map(|plan| plan.assignments.len()),
+            Some(2)
+        );
+        Ok(())
     }
 
     #[test]
@@ -3532,6 +3752,28 @@ mod tests {
         .with_runtime_resources(Some(sample_backend_runtime_resources()))
     }
 
+    fn cuda_multi_device_selection() -> BackendSelection {
+        let first = sample_cuda_device();
+        let second = sample_cuda_device_1();
+        BackendSelection::direct_with_policy(
+            "cuda",
+            Some(first.clone()),
+            dense_supported_ops(),
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+        )
+        .with_selected_devices(vec![first.clone(), second.clone()])
+        .with_execution_topology(Some(ExecutionTopologyPlan::layer_sharded(
+            "cuda",
+            vec![
+                (first.inventory_qualifiers(), 0, 20),
+                (second.inventory_qualifiers(), 20, 40),
+            ],
+        )))
+        .with_runtime_resources(Some(sample_backend_runtime_resources()))
+    }
+
     fn cuda_fallback_selection() -> BackendSelection {
         BackendSelection::fallback_with_policy(
             "cuda",
@@ -3633,6 +3875,17 @@ mod tests {
         metadata.risk.warnings = vec![String::from(
             "display-attached NVIDIA devices may show variable latency under local desktop load",
         )];
+        device
+    }
+
+    fn sample_cuda_device_1() -> DeviceDescriptor {
+        let mut device = sample_cuda_device();
+        device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        device.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let Some(metadata) = device.nvidia_metadata.as_mut() else {
+            return device;
+        };
+        metadata.topology.pci_bdf = Some(String::from("00000000:02:00.0"));
         device
     }
 

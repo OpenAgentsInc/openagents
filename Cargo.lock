@@ -4476,6 +4476,8 @@ version = "0.1.0"
 dependencies = [
  "mox-core",
  "mox-ir",
+ "mox-runtime",
+ "sha2",
  "thiserror 2.0.17",
 ]
 
