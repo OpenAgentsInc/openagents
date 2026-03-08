@@ -214,6 +214,41 @@ So a caller can tell whether a model was rejected because it is corrupt,
 unsupported, or policy-disallowed even when all three surfaces are exercised in
 the same workflow.
 
+## Ollama-Compat Migration Boundary
+
+`MOX-170` defines the explicit boundary between Ollama compatibility support and
+the long-term Mox-owned model/runtime format.
+
+The reusable Mox contract must distinguish four separate questions:
+
+- which catalog surface discovered the model
+- how the model entered Mox descriptor/runtime space
+- which request/inspection surface is exposing it right now
+- which runtime format actually owns execution
+
+For the current implementation:
+
+- `mox-catalog`'s `OllamaModelCatalog` is an `ollama_compat_migration` surface
+  only; it is not the long-term Mox-native catalog contract
+- importing weights from a resolved Ollama manifest is
+  `ollama_compat_manifest_import`
+- importing a raw Ollama blob by digest is `ollama_compat_blob_import`
+- direct local GGUF or safetensors paths are `direct_artifact_import`
+- programmatic fixtures are `fixture`
+- loaded Mox descriptors and the served runtime path remain `mox_native` even
+  when their source came from Ollama compatibility inputs
+
+At minimum, `show`-style or descriptor-facing Mox surfaces must make explicit:
+
+- `mox.catalog_surface` when discovery came through a catalog
+- `mox.model_ingress_surface`
+- `mox.serving_surface`
+- `mox.runtime_surface`
+
+This keeps Ollama compatibility support honest as migration substrate instead of
+letting the compatibility layer silently become the architectural source of
+truth for Mox execution.
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or

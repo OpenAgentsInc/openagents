@@ -12,8 +12,8 @@ use std::{
 
 use mox_catalog::{
     BlobError, BlobReadPath, LocalBlob, LocalBlobKind, LocalBlobMetadata, LocalBlobOpenOptions,
-    OllamaAdapterPolicy, OllamaLicenseFacts, OllamaManifest, OllamaProvenanceFacts,
-    OllamaProvenanceKind, PagedBlobRange,
+    OllamaAdapterPolicy, OllamaCatalogSurface, OllamaLicenseFacts, OllamaManifest,
+    OllamaProvenanceFacts, OllamaProvenanceKind, PagedBlobRange,
 };
 use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
 use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
@@ -60,6 +60,54 @@ impl ModelDescriptor {
             revision: revision.into(),
         }
     }
+}
+
+/// How one model entered Mox-owned descriptor/runtime space.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelIngressSurface {
+    /// Programmatic fixture defined inside Mox itself.
+    Fixture,
+    /// Direct external artifact import such as a local GGUF or safetensors path.
+    DirectArtifactImport,
+    /// Direct digest-addressed import from an Ollama blob store.
+    OllamaCompatBlobImport,
+    /// Import from a resolved Ollama manifest and its compatibility metadata.
+    OllamaCompatManifestImport,
+    /// Future Mox-native model bundle path.
+    MoxNativeBundle,
+}
+
+/// Request/inspection surface currently exposing the model.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelServingSurface {
+    /// An Ollama-compatible migration surface.
+    OllamaCompatMigration,
+    /// A Mox-owned native surface.
+    MoxNative,
+}
+
+/// Runtime format ownership for an executed model path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelRuntimeSurface {
+    /// The active execution/runtime format is owned by Mox itself.
+    MoxNative,
+}
+
+/// Explicit boundary between compatibility/migration inputs and Mox-native execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelInteropBoundary {
+    /// Catalog surface when the model arrived through a catalog layer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub catalog_surface: Option<OllamaCatalogSurface>,
+    /// How the model entered Mox-owned descriptor/runtime space.
+    pub ingress_surface: ModelIngressSurface,
+    /// Request/inspection surface exposing the model.
+    pub serving_surface: ModelServingSurface,
+    /// Runtime format ownership for the executed model path.
+    pub runtime_surface: ModelRuntimeSurface,
 }
 
 /// Embeddings-specific model descriptor.
@@ -118,6 +166,20 @@ impl EmbeddingModelDescriptor {
     ) -> Self {
         self.artifact_governance = Some(artifact_governance);
         self
+    }
+
+    /// Returns the explicit compatibility/native boundary for this loaded model path.
+    #[must_use]
+    pub fn interop_boundary(&self) -> ModelInteropBoundary {
+        ModelInteropBoundary {
+            catalog_surface: infer_catalog_surface(self.artifact_governance.as_ref()),
+            ingress_surface: infer_model_ingress_surface(
+                &self.weights,
+                self.artifact_governance.as_ref(),
+            ),
+            serving_surface: ModelServingSurface::MoxNative,
+            runtime_surface: ModelRuntimeSurface::MoxNative,
+        }
     }
 }
 
@@ -1133,6 +1195,59 @@ impl ModelArtifactGovernance {
             },
         }
     }
+
+    /// Returns the explicit descriptor-ingress class implied by this governance record.
+    #[must_use]
+    pub const fn ingress_surface(&self) -> ModelIngressSurface {
+        match self.provenance.kind {
+            ModelArtifactProvenanceKind::Fixture => ModelIngressSurface::Fixture,
+            ModelArtifactProvenanceKind::LocalPath => ModelIngressSurface::DirectArtifactImport,
+            ModelArtifactProvenanceKind::OllamaBlob => ModelIngressSurface::OllamaCompatBlobImport,
+            ModelArtifactProvenanceKind::OllamaManifest
+            | ModelArtifactProvenanceKind::OllamaRemoteAlias => {
+                ModelIngressSurface::OllamaCompatManifestImport
+            }
+        }
+    }
+
+    /// Returns the explicit catalog role when this governance record came through Ollama discovery.
+    #[must_use]
+    pub const fn catalog_surface(&self) -> Option<OllamaCatalogSurface> {
+        match self.provenance.kind {
+            ModelArtifactProvenanceKind::OllamaManifest
+            | ModelArtifactProvenanceKind::OllamaRemoteAlias => {
+                Some(OllamaCatalogSurface::OllamaCompatMigration)
+            }
+            ModelArtifactProvenanceKind::Fixture
+            | ModelArtifactProvenanceKind::LocalPath
+            | ModelArtifactProvenanceKind::OllamaBlob => None,
+        }
+    }
+}
+
+fn infer_model_ingress_surface(
+    weights: &WeightBundleMetadata,
+    artifact_governance: Option<&ModelArtifactGovernance>,
+) -> ModelIngressSurface {
+    artifact_governance
+        .map(ModelArtifactGovernance::ingress_surface)
+        .unwrap_or_else(|| {
+            if weights.source == WeightSource::Fixture
+                || weights.format == WeightFormat::ProgrammaticFixture
+            {
+                ModelIngressSurface::Fixture
+            } else if weights.is_artifact_backed() {
+                ModelIngressSurface::DirectArtifactImport
+            } else {
+                ModelIngressSurface::MoxNativeBundle
+            }
+        })
+}
+
+fn infer_catalog_surface(
+    artifact_governance: Option<&ModelArtifactGovernance>,
+) -> Option<OllamaCatalogSurface> {
+    artifact_governance.and_then(ModelArtifactGovernance::catalog_surface)
 }
 
 /// Supported GGUF file versions.
@@ -3459,6 +3574,20 @@ impl DecoderModelDescriptor {
     ) -> Self {
         self.artifact_governance = Some(artifact_governance);
         self
+    }
+
+    /// Returns the explicit compatibility/native boundary for this loaded model path.
+    #[must_use]
+    pub fn interop_boundary(&self) -> ModelInteropBoundary {
+        ModelInteropBoundary {
+            catalog_surface: infer_catalog_surface(self.artifact_governance.as_ref()),
+            ingress_surface: infer_model_ingress_surface(
+                &self.weights,
+                self.artifact_governance.as_ref(),
+            ),
+            serving_surface: ModelServingSurface::MoxNative,
+            runtime_surface: ModelRuntimeSurface::MoxNative,
+        }
     }
 }
 
@@ -6580,7 +6709,7 @@ fn decode_int8_symmetric_values(
 mod tests {
     use std::{collections::BTreeMap, path::Path};
 
-    use mox_catalog::{BlobReadPreference, OllamaModelCatalog};
+    use mox_catalog::{BlobReadPreference, OllamaCatalogSurface, OllamaModelCatalog};
     use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
     use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
     use serde_json::json;
@@ -7969,6 +8098,20 @@ mod tests {
         );
         assert_eq!(governance.provenance.source, path.display().to_string());
         assert!(!governance.licenses.declared);
+        let boundary = adapter.descriptor().interop_boundary();
+        assert_eq!(boundary.catalog_surface, None);
+        assert_eq!(
+            boundary.ingress_surface,
+            super::ModelIngressSurface::DirectArtifactImport
+        );
+        assert_eq!(
+            boundary.serving_surface,
+            super::ModelServingSurface::MoxNative
+        );
+        assert_eq!(
+            boundary.runtime_surface,
+            super::ModelRuntimeSurface::MoxNative
+        );
         Ok(())
     }
 
@@ -8158,6 +8301,23 @@ mod tests {
             Some("team/qwen2-licensed")
         );
         assert_eq!(governance.licenses.digests(), vec![license_digest]);
+        let boundary = adapter.descriptor().interop_boundary();
+        assert_eq!(
+            boundary.catalog_surface,
+            Some(OllamaCatalogSurface::OllamaCompatMigration)
+        );
+        assert_eq!(
+            boundary.ingress_surface,
+            super::ModelIngressSurface::OllamaCompatManifestImport
+        );
+        assert_eq!(
+            boundary.serving_surface,
+            super::ModelServingSurface::MoxNative
+        );
+        assert_eq!(
+            boundary.runtime_surface,
+            super::ModelRuntimeSurface::MoxNative
+        );
         Ok(())
     }
 
@@ -9110,7 +9270,41 @@ mod tests {
         );
         assert_eq!(governance.provenance.source, path.display().to_string());
         assert!(!governance.licenses.declared);
+        let boundary = model.descriptor().interop_boundary();
+        assert_eq!(boundary.catalog_surface, None);
+        assert_eq!(
+            boundary.ingress_surface,
+            super::ModelIngressSurface::DirectArtifactImport
+        );
+        assert_eq!(
+            boundary.serving_surface,
+            super::ModelServingSurface::MoxNative
+        );
+        assert_eq!(
+            boundary.runtime_surface,
+            super::ModelRuntimeSurface::MoxNative
+        );
         Ok(())
+    }
+
+    #[test]
+    fn fixture_decoder_interop_boundary_is_native() {
+        let model = ReferenceWordDecoder::new();
+        let boundary = model.descriptor().interop_boundary();
+
+        assert_eq!(boundary.catalog_surface, None);
+        assert_eq!(
+            boundary.ingress_surface,
+            super::ModelIngressSurface::Fixture
+        );
+        assert_eq!(
+            boundary.serving_surface,
+            super::ModelServingSurface::MoxNative
+        );
+        assert_eq!(
+            boundary.runtime_surface,
+            super::ModelRuntimeSurface::MoxNative
+        );
     }
 
     #[test]

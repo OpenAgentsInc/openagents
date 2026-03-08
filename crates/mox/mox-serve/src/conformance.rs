@@ -10,7 +10,8 @@ use mox_catalog::{
     OllamaModelConfig,
 };
 use mox_models::{
-    GgufBlobArtifact, GgufMetadataValue, GoldenPromptRole, digest_chat_template,
+    GgufBlobArtifact, GgufMetadataValue, GoldenPromptRole, ModelIngressSurface,
+    ModelInteropBoundary, ModelRuntimeSurface, ModelServingSurface, digest_chat_template,
     golden_prompt_fixture,
 };
 use mox_runtime::{EmbeddingParityBudget, compare_embedding_vectors};
@@ -214,6 +215,7 @@ impl ShowObservation {
             vec![descriptor.model.family.clone()],
             &descriptor.weights,
             vec![String::from("generate")],
+            &descriptor.interop_boundary(),
         )
     }
 
@@ -229,6 +231,7 @@ impl ShowObservation {
             vec![descriptor.model.family.clone()],
             &descriptor.weights,
             vec![String::from("embed")],
+            &descriptor.interop_boundary(),
         )
     }
 
@@ -239,6 +242,7 @@ impl ShowObservation {
         mut families: Vec<String>,
         weights: &WeightBundleMetadata,
         mut capabilities: Vec<String>,
+        boundary: &ModelInteropBoundary,
     ) -> Self {
         families.sort();
         families.dedup();
@@ -258,6 +262,7 @@ impl ShowObservation {
             String::from("mox.weight_format"),
             serialize_enum_string(&weights.format),
         );
+        insert_mox_interop_boundary_facts(&mut facts, boundary);
 
         Self {
             model: name.into(),
@@ -287,6 +292,30 @@ impl ShowObservation {
             error: Some(SemanticError::new(status, message)),
         }
     }
+}
+
+fn insert_mox_interop_boundary_facts(
+    facts: &mut BTreeMap<String, String>,
+    boundary: &ModelInteropBoundary,
+) {
+    if let Some(catalog_surface) = boundary.catalog_surface {
+        facts.insert(
+            String::from("mox.catalog_surface"),
+            serialize_enum_string(&catalog_surface),
+        );
+    }
+    facts.insert(
+        String::from("mox.model_ingress_surface"),
+        serialize_enum_string(&boundary.ingress_surface),
+    );
+    facts.insert(
+        String::from("mox.serving_surface"),
+        serialize_enum_string(&boundary.serving_surface),
+    );
+    facts.insert(
+        String::from("mox.runtime_surface"),
+        serialize_enum_string(&boundary.runtime_surface),
+    );
 }
 
 /// Comparable loaded-model row from `ps` / `loaded_models`.
@@ -1740,6 +1769,15 @@ impl LocalOllamaCatalogSubject {
         } else {
             select_model_info_facts(remote_model_info(config))
         };
+        insert_mox_interop_boundary_facts(
+            &mut facts,
+            &ModelInteropBoundary {
+                catalog_surface: Some(manifest.catalog_surface()),
+                ingress_surface: ModelIngressSurface::OllamaCompatManifestImport,
+                serving_surface: ModelServingSurface::OllamaCompatMigration,
+                runtime_surface: ModelRuntimeSurface::MoxNative,
+            },
+        );
         let adapter_policy = manifest.adapter_policy_status();
         if adapter_policy.adapter_layer_count > 0 {
             facts.insert(
@@ -3563,6 +3601,24 @@ mod tests {
                         .map(String::as_str),
                     Some("151645")
                 );
+                assert_eq!(
+                    show.facts.get("mox.catalog_surface").map(String::as_str),
+                    Some("ollama_compat_migration")
+                );
+                assert_eq!(
+                    show.facts
+                        .get("mox.model_ingress_surface")
+                        .map(String::as_str),
+                    Some("ollama_compat_manifest_import")
+                );
+                assert_eq!(
+                    show.facts.get("mox.serving_surface").map(String::as_str),
+                    Some("ollama_compat_migration")
+                );
+                assert_eq!(
+                    show.facts.get("mox.runtime_surface").map(String::as_str),
+                    Some("mox_native")
+                );
                 assert!(!show.facts.contains_key("general.name"));
             }
             SubjectObservation::Unsupported { reason } => {
@@ -3618,6 +3674,31 @@ mod tests {
         );
 
         assert!(compare_show(&baseline, &candidate).is_ok());
+    }
+
+    #[test]
+    fn show_observation_from_descriptor_reports_native_boundary_facts() {
+        let model = crate::ReferenceWordDecoder::new();
+        let show = ShowObservation::from_decoder_descriptor(
+            model.descriptor().model.model_id.clone(),
+            model.descriptor(),
+        );
+
+        assert_eq!(
+            show.facts
+                .get("mox.model_ingress_surface")
+                .map(String::as_str),
+            Some("fixture")
+        );
+        assert_eq!(
+            show.facts.get("mox.serving_surface").map(String::as_str),
+            Some("mox_native")
+        );
+        assert_eq!(
+            show.facts.get("mox.runtime_surface").map(String::as_str),
+            Some("mox_native")
+        );
+        assert!(!show.facts.contains_key("mox.catalog_surface"));
     }
 
     #[test]

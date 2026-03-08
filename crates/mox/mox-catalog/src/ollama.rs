@@ -160,6 +160,14 @@ pub struct OllamaProvenanceFacts {
     pub base_model: Option<String>,
 }
 
+/// Explicit role the local Ollama catalog plays inside Mox.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OllamaCatalogSurface {
+    /// Compatibility/migration substrate layered over Ollama manifests and blobs.
+    OllamaCompatMigration,
+}
+
 /// One declared license payload from an Ollama manifest.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OllamaLicenseEntry {
@@ -617,6 +625,12 @@ pub struct OllamaManifest {
 }
 
 impl OllamaManifest {
+    /// Returns the explicit catalog role this manifest belongs to inside Mox.
+    #[must_use]
+    pub const fn catalog_surface(&self) -> OllamaCatalogSurface {
+        OllamaCatalogSurface::OllamaCompatMigration
+    }
+
     /// Returns the first primary model layer when present.
     #[must_use]
     pub fn primary_model_layer(&self) -> Option<&OllamaManifestLayer> {
@@ -1072,6 +1086,12 @@ impl OllamaModelCatalog {
         Self {
             models_root: models_root.as_ref().to_path_buf(),
         }
+    }
+
+    /// Returns the explicit catalog role this substrate plays inside Mox.
+    #[must_use]
+    pub const fn surface(&self) -> OllamaCatalogSurface {
+        OllamaCatalogSurface::OllamaCompatMigration
     }
 
     /// Returns the catalog's models root.
@@ -1542,9 +1562,9 @@ mod tests {
 
     use super::{
         CatalogError, OLLAMA_DEFAULT_HOST, OLLAMA_DEFAULT_NAMESPACE, OLLAMA_DEFAULT_TAG,
-        OllamaAdapterPolicy, OllamaIntegrityScope, OllamaLayerKind, OllamaMediaType,
-        OllamaModelCatalog, OllamaModelConfig, OllamaModelName, OllamaProvenanceKind,
-        OllamaRepairAction, OllamaStoredMessage,
+        OllamaAdapterPolicy, OllamaCatalogSurface, OllamaIntegrityScope, OllamaLayerKind,
+        OllamaMediaType, OllamaModelCatalog, OllamaModelConfig, OllamaModelName,
+        OllamaProvenanceKind, OllamaRepairAction, OllamaStoredMessage,
     };
 
     #[test]
@@ -2043,6 +2063,40 @@ mod tests {
         assert_eq!(
             licenses.entries[0].sha256,
             hex::encode(Sha256::digest(b"Apache-2.0"))
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_catalog_and_manifest_surface_explicit_migration_boundary()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let digest = hex::encode(Sha256::digest(b"model"));
+        let blob_path = temp.path().join("blobs").join(format!("sha256-{digest}"));
+        std::fs::create_dir_all(blob_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(&blob_path, b"model")?;
+
+        let manifest_path = temp
+            .path()
+            .join("manifests/registry.ollama.ai/library/qwen2/latest");
+        std::fs::create_dir_all(manifest_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(
+            &manifest_path,
+            format!(
+                r#"{{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json","layers":[{{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:{digest}","size":5}}]}}"#
+            ),
+        )?;
+
+        let catalog = OllamaModelCatalog::new(temp.path());
+        assert_eq!(
+            catalog.surface(),
+            OllamaCatalogSurface::OllamaCompatMigration
+        );
+
+        let manifest = catalog.resolve_model("qwen2")?;
+        assert_eq!(
+            manifest.catalog_surface(),
+            OllamaCatalogSurface::OllamaCompatMigration
         );
         Ok(())
     }
