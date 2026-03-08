@@ -344,6 +344,270 @@ pub struct BackendRuntimeResources {
     pub device_memory_budget: Option<DeviceMemoryBudget>,
 }
 
+/// Current execution-plan cache format version.
+pub const EXECUTION_PLAN_CACHE_FORMAT_VERSION: u32 = 1;
+
+/// Current backend kernel-cache format version.
+pub const KERNEL_CACHE_FORMAT_VERSION: u32 = 1;
+
+/// Current paged-tensor storage format version.
+pub const PAGED_TENSOR_STORAGE_FORMAT_VERSION: u32 = 1;
+
+/// Current shared prefix-cache format version.
+pub const PREFIX_CACHE_FORMAT_VERSION: u32 = 1;
+
+/// Current persisted/session KV-state format version.
+pub const KV_STATE_FORMAT_VERSION: u32 = 1;
+
+/// Cache family covered by the runtime invalidation policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheKind {
+    /// Compiled execution plans retained across warm loads.
+    ExecutionPlan,
+    /// Backend-managed compiled kernels or pipelines.
+    KernelCache,
+    /// Artifact-backed paged tensor storage or mappings.
+    PagedTensorStorage,
+    /// Shared prompt-prefix reuse entries.
+    PrefixCache,
+    /// Per-session KV state retained across requests.
+    KvState,
+}
+
+/// Reuse scope for one runtime-owned cache family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheScope {
+    /// Reuse is limited to the current host process.
+    ProcessLocal,
+    /// Reuse spans multiple requests in shared in-memory state.
+    SharedAcrossRequests,
+    /// Reuse spans multiple requests for one bound session only.
+    SessionBound,
+    /// Reuse restores access from artifact-backed bytes instead of in-memory copies.
+    ArtifactBacked,
+}
+
+/// Explicit action taken for one cache family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheAction {
+    /// Compatible state was reused as-is.
+    Reuse,
+    /// State was rebuilt under the current runtime.
+    Rebuild,
+    /// Reuse was intentionally skipped.
+    Bypass,
+    /// Incompatible state was explicitly discarded.
+    Invalidate,
+    /// State was restored from artifact-backed or serialized inputs.
+    Restore,
+}
+
+/// Explicit trigger that invalidates one cache family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheInvalidationTrigger {
+    /// The runtime binary or crate version changed.
+    BinaryUpgrade,
+    /// The effective backend or its toolchain version changed.
+    BackendToolchainUpgrade,
+    /// Model-level metadata changed.
+    ModelMetadataChange,
+    /// Tokenizer behavior or digest changed.
+    TokenizerDrift,
+    /// Chat-template behavior or digest changed.
+    ChatTemplateDrift,
+    /// Default BOS/EOS or stop behavior changed.
+    GenerationDefaultsDrift,
+    /// Quantization family or layout changed.
+    QuantizationChange,
+    /// The execution-plan cache format changed.
+    PlanFormatUpgrade,
+    /// The backend kernel-cache format changed.
+    KernelFormatUpgrade,
+    /// The paged-tensor storage format changed.
+    PagedTensorFormatUpgrade,
+    /// The shared prefix-cache format changed.
+    PrefixCacheFormatUpgrade,
+    /// The KV-state format changed.
+    KvStateFormatUpgrade,
+    /// The caller explicitly reset or discarded state.
+    ExplicitReset,
+}
+
+/// Invalidations and mismatch behavior for one cache family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheStorePolicy {
+    /// Reuse scope for the cache family.
+    pub scope: CacheScope,
+    /// Current runtime-owned format version for the cache family.
+    pub format_version: u32,
+    /// Action taken when cached state remains compatible.
+    pub compatible_action: CacheAction,
+    /// Action taken when a required compatibility input changes.
+    pub incompatible_action: CacheAction,
+    /// Triggers that invalidate this cache family.
+    pub invalidates_on: Vec<CacheInvalidationTrigger>,
+}
+
+impl CacheStorePolicy {
+    /// Creates a cache-store policy from explicit compatibility rules.
+    #[must_use]
+    pub fn new(
+        scope: CacheScope,
+        format_version: u32,
+        compatible_action: CacheAction,
+        incompatible_action: CacheAction,
+        invalidates_on: Vec<CacheInvalidationTrigger>,
+    ) -> Self {
+        Self {
+            scope,
+            format_version,
+            compatible_action,
+            incompatible_action,
+            invalidates_on,
+        }
+    }
+}
+
+/// Runtime-owned invalidation policy across reusable cache families.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheInvalidationPolicy {
+    /// Runtime binary version used to evaluate upgrade invalidation.
+    pub runtime_binary_version: String,
+    /// Execution-plan cache policy.
+    pub execution_plan: CacheStorePolicy,
+    /// Backend kernel-cache policy.
+    pub kernel_cache: CacheStorePolicy,
+    /// Paged tensor storage policy.
+    pub paged_tensor_storage: CacheStorePolicy,
+    /// Shared prefix-cache policy.
+    pub prefix_cache: CacheStorePolicy,
+    /// Session KV-state policy.
+    pub kv_state: CacheStorePolicy,
+}
+
+impl Default for CacheInvalidationPolicy {
+    fn default() -> Self {
+        default_cache_invalidation_policy()
+    }
+}
+
+/// Observable cache action for one realized request or restore path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheObservation {
+    /// Cache family involved in the action.
+    pub kind: CacheKind,
+    /// Action taken for that cache family.
+    pub action: CacheAction,
+    /// Trigger that forced a rebuild, invalidation, or bypass when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<CacheInvalidationTrigger>,
+    /// Short machine-readable explanation for the realized action.
+    pub detail: String,
+}
+
+impl CacheObservation {
+    /// Creates a cache observation from explicit action and detail.
+    #[must_use]
+    pub fn new(kind: CacheKind, action: CacheAction, detail: impl Into<String>) -> Self {
+        Self {
+            kind,
+            action,
+            trigger: None,
+            detail: detail.into(),
+        }
+    }
+
+    /// Attaches the invalidation trigger that drove the action.
+    #[must_use]
+    pub const fn with_trigger(mut self, trigger: CacheInvalidationTrigger) -> Self {
+        self.trigger = Some(trigger);
+        self
+    }
+}
+
+/// Returns the current runtime cache invalidation policy.
+#[must_use]
+pub fn default_cache_invalidation_policy() -> CacheInvalidationPolicy {
+    CacheInvalidationPolicy {
+        runtime_binary_version: String::from(env!("CARGO_PKG_VERSION")),
+        execution_plan: CacheStorePolicy::new(
+            CacheScope::ProcessLocal,
+            EXECUTION_PLAN_CACHE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Rebuild,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::TokenizerDrift,
+                CacheInvalidationTrigger::ChatTemplateDrift,
+                CacheInvalidationTrigger::GenerationDefaultsDrift,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::PlanFormatUpgrade,
+            ],
+        ),
+        kernel_cache: CacheStorePolicy::new(
+            CacheScope::ProcessLocal,
+            KERNEL_CACHE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Invalidate,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::KernelFormatUpgrade,
+            ],
+        ),
+        paged_tensor_storage: CacheStorePolicy::new(
+            CacheScope::ArtifactBacked,
+            PAGED_TENSOR_STORAGE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Restore,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::PagedTensorFormatUpgrade,
+            ],
+        ),
+        prefix_cache: CacheStorePolicy::new(
+            CacheScope::SharedAcrossRequests,
+            PREFIX_CACHE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Rebuild,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::TokenizerDrift,
+                CacheInvalidationTrigger::ChatTemplateDrift,
+                CacheInvalidationTrigger::GenerationDefaultsDrift,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::PrefixCacheFormatUpgrade,
+            ],
+        ),
+        kv_state: CacheStorePolicy::new(
+            CacheScope::SessionBound,
+            KV_STATE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Invalidate,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::TokenizerDrift,
+                CacheInvalidationTrigger::ChatTemplateDrift,
+                CacheInvalidationTrigger::GenerationDefaultsDrift,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::KvStateFormatUpgrade,
+            ],
+        ),
+    }
+}
+
 /// How one backend executes a typed extension family.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1511,6 +1775,8 @@ impl Default for LocalServingIsolationPolicy {
 pub struct LocalRuntimeObservability {
     /// Explicit runtime crash/reset isolation policy.
     pub isolation_policy: LocalServingIsolationPolicy,
+    /// Explicit invalidation policy for reusable cache and persisted-state families.
+    pub cache_invalidation_policy: CacheInvalidationPolicy,
     /// Number of requests currently queued behind active execution.
     pub queue_depth: usize,
     /// Maximum queued requests admitted by policy, when bounded.
@@ -2829,11 +3095,12 @@ mod tests {
         AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendExtensionExecution,
         BackendExtensionSupport, BackendHealthTracker, BackendRuntimeResources, BackendSelection,
         BackendSelectionState, BackendToolchainIdentity, BufferHandle, BufferResidency,
-        BufferStorageKind, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
-        DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus,
-        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        BufferStorageKind, CacheAction, CacheInvalidationTrigger, CacheKind, CacheObservation,
+        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
+        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
+        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
         LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
         ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
         ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
@@ -2843,7 +3110,8 @@ mod tests {
         RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
         RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedArtifactIdentity,
         ServedProductBackendPolicy, ServedProductFallbackAction, ServedProductFallbackLattice,
-        ServedProductFallbackTrigger, TokenSampler, apply_sampling_penalties, plan_model_admission,
+        ServedProductFallbackTrigger, TokenSampler, apply_sampling_penalties,
+        default_cache_invalidation_policy, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4152,6 +4420,7 @@ mod tests {
     fn local_runtime_observability_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
         let observability = LocalRuntimeObservability {
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+            cache_invalidation_policy: default_cache_invalidation_policy(),
             queue_depth: 0,
             queue_capacity: None,
             active_sessions: 2,
@@ -4197,6 +4466,80 @@ mod tests {
                         "backend_runtime_resources"
                     ]
                 },
+                "cache_invalidation_policy": {
+                    "runtime_binary_version": "0.1.0",
+                    "execution_plan": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "plan_format_upgrade"
+                        ]
+                    },
+                    "kernel_cache": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "kernel_format_upgrade"
+                        ]
+                    },
+                    "paged_tensor_storage": {
+                        "scope": "artifact_backed",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "restore",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "model_metadata_change",
+                            "quantization_change",
+                            "paged_tensor_format_upgrade"
+                        ]
+                    },
+                    "prefix_cache": {
+                        "scope": "shared_across_requests",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "prefix_cache_format_upgrade"
+                        ]
+                    },
+                    "kv_state": {
+                        "scope": "session_bound",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "kv_state_format_upgrade"
+                        ]
+                    }
+                },
                 "queue_depth": 0,
                 "active_sessions": 2,
                 "active_requests": 1,
@@ -4227,6 +4570,27 @@ mod tests {
                         "observed_at_millis": 10
                     }
                 ]
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cache_observation_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let observation = CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Rebuild,
+            "stale prefix entry rebuilt under the current runtime",
+        )
+        .with_trigger(CacheInvalidationTrigger::PrefixCacheFormatUpgrade);
+
+        assert_eq!(
+            serde_json::to_value(&observation)?,
+            json!({
+                "kind": "prefix_cache",
+                "action": "rebuild",
+                "trigger": "prefix_cache_format_upgrade",
+                "detail": "stale prefix entry rebuilt under the current runtime"
             })
         );
         Ok(())
