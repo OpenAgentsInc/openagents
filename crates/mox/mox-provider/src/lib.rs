@@ -5,8 +5,9 @@ use sha2::{Digest, Sha256};
 
 use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
-    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState,
+    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, MemoryResidencySnapshot,
+    ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy,
+    PrefixCacheState,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
@@ -360,6 +361,10 @@ pub struct TextGenerationCapabilityEnvelope {
     pub weight_bundle: WeightBundleEvidence,
     /// Maximum supported context length.
     pub max_context: usize,
+    /// Explicit resident-memory plan for the loaded model.
+    pub memory_plan: ModelMemoryPlan,
+    /// Active local-serving residency policy for the served model set.
+    pub residency_policy: ModelResidencyPolicy,
     /// Advertised KV cache posture.
     pub kv_cache_mode: KvCacheMode,
     /// Explicit paged-KV policy when the served path uses paged KV state.
@@ -380,6 +385,8 @@ impl TextGenerationCapabilityEnvelope {
     pub fn from_decoder_model(
         backend_selection: BackendSelection,
         model: &DecoderModelDescriptor,
+        memory_plan: ModelMemoryPlan,
+        residency_policy: ModelResidencyPolicy,
         kv_cache_mode: KvCacheMode,
         batch_posture: BatchPosture,
         readiness: ProviderReadiness,
@@ -395,6 +402,8 @@ impl TextGenerationCapabilityEnvelope {
             model_revision: model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&model.weights),
             max_context: model.config.max_context,
+            memory_plan,
+            residency_policy,
             kv_cache_policy: (kv_cache_mode == KvCacheMode::Paged)
                 .then(|| default_decoder_kv_cache_policy(model)),
             prefix_cache_policy: Some(default_prefix_cache_policy()),
@@ -433,6 +442,15 @@ pub struct TextGenerationReceipt {
     pub model_revision: String,
     /// Weight bundle identity used during execution.
     pub weight_bundle: WeightBundleEvidence,
+    /// Explicit resident-memory plan for the loaded model, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_plan: Option<ModelMemoryPlan>,
+    /// Active local-serving residency policy, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub residency_policy: Option<ModelResidencyPolicy>,
+    /// Aggregate resident-memory snapshot for the loaded-model set, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub residency_snapshot: Option<MemoryResidencySnapshot>,
     /// Optional bound session identifier.
     pub session_id: Option<SessionId>,
     /// Prompt token count.
@@ -510,6 +528,18 @@ impl TextGenerationReceipt {
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
+            memory_plan: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.memory_plan.clone()),
+            residency_policy: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.residency_policy.clone()),
+            residency_snapshot: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.residency_snapshot.clone()),
             session_id: response.session_id.clone(),
             input_tokens: response.usage.input_tokens,
             output_tokens: response.usage.output_tokens,
@@ -592,6 +622,9 @@ impl TextGenerationReceipt {
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
+            memory_plan: None,
+            residency_policy: None,
+            residency_snapshot: None,
             session_id: request.session_id.clone(),
             input_tokens,
             output_tokens: 0,
@@ -769,14 +802,15 @@ mod tests {
     use mox_runtime::{
         AmdDeviceMetadata, AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
         AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendSelection, DeviceDescriptor,
-        HealthStatus, KvCacheAccounting, PrefixCacheIdentity, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        HealthStatus, KvCacheAccounting, MemoryResidencySnapshot, ModelResidencyPolicy,
+        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
+        QuantizationSupport,
     };
     use mox_serve::{
         EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationLoadState,
         GenerationMetrics, GenerationOptions, GenerationProvenance, GenerationRequest,
         GenerationResponse, ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TokenSequence,
-        default_decoder_kv_cache_policy, default_prefix_cache_policy,
+        default_decoder_kv_cache_policy, default_decoder_memory_plan, default_prefix_cache_policy,
     };
     use serde_json::json;
 
@@ -858,6 +892,8 @@ mod tests {
         let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
             cpu_backend_selection(),
             &model,
+            default_decoder_memory_plan(&model, None, None),
+            ModelResidencyPolicy::default(),
             KvCacheMode::Paged,
             BatchPosture::SingleRequestOnly,
             ProviderReadiness::ready("cpu backend ready"),
@@ -911,6 +947,21 @@ mod tests {
                     "artifacts": []
                 },
                 "max_context": 8,
+                "memory_plan": {
+                    "weights_bytes": 0,
+                    "kv_cache_bytes": 640,
+                    "graph_bytes": 0,
+                    "resident_host_bytes": 640,
+                    "resident_device_bytes": 0
+                },
+                "residency_policy": {
+                    "max_loaded_models": null,
+                    "memory_budget": {
+                        "resident_host_bytes": null,
+                        "resident_device_bytes": null
+                    },
+                    "pressure_action": "refuse_new_model"
+                },
                 "kv_cache_mode": "paged",
                 "kv_cache_policy": {
                     "device_scope": "same_device_only",
@@ -1105,6 +1156,13 @@ mod tests {
             GenerationProvenance {
                 execution_plan_digest: String::from("plan-digest-from-response"),
                 load_state: GenerationLoadState::Cold,
+                memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
+                residency_policy: Some(ModelResidencyPolicy::default()),
+                residency_snapshot: Some(MemoryResidencySnapshot {
+                    loaded_models: 1,
+                    resident_host_bytes: 640,
+                    resident_device_bytes: 0,
+                }),
                 kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
                 prefix_cache_state: Some(PrefixCacheState::Hit),
                 prefix_cache_policy: Some(default_prefix_cache_policy()),
@@ -1144,6 +1202,22 @@ mod tests {
         assert_eq!(receipt.total_duration_ns, Some(75));
         assert_eq!(receipt.load_duration_ns, Some(25));
         assert_eq!(receipt.load_state, Some(GenerationLoadState::Cold));
+        assert_eq!(
+            receipt.memory_plan,
+            Some(default_decoder_memory_plan(&request.model, None, None))
+        );
+        assert_eq!(
+            receipt.residency_policy,
+            Some(ModelResidencyPolicy::default())
+        );
+        assert_eq!(
+            receipt.residency_snapshot,
+            Some(MemoryResidencySnapshot {
+                loaded_models: 1,
+                resident_host_bytes: 640,
+                resident_device_bytes: 0,
+            })
+        );
         assert_eq!(
             receipt.kv_cache_policy,
             Some(default_decoder_kv_cache_policy(&request.model))

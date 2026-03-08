@@ -31,9 +31,10 @@ pub use mox_models::{
 };
 use mox_runtime::{
     BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
-    KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelResidency,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, SamplingPolicy,
-    SamplingStrategy, TokenSampler,
+    KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
+    LoadedModelResidency, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
+    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    RuntimeError, SamplingPolicy, SamplingStrategy, TokenSampler, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -72,6 +73,32 @@ pub fn default_kv_cache_policy(max_context: usize, width: usize) -> KvCachePolic
 #[must_use]
 pub fn default_decoder_kv_cache_policy(model: &DecoderModelDescriptor) -> KvCachePolicy {
     default_kv_cache_policy(model.config.max_context, model.config.kv_width())
+}
+
+/// Returns the default resident-memory plan for one decoder model.
+#[must_use]
+pub fn default_decoder_memory_plan(
+    model: &DecoderModelDescriptor,
+    weight_bytes: Option<u64>,
+    resident_device_bytes: Option<u64>,
+) -> ModelMemoryPlan {
+    let kv_cache_bytes = default_decoder_kv_cache_policy(model)
+        .page_layout
+        .bytes_for_tokens(model.config.max_context);
+    let weights_bytes = weight_bytes.unwrap_or(0);
+    match resident_device_bytes {
+        // Accelerated runtimes should override this split with a more exact
+        // host/device breakdown when they know it; this keeps the current CPU
+        // truth correct without double-counting device-resident models.
+        Some(device_bytes) => ModelMemoryPlan::split_residency(
+            weights_bytes,
+            kv_cache_bytes,
+            0,
+            kv_cache_bytes,
+            device_bytes,
+        ),
+        None => ModelMemoryPlan::host_only(weights_bytes, kv_cache_bytes, 0),
+    }
 }
 
 /// Returns the default shared prompt-prefix reuse policy for local Mox serving.
@@ -428,6 +455,15 @@ pub struct GenerationProvenance {
     pub execution_plan_digest: String,
     /// Whether the request took the warm or cold model path.
     pub load_state: GenerationLoadState,
+    /// Explicit resident-memory plan for the active loaded model.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub memory_plan: Option<ModelMemoryPlan>,
+    /// Active local-serving residency policy for the request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub residency_policy: Option<ModelResidencyPolicy>,
+    /// Aggregate resident-memory snapshot for the loaded-model set.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub residency_snapshot: Option<MemoryResidencySnapshot>,
     /// Explicit paged-KV policy for the request path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache_policy: Option<KvCachePolicy>,
@@ -752,6 +788,12 @@ pub struct LoadedModelView {
     pub summary: LoadedModelSummary,
     /// Explicit residency and keepalive truth.
     pub residency: LoadedModelResidency,
+    /// Explicit resident-memory plan for the loaded model.
+    pub memory_plan: ModelMemoryPlan,
+    /// Active local-serving residency policy.
+    pub residency_policy: ModelResidencyPolicy,
+    /// Aggregate resident-memory snapshot after the latest registry mutation.
+    pub residency_snapshot: MemoryResidencySnapshot,
 }
 
 #[derive(Clone, Debug)]
@@ -761,6 +803,7 @@ struct LoadedGenerationModel<M> {
     has_served_request: bool,
     size_bytes: Option<u64>,
     size_vram_bytes: Option<u64>,
+    memory_plan: ModelMemoryPlan,
     backend: Option<String>,
     fallback_state: Option<String>,
 }
@@ -769,7 +812,11 @@ impl<M> LoadedGenerationModel<M>
 where
     M: GenerationModelHandle,
 {
-    fn view(&self) -> LoadedModelView {
+    fn view(
+        &self,
+        residency_policy: &ModelResidencyPolicy,
+        residency_snapshot: &MemoryResidencySnapshot,
+    ) -> LoadedModelView {
         let descriptor = self.model.descriptor();
         let mut summary = LoadedModelSummary::from_decoder_descriptor(
             descriptor.model.model_id.clone(),
@@ -782,6 +829,9 @@ where
         LoadedModelView {
             summary,
             residency: self.residency.clone(),
+            memory_plan: self.memory_plan.clone(),
+            residency_policy: residency_policy.clone(),
+            residency_snapshot: residency_snapshot.clone(),
         }
     }
 }
@@ -792,12 +842,16 @@ pub enum LoadedModelRegistryError {
     /// The requested model is not currently loaded.
     #[error("loaded model `{0}` was not found")]
     ModelNotLoaded(String),
+    /// The configured residency policy refused the candidate model.
+    #[error(transparent)]
+    AdmissionRefused(#[from] ModelAdmissionRefusal),
 }
 
 /// In-memory registry of loaded generation models plus keepalive/lifecycle truth.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub struct InMemoryGenerationModelRegistry<M> {
     models: BTreeMap<String, LoadedGenerationModel<M>>,
+    residency_policy: ModelResidencyPolicy,
 }
 
 impl<M> InMemoryGenerationModelRegistry<M>
@@ -809,11 +863,21 @@ where
     pub fn new() -> Self {
         Self {
             models: BTreeMap::new(),
+            residency_policy: ModelResidencyPolicy::default(),
+        }
+    }
+
+    /// Creates an empty registry with an explicit residency policy.
+    #[must_use]
+    pub fn with_residency_policy(residency_policy: ModelResidencyPolicy) -> Self {
+        Self {
+            models: BTreeMap::new(),
+            residency_policy,
         }
     }
 
     /// Loads or replaces a model handle by model ID using the default keepalive.
-    pub fn load(&mut self, model: M) -> Option<M> {
+    pub fn load(&mut self, model: M) -> Result<Option<M>, LoadedModelRegistryError> {
         self.warm_with_metadata(model, 0, DEFAULT_MODEL_KEEPALIVE_MILLIS, None, None, None)
     }
 
@@ -826,10 +890,22 @@ where
         size_vram_bytes: Option<u64>,
         backend: Option<String>,
         fallback_state: Option<String>,
-    ) -> Option<M> {
+    ) -> Result<Option<M>, LoadedModelRegistryError> {
         let model_id = model.descriptor().model.model_id.clone();
         let size_bytes = weight_bundle_size_bytes(&model.descriptor().weights);
-        self.models
+        let memory_plan =
+            default_decoder_memory_plan(model.descriptor(), size_bytes, size_vram_bytes);
+        let decision = plan_model_admission(
+            &self.memory_states(),
+            model_id.as_str(),
+            &memory_plan,
+            &self.residency_policy,
+        )?;
+        for evicted_model_id in decision.evicted_models {
+            self.models.remove(evicted_model_id.as_str());
+        }
+        Ok(self
+            .models
             .insert(
                 model_id,
                 LoadedGenerationModel {
@@ -838,11 +914,12 @@ where
                     has_served_request: false,
                     size_bytes,
                     size_vram_bytes,
+                    memory_plan,
                     backend,
                     fallback_state,
                 },
             )
-            .map(|previous| previous.model)
+            .map(|previous| previous.model))
     }
 
     /// Refreshes an already-loaded model's keepalive window.
@@ -852,14 +929,17 @@ where
         now_millis: u64,
         keep_alive_millis: u64,
     ) -> Result<LoadedModelView, LoadedModelRegistryError> {
-        let entry = self
-            .models
+        self.models
             .get_mut(model_id)
-            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
-        entry
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?
             .residency
             .refresh_keep_alive(keep_alive_millis, now_millis);
-        Ok(entry.view())
+        let snapshot = self.memory_snapshot();
+        let entry = self
+            .models
+            .get(model_id)
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        Ok(entry.view(&self.residency_policy, &snapshot))
     }
 
     /// Marks a request as actively using the model.
@@ -874,7 +954,12 @@ where
             .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
         entry.has_served_request = true;
         entry.residency.begin_request(now_millis);
-        Ok(entry.view())
+        let snapshot = self.memory_snapshot();
+        let entry = self
+            .models
+            .get(model_id)
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        Ok(entry.view(&self.residency_policy, &snapshot))
     }
 
     /// Marks a request as finished and refreshes idle expiry.
@@ -883,12 +968,17 @@ where
         model_id: &str,
         now_millis: u64,
     ) -> Result<LoadedModelView, LoadedModelRegistryError> {
+        self.models
+            .get_mut(model_id)
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?
+            .residency
+            .finish_request(now_millis);
+        let snapshot = self.memory_snapshot();
         let entry = self
             .models
-            .get_mut(model_id)
+            .get(model_id)
             .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
-        entry.residency.finish_request(now_millis);
-        Ok(entry.view())
+        Ok(entry.view(&self.residency_policy, &snapshot))
     }
 
     /// Unloads an active model and returns the final loaded-model view.
@@ -900,7 +990,8 @@ where
             .models
             .remove(model_id)
             .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
-        Ok(entry.view())
+        let snapshot = self.memory_snapshot();
+        Ok(entry.view(&self.residency_policy, &snapshot))
     }
 
     /// Returns an active model by ID.
@@ -939,10 +1030,11 @@ where
     /// Returns loaded-model views in stable `ps` order.
     #[must_use]
     pub fn loaded_model_views(&self) -> Vec<LoadedModelView> {
+        let snapshot = self.memory_snapshot();
         let mut views = self
             .models
             .values()
-            .map(LoadedGenerationModel::view)
+            .map(|entry| entry.view(&self.residency_policy, &snapshot))
             .collect::<Vec<_>>();
         views.sort_by(|left, right| {
             right
@@ -977,6 +1069,24 @@ where
         })
     }
 
+    /// Returns the active local-serving residency policy.
+    #[must_use]
+    pub fn residency_policy(&self) -> &ModelResidencyPolicy {
+        &self.residency_policy
+    }
+
+    /// Returns the current resident-memory snapshot.
+    #[must_use]
+    pub fn memory_snapshot(&self) -> MemoryResidencySnapshot {
+        MemoryResidencySnapshot::from_loaded_models(&self.memory_states())
+    }
+
+    /// Returns the memory plan for one loaded model.
+    #[must_use]
+    pub fn memory_plan(&self, model_id: &str) -> Option<&ModelMemoryPlan> {
+        self.models.get(model_id).map(|entry| &entry.memory_plan)
+    }
+
     /// Returns the number of active models.
     #[must_use]
     pub fn len(&self) -> usize {
@@ -987,6 +1097,27 @@ where
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.models.is_empty()
+    }
+
+    fn memory_states(&self) -> Vec<LoadedModelMemoryState> {
+        self.models
+            .iter()
+            .map(|(model_id, entry)| LoadedModelMemoryState {
+                model_id: model_id.clone(),
+                plan: entry.memory_plan.clone(),
+                active_requests: entry.residency.active_requests,
+                last_used_at_millis: entry.residency.last_used_at_millis,
+            })
+            .collect()
+    }
+}
+
+impl<M> Default for InMemoryGenerationModelRegistry<M>
+where
+    M: GenerationModelHandle,
+{
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -1901,7 +2032,7 @@ impl CpuReferenceTextGenerationService {
             None,
             Some(String::from("cpu")),
             None,
-        );
+        )?;
         Ok(Self {
             backend: CpuBackend::new(),
             models,
@@ -1924,7 +2055,7 @@ impl CpuReferenceTextGenerationService {
             None,
             Some(String::from("cpu")),
             None,
-        );
+        )?;
         Ok(())
     }
 
@@ -2073,7 +2204,7 @@ impl CpuModelTextGenerationService {
             None,
             Some(String::from("cpu")),
             None,
-        );
+        )?;
         Ok(Self {
             backend: CpuBackend::new(),
             models,
@@ -2096,7 +2227,7 @@ impl CpuModelTextGenerationService {
             None,
             Some(String::from("cpu")),
             None,
-        );
+        )?;
         Ok(())
     }
 
@@ -2281,6 +2412,9 @@ where
     let request_start = current_time_millis();
     let generation_start = Instant::now();
     models.begin_request(model_id, request_start)?;
+    let memory_plan = models.memory_plan(model_id).cloned();
+    let residency_policy = Some(models.residency_policy().clone());
+    let residency_snapshot = Some(models.memory_snapshot());
 
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
         let tokenizer = loaded_model.model().tokenizer();
@@ -2455,6 +2589,9 @@ where
         let provenance = GenerationProvenance {
             execution_plan_digest: loaded_model.plan_digest().to_string(),
             load_state,
+            memory_plan,
+            residency_policy,
+            residency_snapshot,
             kv_cache_policy: Some(cache.policy().clone()),
             prefix_cache_state: Some(prefix_state),
             prefix_cache_policy: Some(prefix_policy),
@@ -3033,8 +3170,9 @@ fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) 
 mod tests {
     use mox_core::{DType, Shape};
     use mox_runtime::{
-        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelState, PrefixCacheState,
+        AdmissionRefusalReason, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
+        KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState, MemoryBudget,
+        ModelResidencyPolicy, PrefixCacheState, ResidencyPressureAction,
     };
 
     use super::{
@@ -3043,11 +3181,11 @@ mod tests {
         EmbeddingsExecutor, FixtureWordTokenizer, GenerationLoadState, GenerationModelHandle,
         GenerationOptions, GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
         InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
-        LocalModelCatalog, ModelDescriptor, ModelSummary, MoxLocalRuntime,
-        ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, SharedPrefixStore,
-        ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason,
-        TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat, WeightSource,
-        WeightTensorMetadata, prefix_compatibility,
+        LoadedModelRegistryError, LocalModelCatalog, ModelDescriptor, ModelSummary,
+        MoxLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
+        SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
+        TerminationReason, TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat,
+        WeightSource, WeightTensorMetadata, prefix_compatibility,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -3592,7 +3730,7 @@ mod tests {
         let mut registry = InMemoryGenerationModelRegistry::new();
         let model = ReferenceWordDecoder::new();
 
-        assert!(registry.load(model).is_none());
+        assert!(registry.load(model).expect("load model").is_none());
         assert_eq!(registry.len(), 1);
         assert!(registry.active(ReferenceWordDecoder::MODEL_ID).is_some());
         assert!(registry.unload(ReferenceWordDecoder::MODEL_ID).is_some());
@@ -3630,6 +3768,7 @@ mod tests {
                     Some(String::from("cpu")),
                     None
                 )
+                .expect("warm alpha")
                 .is_none()
         );
         assert!(
@@ -3642,6 +3781,7 @@ mod tests {
                     Some(String::from("cpu")),
                     None
                 )
+                .expect("warm beta")
                 .is_none()
         );
 
@@ -3649,8 +3789,10 @@ mod tests {
         assert_eq!(views.len(), 2);
         assert_eq!(views[0].summary.model, "alpha");
         assert_eq!(views[0].residency.expires_at_millis, Some(6_000));
+        assert_eq!(views[0].memory_plan.resident_device_bytes, 64);
         assert_eq!(views[1].summary.model, "beta");
         assert_eq!(views[1].residency.expires_at_millis, Some(4_000));
+        assert_eq!(views[1].memory_plan.resident_device_bytes, 32);
 
         let warmed = registry
             .warm_loaded("beta", 3_000, 9_000)
@@ -3693,6 +3835,7 @@ mod tests {
         assert!(
             registry
                 .warm_with_metadata(gamma, 10_000, 5_000, None, Some(String::from("cpu")), None)
+                .expect("warm gamma")
                 .is_none()
         );
         let warmed = registry
@@ -3703,6 +3846,75 @@ mod tests {
         let expired = registry.expire_idle(10_100);
         assert_eq!(expired.len(), 1);
         assert!(registry.is_empty());
+    }
+
+    #[test]
+    fn model_registry_refuses_candidate_when_host_budget_would_be_exceeded() {
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: None,
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(300),
+                resident_device_bytes: None,
+            },
+            pressure_action: ResidencyPressureAction::RefuseNewModel,
+        };
+        let mut registry = InMemoryGenerationModelRegistry::with_residency_policy(policy);
+        let alpha = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("alpha"),
+        };
+        let beta = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("beta"),
+        };
+
+        registry
+            .warm_with_metadata(alpha, 1_000, 5_000, None, Some(String::from("cpu")), None)
+            .expect("warm alpha");
+        let error = registry
+            .warm_with_metadata(beta, 2_000, 5_000, None, Some(String::from("cpu")), None)
+            .expect_err("beta should be refused");
+
+        assert!(matches!(
+            error,
+            LoadedModelRegistryError::AdmissionRefused(ref refusal)
+                if refusal.reason == AdmissionRefusalReason::HostMemoryBudget
+        ));
+        assert_eq!(registry.len(), 1);
+        assert!(registry.active("alpha").is_some());
+        assert!(registry.active("beta").is_none());
+    }
+
+    #[test]
+    fn model_registry_can_evict_oldest_idle_model_to_admit_new_candidate() {
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: Some(1),
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(300),
+                resident_device_bytes: None,
+            },
+            pressure_action: ResidencyPressureAction::UnloadIdleOldestFirst,
+        };
+        let mut registry = InMemoryGenerationModelRegistry::with_residency_policy(policy);
+        let alpha = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("alpha"),
+        };
+        let beta = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("beta"),
+        };
+
+        registry
+            .warm_with_metadata(alpha, 1_000, 5_000, None, Some(String::from("cpu")), None)
+            .expect("warm alpha");
+        registry
+            .warm_with_metadata(beta, 2_000, 5_000, None, Some(String::from("cpu")), None)
+            .expect("beta should evict alpha to fit");
+
+        let views = registry.loaded_model_views();
+        assert_eq!(views.len(), 1);
+        assert_eq!(views[0].summary.model, "beta");
+        assert_eq!(views[0].residency_snapshot.loaded_models, 1);
+        assert_eq!(views[0].residency_snapshot.resident_host_bytes, 192);
+        assert!(registry.active("alpha").is_none());
+        assert!(registry.active("beta").is_some());
     }
 
     #[test]
