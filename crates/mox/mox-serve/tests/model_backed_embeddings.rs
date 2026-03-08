@@ -18,7 +18,8 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
         "req-model-1",
         service.model_descriptor().clone(),
         vec![String::from("open agents"), String::from("open agents")],
-    );
+    )
+    .with_output_dimensions(4);
 
     let response = service.embed(&request)?;
     let capability = CapabilityEnvelope::from_embedding_model(
@@ -35,7 +36,14 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
     );
 
     assert_eq!(response.metadata.model_id, ByteProjectionEmbedder::MODEL_ID);
-    assert_eq!(response.metadata.dimensions, 8);
+    assert_eq!(
+        response.metadata.model_family,
+        ByteProjectionEmbedder::MODEL_FAMILY
+    );
+    assert_eq!(response.metadata.model_revision, "v1");
+    assert_eq!(response.metadata.dimensions, 4);
+    assert_eq!(response.metadata.input_count, 2);
+    assert_eq!(response.metadata.requested_output_dimensions, Some(4));
     assert_eq!(
         response.metadata.normalization,
         mox_serve::EmbeddingNormalization::UnitLength
@@ -69,6 +77,14 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
         mox_serve::QuantizationMode::None
     );
     assert_eq!(capability.weight_bundle.artifacts.len(), 1);
+    assert_eq!(
+        capability.normalization,
+        mox_serve::EmbeddingNormalization::UnitLength
+    );
+    assert!(capability.preserves_input_order);
+    assert!(capability.empty_batch_returns_empty);
+    assert!(capability.supports_output_dimensions);
+    assert!(!capability.supports_input_truncation);
     let capability_json = serde_json::to_string_pretty(&capability)?;
     assert!(capability_json.contains("\"model_revision\": \"v1\""));
     assert!(capability_json.contains("\"weight_bundle\""));
@@ -78,8 +94,14 @@ fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
     assert_eq!(receipt.model_family, ByteProjectionEmbedder::MODEL_FAMILY);
     assert_eq!(receipt.model_revision, "v1");
     assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
-    assert_eq!(receipt.output_dimensions, 8);
+    assert_eq!(receipt.output_dimensions, 4);
+    assert_eq!(receipt.input_count, 2);
     assert_eq!(receipt.output_vector_count, 2);
+    assert_eq!(
+        receipt.normalization,
+        mox_serve::EmbeddingNormalization::UnitLength
+    );
+    assert_eq!(receipt.requested_output_dimensions, Some(4));
     assert!(receipt.failure_reason.is_none());
     let receipt_json = serde_json::to_string_pretty(&receipt)?;
     assert!(receipt_json.contains("\"weight_bundle\""));
@@ -150,5 +172,27 @@ fn model_backed_embeddings_reject_wrong_product() -> Result<(), Box<dyn std::err
         ModelEmbeddingsError::UnsupportedProduct(product_id)
             if product_id == "mox.text_generation"
     ));
+    Ok(())
+}
+
+#[test]
+fn model_backed_embeddings_empty_batch_returns_empty_success()
+-> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let path = temp.path().join("byte_projection.safetensors");
+    ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
+
+    let mut service = CpuModelEmbeddingsService::from_safetensors_artifact(&path)?;
+    let request = EmbeddingRequest::new(
+        "req-model-empty",
+        service.model_descriptor().clone(),
+        vec![],
+    );
+
+    let response = service.embed(&request)?;
+    assert!(response.embeddings.is_empty());
+    assert_eq!(response.metadata.vector_count, 0);
+    assert_eq!(response.metadata.input_count, 0);
+    assert_eq!(response.metadata.dimensions, 8);
     Ok(())
 }

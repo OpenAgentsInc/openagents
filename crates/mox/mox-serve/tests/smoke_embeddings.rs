@@ -27,7 +27,11 @@ fn smoke_embeddings_flow_returns_response_capability_and_receipt()
     );
 
     assert_eq!(response.metadata.model_id, "smoke-byte-embed-v0");
+    assert_eq!(response.metadata.model_family, "smoke");
+    assert_eq!(response.metadata.model_revision, "v0");
     assert_eq!(response.metadata.dimensions, 8);
+    assert_eq!(response.metadata.input_count, 2);
+    assert_eq!(response.metadata.requested_output_dimensions, None);
     assert_eq!(response.embeddings.len(), 2);
     assert_eq!(response.embeddings[0].values, response.embeddings[1].values);
 
@@ -44,6 +48,14 @@ fn smoke_embeddings_flow_returns_response_capability_and_receipt()
     );
     assert!(capability.weight_bundle.artifacts.is_empty());
     assert_eq!(capability.dimensions, 8);
+    assert_eq!(
+        capability.normalization,
+        mox_serve::EmbeddingNormalization::None
+    );
+    assert!(capability.preserves_input_order);
+    assert!(capability.empty_batch_returns_empty);
+    assert!(capability.supports_output_dimensions);
+    assert!(!capability.supports_input_truncation);
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
     assert_eq!(receipt.backend_selection.effective_backend, "cpu");
@@ -52,9 +64,32 @@ fn smoke_embeddings_flow_returns_response_capability_and_receipt()
     assert_eq!(receipt.model_revision, "v0");
     assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
     assert_eq!(receipt.output_dimensions, 8);
+    assert_eq!(receipt.input_count, 2);
     assert_eq!(receipt.output_vector_count, 2);
+    assert_eq!(
+        receipt.normalization,
+        mox_serve::EmbeddingNormalization::None
+    );
+    assert_eq!(receipt.requested_output_dimensions, None);
     assert!(receipt.failure_reason.is_none());
     assert_eq!(receipt.request_id, request.request_id);
+    Ok(())
+}
+
+#[test]
+fn smoke_embeddings_empty_batch_returns_empty_success() -> Result<(), Box<dyn std::error::Error>> {
+    let mut service = SmokeEmbeddingsService::new()?;
+    let request = EmbeddingRequest::new(
+        "req-smoke-empty",
+        service.model_descriptor().clone(),
+        vec![],
+    );
+
+    let response = service.embed(&request)?;
+    assert!(response.embeddings.is_empty());
+    assert_eq!(response.metadata.vector_count, 0);
+    assert_eq!(response.metadata.input_count, 0);
+    assert_eq!(response.metadata.dimensions, 8);
     Ok(())
 }
 
