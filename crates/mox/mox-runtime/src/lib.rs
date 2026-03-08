@@ -41,6 +41,119 @@ pub enum RuntimeError {
     Backend(String),
 }
 
+/// Backend-neutral local runtime error taxonomy used by served-product surfaces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalRuntimeErrorCode {
+    /// The caller supplied an invalid request.
+    InvalidRequest,
+    /// The caller targeted the wrong served product.
+    UnsupportedProduct,
+    /// The caller requested a model that is unsupported by the current path.
+    UnsupportedModel,
+    /// The requested model was not found.
+    ModelNotFound,
+    /// The requested model is not currently loaded.
+    ModelNotLoaded,
+    /// The requested backend or model capability is unsupported.
+    UnsupportedCapability,
+    /// A required local artifact is missing.
+    ArtifactMissing,
+    /// A local artifact is unreadable, corrupt, or otherwise invalid.
+    ArtifactInvalid,
+    /// The request exceeded an explicit context or prompt budget.
+    ContextOverflow,
+    /// The referenced generation session does not exist.
+    SessionNotFound,
+    /// The referenced generation session is incompatible with the request.
+    SessionMismatch,
+    /// The request exhausted explicit KV/cache limits.
+    CacheExhausted,
+    /// Local-serving admission policy refused the request.
+    AdmissionRefused,
+    /// The requested backend is unavailable.
+    BackendUnavailable,
+    /// The selected backend is degraded and refused execution.
+    BackendDegraded,
+    /// Backend execution failed after planning succeeded.
+    BackendExecutionFailed,
+    /// The runtime produced an invalid output payload.
+    InvalidOutput,
+    /// The caller cancelled the request.
+    Cancelled,
+    /// The client disconnected after execution started.
+    Disconnected,
+    /// The runtime hit an unexpected internal error.
+    Internal,
+}
+
+/// Structured diagnostic carried across the local runtime seam.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalRuntimeDiagnostic {
+    /// Stable taxonomy code.
+    pub code: LocalRuntimeErrorCode,
+    /// Comparable HTTP-style status code for app cutover and conformance.
+    pub status: u16,
+    /// Plain-language message safe to surface in logs or UI.
+    pub message: String,
+    /// Stable product identifier when the diagnostic belongs to one request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_id: Option<String>,
+    /// Stable model identifier when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Runtime backend involved in the failure when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Honest backend health posture when the diagnostic is backend-driven.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend_health: Option<HealthStatus>,
+}
+
+impl LocalRuntimeDiagnostic {
+    /// Creates a structured local-runtime diagnostic.
+    #[must_use]
+    pub fn new(code: LocalRuntimeErrorCode, status: u16, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            status,
+            message: message.into(),
+            product_id: None,
+            model_id: None,
+            backend: None,
+            backend_health: None,
+        }
+    }
+
+    /// Attaches a served-product identifier.
+    #[must_use]
+    pub fn with_product_id(mut self, product_id: impl Into<String>) -> Self {
+        self.product_id = Some(product_id.into());
+        self
+    }
+
+    /// Attaches a model identifier.
+    #[must_use]
+    pub fn with_model_id(mut self, model_id: impl Into<String>) -> Self {
+        self.model_id = Some(model_id.into());
+        self
+    }
+
+    /// Attaches the runtime backend name.
+    #[must_use]
+    pub fn with_backend(mut self, backend: impl Into<String>) -> Self {
+        self.backend = Some(backend.into());
+        self
+    }
+
+    /// Attaches the backend health posture.
+    #[must_use]
+    pub const fn with_backend_health(mut self, backend_health: HealthStatus) -> Self {
+        self.backend_health = Some(backend_health);
+        self
+    }
+}
+
 /// Runtime-visible device description.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DeviceDescriptor {
