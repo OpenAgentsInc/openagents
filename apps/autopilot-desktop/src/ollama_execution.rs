@@ -648,7 +648,7 @@ fn run_ollama_execution_loop(
     }
 }
 
-fn normalize_optional_text(raw: &str) -> Option<String> {
+pub(crate) fn normalize_optional_text(raw: &str) -> Option<String> {
     let trimmed = raw.trim();
     if trimmed.is_empty() {
         None
@@ -657,7 +657,7 @@ fn normalize_optional_text(raw: &str) -> Option<String> {
     }
 }
 
-fn normalize_prompt(raw: &str) -> String {
+pub(crate) fn normalize_prompt(raw: &str) -> String {
     raw.replace("\r\n", "\n")
         .replace('\r', "\n")
         .trim()
@@ -840,7 +840,7 @@ fn build_generate_body_from_options(
     })
 }
 
-fn canonical_options_json(options: &Map<String, Value>) -> Result<String, String> {
+pub(crate) fn canonical_options_json(options: &Map<String, Value>) -> Result<String, String> {
     let canonical = options
         .iter()
         .map(|(key, value)| (key.clone(), value.clone()))
@@ -849,7 +849,9 @@ fn canonical_options_json(options: &Map<String, Value>) -> Result<String, String
         .map_err(|error| format!("failed to encode normalized Ollama options: {error}"))
 }
 
-fn build_generate_options(params: &[JobExecutionParam]) -> Result<Map<String, Value>, String> {
+pub(crate) fn build_generate_options(
+    params: &[JobExecutionParam],
+) -> Result<Map<String, Value>, String> {
     let mut options = Map::<String, Value>::new();
     for param in params {
         let key = param.key.as_str();

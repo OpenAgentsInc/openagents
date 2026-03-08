@@ -136,8 +136,8 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
         changed |= jobs::apply_active_job_apple_fm_update(state, update);
     }
 
-    for update in state.ollama_execution_worker.drain_updates() {
-        changed |= jobs::apply_active_job_ollama_update(state, update);
+    for update in state.local_inference_runtime.drain_updates() {
+        changed |= jobs::apply_active_job_local_inference_runtime_update(state, update);
     }
 
     for update in state.codex_lane_worker.drain_updates() {
