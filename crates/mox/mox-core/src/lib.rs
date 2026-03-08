@@ -96,6 +96,109 @@ impl QuantizationMode {
     }
 }
 
+/// Stable floating-point parameter encoded via raw `f32` bit representation.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct StableF32(pub u32);
+
+impl StableF32 {
+    /// Creates a stable floating-point parameter from an `f32`.
+    #[must_use]
+    pub const fn from_f32(value: f32) -> Self {
+        Self(value.to_bits())
+    }
+
+    /// Decodes the stored value as an `f32`.
+    #[must_use]
+    pub const fn to_f32(self) -> f32 {
+        f32::from_bits(self.0)
+    }
+}
+
+/// Backend-extension family kept separate from the small visible primitive surface.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendExtensionKind {
+    /// Root-mean-square normalization over the last dimension.
+    RmsNorm,
+    /// Layer normalization over the last dimension.
+    LayerNorm,
+    /// Rotary position embedding application.
+    RotaryEmbedding,
+    /// Scaled dot-product attention over query/key/value tensors.
+    ScaledDotProductAttention,
+    /// Matmul that is eligible for a quantized-GEMM specialization.
+    QuantizedMatmul,
+}
+
+impl BackendExtensionKind {
+    /// Returns a stable extension label.
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::RmsNorm => "rms_norm",
+            Self::LayerNorm => "layer_norm",
+            Self::RotaryEmbedding => "rotary_embedding",
+            Self::ScaledDotProductAttention => "scaled_dot_product_attention",
+            Self::QuantizedMatmul => "quantized_matmul",
+        }
+    }
+}
+
+/// Typed backend-extension operation carried through graph and plan surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BackendExtensionOp {
+    /// Root-mean-square normalization over the last dimension.
+    RmsNorm {
+        /// Epsilon added before square root for numeric stability.
+        epsilon: StableF32,
+    },
+    /// Layer normalization over the last dimension.
+    LayerNorm {
+        /// Epsilon added before square root for numeric stability.
+        epsilon: StableF32,
+    },
+    /// Rotary position embedding application.
+    RotaryEmbedding {
+        /// Whether pairs are interleaved on the last dimension.
+        interleaved: bool,
+    },
+    /// Scaled dot-product attention over query/key/value tensors.
+    ScaledDotProductAttention {
+        /// Multiplicative scale applied to query-key dot products.
+        scale: StableF32,
+        /// Whether causal masking is applied.
+        causal: bool,
+    },
+    /// Matmul that is eligible for a quantized-GEMM specialization.
+    QuantizedMatmul {
+        /// Quantized family of the right-hand-side weights.
+        rhs_mode: QuantizationMode,
+    },
+}
+
+impl BackendExtensionOp {
+    /// Returns the extension family.
+    #[must_use]
+    pub const fn kind(&self) -> BackendExtensionKind {
+        match self {
+            Self::RmsNorm { .. } => BackendExtensionKind::RmsNorm,
+            Self::LayerNorm { .. } => BackendExtensionKind::LayerNorm,
+            Self::RotaryEmbedding { .. } => BackendExtensionKind::RotaryEmbedding,
+            Self::ScaledDotProductAttention { .. } => {
+                BackendExtensionKind::ScaledDotProductAttention
+            }
+            Self::QuantizedMatmul { .. } => BackendExtensionKind::QuantizedMatmul,
+        }
+    }
+
+    /// Returns a stable extension label.
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        self.kind().label()
+    }
+}
+
 /// Stable block layout for GGML/GGUF quantized tensor storage.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct QuantizedBlockLayout {
@@ -570,6 +673,8 @@ pub enum LazyOp {
     Expand { shape: Shape },
     /// Full or axis-specific reduction.
     ReduceSum { axis: Option<usize> },
+    /// Typed backend-extension operation kept separate from primitive ops.
+    BackendExtension { op: BackendExtensionOp },
 }
 
 /// Public tensor handle produced by graph construction.
@@ -643,7 +748,11 @@ mod tests {
     #[test]
     fn layout_permute_updates_shape_and_strides() {
         let layout = Layout::contiguous(Shape::new(vec![2, 3, 4]));
-        let permuted = layout.permuted(&[1, 0, 2]).expect("valid permute");
+        let permuted = layout.permuted(&[1, 0, 2]);
+        assert!(permuted.is_some());
+        let Some(permuted) = permuted else {
+            return;
+        };
 
         assert_eq!(permuted.shape().dims(), &[3, 2, 4]);
         assert_eq!(permuted.strides(), &[4, 12, 1]);
@@ -653,9 +762,11 @@ mod tests {
     #[test]
     fn layout_expand_uses_zero_strides() {
         let layout = Layout::contiguous(Shape::new(vec![1, 3]));
-        let expanded = layout
-            .expanded(&Shape::new(vec![4, 3]))
-            .expect("valid expand");
+        let expanded = layout.expanded(&Shape::new(vec![4, 3]));
+        assert!(expanded.is_some());
+        let Some(expanded) = expanded else {
+            return;
+        };
 
         assert_eq!(expanded.shape().dims(), &[4, 3]);
         assert_eq!(expanded.strides(), &[0, 1]);
@@ -664,9 +775,11 @@ mod tests {
     #[test]
     fn layout_expand_can_increase_rank() {
         let layout = Layout::contiguous(Shape::new(vec![2]));
-        let expanded = layout
-            .expanded(&Shape::new(vec![3, 2]))
-            .expect("valid expand");
+        let expanded = layout.expanded(&Shape::new(vec![3, 2]));
+        assert!(expanded.is_some());
+        let Some(expanded) = expanded else {
+            return;
+        };
 
         assert_eq!(expanded.shape().dims(), &[3, 2]);
         assert_eq!(expanded.strides(), &[0, 1]);
@@ -674,13 +787,12 @@ mod tests {
 
     #[test]
     fn expanded_layout_storage_size_matches_source_span() {
-        let spec = TensorSpec::from_layout(
-            Layout::contiguous(Shape::new(vec![1, 3]))
-                .expanded(&Shape::new(vec![4, 3]))
-                .expect("valid expand"),
-            DType::F32,
-            Device::cpu(),
-        );
+        let expanded = Layout::contiguous(Shape::new(vec![1, 3])).expanded(&Shape::new(vec![4, 3]));
+        assert!(expanded.is_some());
+        let Some(expanded) = expanded else {
+            return;
+        };
+        let spec = TensorSpec::from_layout(expanded, DType::F32, Device::cpu());
 
         assert_eq!(spec.element_count(), 12);
         assert_eq!(spec.storage_size(), 3);

@@ -112,27 +112,62 @@ pub fn compile_graph(graph: &Graph) -> Result<ExecutionPlan, CompileError> {
 
 #[cfg(test)]
 mod tests {
-    use mox_core::{DType, Device, Shape};
+    use mox_core::{DType, Device, QuantizationMode, Shape};
     use mox_ir::GraphBuilder;
 
     use super::{CompileError, compile_graph};
 
     #[test]
-    fn compile_graph_preserves_deterministic_digest() -> Result<(), CompileError> {
-        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph)?;
-        let plan_a = compile_graph(&graph)?;
-        let plan_b = compile_graph(&graph)?;
+    fn compile_graph_preserves_deterministic_digest() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+        let plan_a = compile_graph(&graph);
+        let plan_b = compile_graph(&graph);
+        assert!(plan_a.is_ok());
+        assert!(plan_b.is_ok());
+        let Ok(plan_a) = plan_a else {
+            return;
+        };
+        let Ok(plan_b) = plan_b else {
+            return;
+        };
         assert_eq!(plan_a.stable_digest(), plan_b.stable_digest());
-        Ok(())
     }
 
     #[test]
-    fn compile_graph_lists_expected_steps() -> Result<(), CompileError> {
-        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph)?;
-        let plan = compile_graph(&graph)?;
+    fn compile_graph_lists_expected_steps() {
+        let graph = sample_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+        let plan = compile_graph(&graph);
+        assert!(plan.is_ok());
+        let Ok(plan) = plan else {
+            return;
+        };
         assert!(plan.stable_debug().contains("matmul"));
         assert!(plan.stable_debug().contains("add"));
-        Ok(())
+    }
+
+    #[test]
+    fn compile_graph_preserves_backend_extension_payloads() {
+        let graph = extension_graph().map_err(|_| CompileError::EmptyGraph);
+        assert!(graph.is_ok());
+        let Ok(graph) = graph else {
+            return;
+        };
+        let plan = compile_graph(&graph);
+        assert!(plan.is_ok());
+        let Ok(plan) = plan else {
+            return;
+        };
+        let debug = plan.stable_debug();
+        assert!(debug.contains("rms_norm"));
+        assert!(debug.contains("quantized_matmul"));
     }
 
     fn sample_graph() -> Result<mox_ir::Graph, mox_ir::GraphError> {
@@ -143,5 +178,15 @@ mod tests {
         let projected = builder.matmul(&input, &weights)?;
         let shifted = builder.add(&projected, &bias)?;
         Ok(builder.finish(vec![shifted]))
+    }
+
+    fn extension_graph() -> Result<mox_ir::Graph, mox_ir::GraphError> {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
+        let weight = builder.constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0])?;
+        let rhs = builder.constant_f32(Shape::new(vec![4, 2]), vec![1.0f32; 8])?;
+        let normed = builder.rms_norm(&input, &weight, 1e-5)?;
+        let output = builder.quantized_matmul(&normed, &rhs, QuantizationMode::GgmlQ4_0)?;
+        Ok(builder.finish(vec![output]))
     }
 }

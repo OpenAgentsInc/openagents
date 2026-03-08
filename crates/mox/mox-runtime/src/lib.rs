@@ -4,7 +4,10 @@ mod parity;
 
 use std::collections::BTreeMap;
 
-use mox_core::{DType, Device, QuantizationMode, QuantizedBlockLayout, TensorId, TensorSpec};
+use mox_core::{
+    BackendExtensionKind, DType, Device, QuantizationMode, QuantizedBlockLayout, TensorId,
+    TensorSpec,
+};
 use mox_ir::ExecutionPlan;
 pub use parity::*;
 use rand::{Rng, SeedableRng, rngs::StdRng};
@@ -333,6 +336,45 @@ pub struct BackendRuntimeResources {
     /// Device-memory budget reserved around those runtime-owned caches, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub device_memory_budget: Option<DeviceMemoryBudget>,
+}
+
+/// How one backend executes a typed extension family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendExtensionExecution {
+    /// The backend executes the extension through a reference implementation.
+    Reference,
+    /// The backend executes the extension through a backend-specific fused/custom kernel.
+    BackendSpecialized,
+}
+
+/// Explicit support declaration for one backend-extension family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendExtensionSupport {
+    /// Backend-extension family.
+    pub kind: BackendExtensionKind,
+    /// Execution posture for that family.
+    pub execution: BackendExtensionExecution,
+}
+
+impl BackendExtensionSupport {
+    /// Creates reference-path support for one extension family.
+    #[must_use]
+    pub const fn reference(kind: BackendExtensionKind) -> Self {
+        Self {
+            kind,
+            execution: BackendExtensionExecution::Reference,
+        }
+    }
+
+    /// Creates backend-specialized support for one extension family.
+    #[must_use]
+    pub const fn backend_specialized(kind: BackendExtensionKind) -> Self {
+        Self {
+            kind,
+            execution: BackendExtensionExecution::BackendSpecialized,
+        }
+    }
 }
 
 /// Distinct AMD runtime mode.
@@ -1493,6 +1535,9 @@ pub struct BackendSelection {
     /// Explicit runtime-owned allocator/kernel-cache/device-budget state for the effective backend.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_resources: Option<BackendRuntimeResources>,
+    /// Explicit backend-extension families kept outside the base primitive-op list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backend_extensions: Vec<BackendExtensionSupport>,
     /// Supported op labels for the advertised product path.
     pub supported_ops: Vec<String>,
     /// Explicit served-product fallback and degraded-state policy.
@@ -1535,6 +1580,7 @@ impl BackendSelection {
             effective_backend: backend,
             selected_device,
             runtime_resources: None,
+            backend_extensions: Vec::new(),
             supported_ops,
             policy,
             selection_state: BackendSelectionState::Direct,
@@ -1579,6 +1625,7 @@ impl BackendSelection {
             effective_backend: effective_backend.into(),
             selected_device,
             runtime_resources: None,
+            backend_extensions: Vec::new(),
             supported_ops,
             policy,
             selection_state: BackendSelectionState::CrossBackendFallback,
@@ -1602,6 +1649,7 @@ impl BackendSelection {
             effective_backend: backend,
             selected_device,
             runtime_resources: None,
+            backend_extensions: Vec::new(),
             supported_ops,
             policy,
             selection_state: BackendSelectionState::SameBackendDegraded,
@@ -1623,7 +1671,8 @@ impl BackendSelection {
                 .map(|label| String::from(*label))
                 .collect(),
         )
-        .with_runtime_resources(backend.runtime_resources()))
+        .with_runtime_resources(backend.runtime_resources())
+        .with_backend_extensions(backend.extension_support()))
     }
 
     /// Creates a fallback selection to an effective backend discovered at runtime.
@@ -1649,7 +1698,8 @@ impl BackendSelection {
             ),
             fallback_reason,
         )
-        .with_runtime_resources(effective_backend.runtime_resources()))
+        .with_runtime_resources(effective_backend.runtime_resources())
+        .with_backend_extensions(effective_backend.extension_support()))
     }
 
     /// Attaches explicit backend runtime resource state.
@@ -1659,6 +1709,16 @@ impl BackendSelection {
         runtime_resources: Option<BackendRuntimeResources>,
     ) -> Self {
         self.runtime_resources = runtime_resources;
+        self
+    }
+
+    /// Attaches explicit backend-extension support truth.
+    #[must_use]
+    pub fn with_backend_extensions(
+        mut self,
+        backend_extensions: Vec<BackendExtensionSupport>,
+    ) -> Self {
+        self.backend_extensions = backend_extensions;
         self
     }
 }
@@ -1838,6 +1898,11 @@ pub trait DeviceDiscovery {
     fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
         None
     }
+
+    /// Returns typed backend-extension families supported outside the base primitive-op list.
+    fn extension_support(&self) -> Vec<BackendExtensionSupport> {
+        Vec::new()
+    }
 }
 
 /// Trait for backend allocators.
@@ -1875,7 +1940,7 @@ pub struct ExecutionResult<B> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use mox_core::{DType, Device, Shape, TensorSpec};
+    use mox_core::{BackendExtensionKind, DType, Device, Shape, TensorSpec};
     use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
     use serde_json::json;
 
@@ -1883,19 +1948,19 @@ mod tests {
         AdmissionRefusalReason, Allocator, AllocatorPoolPolicy, AllocatorPoolReport,
         AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
-        AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendRuntimeResources,
-        BackendSelection, BackendSelectionState, BufferHandle, BufferResidency, BufferStorageKind,
-        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
-        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-        LoadedModelResidency, LoadedModelState, MemoryBudget, MemoryResidencySnapshot,
-        ModelAdmissionDecision, ModelArtifactBlobKind, ModelArtifactStorage,
-        ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction, RuntimeError,
-        RuntimeHealth, SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy, TokenSampler,
-        apply_sampling_penalties, plan_model_admission,
+        AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendExtensionExecution,
+        BackendExtensionSupport, BackendRuntimeResources, BackendSelection, BackendSelectionState,
+        BufferHandle, BufferResidency, BufferStorageKind, DEFAULT_PENALTY_LOOKBACK,
+        DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics,
+        ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState,
+        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+        LoadedModelState, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        ResidencyPressureAction, RuntimeError, RuntimeHealth, SamplingPolicy, SamplingStrategy,
+        ServedProductBackendPolicy, TokenSampler, apply_sampling_penalties, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1939,6 +2004,13 @@ mod tests {
                 status: HealthStatus::Ready,
                 message: String::from("ready"),
             }
+        }
+
+        fn extension_support(&self) -> Vec<BackendExtensionSupport> {
+            vec![
+                BackendExtensionSupport::reference(BackendExtensionKind::RmsNorm),
+                BackendExtensionSupport::backend_specialized(BackendExtensionKind::QuantizedMatmul),
+            ]
         }
     }
 
@@ -2049,6 +2121,16 @@ mod tests {
                     "unified_memory": true,
                     "feature_flags": ["mock_execution"]
                 },
+                "backend_extensions": [
+                    {
+                        "kind": "rms_norm",
+                        "execution": "reference"
+                    },
+                    {
+                        "kind": "quantized_matmul",
+                        "execution": "backend_specialized"
+                    }
+                ],
                 "supported_ops": ["input", "matmul"],
                 "policy": {
                     "unavailable": "refuse",
@@ -2128,6 +2210,23 @@ mod tests {
                 "mode": "ggml_q4_0",
                 "load_path": "backend_quantized",
                 "execution": "dequantize_to_f32"
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn backend_extension_support_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let support = BackendExtensionSupport {
+            kind: BackendExtensionKind::RotaryEmbedding,
+            execution: BackendExtensionExecution::BackendSpecialized,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&support)?,
+            json!({
+                "kind": "rotary_embedding",
+                "execution": "backend_specialized"
             })
         );
         Ok(())
@@ -2346,8 +2445,11 @@ mod tests {
             "gamma",
             &ModelMemoryPlan::host_only(256, 128, 0),
             &policy,
-        )
-        .expect("gamma should fit after evicting alpha");
+        );
+        assert!(decision.is_ok());
+        let Ok(decision) = decision else {
+            return;
+        };
 
         assert_eq!(
             decision,
@@ -2389,8 +2491,11 @@ mod tests {
             "beta",
             &ModelMemoryPlan::host_only(256, 128, 0),
             &policy,
-        )
-        .expect_err("beta should be refused while alpha is active");
+        );
+        assert!(refusal.is_err());
+        let Err(refusal) = refusal else {
+            return;
+        };
 
         assert_eq!(refusal.reason, AdmissionRefusalReason::MaxLoadedModels);
         assert_eq!(refusal.blocking_models, vec![String::from("alpha")]);
@@ -2525,26 +2630,12 @@ mod tests {
         let encoded = serde_json::to_value(&policy)?;
 
         assert_eq!(encoded["strategy"], "sample");
-        assert!((encoded["temperature"].as_f64().expect("temperature") - 0.7).abs() < 1e-6);
+        assert!((encoded["temperature"].as_f64().unwrap_or_default() - 0.7).abs() < 1e-6);
         assert_eq!(encoded["top_k"], 32);
-        assert!((encoded["top_p"].as_f64().expect("top_p") - 0.85).abs() < 1e-6);
-        assert!((encoded["repeat_penalty"].as_f64().expect("repeat_penalty") - 1.2).abs() < 1e-6);
-        assert!(
-            (encoded["presence_penalty"]
-                .as_f64()
-                .expect("presence_penalty")
-                - 0.4)
-                .abs()
-                < 1e-6
-        );
-        assert!(
-            (encoded["frequency_penalty"]
-                .as_f64()
-                .expect("frequency_penalty")
-                - 0.3)
-                .abs()
-                < 1e-6
-        );
+        assert!((encoded["top_p"].as_f64().unwrap_or_default() - 0.85).abs() < 1e-6);
+        assert!((encoded["repeat_penalty"].as_f64().unwrap_or_default() - 1.2).abs() < 1e-6);
+        assert!((encoded["presence_penalty"].as_f64().unwrap_or_default() - 0.4).abs() < 1e-6);
+        assert!((encoded["frequency_penalty"].as_f64().unwrap_or_default() - 0.3).abs() < 1e-6);
         assert_eq!(encoded["seed"], 17);
         Ok(())
     }
@@ -2566,12 +2657,21 @@ mod tests {
         let mut left = TokenSampler::new(&policy);
         let mut right = TokenSampler::new(&policy);
 
-        let left_draws = (0..4)
-            .map(|_| left.select_next_token(&logits, &history).expect("sample"))
-            .collect::<Vec<_>>();
-        let right_draws = (0..4)
-            .map(|_| right.select_next_token(&logits, &history).expect("sample"))
-            .collect::<Vec<_>>();
+        let mut left_draws = Vec::new();
+        let mut right_draws = Vec::new();
+        for _ in 0..4 {
+            let left_sample = left.select_next_token(&logits, &history);
+            assert!(left_sample.is_some());
+            if let Some(left_sample) = left_sample {
+                left_draws.push(left_sample);
+            }
+
+            let right_sample = right.select_next_token(&logits, &history);
+            assert!(right_sample.is_some());
+            if let Some(right_sample) = right_sample {
+                right_draws.push(right_sample);
+            }
+        }
 
         assert_eq!(left_draws, right_draws);
     }

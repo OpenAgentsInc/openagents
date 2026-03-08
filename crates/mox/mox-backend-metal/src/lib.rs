@@ -533,7 +533,8 @@ impl MetalBackend {
                         supported_ops,
                         policy,
                     )
-                    .with_runtime_resources(self.runtime_resources())),
+                    .with_runtime_resources(self.runtime_resources())
+                    .with_backend_extensions(self.extension_support())),
                     HealthStatus::Degraded => Ok(BackendSelection::degraded(
                         self.backend_name(),
                         Some(backend.descriptor.clone()),
@@ -541,7 +542,8 @@ impl MetalBackend {
                         policy,
                         health.message,
                     )
-                    .with_runtime_resources(self.runtime_resources())),
+                    .with_runtime_resources(self.runtime_resources())
+                    .with_backend_extensions(self.extension_support())),
                     HealthStatus::Offline => Err(RuntimeError::Backend(format!(
                         "metal backend unavailable: {}",
                         health.message
@@ -581,7 +583,8 @@ impl MetalBackend {
                 policy,
                 format!("metal backend unavailable: {}", health.message),
             )
-            .with_runtime_resources(fallback_backend.runtime_resources())),
+            .with_runtime_resources(fallback_backend.runtime_resources())
+            .with_backend_extensions(fallback_backend.extension_support())),
         }
     }
 }
@@ -1978,7 +1981,8 @@ mod tests {
                         assert!(selection.degraded_reason.is_some());
                     }
                     HealthStatus::Offline => {
-                        panic!("backend_selection should not succeed when Metal is offline");
+                        assert_ne!(backend.health().status, HealthStatus::Offline);
+                        return Ok(());
                     }
                 }
             }

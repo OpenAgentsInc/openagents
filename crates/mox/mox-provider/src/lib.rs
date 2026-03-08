@@ -955,15 +955,18 @@ fn digest_weight_bundle(hasher: &mut Sha256, weight_bundle: &WeightBundleMetadat
 
 #[cfg(test)]
 mod tests {
-    use mox_core::{DType, Device, DeviceKind, QuantizationMode as RuntimeQuantizationMode};
+    use mox_core::{
+        BackendExtensionKind, DType, Device, DeviceKind,
+        QuantizationMode as RuntimeQuantizationMode,
+    };
     use mox_runtime::{
         AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata,
         AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
-        AmdRuntimeMode, AmdTopologyInfo, BackendRuntimeResources, BackendSelection,
-        DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-        MemoryResidencySnapshot, ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        AmdRuntimeMode, AmdTopologyInfo, BackendExtensionSupport, BackendRuntimeResources,
+        BackendSelection, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
+        LocalRuntimeErrorCode, MemoryResidencySnapshot, ModelResidencyPolicy, PrefixCacheIdentity,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     };
     use mox_serve::{
         EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
@@ -1180,7 +1183,11 @@ mod tests {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             cpu_backend_selection()
-                .with_runtime_resources(Some(sample_backend_runtime_resources())),
+                .with_runtime_resources(Some(sample_backend_runtime_resources()))
+                .with_backend_extensions(vec![
+                    BackendExtensionSupport::reference(BackendExtensionKind::RmsNorm),
+                    BackendExtensionSupport::reference(BackendExtensionKind::RotaryEmbedding),
+                ]),
             &model,
             ProviderReadiness::ready("cpu backend ready"),
         );
@@ -1197,6 +1204,19 @@ mod tests {
         assert_eq!(
             encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]["allocator_pool_budget_bytes"],
             json!(8 * 1024 * 1024)
+        );
+        assert_eq!(
+            encoded["backend_selection"]["backend_extensions"],
+            json!([
+                {
+                    "kind": "rms_norm",
+                    "execution": "reference"
+                },
+                {
+                    "kind": "rotary_embedding",
+                    "execution": "reference"
+                }
+            ])
         );
         Ok(())
     }
@@ -1581,7 +1601,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_receipt_carries_reason() {
+    fn failed_receipt_carries_reason() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-4",
             sample_embedding_descriptor(),
@@ -1617,17 +1637,17 @@ mod tests {
         assert_eq!(receipt.runtime_backend, "cpu");
         assert_eq!(receipt.backend_selection.requested_backend, "metal");
         assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
-        let encoded = serde_json::to_string(&receipt).expect("failed receipt should serialize");
-        let decoded: ExecutionReceipt =
-            serde_json::from_str(&encoded).expect("failed receipt should deserialize");
+        let encoded = serde_json::to_string(&receipt)?;
+        let decoded = serde_json::from_str::<ExecutionReceipt>(&encoded)?;
         assert_eq!(
             decoded.diagnostic.as_ref().map(|value| value.code),
             Some(LocalRuntimeErrorCode::BackendUnavailable)
         );
+        Ok(())
     }
 
     #[test]
-    fn amd_receipt_carries_execution_context() {
+    fn amd_receipt_carries_execution_context() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-amd-1",
             sample_embedding_descriptor(),
@@ -1641,12 +1661,15 @@ mod tests {
             11,
             "backend disabled",
         );
-        let amd = receipt.amd.expect("amd context");
+        let Some(amd) = receipt.amd else {
+            return Err("amd context missing".into());
+        };
         assert_eq!(amd.mode, AmdRuntimeMode::Userspace);
         assert!(amd.risk.requires_explicit_opt_in);
         assert_eq!(amd.recovery.driver_binding, AmdDriverBinding::KernelAmdgpu);
         assert_eq!(receipt.input_count, 1);
         assert_eq!(receipt.normalization, EmbeddingNormalization::None);
+        Ok(())
     }
 
     #[test]
