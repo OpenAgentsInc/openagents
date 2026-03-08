@@ -13,6 +13,7 @@ use mox_ir::ExecutionPlan;
 pub use parity::*;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use thiserror::Error;
 pub use validation::*;
 
@@ -1865,9 +1866,117 @@ pub struct PrefixCacheReusePolicy {
     pub shared_across_backends: bool,
 }
 
+/// Stable backend/toolchain identity carried into artifact reproducibility claims.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendToolchainIdentity {
+    /// Effective backend label such as `cpu`, `metal`, or `cuda`.
+    pub effective_backend: String,
+    /// Stable toolchain/version label for the active backend path.
+    pub toolchain_version: String,
+    /// Stable backend feature flags compiled or selected for the active path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compiled_backend_features: Vec<String>,
+}
+
+impl BackendToolchainIdentity {
+    /// Creates backend/toolchain identity from explicit labels.
+    #[must_use]
+    pub fn new(
+        effective_backend: impl Into<String>,
+        toolchain_version: impl Into<String>,
+        compiled_backend_features: Vec<String>,
+    ) -> Self {
+        Self {
+            effective_backend: effective_backend.into(),
+            toolchain_version: toolchain_version.into(),
+            compiled_backend_features,
+        }
+    }
+}
+
+/// Stable served-artifact identity tuple for one served model/backend path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServedArtifactIdentity {
+    /// Stable model identifier.
+    pub model_id: String,
+    /// Stable model revision.
+    pub model_revision: String,
+    /// Stable weight-bundle digest for the loaded weights.
+    pub weight_bundle_digest: String,
+    /// Stable top-level served-artifact digest over all identity inputs below.
+    pub served_artifact_digest: String,
+    /// Primary model-blob digest when the model came from an external artifact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_blob_digest: Option<String>,
+    /// Stable tokenizer digest when tokenization participates in serving behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer_digest: Option<String>,
+    /// Stable chat-template digest when prompt rendering participates in serving behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_template_digest: Option<String>,
+    /// Stable digest over default generation behavior such as BOS/EOS and default stops.
+    pub generation_defaults_digest: String,
+    /// Stable weight-format label.
+    pub weight_format: String,
+    /// Stable quantization family for the served model.
+    pub quantization_family: QuantizationMode,
+    /// Backend/toolchain identity for the active served path.
+    pub backend: BackendToolchainIdentity,
+}
+
+impl ServedArtifactIdentity {
+    /// Creates a served-artifact identity and computes its stable digest.
+    #[must_use]
+    pub fn new(
+        model_id: impl Into<String>,
+        model_revision: impl Into<String>,
+        weight_bundle_digest: impl Into<String>,
+        model_blob_digest: Option<String>,
+        tokenizer_digest: Option<String>,
+        chat_template_digest: Option<String>,
+        generation_defaults_digest: impl Into<String>,
+        weight_format: impl Into<String>,
+        quantization_family: QuantizationMode,
+        backend: BackendToolchainIdentity,
+    ) -> Self {
+        let model_id = model_id.into();
+        let model_revision = model_revision.into();
+        let weight_bundle_digest = weight_bundle_digest.into();
+        let generation_defaults_digest = generation_defaults_digest.into();
+        let weight_format = weight_format.into();
+        let served_artifact_digest = digest_served_artifact_identity(
+            model_id.as_str(),
+            model_revision.as_str(),
+            weight_bundle_digest.as_str(),
+            model_blob_digest.as_deref(),
+            tokenizer_digest.as_deref(),
+            chat_template_digest.as_deref(),
+            generation_defaults_digest.as_str(),
+            weight_format.as_str(),
+            quantization_family,
+            &backend,
+        );
+        Self {
+            model_id,
+            model_revision,
+            weight_bundle_digest,
+            served_artifact_digest,
+            model_blob_digest,
+            tokenizer_digest,
+            chat_template_digest,
+            generation_defaults_digest,
+            weight_format,
+            quantization_family,
+            backend,
+        }
+    }
+}
+
 /// Stable identity tuple for one reusable shared prompt prefix.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PrefixCacheIdentity {
+    /// Stable served-artifact digest used to validate reusable prefix ownership.
+    pub served_artifact_digest: String,
     /// Stable model identifier.
     pub model_id: String,
     /// Stable model revision.
@@ -1891,6 +2000,61 @@ pub struct PrefixCacheIdentity {
     pub prefix_digest: String,
     /// Number of reusable prompt-prefix tokens represented by the digest.
     pub prefix_tokens: usize,
+}
+
+fn digest_served_artifact_identity(
+    model_id: &str,
+    model_revision: &str,
+    weight_bundle_digest: &str,
+    model_blob_digest: Option<&str>,
+    tokenizer_digest: Option<&str>,
+    chat_template_digest: Option<&str>,
+    generation_defaults_digest: &str,
+    weight_format: &str,
+    quantization_family: QuantizationMode,
+    backend: &BackendToolchainIdentity,
+) -> String {
+    let mut hasher = Sha256::new();
+    update_identity_string(&mut hasher, model_id);
+    update_identity_string(&mut hasher, model_revision);
+    update_identity_string(&mut hasher, weight_bundle_digest);
+    update_optional_identity_string(&mut hasher, model_blob_digest);
+    update_optional_identity_string(&mut hasher, tokenizer_digest);
+    update_optional_identity_string(&mut hasher, chat_template_digest);
+    update_identity_string(&mut hasher, generation_defaults_digest);
+    update_identity_string(&mut hasher, weight_format);
+    update_identity_string(&mut hasher, quantization_family_label(quantization_family));
+    update_identity_string(&mut hasher, backend.effective_backend.as_str());
+    update_identity_string(&mut hasher, backend.toolchain_version.as_str());
+    for feature in &backend.compiled_backend_features {
+        update_identity_string(&mut hasher, feature);
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn update_identity_string(hasher: &mut Sha256, value: &str) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value.as_bytes());
+}
+
+fn update_optional_identity_string(hasher: &mut Sha256, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            hasher.update([1]);
+            update_identity_string(hasher, value);
+        }
+        None => hasher.update([0]),
+    }
+}
+
+const fn quantization_family_label(mode: QuantizationMode) -> &'static str {
+    match mode {
+        QuantizationMode::None => "none",
+        QuantizationMode::Int8Symmetric => "int8_symmetric",
+        QuantizationMode::GgmlQ4_0 => "ggml_q4_0",
+        QuantizationMode::GgmlQ4_1 => "ggml_q4_1",
+        QuantizationMode::GgmlQ8_0 => "ggml_q8_0",
+    }
 }
 
 /// Explicit runtime backend selection and fallback truth.
@@ -2652,7 +2816,9 @@ pub struct ExecutionResult<B> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use mox_core::{BackendExtensionKind, DType, Device, DeviceKind, Shape, TensorSpec};
+    use mox_core::{
+        BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec,
+    };
     use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
     use serde_json::json;
 
@@ -2662,12 +2828,12 @@ mod tests {
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendExtensionExecution,
         BackendExtensionSupport, BackendHealthTracker, BackendRuntimeResources, BackendSelection,
-        BackendSelectionState, BufferHandle, BufferResidency, BufferStorageKind,
-        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
-        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        BackendSelectionState, BackendToolchainIdentity, BufferHandle, BufferResidency,
+        BufferStorageKind, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
+        DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus,
+        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
         LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
         ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
         ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
@@ -2675,9 +2841,9 @@ mod tests {
         PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
         QuantizationExecution, QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction,
         RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
-        RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy,
-        ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
-        TokenSampler, apply_sampling_penalties, plan_model_admission,
+        RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedArtifactIdentity,
+        ServedProductBackendPolicy, ServedProductFallbackAction, ServedProductFallbackLattice,
+        ServedProductFallbackTrigger, TokenSampler, apply_sampling_penalties, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -3485,6 +3651,7 @@ mod tests {
             shared_across_backends: false,
         };
         let identity = PrefixCacheIdentity {
+            served_artifact_digest: String::from("served-artifact-digest"),
             model_id: String::from("fixture-word-decoder-v0"),
             model_revision: String::from("v0"),
             weight_bundle_digest: String::from("bundle-digest"),
@@ -3511,6 +3678,7 @@ mod tests {
             json!([
                 "hit",
                 {
+                    "served_artifact_digest": "served-artifact-digest",
                     "model_id": "fixture-word-decoder-v0",
                     "model_revision": "v0",
                     "weight_bundle_digest": "bundle-digest",
@@ -3523,6 +3691,57 @@ mod tests {
             ])
         );
         Ok(())
+    }
+
+    #[test]
+    fn served_artifact_identity_digest_changes_when_identity_changes() {
+        let baseline = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cuda", "cuda@0.1.0", vec![]),
+        );
+
+        let changed_template = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("different-template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cuda", "cuda@0.1.0", vec![]),
+        );
+
+        let changed_backend = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cpu", "cpu@0.1.0", vec![]),
+        );
+
+        assert_ne!(
+            baseline.served_artifact_digest,
+            changed_template.served_artifact_digest
+        );
+        assert_ne!(
+            baseline.served_artifact_digest,
+            changed_backend.served_artifact_digest
+        );
     }
 
     #[test]

@@ -72,6 +72,9 @@ pub struct EmbeddingModelDescriptor {
     pub normalization: EmbeddingNormalization,
     /// Weight bundle metadata for the embedding model.
     pub weights: WeightBundleMetadata,
+    /// Stable model-side artifact identity inputs used by serving/evidence layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_identity: Option<ServedModelArtifactMetadata>,
 }
 
 impl EmbeddingModelDescriptor {
@@ -88,7 +91,18 @@ impl EmbeddingModelDescriptor {
             dimensions,
             normalization,
             weights,
+            artifact_identity: None,
         }
+    }
+
+    /// Attaches stable serving-identity metadata.
+    #[must_use]
+    pub fn with_artifact_identity(
+        mut self,
+        artifact_identity: ServedModelArtifactMetadata,
+    ) -> Self {
+        self.artifact_identity = Some(artifact_identity);
+        self
     }
 }
 
@@ -679,6 +693,18 @@ pub enum WeightFormat {
     Gguf,
 }
 
+impl WeightFormat {
+    /// Returns the stable identity label used in provider/runtime evidence.
+    #[must_use]
+    pub const fn identity_label(self) -> &'static str {
+        match self {
+            Self::ProgrammaticFixture => "programmatic_fixture",
+            Self::SafeTensors => "safetensors",
+            Self::Gguf => "gguf",
+        }
+    }
+}
+
 /// Weight source authority.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum WeightSource {
@@ -866,6 +892,48 @@ impl WeightBundleMetadata {
     #[must_use]
     pub fn is_artifact_backed(&self) -> bool {
         !self.artifacts.is_empty()
+    }
+
+    /// Returns the primary external model-blob digest when the bundle is artifact-backed.
+    #[must_use]
+    pub fn primary_artifact_digest(&self) -> Option<&str> {
+        self.artifacts
+            .first()
+            .map(|artifact| artifact.sha256.as_str())
+    }
+}
+
+/// Stable model-side artifact identity inputs reused across serving and receipts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServedModelArtifactMetadata {
+    /// Primary model-blob digest when the model was loaded from an external artifact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_blob_digest: Option<String>,
+    /// Stable tokenizer digest when tokenization participates in serving behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer_digest: Option<String>,
+    /// Stable chat-template digest when prompt rendering participates in serving behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_template_digest: Option<String>,
+    /// Stable digest over model-default generation behavior such as BOS/EOS and default stops.
+    pub generation_defaults_digest: String,
+}
+
+impl ServedModelArtifactMetadata {
+    /// Creates serving identity metadata from explicit digests.
+    #[must_use]
+    pub fn new(
+        model_blob_digest: Option<String>,
+        tokenizer_digest: Option<String>,
+        chat_template_digest: Option<String>,
+        generation_defaults_digest: impl Into<String>,
+    ) -> Self {
+        Self {
+            model_blob_digest,
+            tokenizer_digest,
+            chat_template_digest,
+            generation_defaults_digest: generation_defaults_digest.into(),
+        }
     }
 }
 
@@ -3148,6 +3216,9 @@ pub struct DecoderModelDescriptor {
     pub tokenizer_family: String,
     /// Weight bundle metadata.
     pub weights: WeightBundleMetadata,
+    /// Stable model-side artifact identity inputs used by serving/evidence layers.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub artifact_identity: Option<ServedModelArtifactMetadata>,
 }
 
 impl DecoderModelDescriptor {
@@ -3164,7 +3235,18 @@ impl DecoderModelDescriptor {
             config,
             tokenizer_family: tokenizer_family.into(),
             weights,
+            artifact_identity: None,
         }
+    }
+
+    /// Attaches stable serving-identity metadata.
+    #[must_use]
+    pub fn with_artifact_identity(
+        mut self,
+        artifact_identity: ServedModelArtifactMetadata,
+    ) -> Self {
+        self.artifact_identity = Some(artifact_identity);
+        self
     }
 }
 
@@ -3344,6 +3426,7 @@ impl GgufDecoderAdapterLoader {
             &bundle.metadata,
             &family_metadata,
             &tokenizer,
+            &chat_templates,
             content,
         )?;
         let tensor_layout = build_gguf_decoder_tensor_layout(
@@ -3585,7 +3668,13 @@ fn build_gguf_embedding_descriptor(
         hidden_size,
         family_metadata.normalization,
         bundle.clone(),
-    ))
+    )
+    .with_artifact_identity(ServedModelArtifactMetadata::new(
+        Some(artifact.sha256.clone()),
+        Some(tokenizer.digest().to_string()),
+        None,
+        digest_generation_defaults(tokenizer.add_bos, tokenizer.add_eos, &[]),
+    )))
 }
 
 fn build_gguf_embedding_tensor_layout(
@@ -3939,6 +4028,7 @@ fn build_gguf_decoder_descriptor(
     bundle: &WeightBundleMetadata,
     family_metadata: &GgufDecoderFamilyMetadata,
     tokenizer: &GgufTokenizerMetadata,
+    chat_templates: &GgufChatTemplateMetadata,
     content: &GgufContent,
 ) -> Result<DecoderModelDescriptor, ModelLoadError> {
     let metadata = content.metadata();
@@ -4034,12 +4124,19 @@ fn build_gguf_decoder_descriptor(
     );
     let revision = format!("sha256:{}", artifact.sha256);
 
+    let stop_sequences = default_chat_template_stop_sequences(chat_templates);
     Ok(DecoderModelDescriptor::new(
         ModelDescriptor::new(model_id, family_metadata.family.as_str(), revision),
         config,
         gguf_tokenizer_family_label(tokenizer),
         bundle.clone(),
-    ))
+    )
+    .with_artifact_identity(ServedModelArtifactMetadata::new(
+        Some(artifact.sha256.clone()),
+        Some(tokenizer.digest().to_string()),
+        (!chat_templates.is_empty()).then(|| chat_templates.digest().to_string()),
+        digest_generation_defaults(tokenizer.add_bos, tokenizer.add_eos, &stop_sequences),
+    )))
 }
 
 fn build_gguf_decoder_tensor_layout(
@@ -4610,7 +4707,16 @@ impl ReferenceWordDecoder {
             config,
             "fixture_wordpiece",
             weights.metadata().clone(),
-        );
+        )
+        .with_artifact_identity(ServedModelArtifactMetadata::new(
+            weights
+                .metadata()
+                .primary_artifact_digest()
+                .map(str::to_string),
+            Some(digest_fixture_tokenizer(&tokenizer)),
+            None,
+            digest_generation_defaults(false, false, &[]),
+        ));
         Self {
             descriptor,
             tokenizer,
@@ -4739,7 +4845,16 @@ impl ArtifactWordDecoder {
             config,
             "fixture_wordpiece",
             bundle.metadata().clone(),
-        );
+        )
+        .with_artifact_identity(ServedModelArtifactMetadata::new(
+            bundle
+                .metadata()
+                .primary_artifact_digest()
+                .map(str::to_string),
+            Some(digest_fixture_tokenizer(&tokenizer)),
+            None,
+            digest_generation_defaults(false, false, &[]),
+        ));
         let weights = SafeTensorsDecoderLoader::new(path.as_ref()).load(&descriptor)?;
         Ok(Self {
             descriptor,
@@ -4798,7 +4913,16 @@ impl SmokeByteEmbedder {
             dimensions,
             EmbeddingNormalization::None,
             weights.metadata().clone(),
-        );
+        )
+        .with_artifact_identity(ServedModelArtifactMetadata::new(
+            weights
+                .metadata()
+                .primary_artifact_digest()
+                .map(str::to_string),
+            None,
+            None,
+            digest_generation_defaults(false, false, &[]),
+        ));
 
         Self {
             descriptor,
@@ -4908,7 +5032,16 @@ impl ByteProjectionEmbedder {
             dimensions,
             EmbeddingNormalization::UnitLength,
             weights.metadata().clone(),
-        );
+        )
+        .with_artifact_identity(ServedModelArtifactMetadata::new(
+            weights
+                .metadata()
+                .primary_artifact_digest()
+                .map(str::to_string),
+            None,
+            None,
+            digest_generation_defaults(false, false, &[]),
+        ));
         Ok(Self {
             descriptor,
             input_dimensions,
@@ -5750,6 +5883,50 @@ fn digest_gguf_chat_templates(
         update_digest_string(&mut hasher, template);
     }
     hex::encode(hasher.finalize())
+}
+
+/// Computes a stable digest over default generation behavior.
+#[must_use]
+pub fn digest_generation_defaults(
+    add_bos: bool,
+    add_eos: bool,
+    stop_sequences: &[String],
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update([u8::from(add_bos), u8::from(add_eos)]);
+    hasher.update(b"\n");
+    for stop_sequence in stop_sequences {
+        update_digest_string(&mut hasher, stop_sequence);
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn digest_fixture_tokenizer(tokenizer: &FixtureWordTokenizer) -> String {
+    let mut hasher = Sha256::new();
+    for token in tokenizer.vocabulary().tokens() {
+        update_digest_string(&mut hasher, token);
+    }
+    hasher.update(tokenizer.vocabulary().pad_id().as_u32().to_be_bytes());
+    hasher.update(tokenizer.vocabulary().bos_id().as_u32().to_be_bytes());
+    hasher.update(tokenizer.vocabulary().eos_id().as_u32().to_be_bytes());
+    hasher.update(tokenizer.vocabulary().unknown_id().as_u32().to_be_bytes());
+    hex::encode(hasher.finalize())
+}
+
+fn default_chat_template_stop_sequences(chat_templates: &GgufChatTemplateMetadata) -> Vec<String> {
+    let Some(default_template) = chat_templates.default_template() else {
+        return Vec::new();
+    };
+    let template_digest = digest_chat_template(default_template);
+    supported_prompt_template_family(template_digest.as_str())
+        .map(|family| {
+            family
+                .stop_sequences()
+                .iter()
+                .map(|value| (*value).to_string())
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn update_optional_token_id(hasher: &mut Sha256, token_id: Option<TokenId>) {
