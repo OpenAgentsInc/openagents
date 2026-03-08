@@ -32,9 +32,10 @@ pub use mox_models::{
 use mox_runtime::{
     BackendSelection, DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
     KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-    LoadedModelResidency, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
-    ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    RuntimeError, SamplingPolicy, SamplingStrategy, TokenSampler, plan_model_admission,
+    LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode, MemoryResidencySnapshot,
+    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, SamplingPolicy, SamplingStrategy,
+    TokenSampler, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -615,6 +616,9 @@ pub struct GenerationStreamTerminal {
     /// Explicit failure reason when the stream did not succeed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub failure_reason: Option<String>,
+    /// Structured diagnostic when the stream did not succeed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<LocalRuntimeDiagnostic>,
 }
 
 /// Typed event emitted by the local streaming generation API.
@@ -1992,6 +1996,176 @@ fn validate_session_model(
     Ok(())
 }
 
+fn diagnostic_with_request_context(
+    diagnostic: LocalRuntimeDiagnostic,
+    product_id: &str,
+    model_id: &str,
+) -> LocalRuntimeDiagnostic {
+    diagnostic
+        .with_product_id(product_id.to_string())
+        .with_model_id(model_id.to_string())
+}
+
+fn blob_error_diagnostic(error: &mox_catalog::BlobError) -> LocalRuntimeDiagnostic {
+    match error {
+        mox_catalog::BlobError::MissingFile { .. } => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::ArtifactMissing,
+            404,
+            error.to_string(),
+        ),
+        mox_catalog::BlobError::Read { .. }
+        | mox_catalog::BlobError::MemoryMap { .. }
+        | mox_catalog::BlobError::InvalidPageSize { .. }
+        | mox_catalog::BlobError::InvalidDigestFormat { .. }
+        | mox_catalog::BlobError::DigestMismatch { .. }
+        | mox_catalog::BlobError::RangeOutOfBounds { .. }
+        | mox_catalog::BlobError::PageOutOfBounds { .. } => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::ArtifactInvalid,
+            500,
+            error.to_string(),
+        ),
+    }
+}
+
+fn model_load_error_diagnostic(error: &ModelLoadError) -> LocalRuntimeDiagnostic {
+    match error {
+        ModelLoadError::UnsupportedModel(_)
+        | ModelLoadError::UnsupportedConfig(_)
+        | ModelLoadError::UnsupportedGgufArchitecture { .. }
+        | ModelLoadError::UnsupportedGgufEmbeddingArchitecture { .. } => {
+            LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedModel,
+                400,
+                error.to_string(),
+            )
+        }
+        ModelLoadError::UnsupportedGgufDecoderFamilyFeature { .. }
+        | ModelLoadError::UnsupportedGgufEmbeddingFamilyFeature { .. }
+        | ModelLoadError::UnsupportedTokenizerModel { .. }
+        | ModelLoadError::UnsupportedTensorDType { .. }
+        | ModelLoadError::UnsupportedGgufTensorType { .. }
+        | ModelLoadError::UnsupportedQuantizedTensorMode { .. } => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::UnsupportedCapability,
+            400,
+            error.to_string(),
+        ),
+        ModelLoadError::ArtifactRead { path, .. } => {
+            if !std::path::Path::new(path).exists() {
+                LocalRuntimeDiagnostic::new(
+                    LocalRuntimeErrorCode::ArtifactMissing,
+                    404,
+                    error.to_string(),
+                )
+            } else {
+                LocalRuntimeDiagnostic::new(
+                    LocalRuntimeErrorCode::ArtifactInvalid,
+                    500,
+                    error.to_string(),
+                )
+            }
+        }
+        ModelLoadError::ArtifactWrite { .. } => {
+            LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, error.to_string())
+        }
+        ModelLoadError::ArtifactFormat { .. }
+        | ModelLoadError::MissingGgufMetadata { .. }
+        | ModelLoadError::InvalidGgufMetadata { .. }
+        | ModelLoadError::MissingTokenizerMetadata { .. }
+        | ModelLoadError::InvalidTokenizerMetadata { .. }
+        | ModelLoadError::MissingTensor(_)
+        | ModelLoadError::MissingTensorScale(_)
+        | ModelLoadError::InvalidTensorShape { .. }
+        | ModelLoadError::InvalidTensorScaleShape { .. }
+        | ModelLoadError::InvalidQuantizedTensorShape { .. }
+        | ModelLoadError::InvalidQuantizedTensorByteLength { .. }
+        | ModelLoadError::WeightDigestMismatch { .. }
+        | ModelLoadError::WeightTensorMetadataMismatch { .. } => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::ArtifactInvalid,
+            500,
+            error.to_string(),
+        ),
+        ModelLoadError::Blob(blob) => blob_error_diagnostic(blob),
+    }
+}
+
+fn context_window_diagnostic(error: &ContextWindowError) -> LocalRuntimeDiagnostic {
+    LocalRuntimeDiagnostic::new(
+        LocalRuntimeErrorCode::ContextOverflow,
+        400,
+        error.to_string(),
+    )
+}
+
+fn loaded_model_registry_diagnostic(error: &LoadedModelRegistryError) -> LocalRuntimeDiagnostic {
+    match error {
+        LoadedModelRegistryError::ModelNotLoaded(model_id) => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::ModelNotLoaded,
+            404,
+            error.to_string(),
+        )
+        .with_model_id(model_id.clone()),
+        LoadedModelRegistryError::AdmissionRefused(refusal) => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::AdmissionRefused,
+            503,
+            refusal.to_string(),
+        )
+        .with_model_id(refusal.requested_model_id.clone()),
+    }
+}
+
+fn kv_cache_diagnostic(error: &KvCacheError) -> LocalRuntimeDiagnostic {
+    match error {
+        KvCacheError::PageBudgetExceeded { .. } => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::CacheExhausted,
+            409,
+            error.to_string(),
+        ),
+        KvCacheError::WidthMismatch { .. } => {
+            LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, error.to_string())
+        }
+    }
+}
+
+fn session_store_diagnostic(error: &SessionStoreError) -> LocalRuntimeDiagnostic {
+    match error {
+        SessionStoreError::SessionNotFound(_) => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::SessionNotFound,
+            404,
+            error.to_string(),
+        ),
+        SessionStoreError::ModelMismatch { expected_model, .. } => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::SessionMismatch,
+            409,
+            error.to_string(),
+        )
+        .with_model_id(expected_model.clone()),
+        SessionStoreError::CacheGeometryMismatch { .. } => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::SessionMismatch,
+            409,
+            error.to_string(),
+        ),
+        SessionStoreError::Cache(cache) => kv_cache_diagnostic(cache),
+    }
+}
+
+fn runtime_error_diagnostic(error: &RuntimeError) -> LocalRuntimeDiagnostic {
+    match error {
+        RuntimeError::UnsupportedStep(_) => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::UnsupportedCapability,
+            503,
+            error.to_string(),
+        ),
+        RuntimeError::Backend(_) => LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::BackendExecutionFailed,
+            500,
+            error.to_string(),
+        ),
+        RuntimeError::MissingInput(_) | RuntimeError::InvalidBuffer { .. } => {
+            LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, error.to_string())
+        }
+    }
+}
+
 /// CPU reference text-generation error.
 #[derive(Debug, Error)]
 pub enum ReferenceTextGenerationError {
@@ -2064,6 +2238,71 @@ pub enum ReferenceTextGenerationError {
     /// An expected graph output was missing.
     #[error("missing graph output `{0}`")]
     MissingOutput(&'static str),
+}
+
+impl ReferenceTextGenerationError {
+    /// Returns the backend-neutral diagnostic for the error.
+    #[must_use]
+    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+        let diagnostic = match self {
+            Self::UnsupportedProduct(_) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedProduct,
+                400,
+                self.to_string(),
+            ),
+            Self::UnsupportedModel(model_id) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::ModelNotFound,
+                404,
+                self.to_string(),
+            )
+            .with_model_id(model_id.clone()),
+            Self::EmptyPrompt | Self::InvalidToken { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::InvalidRequest,
+                400,
+                self.to_string(),
+            ),
+            Self::InvalidPosition { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::ContextOverflow,
+                400,
+                self.to_string(),
+            ),
+            Self::InvalidContextWidth { .. } => {
+                LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, self.to_string())
+            }
+            Self::UnsupportedCacheGeometry { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedCapability,
+                503,
+                self.to_string(),
+            ),
+            Self::Model(error) => model_load_error_diagnostic(error),
+            Self::ContextWindow(error) => context_window_diagnostic(error),
+            Self::Compile(_) | Self::Graph(_) | Self::MissingOutput(_) => {
+                LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, self.to_string())
+            }
+            Self::Session(error) => session_store_diagnostic(error),
+            Self::LoadedModelRegistry(error) => loaded_model_registry_diagnostic(error),
+            Self::Cache(error) => kv_cache_diagnostic(error),
+            Self::Runtime(error) => runtime_error_diagnostic(error).with_backend("cpu"),
+        };
+        match self {
+            Self::LoadedModelRegistry(LoadedModelRegistryError::AdmissionRefused(refusal)) => {
+                diagnostic.with_model_id(refusal.requested_model_id.clone())
+            }
+            _ => diagnostic,
+        }
+    }
+
+    /// Returns the diagnostic annotated with request context.
+    #[must_use]
+    pub fn diagnostic_for_request(&self, request: &GenerationRequest) -> LocalRuntimeDiagnostic {
+        let diagnostic = self.diagnostic();
+        let diagnostic = if diagnostic.model_id.is_none() {
+            diagnostic.with_model_id(request.model.model.model_id.clone())
+        } else {
+            diagnostic
+        };
+        diagnostic.with_product_id(request.product_id.clone())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -2930,6 +3169,7 @@ where
         status: GenerationStreamStatus,
         termination: TerminationReason,
         failure_reason: Option<String>,
+        diagnostic: Option<LocalRuntimeDiagnostic>,
     ) -> GenerationStreamTerminal {
         if status == GenerationStreamStatus::Succeeded {
             if let Some(session_id) = &self.request.session_id {
@@ -2950,6 +3190,7 @@ where
             status,
             response,
             failure_reason,
+            diagnostic,
         }
     }
 
@@ -3001,8 +3242,9 @@ where
         status: GenerationStreamStatus,
         termination: TerminationReason,
         failure_reason: Option<String>,
+        diagnostic: Option<LocalRuntimeDiagnostic>,
     ) -> GenerationStreamEvent {
-        let terminal = self.build_terminal(status, termination, failure_reason);
+        let terminal = self.build_terminal(status, termination, failure_reason, diagnostic);
         if let Some(chunk) = self.maybe_emit_chunk(true) {
             self.pending_terminal = Some(terminal);
             GenerationStreamEvent::Chunk(chunk)
@@ -3034,12 +3276,14 @@ where
                     GenerationStreamStatus::Succeeded,
                     TerminationReason::MaxOutputTokens,
                     None,
+                    None,
                 ));
             }
             if self.cache.len() >= self.cache.max_context() {
                 return Some(self.emit_terminal_or_chunk(
                     GenerationStreamStatus::Succeeded,
                     TerminationReason::ContextLimit,
+                    None,
                     None,
                 ));
             }
@@ -3050,17 +3294,30 @@ where
             {
                 Some(token) => token,
                 None => {
-                    return Some(self.emit_terminal_or_chunk(
-                        GenerationStreamStatus::Failed,
-                        TerminationReason::Error,
-                        Some(String::from("missing next token")),
-                    ));
+                    return Some(
+                        self.emit_terminal_or_chunk(
+                            GenerationStreamStatus::Failed,
+                            TerminationReason::Error,
+                            Some(String::from("missing next token")),
+                            Some(diagnostic_with_request_context(
+                                LocalRuntimeDiagnostic::new(
+                                    LocalRuntimeErrorCode::InvalidOutput,
+                                    500,
+                                    "missing next token",
+                                )
+                                .with_backend("cpu"),
+                                &self.request.product_id,
+                                &self.request.model.model.model_id,
+                            )),
+                        ),
+                    );
                 }
             };
             if next_token == self.loaded_model.model().tokenizer().vocabulary().eos_id() {
                 return Some(self.emit_terminal_or_chunk(
                     GenerationStreamStatus::Succeeded,
                     TerminationReason::EndOfSequence,
+                    None,
                     None,
                 ));
             }
@@ -3085,6 +3342,11 @@ where
                             GenerationStreamStatus::Failed,
                             TerminationReason::Error,
                             Some(error.to_string()),
+                            Some(diagnostic_with_request_context(
+                                kv_cache_diagnostic(&error).with_backend("cpu"),
+                                &self.request.product_id,
+                                &self.request.model.model.model_id,
+                            )),
                         ));
                     }
                     self.last_logits = step.logits;
@@ -3094,6 +3356,7 @@ where
                         GenerationStreamStatus::Failed,
                         TerminationReason::Error,
                         Some(error.to_string()),
+                        Some(error.diagnostic_for_request(&self.request)),
                     ));
                 }
             }
@@ -3108,6 +3371,7 @@ where
                 return Some(self.emit_terminal_or_chunk(
                     GenerationStreamStatus::Succeeded,
                     TerminationReason::EndOfSequence,
+                    None,
                     None,
                 ));
             }
@@ -3126,6 +3390,16 @@ where
             GenerationStreamStatus::Cancelled,
             TerminationReason::Cancelled,
             Some(String::from("stream cancelled by caller")),
+            Some(diagnostic_with_request_context(
+                LocalRuntimeDiagnostic::new(
+                    LocalRuntimeErrorCode::Cancelled,
+                    499,
+                    "stream cancelled by caller",
+                )
+                .with_backend("cpu"),
+                &self.request.product_id,
+                &self.request.model.model.model_id,
+            )),
         );
         self.pending_terminal = None;
         Some(terminal)
@@ -3139,6 +3413,16 @@ where
             GenerationStreamStatus::Disconnected,
             TerminationReason::Disconnected,
             Some(String::from("stream disconnected by caller")),
+            Some(diagnostic_with_request_context(
+                LocalRuntimeDiagnostic::new(
+                    LocalRuntimeErrorCode::Disconnected,
+                    499,
+                    "stream disconnected by caller",
+                )
+                .with_backend("cpu"),
+                &self.request.product_id,
+                &self.request.model.model.model_id,
+            )),
         );
         self.pending_terminal = None;
         Some(terminal)
@@ -3556,6 +3840,49 @@ pub enum SmokeEmbeddingsError {
     Runtime(#[from] RuntimeError),
 }
 
+impl SmokeEmbeddingsError {
+    /// Returns the backend-neutral diagnostic for the error.
+    #[must_use]
+    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+        match self {
+            Self::UnsupportedProduct(_) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedProduct,
+                400,
+                self.to_string(),
+            )
+            .with_backend("cpu"),
+            Self::UnsupportedModel(model_id) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::ModelNotFound,
+                404,
+                self.to_string(),
+            )
+            .with_model_id(model_id.clone())
+            .with_backend("cpu"),
+            Self::InvalidOutput { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::InvalidOutput,
+                500,
+                self.to_string(),
+            )
+            .with_backend("cpu"),
+            Self::Graph(_) => {
+                LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, self.to_string())
+                    .with_backend("cpu")
+            }
+            Self::Runtime(error) => runtime_error_diagnostic(error).with_backend("cpu"),
+        }
+    }
+
+    /// Returns the diagnostic annotated with request context.
+    #[must_use]
+    pub fn diagnostic_for_request(&self, request: &EmbeddingRequest) -> LocalRuntimeDiagnostic {
+        diagnostic_with_request_context(
+            self.diagnostic(),
+            &request.product_id,
+            &request.model.model.model_id,
+        )
+    }
+}
+
 /// Model-backed embeddings execution error.
 #[derive(Debug, Error)]
 pub enum ModelEmbeddingsError {
@@ -3582,6 +3909,50 @@ pub enum ModelEmbeddingsError {
     /// CPU runtime execution failed.
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+}
+
+impl ModelEmbeddingsError {
+    /// Returns the backend-neutral diagnostic for the error.
+    #[must_use]
+    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+        match self {
+            Self::UnsupportedProduct(_) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedProduct,
+                400,
+                self.to_string(),
+            )
+            .with_backend("cpu"),
+            Self::UnsupportedModel(model_id) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::ModelNotFound,
+                404,
+                self.to_string(),
+            )
+            .with_model_id(model_id.clone())
+            .with_backend("cpu"),
+            Self::InvalidOutput { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::InvalidOutput,
+                500,
+                self.to_string(),
+            )
+            .with_backend("cpu"),
+            Self::Model(error) => model_load_error_diagnostic(error).with_backend("cpu"),
+            Self::Graph(_) => {
+                LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, self.to_string())
+                    .with_backend("cpu")
+            }
+            Self::Runtime(error) => runtime_error_diagnostic(error).with_backend("cpu"),
+        }
+    }
+
+    /// Returns the diagnostic annotated with request context.
+    #[must_use]
+    pub fn diagnostic_for_request(&self, request: &EmbeddingRequest) -> LocalRuntimeDiagnostic {
+        diagnostic_with_request_context(
+            self.diagnostic(),
+            &request.product_id,
+            &request.model.model.model_id,
+        )
+    }
 }
 
 /// Metal-backed embeddings execution error.
@@ -3618,6 +3989,61 @@ pub enum MetalEmbeddingsError {
     /// Metal runtime execution failed.
     #[error(transparent)]
     Runtime(#[from] RuntimeError),
+}
+
+impl MetalEmbeddingsError {
+    /// Returns the backend-neutral diagnostic for the error.
+    #[must_use]
+    pub fn diagnostic(&self) -> LocalRuntimeDiagnostic {
+        match self {
+            Self::UnsupportedProduct(_) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::UnsupportedProduct,
+                400,
+                self.to_string(),
+            )
+            .with_backend("metal"),
+            Self::UnsupportedModel(model_id) => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::ModelNotFound,
+                404,
+                self.to_string(),
+            )
+            .with_model_id(model_id.clone())
+            .with_backend("metal"),
+            Self::InvalidOutput { .. } => LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::InvalidOutput,
+                500,
+                self.to_string(),
+            )
+            .with_backend("metal"),
+            Self::BackendUnavailable { status, .. } => LocalRuntimeDiagnostic::new(
+                if *status == HealthStatus::Degraded {
+                    LocalRuntimeErrorCode::BackendDegraded
+                } else {
+                    LocalRuntimeErrorCode::BackendUnavailable
+                },
+                503,
+                self.to_string(),
+            )
+            .with_backend("metal")
+            .with_backend_health(*status),
+            Self::Model(error) => model_load_error_diagnostic(error).with_backend("metal"),
+            Self::Graph(_) => {
+                LocalRuntimeDiagnostic::new(LocalRuntimeErrorCode::Internal, 500, self.to_string())
+                    .with_backend("metal")
+            }
+            Self::Runtime(error) => runtime_error_diagnostic(error).with_backend("metal"),
+        }
+    }
+
+    /// Returns the diagnostic annotated with request context.
+    #[must_use]
+    pub fn diagnostic_for_request(&self, request: &EmbeddingRequest) -> LocalRuntimeDiagnostic {
+        diagnostic_with_request_context(
+            self.diagnostic(),
+            &request.product_id,
+            &request.model.model.model_id,
+        )
+    }
 }
 
 /// CPU-backed embeddings smoke service.
@@ -4034,8 +4460,8 @@ mod tests {
     use mox_core::{DType, Shape};
     use mox_runtime::{
         AdmissionRefusalReason, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
-        KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState, MemoryBudget,
-        ModelResidencyPolicy, PrefixCacheState, ResidencyPressureAction,
+        KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState, LocalRuntimeErrorCode,
+        MemoryBudget, ModelResidencyPolicy, PrefixCacheState, ResidencyPressureAction,
     };
 
     use super::{
@@ -4965,6 +5391,13 @@ mod tests {
             Err(error) => error,
         };
         assert!(matches!(error, ReferenceTextGenerationError::EmptyPrompt));
+        let diagnostic = error.diagnostic_for_request(&request);
+        assert_eq!(diagnostic.code, LocalRuntimeErrorCode::InvalidRequest);
+        assert_eq!(diagnostic.status, 400);
+        assert_eq!(
+            diagnostic.product_id.as_deref(),
+            Some("mox.text_generation")
+        );
     }
 
     #[test]
@@ -5020,6 +5453,24 @@ mod tests {
         assert_eq!(
             terminal.failure_reason.as_deref(),
             Some("missing graph output `injected_stream_failure`")
+        );
+        assert_eq!(
+            terminal.diagnostic.as_ref().map(|value| value.code),
+            Some(LocalRuntimeErrorCode::Internal)
+        );
+        assert_eq!(
+            terminal
+                .diagnostic
+                .as_ref()
+                .and_then(|value| value.product_id.as_deref()),
+            Some("mox.text_generation")
+        );
+        assert_eq!(
+            terminal
+                .diagnostic
+                .as_ref()
+                .and_then(|value| value.model_id.as_deref()),
+            Some(ReferenceWordDecoder::MODEL_ID)
         );
         Ok(())
     }

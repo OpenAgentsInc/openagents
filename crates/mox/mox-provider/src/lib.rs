@@ -5,9 +5,9 @@ use sha2::{Digest, Sha256};
 
 use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
-    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, MemoryResidencySnapshot,
-    ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy,
-    PrefixCacheState,
+    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
+    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -258,6 +258,9 @@ pub struct ExecutionReceipt {
     pub status: ReceiptStatus,
     /// Optional failure reason.
     pub failure_reason: Option<String>,
+    /// Structured local-runtime diagnostic for failed requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<LocalRuntimeDiagnostic>,
 }
 
 impl ExecutionReceipt {
@@ -292,6 +295,7 @@ impl ExecutionReceipt {
             ended_at_unix_ms,
             status: ReceiptStatus::Succeeded,
             failure_reason: None,
+            diagnostic: None,
         }
     }
 
@@ -349,7 +353,18 @@ impl ExecutionReceipt {
             ended_at_unix_ms,
             status: ReceiptStatus::Failed,
             failure_reason: Some(failure_reason.into()),
+            diagnostic: None,
         }
+    }
+
+    /// Attaches a structured diagnostic, preserving the plain-text failure reason.
+    #[must_use]
+    pub fn with_diagnostic(mut self, diagnostic: LocalRuntimeDiagnostic) -> Self {
+        if self.failure_reason.is_none() {
+            self.failure_reason = Some(diagnostic.message.clone());
+        }
+        self.diagnostic = Some(diagnostic);
+        self
     }
 }
 
@@ -542,6 +557,9 @@ pub struct TextGenerationReceipt {
     pub status: ReceiptStatus,
     /// Optional failure reason.
     pub failure_reason: Option<String>,
+    /// Structured local-runtime diagnostic for failed requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<LocalRuntimeDiagnostic>,
 }
 
 impl TextGenerationReceipt {
@@ -620,6 +638,7 @@ impl TextGenerationReceipt {
             ended_at_unix_ms,
             status: ReceiptStatus::Succeeded,
             failure_reason: None,
+            diagnostic: None,
         }
     }
 
@@ -694,7 +713,18 @@ impl TextGenerationReceipt {
             ended_at_unix_ms,
             status: ReceiptStatus::Failed,
             failure_reason: Some(failure_reason.into()),
+            diagnostic: None,
         }
+    }
+
+    /// Attaches a structured diagnostic, preserving the plain-text failure reason.
+    #[must_use]
+    pub fn with_diagnostic(mut self, diagnostic: LocalRuntimeDiagnostic) -> Self {
+        if self.failure_reason.is_none() {
+            self.failure_reason = Some(diagnostic.message.clone());
+        }
+        self.diagnostic = Some(diagnostic);
+        self
     }
 
     /// Creates a receipt from a terminal streaming event, preserving partial output when present.
@@ -721,16 +751,25 @@ impl TextGenerationReceipt {
             GenerationStreamStatus::Cancelled => {
                 receipt.status = ReceiptStatus::Cancelled;
                 receipt.failure_reason = terminal.failure_reason.clone();
+                if let Some(diagnostic) = terminal.diagnostic.clone() {
+                    receipt = receipt.with_diagnostic(diagnostic);
+                }
                 receipt
             }
             GenerationStreamStatus::Disconnected => {
                 receipt.status = ReceiptStatus::Disconnected;
                 receipt.failure_reason = terminal.failure_reason.clone();
+                if let Some(diagnostic) = terminal.diagnostic.clone() {
+                    receipt = receipt.with_diagnostic(diagnostic);
+                }
                 receipt
             }
             GenerationStreamStatus::Failed => {
                 receipt.status = ReceiptStatus::Failed;
                 receipt.failure_reason = terminal.failure_reason.clone();
+                if let Some(diagnostic) = terminal.diagnostic.clone() {
+                    receipt = receipt.with_diagnostic(diagnostic);
+                }
                 receipt
             }
         }
@@ -900,9 +939,9 @@ mod tests {
     use mox_runtime::{
         AmdDeviceMetadata, AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
         AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendSelection, DeviceDescriptor,
-        HealthStatus, KvCacheAccounting, MemoryResidencySnapshot, ModelResidencyPolicy,
-        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
-        QuantizationSupport,
+        HealthStatus, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
+        MemoryResidencySnapshot, ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     };
     use mox_serve::{
         EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
@@ -1417,6 +1456,16 @@ mod tests {
             status: GenerationStreamStatus::Cancelled,
             response,
             failure_reason: Some(String::from("stream cancelled by caller")),
+            diagnostic: Some(
+                LocalRuntimeDiagnostic::new(
+                    LocalRuntimeErrorCode::Cancelled,
+                    499,
+                    "stream cancelled by caller",
+                )
+                .with_product_id(request.product_id.clone())
+                .with_model_id(request.model.model.model_id.clone())
+                .with_backend("cpu"),
+            ),
         };
 
         let receipt = TextGenerationReceipt::from_stream_terminal(
@@ -1438,6 +1487,10 @@ mod tests {
             receipt.failure_reason.as_deref(),
             Some("stream cancelled by caller")
         );
+        assert_eq!(
+            receipt.diagnostic.as_ref().map(|value| value.code),
+            Some(LocalRuntimeErrorCode::Cancelled)
+        );
     }
 
     #[test]
@@ -1454,15 +1507,36 @@ mod tests {
             5,
             6,
             "backend offline",
+        )
+        .with_diagnostic(
+            LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::BackendUnavailable,
+                503,
+                "backend offline",
+            )
+            .with_product_id(request.product_id.clone())
+            .with_model_id(request.model.model.model_id.clone())
+            .with_backend("metal"),
         );
         assert_eq!(receipt.status, ReceiptStatus::Failed);
         assert_eq!(receipt.input_count, 1);
         assert_eq!(receipt.normalization, EmbeddingNormalization::None);
         assert_eq!(receipt.requested_output_dimensions, None);
         assert_eq!(receipt.failure_reason.as_deref(), Some("backend offline"));
+        assert_eq!(
+            receipt.diagnostic.as_ref().map(|value| value.code),
+            Some(LocalRuntimeErrorCode::BackendUnavailable)
+        );
         assert_eq!(receipt.runtime_backend, "cpu");
         assert_eq!(receipt.backend_selection.requested_backend, "metal");
         assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
+        let encoded = serde_json::to_string(&receipt).expect("failed receipt should serialize");
+        let decoded: ExecutionReceipt =
+            serde_json::from_str(&encoded).expect("failed receipt should deserialize");
+        assert_eq!(
+            decoded.diagnostic.as_ref().map(|value| value.code),
+            Some(LocalRuntimeErrorCode::BackendUnavailable)
+        );
     }
 
     #[test]

@@ -119,6 +119,12 @@ fn model_backed_embeddings_service_reports_missing_artifact() {
         error,
         ModelEmbeddingsError::Model(mox_serve::ModelLoadError::ArtifactRead { .. })
     ));
+    let diagnostic = error.diagnostic();
+    assert_eq!(
+        diagnostic.code,
+        mox_runtime::LocalRuntimeErrorCode::ArtifactMissing
+    );
+    assert_eq!(diagnostic.status, 404);
 }
 
 #[test]
@@ -169,9 +175,19 @@ fn model_backed_embeddings_reject_wrong_product() -> Result<(), Box<dyn std::err
         .expect_err("wrong product should fail");
     assert!(matches!(
         error,
-        ModelEmbeddingsError::UnsupportedProduct(product_id)
+        ModelEmbeddingsError::UnsupportedProduct(ref product_id)
             if product_id == "mox.text_generation"
     ));
+    let diagnostic = error.diagnostic_for_request(&request);
+    assert_eq!(
+        diagnostic.code,
+        mox_runtime::LocalRuntimeErrorCode::UnsupportedProduct
+    );
+    assert_eq!(diagnostic.status, 400);
+    assert_eq!(
+        diagnostic.product_id.as_deref(),
+        Some("mox.text_generation")
+    );
     Ok(())
 }
 

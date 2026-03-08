@@ -141,6 +141,12 @@ fn model_backed_text_generation_service_reports_missing_artifact() {
         error,
         ReferenceTextGenerationError::Model(ModelLoadError::ArtifactRead { .. })
     ));
+    let diagnostic = error.diagnostic();
+    assert_eq!(
+        diagnostic.code,
+        mox_runtime::LocalRuntimeErrorCode::ArtifactMissing
+    );
+    assert_eq!(diagnostic.status, 404);
 }
 
 #[test]
@@ -196,8 +202,22 @@ fn model_backed_text_generation_rejects_unknown_session() -> Result<(), Box<dyn 
     assert!(matches!(
         error,
         ReferenceTextGenerationError::Session(
-            mox_serve::SessionStoreError::SessionNotFound(session_id)
+            mox_serve::SessionStoreError::SessionNotFound(ref session_id)
         ) if session_id == "sess-missing"
     ));
+    let diagnostic = error.diagnostic_for_request(&request);
+    assert_eq!(
+        diagnostic.code,
+        mox_runtime::LocalRuntimeErrorCode::SessionNotFound
+    );
+    assert_eq!(diagnostic.status, 404);
+    assert_eq!(
+        diagnostic.product_id.as_deref(),
+        Some("mox.text_generation")
+    );
+    assert_eq!(
+        diagnostic.model_id.as_deref(),
+        Some(ArtifactWordDecoder::MODEL_ID)
+    );
     Ok(())
 }

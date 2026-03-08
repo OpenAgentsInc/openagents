@@ -97,6 +97,17 @@ fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or
                 HealthStatus::Offline | HealthStatus::Degraded
             ));
             assert!(!message.is_empty());
+            let diagnostic =
+                MetalEmbeddingsError::BackendUnavailable { status, message }.diagnostic();
+            let expected_code = if status == HealthStatus::Degraded {
+                mox_runtime::LocalRuntimeErrorCode::BackendDegraded
+            } else {
+                mox_runtime::LocalRuntimeErrorCode::BackendUnavailable
+            };
+            assert_eq!(diagnostic.code, expected_code);
+            assert_eq!(diagnostic.status, 503);
+            assert_eq!(diagnostic.backend.as_deref(), Some("metal"));
+            assert_eq!(diagnostic.backend_health, Some(status));
         }
         Err(error) => return Err(error.into()),
     }
