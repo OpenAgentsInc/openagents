@@ -11,8 +11,8 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    BlobError, LocalBlob, LocalBlobKind, LocalBlobOpenOptions, canonical_ollama_digest,
-    ollama_blob_path,
+    BlobError, BlobReadPreference, LocalBlob, LocalBlobKind, LocalBlobOpenOptions,
+    canonical_ollama_digest, ollama_blob_path,
 };
 
 /// Default Ollama host applied to bare local model references.
@@ -104,6 +104,102 @@ impl OllamaCatalogWarning {
             message: message.into(),
         }
     }
+}
+
+/// Verification scope for one local-store integrity diagnostic.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OllamaIntegrityScope {
+    /// The manifest file itself.
+    Manifest,
+    /// One manifest-referenced blob.
+    Blob,
+}
+
+/// Suggested repair action for one integrity failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OllamaRepairAction {
+    /// Re-pull the full model into the local store.
+    RePullModel,
+    /// Re-pull the referenced blob into the local store.
+    RePullBlob,
+    /// Remove the corrupt blob and re-pull it.
+    RemoveCorruptBlobAndRePull,
+}
+
+/// One explicit integrity diagnostic for the local Ollama store.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaIntegrityDiagnostic {
+    /// Whether this applies to the manifest file or a referenced blob.
+    pub scope: OllamaIntegrityScope,
+    /// Path that failed verification.
+    pub path: PathBuf,
+    /// Logical layer kind when the diagnostic applies to a manifest blob.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub layer_kind: Option<OllamaLayerKind>,
+    /// Referenced digest when the diagnostic applies to a manifest blob.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<String>,
+    /// High-signal integrity failure summary.
+    pub message: String,
+    /// Suggested repair action for restoring the local cache entry.
+    pub repair: OllamaRepairAction,
+}
+
+impl OllamaIntegrityDiagnostic {
+    fn manifest(path: PathBuf, message: impl Into<String>, repair: OllamaRepairAction) -> Self {
+        Self {
+            scope: OllamaIntegrityScope::Manifest,
+            path,
+            layer_kind: None,
+            digest: None,
+            message: message.into(),
+            repair,
+        }
+    }
+
+    fn blob(
+        layer: &OllamaManifestLayer,
+        message: impl Into<String>,
+        repair: OllamaRepairAction,
+    ) -> Self {
+        Self {
+            scope: OllamaIntegrityScope::Blob,
+            path: layer.blob_path.clone(),
+            layer_kind: Some(layer.kind),
+            digest: Some(layer.digest.clone()),
+            message: message.into(),
+            repair,
+        }
+    }
+}
+
+/// Integrity verification result for one resolved local Ollama manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaManifestIntegrity {
+    /// Whether the resolved manifest and the referenced local blobs verified cleanly.
+    pub verified: bool,
+    /// Explicit diagnostics for missing, corrupt, or mismatched local cache entries.
+    pub diagnostics: Vec<OllamaIntegrityDiagnostic>,
+}
+
+/// Integrity verification report for one caller-facing local model reference.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaModelIntegrityReport {
+    /// Original caller-facing reference.
+    pub requested_reference: String,
+    /// Canonical parsed name when the reference normalized successfully.
+    pub canonical_name: OllamaModelName,
+    /// Expected manifest path inside the local store.
+    pub manifest_path: PathBuf,
+    /// Whether the manifest plus all verified local blobs passed integrity checks.
+    pub verified: bool,
+    /// Resolved manifest when it could be parsed structurally.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub manifest: Option<OllamaManifest>,
+    /// Explicit cache-repair diagnostics.
+    pub diagnostics: Vec<OllamaIntegrityDiagnostic>,
 }
 
 /// Normalized Ollama model name used for local manifest resolution.
@@ -552,6 +648,105 @@ impl OllamaManifest {
         }
         Ok(value)
     }
+
+    /// Verifies that every referenced local blob exists and matches the manifest's digest and size declarations.
+    #[must_use]
+    pub fn verify_integrity(&self, options: LocalBlobOpenOptions) -> OllamaManifestIntegrity {
+        let mut diagnostics = Vec::new();
+        let verification_options = options.with_read_preference(BlobReadPreference::PreferBuffered);
+
+        if let Some(config) = &self.config {
+            if let Some(diagnostic) = verify_manifest_layer_blob(config, &verification_options) {
+                diagnostics.push(diagnostic);
+            }
+        }
+        for layer in &self.layers {
+            if let Some(diagnostic) = verify_manifest_layer_blob(layer, &verification_options) {
+                diagnostics.push(diagnostic);
+            }
+        }
+
+        OllamaManifestIntegrity {
+            verified: diagnostics.is_empty(),
+            diagnostics,
+        }
+    }
+}
+
+fn verify_manifest_layer_blob(
+    layer: &OllamaManifestLayer,
+    options: &LocalBlobOpenOptions,
+) -> Option<OllamaIntegrityDiagnostic> {
+    let blob = match layer.open_blob(options.clone()) {
+        Ok(blob) => blob,
+        Err(CatalogError::Blob(BlobError::MissingFile { .. })) => {
+            return Some(OllamaIntegrityDiagnostic::blob(
+                layer,
+                format!("missing local blob `{}`", layer.digest),
+                OllamaRepairAction::RePullBlob,
+            ));
+        }
+        Err(CatalogError::Blob(BlobError::DigestMismatch {
+            expected, actual, ..
+        })) => {
+            return Some(OllamaIntegrityDiagnostic::blob(
+                layer,
+                format!("blob digest mismatch: expected `{expected}`, actual `{actual}`"),
+                OllamaRepairAction::RemoveCorruptBlobAndRePull,
+            ));
+        }
+        Err(CatalogError::Blob(BlobError::Read { message, .. }))
+        | Err(CatalogError::Blob(BlobError::MemoryMap { message, .. })) => {
+            return Some(OllamaIntegrityDiagnostic::blob(
+                layer,
+                format!("failed to read local blob: {message}"),
+                OllamaRepairAction::RemoveCorruptBlobAndRePull,
+            ));
+        }
+        Err(CatalogError::Blob(BlobError::InvalidPageSize { page_size })) => {
+            return Some(OllamaIntegrityDiagnostic::blob(
+                layer,
+                format!("invalid verification page size `{page_size}`"),
+                OllamaRepairAction::RePullBlob,
+            ));
+        }
+        Err(CatalogError::Blob(BlobError::InvalidDigestFormat { digest })) => {
+            return Some(OllamaIntegrityDiagnostic::blob(
+                layer,
+                format!("invalid blob digest `{digest}`"),
+                OllamaRepairAction::RePullBlob,
+            ));
+        }
+        Err(CatalogError::Blob(BlobError::RangeOutOfBounds { .. }))
+        | Err(CatalogError::Blob(BlobError::PageOutOfBounds { .. }))
+        | Err(CatalogError::InvalidManifest { .. })
+        | Err(CatalogError::InvalidManifestPath { .. })
+        | Err(CatalogError::InvalidModelName { .. })
+        | Err(CatalogError::MissingManifest { .. })
+        | Err(CatalogError::ReadManifest { .. })
+        | Err(CatalogError::DecodeManifest { .. })
+        | Err(CatalogError::DecodeLayer { .. }) => {
+            return Some(OllamaIntegrityDiagnostic::blob(
+                layer,
+                "failed to verify local blob",
+                OllamaRepairAction::RemoveCorruptBlobAndRePull,
+            ));
+        }
+    };
+
+    if blob.metadata().byte_length != layer.size_bytes {
+        return Some(OllamaIntegrityDiagnostic::blob(
+            layer,
+            format!(
+                "blob size mismatch: expected {} bytes, actual {} bytes",
+                layer.size_bytes,
+                blob.metadata().byte_length
+            ),
+            OllamaRepairAction::RemoveCorruptBlobAndRePull,
+        ));
+    }
+
+    None
 }
 
 /// Decoded Ollama config layer with the fields needed by local list/show parity.
@@ -774,6 +969,78 @@ impl OllamaModelCatalog {
             });
         }
         parse_manifest_file(&path, name.clone(), &self.models_root)
+    }
+
+    /// Verifies manifest and blob integrity for one caller-facing local model reference.
+    pub fn verify_model_integrity(
+        &self,
+        reference: &str,
+        options: LocalBlobOpenOptions,
+    ) -> Result<OllamaModelIntegrityReport, CatalogError> {
+        let name = OllamaModelName::parse(reference)?;
+        let manifest_path = ollama_manifest_path(&self.models_root, &name);
+
+        let manifest = match fs::read(&manifest_path) {
+            Ok(bytes) => {
+                match parse_manifest_bytes(&bytes, &manifest_path, name.clone(), &self.models_root)
+                {
+                    Ok(manifest) => Some(manifest),
+                    Err(error) => {
+                        return Ok(OllamaModelIntegrityReport {
+                            requested_reference: reference.to_string(),
+                            canonical_name: name,
+                            manifest_path: manifest_path.clone(),
+                            verified: false,
+                            manifest: None,
+                            diagnostics: vec![OllamaIntegrityDiagnostic::manifest(
+                                manifest_path.clone(),
+                                error.to_string(),
+                                OllamaRepairAction::RePullModel,
+                            )],
+                        });
+                    }
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(OllamaModelIntegrityReport {
+                    requested_reference: reference.to_string(),
+                    canonical_name: name,
+                    manifest_path: manifest_path.clone(),
+                    verified: false,
+                    manifest: None,
+                    diagnostics: vec![OllamaIntegrityDiagnostic::manifest(
+                        manifest_path,
+                        format!("missing local manifest for `{reference}`"),
+                        OllamaRepairAction::RePullModel,
+                    )],
+                });
+            }
+            Err(error) => {
+                return Ok(OllamaModelIntegrityReport {
+                    requested_reference: reference.to_string(),
+                    canonical_name: name,
+                    manifest_path: manifest_path.clone(),
+                    verified: false,
+                    manifest: None,
+                    diagnostics: vec![OllamaIntegrityDiagnostic::manifest(
+                        manifest_path,
+                        error.to_string(),
+                        OllamaRepairAction::RePullModel,
+                    )],
+                });
+            }
+        };
+
+        let manifest = manifest.expect("manifest should exist after early returns");
+        let integrity = manifest.verify_integrity(options);
+        Ok(OllamaModelIntegrityReport {
+            requested_reference: reference.to_string(),
+            canonical_name: name,
+            manifest_path,
+            verified: integrity.verified,
+            manifest: Some(manifest),
+            diagnostics: integrity.diagnostics,
+        })
     }
 }
 
@@ -1116,8 +1383,8 @@ mod tests {
 
     use super::{
         CatalogError, OLLAMA_DEFAULT_HOST, OLLAMA_DEFAULT_NAMESPACE, OLLAMA_DEFAULT_TAG,
-        OllamaLayerKind, OllamaMediaType, OllamaModelCatalog, OllamaModelConfig, OllamaModelName,
-        OllamaStoredMessage,
+        OllamaIntegrityScope, OllamaLayerKind, OllamaMediaType, OllamaModelCatalog,
+        OllamaModelConfig, OllamaModelName, OllamaRepairAction, OllamaStoredMessage,
     };
 
     #[test]
@@ -1275,6 +1542,151 @@ mod tests {
             .expect_err("missing manifest should fail");
 
         assert!(matches!(error, CatalogError::MissingManifest { .. }));
+    }
+
+    #[test]
+    fn ollama_catalog_verifies_clean_local_store() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let model_digest = write_blob(temp.path(), b"qwen2-gguf")?;
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2/latest",
+            serde_json::json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                        "size": 10
+                    }
+                ]
+            }),
+        )?;
+
+        let report = OllamaModelCatalog::new(temp.path())
+            .verify_model_integrity("qwen2", LocalBlobOpenOptions::default())?;
+
+        assert!(report.verified);
+        assert!(report.diagnostics.is_empty());
+        assert!(report.manifest.is_some());
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_catalog_integrity_reports_missing_manifest_with_repair_hint()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = OllamaModelCatalog::new("/tmp/does-not-exist")
+            .verify_model_integrity("qwen2", LocalBlobOpenOptions::default())?;
+
+        assert!(!report.verified);
+        assert_eq!(report.diagnostics.len(), 1);
+        assert_eq!(report.diagnostics[0].scope, OllamaIntegrityScope::Manifest);
+        assert_eq!(
+            report.diagnostics[0].repair,
+            OllamaRepairAction::RePullModel
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_catalog_integrity_reports_missing_blob_with_repair_hint()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2/latest",
+            serde_json::json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                        "size": 10
+                    }
+                ]
+            }),
+        )?;
+
+        let report = OllamaModelCatalog::new(temp.path())
+            .verify_model_integrity("qwen2", LocalBlobOpenOptions::default())?;
+
+        assert!(!report.verified);
+        assert_eq!(report.diagnostics.len(), 1);
+        assert_eq!(report.diagnostics[0].scope, OllamaIntegrityScope::Blob);
+        assert_eq!(
+            report.diagnostics[0].layer_kind,
+            Some(OllamaLayerKind::Model)
+        );
+        assert_eq!(report.diagnostics[0].repair, OllamaRepairAction::RePullBlob);
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_catalog_integrity_reports_corrupt_blob_and_declared_size_mismatch()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let expected_bytes = b"qwen2-gguf";
+        let digest = format!("sha256:{:x}", Sha256::digest(expected_bytes));
+        let blob_path = temp.path().join("blobs").join(digest.replace(':', "-"));
+        fs::create_dir_all(blob_path.parent().ok_or("missing parent")?)?;
+        fs::write(&blob_path, b"corrupt-model")?;
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2/latest",
+            serde_json::json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": digest,
+                        "size": expected_bytes.len()
+                    }
+                ]
+            }),
+        )?;
+
+        let report = OllamaModelCatalog::new(temp.path())
+            .verify_model_integrity("qwen2", LocalBlobOpenOptions::default())?;
+
+        assert!(!report.verified);
+        assert_eq!(report.diagnostics.len(), 1);
+        assert_eq!(report.diagnostics[0].scope, OllamaIntegrityScope::Blob);
+        assert_eq!(
+            report.diagnostics[0].repair,
+            OllamaRepairAction::RemoveCorruptBlobAndRePull
+        );
+        assert!(
+            report.diagnostics[0]
+                .message
+                .contains("blob digest mismatch")
+        );
+
+        fs::write(&blob_path, expected_bytes)?;
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2/latest",
+            serde_json::json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": format!("sha256:{:x}", Sha256::digest(expected_bytes)),
+                        "size": expected_bytes.len() + 1
+                    }
+                ]
+            }),
+        )?;
+
+        let report = OllamaModelCatalog::new(temp.path())
+            .verify_model_integrity("qwen2", LocalBlobOpenOptions::default())?;
+        assert!(!report.verified);
+        assert_eq!(report.diagnostics.len(), 1);
+        assert!(report.diagnostics[0].message.contains("blob size mismatch"));
+        Ok(())
     }
 
     #[test]

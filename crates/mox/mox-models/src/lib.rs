@@ -1891,6 +1891,20 @@ impl GgufBlobArtifact {
                     format: String::from("gguf"),
                     message: String::from("ollama manifest does not carry a primary model layer"),
                 })?;
+        let integrity = manifest.verify_integrity(options.clone());
+        if let Some(diagnostic) = integrity
+            .diagnostics
+            .iter()
+            .find(|diagnostic| diagnostic.layer_kind == Some(mox_catalog::OllamaLayerKind::Model))
+        {
+            return Err(ModelLoadError::ArtifactRead {
+                path: layer.blob_path.display().to_string(),
+                message: format!(
+                    "ollama manifest integrity verification failed: {}",
+                    diagnostic.message
+                ),
+            });
+        }
         let blob = layer
             .open_blob(options)
             .map_err(|error| ModelLoadError::ArtifactRead {
@@ -7240,6 +7254,56 @@ mod tests {
                 .as_ref(),
             &[4.0, -2.0]
         );
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_weight_bundle_loader_rejects_corrupt_primary_model_blob_from_ollama_manifest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let bytes = build_test_gguf(
+            GgufVersion::V3,
+            &[],
+            &[TestGgufTensor::new(
+                "dense",
+                vec![2],
+                GgufTensorType::F32,
+                super::encode_f32_bytes(&[4.0, -2.0]),
+            )],
+        )?;
+        let digest = hex::encode(Sha256::digest(bytes.as_slice()));
+        let blob_path = temp.path().join("blobs").join(format!("sha256-{digest}"));
+        std::fs::create_dir_all(blob_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(&blob_path, b"corrupt-gguf")?;
+
+        let manifest_path = temp
+            .path()
+            .join("manifests/registry.ollama.ai/library/qwen2/latest");
+        std::fs::create_dir_all(manifest_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(
+            &manifest_path,
+            format!(
+                r#"{{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json","layers":[{{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:{digest}","size":{}}}]}}"#,
+                bytes.len()
+            ),
+        )?;
+
+        let manifest = OllamaModelCatalog::new(temp.path()).resolve_model("qwen2")?;
+        let error = GgufWeightBundleLoader
+            .load_ollama_manifest(
+                &manifest,
+                LocalBlobOpenOptions::default()
+                    .with_read_preference(BlobReadPreference::PreferBuffered)
+                    .with_page_size(16),
+            )
+            .expect_err("corrupt primary blob should fail integrity verification");
+
+        assert!(matches!(
+            error,
+            super::ModelLoadError::ArtifactRead { ref message, .. }
+                if message.contains("integrity verification failed")
+                    && message.contains("blob digest mismatch")
+        ));
         Ok(())
     }
 
