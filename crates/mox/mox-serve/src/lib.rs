@@ -35,14 +35,15 @@ pub use mox_models::{
 use mox_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
     CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    DeviceDiscovery, ExecutionCapabilityProfile, HealthStatus, KvCacheAccounting,
-    KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-    LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-    LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
-    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, RuntimeTransitionEvent,
-    RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
-    ServedArtifactIdentity, TokenSampler, default_cache_invalidation_policy, plan_model_admission,
+    CompilePathEvidence, DeviceDiscovery, ExecutionCapabilityProfile, HealthStatus,
+    KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy,
+    KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
+    LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
+    MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError,
+    RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
+    SamplingStrategy, ServedArtifactIdentity, TokenSampler, default_cache_invalidation_policy,
+    plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -288,19 +289,42 @@ fn paged_tensor_cache_observation(weights: &WeightBundleMetadata) -> CacheObserv
     }
 }
 
-fn execution_plan_cache_observation(load_state: GenerationLoadState) -> CacheObservation {
-    match load_state {
-        GenerationLoadState::Cold => CacheObservation::new(
+fn compile_path_cache_observations(
+    compile_path: Option<&CompilePathEvidence>,
+    fallback_load_state: Option<GenerationLoadState>,
+) -> Vec<CacheObservation> {
+    if let Some(compile_path) = compile_path {
+        return vec![
+            compile_path.execution_plan_cache.clone(),
+            compile_path.kernel_cache.clone(),
+        ];
+    }
+
+    let execution_plan_cache = match fallback_load_state {
+        Some(GenerationLoadState::Cold) => CacheObservation::new(
             CacheKind::ExecutionPlan,
             CacheAction::Rebuild,
-            "execution plan was rebuilt while loading the cold model path",
+            "compile-path evidence was unavailable so the request fell back to model-load cold-path truth",
         ),
-        GenerationLoadState::Warm => CacheObservation::new(
+        Some(GenerationLoadState::Warm) => CacheObservation::new(
             CacheKind::ExecutionPlan,
             CacheAction::Reuse,
-            "resident model reused its in-process execution plan",
+            "compile-path evidence was unavailable so the request fell back to model-load warm-path truth",
         ),
-    }
+        None => CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            CacheAction::Bypass,
+            "request did not surface execution-plan compile-path evidence",
+        ),
+    };
+    vec![
+        execution_plan_cache,
+        CacheObservation::new(
+            CacheKind::KernelCache,
+            CacheAction::Bypass,
+            "request did not surface explicit kernel-cache behavior",
+        ),
+    ]
 }
 
 fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation {
@@ -370,33 +394,33 @@ fn kv_state_observation(
 
 fn generation_cache_observations(
     model: &DecoderModelDescriptor,
+    compile_path: Option<&CompilePathEvidence>,
     load_state: GenerationLoadState,
     session_id: Option<&SessionId>,
     reset_session: bool,
     previous_kv_state: &KvCacheState,
     prefix_state: PrefixCacheState,
 ) -> Vec<CacheObservation> {
-    vec![
-        execution_plan_cache_observation(load_state),
-        paged_tensor_cache_observation(&model.weights),
-        prefix_cache_observation(prefix_state),
-        kv_state_observation(session_id, reset_session, previous_kv_state),
-    ]
+    let mut observations = compile_path_cache_observations(compile_path, Some(load_state));
+    observations.push(paged_tensor_cache_observation(&model.weights));
+    observations.push(prefix_cache_observation(prefix_state));
+    observations.push(kv_state_observation(
+        session_id,
+        reset_session,
+        previous_kv_state,
+    ));
+    observations
 }
 
 /// Returns the current cache observations surfaced for embeddings execution receipts.
 #[must_use]
 pub fn cache_observations_for_embedding_model(
     model: &EmbeddingModelDescriptor,
+    compile_path: Option<&CompilePathEvidence>,
 ) -> Vec<CacheObservation> {
-    vec![
-        CacheObservation::new(
-            CacheKind::ExecutionPlan,
-            CacheAction::Bypass,
-            "embeddings receipts do not currently surface a reusable execution-plan cache",
-        ),
-        paged_tensor_cache_observation(&model.weights),
-    ]
+    let mut observations = compile_path_cache_observations(compile_path, None);
+    observations.push(paged_tensor_cache_observation(&model.weights));
+    observations
 }
 
 /// Embeddings request contract.
@@ -502,6 +526,9 @@ pub struct EmbeddingResponse {
     /// Explicit timing metrics for the request path, when known.
     #[serde(default, skip_serializing_if = "EmbeddingMetrics::is_empty")]
     pub metrics: EmbeddingMetrics,
+    /// Explicit execution provenance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<EmbeddingProvenance>,
 }
 
 impl EmbeddingResponse {
@@ -531,6 +558,7 @@ impl EmbeddingResponse {
             },
             embeddings,
             metrics: EmbeddingMetrics::default(),
+            provenance: None,
         }
     }
 
@@ -540,6 +568,31 @@ impl EmbeddingResponse {
         self.metrics = metrics;
         self
     }
+
+    /// Attaches explicit metrics and provenance to an embeddings response.
+    #[must_use]
+    pub fn with_metrics_and_provenance(
+        mut self,
+        metrics: EmbeddingMetrics,
+        provenance: EmbeddingProvenance,
+    ) -> Self {
+        self.metrics = metrics;
+        self.provenance = Some(provenance);
+        self
+    }
+}
+
+/// Provenance fields attached to one embeddings response.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmbeddingProvenance {
+    /// Stable execution-plan digest for the active model graph.
+    pub execution_plan_digest: String,
+    /// Explicit warm/cold compile-path evidence for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_path: Option<CompilePathEvidence>,
+    /// Explicit cache actions observed for the request path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_observations: Vec<CacheObservation>,
 }
 
 /// Minimal embeddings execution interface.
@@ -836,6 +889,9 @@ pub struct GenerationProvenance {
     /// Shared prefix-cache identity when the request used or rebuilt a prefix entry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_cache_identity: Option<PrefixCacheIdentity>,
+    /// Explicit warm/cold compile-path evidence for the realized request path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_path: Option<CompilePathEvidence>,
     /// Explicit cache actions observed for the request path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub cache_observations: Vec<CacheObservation>,
@@ -2822,6 +2878,15 @@ impl From<SessionStoreError> for MetalTextGenerationError {
 struct GenerationStepOutput {
     hidden: Vec<f32>,
     logits: Vec<f32>,
+    execution_plan_digest: Option<String>,
+    compile_path: Option<CompilePathEvidence>,
+}
+
+#[derive(Clone, Debug)]
+struct EmbeddingStepOutput {
+    values: Vec<f32>,
+    execution_plan_digest: Option<String>,
+    compile_path: Option<CompilePathEvidence>,
 }
 
 trait CompiledWordGenerationModel: GenerationModelHandle + Clone {
@@ -3812,6 +3877,8 @@ where
     prefix_state: PrefixCacheState,
     prefix_tokens_reused: usize,
     prefix_identity: Option<PrefixCacheIdentity>,
+    execution_plan_digest: String,
+    compile_path: Option<CompilePathEvidence>,
     last_logits: Vec<f32>,
     generated_tokens: Vec<TokenId>,
     emitted_token_count: usize,
@@ -3922,6 +3989,8 @@ where
             )?;
             let mut prompt_logits = Vec::new();
             let mut last_logits = Vec::new();
+            let mut execution_plan_digest = None;
+            let mut compile_path = None;
             let mut cache = if shared_prefix_eligible {
                 let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
                 prefix_state = lookup.state;
@@ -3952,6 +4021,12 @@ where
             for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
                 let context = mean_cache_value(&cache, hidden_size);
                 let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+                if execution_plan_digest.is_none() {
+                    execution_plan_digest = step.execution_plan_digest.clone();
+                }
+                if compile_path.is_none() {
+                    compile_path = step.compile_path.clone();
+                }
                 cache.append(*token, step.hidden.clone(), step.hidden)?;
                 last_logits = step.logits;
                 prompt_logits.push(last_logits.clone());
@@ -3982,6 +4057,8 @@ where
                 prefix_tokens_reused,
                 prefix_identity,
                 prompt_eval_duration_ns,
+                execution_plan_digest,
+                compile_path,
                 last_logits,
             ))
         })();
@@ -3998,8 +4075,12 @@ where
                 prefix_tokens_reused,
                 prefix_identity,
                 prompt_eval_duration_ns,
+                execution_plan_digest,
+                compile_path,
                 last_logits,
             )) => Ok(Self {
+                execution_plan_digest: execution_plan_digest
+                    .unwrap_or_else(|| loaded_model.plan_digest().to_string()),
                 backend,
                 models,
                 sessions,
@@ -4024,6 +4105,7 @@ where
                 prefix_state,
                 prefix_tokens_reused,
                 prefix_identity,
+                compile_path,
                 last_logits,
                 generated_tokens: Vec::new(),
                 emitted_token_count: 0,
@@ -4084,7 +4166,7 @@ where
         };
         let provenance = GenerationProvenance {
             served_artifact: self.served_artifact.clone(),
-            execution_plan_digest: self.loaded_model.plan_digest().to_string(),
+            execution_plan_digest: self.execution_plan_digest.clone(),
             load_state: self.load_state,
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: streaming_policy.then(|| self.streaming_policy.clone()),
@@ -4095,8 +4177,10 @@ where
             prefix_cache_state: Some(self.prefix_state),
             prefix_cache_policy: Some(self.prefix_policy.clone()),
             prefix_cache_identity: self.prefix_identity.clone(),
+            compile_path: self.compile_path.clone(),
             cache_observations: generation_cache_observations(
                 self.loaded_model.descriptor(),
+                self.compile_path.as_ref(),
                 self.load_state,
                 self.request.session_id.as_ref(),
                 self.request.reset_session,
@@ -4287,6 +4371,12 @@ where
                 &context,
             ) {
                 Ok(step) => {
+                    if self.compile_path.is_none() {
+                        self.compile_path = step.compile_path.clone();
+                    }
+                    if let Some(digest) = step.execution_plan_digest.clone() {
+                        self.execution_plan_digest = digest;
+                    }
                     if let Err(error) =
                         self.cache
                             .append(next_token, step.hidden.clone(), step.hidden)
@@ -4489,6 +4579,8 @@ where
         )?;
         let mut prompt_logits = Vec::new();
         let mut last_logits = Vec::new();
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
         let mut cache = if shared_prefix_eligible {
             let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
             prefix_state = lookup.state;
@@ -4519,6 +4611,12 @@ where
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             let context = mean_cache_value(&cache, hidden_size);
             let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = step.execution_plan_digest.clone();
+            }
+            if compile_path.is_none() {
+                compile_path = step.compile_path.clone();
+            }
             cache.append(*token, step.hidden.clone(), step.hidden)?;
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
@@ -4546,6 +4644,12 @@ where
             generated_tokens.push(next_token);
             let context = mean_cache_value(&cache, hidden_size);
             let step = loaded_model.execute_step(backend, next_token, cache.len(), &context)?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = step.execution_plan_digest.clone();
+            }
+            if compile_path.is_none() {
+                compile_path = step.compile_path.clone();
+            }
             cache.append(next_token, step.hidden.clone(), step.hidden)?;
             last_logits = step.logits;
 
@@ -4618,7 +4722,8 @@ where
         };
         let provenance = GenerationProvenance {
             served_artifact,
-            execution_plan_digest: loaded_model.plan_digest().to_string(),
+            execution_plan_digest: execution_plan_digest
+                .unwrap_or_else(|| loaded_model.plan_digest().to_string()),
             load_state,
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: None,
@@ -4629,8 +4734,10 @@ where
             prefix_cache_state: Some(prefix_state),
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
+            compile_path: compile_path.clone(),
             cache_observations: generation_cache_observations(
                 loaded_model.descriptor(),
+                compile_path.as_ref(),
                 load_state,
                 request.session_id.as_ref(),
                 request.reset_session,
@@ -4859,7 +4966,12 @@ fn execute_cpu_generation_graph(
         .as_f32_slice()
         .ok_or(ReferenceTextGenerationError::MissingOutput("logits_dense"))?
         .to_vec();
-    Ok(GenerationStepOutput { hidden, logits })
+    Ok(GenerationStepOutput {
+        hidden,
+        logits,
+        execution_plan_digest: result.metrics.execution_plan_digest.clone(),
+        compile_path: result.metrics.compile_path.clone(),
+    })
 }
 
 fn execute_metal_generation_graph(
@@ -4908,7 +5020,12 @@ fn execute_metal_generation_graph(
         .ok_or(ReferenceTextGenerationError::MissingOutput("logits"))?
         .read_f32()
         .map_err(ReferenceTextGenerationError::Runtime)?;
-    Ok(GenerationStepOutput { hidden, logits })
+    Ok(GenerationStepOutput {
+        hidden,
+        logits,
+        execution_plan_digest: result.metrics.execution_plan_digest.clone(),
+        compile_path: result.metrics.compile_path.clone(),
+    })
 }
 
 fn one_hot(width: usize, index: usize) -> Vec<f32> {
@@ -5266,6 +5383,7 @@ pub struct SmokeEmbeddingsService {
     input_shape: Shape,
     input_id: TensorId,
     output_id: TensorId,
+    plan_digest: String,
 }
 
 impl SmokeEmbeddingsService {
@@ -5281,6 +5399,9 @@ impl SmokeEmbeddingsService {
             model.bias(),
             input_shape.clone(),
         )?;
+        let plan_digest = compile_graph(&graph)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?
+            .stable_digest();
         Ok(Self {
             backend: CpuBackend::new(),
             model,
@@ -5288,6 +5409,7 @@ impl SmokeEmbeddingsService {
             input_shape,
             input_id,
             output_id,
+            plan_digest,
         })
     }
 
@@ -5297,7 +5419,7 @@ impl SmokeEmbeddingsService {
         self.model.descriptor()
     }
 
-    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, SmokeEmbeddingsError> {
+    fn embed_one(&mut self, input: &str) -> Result<EmbeddingStepOutput, SmokeEmbeddingsError> {
         execute_cpu_embedding_graph(
             &mut self.backend,
             &self.graph,
@@ -5337,9 +5459,18 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
         for (index, input) in request.inputs.iter().enumerate() {
+            let step = self.embed_one(input)?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = step.execution_plan_digest.clone();
+            }
+            if compile_path.is_none() {
+                compile_path = step.compile_path.clone();
+            }
             let values = finalize_embedding_values(
-                self.embed_one(input)?,
+                step.values,
                 request.model.normalization,
                 request.output_dimensions,
             )
@@ -5347,20 +5478,29 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
             embeddings.push(EmbeddingVector { index, values });
         }
 
-        Ok(
-            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
-                total_duration_ns: Some(
-                    embed_start
-                        .elapsed()
-                        .as_nanos()
-                        .try_into()
-                        .unwrap_or(u64::MAX),
-                ),
-                load_duration_ns: Some(0),
-                prompt_eval_count: None,
-                prompt_eval_duration_ns: None,
-            }),
-        )
+        let metrics = EmbeddingMetrics {
+            total_duration_ns: Some(
+                embed_start
+                    .elapsed()
+                    .as_nanos()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            load_duration_ns: Some(0),
+            prompt_eval_count: None,
+            prompt_eval_duration_ns: None,
+        };
+        let provenance = EmbeddingProvenance {
+            execution_plan_digest: execution_plan_digest
+                .unwrap_or_else(|| self.plan_digest.clone()),
+            compile_path: compile_path.clone(),
+            cache_observations: cache_observations_for_embedding_model(
+                self.model.descriptor(),
+                compile_path.as_ref(),
+            ),
+        };
+        Ok(EmbeddingResponse::new(request, embeddings)
+            .with_metrics_and_provenance(metrics, provenance))
     }
 }
 
@@ -5373,6 +5513,7 @@ pub struct CpuModelEmbeddingsService {
     input_shape: Shape,
     input_id: TensorId,
     output_id: TensorId,
+    plan_digest: String,
 }
 
 impl CpuModelEmbeddingsService {
@@ -5390,6 +5531,9 @@ impl CpuModelEmbeddingsService {
             model.weights().bias(),
             input_shape.clone(),
         )?;
+        let plan_digest = compile_graph(&graph)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?
+            .stable_digest();
         Ok(Self {
             backend: CpuBackend::new(),
             model,
@@ -5397,6 +5541,7 @@ impl CpuModelEmbeddingsService {
             input_shape,
             input_id,
             output_id,
+            plan_digest,
         })
     }
 
@@ -5406,7 +5551,7 @@ impl CpuModelEmbeddingsService {
         self.model.descriptor()
     }
 
-    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, ModelEmbeddingsError> {
+    fn embed_one(&mut self, input: &str) -> Result<EmbeddingStepOutput, ModelEmbeddingsError> {
         execute_cpu_embedding_graph(
             &mut self.backend,
             &self.graph,
@@ -5446,9 +5591,18 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
         for (index, input) in request.inputs.iter().enumerate() {
+            let step = self.embed_one(input)?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = step.execution_plan_digest.clone();
+            }
+            if compile_path.is_none() {
+                compile_path = step.compile_path.clone();
+            }
             let values = finalize_embedding_values(
-                self.embed_one(input)?,
+                step.values,
                 request.model.normalization,
                 request.output_dimensions,
             )
@@ -5456,20 +5610,29 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
             embeddings.push(EmbeddingVector { index, values });
         }
 
-        Ok(
-            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
-                total_duration_ns: Some(
-                    embed_start
-                        .elapsed()
-                        .as_nanos()
-                        .try_into()
-                        .unwrap_or(u64::MAX),
-                ),
-                load_duration_ns: Some(0),
-                prompt_eval_count: None,
-                prompt_eval_duration_ns: None,
-            }),
-        )
+        let metrics = EmbeddingMetrics {
+            total_duration_ns: Some(
+                embed_start
+                    .elapsed()
+                    .as_nanos()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            load_duration_ns: Some(0),
+            prompt_eval_count: None,
+            prompt_eval_duration_ns: None,
+        };
+        let provenance = EmbeddingProvenance {
+            execution_plan_digest: execution_plan_digest
+                .unwrap_or_else(|| self.plan_digest.clone()),
+            compile_path: compile_path.clone(),
+            cache_observations: cache_observations_for_embedding_model(
+                self.model.descriptor(),
+                compile_path.as_ref(),
+            ),
+        };
+        Ok(EmbeddingResponse::new(request, embeddings)
+            .with_metrics_and_provenance(metrics, provenance))
     }
 }
 
@@ -5485,6 +5648,7 @@ pub struct MetalModelEmbeddingsService {
     input_shape: Shape,
     input_id: TensorId,
     output_id: TensorId,
+    plan_digest: String,
 }
 
 impl MetalModelEmbeddingsService {
@@ -5519,6 +5683,9 @@ impl MetalModelEmbeddingsService {
             model.weights().bias(),
             input_shape.clone(),
         )?;
+        let plan_digest = compile_graph(&graph)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?
+            .stable_digest();
         Ok(Self {
             backend,
             backend_selection,
@@ -5527,6 +5694,7 @@ impl MetalModelEmbeddingsService {
             input_shape,
             input_id,
             output_id,
+            plan_digest,
         })
     }
 
@@ -5542,7 +5710,7 @@ impl MetalModelEmbeddingsService {
         &self.backend_selection
     }
 
-    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, MetalEmbeddingsError> {
+    fn embed_one(&mut self, input: &str) -> Result<EmbeddingStepOutput, MetalEmbeddingsError> {
         execute_metal_embedding_graph(
             &mut self.backend,
             &self.graph,
@@ -5582,9 +5750,18 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
         for (index, input) in request.inputs.iter().enumerate() {
+            let step = self.embed_one(input)?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = step.execution_plan_digest.clone();
+            }
+            if compile_path.is_none() {
+                compile_path = step.compile_path.clone();
+            }
             let values = finalize_embedding_values(
-                self.embed_one(input)?,
+                step.values,
                 request.model.normalization,
                 request.output_dimensions,
             )
@@ -5592,20 +5769,29 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
             embeddings.push(EmbeddingVector { index, values });
         }
 
-        Ok(
-            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
-                total_duration_ns: Some(
-                    embed_start
-                        .elapsed()
-                        .as_nanos()
-                        .try_into()
-                        .unwrap_or(u64::MAX),
-                ),
-                load_duration_ns: Some(0),
-                prompt_eval_count: None,
-                prompt_eval_duration_ns: None,
-            }),
-        )
+        let metrics = EmbeddingMetrics {
+            total_duration_ns: Some(
+                embed_start
+                    .elapsed()
+                    .as_nanos()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            load_duration_ns: Some(0),
+            prompt_eval_count: None,
+            prompt_eval_duration_ns: None,
+        };
+        let provenance = EmbeddingProvenance {
+            execution_plan_digest: execution_plan_digest
+                .unwrap_or_else(|| self.plan_digest.clone()),
+            compile_path: compile_path.clone(),
+            cache_observations: cache_observations_for_embedding_model(
+                self.model.descriptor(),
+                compile_path.as_ref(),
+            ),
+        };
+        Ok(EmbeddingResponse::new(request, embeddings)
+            .with_metrics_and_provenance(metrics, provenance))
     }
 }
 
@@ -5621,6 +5807,7 @@ pub struct CudaModelEmbeddingsService {
     input_shape: Shape,
     input_id: TensorId,
     output_id: TensorId,
+    plan_digest: String,
 }
 
 impl CudaModelEmbeddingsService {
@@ -5655,6 +5842,9 @@ impl CudaModelEmbeddingsService {
             model.weights().bias(),
             input_shape.clone(),
         )?;
+        let plan_digest = compile_graph(&graph)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?
+            .stable_digest();
         Ok(Self {
             backend,
             backend_selection,
@@ -5663,6 +5853,7 @@ impl CudaModelEmbeddingsService {
             input_shape,
             input_id,
             output_id,
+            plan_digest,
         })
     }
 
@@ -5678,7 +5869,7 @@ impl CudaModelEmbeddingsService {
         &self.backend_selection
     }
 
-    fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, CudaEmbeddingsError> {
+    fn embed_one(&mut self, input: &str) -> Result<EmbeddingStepOutput, CudaEmbeddingsError> {
         execute_cuda_embedding_graph(
             &mut self.backend,
             &self.graph,
@@ -5718,9 +5909,18 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
         for (index, input) in request.inputs.iter().enumerate() {
+            let step = self.embed_one(input)?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = step.execution_plan_digest.clone();
+            }
+            if compile_path.is_none() {
+                compile_path = step.compile_path.clone();
+            }
             let values = finalize_embedding_values(
-                self.embed_one(input)?,
+                step.values,
                 request.model.normalization,
                 request.output_dimensions,
             )
@@ -5728,20 +5928,29 @@ impl EmbeddingsExecutor for CudaModelEmbeddingsService {
             embeddings.push(EmbeddingVector { index, values });
         }
 
-        Ok(
-            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
-                total_duration_ns: Some(
-                    embed_start
-                        .elapsed()
-                        .as_nanos()
-                        .try_into()
-                        .unwrap_or(u64::MAX),
-                ),
-                load_duration_ns: Some(0),
-                prompt_eval_count: None,
-                prompt_eval_duration_ns: None,
-            }),
-        )
+        let metrics = EmbeddingMetrics {
+            total_duration_ns: Some(
+                embed_start
+                    .elapsed()
+                    .as_nanos()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            load_duration_ns: Some(0),
+            prompt_eval_count: None,
+            prompt_eval_duration_ns: None,
+        };
+        let provenance = EmbeddingProvenance {
+            execution_plan_digest: execution_plan_digest
+                .unwrap_or_else(|| self.plan_digest.clone()),
+            compile_path: compile_path.clone(),
+            cache_observations: cache_observations_for_embedding_model(
+                self.model.descriptor(),
+                compile_path.as_ref(),
+            ),
+        };
+        Ok(EmbeddingResponse::new(request, embeddings)
+            .with_metrics_and_provenance(metrics, provenance))
     }
 }
 
@@ -5778,7 +5987,7 @@ fn execute_cpu_embedding_graph(
     output_id: TensorId,
     input_shape: &Shape,
     features: Vec<f32>,
-) -> Result<Vec<f32>, RuntimeError> {
+) -> Result<EmbeddingStepOutput, RuntimeError> {
     let mut runtime_inputs = BTreeMap::new();
     runtime_inputs.insert(
         input_id,
@@ -5790,10 +5999,16 @@ fn execute_cpu_embedding_graph(
             "missing embedding output",
         )));
     };
-    Ok(output
-        .as_f32_slice()
-        .ok_or_else(|| RuntimeError::Backend(String::from("embedding output must be dense f32")))?
-        .to_vec())
+    Ok(EmbeddingStepOutput {
+        values: output
+            .as_f32_slice()
+            .ok_or_else(|| {
+                RuntimeError::Backend(String::from("embedding output must be dense f32"))
+            })?
+            .to_vec(),
+        execution_plan_digest: result.metrics.execution_plan_digest.clone(),
+        compile_path: result.metrics.compile_path.clone(),
+    })
 }
 
 fn execute_metal_embedding_graph(
@@ -5803,7 +6018,7 @@ fn execute_metal_embedding_graph(
     output_id: TensorId,
     input_shape: &Shape,
     features: Vec<f32>,
-) -> Result<Vec<f32>, RuntimeError> {
+) -> Result<EmbeddingStepOutput, RuntimeError> {
     let mut runtime_inputs = BTreeMap::new();
     runtime_inputs.insert(
         input_id,
@@ -5815,7 +6030,11 @@ fn execute_metal_embedding_graph(
             "missing embedding output",
         )));
     };
-    output.read_f32()
+    Ok(EmbeddingStepOutput {
+        values: output.read_f32()?,
+        execution_plan_digest: result.metrics.execution_plan_digest.clone(),
+        compile_path: result.metrics.compile_path.clone(),
+    })
 }
 
 fn execute_cuda_embedding_graph(
@@ -5825,7 +6044,7 @@ fn execute_cuda_embedding_graph(
     output_id: TensorId,
     input_shape: &Shape,
     features: Vec<f32>,
-) -> Result<Vec<f32>, RuntimeError> {
+) -> Result<EmbeddingStepOutput, RuntimeError> {
     let mut runtime_inputs = BTreeMap::new();
     runtime_inputs.insert(
         input_id,
@@ -5837,7 +6056,11 @@ fn execute_cuda_embedding_graph(
             "missing embedding output",
         )));
     };
-    output.read_f32()
+    Ok(EmbeddingStepOutput {
+        values: output.read_f32()?,
+        execution_plan_digest: result.metrics.execution_plan_digest.clone(),
+        compile_path: result.metrics.compile_path.clone(),
+    })
 }
 
 fn canonical_embedding_output_dimensions(

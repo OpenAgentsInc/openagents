@@ -13,8 +13,9 @@ use mox_runtime::{
     AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus, AmdRecoveryAction, AmdRecoveryProfile,
     AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendDegradedPolicy,
     BackendName, BackendRuntimeResources, BackendSelection, BufferHandle, DeviceDescriptor,
-    DeviceDiscovery, DeviceMemoryBudget, HealthStatus, KernelCachePolicy, KernelCacheReport,
-    KernelCacheState, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
+    DeviceDiscovery, DeviceMemoryBudget, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
+    ExecutionPlanCacheState, HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState,
+    RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
 };
 
 /// Human-readable crate ownership summary.
@@ -332,6 +333,10 @@ impl AmdUserspaceBackend {
     pub fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
         match &self.state {
             AmdUserspaceBackendState::Available(backend) => Some(BackendRuntimeResources {
+                execution_plan_cache: ExecutionPlanCacheReport {
+                    policy: ExecutionPlanCachePolicy::disabled(),
+                    state: ExecutionPlanCacheState::default(),
+                },
                 allocator_pool: backend.allocator_pool.clone(),
                 kernel_cache: backend.kernel_cache.clone(),
                 device_memory_budget: Some(DeviceMemoryBudget::new(

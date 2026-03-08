@@ -587,6 +587,57 @@ pub struct AllocatorPoolReport {
     pub state: AllocatorPoolState,
 }
 
+/// Explicit execution-plan cache policy for one backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionPlanCachePolicy {
+    /// Whether compiled execution plans are cached across requests.
+    pub enabled: bool,
+    /// Maximum cache entries retained by the backend.
+    pub max_cached_entries: usize,
+    /// Maximum cache bytes reserved by policy, when bounded.
+    pub max_cached_bytes: Option<u64>,
+}
+
+impl ExecutionPlanCachePolicy {
+    /// Creates a disabled execution-plan cache policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self {
+            enabled: false,
+            max_cached_entries: 0,
+            max_cached_bytes: Some(0),
+        }
+    }
+
+    /// Creates a bounded enabled execution-plan cache policy.
+    #[must_use]
+    pub const fn bounded(max_cached_entries: usize, max_cached_bytes: Option<u64>) -> Self {
+        Self {
+            enabled: true,
+            max_cached_entries,
+            max_cached_bytes,
+        }
+    }
+}
+
+/// Current execution-plan cache occupancy for one backend.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionPlanCacheState {
+    /// Number of compiled execution plans retained by the backend.
+    pub cached_entries: usize,
+    /// Estimated bytes retained by the cache.
+    pub cached_bytes: u64,
+}
+
+/// Explicit execution-plan cache policy plus current occupancy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionPlanCacheReport {
+    /// Execution-plan cache policy for the backend.
+    pub policy: ExecutionPlanCachePolicy,
+    /// Current execution-plan cache occupancy.
+    pub state: ExecutionPlanCacheState,
+}
+
 /// Explicit kernel-cache policy for one backend.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct KernelCachePolicy {
@@ -674,6 +725,8 @@ impl DeviceMemoryBudget {
 /// Explicit backend resource state carried into capability and receipt surfaces.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendRuntimeResources {
+    /// Explicit execution-plan cache policy and occupancy.
+    pub execution_plan_cache: ExecutionPlanCacheReport,
     /// Explicit allocator-pool policy and occupancy.
     pub allocator_pool: AllocatorPoolReport,
     /// Explicit kernel-cache policy and occupancy.
@@ -866,6 +919,27 @@ impl CacheObservation {
         self.trigger = Some(trigger);
         self
     }
+}
+
+/// Whether a request compiled a plan cold or reused one from a warm cache.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompilePathTemperature {
+    /// The runtime had to compile a new execution plan for this path.
+    ColdCompile,
+    /// The runtime reused an already-compiled execution plan.
+    WarmReuse,
+}
+
+/// Explicit compile-path evidence for a realized execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilePathEvidence {
+    /// Whether the path compiled cold or reused a warm plan cache entry.
+    pub temperature: CompilePathTemperature,
+    /// Observable execution-plan cache action for the realized path.
+    pub execution_plan_cache: CacheObservation,
+    /// Observable kernel-cache action for the realized path.
+    pub kernel_cache: CacheObservation,
 }
 
 /// Returns the current runtime cache invalidation policy.
@@ -3472,10 +3546,16 @@ impl BackendSelection {
 }
 
 /// Minimal execution metrics.
-#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionMetrics {
     /// Number of plan steps executed.
     pub steps_executed: usize,
+    /// Stable digest of the execution plan used for this run, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_plan_digest: Option<String>,
+    /// Explicit warm/cold compile-path evidence for this run, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_path: Option<CompilePathEvidence>,
 }
 
 /// Trait for backend-owned buffers.
@@ -3704,18 +3784,19 @@ mod tests {
         BufferResidency, BufferStorageKind, CacheAction, CacheInvalidationTrigger, CacheKind,
         CacheObservation, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
         DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
-        ExecutionBackend, ExecutionCapabilityProfile, ExecutionMetrics, ExecutionResult,
-        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
-        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        ExecutionBackend, ExecutionCapabilityProfile, ExecutionMetrics, ExecutionPlanCachePolicy,
+        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
+        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
+        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
+        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
+        ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
         RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
         ServedArtifactIdentity, ServedProductBackendPolicy, ServedProductFallbackAction,
         ServedProductFallbackLattice, ServedProductFallbackTrigger, ThroughputClass, TokenSampler,
@@ -3832,6 +3913,8 @@ mod tests {
                 outputs: BTreeMap::new(),
                 metrics: ExecutionMetrics {
                     steps_executed: plan.steps.len(),
+                    execution_plan_digest: None,
+                    compile_path: None,
                 },
             })
         }
@@ -4945,6 +5028,13 @@ mod tests {
     fn backend_runtime_resources_serialize_stably() -> Result<(), Box<dyn std::error::Error>> {
         let selection = BackendSelection::direct("metal", None, vec![String::from("matmul")])
             .with_runtime_resources(Some(BackendRuntimeResources {
+                execution_plan_cache: ExecutionPlanCacheReport {
+                    policy: ExecutionPlanCachePolicy::bounded(4, Some(256)),
+                    state: ExecutionPlanCacheState {
+                        cached_entries: 1,
+                        cached_bytes: 96,
+                    },
+                },
                 allocator_pool: AllocatorPoolReport {
                     policy: AllocatorPoolPolicy::exact_tensor_spec(8, 1024),
                     state: AllocatorPoolState {
@@ -4964,8 +5054,16 @@ mod tests {
 
         let value = serde_json::to_value(selection)?;
         assert_eq!(
+            value["runtime_resources"]["execution_plan_cache"]["state"]["cached_entries"],
+            json!(1)
+        );
+        assert_eq!(
             value["runtime_resources"]["allocator_pool"]["policy"]["max_cached_buffers"],
             json!(8)
+        );
+        assert_eq!(
+            value["runtime_resources"]["execution_plan_cache"]["state"]["cached_bytes"],
+            json!(96)
         );
         assert_eq!(
             value["runtime_resources"]["kernel_cache"]["state"]["cached_entries"],
@@ -4986,6 +5084,10 @@ mod tests {
             vec![String::from("matmul")],
         )
         .with_runtime_resources(Some(BackendRuntimeResources {
+            execution_plan_cache: ExecutionPlanCacheReport {
+                policy: ExecutionPlanCachePolicy::disabled(),
+                state: ExecutionPlanCacheState::default(),
+            },
             allocator_pool: AllocatorPoolReport {
                 policy: AllocatorPoolPolicy::disabled(),
                 state: AllocatorPoolState {

@@ -10,8 +10,10 @@ use mox_core::{DType, Device, DeviceKind, Shape, TensorData, TensorId, TensorSpe
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
     Allocator, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendDegradedPolicy,
-    BackendName, BackendRuntimeResources, BackendSelection, BufferHandle, DeviceDescriptor,
-    DeviceDiscovery, DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics, ExecutionResult,
+    BackendName, BackendRuntimeResources, BackendSelection, BufferHandle, CacheAction, CacheKind,
+    CacheObservation, CompilePathEvidence, CompilePathTemperature, DeviceDescriptor,
+    DeviceDiscovery, DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics,
+    ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult,
     HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, NvidiaBackendReport,
     NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
     NvidiaRiskProfile, NvidiaTopologyInfo, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
@@ -29,6 +31,8 @@ const OFFLINE_NO_DRIVER_MESSAGE: &str =
     "cuda backend unavailable: nvidia-smi is not installed or the NVIDIA driver is not reachable";
 const CUDA_POOL_MAX_CACHED_BUFFERS: usize = 128;
 const CUDA_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
+const CUDA_EXECUTION_PLAN_CACHE_MAX_ENTRIES: usize = 64;
+const CUDA_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
 
 /// Exact plan surface currently covered by the first CUDA-backed served-product
 /// milestone.
@@ -253,6 +257,7 @@ struct AvailableCudaBackend {
     descriptor: DeviceDescriptor,
     platform: platform::ConfiguredBackend,
     allocator_pool: AllocatorPoolReport,
+    execution_plan_cache: CudaExecutionPlanCache,
     kernel_cache: KernelCacheReport,
 }
 
@@ -294,6 +299,9 @@ impl CudaBackend {
                             descriptor,
                             platform,
                             allocator_pool,
+                            execution_plan_cache: CudaExecutionPlanCache::new(
+                                cuda_execution_plan_cache_policy(),
+                            ),
                             kernel_cache,
                         })),
                     },
@@ -333,6 +341,7 @@ impl CudaBackend {
     pub fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
         match &self.state {
             CudaBackendState::Available(backend) => Some(BackendRuntimeResources {
+                execution_plan_cache: backend.execution_plan_cache.report(),
                 allocator_pool: backend.allocator_pool.clone(),
                 kernel_cache: backend.kernel_cache.clone(),
                 device_memory_budget: Some(DeviceMemoryBudget::new(
@@ -374,9 +383,14 @@ impl CudaBackend {
         graph: &Graph,
         inputs: &BTreeMap<TensorId, CudaBuffer>,
     ) -> Result<ExecutionResult<CudaBuffer>, RuntimeError> {
-        let plan =
-            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
-        self.execute(&plan, inputs)
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(self.health().message));
+        };
+        let (plan, plan_digest, compile_path) = backend.lookup_or_compile(graph)?;
+        let mut result = backend.execute(&plan, inputs)?;
+        result.metrics.execution_plan_digest = Some(plan_digest);
+        result.metrics.compile_path = Some(compile_path);
+        Ok(result)
     }
 
     /// Returns truthful backend-selection data for a supported CUDA product path.
@@ -520,6 +534,13 @@ impl CudaBackend {
             CudaBackendState::Unavailable(_) => None,
         }
     }
+
+    fn selected_backend_mut(&mut self) -> Option<&mut AvailableCudaBackend> {
+        match &mut self.state {
+            CudaBackendState::Available(backend) => Some(backend),
+            CudaBackendState::Unavailable(_) => None,
+        }
+    }
 }
 
 impl DeviceDiscovery for CudaBackend {
@@ -577,6 +598,52 @@ impl ExecutionBackend for CudaBackend {
 }
 
 impl AvailableCudaBackend {
+    fn lookup_or_compile(
+        &mut self,
+        graph: &Graph,
+    ) -> Result<(ExecutionPlan, String, CompilePathEvidence), RuntimeError> {
+        let (plan, plan_digest, plan_cache_hit) =
+            self.execution_plan_cache.lookup_or_compile(graph)?;
+        let kernel_cache = if self.kernel_cache.policy.enabled {
+            CacheObservation::new(
+                CacheKind::KernelCache,
+                CacheAction::Reuse,
+                "reused the configured cuda kernel cache",
+            )
+        } else {
+            CacheObservation::new(
+                CacheKind::KernelCache,
+                CacheAction::Bypass,
+                "cuda kernel cache is disabled for this backend path",
+            )
+        };
+        Ok((
+            plan,
+            plan_digest,
+            CompilePathEvidence {
+                temperature: if plan_cache_hit {
+                    CompilePathTemperature::WarmReuse
+                } else {
+                    CompilePathTemperature::ColdCompile
+                },
+                execution_plan_cache: if plan_cache_hit {
+                    CacheObservation::new(
+                        CacheKind::ExecutionPlan,
+                        CacheAction::Reuse,
+                        "reused a cached cuda execution plan",
+                    )
+                } else {
+                    CacheObservation::new(
+                        CacheKind::ExecutionPlan,
+                        CacheAction::Rebuild,
+                        "compiled a new cuda execution plan",
+                    )
+                },
+                kernel_cache,
+            },
+        ))
+    }
+
     fn allocate(&self, spec: &TensorSpec) -> Result<CudaBuffer, RuntimeError> {
         let byte_len = spec
             .storage_size()
@@ -700,9 +767,90 @@ impl AvailableCudaBackend {
             outputs,
             metrics: ExecutionMetrics {
                 steps_executed: plan.steps.len(),
+                execution_plan_digest: None,
+                compile_path: None,
             },
         })
     }
+}
+
+fn cuda_execution_plan_cache_policy() -> ExecutionPlanCachePolicy {
+    ExecutionPlanCachePolicy::bounded(
+        CUDA_EXECUTION_PLAN_CACHE_MAX_ENTRIES,
+        Some(CUDA_EXECUTION_PLAN_CACHE_MAX_CACHED_BYTES),
+    )
+}
+
+#[derive(Clone, Debug)]
+struct CachedCudaExecutionPlan {
+    plan: ExecutionPlan,
+    plan_digest: String,
+}
+
+#[derive(Clone, Debug)]
+struct CudaExecutionPlanCache {
+    policy: ExecutionPlanCachePolicy,
+    cached: std::collections::HashMap<String, CachedCudaExecutionPlan>,
+    state: ExecutionPlanCacheState,
+}
+
+impl CudaExecutionPlanCache {
+    fn new(policy: ExecutionPlanCachePolicy) -> Self {
+        Self {
+            policy,
+            cached: std::collections::HashMap::new(),
+            state: ExecutionPlanCacheState::default(),
+        }
+    }
+
+    fn report(&self) -> ExecutionPlanCacheReport {
+        ExecutionPlanCacheReport {
+            policy: self.policy.clone(),
+            state: self.state.clone(),
+        }
+    }
+
+    fn lookup_or_compile(
+        &mut self,
+        graph: &Graph,
+    ) -> Result<(ExecutionPlan, String, bool), RuntimeError> {
+        let cache_key = graph.stable_digest();
+        if let Some(cached) = self.cached.get(&cache_key) {
+            return Ok((cached.plan.clone(), cached.plan_digest.clone(), true));
+        }
+
+        let plan =
+            compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let plan_digest = plan.stable_digest();
+        let estimated_bytes = estimate_execution_plan_bytes(&plan, &plan_digest);
+        if self.policy.enabled
+            && self.cached.len() < self.policy.max_cached_entries
+            && self
+                .policy
+                .max_cached_bytes
+                .map(|limit| self.state.cached_bytes.saturating_add(estimated_bytes) <= limit)
+                .unwrap_or(true)
+        {
+            self.cached.insert(
+                cache_key,
+                CachedCudaExecutionPlan {
+                    plan: plan.clone(),
+                    plan_digest: plan_digest.clone(),
+                },
+            );
+            self.state.cached_entries = self.cached.len();
+            self.state.cached_bytes = self.state.cached_bytes.saturating_add(estimated_bytes);
+        }
+        Ok((plan, plan_digest, false))
+    }
+}
+
+fn estimate_execution_plan_bytes(plan: &ExecutionPlan, plan_digest: &str) -> u64 {
+    plan.stable_debug()
+        .len()
+        .saturating_add(plan_digest.len())
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 impl NvidiaInventoryRow {
