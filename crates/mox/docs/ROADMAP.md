@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main` and after a deep-research pass over Candle and Tinygrad.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -48,6 +48,14 @@ trying to port Tinygrad line by line:
 - keep the serving surface library-first and in-process
 - treat JIT capture, compile plans, kernel-cache behavior, batching, queueing,
   and topology as explicit runtime policy
+- keep quantized tensor storage backend-backed instead of forcing eager
+  CPU-only dequantization paths
+- keep memory-mapped model blob access and paged tensor storage explicit so
+  large local models do not require eager copies
+- keep an explicit fused/custom-op escape hatch for backend-specific attention,
+  quantized GEMM, and normalization kernels
+- treat backend allocator pools, kernel caches, and device-memory budgets as
+  explicit runtime policy rather than backend internals
 - never silently run on CPU while advertising Metal, AMD, or NVIDIA readiness
 
 The first backend-complete primitive surface still needs to be just large enough
@@ -117,6 +125,8 @@ contract, compatibility, lifecycle, and cutover work.
 ### Model compatibility and prompt behavior
 
 - GGUF loading and tensor extraction
+- GGML/GGUF quant block decode coverage and backend-backed quantized tensor
+  storage
 - tokenizer loading for supported families
 - chat-template extraction and normalization
 - role rendering, BOS/EOS handling, stop defaults, and family-specific prompt
@@ -125,6 +135,7 @@ contract, compatibility, lifecycle, and cutover work.
 ### Catalog and lifecycle
 
 - Ollama manifest/blob discovery and installed-model resolution
+- memory-mapped blob access and paged tensor storage for large local models
 - `tags` / `show` / `ps` equivalent local catalog APIs
 - warm / unload / keepalive / loaded-model lifecycle
 - deterministic KV-cache ownership and session lifecycle
@@ -139,11 +150,15 @@ contract, compatibility, lifecycle, and cutover work.
 - model-store integrity verification
 - backend-neutral error taxonomy
 - explicit fallback and degraded-state policy
+- backend allocator pooling, kernel-cache bounds, and device-memory-budget
+  reporting
 - runtime observability and cutover performance gates
 
 ### Accelerator coverage
 
 - Metal text generation
+- a fused/custom-op surface for backend-specific attention, quantized GEMM,
+  RoPE, and normalization kernels
 - NVIDIA discovery, truth, and execution
 - AMD execution after the current discovery/readiness work
 
@@ -153,6 +168,8 @@ contract, compatibility, lifecycle, and cutover work.
 - rename/remove remaining Ollama-specific app contracts and wording
 - compute-market capability qualifiers, batching truth, topology truth, warm/cold
   cache truth, and delivery-proof evidence
+- stable execution-plan digests, kernel counts, bytes moved, plan-cache
+  hit/miss, and KV-growth evidence
 - process isolation policy and the long-term Mox-native model/runtime boundary
 
 ## Ollama Behaviors That Must Become Explicit
@@ -205,16 +222,18 @@ budgets, memory admission, streaming, integrity, errors, and fallback.
 
 Reviewing `~/code/tinygrad` adds scope beyond simple Ollama parity:
 
-- JIT capture and cached batch execution are core runtime behavior, not optional
-  optimization
-- compiled backends, op estimates, and memory estimates map cleanly to
-  market-facing capability and evidence surfaces
-- backend truth, compile-cache policy, batch posture, and distributed execution
-  cannot stay implicit if Mox becomes the compute substrate
-- the Llama example shows the actual execution shape Mox needs to own: KV-cache
-  lifecycle, start-position accounting, and JIT-vs-non-JIT behavior
-- the BERT path confirms embeddings belong in the same primitive/runtime story,
-  not a separate future lane
+- `gguf_load` and `ggml_data_to_tensor` make GGUF parsing plus quant block
+  decode a first-class runtime concern, not a thin metadata shim
+- the Llama path makes KV-cache lifecycle, `start_pos` accounting, and the
+  token-by-token JIT fast path explicit
+- `apply_graph_to_jit`, `GraphRunner`, and `MultiGraphRunner` show that stable
+  replayable execution plans should be a productized runtime primitive
+- `GlobalCounters` and the realize path make per-request kernel count, memory
+  traffic, and timing evidence straightforward to collect
+- the disk device and disk-backed GGUF loading path show a credible route to
+  mmap-backed model ingestion and later spill-style storage
+- the AMD runtime docs make interface risk explicit, including the unsafe
+  userspace driver path that may unbind `amdgpu`
 
 That adds missing roadmap work for:
 
@@ -224,6 +243,34 @@ That adds missing roadmap work for:
 - execution-plan caching and warm/cold compile-path evidence
 - runtime evidence for compute delivery proofs
 - a bounded execution-profile model for later `sandbox_execution`
+
+## Candle Findings That Tighten Runtime And Backend Scope
+
+Reviewing `~/code/candle` sharpens several implementation buckets that the
+existing roadmap treated too loosely:
+
+- GGUF/GGML loading in Candle is tied to backend-backed quantized tensor
+  storage, not just metadata parsing
+- tokenizer reconstruction from GGUF metadata already carries BOS/EOS and
+  template-processing implications, which means Mox should not treat tokenizer
+  loading and prompt rendering as one issue
+- seeded sampler utilities, repeat penalty, and GQA helpers show that sampler
+  correctness needs to include the surrounding decode helpers, not just RNG
+- explicit compile-time backend features (`metal`, `cuda`, `cudnn`, `nccl`,
+  `accelerate`, `mkl`) are a strong model for compiled-vs-probed capability
+  truth
+- Metal buffer pooling, bounded caches, and device-memory budget work show that
+  backend allocator policy is a roadmap item, not a cleanup task
+- Candle's custom-op and fused-kernel escape hatches are a practical template
+  for how Mox should land backend-specific attention and quantized GEMM kernels
+
+That means the roadmap should explicitly track:
+
+- quantized GGUF block decode and backend-backed quantized tensor storage
+- memory-mapped model blob access and paged tensor storage
+- backend allocator pooling, kernel-cache bounds, and device-memory-budget
+  reporting
+- a fused/custom-op surface for backend-specific kernels
 
 ## Proposed Issues Not Yet In GitHub
 
@@ -236,6 +283,8 @@ baseline is merged.
 | --- | --- | --- | --- |
 | `RGR-110` | Add `WeightFormat::Gguf` and a reusable GGUF metadata/tensor loader | `mox-models` | Required to read the format Ollama actually points at during migration. |
 | `RGR-111` | Implement tokenizer loading from GGUF metadata for SentencePiece and GPT-style BPE families | `mox-models` | Fixture tokenizers are not enough for real model parity. |
+| `RGR-115` | Add GGML/GGUF quant block decode coverage and backend-backed quantized tensor storage | `mox-models`, `mox-runtime`, backend crates | Candle and Tinygrad both treat quantized tensor decode/storage as a core loader/runtime boundary; Mox should not stop at metadata parsing. |
+| `RGR-116` | Add memory-mapped model blob access and paged tensor storage for local GGUF and Ollama blobs | `mox-catalog`, `mox-models`, `mox-runtime` | Large local models should load through mmap/paged storage instead of eager copies when possible. |
 | `RGR-112` | Add GGUF-backed decoder model-family adapters for first launch families (`llama`, `qwen`, `mistral`) | `mox-models`, `mox-serve` | Replaces model-family construction still hidden behind Ollama. |
 | `RGR-113` | Add GGUF-backed embeddings model-family adapters for the first supported embedding families | `mox-models`, `mox-serve` | Keeps embeddings real rather than demo-only. |
 | `RGR-114` | Implement chat-template extraction and prompt-rendering compatibility for supported model families | `mox-models`, `mox-serve` | GGUF plus tokenizer is still not enough without prompt formatting parity. |
@@ -266,6 +315,8 @@ baseline is merged.
 | `RGR-137` | Add explicit backend fallback, refusal, and degraded-state policy for served products | `mox-runtime`, `mox-provider`, backend crates | "No silent CPU fallback" must become concrete and testable. |
 | `RGR-138` | Define performance acceptance thresholds and cutover gates for Mox runtime replacement | `mox-serve`, `mox-provider`, backend crates | The team needs explicit launch gates before cutover. |
 | `RGR-139` | Decide and document LoRA/adapter support policy for the Ollama replacement boundary | `mox-models`, `mox-catalog`, `mox-serve` | Even a deferral needs an explicit migration policy. |
+| `RGR-157` | Add backend allocator pooling, bounded kernel caches, and device-memory-budget reporting | `mox-runtime`, backend crates, `mox-provider` | Candle's Metal path shows this is required for truthful memory admission and stable warm/cold behavior. |
+| `RGR-158` | Add a fused/custom-op extension surface for backend-specific attention, quantized GEMM, RoPE, and normalization kernels | `mox-compiler`, `mox-runtime`, backend crates | Metal, CUDA, and AMD text generation will need backend-specific fused kernels without breaking the small visible primitive surface. |
 | `RGR-159` | Add local runtime observability for warm/cold transitions, active sessions, queue depth, memory footprint, and backend health changes | `mox-serve`, `mox-provider`, `mox-runtime` | The desktop cutover will be hard to debug without explicit runtime-state observability. |
 
 ### Epic D: Accelerated backends after the merged baseline
@@ -304,11 +355,11 @@ baseline is merged.
 
 | Local ID | Proposed issue | Scope | Why it exists |
 | --- | --- | --- | --- |
-| `RGR-171` | Expand Mox capability surfaces for compute-market inventory, topology, and performance qualifiers | `mox-provider`, `mox-runtime` | Compute-market inventory needs more than "GPU available." |
+| `RGR-171` | Expand Mox capability surfaces for compute-market inventory, topology, and performance qualifiers | `mox-provider`, `mox-runtime` | Compute-market inventory needs more than "GPU available"; it also needs compiled-vs-probed backend and toolchain truth. |
 | `RGR-172` | Add batch execution posture, queueing policy, and throughput-class capability reporting | `mox-serve`, `mox-runtime`, `mox-provider` | Batch behavior affects what supply a provider can honestly advertise. |
-| `RGR-173` | Add multi-device and sharded execution planning for supported product paths | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | The market eventually needs topology-aware large-model truth. |
-| `RGR-174` | Add execution-plan caching, kernel-cache policy, and warm/cold compile-path evidence | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | JIT and cache behavior affect both performance truth and evidence. |
-| `RGR-175` | Extend Mox runtime evidence with compute-market delivery-proof fields and settlement-linkage inputs | `mox-serve`, `mox-provider`, `mox-runtime` | The market needs reusable runtime evidence, not app-local reconstruction. |
+| `RGR-173` | Add multi-device and sharded execution planning for supported product paths | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | The market eventually needs same-type multi-device truth, declarative sharding plans, and topology-aware large-model support. |
+| `RGR-174` | Add execution-plan caching, kernel-cache policy, and warm/cold compile-path evidence | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | Tinygrad's graph runners and Candle's backend caches both point to plan identity and cache policy as first-class runtime truth. |
+| `RGR-175` | Extend Mox runtime evidence with compute-market delivery-proof fields and settlement-linkage inputs | `mox-serve`, `mox-provider`, `mox-runtime` | The market needs kernel counts, bytes moved, plan-cache hit/miss, KV growth, and stable plan digests, not app-local reconstruction. |
 | `RGR-176` | Define a reusable Mox execution-profile model for bounded `sandbox_execution` | `mox-runtime`, `mox-provider` | Later `sandbox_execution` must stay bounded and machine-checkable. |
 | `RGR-177` | Add reusable sandbox-execution receipt and evidence contracts compatible with compute-market supply | `mox-runtime`, `mox-provider` | If sandbox execution lands, it needs explicit digests, resource summaries, and exit reasons. |
 | `RGR-178` | Add topology-aware substitution and deliverability checks for accelerator-sensitive compute offers | `mox-provider`, `mox-runtime` | The market needs reusable promised-vs-delivered capability comparison inputs. |
@@ -317,11 +368,13 @@ baseline is merged.
 
 The shortest honest path from today's `main` is:
 
-1. Open and land `RGR-110` through `RGR-126` so Mox can actually read,
-   catalog, and serve supported Ollama-installed models.
-2. Land `RGR-127` through `RGR-139` and `RGR-159` before app cutover so
-   context, sampling, streaming, embeddings, integrity, fallback, errors,
-   observability, and performance gates are explicit.
+1. Open and land `RGR-110` through `RGR-116` and `RGR-120` through `RGR-126`
+   so Mox can actually read, mmap, catalog, and serve supported
+   Ollama-installed models.
+2. Land `RGR-127` through `RGR-139`, plus `RGR-157` through `RGR-159`, before
+   app cutover so context, sampling, streaming, embeddings, integrity,
+   fallback, allocator policy, fused-kernel escape hatches, observability, and
+   performance gates are explicit.
 3. Finish Metal as a real text-generation backend via `RGR-130` through
    `RGR-132`.
 4. Open NVIDIA explicitly via `RGR-140` through `RGR-147`.
@@ -372,8 +425,9 @@ Mox is not yet a credible compute-market substrate until all of the following
 are also true:
 
 - Mox can publish truthful capability-envelope fields for backend family,
-  execution kind, model family or policy, accelerator vendor/family, memory,
-  topology, concurrency posture, and latency posture
+  execution kind, model family or policy, accelerator vendor/family, compiled
+  backend/toolchain features, memory, topology, concurrency posture, and
+  latency posture
 - batchability, queueing, admission, warm/cold behavior, and compile/cache
   posture are explicit runtime policy
 - runtime evidence includes stable digests and summaries that can feed
