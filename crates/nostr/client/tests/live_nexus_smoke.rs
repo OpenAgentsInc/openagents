@@ -74,7 +74,10 @@ async fn live_nexus_relay_auth_and_subscription_smoke() {
 
     let _ = relay.disconnect().await;
 
-    assert!(saw_auth, "expected live nexus relay to issue a NIP-42 auth challenge");
+    assert!(
+        saw_auth,
+        "expected live nexus relay to issue a NIP-42 auth challenge"
+    );
     assert!(
         saw_eose,
         "expected authenticated live nexus relay subscription to terminate with EOSE"

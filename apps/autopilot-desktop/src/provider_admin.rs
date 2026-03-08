@@ -82,7 +82,8 @@ fn sync_runtime_snapshot(state: &mut RenderState) -> bool {
             return false;
         }
     };
-    let should_sync = state.provider_admin_last_sync_signature.as_deref() != Some(signature.as_str())
+    let should_sync = state.provider_admin_last_sync_signature.as_deref()
+        != Some(signature.as_str())
         || state
             .provider_admin_last_sync_at
             .is_none_or(|last_sync_at| last_sync_at.elapsed() >= PROVIDER_ADMIN_SYNC_INTERVAL);
@@ -230,17 +231,19 @@ fn recent_jobs_for_state(state: &RenderState) -> Vec<ProviderRecentJob> {
 
 fn recent_job_from_row(row: &JobHistoryReceiptRow) -> ProviderRecentJob {
     let product_id = infer_product_id_for_history_row(row);
-    let descriptor = product_id
-        .as_deref()
-        .and_then(describe_provider_product_id);
+    let descriptor = product_id.as_deref().and_then(describe_provider_product_id);
     ProviderRecentJob {
         job_id: row.job_id.clone(),
         request_id: Some(infer_request_id_from_job_id(row.job_id.as_str())),
         status: row.status.label().to_string(),
         demand_source: row.demand_source.label().to_string(),
         product_id,
-        compute_family: descriptor.as_ref().map(|descriptor| descriptor.compute_family.clone()),
-        backend_family: descriptor.as_ref().map(|descriptor| descriptor.backend_family.clone()),
+        compute_family: descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.compute_family.clone()),
+        backend_family: descriptor
+            .as_ref()
+            .map(|descriptor| descriptor.backend_family.clone()),
         sandbox_execution_class: descriptor
             .as_ref()
             .and_then(|descriptor| descriptor.sandbox_execution_class.clone()),
@@ -263,8 +266,14 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
     {
         return Some("ollama.embeddings".to_string());
     }
-    match row.execution_provenance.as_ref().map(|provenance| provenance.backend.as_str()) {
-        Some("apple_foundation_models") => Some("apple_foundation_models.text_generation".to_string()),
+    match row
+        .execution_provenance
+        .as_ref()
+        .map(|provenance| provenance.backend.as_str())
+    {
+        Some("apple_foundation_models") => {
+            Some("apple_foundation_models.text_generation".to_string())
+        }
         Some("ollama") => Some("ollama.text_generation".to_string()),
         _ => None,
     }
@@ -294,9 +303,16 @@ fn receipt_summary(receipt: &Receipt) -> ProviderReceiptSummary {
         sandbox_termination_reason: None,
         reason_code: receipt.hints.reason_code.clone(),
         failure_reason: None,
-        severity: receipt.hints.severity.map(|severity| severity.label().to_string()),
+        severity: receipt
+            .hints
+            .severity
+            .map(|severity| severity.label().to_string()),
         notional_sats: receipt.hints.notional.as_ref().and_then(money_sats),
-        liability_premium_sats: receipt.hints.liability_premium.as_ref().and_then(money_sats),
+        liability_premium_sats: receipt
+            .hints
+            .liability_premium
+            .as_ref()
+            .and_then(money_sats),
         work_unit_id: receipt.trace.work_unit_id.clone(),
     }
 }

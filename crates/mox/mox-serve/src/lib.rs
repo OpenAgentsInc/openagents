@@ -3,8 +3,8 @@
 use std::collections::BTreeMap;
 
 use mox_backend_cpu::CpuBackend;
-use mox_backend_metal::{MetalBackend, EMBEDDINGS_SUPPORTED_OPS};
-use mox_compiler::{compile_graph, CompileError};
+use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend};
+use mox_compiler::{CompileError, compile_graph};
 pub use mox_core::QuantizationMode;
 use mox_core::{DType, Device, Shape, TensorId};
 use mox_ir::{Graph, GraphBuilder, GraphError};
@@ -2050,15 +2050,17 @@ mod tests {
         assert_eq!(first.output.text, "open agents");
         assert_eq!(first.termination, TerminationReason::EndOfSequence);
         assert_eq!(first.usage.input_tokens, 2);
-        assert!(service
-            .plan_digest(ReferenceWordDecoder::MODEL_ID)
-            .is_some());
+        assert!(
+            service
+                .plan_digest(ReferenceWordDecoder::MODEL_ID)
+                .is_some()
+        );
         Ok(())
     }
 
     #[test]
-    fn cpu_reference_text_generation_reuses_and_resets_sessions(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn cpu_reference_text_generation_reuses_and_resets_sessions()
+    -> Result<(), Box<dyn std::error::Error>> {
         let mut service = CpuReferenceTextGenerationService::new()?;
         let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
 

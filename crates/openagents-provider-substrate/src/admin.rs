@@ -1628,7 +1628,10 @@ mod tests {
             Some("ollama")
         );
         assert_eq!(
-            snapshot.earnings.as_ref().map(|earnings| earnings.lifetime_sats),
+            snapshot
+                .earnings
+                .as_ref()
+                .map(|earnings| earnings.lifetime_sats),
             Some(420)
         );
     }

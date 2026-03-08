@@ -215,7 +215,10 @@ impl Default for ProviderSandboxDetectionConfig {
 }
 
 impl ProviderSandboxDetectionConfig {
-    pub fn with_declared_profiles(mut self, declared_profiles: Vec<ProviderSandboxProfileSpec>) -> Self {
+    pub fn with_declared_profiles(
+        mut self,
+        declared_profiles: Vec<ProviderSandboxProfileSpec>,
+    ) -> Self {
         self.declared_profiles = declared_profiles;
         self
     }
@@ -229,13 +232,19 @@ pub struct ProviderSandboxAvailability {
 }
 
 impl ProviderSandboxAvailability {
-    pub fn runtime(&self, runtime_kind: ProviderSandboxRuntimeKind) -> Option<&ProviderSandboxRuntimeHealth> {
+    pub fn runtime(
+        &self,
+        runtime_kind: ProviderSandboxRuntimeKind,
+    ) -> Option<&ProviderSandboxRuntimeHealth> {
         self.runtimes
             .iter()
             .find(|runtime| runtime.runtime_kind == runtime_kind)
     }
 
-    pub fn has_declared_execution_class(&self, execution_class: ProviderSandboxExecutionClass) -> bool {
+    pub fn has_declared_execution_class(
+        &self,
+        execution_class: ProviderSandboxExecutionClass,
+    ) -> bool {
         self.profiles
             .iter()
             .any(|profile| profile.execution_class == execution_class)
@@ -279,7 +288,10 @@ impl ProviderSandboxAvailability {
             "backend=sandbox execution={} family=sandbox_execution profiles={} ready_profiles={} profile_ids={} profile_digests={} runtime={} os={} arch={} network={} filesystem={} timeout_s={}",
             execution_class.product_id(),
             profiles.len(),
-            profiles.iter().filter(|profile| profile.runtime_ready).count(),
+            profiles
+                .iter()
+                .filter(|profile| profile.runtime_ready)
+                .count(),
             ids,
             digests,
             first.runtime_family,
@@ -328,7 +340,9 @@ impl ProviderSandboxAvailability {
     }
 }
 
-pub fn detect_sandbox_supply(config: &ProviderSandboxDetectionConfig) -> ProviderSandboxAvailability {
+pub fn detect_sandbox_supply(
+    config: &ProviderSandboxDetectionConfig,
+) -> ProviderSandboxAvailability {
     let runtimes = ProviderSandboxRuntimeKind::all()
         .into_iter()
         .map(|runtime_kind| detect_runtime(runtime_kind, config.path_entries.as_slice()))
@@ -351,7 +365,9 @@ fn detect_runtime(
     runtime_kind: ProviderSandboxRuntimeKind,
     path_entries: &[PathBuf],
 ) -> ProviderSandboxRuntimeHealth {
-    let Some((binary_name, binary_path)) = find_binary(path_entries, runtime_kind.binary_candidates()) else {
+    let Some((binary_name, binary_path)) =
+        find_binary(path_entries, runtime_kind.binary_candidates())
+    else {
         return ProviderSandboxRuntimeHealth::unavailable(runtime_kind);
     };
 
@@ -573,10 +589,7 @@ mod tests {
     };
     use std::fs;
 
-    fn ensure(
-        condition: bool,
-        message: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         if condition {
             Ok(())
         } else {
@@ -593,8 +606,7 @@ mod tests {
         fs::write(
             &path,
             format!("#!/bin/sh\nprintf '%s\\n' '{}'\n", output.replace('\'', "")),
-        )
-        ?;
+        )?;
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
@@ -632,8 +644,8 @@ mod tests {
     }
 
     #[test]
-    fn detects_declared_python_profile_and_aggregates_inventory_summary(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn detects_declared_python_profile_and_aggregates_inventory_summary()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempfile::tempdir()?;
         fake_binary(temp.path(), "python3", "Python 3.12.4")?;
 
@@ -643,9 +655,9 @@ mod tests {
         };
         let availability = detect_sandbox_supply(&config);
 
-        let runtime = availability.runtime(ProviderSandboxRuntimeKind::Python).ok_or_else(|| {
-            std::io::Error::other("missing detected python runtime")
-        })?;
+        let runtime = availability
+            .runtime(ProviderSandboxRuntimeKind::Python)
+            .ok_or_else(|| std::io::Error::other("missing detected python runtime"))?;
         ensure(runtime.detected, "python runtime should be detected")?;
         ensure(runtime.ready, "python runtime should be ready")?;
         ensure(
@@ -665,7 +677,9 @@ mod tests {
             "python profile should be runtime ready",
         )?;
         ensure(
-            availability.profiles[0].profile_digest.starts_with("sha256:"),
+            availability.profiles[0]
+                .profile_digest
+                .starts_with("sha256:"),
             "python profile digest should be sha256-prefixed",
         )?;
         let summary = availability
@@ -692,7 +706,9 @@ mod tests {
 
         assert_eq!(availability.profiles.len(), 1);
         assert!(!availability.profiles[0].runtime_ready);
-        assert!(availability.has_declared_execution_class(ProviderSandboxExecutionClass::PythonExec));
+        assert!(
+            availability.has_declared_execution_class(ProviderSandboxExecutionClass::PythonExec)
+        );
         assert!(!availability.backend_ready_for_class(ProviderSandboxExecutionClass::PythonExec));
     }
 }

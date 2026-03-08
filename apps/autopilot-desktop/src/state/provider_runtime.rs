@@ -12,7 +12,7 @@ pub use openagents_provider_substrate::{
     ProviderAdvertisedProduct, ProviderAvailability, ProviderBackendHealth, ProviderBackendKind,
     ProviderBlocker, ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,
     ProviderInventoryRow, ProviderMode, ProviderSandboxAvailability,
-    ProviderSandboxDetectionConfig, detect_sandbox_supply, derive_provider_products,
+    ProviderSandboxDetectionConfig, derive_provider_products, detect_sandbox_supply,
 };
 
 pub type LocalInferenceBackend = ProviderBackendKind;

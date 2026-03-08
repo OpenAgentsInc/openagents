@@ -3,8 +3,8 @@ use mox_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, Rece
 use mox_serve::{EmbeddingRequest, EmbeddingsExecutor, SmokeEmbeddingsService};
 
 #[test]
-fn smoke_embeddings_flow_returns_response_capability_and_receipt(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn smoke_embeddings_flow_returns_response_capability_and_receipt()
+-> Result<(), Box<dyn std::error::Error>> {
     let mut service = SmokeEmbeddingsService::new()?;
     let request = EmbeddingRequest::new(
         "req-smoke-1",
@@ -58,7 +58,6 @@ fn smoke_embeddings_flow_returns_response_capability_and_receipt(
     Ok(())
 }
 
-fn cpu_backend_selection(
-) -> Result<mox_runtime::BackendSelection, mox_runtime::RuntimeError> {
+fn cpu_backend_selection() -> Result<mox_runtime::BackendSelection, mox_runtime::RuntimeError> {
     CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }

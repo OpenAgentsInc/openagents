@@ -174,8 +174,12 @@ pub fn execute_sandbox_job(
         Err(detail) => return rejected_result(profile, request, detail),
     };
 
-    let prepared = match prepare_job(profile, request, workspace_root.as_path(), runtime_binary_path)
-    {
+    let prepared = match prepare_job(
+        profile,
+        request,
+        workspace_root.as_path(),
+        runtime_binary_path,
+    ) {
         Ok(prepared) => prepared,
         Err(detail) => return rejected_result(profile, request, detail),
     };
@@ -211,7 +215,7 @@ pub fn execute_sandbox_job(
                 start_time_ms,
                 state_trace,
                 format!("failed to spawn sandbox process: {error}"),
-            )
+            );
         }
     };
 
@@ -232,7 +236,8 @@ pub fn execute_sandbox_job(
                 } else {
                     termination_reason = ProviderSandboxTerminationReason::NonZeroExit;
                     final_state = ProviderSandboxExecutionState::Failed;
-                    policy_detail = Some(format!("sandbox process exited with {:?}", status.code()));
+                    policy_detail =
+                        Some(format!("sandbox process exited with {:?}", status.code()));
                 }
                 break;
             }
@@ -262,7 +267,7 @@ pub fn execute_sandbox_job(
                     start_time_ms,
                     state_trace,
                     format!("failed while polling sandbox process: {error}"),
-                )
+                );
             }
         }
     }
@@ -278,7 +283,7 @@ pub fn execute_sandbox_job(
                 start_time_ms,
                 state_trace,
                 format!("failed to collect sandbox process output: {error}"),
-            )
+            );
         }
     };
     let end_time_ms = now_epoch_ms();
@@ -295,7 +300,7 @@ pub fn execute_sandbox_job(
                 start_time_ms,
                 state_trace,
                 detail,
-            )
+            );
         }
     };
 
@@ -435,8 +440,10 @@ fn prepare_job(
 }
 
 fn uses_container_adapter(profile: &ProviderSandboxProfile) -> bool {
-    matches!(profile.execution_class, ProviderSandboxExecutionClass::ContainerExec)
-        || profile.container_image.is_some()
+    matches!(
+        profile.execution_class,
+        ProviderSandboxExecutionClass::ContainerExec
+    ) || profile.container_image.is_some()
         || matches!(
             profile.sandbox_engine.as_str(),
             "docker" | "podman" | "container_runtime"
@@ -491,7 +498,9 @@ fn prepare_container_command(
     runtime_binary_path: &str,
 ) -> Result<PreparedSandboxCommand, String> {
     if request.filesystem_request != "workspace_only" {
-        return Err("container sandbox adapter requires workspace_only filesystem access".to_string());
+        return Err(
+            "container sandbox adapter requires workspace_only filesystem access".to_string(),
+        );
     }
     let Some(container_image) = profile.container_image.as_deref() else {
         return Err("container sandbox profile is missing container_image".to_string());
@@ -513,8 +522,10 @@ fn prepare_container_command(
         }
         "host_inherit" => {}
         _ => {
-            return Err("container sandbox adapter only supports none or host_inherit networking"
-                .to_string())
+            return Err(
+                "container sandbox adapter only supports none or host_inherit networking"
+                    .to_string(),
+            );
         }
     }
     if profile.cpu_limit > 0 {
@@ -582,9 +593,9 @@ fn prepare_entrypoint(
                 return Err("sandbox workspace file entrypoint cannot be empty".to_string());
             }
             let entrypoint_path = workspace_root.join(request.entrypoint.as_str());
-            let canonical_entrypoint = entrypoint_path
-                .canonicalize()
-                .map_err(|error| format!("failed to resolve sandbox workspace entrypoint: {error}"))?;
+            let canonical_entrypoint = entrypoint_path.canonicalize().map_err(|error| {
+                format!("failed to resolve sandbox workspace entrypoint: {error}")
+            })?;
             if !canonical_entrypoint.starts_with(workspace_root) {
                 return Err("sandbox entrypoint escapes workspace root".to_string());
             }
@@ -604,14 +615,20 @@ fn prepare_entrypoint(
                     entrypoint_digest: sha256_prefixed(request.entrypoint.as_bytes()),
                 })
             } else {
-                Err("sandbox command entrypoints are only supported for container execution".to_string())
+                Err(
+                    "sandbox command entrypoints are only supported for container execution"
+                        .to_string(),
+                )
             }
         }
     }
 }
 
 fn uses_command_string(execution_class: ProviderSandboxExecutionClass) -> bool {
-    matches!(execution_class, ProviderSandboxExecutionClass::ContainerExec)
+    matches!(
+        execution_class,
+        ProviderSandboxExecutionClass::ContainerExec
+    )
 }
 
 fn script_extension(execution_class: ProviderSandboxExecutionClass) -> &'static str {
@@ -631,8 +648,12 @@ fn collect_artifacts(
         if !path.exists() {
             continue;
         }
-        let bytes = fs::read(path)
-            .map_err(|error| format!("failed to read sandbox artifact {}: {error}", path.display()))?;
+        let bytes = fs::read(path).map_err(|error| {
+            format!(
+                "failed to read sandbox artifact {}: {error}",
+                path.display()
+            )
+        })?;
         artifacts.push(ProviderSandboxArtifactDigest {
             relative_path: relative_path.clone(),
             sha256_digest: sha256_prefixed(bytes.as_slice()),
@@ -875,7 +896,8 @@ fn sha256_prefixed(bytes: &[u8]) -> String {
 }
 
 fn sanitize_identifier(value: &str) -> String {
-    value.chars()
+    value
+        .chars()
         .map(|ch| if ch.is_ascii_alphanumeric() { ch } else { '_' })
         .collect()
 }
@@ -894,12 +916,11 @@ mod tests {
         ProviderSandboxExecutionState, ProviderSandboxJobRequest, ProviderSandboxResourceRequest,
         ProviderSandboxTerminationReason, execute_sandbox_job,
     };
-    use crate::{ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxRuntimeKind};
+    use crate::{
+        ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxRuntimeKind,
+    };
 
-    fn ensure(
-        condition: bool,
-        message: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         if condition {
             Ok(())
         } else {
@@ -1031,11 +1052,15 @@ mod tests {
         )?;
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace)?;
-        let profile = subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
         let request = request(&workspace, ProviderSandboxExecutionClass::PythonExec);
 
-        let result =
-            execute_sandbox_job(&profile, &request, &ProviderSandboxExecutionControls::default());
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
 
         ensure(
             result.receipt.final_state == ProviderSandboxExecutionState::Succeeded,
@@ -1073,8 +1098,11 @@ mod tests {
         request.network_request = "none".to_string();
         request.filesystem_request = "workspace_only".to_string();
 
-        let result =
-            execute_sandbox_job(&profile, &request, &ProviderSandboxExecutionControls::default());
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
 
         ensure(
             result.receipt.final_state == ProviderSandboxExecutionState::Succeeded,
@@ -1097,15 +1125,21 @@ mod tests {
         )?;
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace)?;
-        let profile = subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PythonExec);
         let mut request = request(&workspace, ProviderSandboxExecutionClass::PythonExec);
-        request.environment.push(super::ProviderSandboxEnvironmentVar {
-            key: "SECRET_TOKEN".to_string(),
-            value: "shh".to_string(),
-        });
+        request
+            .environment
+            .push(super::ProviderSandboxEnvironmentVar {
+                key: "SECRET_TOKEN".to_string(),
+                value: "shh".to_string(),
+            });
 
-        let result =
-            execute_sandbox_job(&profile, &request, &ProviderSandboxExecutionControls::default());
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
 
         ensure(
             result.receipt.final_state == ProviderSandboxExecutionState::Rejected,
@@ -1129,22 +1163,25 @@ mod tests {
         )?;
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace)?;
-        let profile = subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PosixExec);
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PosixExec);
         let mut request = request(&workspace, ProviderSandboxExecutionClass::PosixExec);
         request.payload = Some("sleep 3\n".to_string());
         request.expected_outputs.clear();
         request.timeout_request_s = 1;
 
-        let result =
-            execute_sandbox_job(&profile, &request, &ProviderSandboxExecutionControls::default());
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
 
         ensure(
             result.receipt.final_state == ProviderSandboxExecutionState::TimedOut,
             "sandbox timeout should be explicit",
         )?;
         ensure(
-            result.receipt.evidence.termination_reason
-                == ProviderSandboxTerminationReason::Timeout,
+            result.receipt.evidence.termination_reason == ProviderSandboxTerminationReason::Timeout,
             "sandbox timeout should carry timeout termination reason",
         )?;
         Ok(())
@@ -1160,7 +1197,8 @@ mod tests {
         )?;
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace)?;
-        let profile = subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PosixExec);
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PosixExec);
         let mut request = request(&workspace, ProviderSandboxExecutionClass::PosixExec);
         request.payload = Some("sleep 3\n".to_string());
         request.expected_outputs.clear();
@@ -1178,8 +1216,7 @@ mod tests {
             "sandbox kill should be explicit",
         )?;
         ensure(
-            result.receipt.evidence.termination_reason
-                == ProviderSandboxTerminationReason::Killed,
+            result.receipt.evidence.termination_reason == ProviderSandboxTerminationReason::Killed,
             "sandbox kill should carry killed termination reason",
         )?;
         Ok(())
@@ -1195,13 +1232,17 @@ mod tests {
         )?;
         let workspace = temp.path().join("workspace");
         std::fs::create_dir_all(&workspace)?;
-        let profile = subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PosixExec);
+        let profile =
+            subprocess_profile(runtime.as_path(), ProviderSandboxExecutionClass::PosixExec);
         let mut request = request(&workspace, ProviderSandboxExecutionClass::PosixExec);
         request.payload = Some("exit 7\n".to_string());
         request.expected_outputs.clear();
 
-        let result =
-            execute_sandbox_job(&profile, &request, &ProviderSandboxExecutionControls::default());
+        let result = execute_sandbox_job(
+            &profile,
+            &request,
+            &ProviderSandboxExecutionControls::default(),
+        );
 
         ensure(
             result.receipt.final_state == ProviderSandboxExecutionState::Failed,

@@ -6,8 +6,8 @@ use mox_serve::{
 };
 
 #[test]
-fn cpu_reference_text_generation_flow_returns_response_and_receipt(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn cpu_reference_text_generation_flow_returns_response_and_receipt()
+-> Result<(), Box<dyn std::error::Error>> {
     let mut service = CpuReferenceTextGenerationService::new()?;
     let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
     let request = GenerationRequest::new_text(
@@ -48,7 +48,6 @@ fn cpu_reference_text_generation_flow_returns_response_and_receipt(
     Ok(())
 }
 
-fn cpu_backend_selection(
-) -> Result<mox_runtime::BackendSelection, mox_runtime::RuntimeError> {
+fn cpu_backend_selection() -> Result<mox_runtime::BackendSelection, mox_runtime::RuntimeError> {
     CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }
