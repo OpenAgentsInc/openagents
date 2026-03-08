@@ -705,6 +705,60 @@ impl GgufMetadataValue {
             | Self::I64(_) => None,
         }
     }
+
+    /// Returns this value as a signed integer when possible.
+    #[must_use]
+    pub fn as_i64(&self) -> Option<i64> {
+        match self {
+            Self::U8(value) => Some(i64::from(*value)),
+            Self::I8(value) => Some(i64::from(*value)),
+            Self::U16(value) => Some(i64::from(*value)),
+            Self::I16(value) => Some(i64::from(*value)),
+            Self::U32(value) => Some(i64::from(*value)),
+            Self::I32(value) => Some(i64::from(*value)),
+            Self::U64(value) => i64::try_from(*value).ok(),
+            Self::I64(value) => Some(*value),
+            Self::F32(_) | Self::F64(_) | Self::Bool(_) | Self::String(_) | Self::Array(_) => None,
+        }
+    }
+
+    /// Returns this value as a `f32` when possible.
+    #[must_use]
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            Self::U8(value) => Some(f32::from(*value)),
+            Self::I8(value) => Some(f32::from(*value)),
+            Self::U16(value) => Some(f32::from(*value)),
+            Self::I16(value) => Some(f32::from(*value)),
+            Self::U32(value) => Some(*value as f32),
+            Self::I32(value) => Some(*value as f32),
+            Self::U64(value) => Some(*value as f32),
+            Self::I64(value) => Some(*value as f32),
+            Self::F32(value) => Some(*value),
+            Self::F64(value) => Some(*value as f32),
+            Self::Bool(_) | Self::String(_) | Self::Array(_) => None,
+        }
+    }
+
+    /// Returns this value as a boolean when applicable.
+    #[must_use]
+    pub fn as_bool(&self) -> Option<bool> {
+        match self {
+            Self::Bool(value) => Some(*value),
+            Self::U8(_)
+            | Self::I8(_)
+            | Self::U16(_)
+            | Self::I16(_)
+            | Self::U32(_)
+            | Self::I32(_)
+            | Self::U64(_)
+            | Self::I64(_)
+            | Self::F32(_)
+            | Self::F64(_)
+            | Self::String(_)
+            | Self::Array(_) => None,
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1194,6 +1248,321 @@ impl GgufContent {
             name: String::from(name),
             tensor_type: tensor.tensor_type,
         })
+    }
+
+    /// Loads tokenizer metadata for supported GGUF tokenizer families.
+    pub fn load_tokenizer(&self) -> Result<GgufTokenizerMetadata, ModelLoadError> {
+        let model_name = self
+            .metadata
+            .get("tokenizer.ggml.model")
+            .and_then(GgufMetadataValue::as_str)
+            .ok_or_else(|| ModelLoadError::MissingTokenizerMetadata {
+                key: String::from("tokenizer.ggml.model"),
+            })?;
+        let model = GgufTokenizerModel::from_gguf_name(model_name)?;
+        let tokens = read_tokenizer_string_array(&self.metadata, "tokenizer.ggml.tokens")?;
+        let scores = read_optional_tokenizer_f32_array(&self.metadata, "tokenizer.ggml.scores")?;
+        if !scores.is_empty() && scores.len() != tokens.len() {
+            return Err(ModelLoadError::InvalidTokenizerMetadata {
+                key: String::from("tokenizer.ggml.scores"),
+                message: format!(
+                    "expected {} score entries to match tokenizer vocabulary, got {}",
+                    tokens.len(),
+                    scores.len()
+                ),
+            });
+        }
+        let token_types =
+            read_optional_tokenizer_i32_array(&self.metadata, "tokenizer.ggml.token_type")?;
+        if !token_types.is_empty() && token_types.len() != tokens.len() {
+            return Err(ModelLoadError::InvalidTokenizerMetadata {
+                key: String::from("tokenizer.ggml.token_type"),
+                message: format!(
+                    "expected {} token-type entries to match tokenizer vocabulary, got {}",
+                    tokens.len(),
+                    token_types.len()
+                ),
+            });
+        }
+
+        let merges = match model {
+            GgufTokenizerModel::SentencePiece => {
+                read_optional_tokenizer_string_array(&self.metadata, "tokenizer.ggml.merges")?
+            }
+            GgufTokenizerModel::Gpt2Bpe => {
+                read_tokenizer_string_array(&self.metadata, "tokenizer.ggml.merges")?
+            }
+        };
+        let bos_token_id =
+            read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.bos_token_id")?;
+        let eos_token_id =
+            read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.eos_token_id")?;
+        let extra_eos_ids =
+            read_optional_tokenizer_id_array(&self.metadata, "tokenizer.ggml.eos_token_ids")?;
+        let pad_token_id =
+            match read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.padding_token_id")? {
+                Some(id) => Some(id),
+                None => read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.pad_token_id")?,
+            };
+        let unknown_token_id =
+            read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.unknown_token_id")?.or(
+                match read_optional_tokenizer_id(&self.metadata, "tokenizer.ggml.unk_token_id")? {
+                    Some(id) => Some(id),
+                    None => None,
+                },
+            );
+        let add_bos = self
+            .metadata
+            .get("tokenizer.ggml.add_bos_token")
+            .and_then(GgufMetadataValue::as_bool)
+            .unwrap_or(true);
+        let add_eos = self
+            .metadata
+            .get("tokenizer.ggml.add_eos_token")
+            .and_then(GgufMetadataValue::as_bool)
+            .unwrap_or(false);
+        let pretokenizer = match model {
+            GgufTokenizerModel::SentencePiece => None,
+            GgufTokenizerModel::Gpt2Bpe => Some(
+                self.metadata
+                    .get("tokenizer.ggml.pre")
+                    .and_then(GgufMetadataValue::as_str)
+                    .map_or(
+                        GgufTokenizerPretokenizer::Default,
+                        GgufTokenizerPretokenizer::from_gguf_name,
+                    ),
+            ),
+        };
+
+        validate_tokenizer_id("tokenizer.ggml.bos_token_id", bos_token_id, tokens.len())?;
+        validate_tokenizer_id(
+            "tokenizer.ggml.padding_token_id",
+            pad_token_id,
+            tokens.len(),
+        )?;
+        validate_tokenizer_id(
+            "tokenizer.ggml.unknown_token_id",
+            unknown_token_id,
+            tokens.len(),
+        )?;
+
+        let mut eos_token_ids = Vec::new();
+        if let Some(id) = eos_token_id {
+            eos_token_ids.push(id);
+        }
+        for id in extra_eos_ids {
+            if !eos_token_ids.contains(&id) {
+                eos_token_ids.push(id);
+            }
+        }
+        for id in &eos_token_ids {
+            validate_tokenizer_id("tokenizer.ggml.eos_token_ids", Some(*id), tokens.len())?;
+        }
+
+        let digest = digest_gguf_tokenizer(
+            model,
+            tokens.as_slice(),
+            scores.as_slice(),
+            token_types.as_slice(),
+            merges.as_slice(),
+            bos_token_id,
+            eos_token_ids.as_slice(),
+            pad_token_id,
+            unknown_token_id,
+            add_bos,
+            add_eos,
+            pretokenizer.as_ref(),
+        );
+
+        Ok(GgufTokenizerMetadata {
+            model,
+            vocabulary: GgufTokenizerVocabulary {
+                tokens,
+                bos_token_id,
+                eos_token_ids,
+                pad_token_id,
+                unknown_token_id,
+            },
+            scores,
+            token_types,
+            merges,
+            add_bos,
+            add_eos,
+            pretokenizer,
+            digest,
+        })
+    }
+}
+
+/// Supported GGUF tokenizer model families Mox can reconstruct from metadata.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GgufTokenizerModel {
+    /// SentencePiece-style tokenizer using GGML `llama` metadata.
+    SentencePiece,
+    /// GPT-2 style byte-level BPE tokenizer using GGML `gpt2` metadata.
+    Gpt2Bpe,
+}
+
+impl GgufTokenizerModel {
+    fn from_gguf_name(value: &str) -> Result<Self, ModelLoadError> {
+        match value {
+            "llama" => Ok(Self::SentencePiece),
+            "gpt2" => Ok(Self::Gpt2Bpe),
+            other => Err(ModelLoadError::UnsupportedTokenizerModel {
+                model: other.to_string(),
+            }),
+        }
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::SentencePiece => "sentencepiece",
+            Self::Gpt2Bpe => "gpt2_bpe",
+        }
+    }
+}
+
+/// GGUF GPT-style BPE pretokenizer family extracted from `tokenizer.ggml.pre`.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GgufTokenizerPretokenizer {
+    /// Default GGML/Ollama GPT-style pretokenizer.
+    Default,
+    /// Llama-style fallback pretokenizer family.
+    Llama,
+    /// Qwen2 tokenizer family.
+    Qwen2,
+    /// Refact tokenizer family.
+    Refact,
+    /// Tekken tokenizer family.
+    Tekken,
+    /// Any nonstandard pretokenizer string preserved verbatim.
+    Custom(String),
+}
+
+impl GgufTokenizerPretokenizer {
+    fn from_gguf_name(value: &str) -> Self {
+        match value {
+            "default" => Self::Default,
+            "llama-bpe" | "llama" => Self::Llama,
+            "qwen2" => Self::Qwen2,
+            "refact" => Self::Refact,
+            "tekken" => Self::Tekken,
+            other => Self::Custom(other.to_string()),
+        }
+    }
+
+    fn digest_label(&self) -> Cow<'_, str> {
+        match self {
+            Self::Default => Cow::Borrowed("default"),
+            Self::Llama => Cow::Borrowed("llama"),
+            Self::Qwen2 => Cow::Borrowed("qwen2"),
+            Self::Refact => Cow::Borrowed("refact"),
+            Self::Tekken => Cow::Borrowed("tekken"),
+            Self::Custom(value) => Cow::Owned(format!("custom:{value}")),
+        }
+    }
+}
+
+/// GGUF tokenizer vocabulary reconstructed from model metadata.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GgufTokenizerVocabulary {
+    tokens: Vec<String>,
+    bos_token_id: Option<TokenId>,
+    eos_token_ids: Vec<TokenId>,
+    pad_token_id: Option<TokenId>,
+    unknown_token_id: Option<TokenId>,
+}
+
+impl GgufTokenizerVocabulary {
+    /// Returns the tokenizer vocabulary size.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.tokens.len()
+    }
+
+    /// Returns whether the vocabulary is empty.
+    #[must_use]
+    pub fn is_empty(&self) -> bool {
+        self.tokens.is_empty()
+    }
+
+    /// Returns all tokens in stable ID order.
+    #[must_use]
+    pub fn tokens(&self) -> &[String] {
+        self.tokens.as_slice()
+    }
+
+    /// Returns a token string by token ID.
+    #[must_use]
+    pub fn token(&self, id: TokenId) -> Option<&str> {
+        self.tokens.get(id.as_u32() as usize).map(String::as_str)
+    }
+
+    /// Returns the token ID for an exact token string.
+    #[must_use]
+    pub fn token_id(&self, token: &str) -> Option<TokenId> {
+        self.tokens
+            .iter()
+            .position(|value| value == token)
+            .map(|index| TokenId(index as u32))
+    }
+
+    /// Returns the configured BOS token ID.
+    #[must_use]
+    pub const fn bos_token_id(&self) -> Option<TokenId> {
+        self.bos_token_id
+    }
+
+    /// Returns the configured EOS token IDs in stable order.
+    #[must_use]
+    pub fn eos_token_ids(&self) -> &[TokenId] {
+        self.eos_token_ids.as_slice()
+    }
+
+    /// Returns the configured padding token ID.
+    #[must_use]
+    pub const fn pad_token_id(&self) -> Option<TokenId> {
+        self.pad_token_id
+    }
+
+    /// Returns the configured unknown token ID.
+    #[must_use]
+    pub const fn unknown_token_id(&self) -> Option<TokenId> {
+        self.unknown_token_id
+    }
+}
+
+/// Reusable GGUF tokenizer metadata reconstructed from a GGUF artifact.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GgufTokenizerMetadata {
+    /// Tokenizer model family.
+    pub model: GgufTokenizerModel,
+    /// Vocabulary and special-token IDs.
+    pub vocabulary: GgufTokenizerVocabulary,
+    /// Token scores when the GGUF metadata provides them.
+    pub scores: Vec<f32>,
+    /// Raw token-type IDs preserved in tokenizer order.
+    pub token_types: Vec<i32>,
+    /// BPE merge rules in stable GGUF order.
+    pub merges: Vec<String>,
+    /// Whether callers should prepend BOS by default.
+    pub add_bos: bool,
+    /// Whether callers should append EOS by default.
+    pub add_eos: bool,
+    /// GPT-style BPE pretokenizer family when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pretokenizer: Option<GgufTokenizerPretokenizer>,
+    /// Stable digest over tokenizer metadata relevant to serving behavior.
+    pub digest: String,
+}
+
+impl GgufTokenizerMetadata {
+    /// Returns the stable tokenizer digest.
+    #[must_use]
+    pub fn digest(&self) -> &str {
+        self.digest.as_str()
     }
 }
 
@@ -1685,6 +2054,26 @@ pub enum ModelLoadError {
         format: String,
         /// Parse failure summary.
         message: String,
+    },
+    /// GGUF tokenizer metadata is missing a required key.
+    #[error("missing tokenizer metadata `{key}` in gguf artifact")]
+    MissingTokenizerMetadata {
+        /// Required GGUF metadata key.
+        key: String,
+    },
+    /// GGUF tokenizer metadata had an invalid value or shape.
+    #[error("invalid tokenizer metadata `{key}`: {message}")]
+    InvalidTokenizerMetadata {
+        /// GGUF metadata key that failed validation.
+        key: String,
+        /// Validation failure summary.
+        message: String,
+    },
+    /// The GGUF tokenizer model family is not supported yet.
+    #[error("unsupported gguf tokenizer model `{model}`")]
+    UnsupportedTokenizerModel {
+        /// Raw tokenizer model string from GGUF metadata.
+        model: String,
     },
     /// A tensor dtype in the artifact bundle is not supported yet.
     #[error("unsupported tensor dtype `{dtype}` for `{name}`")]
@@ -2614,6 +3003,257 @@ fn quantization_priority(quantization: QuantizationMode) -> u8 {
     }
 }
 
+fn read_tokenizer_string_array(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Vec<String>, ModelLoadError> {
+    let Some(value) = metadata.get(key) else {
+        return Err(ModelLoadError::MissingTokenizerMetadata {
+            key: key.to_string(),
+        });
+    };
+    read_tokenizer_string_values(key, value)
+}
+
+fn read_optional_tokenizer_string_array(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Vec<String>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(Vec::new()),
+        |value| read_tokenizer_string_values(key, value),
+    )
+}
+
+fn read_tokenizer_string_values(
+    key: &str,
+    value: &GgufMetadataValue,
+) -> Result<Vec<String>, ModelLoadError> {
+    let Some(values) = value.as_array() else {
+        return Err(ModelLoadError::InvalidTokenizerMetadata {
+            key: key.to_string(),
+            message: String::from("expected an array of strings"),
+        });
+    };
+    values
+        .iter()
+        .enumerate()
+        .map(|(index, entry)| {
+            entry.as_str().map(String::from).ok_or_else(|| {
+                ModelLoadError::InvalidTokenizerMetadata {
+                    key: key.to_string(),
+                    message: format!("expected string element at index {index}"),
+                }
+            })
+        })
+        .collect()
+}
+
+fn read_optional_tokenizer_f32_array(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Vec<f32>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(Vec::new()),
+        |value| {
+            let Some(values) = value.as_array() else {
+                return Err(ModelLoadError::InvalidTokenizerMetadata {
+                    key: key.to_string(),
+                    message: String::from("expected an array of numeric scores"),
+                });
+            };
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    entry
+                        .as_f32()
+                        .ok_or_else(|| ModelLoadError::InvalidTokenizerMetadata {
+                            key: key.to_string(),
+                            message: format!("expected numeric score at index {index}"),
+                        })
+                })
+                .collect()
+        },
+    )
+}
+
+fn read_optional_tokenizer_i32_array(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Vec<i32>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(Vec::new()),
+        |value| {
+            let Some(values) = value.as_array() else {
+                return Err(ModelLoadError::InvalidTokenizerMetadata {
+                    key: key.to_string(),
+                    message: String::from("expected an array of integer token types"),
+                });
+            };
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    let Some(raw) = entry.as_i64() else {
+                        return Err(ModelLoadError::InvalidTokenizerMetadata {
+                            key: key.to_string(),
+                            message: format!("expected integer token type at index {index}"),
+                        });
+                    };
+                    i32::try_from(raw).map_err(|_| ModelLoadError::InvalidTokenizerMetadata {
+                        key: key.to_string(),
+                        message: format!("token type `{raw}` at index {index} does not fit i32"),
+                    })
+                })
+                .collect()
+        },
+    )
+}
+
+fn read_optional_tokenizer_id(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Option<TokenId>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(None),
+        |value| {
+            let Some(raw) = value.as_u64() else {
+                return Err(ModelLoadError::InvalidTokenizerMetadata {
+                    key: key.to_string(),
+                    message: String::from("expected a non-negative integer token id"),
+                });
+            };
+            let id = u32::try_from(raw).map_err(|_| ModelLoadError::InvalidTokenizerMetadata {
+                key: key.to_string(),
+                message: format!("token id `{raw}` does not fit u32"),
+            })?;
+            Ok(Some(TokenId(id)))
+        },
+    )
+}
+
+fn read_optional_tokenizer_id_array(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    key: &str,
+) -> Result<Vec<TokenId>, ModelLoadError> {
+    metadata.get(key).map_or_else(
+        || Ok(Vec::new()),
+        |value| {
+            let Some(values) = value.as_array() else {
+                return Err(ModelLoadError::InvalidTokenizerMetadata {
+                    key: key.to_string(),
+                    message: String::from("expected an array of token ids"),
+                });
+            };
+            values
+                .iter()
+                .enumerate()
+                .map(|(index, entry)| {
+                    let Some(raw) = entry.as_u64() else {
+                        return Err(ModelLoadError::InvalidTokenizerMetadata {
+                            key: key.to_string(),
+                            message: format!(
+                                "expected non-negative integer token id at index {index}"
+                            ),
+                        });
+                    };
+                    let id = u32::try_from(raw).map_err(|_| {
+                        ModelLoadError::InvalidTokenizerMetadata {
+                            key: key.to_string(),
+                            message: format!("token id `{raw}` at index {index} does not fit u32"),
+                        }
+                    })?;
+                    Ok(TokenId(id))
+                })
+                .collect()
+        },
+    )
+}
+
+fn validate_tokenizer_id(
+    key: &str,
+    token_id: Option<TokenId>,
+    vocabulary_len: usize,
+) -> Result<(), ModelLoadError> {
+    if let Some(token_id) = token_id {
+        if token_id.as_u32() as usize >= vocabulary_len {
+            return Err(ModelLoadError::InvalidTokenizerMetadata {
+                key: key.to_string(),
+                message: format!(
+                    "token id {} is out of range for vocabulary size {vocabulary_len}",
+                    token_id.as_u32()
+                ),
+            });
+        }
+    }
+    Ok(())
+}
+
+fn digest_gguf_tokenizer(
+    model: GgufTokenizerModel,
+    tokens: &[String],
+    scores: &[f32],
+    token_types: &[i32],
+    merges: &[String],
+    bos_token_id: Option<TokenId>,
+    eos_token_ids: &[TokenId],
+    pad_token_id: Option<TokenId>,
+    unknown_token_id: Option<TokenId>,
+    add_bos: bool,
+    add_eos: bool,
+    pretokenizer: Option<&GgufTokenizerPretokenizer>,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(model.as_str().as_bytes());
+    hasher.update(b"\n");
+    update_optional_token_id(&mut hasher, bos_token_id);
+    update_optional_token_id(&mut hasher, pad_token_id);
+    update_optional_token_id(&mut hasher, unknown_token_id);
+    hasher.update([u8::from(add_bos), u8::from(add_eos)]);
+    hasher.update(b"\n");
+    match pretokenizer {
+        Some(pretokenizer) => hasher.update(pretokenizer.digest_label().as_bytes()),
+        None => hasher.update(b"none"),
+    }
+    hasher.update(b"\n");
+    for token in tokens {
+        update_digest_string(&mut hasher, token);
+    }
+    hasher.update(b"\n");
+    for score in scores {
+        hasher.update(score.to_bits().to_be_bytes());
+    }
+    hasher.update(b"\n");
+    for token_type in token_types {
+        hasher.update(token_type.to_be_bytes());
+    }
+    hasher.update(b"\n");
+    for merge in merges {
+        update_digest_string(&mut hasher, merge);
+    }
+    hasher.update(b"\n");
+    for token_id in eos_token_ids {
+        hasher.update(token_id.as_u32().to_be_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
+fn update_optional_token_id(hasher: &mut Sha256, token_id: Option<TokenId>) {
+    match token_id {
+        Some(token_id) => {
+            hasher.update([1]);
+            hasher.update(token_id.as_u32().to_be_bytes());
+        }
+        None => hasher.update([0]),
+    }
+}
+
+fn update_digest_string(hasher: &mut Sha256, value: &str) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value.as_bytes());
+}
+
 struct GgufBytesReader<'a> {
     bytes: &'a [u8],
     offset: usize,
@@ -2946,11 +3586,11 @@ mod tests {
 
     use super::{
         ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader,
-        FixtureWordTokenizer, GgufContent, GgufMetadataValue, GgufTensorType, GgufVersion,
-        GgufWeightBundleLoader, LoadedWeightTensor, LocalWeightBundleLoader,
-        QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
-        SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenizerBoundary, WeightFormat,
-        WeightSource, WeightTensorStorage,
+        FixtureWordTokenizer, GgufContent, GgufMetadataValue, GgufTensorType, GgufTokenizerModel,
+        GgufTokenizerPretokenizer, GgufVersion, GgufWeightBundleLoader, LoadedWeightTensor,
+        LocalWeightBundleLoader, QuantizedTensorStorage, ReferenceWordDecoder,
+        SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId,
+        TokenizerBoundary, WeightFormat, WeightSource, WeightTensorStorage,
     };
 
     #[test]
@@ -3189,6 +3829,262 @@ mod tests {
         assert_eq!(tensor.shape, Shape::new(vec![2, 2]));
         assert_eq!(tensor.tensor_type, GgufTensorType::F32);
         assert_eq!(content.tensor_bytes(&bytes, "dense")?.len(), 16);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_content_loads_sentencepiece_tokenizer_metadata()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("sentencepiece.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[
+                (
+                    String::from("tokenizer.ggml.model"),
+                    GgufMetadataValue::String(String::from("llama")),
+                ),
+                (
+                    String::from("tokenizer.ggml.tokens"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::String(String::from("<unk>")),
+                        GgufMetadataValue::String(String::from("<s>")),
+                        GgufMetadataValue::String(String::from("</s>")),
+                        GgufMetadataValue::String(String::from("hello")),
+                        GgufMetadataValue::String(String::from("▁world")),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.ggml.scores"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::F32(0.0),
+                        GgufMetadataValue::F32(0.0),
+                        GgufMetadataValue::F32(0.0),
+                        GgufMetadataValue::F32(-0.25),
+                        GgufMetadataValue::F32(-0.5),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.ggml.token_type"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::I32(2),
+                        GgufMetadataValue::I32(3),
+                        GgufMetadataValue::I32(3),
+                        GgufMetadataValue::I32(1),
+                        GgufMetadataValue::I32(1),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.ggml.bos_token_id"),
+                    GgufMetadataValue::U32(1),
+                ),
+                (
+                    String::from("tokenizer.ggml.eos_token_id"),
+                    GgufMetadataValue::U32(2),
+                ),
+                (
+                    String::from("tokenizer.ggml.unknown_token_id"),
+                    GgufMetadataValue::U32(0),
+                ),
+                (
+                    String::from("tokenizer.ggml.add_bos_token"),
+                    GgufMetadataValue::Bool(true),
+                ),
+                (
+                    String::from("tokenizer.ggml.add_eos_token"),
+                    GgufMetadataValue::Bool(false),
+                ),
+            ],
+            &[],
+        )?;
+
+        let content = GgufContent::read_path(&path)?;
+        let tokenizer = content.load_tokenizer()?;
+
+        assert_eq!(tokenizer.model, GgufTokenizerModel::SentencePiece);
+        assert_eq!(tokenizer.vocabulary.len(), 5);
+        assert_eq!(tokenizer.vocabulary.token_id("hello"), Some(TokenId(3)));
+        assert_eq!(tokenizer.vocabulary.token(TokenId(4)), Some("▁world"));
+        assert_eq!(tokenizer.vocabulary.bos_token_id(), Some(TokenId(1)));
+        assert_eq!(tokenizer.vocabulary.eos_token_ids(), &[TokenId(2)]);
+        assert_eq!(tokenizer.vocabulary.unknown_token_id(), Some(TokenId(0)));
+        assert_eq!(tokenizer.scores, vec![0.0, 0.0, 0.0, -0.25, -0.5]);
+        assert_eq!(tokenizer.token_types, vec![2, 3, 3, 1, 1]);
+        assert!(tokenizer.merges.is_empty());
+        assert_eq!(tokenizer.pretokenizer, None);
+        assert!(tokenizer.add_bos);
+        assert!(!tokenizer.add_eos);
+        assert!(!tokenizer.digest().is_empty());
+        assert_eq!(tokenizer, content.load_tokenizer()?);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_content_loads_gpt_style_bpe_tokenizer_metadata()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("gpt2.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[
+                (
+                    String::from("tokenizer.ggml.model"),
+                    GgufMetadataValue::String(String::from("gpt2")),
+                ),
+                (
+                    String::from("tokenizer.ggml.pre"),
+                    GgufMetadataValue::String(String::from("qwen2")),
+                ),
+                (
+                    String::from("tokenizer.ggml.tokens"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::String(String::from("<|bos|>")),
+                        GgufMetadataValue::String(String::from("<|eos|>")),
+                        GgufMetadataValue::String(String::from("h")),
+                        GgufMetadataValue::String(String::from("e")),
+                        GgufMetadataValue::String(String::from("l")),
+                        GgufMetadataValue::String(String::from("o")),
+                        GgufMetadataValue::String(String::from("he")),
+                        GgufMetadataValue::String(String::from("ll")),
+                        GgufMetadataValue::String(String::from("hello")),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.ggml.merges"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::String(String::from("h e")),
+                        GgufMetadataValue::String(String::from("l l")),
+                        GgufMetadataValue::String(String::from("he ll")),
+                        GgufMetadataValue::String(String::from("hell o")),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.ggml.bos_token_id"),
+                    GgufMetadataValue::U32(0),
+                ),
+                (
+                    String::from("tokenizer.ggml.eos_token_id"),
+                    GgufMetadataValue::U32(1),
+                ),
+                (
+                    String::from("tokenizer.ggml.eos_token_ids"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::U32(1),
+                        GgufMetadataValue::U32(1),
+                        GgufMetadataValue::U32(8),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.ggml.add_bos_token"),
+                    GgufMetadataValue::Bool(false),
+                ),
+                (
+                    String::from("tokenizer.ggml.add_eos_token"),
+                    GgufMetadataValue::Bool(false),
+                ),
+            ],
+            &[],
+        )?;
+
+        let content = GgufContent::read_path(&path)?;
+        let tokenizer = content.load_tokenizer()?;
+
+        assert_eq!(tokenizer.model, GgufTokenizerModel::Gpt2Bpe);
+        assert_eq!(
+            tokenizer.pretokenizer,
+            Some(GgufTokenizerPretokenizer::Qwen2)
+        );
+        assert_eq!(
+            tokenizer.merges,
+            vec![
+                String::from("h e"),
+                String::from("l l"),
+                String::from("he ll"),
+                String::from("hell o"),
+            ]
+        );
+        assert_eq!(tokenizer.vocabulary.bos_token_id(), Some(TokenId(0)));
+        assert_eq!(
+            tokenizer.vocabulary.eos_token_ids(),
+            &[TokenId(1), TokenId(8)]
+        );
+        assert!(!tokenizer.add_bos);
+        assert!(!tokenizer.add_eos);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_content_rejects_unsupported_tokenizer_model() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let temp = tempdir()?;
+        let path = temp.path().join("unsupported_tokenizer.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[
+                (
+                    String::from("tokenizer.ggml.model"),
+                    GgufMetadataValue::String(String::from("rwkv")),
+                ),
+                (
+                    String::from("tokenizer.ggml.tokens"),
+                    GgufMetadataValue::Array(vec![GgufMetadataValue::String(String::from(
+                        "hello",
+                    ))]),
+                ),
+            ],
+            &[],
+        )?;
+
+        let content = GgufContent::read_path(&path)?;
+        let error = content
+            .load_tokenizer()
+            .expect_err("unsupported tokenizer model should fail");
+        assert!(matches!(
+            error,
+            super::ModelLoadError::UnsupportedTokenizerModel { model } if model == "rwkv"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_content_rejects_out_of_range_tokenizer_ids() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("bad_tokenizer_ids.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[
+                (
+                    String::from("tokenizer.ggml.model"),
+                    GgufMetadataValue::String(String::from("llama")),
+                ),
+                (
+                    String::from("tokenizer.ggml.tokens"),
+                    GgufMetadataValue::Array(vec![
+                        GgufMetadataValue::String(String::from("<unk>")),
+                        GgufMetadataValue::String(String::from("hello")),
+                    ]),
+                ),
+                (
+                    String::from("tokenizer.ggml.bos_token_id"),
+                    GgufMetadataValue::U32(4),
+                ),
+            ],
+            &[],
+        )?;
+
+        let content = GgufContent::read_path(&path)?;
+        let error = content
+            .load_tokenizer()
+            .expect_err("out-of-range token ids should fail");
+        assert!(matches!(
+            error,
+            super::ModelLoadError::InvalidTokenizerMetadata { key, .. }
+                if key == "tokenizer.ggml.bos_token_id"
+        ));
         Ok(())
     }
 
