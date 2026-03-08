@@ -6,11 +6,11 @@
 > after landing `MOX-179` / [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239)
 > in `780479e23`, after landing `MOX-180` /
 > [#3240](https://github.com/OpenAgentsInc/openagents/issues/3240) in
-> `1140c7f32`, and after confirming the remaining open GPT-OSS follow-on
-> issues are `MOX-181` / [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237),
+> `1140c7f32`, and after landing the remaining GPT-OSS completion track
+> `MOX-181` / [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237),
 > `MOX-182` / [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238),
 > and `MOX-183` / [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241)
-> for the Mox-only GPT-OSS completion track on the NVIDIA host.
+> in `4821bf07c` for the Mox-only GPT-OSS/NVIDIA host path.
 >
 > This is the live roadmap for `crates/mox/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -24,10 +24,10 @@
 > active dependency queue unless a future reprioritization reopens them.
 >
 > GPT-OSS host note: the local
-> `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file has been
-> verified to run on this machine via `~/code/llama.cpp`, but not yet via Mox.
-> The remaining open `MOX-181` through `MOX-183` track below is the work still
-> needed to make that flow Mox-only.
+> `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file has now
+> been verified to run on this machine both via `~/code/llama.cpp` as a
+> reference oracle and via Mox alone through the local
+> `mox-gpt-oss-server` HTTP surface on NVIDIA.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the
@@ -74,9 +74,11 @@ Choose the primary reference intentionally:
   JIT/runtime-plan behavior, and execution-evidence patterns
 - start with `~/code/llama.cpp` for deployed GGUF tensor-type coverage and
   block-layout truth beyond the current Rust crates, GPT-OSS / OpenAI-MoE
-  architecture metadata and tensor naming, Harmony prompt/render/parse
-  semantics, tokenizer control-token behavior, and local NVIDIA execution
-  behavior for the exact GGUFs carried on this host
+  architecture metadata and tensor naming, tokenizer control-token behavior,
+  and local NVIDIA execution behavior for the exact GGUFs carried on this host
+- start with `~/code/harmony` for the authoritative Harmony format docs,
+  published Rust parser/renderer behavior, stop-token semantics, assistant
+  channel rules, and GPT-OSS message/tool-call parse expectations
 - start with `~/code/ollama` for API-visible behavior such as prompt
   rendering, BOS/EOS defaults, truncation, streaming, catalog/lifecycle, and
   error semantics
@@ -675,25 +677,27 @@ state:
 | 69 | `MOX-178` | [#3230](https://github.com/OpenAgentsInc/openagents/issues/3230) | Closed | Topology-aware substitution and deliverability checks now exist in the reusable runtime/provider layer, so accelerator-sensitive offers can distinguish exact delivery, compatible substitution, and underdelivery from explicit promised-versus-delivered facts. |
 | 70 | `MOX-179` | [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239) | Closed | GPT-OSS / OpenAI-MoE GGUF loading and truthful mixed `MXFP4` / `Q8_0` storage are now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 71 | `MOX-180` | [#3240](https://github.com/OpenAgentsInc/openagents/issues/3240) | Closed | Harmony prompt/render/parse truth is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
-| 72 | `MOX-181` | [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237) | Open | After load + prompt/parse truth exist, Mox still needs a real GGUF-backed decoder execution model instead of the current fixture decoder path. |
-| 73 | `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Open | The real decoder then needs NVIDIA text-generation kernel coverage; the current CUDA surface is still embeddings-only for product use. |
-| 74 | `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Open | The final step is proving the full Mox-only GPT-OSS 20B flow on this NVIDIA host and pinning it with conformance plus hardware-validation evidence. |
+| 72 | `MOX-181` | [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237) | Closed | The real GGUF-backed GPT-OSS decoder execution model is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 73 | `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Closed | NVIDIA text-generation kernel coverage for the real GPT-OSS decoder path is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 74 | `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Closed | The Mox-only GPT-OSS 20B NVIDIA-host flow is now validated on `main`; keep it in sequence but skip it when choosing the next issue. |
 
-The next active roadmap item on this host is `MOX-181` / [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237).
+There is no remaining active roadmap issue on this host. The GPT-OSS
+completion track through `MOX-183` is now landed and `gh issue list --state open`
+is expected to return no open Mox roadmap issues.
 
 ## Current Reality
 
 The checked-in repo is no longer at "phase 0 bootstrap." The current truthful
 baseline on `main` is:
 
-- the generic Mox/Ollama-replacement track is landed, but the real GPT-OSS
-  path is not: Mox now loads `gpt-oss` / OpenAI-MoE GGUFs and models `MXFP4`
-  truthfully, and it now renders/parses GPT-OSS Harmony semantics truthfully,
-  but it still does not expose a real GGUF-backed NVIDIA text-generation path
+- the generic Mox/Ollama-replacement track is landed, and the real GPT-OSS
+  path is now landed too: Mox loads `gpt-oss` / OpenAI-MoE GGUFs, executes the
+  real decoder path, preserves mixed `MXFP4` / `Q8_0` storage truth, and now
+  exposes a real GGUF-backed NVIDIA text-generation path
 - this NVIDIA host can run the local
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
-  external `~/code/llama.cpp`, which remains the practical reference baseline
-  for the remaining `MOX-181` through `MOX-183` follow-on work
+  both external `~/code/llama.cpp` as a reference oracle and Mox alone through
+  the local OpenAI-compatible `mox-gpt-oss-server`
 - CPU model-backed embeddings and text generation exist and are tested
 - initial GGML quantized tensor storage and decode coverage now extends to
   CPU-native `Q4_0`, `Q4_1`, and `Q8_0` execution over preserved GGML block
@@ -1063,20 +1067,19 @@ for the minimum conformance harness scope and runtime evidence schema that
 
 ### Epic G: GPT-OSS Mox-only completion track
 
-This epic exists because the generic Mox cutover is landed, but the concrete
-`gpt-oss-20b-mxfp4.gguf` inference path on this NVIDIA host is only proven via
-external `~/code/llama.cpp` today. That repo remains a reference and behavior
-oracle only, not an acceptable execution dependency for closing this epic. The
-follow-on work here is specifically what Mox still lacks after the generic
-Ollama-replacement milestones have closed.
+This epic existed because the generic Mox cutover had landed, but the concrete
+`gpt-oss-20b-mxfp4.gguf` inference path on this NVIDIA host had only been
+proven via external `~/code/llama.cpp`. That gap is now closed on `main`:
+`llama.cpp` remains a reference and behavior oracle only, while the shipped
+execution path is Mox-owned end to end.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `MOX-179` | [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239) | Closed | Add GPT-OSS / OpenAI-MoE GGUF loading and truthful MXFP4/Q8_0 storage | `mox-core`, `mox-models`, `mox-runtime` | Landed in `780479e23`: Mox now accepts `general.architecture = gpt-oss`, reconstructs the OpenAI-MoE metadata/tensor layout, recognizes GGUF `MXFP4`, and preserves mixed `MXFP4` / `Q8_0` bundle truth without faking unsupported execution support. |
 | `MOX-180` | [#3240](https://github.com/OpenAgentsInc/openagents/issues/3240) | Closed | Implement Harmony prompt rendering and GPT-OSS channel parsing | `mox-models`, `mox-serve`, `mox-runtime` | Landed in `1140c7f32`: Mox now renders GPT-OSS prompts through the published Harmony Rust crate while preserving Mox-owned prompt/context/message truth, ships real GPT-OSS golden render fixtures from the local GGUF, parses Harmony output from text or token lanes (including streaming), and can carry parsed Harmony structure on served responses without dropping the raw token/text lane. |
-| `MOX-181` | [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237) | Open | Add a real GGUF-backed decoder execution model for GPT-OSS in Mox | `mox-models`, `mox-compiler`, `mox-runtime`, `mox-serve` | Mox text generation still runs through the toy fixture decoder path, so even a fully parsed GPT-OSS artifact cannot execute as a real model yet; acceptable closure excludes delegating execution to external runtimes. |
-| `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Open | Add NVIDIA text-generation kernel coverage for the real GPT-OSS decoder path | `mox-backend-cuda`, `mox-compiler`, `mox-runtime`, `mox-serve` | The current CUDA product path is embeddings-only and the current CUDA primitive surface is too small for GPT-OSS/OpenAI-MoE text generation; acceptable closure excludes using `llama.cpp` CUDA as a sidecar or proxy. |
-| `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Open | Ship and validate a Mox-only GPT-OSS 20B inference flow on the NVIDIA host | `mox-serve`, `mox-provider`, `mox-runtime`, docs/tests | After the substrate lands, we still need an end-to-end proof that Mox alone can load the local GPT-OSS 20B GGUF, serve completions with Harmony semantics, and validate behavior against local `llama.cpp` without depending on it for execution. |
+| `MOX-181` | [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237) | Closed | Add a real GGUF-backed decoder execution model for GPT-OSS in Mox | `mox-models`, `mox-compiler`, `mox-runtime`, `mox-serve` | Landed in `4821bf07c`: Mox now executes the real GPT-OSS/OpenAI-MoE decoder path from GGUF-backed weights, with truthful Harmony tokenization, KV-cache/session integration, grouped-KV attention, routed MoE, and explicit refusal semantics instead of routing real GPT-OSS models through the toy fixture decoder. |
+| `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Closed | Add NVIDIA text-generation kernel coverage for the real GPT-OSS decoder path | `mox-backend-cuda`, `mox-compiler`, `mox-runtime`, `mox-serve` | Landed in `4821bf07c`: `mox-backend-cuda` now ships Mox-owned `Q8_0` / `MXFP4` quantized matvec kernels plus backend-owned quantized byte uploads, and `mox-serve` now exposes a truthful CUDA GPT-OSS generation path instead of advertising embeddings-only CUDA support. |
+| `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Closed | Ship and validate a Mox-only GPT-OSS 20B inference flow on the NVIDIA host | `mox-serve`, `mox-provider`, `mox-runtime`, docs/tests | Landed in `4821bf07c`: the local `gpt-oss-20b-mxfp4.gguf` now serves through the Mox-owned `mox-gpt-oss-server` OpenAI-compatible HTTP surface on NVIDIA, and the exact local `/v1/chat/completions` flow returns `323` for the `17 * 19` validation request without delegating inference to `llama.cpp`. |
 
 ## Recommended Order
 
@@ -1100,10 +1103,9 @@ The shortest honest path from today's `main` is:
 7. Cut the app over via `OA-200` through `OA-203`.
 8. Only after inference and embeddings are truthful, consider
    `MOX-176` through `MOX-178` for bounded `sandbox_execution`.
-9. The generic cutover is landed, but GPT-OSS on this NVIDIA host is still
-   external to Mox; `MOX-179` and `MOX-180` are now landed, so finish the remaining GPT-OSS
-   completion track in strict order:
-   `MOX-181` -> `MOX-182` -> `MOX-183`.
+9. The GPT-OSS completion track is now landed on this NVIDIA host:
+   `MOX-179` -> `MOX-180` -> `MOX-181` -> `MOX-182` -> `MOX-183` are closed on
+   `main`, and there is no remaining open roadmap issue in this sequence.
 
 ## Definition Of Done For "Replace Ollama"
 
