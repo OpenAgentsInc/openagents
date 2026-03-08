@@ -1,7 +1,7 @@
 # Mox Conformance And Evidence Contract
 
-> Status: active cutover contract for `MOX-117`, `MOX-171` through `MOX-175`,
-> `OA-201`, and `OA-202`.
+> Status: active cutover contract for `MOX-117`, `MOX-126B`, `MOX-162`,
+> `MOX-171` through `MOX-175`, `OA-201`, and `OA-202`.
 
 ## Purpose
 
@@ -40,6 +40,7 @@ The harness must cover:
   - stop handling
   - seed determinism
   - streaming chunk semantics
+  - slow-reader backpressure and dropped-client behavior
   - cancellation semantics
   - error-before-stream and error-after-stream behavior
 - `embed`
@@ -66,6 +67,26 @@ At minimum the fixture corpus must include:
 The harness should treat those fixtures as the truth source for supported model
 families rather than hand-built synthetic strings alone.
 
+## Served Artifact Identity Tuple
+
+`MOX-162` should define a first-class identity for the full served artifact set
+instead of treating "same model" as a display name plus plan digest.
+
+At minimum the identity tuple must cover:
+
+- `served_artifact_digest`
+- `model_blob_digest`
+- `tokenizer_digest`
+- `chat_template_digest`
+- `generation_defaults_digest`
+- `weight_format`
+- `quantization_family`
+- `backend_toolchain_version`
+
+If any element of that tuple changes, cache reuse, comparability claims, and
+receipt equivalence must be treated as changed unless a narrower reuse rule is
+explicitly documented.
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or
@@ -77,9 +98,16 @@ Required identity and backend fields:
 - `product_id`
 - `model_id`
 - `model_revision`
+- `served_artifact_digest`
+- `model_blob_digest`
+- `tokenizer_digest`
+- `chat_template_digest`
+- `generation_defaults_digest`
 - `weight_format`
+- `quantization_family`
 - `backend_family`
 - `backend_interface_mode`
+- `backend_toolchain_version`
 - `compiled_backend_features`
 - `selected_devices`
 - `effective_backend`
@@ -91,6 +119,8 @@ Required execution-plan and cache fields:
 - `compile_digest`
 - `plan_cache_state`
   - `hit`, `miss`, or `rebuilt`
+- `prefix_cache_state`
+  - `none`, `hit`, `miss`, `bypassed`, or `rebuilt`
 - `warm_cold_load_state`
   - `cold`, `warm`, `rewarm`, or `restored`
 
@@ -108,6 +138,7 @@ Required timing and movement fields:
 Required token and KV fields:
 
 - `prompt_tokens`
+- `prefix_tokens_reused`
 - `output_tokens` where applicable
 - `context_tokens_used`
 - `kv_bytes`
@@ -132,6 +163,8 @@ Required outcome and refusal fields:
 - failure, fallback, and degraded behavior remain truthful through the app seam
 - receipts and diagnostics can carry the runtime evidence schema without
   app-local reconstruction
+- served-artifact identity remains stable enough to compare runs and honest
+  enough to invalidate caches and comparability claims when artifacts drift
 
 ## Fallback Policy Boundary
 
