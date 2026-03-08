@@ -10,12 +10,12 @@ use mox_runtime::{
     PrefixCacheState,
 };
 use mox_serve::{
-    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
-    EmbeddingResponse, GenerationInput, GenerationLoadState, GenerationRequest, GenerationResponse,
-    GenerationStreamStatus, GenerationStreamTerminal, GenerationStreamingPolicy, QuantizationMode,
-    SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata,
-    WeightBundleMetadata, WeightFormat, WeightSource, default_decoder_kv_cache_policy,
-    default_prefix_cache_policy,
+    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
+    EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, GenerationInput,
+    GenerationLoadState, GenerationRequest, GenerationResponse, GenerationStreamStatus,
+    GenerationStreamTerminal, GenerationStreamingPolicy, QuantizationMode, SessionId,
+    TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata, WeightBundleMetadata,
+    WeightFormat, WeightSource, default_decoder_kv_cache_policy, default_prefix_cache_policy,
 };
 
 /// Human-readable crate ownership summary.
@@ -113,6 +113,16 @@ pub struct CapabilityEnvelope {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable output dimensions.
     pub dimensions: usize,
+    /// Normalization policy applied to returned vectors.
+    pub normalization: EmbeddingNormalization,
+    /// Whether output order matches input order.
+    pub preserves_input_order: bool,
+    /// Whether an empty input batch returns an empty successful response.
+    pub empty_batch_returns_empty: bool,
+    /// Whether callers may request truncated output dimensions.
+    pub supports_output_dimensions: bool,
+    /// Whether callers may request overflow truncation on long embedding inputs.
+    pub supports_input_truncation: bool,
     /// Current readiness status.
     pub readiness: ProviderReadiness,
 }
@@ -127,6 +137,7 @@ impl CapabilityEnvelope {
         model_revision: impl Into<String>,
         weight_bundle: WeightBundleEvidence,
         dimensions: usize,
+        normalization: EmbeddingNormalization,
         readiness: ProviderReadiness,
     ) -> Self {
         Self {
@@ -140,6 +151,11 @@ impl CapabilityEnvelope {
             model_revision: model_revision.into(),
             weight_bundle,
             dimensions,
+            normalization,
+            preserves_input_order: true,
+            empty_batch_returns_empty: true,
+            supports_output_dimensions: true,
+            supports_input_truncation: false,
             readiness,
         }
     }
@@ -158,6 +174,7 @@ impl CapabilityEnvelope {
             model.model.revision.clone(),
             WeightBundleEvidence::from_metadata(&model.weights),
             model.dimensions,
+            model.normalization,
             readiness,
         )
     }
@@ -224,8 +241,15 @@ pub struct ExecutionReceipt {
     pub weight_bundle: WeightBundleEvidence,
     /// Output dimensions.
     pub output_dimensions: usize,
+    /// Number of request inputs.
+    pub input_count: usize,
     /// Number of returned vectors.
     pub output_vector_count: usize,
+    /// Normalization policy applied to returned vectors.
+    pub normalization: EmbeddingNormalization,
+    /// Requested output dimensions when the caller asked for truncated vectors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_output_dimensions: Option<usize>,
     /// Timestamp when execution started.
     pub started_at_unix_ms: u64,
     /// Timestamp when execution ended.
@@ -260,7 +284,10 @@ impl ExecutionReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             output_dimensions: response.metadata.dimensions,
+            input_count: response.metadata.input_count,
             output_vector_count: response.metadata.vector_count,
+            normalization: response.metadata.normalization,
+            requested_output_dimensions: response.metadata.requested_output_dimensions,
             started_at_unix_ms,
             ended_at_unix_ms,
             status: ReceiptStatus::Succeeded,
@@ -308,8 +335,16 @@ impl ExecutionReceipt {
             model_family: request.model.model.family.clone(),
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
-            output_dimensions: request.model.dimensions,
+            output_dimensions: request
+                .output_dimensions
+                .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions)
+                .unwrap_or(request.model.dimensions),
+            input_count: request.inputs.len(),
             output_vector_count: 0,
+            normalization: request.model.normalization,
+            requested_output_dimensions: request
+                .output_dimensions
+                .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions),
             started_at_unix_ms,
             ended_at_unix_ms,
             status: ReceiptStatus::Failed,
@@ -720,6 +755,14 @@ pub fn digest_embedding_request(request: &EmbeddingRequest) -> String {
     hasher.update(b"|");
     hasher.update(format!("{:?}", request.model.normalization).as_bytes());
     hasher.update(b"|");
+    hasher.update(
+        request
+            .output_dimensions
+            .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions)
+            .map_or_else(String::new, |dimensions| dimensions.to_string())
+            .as_bytes(),
+    );
+    hasher.update(b"|");
     digest_weight_bundle(&mut hasher, &request.model.weights);
     for input in &request.inputs {
         hasher.update(b"|");
@@ -862,10 +905,10 @@ mod tests {
         QuantizationSupport,
     };
     use mox_serve::{
-        EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationLoadState,
-        GenerationMetrics, GenerationOptions, GenerationProvenance, GenerationRequest,
-        GenerationResponse, GenerationStreamStatus, GenerationStreamTerminal, ReferenceWordDecoder,
-        SessionId, SmokeByteEmbedder, TerminationReason, TokenSequence,
+        EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
+        GenerationLoadState, GenerationMetrics, GenerationOptions, GenerationProvenance,
+        GenerationRequest, GenerationResponse, GenerationStreamStatus, GenerationStreamTerminal,
+        ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TerminationReason, TokenSequence,
         default_decoder_kv_cache_policy, default_decoder_memory_plan,
         default_generation_streaming_policy, default_prefix_cache_policy,
     };
@@ -934,6 +977,11 @@ mod tests {
                     "artifacts": []
                 },
                 "dimensions": 8,
+                "normalization": "None",
+                "preserves_input_order": true,
+                "empty_batch_returns_empty": true,
+                "supports_output_dimensions": true,
+                "supports_input_truncation": false,
                 "readiness": {
                     "status": "Ready",
                     "message": "cpu backend ready"
@@ -1166,6 +1214,9 @@ mod tests {
         assert_eq!(decoded.runtime_backend, "cpu");
         assert_eq!(decoded.backend_selection.requested_backend, "cpu");
         assert_eq!(decoded.output_vector_count, 1);
+        assert_eq!(decoded.input_count, 1);
+        assert_eq!(decoded.normalization, EmbeddingNormalization::None);
+        assert_eq!(decoded.requested_output_dimensions, None);
         assert_eq!(decoded.failure_reason, None);
         assert_eq!(decoded.model_family, "smoke");
         assert_eq!(decoded.model_revision, "v0");
@@ -1405,6 +1456,9 @@ mod tests {
             "backend offline",
         );
         assert_eq!(receipt.status, ReceiptStatus::Failed);
+        assert_eq!(receipt.input_count, 1);
+        assert_eq!(receipt.normalization, EmbeddingNormalization::None);
+        assert_eq!(receipt.requested_output_dimensions, None);
         assert_eq!(receipt.failure_reason.as_deref(), Some("backend offline"));
         assert_eq!(receipt.runtime_backend, "cpu");
         assert_eq!(receipt.backend_selection.requested_backend, "metal");
@@ -1430,6 +1484,8 @@ mod tests {
         assert_eq!(amd.mode, AmdRuntimeMode::Userspace);
         assert!(amd.risk.requires_explicit_opt_in);
         assert_eq!(amd.recovery.driver_binding, AmdDriverBinding::KernelAmdgpu);
+        assert_eq!(receipt.input_count, 1);
+        assert_eq!(receipt.normalization, EmbeddingNormalization::None);
     }
 
     #[test]
@@ -1485,6 +1541,21 @@ mod tests {
         assert_ne!(
             digest_generation_request(&generation_request),
             generation_digest
+        );
+    }
+
+    #[test]
+    fn embedding_request_digest_changes_when_output_dimensions_change() {
+        let request = EmbeddingRequest::new(
+            "req-embed-digest-1",
+            sample_embedding_descriptor(),
+            vec![String::from("same input")],
+        );
+        let truncated = request.clone().with_output_dimensions(4);
+
+        assert_ne!(
+            digest_embedding_request(&request),
+            digest_embedding_request(&truncated)
         );
     }
 

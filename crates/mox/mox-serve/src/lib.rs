@@ -168,6 +168,9 @@ pub struct EmbeddingRequest {
     pub model: EmbeddingModelDescriptor,
     /// UTF-8 text inputs to embed.
     pub inputs: Vec<String>,
+    /// Requested output dimensions when the caller wants a truncated vector.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_dimensions: Option<usize>,
 }
 
 impl EmbeddingRequest {
@@ -183,7 +186,15 @@ impl EmbeddingRequest {
             product_id: String::from(EMBEDDINGS_PRODUCT_ID),
             model,
             inputs,
+            output_dimensions: None,
         }
+    }
+
+    /// Requests truncated output vectors when the model supports that behavior.
+    #[must_use]
+    pub fn with_output_dimensions(mut self, output_dimensions: usize) -> Self {
+        self.output_dimensions = Some(output_dimensions);
+        self
     }
 }
 
@@ -203,10 +214,19 @@ pub struct EmbeddingResponseMetadata {
     pub dimensions: usize,
     /// Number of returned vectors.
     pub vector_count: usize,
+    /// Number of inputs carried by the request.
+    pub input_count: usize,
     /// Model identifier used during execution.
     pub model_id: String,
+    /// Model family used during execution.
+    pub model_family: String,
+    /// Model revision used during execution.
+    pub model_revision: String,
     /// Normalization policy applied by the model.
     pub normalization: EmbeddingNormalization,
+    /// Requested output dimensions when the caller asked for truncated vectors.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub requested_output_dimensions: Option<usize>,
 }
 
 /// Embeddings response contract.
@@ -226,14 +246,26 @@ impl EmbeddingResponse {
     /// Creates an embeddings response from vectors and request metadata.
     #[must_use]
     pub fn new(request: &EmbeddingRequest, embeddings: Vec<EmbeddingVector>) -> Self {
+        let requested_output_dimensions = canonical_embedding_output_dimensions(
+            request.output_dimensions,
+            request.model.dimensions,
+        );
+        let dimensions = embeddings
+            .first()
+            .map(|vector| vector.values.len())
+            .unwrap_or_else(|| requested_output_dimensions.unwrap_or(request.model.dimensions));
         Self {
             request_id: request.request_id.clone(),
             product_id: request.product_id.clone(),
             metadata: EmbeddingResponseMetadata {
-                dimensions: request.model.dimensions,
+                dimensions,
                 vector_count: embeddings.len(),
+                input_count: request.inputs.len(),
                 model_id: request.model.model.model_id.clone(),
+                model_family: request.model.model.family.clone(),
+                model_revision: request.model.model.revision.clone(),
                 normalization: request.model.normalization,
+                requested_output_dimensions,
             },
             embeddings,
         }
@@ -3508,9 +3540,14 @@ pub enum SmokeEmbeddingsError {
     /// The request targeted the wrong model.
     #[error("unsupported model `{0}`")]
     UnsupportedModel(String),
-    /// The request carried no inputs.
-    #[error("embedding request must contain at least one input")]
-    EmptyInputBatch,
+    /// The model produced an invalid output vector.
+    #[error("invalid embedding output for input {index}: {message}")]
+    InvalidOutput {
+        /// Input index in the request batch.
+        index: usize,
+        /// Plain-text failure summary.
+        message: String,
+    },
     /// Graph construction failed.
     #[error(transparent)]
     Graph(#[from] GraphError),
@@ -3528,9 +3565,14 @@ pub enum ModelEmbeddingsError {
     /// The request targeted the wrong model.
     #[error("unsupported model `{0}`")]
     UnsupportedModel(String),
-    /// The request carried no inputs.
-    #[error("embedding request must contain at least one input")]
-    EmptyInputBatch,
+    /// The model produced an invalid output vector.
+    #[error("invalid embedding output for input {index}: {message}")]
+    InvalidOutput {
+        /// Input index in the request batch.
+        index: usize,
+        /// Plain-text failure summary.
+        message: String,
+    },
     /// Loading or validating the model failed.
     #[error(transparent)]
     Model(#[from] ModelLoadError),
@@ -3551,9 +3593,14 @@ pub enum MetalEmbeddingsError {
     /// The request targeted the wrong model.
     #[error("unsupported model `{0}`")]
     UnsupportedModel(String),
-    /// The request carried no inputs.
-    #[error("embedding request must contain at least one input")]
-    EmptyInputBatch,
+    /// The model produced an invalid output vector.
+    #[error("invalid embedding output for input {index}: {message}")]
+    InvalidOutput {
+        /// Input index in the request batch.
+        index: usize,
+        /// Plain-text failure summary.
+        message: String,
+    },
     /// Metal is not available for the requested product path on this machine.
     #[error("metal backend unavailable ({status:?}): {message}")]
     BackendUnavailable {
@@ -3641,15 +3688,18 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
             ));
         }
         if request.inputs.is_empty() {
-            return Err(SmokeEmbeddingsError::EmptyInputBatch);
+            return Ok(EmbeddingResponse::new(request, Vec::new()));
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
         for (index, input) in request.inputs.iter().enumerate() {
-            embeddings.push(EmbeddingVector {
-                index,
-                values: self.embed_one(input)?,
-            });
+            let values = finalize_embedding_values(
+                self.embed_one(input)?,
+                request.model.normalization,
+                request.output_dimensions,
+            )
+            .map_err(|message| SmokeEmbeddingsError::InvalidOutput { index, message })?;
+            embeddings.push(EmbeddingVector { index, values });
         }
 
         Ok(EmbeddingResponse::new(request, embeddings))
@@ -3699,18 +3749,15 @@ impl CpuModelEmbeddingsService {
     }
 
     fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, ModelEmbeddingsError> {
-        let values = execute_cpu_embedding_graph(
+        execute_cpu_embedding_graph(
             &mut self.backend,
             &self.graph,
             self.input_id,
             self.output_id,
             &self.input_shape,
             self.model.featurize(input),
-        )?;
-        Ok(normalize_embedding(
-            values,
-            self.model.descriptor().normalization,
-        ))
+        )
+        .map_err(ModelEmbeddingsError::Runtime)
     }
 }
 
@@ -3729,15 +3776,18 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
             ));
         }
         if request.inputs.is_empty() {
-            return Err(ModelEmbeddingsError::EmptyInputBatch);
+            return Ok(EmbeddingResponse::new(request, Vec::new()));
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
         for (index, input) in request.inputs.iter().enumerate() {
-            embeddings.push(EmbeddingVector {
-                index,
-                values: self.embed_one(input)?,
-            });
+            let values = finalize_embedding_values(
+                self.embed_one(input)?,
+                request.model.normalization,
+                request.output_dimensions,
+            )
+            .map_err(|message| ModelEmbeddingsError::InvalidOutput { index, message })?;
+            embeddings.push(EmbeddingVector { index, values });
         }
 
         Ok(EmbeddingResponse::new(request, embeddings))
@@ -3817,18 +3867,15 @@ impl MetalModelEmbeddingsService {
     }
 
     fn embed_one(&mut self, input: &str) -> Result<Vec<f32>, MetalEmbeddingsError> {
-        let values = execute_metal_embedding_graph(
+        execute_metal_embedding_graph(
             &mut self.backend,
             &self.graph,
             self.input_id,
             self.output_id,
             &self.input_shape,
             self.model.featurize(input),
-        )?;
-        Ok(normalize_embedding(
-            values,
-            self.model.descriptor().normalization,
-        ))
+        )
+        .map_err(MetalEmbeddingsError::Runtime)
     }
 }
 
@@ -3847,15 +3894,18 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
             ));
         }
         if request.inputs.is_empty() {
-            return Err(MetalEmbeddingsError::EmptyInputBatch);
+            return Ok(EmbeddingResponse::new(request, Vec::new()));
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
         for (index, input) in request.inputs.iter().enumerate() {
-            embeddings.push(EmbeddingVector {
-                index,
-                values: self.embed_one(input)?,
-            });
+            let values = finalize_embedding_values(
+                self.embed_one(input)?,
+                request.model.normalization,
+                request.output_dimensions,
+            )
+            .map_err(|message| MetalEmbeddingsError::InvalidOutput { index, message })?;
+            embeddings.push(EmbeddingVector { index, values });
         }
 
         Ok(EmbeddingResponse::new(request, embeddings))
@@ -3932,15 +3982,50 @@ fn execute_metal_embedding_graph(
     output.read_f32()
 }
 
-fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) -> Vec<f32> {
+fn canonical_embedding_output_dimensions(
+    requested_output_dimensions: Option<usize>,
+    model_dimensions: usize,
+) -> Option<usize> {
+    requested_output_dimensions
+        .filter(|dimensions| *dimensions > 0 && *dimensions < model_dimensions)
+}
+
+fn finalize_embedding_values(
+    mut values: Vec<f32>,
+    normalization: EmbeddingNormalization,
+    requested_output_dimensions: Option<usize>,
+) -> Result<Vec<f32>, String> {
+    values = normalize_embedding(values, normalization)?;
+    if let Some(output_dimensions) =
+        canonical_embedding_output_dimensions(requested_output_dimensions, values.len())
+    {
+        values.truncate(output_dimensions);
+        values = normalize_embedding(values, normalization)?;
+    }
+
+    Ok(values)
+}
+
+fn normalize_embedding(
+    mut values: Vec<f32>,
+    normalization: EmbeddingNormalization,
+) -> Result<Vec<f32>, String> {
+    for value in &values {
+        if !value.is_finite() {
+            return Err(String::from("embedding contains NaN or Inf values"));
+        }
+    }
+
     if normalization != EmbeddingNormalization::UnitLength {
-        return values;
+        return Ok(values);
     }
-    let norm = values.iter().map(|value| value * value).sum::<f32>().sqrt();
-    if norm == 0.0 {
-        return values;
+
+    let sum = values.iter().map(|value| value * value).sum::<f32>();
+    let norm = sum.sqrt().max(1.0e-12);
+    for value in &mut values {
+        *value /= norm;
     }
-    values.into_iter().map(|value| value / norm).collect()
+    Ok(values)
 }
 
 #[cfg(test)]
@@ -3956,18 +4041,18 @@ mod tests {
     use super::{
         ContextOverflowPolicy, ContextWindowError, CpuGenerationStream,
         CpuReferenceTextGenerationService, CpuWordGenerationModel, DEFAULT_MODEL_KEEPALIVE_MILLIS,
-        EmbeddingRequest, EmbeddingResponse, EmbeddingVector, EmbeddingsExecutor,
-        FixtureWordTokenizer, GenerationEventStream, GenerationLoadState, GenerationModelHandle,
-        GenerationOptions, GenerationRequest, GenerationResponse, GenerationStreamEvent,
-        GenerationStreamStatus, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
-        InMemoryKvCache, KvCacheError, ListModelsObservation, LoadedModelRegistryError,
-        LocalModelCatalog, ModelDescriptor, ModelSummary, MoxLocalRuntime,
-        ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, SharedPrefixStore,
-        ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
+        EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
+        EmbeddingsExecutor, FixtureWordTokenizer, GenerationEventStream, GenerationLoadState,
+        GenerationModelHandle, GenerationOptions, GenerationRequest, GenerationResponse,
+        GenerationStreamEvent, GenerationStreamStatus, InMemoryGenerationModelRegistry,
+        InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
+        LoadedModelRegistryError, LocalModelCatalog, ModelDescriptor, ModelSummary,
+        MoxLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
+        SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
         StreamingTextGenerationExecutor, TerminationReason, TextGenerationExecutor, TokenId,
         WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
         WordDecoderExecutionModel, current_time_millis, default_generation_streaming_policy,
-        prefix_compatibility,
+        finalize_embedding_values, prefix_compatibility,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -4055,6 +4140,10 @@ mod tests {
         let encoded = serde_json::to_string(&response)?;
         let decoded: EmbeddingResponse = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, response);
+        assert_eq!(decoded.metadata.input_count, 1);
+        assert_eq!(decoded.metadata.model_family, "smoke");
+        assert_eq!(decoded.metadata.model_revision, "v0");
+        assert_eq!(decoded.metadata.requested_output_dimensions, None);
         Ok(())
     }
 
@@ -4072,6 +4161,17 @@ mod tests {
         assert_eq!(first, second);
         assert_eq!(first.metadata.dimensions, 8);
         Ok(())
+    }
+
+    #[test]
+    fn embedding_output_rejects_non_finite_values() {
+        let error = finalize_embedding_values(
+            vec![f32::NAN, 1.0],
+            EmbeddingNormalization::UnitLength,
+            None,
+        )
+        .expect_err("non-finite embeddings should be rejected");
+        assert_eq!(error, "embedding contains NaN or Inf values");
     }
 
     #[test]

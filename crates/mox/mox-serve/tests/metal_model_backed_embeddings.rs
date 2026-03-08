@@ -36,7 +36,14 @@ fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or
             );
 
             assert_eq!(response.metadata.model_id, ByteProjectionEmbedder::MODEL_ID);
+            assert_eq!(
+                response.metadata.model_family,
+                ByteProjectionEmbedder::MODEL_FAMILY
+            );
+            assert_eq!(response.metadata.model_revision, "v1");
             assert_eq!(response.metadata.dimensions, 8);
+            assert_eq!(response.metadata.input_count, 2);
+            assert_eq!(response.metadata.requested_output_dimensions, None);
             assert_eq!(
                 response.metadata.normalization,
                 mox_serve::EmbeddingNormalization::UnitLength
@@ -56,6 +63,14 @@ fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or
                 ByteProjectionEmbedder::MODEL_FAMILY
             );
             assert_eq!(capability.model_revision, "v1");
+            assert_eq!(
+                capability.normalization,
+                mox_serve::EmbeddingNormalization::UnitLength
+            );
+            assert!(capability.preserves_input_order);
+            assert!(capability.empty_batch_returns_empty);
+            assert!(capability.supports_output_dimensions);
+            assert!(!capability.supports_input_truncation);
             let capability_json = serde_json::to_string_pretty(&capability)?;
             assert!(capability_json.contains("\"runtime_backend\": \"metal\""));
             assert!(capability_json.contains("\"effective_backend\": \"metal\""));
@@ -67,7 +82,13 @@ fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or
             assert_eq!(receipt.model_revision, "v1");
             assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
             assert_eq!(receipt.output_dimensions, 8);
+            assert_eq!(receipt.input_count, 2);
             assert_eq!(receipt.output_vector_count, 2);
+            assert_eq!(
+                receipt.normalization,
+                mox_serve::EmbeddingNormalization::UnitLength
+            );
+            assert_eq!(receipt.requested_output_dimensions, None);
             assert!(receipt.failure_reason.is_none());
         }
         Err(MetalEmbeddingsError::BackendUnavailable { status, message }) => {
