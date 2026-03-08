@@ -197,6 +197,7 @@ fn probe_device(path: &Path, ordinal: u16, has_kfd: bool) -> Option<DeviceDescri
             risk: risk_profile(),
             recovery: recovery_profile(driver_binding),
         }),
+        nvidia_metadata: None,
     })
 }
 
