@@ -14,7 +14,11 @@ relevant verification, commit and push that issue's work immediately, comment
 on the GitHub issue with a concise summary of what landed when closing it, and
 then move directly to the next roadmap item. Do not stop partway through the
 roadmap unless blocked by a real external dependency or an explicit user
-instruction to pause or reprioritize.
+instruction to pause or reprioritize. When implementation details are unclear
+or a backend/model/runtime pattern needs a concrete reference, the agent may
+inspect `~/code/candle` for Candle Rust implementations and `~/code/tinygrad`
+for Tinygrad implementations and treat those trees as reference source material
+for how comparable pieces are built.
 
 ## Objective
 
