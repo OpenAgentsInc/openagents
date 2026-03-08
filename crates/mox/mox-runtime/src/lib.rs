@@ -242,6 +242,123 @@ pub struct RuntimeHealth {
     pub message: String,
 }
 
+/// Lifecycle state for a model that is resident in a local runtime.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoadedModelState {
+    /// The model is still warming/loading.
+    Loading,
+    /// The model is loaded and available for requests.
+    Ready,
+}
+
+/// Explicit keepalive and residency truth for one loaded model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedModelResidency {
+    /// Current lifecycle state.
+    pub state: LoadedModelState,
+    /// Number of active requests currently using the model.
+    pub active_requests: usize,
+    /// Configured keepalive duration in milliseconds.
+    pub keep_alive_millis: u64,
+    /// Time the current residency was established.
+    pub loaded_at_millis: u64,
+    /// Most recent time the model was touched by load/warm/request activity.
+    pub last_used_at_millis: u64,
+    /// Planned expiration time when the model is idle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_millis: Option<u64>,
+}
+
+impl LoadedModelResidency {
+    /// Creates a loading residency record.
+    #[must_use]
+    pub fn loading(now_millis: u64, keep_alive_millis: u64) -> Self {
+        Self {
+            state: LoadedModelState::Loading,
+            active_requests: 0,
+            keep_alive_millis,
+            loaded_at_millis: now_millis,
+            last_used_at_millis: now_millis,
+            expires_at_millis: Self::idle_expiration(now_millis, keep_alive_millis, 0),
+        }
+    }
+
+    /// Creates a ready residency record.
+    #[must_use]
+    pub fn ready(now_millis: u64, keep_alive_millis: u64) -> Self {
+        Self {
+            state: LoadedModelState::Ready,
+            active_requests: 0,
+            keep_alive_millis,
+            loaded_at_millis: now_millis,
+            last_used_at_millis: now_millis,
+            expires_at_millis: Self::idle_expiration(now_millis, keep_alive_millis, 0),
+        }
+    }
+
+    /// Marks the model ready without changing its residency anchor.
+    pub fn mark_ready(&mut self, now_millis: u64) {
+        self.state = LoadedModelState::Ready;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis =
+            Self::idle_expiration(now_millis, self.keep_alive_millis, self.active_requests);
+    }
+
+    /// Refreshes keepalive and idle-expiration posture.
+    pub fn refresh_keep_alive(&mut self, keep_alive_millis: u64, now_millis: u64) {
+        self.keep_alive_millis = keep_alive_millis;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis =
+            Self::idle_expiration(now_millis, keep_alive_millis, self.active_requests);
+    }
+
+    /// Marks the start of a request using the model.
+    pub fn begin_request(&mut self, now_millis: u64) {
+        self.active_requests += 1;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis = None;
+    }
+
+    /// Marks the completion of a request using the model.
+    pub fn finish_request(&mut self, now_millis: u64) {
+        if self.active_requests > 0 {
+            self.active_requests -= 1;
+        }
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis =
+            Self::idle_expiration(now_millis, self.keep_alive_millis, self.active_requests);
+    }
+
+    /// Forces the model to expire immediately once idle.
+    pub fn expire_now(&mut self, now_millis: u64) {
+        self.keep_alive_millis = 0;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis = Some(now_millis);
+    }
+
+    /// Returns whether the model should be unloaded at the provided time.
+    #[must_use]
+    pub fn is_expired(&self, now_millis: u64) -> bool {
+        self.active_requests == 0
+            && self
+                .expires_at_millis
+                .is_some_and(|expires_at_millis| expires_at_millis <= now_millis)
+    }
+
+    fn idle_expiration(
+        now_millis: u64,
+        keep_alive_millis: u64,
+        active_requests: usize,
+    ) -> Option<u64> {
+        if active_requests > 0 {
+            None
+        } else {
+            now_millis.checked_add(keep_alive_millis)
+        }
+    }
+}
+
 /// Explicit runtime backend selection and fallback truth.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendSelection {
@@ -547,9 +664,10 @@ mod tests {
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, ArtifactReadPath, BackendSelection, BufferHandle, BufferResidency,
         BufferStorageKind, DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics,
-        ExecutionResult, HealthStatus, ModelArtifactBlobKind, ModelArtifactStorage,
-        ModelArtifactStorageKind, PagedTensorStoragePlan, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, RuntimeError, RuntimeHealth,
+        ExecutionResult, HealthStatus, LoadedModelResidency, LoadedModelState,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind,
+        PagedTensorStoragePlan, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeError, RuntimeHealth,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -857,6 +975,31 @@ mod tests {
             })
         );
         Ok(())
+    }
+
+    #[test]
+    fn loaded_model_residency_tracks_keepalive_and_request_activity() {
+        let mut residency = LoadedModelResidency::loading(1_000, 5_000);
+        assert_eq!(residency.state, LoadedModelState::Loading);
+        assert_eq!(residency.expires_at_millis, Some(6_000));
+
+        residency.mark_ready(1_500);
+        assert_eq!(residency.state, LoadedModelState::Ready);
+        assert_eq!(residency.expires_at_millis, Some(6_500));
+
+        residency.begin_request(2_000);
+        assert_eq!(residency.active_requests, 1);
+        assert_eq!(residency.expires_at_millis, None);
+
+        residency.finish_request(3_000);
+        assert_eq!(residency.active_requests, 0);
+        assert_eq!(residency.expires_at_millis, Some(8_000));
+        assert!(!residency.is_expired(7_999));
+        assert!(residency.is_expired(8_000));
+
+        residency.refresh_keep_alive(0, 8_500);
+        assert_eq!(residency.expires_at_millis, Some(8_500));
+        assert!(residency.is_expired(8_500));
     }
 
     #[test]

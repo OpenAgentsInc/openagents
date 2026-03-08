@@ -2,7 +2,10 @@
 
 mod conformance;
 
-use std::collections::BTreeMap;
+use std::{
+    collections::BTreeMap,
+    time::{SystemTime, UNIX_EPOCH},
+};
 
 pub use conformance::*;
 use mox_backend_cpu::CpuBackend;
@@ -25,7 +28,9 @@ pub use mox_models::{
     SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary, TokenizerBoundary,
     WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
-use mox_runtime::{BackendSelection, DeviceDiscovery, HealthStatus, RuntimeError};
+use mox_runtime::{
+    BackendSelection, DeviceDiscovery, HealthStatus, LoadedModelResidency, RuntimeError,
+};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
@@ -393,10 +398,61 @@ impl WordDecoderExecutionModel for ArtifactWordDecoder {
     }
 }
 
-/// In-memory registry of loaded generation models.
+/// Default local keepalive used by the in-process serve services.
+pub const DEFAULT_MODEL_KEEPALIVE_MILLIS: u64 = 300_000;
+
+/// Loaded-model view exposed by the serve layer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedModelView {
+    /// Comparable loaded-model summary.
+    pub summary: LoadedModelSummary,
+    /// Explicit residency and keepalive truth.
+    pub residency: LoadedModelResidency,
+}
+
+#[derive(Clone, Debug)]
+struct LoadedGenerationModel<M> {
+    model: M,
+    residency: LoadedModelResidency,
+    size_bytes: Option<u64>,
+    size_vram_bytes: Option<u64>,
+    backend: Option<String>,
+    fallback_state: Option<String>,
+}
+
+impl<M> LoadedGenerationModel<M>
+where
+    M: GenerationModelHandle,
+{
+    fn view(&self) -> LoadedModelView {
+        let descriptor = self.model.descriptor();
+        let mut summary = LoadedModelSummary::from_decoder_descriptor(
+            descriptor.model.model_id.clone(),
+            descriptor,
+        );
+        summary.size_bytes = self.size_bytes;
+        summary.size_vram_bytes = self.size_vram_bytes;
+        summary.backend = self.backend.clone();
+        summary.fallback_state = self.fallback_state.clone();
+        LoadedModelView {
+            summary,
+            residency: self.residency.clone(),
+        }
+    }
+}
+
+/// Loaded-model registry failure.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum LoadedModelRegistryError {
+    /// The requested model is not currently loaded.
+    #[error("loaded model `{0}` was not found")]
+    ModelNotLoaded(String),
+}
+
+/// In-memory registry of loaded generation models plus keepalive/lifecycle truth.
 #[derive(Clone, Debug, Default)]
 pub struct InMemoryGenerationModelRegistry<M> {
-    models: BTreeMap<String, M>,
+    models: BTreeMap<String, LoadedGenerationModel<M>>,
 }
 
 impl<M> InMemoryGenerationModelRegistry<M>
@@ -411,26 +467,156 @@ where
         }
     }
 
-    /// Loads or replaces a model handle by model ID.
+    /// Loads or replaces a model handle by model ID using the default keepalive.
     pub fn load(&mut self, model: M) -> Option<M> {
+        self.warm_with_metadata(model, 0, DEFAULT_MODEL_KEEPALIVE_MILLIS, None, None, None)
+    }
+
+    /// Loads or refreshes a model with explicit keepalive and runtime metadata.
+    pub fn warm_with_metadata(
+        &mut self,
+        model: M,
+        now_millis: u64,
+        keep_alive_millis: u64,
+        size_vram_bytes: Option<u64>,
+        backend: Option<String>,
+        fallback_state: Option<String>,
+    ) -> Option<M> {
         let model_id = model.descriptor().model.model_id.clone();
-        self.models.insert(model_id, model)
+        let size_bytes = weight_bundle_size_bytes(&model.descriptor().weights);
+        self.models
+            .insert(
+                model_id,
+                LoadedGenerationModel {
+                    model,
+                    residency: LoadedModelResidency::ready(now_millis, keep_alive_millis),
+                    size_bytes,
+                    size_vram_bytes,
+                    backend,
+                    fallback_state,
+                },
+            )
+            .map(|previous| previous.model)
+    }
+
+    /// Refreshes an already-loaded model's keepalive window.
+    pub fn warm_loaded(
+        &mut self,
+        model_id: &str,
+        now_millis: u64,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, LoadedModelRegistryError> {
+        let entry = self
+            .models
+            .get_mut(model_id)
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        entry
+            .residency
+            .refresh_keep_alive(keep_alive_millis, now_millis);
+        Ok(entry.view())
+    }
+
+    /// Marks a request as actively using the model.
+    pub fn begin_request(
+        &mut self,
+        model_id: &str,
+        now_millis: u64,
+    ) -> Result<LoadedModelView, LoadedModelRegistryError> {
+        let entry = self
+            .models
+            .get_mut(model_id)
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        entry.residency.begin_request(now_millis);
+        Ok(entry.view())
+    }
+
+    /// Marks a request as finished and refreshes idle expiry.
+    pub fn finish_request(
+        &mut self,
+        model_id: &str,
+        now_millis: u64,
+    ) -> Result<LoadedModelView, LoadedModelRegistryError> {
+        let entry = self
+            .models
+            .get_mut(model_id)
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        entry.residency.finish_request(now_millis);
+        Ok(entry.view())
+    }
+
+    /// Unloads an active model and returns the final loaded-model view.
+    pub fn unload_view(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, LoadedModelRegistryError> {
+        let entry = self
+            .models
+            .remove(model_id)
+            .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        Ok(entry.view())
     }
 
     /// Returns an active model by ID.
     #[must_use]
     pub fn active(&self, model_id: &str) -> Option<&M> {
-        self.models.get(model_id)
+        self.models.get(model_id).map(|entry| &entry.model)
     }
 
     /// Returns a mutable active model by ID.
     pub fn active_mut(&mut self, model_id: &str) -> Option<&mut M> {
-        self.models.get_mut(model_id)
+        self.models.get_mut(model_id).map(|entry| &mut entry.model)
     }
 
     /// Unloads an active model.
     pub fn unload(&mut self, model_id: &str) -> Option<M> {
-        self.models.remove(model_id)
+        self.models.remove(model_id).map(|entry| entry.model)
+    }
+
+    /// Unloads any idle models whose keepalive has expired.
+    pub fn expire_idle(&mut self, now_millis: u64) -> Vec<M> {
+        let expired = self
+            .models
+            .iter()
+            .filter(|(_, entry)| entry.residency.is_expired(now_millis))
+            .map(|(model_id, _)| model_id.clone())
+            .collect::<Vec<_>>();
+        let mut removed = Vec::with_capacity(expired.len());
+        for model_id in expired {
+            if let Some(entry) = self.models.remove(model_id.as_str()) {
+                removed.push(entry.model);
+            }
+        }
+        removed
+    }
+
+    /// Returns loaded-model views in stable `ps` order.
+    #[must_use]
+    pub fn loaded_model_views(&self) -> Vec<LoadedModelView> {
+        let mut views = self
+            .models
+            .values()
+            .map(LoadedGenerationModel::view)
+            .collect::<Vec<_>>();
+        views.sort_by(|left, right| {
+            right
+                .residency
+                .expires_at_millis
+                .unwrap_or(u64::MAX)
+                .cmp(&left.residency.expires_at_millis.unwrap_or(u64::MAX))
+                .then_with(|| left.summary.model.cmp(&right.summary.model))
+        });
+        views
+    }
+
+    /// Returns the comparable loaded-model observation used by `ps` parity.
+    #[must_use]
+    pub fn loaded_models_observation(&self) -> LoadedModelsObservation {
+        LoadedModelsObservation::new(
+            self.loaded_model_views()
+                .into_iter()
+                .map(|view| view.summary)
+                .collect(),
+        )
     }
 
     /// Returns the number of active models.
@@ -444,6 +630,25 @@ where
     pub fn is_empty(&self) -> bool {
         self.models.is_empty()
     }
+}
+
+fn weight_bundle_size_bytes(weights: &WeightBundleMetadata) -> Option<u64> {
+    (!weights.artifacts.is_empty()).then_some(
+        weights
+            .artifacts
+            .iter()
+            .map(|artifact| artifact.byte_length)
+            .sum(),
+    )
+}
+
+fn current_time_millis() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis()
+        .try_into()
+        .unwrap_or(u64::MAX)
 }
 
 /// Single KV cache entry for one token position.
@@ -842,6 +1047,9 @@ pub enum ReferenceTextGenerationError {
     /// Session operations failed.
     #[error(transparent)]
     Session(#[from] SessionStoreError),
+    /// Loaded-model registry operations failed.
+    #[error(transparent)]
+    LoadedModelRegistry(#[from] LoadedModelRegistryError),
     /// Cache operations failed.
     #[error(transparent)]
     Cache(#[from] KvCacheError),
@@ -1005,7 +1213,14 @@ impl CpuReferenceTextGenerationService {
         let model = ReferenceWordDecoder::new();
         let model_descriptor = model.descriptor().clone();
         let mut models = InMemoryGenerationModelRegistry::new();
-        models.load(CpuReferenceGenerationModel::new(model)?);
+        models.warm_with_metadata(
+            CpuReferenceGenerationModel::new(model)?,
+            current_time_millis(),
+            DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from("cpu")),
+            None,
+        );
         Ok(Self {
             backend: CpuBackend::new(),
             models,
@@ -1020,7 +1235,14 @@ impl CpuReferenceTextGenerationService {
         model: ReferenceWordDecoder,
     ) -> Result<(), ReferenceTextGenerationError> {
         self.model_descriptor = model.descriptor().clone();
-        self.models.load(CpuReferenceGenerationModel::new(model)?);
+        self.models.warm_with_metadata(
+            CpuReferenceGenerationModel::new(model)?,
+            current_time_millis(),
+            DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from("cpu")),
+            None,
+        );
         Ok(())
     }
 
@@ -1036,6 +1258,51 @@ impl CpuReferenceTextGenerationService {
         self.models
             .active(model_id)
             .map(CpuReferenceGenerationModel::plan_digest)
+    }
+
+    /// Refreshes keepalive for an already loaded model.
+    pub fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, ReferenceTextGenerationError> {
+        Ok(self
+            .models
+            .warm_loaded(model_id, current_time_millis(), keep_alive_millis)?)
+    }
+
+    /// Returns the currently loaded models after applying idle expiry.
+    #[must_use]
+    pub fn loaded_models(&mut self) -> LoadedModelsObservation {
+        self.loaded_models_at(current_time_millis())
+    }
+
+    /// Returns the currently loaded models at a caller-provided time.
+    #[must_use]
+    pub fn loaded_models_at(&mut self, now_millis: u64) -> LoadedModelsObservation {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_models_observation()
+    }
+
+    /// Returns explicit loaded-model residency views at a caller-provided time.
+    #[must_use]
+    pub fn loaded_model_views_at(&mut self, now_millis: u64) -> Vec<LoadedModelView> {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_model_views()
+    }
+
+    /// Returns explicit loaded-model residency views after applying idle expiry.
+    #[must_use]
+    pub fn loaded_model_views(&mut self) -> Vec<LoadedModelView> {
+        self.loaded_model_views_at(current_time_millis())
+    }
+
+    /// Unloads a currently loaded model explicitly.
+    pub fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, ReferenceTextGenerationError> {
+        Ok(self.models.unload_view(model_id)?)
     }
 
     /// Creates a reusable generation session for the provided model ID.
@@ -1071,7 +1338,12 @@ impl TextGenerationExecutor for CpuReferenceTextGenerationService {
     type Error = ReferenceTextGenerationError;
 
     fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
-        run_generation_request(&mut self.backend, &self.models, &mut self.sessions, request)
+        run_generation_request(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            request,
+        )
     }
 }
 
@@ -1092,7 +1364,14 @@ impl CpuModelTextGenerationService {
         let model = ArtifactWordDecoder::from_safetensors_artifact(path)?;
         let model_descriptor = model.descriptor().clone();
         let mut models = InMemoryGenerationModelRegistry::new();
-        models.load(CpuModelGenerationModel::new(model)?);
+        models.warm_with_metadata(
+            CpuModelGenerationModel::new(model)?,
+            current_time_millis(),
+            DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from("cpu")),
+            None,
+        );
         Ok(Self {
             backend: CpuBackend::new(),
             models,
@@ -1107,7 +1386,14 @@ impl CpuModelTextGenerationService {
         model: ArtifactWordDecoder,
     ) -> Result<(), ReferenceTextGenerationError> {
         self.model_descriptor = model.descriptor().clone();
-        self.models.load(CpuModelGenerationModel::new(model)?);
+        self.models.warm_with_metadata(
+            CpuModelGenerationModel::new(model)?,
+            current_time_millis(),
+            DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from("cpu")),
+            None,
+        );
         Ok(())
     }
 
@@ -1123,6 +1409,51 @@ impl CpuModelTextGenerationService {
         self.models
             .active(model_id)
             .map(CpuModelGenerationModel::plan_digest)
+    }
+
+    /// Refreshes keepalive for an already loaded model.
+    pub fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, ReferenceTextGenerationError> {
+        Ok(self
+            .models
+            .warm_loaded(model_id, current_time_millis(), keep_alive_millis)?)
+    }
+
+    /// Returns the currently loaded models after applying idle expiry.
+    #[must_use]
+    pub fn loaded_models(&mut self) -> LoadedModelsObservation {
+        self.loaded_models_at(current_time_millis())
+    }
+
+    /// Returns the currently loaded models at a caller-provided time.
+    #[must_use]
+    pub fn loaded_models_at(&mut self, now_millis: u64) -> LoadedModelsObservation {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_models_observation()
+    }
+
+    /// Returns explicit loaded-model residency views at a caller-provided time.
+    #[must_use]
+    pub fn loaded_model_views_at(&mut self, now_millis: u64) -> Vec<LoadedModelView> {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_model_views()
+    }
+
+    /// Returns explicit loaded-model residency views after applying idle expiry.
+    #[must_use]
+    pub fn loaded_model_views(&mut self) -> Vec<LoadedModelView> {
+        self.loaded_model_views_at(current_time_millis())
+    }
+
+    /// Unloads a currently loaded model explicitly.
+    pub fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, ReferenceTextGenerationError> {
+        Ok(self.models.unload_view(model_id)?)
     }
 
     /// Creates a reusable generation session for the provided model ID.
@@ -1158,7 +1489,12 @@ impl TextGenerationExecutor for CpuModelTextGenerationService {
     type Error = ReferenceTextGenerationError;
 
     fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error> {
-        run_generation_request(&mut self.backend, &self.models, &mut self.sessions, request)
+        run_generation_request(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            request,
+        )
     }
 }
 
@@ -1167,7 +1503,7 @@ pub type CpuProductTextGenerationService = CpuModelTextGenerationService;
 
 fn run_generation_request<M>(
     backend: &mut CpuBackend,
-    models: &InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
+    models: &mut InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
     sessions: &mut InMemoryGenerationSessionStore,
     request: &GenerationRequest,
 ) -> Result<GenerationResponse, ReferenceTextGenerationError>
@@ -1192,89 +1528,94 @@ where
         ));
     }
 
-    let prompt_tokens = match &request.prompt {
-        GenerationInput::Text(text) => loaded_model
+    let model_id = request.model.model.model_id.as_str();
+    let request_start = current_time_millis();
+    models.begin_request(model_id, request_start)?;
+
+    let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
+        let prompt_tokens = match &request.prompt {
+            GenerationInput::Text(text) => loaded_model
+                .model()
+                .tokenizer()
+                .encode_with_special_tokens(text, true, false),
+            GenerationInput::Tokens(tokens) => tokens.clone(),
+        };
+        if prompt_tokens.is_empty() {
+            return Err(ReferenceTextGenerationError::EmptyPrompt);
+        }
+
+        let hidden_size = loaded_model.descriptor().config.hidden_size;
+        let mut cache = if let Some(session_id) = &request.session_id {
+            if request.reset_session {
+                sessions.reset(session_id)?;
+            }
+            sessions.cache(session_id)?.clone()
+        } else {
+            InMemoryKvCache::new(
+                loaded_model.descriptor().config.max_context,
+                loaded_model.descriptor().config.hidden_size,
+            )
+        };
+        if cache.width() != hidden_size {
+            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                hidden_size,
+                kv_width: cache.width(),
+            });
+        }
+
+        let mut last_logits = Vec::new();
+        for token in prompt_tokens.as_slice() {
+            let context = mean_cache_value(&cache, hidden_size);
+            let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+            cache.append(*token, step.hidden.clone(), step.hidden)?;
+            last_logits = step.logits;
+        }
+
+        let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
+        let mut generated_tokens = Vec::new();
+        let termination = loop {
+            if generated_tokens.len() >= request.options.max_output_tokens {
+                break TerminationReason::MaxOutputTokens;
+            }
+            if cache.len() >= cache.max_context() {
+                break TerminationReason::ContextLimit;
+            }
+
+            let next_token = select_argmax(&last_logits)
+                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            if next_token == eos_id {
+                break TerminationReason::EndOfSequence;
+            }
+
+            generated_tokens.push(next_token);
+            let context = mean_cache_value(&cache, hidden_size);
+            let step = loaded_model.execute_step(backend, next_token, cache.len(), &context)?;
+            cache.append(next_token, step.hidden.clone(), step.hidden)?;
+            last_logits = step.logits;
+        };
+
+        if let Some(session_id) = &request.session_id {
+            sessions.replace_cache(session_id, model_id, cache.clone())?;
+        }
+
+        let generated = TokenSequence::new(generated_tokens);
+        let text = loaded_model
             .model()
             .tokenizer()
-            .encode_with_special_tokens(text, true, false),
-        GenerationInput::Tokens(tokens) => tokens.clone(),
-    };
-    if prompt_tokens.is_empty() {
-        return Err(ReferenceTextGenerationError::EmptyPrompt);
-    }
+            .decode(generated.as_slice());
+        Ok(GenerationResponse::new(
+            request,
+            request.session_id.clone(),
+            generated,
+            text,
+            prompt_tokens.len(),
+            cache.len(),
+            termination,
+        ))
+    })();
 
-    let hidden_size = loaded_model.descriptor().config.hidden_size;
-    let mut cache = if let Some(session_id) = &request.session_id {
-        if request.reset_session {
-            sessions.reset(session_id)?;
-        }
-        sessions.cache(session_id)?.clone()
-    } else {
-        InMemoryKvCache::new(
-            loaded_model.descriptor().config.max_context,
-            loaded_model.descriptor().config.hidden_size,
-        )
-    };
-    if cache.width() != hidden_size {
-        return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
-            hidden_size,
-            kv_width: cache.width(),
-        });
-    }
-
-    let mut last_logits = Vec::new();
-    for token in prompt_tokens.as_slice() {
-        let context = mean_cache_value(&cache, hidden_size);
-        let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
-        cache.append(*token, step.hidden.clone(), step.hidden)?;
-        last_logits = step.logits;
-    }
-
-    let eos_id = loaded_model.model().tokenizer().vocabulary().eos_id();
-    let mut generated_tokens = Vec::new();
-    let termination = loop {
-        if generated_tokens.len() >= request.options.max_output_tokens {
-            break TerminationReason::MaxOutputTokens;
-        }
-        if cache.len() >= cache.max_context() {
-            break TerminationReason::ContextLimit;
-        }
-
-        let next_token = select_argmax(&last_logits)
-            .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
-        if next_token == eos_id {
-            break TerminationReason::EndOfSequence;
-        }
-
-        generated_tokens.push(next_token);
-        let context = mean_cache_value(&cache, hidden_size);
-        let step = loaded_model.execute_step(backend, next_token, cache.len(), &context)?;
-        cache.append(next_token, step.hidden.clone(), step.hidden)?;
-        last_logits = step.logits;
-    };
-
-    if let Some(session_id) = &request.session_id {
-        sessions.replace_cache(
-            session_id,
-            request.model.model.model_id.as_str(),
-            cache.clone(),
-        )?;
-    }
-
-    let generated = TokenSequence::new(generated_tokens);
-    let text = loaded_model
-        .model()
-        .tokenizer()
-        .decode(generated.as_slice());
-    Ok(GenerationResponse::new(
-        request,
-        request.session_id.clone(),
-        generated,
-        text,
-        prompt_tokens.len(),
-        cache.len(),
-        termination,
-    ))
+    let _ = models.finish_request(model_id, current_time_millis());
+    result
 }
 
 fn build_generation_graph<M>(
@@ -1821,14 +2162,16 @@ fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) 
 #[cfg(test)]
 mod tests {
     use mox_core::{DType, Shape};
+    use mox_runtime::LoadedModelState;
 
     use super::{
         CpuReferenceTextGenerationService, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
-        EmbeddingsExecutor, FixtureWordTokenizer, GenerationOptions, GenerationRequest,
-        GenerationResponse, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
-        ModelDescriptor, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
-        SmokeByteEmbedder, SmokeEmbeddingsService, TerminationReason, TextGenerationExecutor,
-        WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
+        EmbeddingsExecutor, FixtureWordTokenizer, GenerationModelHandle, GenerationOptions,
+        GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
+        InMemoryGenerationSessionStore, ModelDescriptor, ReferenceTextGenerationError,
+        ReferenceWordDecoder, SessionId, SmokeByteEmbedder, SmokeEmbeddingsService,
+        TerminationReason, TextGenerationExecutor, WeightBundleMetadata, WeightFormat,
+        WeightSource, WeightTensorMetadata,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
@@ -2076,6 +2419,112 @@ mod tests {
         assert!(registry.is_empty());
     }
 
+    #[derive(Clone, Debug)]
+    struct TestGenerationHandle {
+        descriptor: DecoderModelDescriptor,
+    }
+
+    impl GenerationModelHandle for TestGenerationHandle {
+        fn descriptor(&self) -> &DecoderModelDescriptor {
+            &self.descriptor
+        }
+    }
+
+    #[test]
+    fn model_registry_tracks_keepalive_order_and_idle_expiry() {
+        let mut registry = InMemoryGenerationModelRegistry::new();
+        let alpha = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("alpha"),
+        };
+        let beta = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("beta"),
+        };
+
+        assert!(
+            registry
+                .warm_with_metadata(
+                    alpha,
+                    1_000,
+                    5_000,
+                    Some(64),
+                    Some(String::from("cpu")),
+                    None
+                )
+                .is_none()
+        );
+        assert!(
+            registry
+                .warm_with_metadata(
+                    beta,
+                    2_000,
+                    2_000,
+                    Some(32),
+                    Some(String::from("cpu")),
+                    None
+                )
+                .is_none()
+        );
+
+        let views = registry.loaded_model_views();
+        assert_eq!(views.len(), 2);
+        assert_eq!(views[0].summary.model, "alpha");
+        assert_eq!(views[0].residency.expires_at_millis, Some(6_000));
+        assert_eq!(views[1].summary.model, "beta");
+        assert_eq!(views[1].residency.expires_at_millis, Some(4_000));
+
+        let warmed = registry
+            .warm_loaded("beta", 3_000, 9_000)
+            .expect("warm existing beta");
+        assert_eq!(warmed.residency.keep_alive_millis, 9_000);
+        assert_eq!(warmed.residency.expires_at_millis, Some(12_000));
+
+        let request_start = registry
+            .begin_request("beta", 3_500)
+            .expect("begin request");
+        assert_eq!(request_start.residency.state, LoadedModelState::Ready);
+        assert_eq!(request_start.residency.active_requests, 1);
+        assert_eq!(request_start.residency.expires_at_millis, None);
+
+        let during_request = registry.loaded_model_views();
+        assert_eq!(during_request[0].summary.model, "beta");
+
+        let request_finish = registry
+            .finish_request("beta", 4_000)
+            .expect("finish request");
+        assert_eq!(request_finish.residency.active_requests, 0);
+        assert_eq!(request_finish.residency.expires_at_millis, Some(13_000));
+
+        let expired = registry.expire_idle(6_001);
+        assert_eq!(expired.len(), 1);
+        assert_eq!(expired[0].descriptor().model.model_id, "alpha");
+
+        let remaining = registry.loaded_model_views();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].summary.model, "beta");
+    }
+
+    #[test]
+    fn model_registry_zero_keepalive_unloads_when_idle() {
+        let mut registry = InMemoryGenerationModelRegistry::new();
+        let gamma = TestGenerationHandle {
+            descriptor: sample_named_decoder_descriptor("gamma"),
+        };
+
+        assert!(
+            registry
+                .warm_with_metadata(gamma, 10_000, 5_000, None, Some(String::from("cpu")), None)
+                .is_none()
+        );
+        let warmed = registry
+            .warm_loaded("gamma", 10_100, 0)
+            .expect("warm gamma with zero keepalive");
+        assert_eq!(warmed.residency.expires_at_millis, Some(10_100));
+
+        let expired = registry.expire_idle(10_100);
+        assert_eq!(expired.len(), 1);
+        assert!(registry.is_empty());
+    }
+
     #[test]
     fn cpu_reference_text_generation_is_deterministic() -> Result<(), Box<dyn std::error::Error>> {
         let mut service = CpuReferenceTextGenerationService::new()?;
@@ -2151,6 +2600,27 @@ mod tests {
     }
 
     #[test]
+    fn cpu_reference_text_generation_updates_loaded_model_residency()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let warmed = service.warm_model(ReferenceWordDecoder::MODEL_ID, 0)?;
+        assert_eq!(warmed.residency.keep_alive_millis, 0);
+
+        let request = GenerationRequest::new_text(
+            "gen-ref-lifecycle",
+            service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(2),
+        );
+        let response = service.generate(&request)?;
+        assert_eq!(response.output.text, "open agents");
+        assert!(service.loaded_model_views().is_empty());
+        assert!(service.loaded_models().models.is_empty());
+        Ok(())
+    }
+
+    #[test]
     fn cpu_reference_text_generation_rejects_unknown_session() {
         let mut service = CpuReferenceTextGenerationService::new().expect("service");
         let request = GenerationRequest::new_text(
@@ -2169,8 +2639,12 @@ mod tests {
     }
 
     fn sample_decoder_descriptor() -> DecoderModelDescriptor {
+        sample_named_decoder_descriptor("fixture-word-decoder-v0")
+    }
+
+    fn sample_named_decoder_descriptor(model_id: &str) -> DecoderModelDescriptor {
         DecoderModelDescriptor::new(
-            ModelDescriptor::new("fixture-word-decoder-v0", "fixture_decoder", "v0"),
+            ModelDescriptor::new(model_id, "fixture_decoder", "v0"),
             DecoderConfig {
                 hidden_size: 4,
                 layer_count: 1,
