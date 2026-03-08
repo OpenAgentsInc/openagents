@@ -3,11 +3,13 @@ use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend};
 use mox_runtime::{DeviceDiscovery, HealthStatus};
 
 #[cfg(target_os = "macos")]
-use mox_backend_metal::EMBEDDINGS_PARITY_ABS_TOLERANCE;
+use mox_core::QuantizationMode;
 #[cfg(target_os = "macos")]
 use mox_core::{DType, Device, Shape, TensorId};
 #[cfg(target_os = "macos")]
 use mox_ir::{Graph, GraphBuilder};
+#[cfg(target_os = "macos")]
+use mox_runtime::{BackendParityPolicy, compare_embedding_vectors};
 #[cfg(target_os = "macos")]
 use mox_serve::{
     ByteProjectionEmbedder, CpuModelEmbeddingsService, EmbeddingNormalization, EmbeddingRequest,
@@ -36,6 +38,7 @@ fn metal_model_backed_embeddings_parity_reports_explicit_offline_state()
 #[test]
 fn metal_model_backed_embeddings_match_cpu_baseline_within_tolerance_on_ready_hardware()
 -> Result<(), Box<dyn std::error::Error>> {
+    let drift_budget = BackendParityPolicy::default().embedding_budget(QuantizationMode::None);
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -68,12 +71,11 @@ fn metal_model_backed_embeddings_match_cpu_baseline_within_tolerance_on_ready_ha
     for (index, input) in request.inputs.iter().enumerate() {
         let actual = run_metal_embedding(&mut metal, &model, &graph, input_id, output_id, input)?;
         let expected = &cpu_response.embeddings[index].values;
-        assert_eq!(actual.len(), expected.len());
-        assert_vectors_close(
-            expected,
-            &actual,
-            EMBEDDINGS_PARITY_ABS_TOLERANCE,
-            format!("input[{index}]={input}").as_str(),
+        let summary = compare_embedding_vectors(expected, &actual, drift_budget)?;
+        assert!(
+            summary.within_budget,
+            "input[{index}]={input}: max_abs_delta={} max_rel_delta={} cosine_similarity={} budget={:?}",
+            summary.max_abs_delta, summary.max_rel_delta, summary.cosine_similarity, drift_budget,
         );
     }
     Ok(())
@@ -148,20 +150,4 @@ fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) 
     }
 
     values.into_iter().map(|value| value / norm).collect()
-}
-
-#[cfg(target_os = "macos")]
-fn assert_vectors_close(expected: &[f32], actual: &[f32], tolerance: f32, label: &str) {
-    assert_eq!(
-        expected.len(),
-        actual.len(),
-        "{label}: vector length mismatch"
-    );
-    for (index, (expected, actual)) in expected.iter().zip(actual.iter()).enumerate() {
-        let delta = (expected - actual).abs();
-        assert!(
-            delta <= tolerance,
-            "{label}: element {index} drift {delta} exceeded tolerance {tolerance}; expected {expected}, actual {actual}"
-        );
-    }
 }

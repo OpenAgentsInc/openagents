@@ -1,9 +1,12 @@
 //! Runtime traits and execution surfaces for Mox.
 
+mod parity;
+
 use std::collections::BTreeMap;
 
 use mox_core::{DType, Device, QuantizationMode, QuantizedBlockLayout, TensorId, TensorSpec};
 use mox_ir::ExecutionPlan;
+pub use parity::*;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 

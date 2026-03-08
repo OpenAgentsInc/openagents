@@ -60,6 +60,10 @@ can map honestly onto `/api/generate`:
 That is enough to anchor single-turn families such as `phi3` and `qwen2`
 without pretending that multi-turn chat-template parity is already solved.
 
+Embeddings cases also carry an explicit `EmbeddingParityBudget` from
+`mox-runtime` so vector comparisons use the shared drift-budget policy instead
+of one-off tolerance numbers.
+
 ## Report Shape
 
 The harness emits a `ConformanceReport` JSON artifact with this top-level shape:
