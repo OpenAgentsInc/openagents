@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main` and after a deep-research pass over Candle and Tinygrad.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, and after verifying the current GitHub issue set via `gh issue list --state all`.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -8,16 +8,20 @@
 > as truthful compute-market substrate."
 
 Agent execution instruction: implement this roadmap one issue at a time in the
-recommended dependency order listed here, not by GitHub issue number when the
-two differ. For each issue, complete the full scoped implementation, run the
-relevant verification, commit and push that issue's work immediately, comment
-on the GitHub issue with a concise summary of what landed when closing it, and
-then move directly to the next roadmap item. Do not stop partway through the
-roadmap unless blocked by a real external dependency or an explicit user
-instruction to pause or reprioritize. When implementation details are unclear
-or a backend/model/runtime pattern needs a concrete reference, the agent may
-inspect `~/code/candle` for Candle Rust implementations and `~/code/tinygrad`
-for Tinygrad implementations and `~/code/ollama` for Ollama source behavior and
+recommended dependency order listed here. Determine the next item from the
+"Current execution queue" below, not from raw GitHub issue number ordering and
+not from historical "selected open issues" batches. When multiple GitHub issues
+exist for the same local roadmap ID, use the open detailed issue mapped in this
+document and treat the closed duplicates as historical only. For each issue,
+complete the full scoped implementation, run the relevant verification, commit
+and push that issue's work immediately, comment on the GitHub issue with a
+concise summary of what landed when closing it, and then move directly to the
+next roadmap item. Do not stop partway through the roadmap unless blocked by a
+real external dependency or an explicit user instruction to pause or
+reprioritize. When implementation details are unclear or a
+backend/model/runtime pattern needs a concrete reference, the agent may inspect
+`~/code/candle` for Candle Rust implementations and `~/code/tinygrad` for
+Tinygrad implementations and `~/code/ollama` for Ollama source behavior and
 compatibility details and treat those trees as reference source material for
 how comparable pieces are built.
 
@@ -88,7 +92,8 @@ to run the launch `inference` and `embeddings` product paths:
 ## Shipped On Main
 
 `main` now includes the merged phase-2/3/4 baseline from PR `#3163`
-(`53f31280a`).
+(`53f31280a`) plus the `MOX-115` follow-up that closed [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164)
+in commits `887e202ed` and `bdc9ab114`.
 
 ### Delivered in the merged baseline
 
@@ -103,28 +108,53 @@ to run the launch `inference` and `embeddings` product paths:
 - provider-facing AMD context and operator runbook
 - Rustygrad subtree rename to Mox
 
+### Delivered after the merged baseline
+
+- `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164):
+  initial GGML quantized tensor storage substrate for `Q4_0`, `Q4_1`, and
+  `Q8_0`, plus stable storage digests and explicit block-layout metadata
+- Candle-aligned `Q4_0` and `Q4_1` dequantization order plus stricter
+  last-dimension block validation for GGML-shaped tensors
+- explicit runtime truth for dense storage versus dequantized fallback versus
+  backend-quantized storage paths
+
 ### GitHub issue status
 
-Verified on 2026-03-08 via `gh issue view` and `gh issue create`:
+Verified on 2026-03-08 via `gh issue list --state all` with duplicate spot
+checks via `gh issue view`:
 
 | Issue span | State | What landed |
 | --- | --- | --- |
 | [#3143](https://github.com/OpenAgentsInc/openagents/issues/3143), [#3144](https://github.com/OpenAgentsInc/openagents/issues/3144) to [#3149](https://github.com/OpenAgentsInc/openagents/issues/3149) | Closed | Phase-2 CPU baseline: artifact-backed bundles, quantization truth, CPU embeddings, CPU text generation, provider truth, and tested model-backed flows. |
 | [#3150](https://github.com/OpenAgentsInc/openagents/issues/3150), [#3151](https://github.com/OpenAgentsInc/openagents/issues/3151) to [#3156](https://github.com/OpenAgentsInc/openagents/issues/3156) | Closed | Phase-3 Metal baseline: discovery, allocator/submission substrate, minimum kernel coverage, truthful backend selection, parity coverage, and Metal embeddings. |
 | [#3157](https://github.com/OpenAgentsInc/openagents/issues/3157), [#3158](https://github.com/OpenAgentsInc/openagents/issues/3158) to [#3162](https://github.com/OpenAgentsInc/openagents/issues/3162) | Closed | Phase-4 AMD truth baseline: AMD metadata model, KFD/userspace discovery, provider truth, and runbook coverage. |
+| [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | `MOX-115` landed: GGML quantized tensor storage substrate, Candle-aligned `Q4_0` / `Q4_1` decode order, and stricter GGML block-shape validation. |
+| [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174), [#3175](https://github.com/OpenAgentsInc/openagents/issues/3175), [#3176](https://github.com/OpenAgentsInc/openagents/issues/3176), [#3221](https://github.com/OpenAgentsInc/openagents/issues/3221) | Closed | Historical roadmap-seeded duplicates for `MOX-117`, `MOX-118`, `MOX-119`, and `MOX-161`; use the open detailed issues `#3166`, `#3167`, `#3168`, and `#3171` instead. |
 
-Selected open GitHub issues seeded first from this roadmap:
+Current execution queue in dependency order, verified against live GitHub issue
+state:
 
-| Issue | Title | Why it is open now |
-| --- | --- | --- |
-| [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | MOX-115: Add GGML/GGUF quant block decode coverage and backend-backed quantized tensor storage | First-wave GGUF and quantized runtime substrate. |
-| [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | MOX-116: Add memory-mapped model blob access and paged tensor storage for local GGUF and Ollama blobs | First-wave local model ingress and load policy. |
-| [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | MOX-117: Build an Ollama-to-Mox conformance suite for catalog, generation, embeddings, and error semantics | Cutover should be gated by harnessed conformance, not hand inspection. |
-| [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) | MOX-118: Add golden prompt-rendering and tokenizer fixtures from real GGUF and Ollama installs | Prevent silent prompt/tokenizer drift. |
-| [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) | MOX-119: Define numerical parity tolerances and drift budgets across CPU and accelerated backends | Parity work needs explicit tolerances before backend claims widen. |
-| [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | MOX-126A: Add paged KV-cache layout, accounting, and spill policy for long-context text generation | Separates KV paging from model-blob paging. |
-| [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | MOX-156: Add backend-specific quantized execution kernels and parity coverage for supported GGUF quant families | Separates quantized load truth from quantized execution truth. |
-| [#3171](https://github.com/OpenAgentsInc/openagents/issues/3171) | MOX-161: Define allowed fallback lattice for Mox served products | Makes correctness-versus-speed fallback policy explicit before cutover. |
+| Order | Local ID | GitHub issue | State | Why this is the current flow |
+| --- | --- | --- | --- | --- |
+| 1 | `MOX-110` | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Open | This is the next unresolved dependency and should have gone before `MOX-115`. |
+| 2 | `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Open | Tokenizer loading depends on real GGUF metadata extraction. |
+| 3 | `MOX-115` | [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | Already landed on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 4 | `MOX-116` | [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | Open | Local blob mmap and paged tensor storage follow the loader and quant substrate. |
+| 5 | `MOX-117` | [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | Open | This is the authoritative open conformance issue; [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174) is the closed duplicate. |
+| 6 | `MOX-118` | [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) | Open | This is the authoritative open fixtures issue; [#3175](https://github.com/OpenAgentsInc/openagents/issues/3175) is the closed duplicate. |
+| 7 | `MOX-119` | [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) | Open | This is the authoritative open parity issue; [#3176](https://github.com/OpenAgentsInc/openagents/issues/3176) is the closed duplicate. |
+| 8 | `MOX-112` | [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) | Open | Decoder-family adapters should follow GGUF and tokenizer substrate work. |
+| 9 | `MOX-113` | [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) | Open | Embeddings adapters follow the same loader/tokenizer baseline. |
+| 10 | `MOX-114` | [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) | Open | Prompt-rendering compatibility should land after tokenizer and family-adapter work is grounded. |
+| 11 | `MOX-120` | [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) | Open | This starts the catalog and local-runtime lifecycle epic once Epic A is grounded. |
+| 12 | `MOX-121` | [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) | Open | Installed-model listing builds directly on catalog discovery. |
+| 13 | `MOX-122` | [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) | Open | Loaded-model lifecycle sits on top of catalog and runtime substrate. |
+| 14 | `MOX-123` | [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) | Open | Generation options expand the serve boundary once lifecycle exists. |
+| 15 | `MOX-124` | [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) | Open | Metrics and provenance should track the real generation path, not a pre-lifecycle stub. |
+| 16 | `MOX-125` | [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) | Open | The app-facing library API should follow the underlying catalog and serve semantics. |
+| 17 | `MOX-126` | [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) | Open | Deterministic text-generation sessions belong after the serve API boundary is real. |
+| 18 | `MOX-126A` | [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | Open | KV paging is separate from model-blob paging and remains part of the same serving wave. |
+| 19 | `MOX-126B` | [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) | Open | Shared prefix caching should follow explicit KV ownership and lifecycle semantics. |
 
 ## Current Reality
 
@@ -132,6 +162,8 @@ The checked-in repo is no longer at "phase 0 bootstrap." The current truthful
 baseline on `main` is:
 
 - CPU model-backed embeddings and text generation exist and are tested
+- initial GGML quantized tensor storage and decode coverage exists for `Q4_0`,
+  `Q4_1`, and `Q8_0`, but backend-side quantized execution is still future work
 - Metal has a truthful accelerated embeddings path, but not text generation
 - AMD has truthful discovery/readiness surfaces, but not execution kernels
 - provider-facing capability and receipt truth is ahead of the app cutover
@@ -145,8 +177,6 @@ contract, compatibility, lifecycle, and cutover work.
 ### Model compatibility and prompt behavior
 
 - GGUF loading and tensor extraction
-- GGML/GGUF quant block decode coverage and backend-backed quantized tensor
-  storage
 - tokenizer loading for supported families
 - chat-template extraction and normalization
 - role rendering, BOS/EOS handling, stop defaults, and family-specific prompt
@@ -281,7 +311,8 @@ Reviewing `~/code/candle` sharpens several implementation buckets that the
 existing roadmap treated too loosely:
 
 - GGUF/GGML loading in Candle is tied to backend-backed quantized tensor
-  storage, not just metadata parsing
+  storage, not just metadata parsing; the first Mox pass of that landed in
+  `MOX-115`, but full GGUF loader coverage still remains
 - tokenizer reconstruction from GGUF metadata already carries BOS/EOS and
   template-processing implications, which means Mox should not treat tokenizer
   loading and prompt rendering as one issue
@@ -295,103 +326,104 @@ existing roadmap treated too loosely:
 - Candle's custom-op and fused-kernel escape hatches are a practical template
   for how Mox should land backend-specific attention and quantized GEMM kernels
 
-That means the roadmap should explicitly track:
+That means the roadmap should explicitly keep tracking:
 
-- quantized GGUF block decode and backend-backed quantized tensor storage
 - memory-mapped model blob access and paged tensor storage
 - backend allocator pooling, kernel-cache bounds, and device-memory-budget
   reporting
 - a fused/custom-op surface for backend-specific kernels
 
-## Proposed Issues Not Yet In GitHub
+## GitHub-Backed Roadmap Items
 
-These are the next issues that should be opened now that the phase-2/3/4
-baseline is merged.
+Every roadmap item below now has a GitHub issue. The GitHub column maps the
+authoritative issue to use for implementation. When older closed duplicates
+exist, this section lists the open detailed issue and the duplicate handling is
+called out in the status section above.
 
 ### Epic A: GGUF, tokenizer, prompt, and conformance baseline
 
-| Local ID | Proposed issue | Scope | Why it exists |
-| --- | --- | --- | --- |
-| `MOX-110` | Add `WeightFormat::Gguf` and a reusable GGUF metadata/tensor loader | `mox-models` | Required to read the format Ollama actually points at during migration. |
-| `MOX-111` | Implement tokenizer loading from GGUF metadata for SentencePiece and GPT-style BPE families | `mox-models` | Fixture tokenizers are not enough for real model parity. |
-| `MOX-115` | Add GGML/GGUF quant block decode coverage and backend-backed quantized tensor storage | `mox-models`, `mox-runtime`, backend crates | Candle and Tinygrad both treat quantized tensor decode/storage as a core loader/runtime boundary; Mox should not stop at metadata parsing. |
-| `MOX-116` | Add memory-mapped model blob access and paged tensor storage for local GGUF and Ollama blobs | `mox-catalog`, `mox-models`, `mox-runtime` | Large local models should load through mmap/paged storage instead of eager copies when possible. |
-| `MOX-117` | Build an Ollama-to-Mox conformance suite for `tags` / `show` / `ps` / `generate` / `embed` behavior, prompt rendering, truncation, stop handling, streaming, and error semantics | `mox-catalog`, `mox-serve`, `mox-provider`, test fixtures | Cutover should be decided by repeatable conformance evidence, not hand inspection. |
-| `MOX-118` | Add golden prompt-rendering and tokenizer fixtures for supported model families from real GGUF and Ollama installs | `mox-models`, `mox-serve`, test fixtures | Prompt and tokenizer behavior drifts silently without a real golden corpus. |
-| `MOX-119` | Define numerical parity tolerances and drift budgets across CPU and accelerated backends for embeddings and text generation | `mox-serve`, backend crates, `mox-provider` | Backend parity needs explicit tolerance rules across quant modes, decode loops, and embeddings outputs. |
-| `MOX-112` | Add GGUF-backed decoder model-family adapters for first launch families (`llama`, `qwen`, `mistral`) | `mox-models`, `mox-serve` | Replaces model-family construction still hidden behind Ollama. |
-| `MOX-113` | Add GGUF-backed embeddings model-family adapters for the first supported embedding families | `mox-models`, `mox-serve` | Keeps embeddings real rather than demo-only. |
-| `MOX-114` | Implement chat-template extraction and prompt-rendering compatibility for supported model families | `mox-models`, `mox-serve` | GGUF plus tokenizer is still not enough without prompt formatting parity. |
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `MOX-110` | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Open | Add `WeightFormat::Gguf` and a reusable GGUF metadata/tensor loader | `mox-models` | Required to read the format Ollama actually points at during migration. |
+| `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Open | Implement tokenizer loading from GGUF metadata for SentencePiece and GPT-style BPE families | `mox-models` | Fixture tokenizers are not enough for real model parity. |
+| `MOX-115` | [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | Add GGML/GGUF quant block decode coverage and backend-backed quantized tensor storage | `mox-models`, `mox-runtime`, backend crates | Candle and Tinygrad both treat quantized tensor decode/storage as a core loader/runtime boundary; the first Mox pass is now landed. |
+| `MOX-116` | [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | Open | Add memory-mapped model blob access and paged tensor storage for local GGUF and Ollama blobs | `mox-catalog`, `mox-models`, `mox-runtime` | Large local models should load through mmap/paged storage instead of eager copies when possible. |
+| `MOX-117` | [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | Open | Build an Ollama-to-Mox conformance suite for `tags` / `show` / `ps` / `generate` / `embed` behavior, prompt rendering, truncation, stop handling, streaming, and error semantics | `mox-catalog`, `mox-serve`, `mox-provider`, test fixtures | Cutover should be decided by repeatable conformance evidence, not hand inspection. |
+| `MOX-118` | [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) | Open | Add golden prompt-rendering and tokenizer fixtures for supported model families from real GGUF and Ollama installs | `mox-models`, `mox-serve`, test fixtures | Prompt and tokenizer behavior drifts silently without a real golden corpus. |
+| `MOX-119` | [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) | Open | Define numerical parity tolerances and drift budgets across CPU and accelerated backends for embeddings and text generation | `mox-serve`, backend crates, `mox-provider` | Backend parity needs explicit tolerance rules across quant modes, decode loops, and embeddings outputs. |
+| `MOX-112` | [#3177](https://github.com/OpenAgentsInc/openagents/issues/3177) | Open | Add GGUF-backed decoder model-family adapters for first launch families (`llama`, `qwen`, `mistral`) | `mox-models`, `mox-serve` | Replaces model-family construction still hidden behind Ollama. |
+| `MOX-113` | [#3178](https://github.com/OpenAgentsInc/openagents/issues/3178) | Open | Add GGUF-backed embeddings model-family adapters for the first supported embedding families | `mox-models`, `mox-serve` | Keeps embeddings real rather than demo-only. |
+| `MOX-114` | [#3179](https://github.com/OpenAgentsInc/openagents/issues/3179) | Open | Implement chat-template extraction and prompt-rendering compatibility for supported model families | `mox-models`, `mox-serve` | GGUF plus tokenizer is still not enough without prompt formatting parity. |
 
 ### Epic B: Ollama-compatible catalog and local runtime lifecycle
 
-| Local ID | Proposed issue | Scope | Why it exists |
-| --- | --- | --- | --- |
-| `MOX-120` | Add `mox-catalog` for Ollama manifest/blob discovery and model resolution | new `mox-catalog` crate | Lets Mox discover already-installed Ollama models without the daemon. |
-| `MOX-121` | Implement installed-model listing and inspection APIs equivalent to `tags` and `show` | `mox-catalog`, `mox-serve` | Replaces current desktop model discovery and validation calls. |
-| `MOX-122` | Implement loaded-model registry, warm/load/unload, and keepalive semantics equivalent to `ps` and warmups | `mox-serve`, `mox-runtime` | Replaces the local lifecycle subset the desktop actually depends on. |
-| `MOX-123` | Expand generation options to cover `temperature`, `top_k`, `top_p`, penalties, `seed`, and `stop` | `mox-serve` | Matches the option surface already normalized by the app. |
-| `MOX-124` | Add generation metrics and provenance for prompt tokens, output tokens, load time, total time, warm/cold state, and plan digest | `mox-serve`, `mox-provider` | Preserves truthful receipts and UI projections after cutover. |
-| `MOX-125` | Publish a library-first local runtime API for `list_models`, `show_model`, `loaded_models`, `warm_model`, `unload_model`, `generate`, and `embed` | `mox-serve`, `mox-provider` | Creates the in-process replacement boundary the app can call directly. |
-| `MOX-126` | Add GGUF-backed KV-cache ownership and deterministic session lifecycle for text generation | `mox-serve` | Required for real text-generation serving instead of fixture-shaped flows. |
-| `MOX-126A` | Add paged KV-cache layout, accounting, and spill policy for long-context text generation | `mox-serve`, `mox-runtime`, `mox-provider` | Model-blob paging and KV paging are different operational problems and need separate policy. |
-| `MOX-126B` | Add shared prompt-prefix cache identity, reuse policy, accounting, and truth surfaces | `mox-serve`, `mox-runtime`, `mox-provider` | Shared prefix reuse changes warm/cold posture and latency claims and should not hide inside generic KV-cache work. |
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `MOX-120` | [#3180](https://github.com/OpenAgentsInc/openagents/issues/3180) | Open | Add `mox-catalog` for Ollama manifest/blob discovery and model resolution | new `mox-catalog` crate | Lets Mox discover already-installed Ollama models without the daemon. |
+| `MOX-121` | [#3181](https://github.com/OpenAgentsInc/openagents/issues/3181) | Open | Implement installed-model listing and inspection APIs equivalent to `tags` and `show` | `mox-catalog`, `mox-serve` | Replaces current desktop model discovery and validation calls. |
+| `MOX-122` | [#3182](https://github.com/OpenAgentsInc/openagents/issues/3182) | Open | Implement loaded-model registry, warm/load/unload, and keepalive semantics equivalent to `ps` and warmups | `mox-serve`, `mox-runtime` | Replaces the local lifecycle subset the desktop actually depends on. |
+| `MOX-123` | [#3183](https://github.com/OpenAgentsInc/openagents/issues/3183) | Open | Expand generation options to cover `temperature`, `top_k`, `top_p`, penalties, `seed`, and `stop` | `mox-serve` | Matches the option surface already normalized by the app. |
+| `MOX-124` | [#3184](https://github.com/OpenAgentsInc/openagents/issues/3184) | Open | Add generation metrics and provenance for prompt tokens, output tokens, load time, total time, warm/cold state, and plan digest | `mox-serve`, `mox-provider` | Preserves truthful receipts and UI projections after cutover. |
+| `MOX-125` | [#3185](https://github.com/OpenAgentsInc/openagents/issues/3185) | Open | Publish a library-first local runtime API for `list_models`, `show_model`, `loaded_models`, `warm_model`, `unload_model`, `generate`, and `embed` | `mox-serve`, `mox-provider` | Creates the in-process replacement boundary the app can call directly. |
+| `MOX-126` | [#3186](https://github.com/OpenAgentsInc/openagents/issues/3186) | Open | Add GGUF-backed KV-cache ownership and deterministic session lifecycle for text generation | `mox-serve` | Required for real text-generation serving instead of fixture-shaped flows. |
+| `MOX-126A` | [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | Open | Add paged KV-cache layout, accounting, and spill policy for long-context text generation | `mox-serve`, `mox-runtime`, `mox-provider` | Model-blob paging and KV paging are different operational problems and need separate policy. |
+| `MOX-126B` | [#3231](https://github.com/OpenAgentsInc/openagents/issues/3231) | Open | Add shared prompt-prefix cache identity, reuse policy, accounting, and truth surfaces | `mox-serve`, `mox-runtime`, `mox-provider` | Shared prefix reuse changes warm/cold posture and latency claims and should not hide inside generic KV-cache work. |
 
 ### Epic C: Behavioral contract and serving policy
 
-| Local ID | Proposed issue | Scope | Why it exists |
-| --- | --- | --- | --- |
-| `MOX-127` | Add explicit context-window accounting, truncation policy, and over-limit error semantics | `mox-models`, `mox-serve` | Mox needs concrete token budgeting, truncation, and refusal rules. |
-| `MOX-128` | Add deterministic sampler implementation and replay coverage for supported generation options | `mox-serve`, `mox-runtime` | Option parity without sampler correctness is not enough. |
-| `MOX-129` | Add model memory planning, residency policy, and admission control for local serving | `mox-serve`, `mox-runtime`, `mox-provider` | Warm/load/unload is underspecified without memory planning and refusal behavior. |
-| `MOX-133` | Add streaming token generation, backpressure, disconnect, and cancellation semantics for the local runtime API | `mox-serve`, `mox-provider` | The app needs explicit partial-output, slow-reader, dropped-client, and final-chunk semantics. |
-| `MOX-134` | Add embeddings API parity, batch semantics, and model metadata reporting | `mox-serve`, `mox-provider` | Embeddings need explicit dimension, normalization, and failure behavior. |
-| `MOX-135` | Add local model-store integrity verification and cache-repair diagnostics | `mox-catalog`, `mox-models` | Reading the Ollama store is not enough without digest and corruption checks. |
-| `MOX-136` | Define backend-neutral local runtime error taxonomy and desktop-facing diagnostics | `mox-serve`, `mox-provider`, `mox-runtime` | Replacing Ollama requires a stable error model. |
-| `MOX-137` | Add explicit backend fallback, refusal, and degraded-state policy for served products | `mox-runtime`, `mox-provider`, backend crates | "No silent CPU fallback" must become concrete and testable. |
-| `MOX-138` | Define performance acceptance thresholds and cutover gates for Mox runtime replacement | `mox-serve`, `mox-provider`, backend crates | The team needs explicit launch gates before cutover. |
-| `MOX-139` | Decide and document LoRA/adapter support policy for the Ollama replacement boundary | `mox-models`, `mox-catalog`, `mox-serve` | Even a deferral needs an explicit migration policy. |
-| `MOX-157` | Add backend allocator pooling, bounded kernel caches, and device-memory-budget reporting | `mox-runtime`, backend crates, `mox-provider` | Candle's Metal path shows this is required for truthful memory admission and stable warm/cold behavior. |
-| `MOX-158` | Add a fused/custom-op extension surface for backend-specific attention, quantized GEMM, RoPE, and normalization kernels | `mox-compiler`, `mox-runtime`, backend crates | Metal, CUDA, and AMD text generation will need backend-specific fused kernels without breaking the small visible primitive surface. |
-| `MOX-159` | Add local runtime observability for warm/cold transitions, active sessions, queue depth, memory footprint, and backend health changes | `mox-serve`, `mox-provider`, `mox-runtime` | The desktop cutover will be hard to debug without explicit runtime-state observability. |
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `MOX-127` | [#3187](https://github.com/OpenAgentsInc/openagents/issues/3187) | Open | Add explicit context-window accounting, truncation policy, and over-limit error semantics | `mox-models`, `mox-serve` | Mox needs concrete token budgeting, truncation, and refusal rules. |
+| `MOX-128` | [#3188](https://github.com/OpenAgentsInc/openagents/issues/3188) | Open | Add deterministic sampler implementation and replay coverage for supported generation options | `mox-serve`, `mox-runtime` | Option parity without sampler correctness is not enough. |
+| `MOX-129` | [#3189](https://github.com/OpenAgentsInc/openagents/issues/3189) | Open | Add model memory planning, residency policy, and admission control for local serving | `mox-serve`, `mox-runtime`, `mox-provider` | Warm/load/unload is underspecified without memory planning and refusal behavior. |
+| `MOX-133` | [#3190](https://github.com/OpenAgentsInc/openagents/issues/3190) | Open | Add streaming token generation, backpressure, disconnect, and cancellation semantics for the local runtime API | `mox-serve`, `mox-provider` | The app needs explicit partial-output, slow-reader, dropped-client, and final-chunk semantics. |
+| `MOX-134` | [#3191](https://github.com/OpenAgentsInc/openagents/issues/3191) | Open | Add embeddings API parity, batch semantics, and model metadata reporting | `mox-serve`, `mox-provider` | Embeddings need explicit dimension, normalization, and failure behavior. |
+| `MOX-135` | [#3192](https://github.com/OpenAgentsInc/openagents/issues/3192) | Open | Add local model-store integrity verification and cache-repair diagnostics | `mox-catalog`, `mox-models` | Reading the Ollama store is not enough without digest and corruption checks. |
+| `MOX-136` | [#3193](https://github.com/OpenAgentsInc/openagents/issues/3193) | Open | Define backend-neutral local runtime error taxonomy and desktop-facing diagnostics | `mox-serve`, `mox-provider`, `mox-runtime` | Replacing Ollama requires a stable error model. |
+| `MOX-137` | [#3194](https://github.com/OpenAgentsInc/openagents/issues/3194) | Open | Add explicit backend fallback, refusal, and degraded-state policy for served products | `mox-runtime`, `mox-provider`, backend crates | "No silent CPU fallback" must become concrete and testable. |
+| `MOX-138` | [#3195](https://github.com/OpenAgentsInc/openagents/issues/3195) | Open | Define performance acceptance thresholds and cutover gates for Mox runtime replacement | `mox-serve`, `mox-provider`, backend crates | The team needs explicit launch gates before cutover. |
+| `MOX-139` | [#3196](https://github.com/OpenAgentsInc/openagents/issues/3196) | Open | Decide and document LoRA/adapter support policy for the Ollama replacement boundary | `mox-models`, `mox-catalog`, `mox-serve` | Even a deferral needs an explicit migration policy. |
+| `MOX-157` | [#3197](https://github.com/OpenAgentsInc/openagents/issues/3197) | Open | Add backend allocator pooling, bounded kernel caches, and device-memory-budget reporting | `mox-runtime`, backend crates, `mox-provider` | Candle's Metal path shows this is required for truthful memory admission and stable warm/cold behavior. |
+| `MOX-158` | [#3198](https://github.com/OpenAgentsInc/openagents/issues/3198) | Open | Add a fused/custom-op extension surface for backend-specific attention, quantized GEMM, RoPE, and normalization kernels | `mox-compiler`, `mox-runtime`, backend crates | Metal, CUDA, and AMD text generation will need backend-specific fused kernels without breaking the small visible primitive surface. |
+| `MOX-159` | [#3199](https://github.com/OpenAgentsInc/openagents/issues/3199) | Open | Add local runtime observability for warm/cold transitions, active sessions, queue depth, memory footprint, and backend health changes | `mox-serve`, `mox-provider`, `mox-runtime` | The desktop cutover will be hard to debug without explicit runtime-state observability. |
 
 ### Epic D: Quantized execution and accelerated backends after the merged baseline
 
-| Local ID | Proposed issue | Scope | Why it exists |
-| --- | --- | --- | --- |
-| `MOX-156` | Add backend-specific quantized execution kernels and parity coverage for supported GGUF quant families | `mox-compiler`, `mox-runtime`, backend crates, `mox-serve` | Loading quantized models truthfully is not enough if execution immediately falls back to dequantized slow paths. |
-| `MOX-130` | Add Metal lowering/kernel coverage for the minimum text-generation primitive set | `mox-backend-metal`, `mox-compiler`, `mox-runtime` | Embeddings-only Metal is not enough to replace Ollama. |
-| `MOX-131` | Add CPU-vs-Metal parity coverage for the supported text-generation product path | `mox-backend-metal`, `mox-serve` | Required before Metal-backed text generation is believable. |
-| `MOX-132` | Ship a tested Metal-backed `mox.text_generation` path | `mox-backend-metal`, `mox-serve`, `mox-provider` | Closes the biggest remaining Metal gap. |
-| `MOX-140` | Mox phase 5: NVIDIA backend architecture and truthful capability surfaces | `mox-backend-cuda` or equivalent, `mox-runtime`, `mox-provider` | NVIDIA must be explicit if local-runtime coverage is meant to be broad. |
-| `MOX-141` | Define the Mox NVIDIA capability, topology, and risk model | `mox-runtime`, `mox-provider` | Gives NVIDIA the same explicit truth model AMD already has. |
-| `MOX-142` | Implement NVIDIA discovery and health reporting | `mox-backend-cuda` | Makes GPU availability and degraded states explicit. |
-| `MOX-143` | Add CUDA allocator, buffer, stream, and command submission substrate | `mox-backend-cuda`, `mox-runtime` | NVIDIA execution cannot start without runtime substrate. |
-| `MOX-144` | Add CUDA lowering and kernel coverage for the minimum served-product primitive set | `mox-backend-cuda`, `mox-compiler` | Implements the tinygrad-style primitive surface on NVIDIA. |
-| `MOX-145` | Wire NVIDIA backend selection and truthful capability reporting through Mox | `mox-runtime`, `mox-provider`, `mox-backend-cuda` | Keeps provider/runtime contracts explicit and replay-safe. |
-| `MOX-146` | Add CPU-vs-NVIDIA parity coverage for the first supported served product path | `mox-backend-cuda`, `mox-serve` | Prevents "CUDA works" claims without evidence. |
-| `MOX-147` | Ship the first tested NVIDIA-backed served product path | `mox-backend-cuda`, `mox-serve`, `mox-provider` | Makes NVIDIA real instead of aspirational. |
-| `MOX-148` | Define and keep a minimum hardware validation matrix for CPU, Apple Silicon, NVIDIA, AMD KFD, and refusal paths | backend crates, `mox-serve`, test fixtures | Truthful backend support will drift unless the minimum lab matrix and refusal-path coverage stay green. |
-| `MOX-150` | Mox phase 6: AMD served-product execution path | `mox-backend-amd-kfd`, `mox-backend-amd-userspace`, `mox-runtime`, `mox-provider` | Turns AMD from truthful detection into actual execution. |
-| `MOX-151` | Add AMD KFD lowering and kernel coverage for the first supported primitive set | `mox-backend-amd-kfd`, `mox-compiler`, `mox-runtime` | KFD is the lower-risk AMD execution lane and should come first. |
-| `MOX-152` | Wire served-product capability gating for AMD KFD separately from AMD userspace | `mox-provider`, `mox-runtime`, AMD backend crates | Preserves the KFD/userspace split after execution lands. |
-| `MOX-153` | Add CPU-vs-AMD KFD parity coverage for the first supported served product path | `mox-backend-amd-kfd`, `mox-serve` | Prevents overclaiming AMD readiness. |
-| `MOX-154` | Ship the first tested AMD KFD-backed served product path and keep AMD userspace explicitly gated | `mox-backend-amd-kfd`, `mox-serve`, `mox-provider` | Delivers AMD value without pretending userspace is equally ready. |
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `MOX-156` | [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | Open | Add backend-specific quantized execution kernels and parity coverage for supported GGUF quant families | `mox-compiler`, `mox-runtime`, backend crates, `mox-serve` | Loading quantized models truthfully is not enough if execution immediately falls back to dequantized slow paths. |
+| `MOX-130` | [#3200](https://github.com/OpenAgentsInc/openagents/issues/3200) | Open | Add Metal lowering/kernel coverage for the minimum text-generation primitive set | `mox-backend-metal`, `mox-compiler`, `mox-runtime` | Embeddings-only Metal is not enough to replace Ollama. |
+| `MOX-131` | [#3201](https://github.com/OpenAgentsInc/openagents/issues/3201) | Open | Add CPU-vs-Metal parity coverage for the supported text-generation product path | `mox-backend-metal`, `mox-serve` | Required before Metal-backed text generation is believable. |
+| `MOX-132` | [#3202](https://github.com/OpenAgentsInc/openagents/issues/3202) | Open | Ship a tested Metal-backed `mox.text_generation` path | `mox-backend-metal`, `mox-serve`, `mox-provider` | Closes the biggest remaining Metal gap. |
+| `MOX-140` | [#3203](https://github.com/OpenAgentsInc/openagents/issues/3203) | Open | Mox phase 5: NVIDIA backend architecture and truthful capability surfaces | `mox-backend-cuda` or equivalent, `mox-runtime`, `mox-provider` | NVIDIA must be explicit if local-runtime coverage is meant to be broad. |
+| `MOX-141` | [#3204](https://github.com/OpenAgentsInc/openagents/issues/3204) | Open | Define the Mox NVIDIA capability, topology, and risk model | `mox-runtime`, `mox-provider` | Gives NVIDIA the same explicit truth model AMD already has. |
+| `MOX-142` | [#3205](https://github.com/OpenAgentsInc/openagents/issues/3205) | Open | Implement NVIDIA discovery and health reporting | `mox-backend-cuda` | Makes GPU availability and degraded states explicit. |
+| `MOX-143` | [#3206](https://github.com/OpenAgentsInc/openagents/issues/3206) | Open | Add CUDA allocator, buffer, stream, and command submission substrate | `mox-backend-cuda`, `mox-runtime` | NVIDIA execution cannot start without runtime substrate. |
+| `MOX-144` | [#3207](https://github.com/OpenAgentsInc/openagents/issues/3207) | Open | Add CUDA lowering and kernel coverage for the minimum served-product primitive set | `mox-backend-cuda`, `mox-compiler` | Implements the tinygrad-style primitive surface on NVIDIA. |
+| `MOX-145` | [#3208](https://github.com/OpenAgentsInc/openagents/issues/3208) | Open | Wire NVIDIA backend selection and truthful capability reporting through Mox | `mox-runtime`, `mox-provider`, `mox-backend-cuda` | Keeps provider/runtime contracts explicit and replay-safe. |
+| `MOX-146` | [#3209](https://github.com/OpenAgentsInc/openagents/issues/3209) | Open | Add CPU-vs-NVIDIA parity coverage for the first supported served product path | `mox-backend-cuda`, `mox-serve` | Prevents "CUDA works" claims without evidence. |
+| `MOX-147` | [#3210](https://github.com/OpenAgentsInc/openagents/issues/3210) | Open | Ship the first tested NVIDIA-backed served product path | `mox-backend-cuda`, `mox-serve`, `mox-provider` | Makes NVIDIA real instead of aspirational. |
+| `MOX-148` | [#3232](https://github.com/OpenAgentsInc/openagents/issues/3232) | Open | Define and keep a minimum hardware validation matrix for CPU, Apple Silicon, NVIDIA, AMD KFD, and refusal paths | backend crates, `mox-serve`, test fixtures | Truthful backend support will drift unless the minimum lab matrix and refusal-path coverage stay green. |
+| `MOX-150` | [#3211](https://github.com/OpenAgentsInc/openagents/issues/3211) | Open | Mox phase 6: AMD served-product execution path | `mox-backend-amd-kfd`, `mox-backend-amd-userspace`, `mox-runtime`, `mox-provider` | Turns AMD from truthful detection into actual execution. |
+| `MOX-151` | [#3212](https://github.com/OpenAgentsInc/openagents/issues/3212) | Open | Add AMD KFD lowering and kernel coverage for the first supported primitive set | `mox-backend-amd-kfd`, `mox-compiler`, `mox-runtime` | KFD is the lower-risk AMD execution lane and should come first. |
+| `MOX-152` | [#3213](https://github.com/OpenAgentsInc/openagents/issues/3213) | Open | Wire served-product capability gating for AMD KFD separately from AMD userspace | `mox-provider`, `mox-runtime`, AMD backend crates | Preserves the KFD/userspace split after execution lands. |
+| `MOX-153` | [#3214](https://github.com/OpenAgentsInc/openagents/issues/3214) | Open | Add CPU-vs-AMD KFD parity coverage for the first supported served product path | `mox-backend-amd-kfd`, `mox-serve` | Prevents overclaiming AMD readiness. |
+| `MOX-154` | [#3215](https://github.com/OpenAgentsInc/openagents/issues/3215) | Open | Ship the first tested AMD KFD-backed served product path and keep AMD userspace explicitly gated | `mox-backend-amd-kfd`, `mox-serve`, `mox-provider` | Delivers AMD value without pretending userspace is equally ready. |
 
 ### Epic E: App cutover and long-term boundary
 
-| Local ID | Proposed issue | Scope | Why it exists |
-| --- | --- | --- | --- |
-| `OA-200` | Rename `OllamaExecutionMetrics` and `OllamaExecutionProvenance` to backend-neutral names | `apps/autopilot-desktop` | Removes naming debt before the app stops being Ollama-specific. |
-| `OA-201` | Introduce an app-owned `LocalInferenceRuntime` trait and `MoxRuntimeAdapter` | `apps/autopilot-desktop` | Preserves the app seam while swapping runtime implementations. |
-| `OA-202` | Switch desktop default from external Ollama HTTP calls to the in-process Mox runtime | `apps/autopilot-desktop` | This is the actual product cutover. |
-| `OA-203` | Remove the external Ollama dependency and clean up provider/UI wording | `apps/autopilot-desktop` | Finishes product truth cleanup after parity is proven. |
-| `MOX-160` | Define in-process vs subprocess isolation policy for Mox local serving | `mox-serve`, `mox-runtime`, backend crates | The desktop needs an explicit crash/reset isolation decision. |
-| `MOX-161` | Define allowed fallback lattice for Mox served products: refuse, degrade, replan, retry, or same-backend slow path | `mox-runtime`, `mox-provider`, `mox-serve` | Teams will otherwise improvise correctness-vs-speed fallback behavior inconsistently. |
-| `MOX-162` | Define the served-artifact identity and reproducibility tuple for model blob, tokenizer, template, defaults, quantization, and backend/toolchain version | `mox-models`, `mox-serve`, `mox-provider`, `mox-runtime` | "Same model" is not reproducible enough without a first-class artifact identity tuple. |
-| `MOX-163` | Define cache and persisted-state upgrade invalidation policy for plan caches, kernel caches, paged tensors, and KV state | `mox-runtime`, `mox-serve`, `mox-models`, backend crates | Execution and cache truth is unsafe across upgrades unless invalidation rules are explicit. |
-| `MOX-164` | Add model provenance and license gating for locally discovered artifacts and advertised compute-market supply | `mox-catalog`, `mox-provider`, `mox-models` | Integrity alone does not say whether an artifact may be served or advertised. |
-| `MOX-170` | Define the boundary between Ollama-compat migration support and the long-term Mox-native model/runtime format | `mox-models`, `mox-catalog`, `mox-serve` | Migration support should not permanently dictate Mox architecture. |
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `OA-200` | [#3216](https://github.com/OpenAgentsInc/openagents/issues/3216) | Open | Rename `OllamaExecutionMetrics` and `OllamaExecutionProvenance` to backend-neutral names | `apps/autopilot-desktop` | Removes naming debt before the app stops being Ollama-specific. |
+| `OA-201` | [#3217](https://github.com/OpenAgentsInc/openagents/issues/3217) | Open | Introduce an app-owned `LocalInferenceRuntime` trait and `MoxRuntimeAdapter` | `apps/autopilot-desktop` | Preserves the app seam while swapping runtime implementations. |
+| `OA-202` | [#3218](https://github.com/OpenAgentsInc/openagents/issues/3218) | Open | Switch desktop default from external Ollama HTTP calls to the in-process Mox runtime | `apps/autopilot-desktop` | This is the actual product cutover. |
+| `OA-203` | [#3219](https://github.com/OpenAgentsInc/openagents/issues/3219) | Open | Remove the external Ollama dependency and clean up provider/UI wording | `apps/autopilot-desktop` | Finishes product truth cleanup after parity is proven. |
+| `MOX-160` | [#3220](https://github.com/OpenAgentsInc/openagents/issues/3220) | Open | Define in-process vs subprocess isolation policy for Mox local serving | `mox-serve`, `mox-runtime`, backend crates | The desktop needs an explicit crash/reset isolation decision. |
+| `MOX-161` | [#3171](https://github.com/OpenAgentsInc/openagents/issues/3171) | Open | Define allowed fallback lattice for Mox served products: refuse, degrade, replan, retry, or same-backend slow path | `mox-runtime`, `mox-provider`, `mox-serve` | Teams will otherwise improvise correctness-vs-speed fallback behavior inconsistently. |
+| `MOX-162` | [#3233](https://github.com/OpenAgentsInc/openagents/issues/3233) | Open | Define the served-artifact identity and reproducibility tuple for model blob, tokenizer, template, defaults, quantization, and backend/toolchain version | `mox-models`, `mox-serve`, `mox-provider`, `mox-runtime` | "Same model" is not reproducible enough without a first-class artifact identity tuple. |
+| `MOX-163` | [#3234](https://github.com/OpenAgentsInc/openagents/issues/3234) | Open | Define cache and persisted-state upgrade invalidation policy for plan caches, kernel caches, paged tensors, and KV state | `mox-runtime`, `mox-serve`, `mox-models`, backend crates | Execution and cache truth is unsafe across upgrades unless invalidation rules are explicit. |
+| `MOX-164` | [#3235](https://github.com/OpenAgentsInc/openagents/issues/3235) | Open | Add model provenance and license gating for locally discovered artifacts and advertised compute-market supply | `mox-catalog`, `mox-provider`, `mox-models` | Integrity alone does not say whether an artifact may be served or advertised. |
+| `MOX-170` | [#3222](https://github.com/OpenAgentsInc/openagents/issues/3222) | Open | Define the boundary between Ollama-compat migration support and the long-term Mox-native model/runtime format | `mox-models`, `mox-catalog`, `mox-serve` | Migration support should not permanently dictate Mox architecture. |
 
 ### Epic F: Compute-market execution substrate beyond Ollama parity
 
@@ -399,23 +431,24 @@ See [CONFORMANCE_AND_EVIDENCE_CONTRACT.md](./CONFORMANCE_AND_EVIDENCE_CONTRACT.m
 for the minimum conformance harness scope and runtime evidence schema that
 `MOX-117`, `MOX-171` through `MOX-175`, and `OA-201` / `OA-202` must satisfy.
 
-| Local ID | Proposed issue | Scope | Why it exists |
-| --- | --- | --- | --- |
-| `MOX-171` | Expand Mox capability surfaces for compute-market inventory, topology, and performance qualifiers | `mox-provider`, `mox-runtime` | Compute-market inventory needs more than "GPU available"; it also needs compiled-vs-probed backend and toolchain truth. |
-| `MOX-172` | Add batch execution posture, queueing policy, and throughput-class capability reporting | `mox-serve`, `mox-runtime`, `mox-provider` | Batch behavior affects what supply a provider can honestly advertise. |
-| `MOX-173` | Add multi-device and sharded execution planning for supported product paths | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | The market eventually needs same-type multi-device truth, declarative sharding plans, and topology-aware large-model support. |
-| `MOX-174` | Add execution-plan caching, kernel-cache policy, and warm/cold compile-path evidence | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | Tinygrad's graph runners and Candle's backend caches both point to plan identity and cache policy as first-class runtime truth. |
-| `MOX-175` | Extend Mox runtime evidence with compute-market delivery-proof fields and settlement-linkage inputs | `mox-serve`, `mox-provider`, `mox-runtime` | The market needs kernel counts, bytes moved, plan-cache hit/miss, KV growth, and stable plan digests, not app-local reconstruction. |
-| `MOX-176` | Define a reusable Mox execution-profile model for bounded `sandbox_execution` | `mox-runtime`, `mox-provider` | Later `sandbox_execution` must stay bounded and machine-checkable. |
-| `MOX-177` | Add reusable sandbox-execution receipt and evidence contracts compatible with compute-market supply | `mox-runtime`, `mox-provider` | If sandbox execution lands, it needs explicit digests, resource summaries, and exit reasons. |
-| `MOX-178` | Add topology-aware substitution and deliverability checks for accelerator-sensitive compute offers | `mox-provider`, `mox-runtime` | The market needs reusable promised-vs-delivered capability comparison inputs. |
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `MOX-171` | [#3223](https://github.com/OpenAgentsInc/openagents/issues/3223) | Open | Expand Mox capability surfaces for compute-market inventory, topology, and performance qualifiers | `mox-provider`, `mox-runtime` | Compute-market inventory needs more than "GPU available"; it also needs compiled-vs-probed backend and toolchain truth. |
+| `MOX-172` | [#3224](https://github.com/OpenAgentsInc/openagents/issues/3224) | Open | Add batch execution posture, queueing policy, and throughput-class capability reporting | `mox-serve`, `mox-runtime`, `mox-provider` | Batch behavior affects what supply a provider can honestly advertise. |
+| `MOX-173` | [#3225](https://github.com/OpenAgentsInc/openagents/issues/3225) | Open | Add multi-device and sharded execution planning for supported product paths | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | The market eventually needs same-type multi-device truth, declarative sharding plans, and topology-aware large-model support. |
+| `MOX-174` | [#3226](https://github.com/OpenAgentsInc/openagents/issues/3226) | Open | Add execution-plan caching, kernel-cache policy, and warm/cold compile-path evidence | `mox-runtime`, `mox-compiler`, backend crates, `mox-provider` | Tinygrad's graph runners and Candle's backend caches both point to plan identity and cache policy as first-class runtime truth. |
+| `MOX-175` | [#3227](https://github.com/OpenAgentsInc/openagents/issues/3227) | Open | Extend Mox runtime evidence with compute-market delivery-proof fields and settlement-linkage inputs | `mox-serve`, `mox-provider`, `mox-runtime` | The market needs kernel counts, bytes moved, plan-cache hit/miss, KV growth, and stable plan digests, not app-local reconstruction. |
+| `MOX-176` | [#3228](https://github.com/OpenAgentsInc/openagents/issues/3228) | Open | Define a reusable Mox execution-profile model for bounded `sandbox_execution` | `mox-runtime`, `mox-provider` | Later `sandbox_execution` must stay bounded and machine-checkable. |
+| `MOX-177` | [#3229](https://github.com/OpenAgentsInc/openagents/issues/3229) | Open | Add reusable sandbox-execution receipt and evidence contracts compatible with compute-market supply | `mox-runtime`, `mox-provider` | If sandbox execution lands, it needs explicit digests, resource summaries, and exit reasons. |
+| `MOX-178` | [#3230](https://github.com/OpenAgentsInc/openagents/issues/3230) | Open | Add topology-aware substitution and deliverability checks for accelerator-sensitive compute offers | `mox-provider`, `mox-runtime` | The market needs reusable promised-vs-delivered capability comparison inputs. |
 
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
 
-1. Open and land `MOX-110` through `MOX-119` and `MOX-120` through `MOX-126B`
-   so Mox can actually read, mmap, catalog, prove conformance for, and serve supported
+1. Land the remaining unresolved work from `MOX-110` through `MOX-126B`,
+   skipping `MOX-115` because it is already closed on `main`, so Mox can
+   actually read, mmap, catalog, prove conformance for, and serve supported
    Ollama-installed models.
 2. Land `MOX-127` through `MOX-139`, plus `MOX-157` through `MOX-159`, before
    app cutover so context, sampling, streaming, embeddings, integrity,
@@ -425,7 +458,7 @@ The shortest honest path from today's `main` is:
    not hidden behind truthful load-only support.
 4. Finish Metal as a real text-generation backend via `MOX-130` through
    `MOX-132`.
-5. Open NVIDIA explicitly via `MOX-140` through `MOX-147` and keep `MOX-148`
+5. Land NVIDIA explicitly via `MOX-140` through `MOX-147` and keep `MOX-148`
    green as backend claims widen.
 6. Turn AMD truth into AMD execution via `MOX-150` through `MOX-154`.
 7. Lock process-isolation, fallback-lattice, served-artifact identity,
