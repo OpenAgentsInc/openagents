@@ -4,10 +4,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use mox_runtime::{
-    AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
-    BackendProbeState, BackendSelection, BackendToolchainIdentity, CacheAction,
-    CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
-    CompilePathEvidence, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
+    AcceleratorDeliverabilityReport, AcceleratorExecutionRequirement, AmdDeviceMetadata,
+    AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendProbeState,
+    BackendSelection, BackendToolchainIdentity, CacheAction, CacheInvalidationPolicy,
+    CacheInvalidationTrigger, CacheKind, CacheObservation, CompilePathEvidence,
+    DeliveredExecutionContext, DeviceInventoryQualifiers, ExecutionCapabilityProfile,
     ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy,
     LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
     ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
@@ -571,6 +572,9 @@ pub struct SandboxExecutionReceipt {
     pub request_digest: String,
     /// Runtime-owned sandbox evidence for the realized request path.
     pub evidence: SandboxExecutionEvidence,
+    /// Promised-vs-delivered accelerator comparison for accelerator-sensitive offers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub accelerator_deliverability: Option<AcceleratorDeliverabilityReport>,
     /// Timestamp when execution started.
     pub started_at_unix_ms: u64,
     /// Timestamp when execution ended.
@@ -621,12 +625,25 @@ impl SandboxExecutionReceipt {
             request_id: request.request_id.clone(),
             request_digest: evidence.request_digest.clone(),
             evidence,
+            accelerator_deliverability: None,
             started_at_unix_ms,
             ended_at_unix_ms,
             status,
             failure_reason,
             diagnostic,
         }
+    }
+
+    /// Attaches a promised-vs-delivered accelerator comparison for this receipt.
+    #[must_use]
+    pub fn with_accelerator_requirement(
+        mut self,
+        requirement: AcceleratorExecutionRequirement,
+    ) -> Self {
+        self.accelerator_deliverability = Some(requirement.evaluate(
+            DeliveredExecutionContext::from_backend_selection(&self.backend_selection),
+        ));
+        self
     }
 }
 
@@ -1905,20 +1922,21 @@ mod tests {
         QuantizationMode as RuntimeQuantizationMode,
     };
     use mox_runtime::{
-        AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata,
-        AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
-        AmdRuntimeMode, AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport,
-        BackendProbeState, BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
-        DeviceDescriptor, DeviceMemoryBudget, ExecutionDeliveryProof, ExecutionTopologyKind,
-        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
-        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
-        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
-        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
-        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
+        AcceleratorDeliverabilityStatus, AcceleratorExecutionRequirement, AllocatorPoolPolicy,
+        AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata, AmdDriverBinding,
+        AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
+        AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport, BackendProbeState,
+        BackendRuntimeResources, BackendSelection, BackendToolchainIdentity, DeviceDescriptor,
+        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof,
+        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
+        LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
+        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
+        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
+        SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExit,
+        SandboxExecutionExitKind, SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use mox_serve::{
@@ -2524,6 +2542,71 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<SandboxExecutionReceipt>(serde_json::to_value(&receipt)?)?,
             receipt
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sandbox_execution_receipt_can_surface_accelerator_deliverability()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = SandboxExecutionRequestIdentity {
+            request_id: String::from("sandbox-req-2"),
+            sandbox_profile_digest: SandboxExecutionCapabilityProfile::bounded_accelerated(
+                "cuda", 2,
+            )
+            .stable_digest(),
+            command_digest: String::from("command456"),
+            environment_digest: String::from("env456"),
+            input_artifact_digests: vec![String::from("input-a")],
+        };
+        let evidence = SandboxExecutionEvidence {
+            request_digest: digest_sandbox_execution_request(&request),
+            sandbox_profile_digest: request.sandbox_profile_digest.clone(),
+            command_digest: request.command_digest.clone(),
+            environment_digest: request.environment_digest.clone(),
+            input_artifact_digests: request.input_artifact_digests.clone(),
+            output_artifact_digests: vec![String::from("output-a")],
+            exit: SandboxExecutionExit {
+                kind: SandboxExecutionExitKind::Succeeded,
+                exit_code: Some(0),
+                detail: String::from("sandbox completed successfully"),
+            },
+            resources: SandboxExecutionResourceSummary {
+                wall_time_ms: 1000,
+                cpu_time_ms: 600,
+                peak_memory_bytes: 256 * 1024 * 1024,
+                filesystem_write_bytes: 4096,
+                stdout_bytes: 64,
+                stderr_bytes: 0,
+                network_egress_bytes: 0,
+            },
+            stdout_sha256: Some(String::from("stdout456")),
+            stderr_sha256: None,
+            delivery_proof: None,
+        };
+
+        let receipt = SandboxExecutionReceipt::from_evidence(
+            cuda_multi_device_selection(),
+            &request,
+            evidence,
+            20,
+            1020,
+            None,
+        )
+        .with_accelerator_requirement(
+            AcceleratorExecutionRequirement::new("cuda", 1)
+                .with_topology_kind(ExecutionTopologyKind::SingleDevice)
+                .with_minimum_performance_class(DevicePerformanceClass::DiscreteAccelerator)
+                .with_minimum_memory_class(DeviceMemoryClass::DedicatedDevice)
+                .with_minimum_total_memory_bytes(16 * 1024 * 1024 * 1024),
+        );
+
+        let Some(report) = receipt.accelerator_deliverability else {
+            return Err("accelerator deliverability missing".into());
+        };
+        assert_eq!(
+            report.status,
+            AcceleratorDeliverabilityStatus::CompatibleSubstitution
         );
         Ok(())
     }

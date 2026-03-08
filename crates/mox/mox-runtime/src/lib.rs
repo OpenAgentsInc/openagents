@@ -476,6 +476,370 @@ impl ExecutionTopologyPlan {
     }
 }
 
+/// Machine-checkable promised accelerator requirements for one compute-market offer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceleratorExecutionRequirement {
+    /// Runtime backend promised for the offer.
+    pub runtime_backend: String,
+    /// Minimum number of devices required by the offer.
+    pub minimum_device_count: usize,
+    /// Exact topology kind required by the offer when one matters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_topology_kind: Option<ExecutionTopologyKind>,
+    /// Exact stable device IDs required by the offer, when pinned.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_stable_device_ids: Vec<String>,
+    /// Exact topology keys required by the offer, when pinned.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_topology_keys: Vec<String>,
+    /// Minimum performance class required across delivered devices.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_performance_class: Option<DevicePerformanceClass>,
+    /// Minimum memory class required across delivered devices.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_memory_class: Option<DeviceMemoryClass>,
+    /// Minimum aggregate visible device memory required by the offer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_total_memory_bytes: Option<u64>,
+}
+
+impl AcceleratorExecutionRequirement {
+    /// Creates a new promised accelerator requirement.
+    #[must_use]
+    pub fn new(runtime_backend: impl Into<String>, minimum_device_count: usize) -> Self {
+        Self {
+            runtime_backend: runtime_backend.into(),
+            minimum_device_count,
+            required_topology_kind: None,
+            required_stable_device_ids: Vec::new(),
+            required_topology_keys: Vec::new(),
+            minimum_performance_class: None,
+            minimum_memory_class: None,
+            minimum_total_memory_bytes: None,
+        }
+    }
+
+    /// Pins the offer to one exact topology kind.
+    #[must_use]
+    pub const fn with_topology_kind(mut self, kind: ExecutionTopologyKind) -> Self {
+        self.required_topology_kind = Some(kind);
+        self
+    }
+
+    /// Pins the offer to exact stable device IDs.
+    #[must_use]
+    pub fn with_required_devices(mut self, stable_device_ids: Vec<String>) -> Self {
+        self.required_stable_device_ids = stable_device_ids;
+        self
+    }
+
+    /// Pins the offer to exact topology keys.
+    #[must_use]
+    pub fn with_required_topology_keys(mut self, topology_keys: Vec<String>) -> Self {
+        self.required_topology_keys = topology_keys;
+        self
+    }
+
+    /// Requires at least one device performance class.
+    #[must_use]
+    pub const fn with_minimum_performance_class(mut self, class: DevicePerformanceClass) -> Self {
+        self.minimum_performance_class = Some(class);
+        self
+    }
+
+    /// Requires at least one device memory class.
+    #[must_use]
+    pub const fn with_minimum_memory_class(mut self, class: DeviceMemoryClass) -> Self {
+        self.minimum_memory_class = Some(class);
+        self
+    }
+
+    /// Requires a minimum aggregate visible memory budget.
+    #[must_use]
+    pub const fn with_minimum_total_memory_bytes(mut self, bytes: u64) -> Self {
+        self.minimum_total_memory_bytes = Some(bytes);
+        self
+    }
+
+    /// Evaluates one promised offer against the delivered execution context.
+    #[must_use]
+    pub fn evaluate(
+        &self,
+        delivered: DeliveredExecutionContext,
+    ) -> AcceleratorDeliverabilityReport {
+        let mut differences = Vec::new();
+        let mut underdelivered = false;
+
+        if delivered.runtime_backend != self.runtime_backend {
+            underdelivered = true;
+            differences.push(AcceleratorDeliverabilityDifference::new(
+                AcceleratorDeliverabilityDifferenceCode::RuntimeBackendChanged,
+                format!(
+                    "promised backend `{}` but delivered `{}`",
+                    self.runtime_backend, delivered.runtime_backend
+                ),
+            ));
+        }
+
+        if delivered.selected_devices.len() < self.minimum_device_count {
+            underdelivered = true;
+            differences.push(AcceleratorDeliverabilityDifference::new(
+                AcceleratorDeliverabilityDifferenceCode::DeviceCountReduced,
+                format!(
+                    "promised at least {} devices but delivered {}",
+                    self.minimum_device_count,
+                    delivered.selected_devices.len()
+                ),
+            ));
+        }
+
+        if let Some(required_kind) = self.required_topology_kind {
+            if delivered.topology_kind() != Some(required_kind) {
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::TopologyKindChanged,
+                    format!(
+                        "promised topology {:?} but delivered {:?}",
+                        required_kind,
+                        delivered.topology_kind()
+                    ),
+                ));
+            }
+        }
+
+        for stable_device_id in &self.required_stable_device_ids {
+            if !delivered
+                .selected_devices
+                .iter()
+                .any(|device| device.stable_device_id == *stable_device_id)
+            {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::StableDeviceMissing,
+                    format!("required stable device `{stable_device_id}` was not delivered"),
+                ));
+            }
+        }
+
+        for topology_key in &self.required_topology_keys {
+            if !delivered
+                .selected_devices
+                .iter()
+                .any(|device| device.topology_key.as_deref() == Some(topology_key.as_str()))
+            {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::TopologyKeyMissing,
+                    format!("required topology key `{topology_key}` was not delivered"),
+                ));
+            }
+        }
+
+        if let Some(required_class) = self.minimum_performance_class {
+            if delivered.selected_devices.iter().any(|device| {
+                device_performance_rank(device.performance_class)
+                    < device_performance_rank(required_class)
+            }) {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::PerformanceClassReduced,
+                    format!(
+                        "promised performance class {:?} or better across delivered devices",
+                        required_class
+                    ),
+                ));
+            }
+        }
+
+        if let Some(required_class) = self.minimum_memory_class {
+            if delivered.selected_devices.iter().any(|device| {
+                device_memory_rank(device.memory_class) < device_memory_rank(required_class)
+            }) {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::MemoryClassReduced,
+                    format!(
+                        "promised memory class {:?} or better across delivered devices",
+                        required_class
+                    ),
+                ));
+            }
+        }
+
+        if let Some(required_total_memory) = self.minimum_total_memory_bytes {
+            match delivered.total_memory_bytes() {
+                Some(total_memory) if total_memory < required_total_memory => {
+                    underdelivered = true;
+                    differences.push(AcceleratorDeliverabilityDifference::new(
+                        AcceleratorDeliverabilityDifferenceCode::TotalMemoryReduced,
+                        format!(
+                            "promised at least {required_total_memory} bytes of total accelerator memory but delivered {total_memory}"
+                        ),
+                    ));
+                }
+                None => {
+                    underdelivered = true;
+                    differences.push(AcceleratorDeliverabilityDifference::new(
+                        AcceleratorDeliverabilityDifferenceCode::TotalMemoryUnknown,
+                        "promised total accelerator memory could not be verified from delivered inventory",
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+
+        let status = if underdelivered {
+            AcceleratorDeliverabilityStatus::Underdelivered
+        } else if differences.is_empty() {
+            AcceleratorDeliverabilityStatus::Exact
+        } else {
+            AcceleratorDeliverabilityStatus::CompatibleSubstitution
+        };
+
+        AcceleratorDeliverabilityReport {
+            status,
+            requirement: self.clone(),
+            delivered,
+            differences,
+        }
+    }
+}
+
+/// Delivered execution facts used to compare against one promised accelerator offer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveredExecutionContext {
+    /// Runtime backend that actually executed the work.
+    pub runtime_backend: String,
+    /// Explicit multi-device or sharded topology when one was planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Delivered device inventory qualifiers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+}
+
+impl DeliveredExecutionContext {
+    /// Creates a delivered execution context from explicit backend/topology/device facts.
+    #[must_use]
+    pub fn new(
+        runtime_backend: impl Into<String>,
+        execution_topology: Option<ExecutionTopologyPlan>,
+        selected_devices: Vec<DeviceInventoryQualifiers>,
+    ) -> Self {
+        Self {
+            runtime_backend: runtime_backend.into(),
+            execution_topology,
+            selected_devices,
+        }
+    }
+
+    /// Returns the delivered topology kind when one is explicit or derivable.
+    #[must_use]
+    pub fn topology_kind(&self) -> Option<ExecutionTopologyKind> {
+        self.execution_topology
+            .as_ref()
+            .map(|plan| plan.kind)
+            .or_else(|| {
+                (self.selected_devices.len() == 1).then_some(ExecutionTopologyKind::SingleDevice)
+            })
+    }
+
+    /// Returns the aggregate visible memory across delivered devices when known.
+    #[must_use]
+    pub fn total_memory_bytes(&self) -> Option<u64> {
+        if self.selected_devices.is_empty() {
+            return Some(0);
+        }
+        self.selected_devices.iter().try_fold(0u64, |acc, device| {
+            device.total_memory_bytes.map(|value| acc + value)
+        })
+    }
+}
+
+/// High-level result for one promised-vs-delivered accelerator comparison.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceleratorDeliverabilityStatus {
+    /// Delivered execution exactly matched the promised accelerator offer.
+    Exact,
+    /// Delivered execution differed, but still met the minimum promise.
+    CompatibleSubstitution,
+    /// Delivered execution failed to satisfy the promised accelerator offer.
+    Underdelivered,
+}
+
+/// Stable difference code for one promised-vs-delivered accelerator comparison.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceleratorDeliverabilityDifferenceCode {
+    /// The runtime backend changed between promise and delivery.
+    RuntimeBackendChanged,
+    /// The delivered topology kind differed from the promise.
+    TopologyKindChanged,
+    /// Fewer devices were delivered than promised.
+    DeviceCountReduced,
+    /// One required stable device ID was not delivered.
+    StableDeviceMissing,
+    /// One required topology key was not delivered.
+    TopologyKeyMissing,
+    /// Delivered devices fell below the promised performance class.
+    PerformanceClassReduced,
+    /// Delivered devices fell below the promised memory class.
+    MemoryClassReduced,
+    /// Delivered aggregate memory fell below the promised minimum.
+    TotalMemoryReduced,
+    /// Delivered aggregate memory could not be verified.
+    TotalMemoryUnknown,
+}
+
+/// One explicit difference between a promised and delivered accelerator offer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceleratorDeliverabilityDifference {
+    /// Stable difference code.
+    pub code: AcceleratorDeliverabilityDifferenceCode,
+    /// Short machine-readable explanation for the difference.
+    pub detail: String,
+}
+
+impl AcceleratorDeliverabilityDifference {
+    fn new(code: AcceleratorDeliverabilityDifferenceCode, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+        }
+    }
+}
+
+/// Machine-checkable promised-vs-delivered report for accelerator-sensitive offers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceleratorDeliverabilityReport {
+    /// High-level comparison status.
+    pub status: AcceleratorDeliverabilityStatus,
+    /// Promised accelerator requirement.
+    pub requirement: AcceleratorExecutionRequirement,
+    /// Delivered execution context.
+    pub delivered: DeliveredExecutionContext,
+    /// Explicit substitutions or underdelivery differences.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub differences: Vec<AcceleratorDeliverabilityDifference>,
+}
+
+const fn device_performance_rank(class: DevicePerformanceClass) -> u8 {
+    match class {
+        DevicePerformanceClass::Reference => 0,
+        DevicePerformanceClass::IntegratedAccelerator => 1,
+        DevicePerformanceClass::PartitionedAccelerator => 2,
+        DevicePerformanceClass::DiscreteAccelerator => 3,
+    }
+}
+
+const fn device_memory_rank(class: DeviceMemoryClass) -> u8 {
+    match class {
+        DeviceMemoryClass::HostOnly => 0,
+        DeviceMemoryClass::SharedHostDevice => 1,
+        DeviceMemoryClass::DedicatedDevice => 2,
+    }
+}
+
 impl DeviceDescriptor {
     /// Returns stable inventory qualifiers derived from the current device/topology metadata.
     #[must_use]
@@ -4022,6 +4386,18 @@ impl BackendSelection {
     }
 }
 
+impl DeliveredExecutionContext {
+    /// Derives delivered execution context from runtime backend selection truth.
+    #[must_use]
+    pub fn from_backend_selection(selection: &BackendSelection) -> Self {
+        Self::new(
+            selection.effective_backend.clone(),
+            selection.execution_topology_plan(),
+            selection.selected_devices_inventory(),
+        )
+    }
+}
+
 /// Minimal execution metrics.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExecutionMetrics {
@@ -4260,16 +4636,18 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        AdmissionRefusalReason, Allocator, AllocatorPoolPolicy, AllocatorPoolReport,
-        AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
-        AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
-        AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendExtensionExecution,
-        BackendExtensionSupport, BackendHealthTracker, BackendRuntimeResources, BackendSelection,
-        BackendSelectionState, BackendToolchainIdentity, BatchExecutionPosture, BufferHandle,
-        BufferResidency, BufferStorageKind, CacheAction, CacheInvalidationTrigger, CacheKind,
-        CacheObservation, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
-        DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
-        ExecutionBackend, ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
+        AcceleratorDeliverabilityDifferenceCode, AcceleratorDeliverabilityStatus,
+        AcceleratorExecutionRequirement, AdmissionRefusalReason, Allocator, AllocatorPoolPolicy,
+        AllocatorPoolReport, AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata,
+        AmdDriverBinding, AmdOptInStatus, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
+        AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy,
+        BackendExtensionExecution, BackendExtensionSupport, BackendHealthTracker,
+        BackendRuntimeResources, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
+        BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
+        CacheInvalidationTrigger, CacheKind, CacheObservation, DEFAULT_PENALTY_LOOKBACK,
+        DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
+        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
+        ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
         ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
         ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
         KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
@@ -5657,6 +6035,95 @@ mod tests {
                 .map(|plan| plan.assignments.len()),
             Some(2)
         );
+    }
+
+    #[test]
+    fn accelerator_requirements_can_match_exact_delivery() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        );
+        let report = AcceleratorExecutionRequirement::new("cuda", 1)
+            .with_topology_kind(ExecutionTopologyKind::SingleDevice)
+            .with_minimum_performance_class(DevicePerformanceClass::DiscreteAccelerator)
+            .with_minimum_memory_class(DeviceMemoryClass::DedicatedDevice)
+            .with_minimum_total_memory_bytes(16 * 1024 * 1024 * 1024)
+            .evaluate(DeliveredExecutionContext::from_backend_selection(
+                &selection,
+            ));
+
+        assert_eq!(report.status, AcceleratorDeliverabilityStatus::Exact);
+        assert!(report.differences.is_empty());
+    }
+
+    #[test]
+    fn accelerator_requirements_mark_topology_change_as_compatible_substitution() {
+        let first = sample_cuda_device();
+        let mut second = sample_cuda_device();
+        second.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        second.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let metadata = second
+            .nvidia_metadata
+            .as_mut()
+            .expect("sample cuda metadata");
+        metadata.topology.pci_bdf = Some(String::from("00000000:02:00.0"));
+        let selection =
+            BackendSelection::direct("cuda", Some(first.clone()), vec![String::from("matmul")])
+                .with_selected_devices(vec![first.clone(), second.clone()])
+                .with_execution_topology(Some(ExecutionTopologyPlan::layer_sharded(
+                    "cuda",
+                    vec![
+                        (first.inventory_qualifiers(), 0, 20),
+                        (second.inventory_qualifiers(), 20, 40),
+                    ],
+                )));
+
+        let report = AcceleratorExecutionRequirement::new("cuda", 1)
+            .with_topology_kind(ExecutionTopologyKind::SingleDevice)
+            .with_minimum_performance_class(DevicePerformanceClass::DiscreteAccelerator)
+            .with_minimum_total_memory_bytes(16 * 1024 * 1024 * 1024)
+            .evaluate(DeliveredExecutionContext::from_backend_selection(
+                &selection,
+            ));
+
+        assert_eq!(
+            report.status,
+            AcceleratorDeliverabilityStatus::CompatibleSubstitution
+        );
+        assert_eq!(
+            report.differences.first().map(|value| value.code),
+            Some(AcceleratorDeliverabilityDifferenceCode::TopologyKindChanged)
+        );
+    }
+
+    #[test]
+    fn accelerator_requirements_can_detect_underdelivery() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        );
+        let report = AcceleratorExecutionRequirement::new("cuda", 2)
+            .with_required_topology_keys(vec![String::from("00000000:02:00.0")])
+            .with_minimum_total_memory_bytes(32 * 1024 * 1024 * 1024)
+            .evaluate(DeliveredExecutionContext::from_backend_selection(
+                &selection,
+            ));
+
+        assert_eq!(
+            report.status,
+            AcceleratorDeliverabilityStatus::Underdelivered
+        );
+        assert!(report.differences.iter().any(|difference| {
+            difference.code == AcceleratorDeliverabilityDifferenceCode::DeviceCountReduced
+        }));
+        assert!(report.differences.iter().any(|difference| {
+            difference.code == AcceleratorDeliverabilityDifferenceCode::TopologyKeyMissing
+        }));
+        assert!(report.differences.iter().any(|difference| {
+            difference.code == AcceleratorDeliverabilityDifferenceCode::TotalMemoryReduced
+        }));
     }
 
     #[test]
