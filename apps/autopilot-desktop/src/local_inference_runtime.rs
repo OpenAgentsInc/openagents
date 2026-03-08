@@ -1,19 +1,65 @@
 use std::collections::VecDeque;
 use std::time::Instant;
 
-use openagents_kernel_core::ids::sha256_prefixed_text;
-use serde_json::{Map, Value};
-
-use crate::ollama_execution::{
-    LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance, OllamaExecutionCommand,
-    OllamaExecutionConfig, OllamaExecutionSnapshot, OllamaExecutionUpdate, OllamaExecutionWorker,
-    build_generate_options, canonical_options_json, normalize_optional_text, normalize_prompt,
-};
 use crate::state::job_inbox::JobExecutionParam;
 use mox_serve::{
     CpuReferenceTextGenerationService, GenerationLoadState, GenerationOptions, GenerationRequest,
     TextGenerationExecutor,
 };
+use openagents_kernel_core::ids::sha256_prefixed_text;
+use serde_json::{Map, Value, json};
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalInferenceExecutionMetrics {
+    pub total_duration_ns: Option<u64>,
+    pub load_duration_ns: Option<u64>,
+    pub prompt_eval_count: Option<u64>,
+    pub prompt_eval_duration_ns: Option<u64>,
+    pub eval_count: Option<u64>,
+    pub eval_duration_ns: Option<u64>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct LocalInferenceExecutionProvenance {
+    pub backend: String,
+    pub requested_model: Option<String>,
+    pub served_model: String,
+    pub normalized_prompt_digest: String,
+    pub normalized_options_json: String,
+    pub normalized_options_digest: String,
+    pub base_url: String,
+    pub total_duration_ns: Option<u64>,
+    pub load_duration_ns: Option<u64>,
+    pub prompt_token_count: Option<u64>,
+    pub generated_token_count: Option<u64>,
+    pub warm_start: Option<bool>,
+}
+
+impl LocalInferenceExecutionProvenance {
+    pub fn receipt_payload(&self) -> Value {
+        json!({
+            "backend": self.backend,
+            "requested_model": self.requested_model,
+            "served_model": self.served_model,
+            "normalized_prompt_digest": self.normalized_prompt_digest,
+            "normalized_options": self.normalized_options_value(),
+            "normalized_options_digest": self.normalized_options_digest,
+            "base_url": self.base_url,
+            "metrics": {
+                "total_duration_ns": self.total_duration_ns,
+                "load_duration_ns": self.load_duration_ns,
+                "prompt_token_count": self.prompt_token_count,
+                "generated_token_count": self.generated_token_count,
+            },
+            "warm_start": self.warm_start,
+        })
+    }
+
+    fn normalized_options_value(&self) -> Value {
+        serde_json::from_str(self.normalized_options_json.as_str())
+            .unwrap_or_else(|_| Value::String(self.normalized_options_json.clone()))
+    }
+}
 
 /// Backend-neutral local inference snapshot kept in the app seam.
 #[derive(Clone, Debug, Default)]
@@ -31,41 +77,13 @@ pub struct LocalInferenceRuntimeSnapshot {
     pub refreshed_at: Option<Instant>,
 }
 
-impl From<LocalInferenceRuntimeSnapshot> for OllamaExecutionSnapshot {
-    fn from(value: LocalInferenceRuntimeSnapshot) -> Self {
-        Self {
-            base_url: value.base_url,
-            reachable: value.reachable,
-            configured_model: value.configured_model,
-            ready_model: value.ready_model,
-            available_models: value.available_models,
-            loaded_models: value.loaded_models,
-            last_error: value.last_error,
-            last_action: value.last_action,
-            last_request_id: value.last_request_id,
-            last_metrics: value.last_metrics,
-            refreshed_at: value.refreshed_at,
-        }
+impl LocalInferenceRuntimeSnapshot {
+    pub fn is_ready(&self) -> bool {
+        self.reachable && self.ready_model.is_some()
     }
 }
 
-impl From<OllamaExecutionSnapshot> for LocalInferenceRuntimeSnapshot {
-    fn from(value: OllamaExecutionSnapshot) -> Self {
-        Self {
-            base_url: value.base_url,
-            reachable: value.reachable,
-            configured_model: value.configured_model,
-            ready_model: value.ready_model,
-            available_models: value.available_models,
-            loaded_models: value.loaded_models,
-            last_error: value.last_error,
-            last_action: value.last_action,
-            last_request_id: value.last_request_id,
-            last_metrics: value.last_metrics,
-            refreshed_at: value.refreshed_at,
-        }
-    }
-}
+pub type LocalInferenceExecutionSnapshot = LocalInferenceRuntimeSnapshot;
 
 /// App-owned local inference generation job.
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -127,81 +145,6 @@ pub trait LocalInferenceRuntime {
 pub fn default_local_inference_runtime() -> Result<Box<dyn LocalInferenceRuntime>, String> {
     MoxRuntimeAdapter::new_reference()
         .map(|adapter| Box::new(adapter) as Box<dyn LocalInferenceRuntime>)
-}
-
-/// Adapter that keeps the current Ollama worker behind the app-owned runtime seam.
-pub struct OllamaRuntimeAdapter {
-    worker: OllamaExecutionWorker,
-}
-
-impl OllamaRuntimeAdapter {
-    #[must_use]
-    pub fn spawn() -> Self {
-        Self::spawn_with_config(OllamaExecutionConfig::default())
-    }
-
-    #[must_use]
-    pub fn spawn_with_config(config: OllamaExecutionConfig) -> Self {
-        Self {
-            worker: OllamaExecutionWorker::spawn_with_config(config),
-        }
-    }
-}
-
-impl LocalInferenceRuntime for OllamaRuntimeAdapter {
-    fn enqueue(&mut self, command: LocalInferenceRuntimeCommand) -> Result<(), String> {
-        let command = match command {
-            LocalInferenceRuntimeCommand::Refresh => OllamaExecutionCommand::Refresh,
-            LocalInferenceRuntimeCommand::WarmConfiguredModel => {
-                OllamaExecutionCommand::WarmConfiguredModel
-            }
-            LocalInferenceRuntimeCommand::UnloadConfiguredModel => {
-                OllamaExecutionCommand::UnloadConfiguredModel
-            }
-            LocalInferenceRuntimeCommand::Generate(job) => {
-                OllamaExecutionCommand::Generate(crate::ollama_execution::OllamaGenerateJob {
-                    request_id: job.request_id,
-                    prompt: job.prompt,
-                    requested_model: job.requested_model,
-                    params: job.params,
-                })
-            }
-        };
-        self.worker.enqueue(command)
-    }
-
-    fn drain_updates(&mut self) -> Vec<LocalInferenceRuntimeUpdate> {
-        self.worker
-            .drain_updates()
-            .into_iter()
-            .map(|update| match update {
-                OllamaExecutionUpdate::Snapshot(snapshot) => {
-                    LocalInferenceRuntimeUpdate::Snapshot(Box::new((*snapshot).into()))
-                }
-                OllamaExecutionUpdate::Started(started) => {
-                    LocalInferenceRuntimeUpdate::Started(LocalInferenceExecutionStarted {
-                        request_id: started.request_id,
-                        model: started.model,
-                    })
-                }
-                OllamaExecutionUpdate::Completed(completed) => {
-                    LocalInferenceRuntimeUpdate::Completed(LocalInferenceExecutionCompleted {
-                        request_id: completed.request_id,
-                        model: completed.model,
-                        output: completed.output,
-                        metrics: completed.metrics,
-                        provenance: completed.provenance,
-                    })
-                }
-                OllamaExecutionUpdate::Failed(failed) => {
-                    LocalInferenceRuntimeUpdate::Failed(LocalInferenceExecutionFailed {
-                        request_id: failed.request_id,
-                        error: failed.error,
-                    })
-                }
-            })
-            .collect()
-    }
 }
 
 /// In-process Mox adapter for the app-owned runtime seam.
@@ -491,192 +434,96 @@ fn mox_generation_options(options: &Map<String, Value>) -> Result<GenerationOpti
     Ok(generation_options)
 }
 
+pub fn normalize_optional_text(raw: &str) -> Option<String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+pub fn normalize_prompt(raw: &str) -> String {
+    raw.replace("\r\n", "\n")
+        .replace('\r', "\n")
+        .trim()
+        .to_string()
+}
+
+pub fn canonical_options_json(options: &Map<String, Value>) -> Result<String, String> {
+    let canonical = options
+        .iter()
+        .map(|(key, value)| (key.clone(), value.clone()))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    serde_json::to_string(&canonical)
+        .map_err(|error| format!("failed to encode normalized local inference options: {error}"))
+}
+
+pub fn build_generate_options(params: &[JobExecutionParam]) -> Result<Map<String, Value>, String> {
+    let mut options = Map::<String, Value>::new();
+    for param in params {
+        let key = param.key.as_str();
+        let value = param.value.as_str();
+        match key {
+            "max_tokens" => {
+                options.insert("num_predict".to_string(), json!(parse_i64(key, value)?));
+            }
+            "temperature" => {
+                options.insert("temperature".to_string(), json!(parse_f64(key, value)?));
+            }
+            "top_k" => {
+                options.insert("top_k".to_string(), json!(parse_i64(key, value)?));
+            }
+            "top_p" => {
+                options.insert("top_p".to_string(), json!(parse_f64(key, value)?));
+            }
+            "frequency_penalty" => {
+                options.insert(
+                    "frequency_penalty".to_string(),
+                    json!(parse_f64(key, value)?),
+                );
+            }
+            "presence_penalty" => {
+                options.insert(
+                    "presence_penalty".to_string(),
+                    json!(parse_f64(key, value)?),
+                );
+            }
+            "seed" => {
+                options.insert("seed".to_string(), json!(parse_i64(key, value)?));
+            }
+            "stop" => {
+                let Some(stop) = normalize_optional_text(value) else {
+                    continue;
+                };
+                options.insert("stop".to_string(), json!([stop]));
+            }
+            _ => {}
+        }
+    }
+    Ok(options)
+}
+
+fn parse_i64(key: &str, raw: &str) -> Result<i64, String> {
+    raw.trim()
+        .parse::<i64>()
+        .map_err(|error| format!("invalid {} value '{}': {}", key, raw.trim(), error))
+}
+
+fn parse_f64(key: &str, raw: &str) -> Result<f64, String> {
+    raw.trim()
+        .parse::<f64>()
+        .map_err(|error| format!("invalid {} value '{}': {}", key, raw.trim(), error))
+}
+
 #[cfg(test)]
 mod tests {
-    use std::io::{ErrorKind, Read, Write};
-    use std::net::TcpListener;
-    use std::thread;
-    use std::time::Duration;
-
-    use serde_json::Value;
-
     use super::{
         LocalInferenceGenerateJob, LocalInferenceRuntime, LocalInferenceRuntimeCommand,
-        LocalInferenceRuntimeUpdate, MoxRuntimeAdapter, OllamaRuntimeAdapter,
-        default_local_inference_runtime,
+        LocalInferenceRuntimeUpdate, MoxRuntimeAdapter, default_local_inference_runtime,
     };
-    use crate::ollama_execution::OllamaExecutionConfig;
     use crate::state::job_inbox::JobExecutionParam;
     use mox_serve::ReferenceWordDecoder;
-
-    fn spawn_mock_ollama_server(
-        available_models: &[&str],
-        loaded_models: &[&str],
-    ) -> (String, thread::JoinHandle<()>) {
-        let listener = TcpListener::bind("127.0.0.1:0").expect("bind mock ollama server");
-        listener
-            .set_nonblocking(true)
-            .expect("set mock ollama listener nonblocking");
-        let address = format!("http://{}", listener.local_addr().expect("local addr"));
-        let available_models = available_models
-            .iter()
-            .map(|model| format!("{{\"name\":\"{model}\"}}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let loaded_models = loaded_models
-            .iter()
-            .map(|model| format!("{{\"name\":\"{model}\"}}"))
-            .collect::<Vec<_>>()
-            .join(",");
-        let handle = thread::spawn(move || {
-            let mut last_activity = std::time::Instant::now();
-            loop {
-                let mut stream = loop {
-                    match listener.accept() {
-                        Ok((stream, _addr)) => break stream,
-                        Err(error) if error.kind() == ErrorKind::WouldBlock => {
-                            if last_activity.elapsed() >= Duration::from_secs(1) {
-                                return;
-                            }
-                            thread::sleep(Duration::from_millis(10));
-                            continue;
-                        }
-                        Err(error) => panic!("accept mock ollama request: {error}"),
-                    }
-                };
-                let mut buffer = [0u8; 4096];
-                let read = stream.read(&mut buffer).expect("read request");
-                let request = String::from_utf8_lossy(&buffer[..read]);
-                let body = request
-                    .split("\r\n\r\n")
-                    .nth(1)
-                    .unwrap_or_default()
-                    .to_string();
-                let (status, response_body) = if request.starts_with("GET /api/tags ") {
-                    (200, format!("{{\"models\":[{available_models}]}}"))
-                } else if request.starts_with("GET /api/ps ") {
-                    (200, format!("{{\"models\":[{loaded_models}]}}"))
-                } else if request.starts_with("POST /api/show ") {
-                    (200, "{}".to_string())
-                } else if request.starts_with("POST /api/generate ") {
-                    let parsed: Value =
-                        serde_json::from_str(body.as_str()).expect("parse generate body");
-                    let model = parsed["model"].as_str().expect("generate model");
-                    let keep_alive = parsed["keep_alive"].as_str();
-                    if parsed["prompt"].as_str() == Some("") && keep_alive.is_some() {
-                        (200, "{\"response\":\"\"}".to_string())
-                    } else {
-                        assert_eq!(model, "llama3.2:latest");
-                        (
-                            200,
-                            r#"{
-                                "response": "hello from adapter",
-                                "total_duration": 120000000,
-                                "load_duration": 30000000,
-                                "prompt_eval_count": 5,
-                                "prompt_eval_duration": 40000000,
-                                "eval_count": 3,
-                                "eval_duration": 80000000
-                            }"#
-                            .to_string(),
-                        )
-                    }
-                } else {
-                    panic!("unexpected mock ollama request {request:?} body={body}");
-                };
-                let response = format!(
-                    "HTTP/1.1 {status} OK\r\ncontent-length: {}\r\ncontent-type: application/json\r\nconnection: close\r\n\r\n{}",
-                    response_body.len(),
-                    response_body
-                );
-                stream
-                    .write_all(response.as_bytes())
-                    .expect("write response");
-                last_activity = std::time::Instant::now();
-            }
-        });
-        (address, handle)
-    }
-
-    #[test]
-    fn ollama_runtime_adapter_forwards_updates() {
-        let (base_url, server_handle) =
-            spawn_mock_ollama_server(&["llama3.2:latest"], &["llama3.2:latest"]);
-        let mut adapter = OllamaRuntimeAdapter::spawn_with_config(OllamaExecutionConfig {
-            base_url,
-            configured_model: Some("llama3.2:latest".to_string()),
-            refresh_interval: Duration::from_secs(60),
-        });
-
-        adapter
-            .enqueue(LocalInferenceRuntimeCommand::Refresh)
-            .expect("queue refresh");
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
-        let mut snapshot = None;
-        while std::time::Instant::now() < deadline {
-            let updates = adapter.drain_updates();
-            snapshot = updates.into_iter().find_map(|update| match update {
-                LocalInferenceRuntimeUpdate::Snapshot(value) => Some(value),
-                _ => None,
-            });
-            if snapshot.is_some() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        let snapshot = snapshot.expect("runtime snapshot");
-        assert_eq!(snapshot.ready_model.as_deref(), Some("llama3.2:latest"));
-
-        adapter
-            .enqueue(LocalInferenceRuntimeCommand::Generate(
-                LocalInferenceGenerateJob {
-                    request_id: "req-adapter-1".to_string(),
-                    prompt: "hello".to_string(),
-                    requested_model: Some("llama3.2:latest".to_string()),
-                    params: vec![JobExecutionParam {
-                        key: "max_tokens".to_string(),
-                        value: "32".to_string(),
-                    }],
-                },
-            ))
-            .expect("queue generate");
-        let deadline = std::time::Instant::now() + Duration::from_secs(3);
-        let mut completed = None;
-        let mut failure = None;
-        let mut last_snapshot = None;
-        while std::time::Instant::now() < deadline {
-            let updates = adapter.drain_updates();
-            for update in updates {
-                match update {
-                    LocalInferenceRuntimeUpdate::Completed(value) => {
-                        completed = Some(value);
-                        break;
-                    }
-                    LocalInferenceRuntimeUpdate::Failed(value) => {
-                        failure = Some(value.error);
-                    }
-                    LocalInferenceRuntimeUpdate::Snapshot(value) => {
-                        last_snapshot = Some(format!(
-                            "ready_model={:?} last_error={:?} last_action={:?}",
-                            value.ready_model, value.last_error, value.last_action
-                        ));
-                    }
-                    LocalInferenceRuntimeUpdate::Started(_) => {}
-                }
-            }
-            if completed.is_some() {
-                break;
-            }
-            thread::sleep(Duration::from_millis(20));
-        }
-        let completed = completed.unwrap_or_else(|| {
-            panic!("completed update failure={failure:?} snapshot={last_snapshot:?}")
-        });
-        assert_eq!(completed.output, "hello from adapter");
-        assert_eq!(completed.provenance.backend, "ollama");
-
-        server_handle.join().expect("mock server thread");
-    }
 
     #[test]
     fn mox_runtime_adapter_refreshes_and_generates() {

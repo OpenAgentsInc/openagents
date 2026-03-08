@@ -20,8 +20,10 @@ use crate::labor_orchestrator::{
     CodexLaborApprovalEvent, CodexLaborBinding, CodexLaborClaimState, CodexLaborSubmissionState,
     CodexLaborVerdictState, CodexRunClassification,
 };
-use crate::local_inference_runtime::{LocalInferenceRuntime, LocalInferenceRuntimeCommand};
-use crate::ollama_execution::{LocalInferenceExecutionProvenance, OllamaExecutionSnapshot};
+use crate::local_inference_runtime::{
+    LocalInferenceExecutionProvenance, LocalInferenceExecutionSnapshot, LocalInferenceRuntime,
+    LocalInferenceRuntimeCommand,
+};
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
     ProviderNip90LaneWorker,
@@ -245,7 +247,7 @@ impl Default for NetworkRequestsPaneInputs {
                 .value("inference")
                 .placeholder("Compute family"),
             preferred_backend: TextInput::new()
-                .value("ollama")
+                .value("mox")
                 .placeholder("Preferred backend (optional)"),
             capability_constraints: TextInput::new()
                 .placeholder("Capability envelope constraints (JSON or key=value list)"),
@@ -5086,7 +5088,7 @@ pub struct RenderState {
     pub provider_nip90_lane_worker: ProviderNip90LaneWorker,
     pub apple_fm_execution: AppleFmBridgeSnapshot,
     pub apple_fm_execution_worker: AppleFmBridgeWorker,
-    pub ollama_execution: OllamaExecutionSnapshot,
+    pub ollama_execution: LocalInferenceExecutionSnapshot,
     pub local_inference_runtime: Box<dyn LocalInferenceRuntime>,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
     pub next_runtime_command_seq: u64,

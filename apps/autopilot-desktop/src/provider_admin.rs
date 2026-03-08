@@ -274,7 +274,7 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
         Some("apple_foundation_models") => {
             Some("apple_foundation_models.text_generation".to_string())
         }
-        Some("ollama") => Some("ollama.text_generation".to_string()),
+        Some("mox") | Some("ollama") => Some("ollama.text_generation".to_string()),
         _ => None,
     }
 }
@@ -392,12 +392,12 @@ fn health_events_for_state(state: &RenderState, captured_at_ms: i64) -> Vec<Prov
 
     if let Some(error) = state.provider_runtime.ollama.last_error.as_deref() {
         events.push(ProviderHealthEvent {
-            event_id: "ollama_runtime_error".to_string(),
+            event_id: "local_inference_runtime_error".to_string(),
             occurred_at_ms: captured_at_ms,
             severity: "warn".to_string(),
-            code: "OLLAMA_RUNTIME_ERROR".to_string(),
+            code: "LOCAL_INFERENCE_RUNTIME_ERROR".to_string(),
             detail: error.to_string(),
-            source: "ollama".to_string(),
+            source: "mox".to_string(),
         });
     }
 
@@ -506,7 +506,7 @@ fn infer_request_id_from_job_id(job_id: &str) -> String {
 mod tests {
     use super::{infer_product_id_for_history_row, snapshot_signature};
     use crate::app_state::{JobDemandSource, JobHistoryReceiptRow, JobHistoryStatus};
-    use crate::ollama_execution::LocalInferenceExecutionProvenance;
+    use crate::local_inference_runtime::LocalInferenceExecutionProvenance;
     use openagents_provider_substrate::{
         ProviderAvailability, ProviderPersistedSnapshot, ProviderRuntimeStatusSnapshot,
         ProviderSandboxAvailability, ProviderSandboxExecutionClass, ProviderSandboxProfile,

@@ -7148,7 +7148,7 @@ fn append_provenance_evidence_for_history(
 fn append_ollama_execution_provenance_evidence(
     evidence: &mut Vec<EvidenceRef>,
     job_id: &str,
-    provenance: &crate::ollama_execution::LocalInferenceExecutionProvenance,
+    provenance: &crate::local_inference_runtime::LocalInferenceExecutionProvenance,
 ) {
     let normalized_job_id = normalize_key(job_id);
     evidence.push(EvidenceRef::new(
@@ -7185,7 +7185,7 @@ fn append_ollama_execution_provenance_evidence(
 }
 
 fn ollama_execution_receipt_tags(
-    provenance: Option<&crate::ollama_execution::LocalInferenceExecutionProvenance>,
+    provenance: Option<&crate::local_inference_runtime::LocalInferenceExecutionProvenance>,
 ) -> BTreeMap<String, String> {
     let Some(provenance) = provenance else {
         return BTreeMap::new();
@@ -10487,8 +10487,9 @@ fn load_earn_kernel_receipts(path: &Path) -> Result<LoadedReceiptState, String> 
 mod tests {
     use super::*;
 
-    fn fixture_ollama_provenance() -> crate::ollama_execution::LocalInferenceExecutionProvenance {
-        crate::ollama_execution::LocalInferenceExecutionProvenance {
+    fn fixture_ollama_provenance()
+    -> crate::local_inference_runtime::LocalInferenceExecutionProvenance {
+        crate::local_inference_runtime::LocalInferenceExecutionProvenance {
             backend: "ollama".to_string(),
             requested_model: Some("llama3.2:latest".to_string()),
             served_model: "llama3.2:latest".to_string(),

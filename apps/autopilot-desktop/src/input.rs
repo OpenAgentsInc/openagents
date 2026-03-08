@@ -2775,7 +2775,15 @@ fn provider_blocker_detail(
         .map(str::trim)
         .filter(|entry| !entry.is_empty())
         .map(ToString::to_string)
-        .unwrap_or_else(|| blocker.detail().to_string())
+        .unwrap_or_else(|| match blocker {
+            crate::app_state::ProviderBlocker::OllamaUnavailable => {
+                "Local inference backend is unavailable".to_string()
+            }
+            crate::app_state::ProviderBlocker::OllamaModelUnavailable => {
+                "No local inference model is ready".to_string()
+            }
+            _ => blocker.detail().to_string(),
+        })
 }
 
 fn format_provider_blockers_for_display(

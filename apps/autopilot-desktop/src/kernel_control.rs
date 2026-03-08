@@ -1,5 +1,5 @@
 use crate::app_state::{ActiveJobRecord, JobInboxDecision, RenderState};
-use crate::ollama_execution::LocalInferenceExecutionMetrics;
+use crate::local_inference_runtime::LocalInferenceExecutionMetrics;
 use crate::state::job_inbox::JobInboxRequest;
 use crate::state::operations::{
     AcceptedForwardComputeOrder, AcceptedSpotComputeOrder, ForwardComputeQuoteCandidate,
@@ -2115,7 +2115,7 @@ fn metering_rule_id_for_binding(binding: LaunchComputeBinding) -> &'static str {
 }
 
 fn latency_from_provenance(
-    provenance: &crate::ollama_execution::LocalInferenceExecutionProvenance,
+    provenance: &crate::local_inference_runtime::LocalInferenceExecutionProvenance,
 ) -> Option<u32> {
     provenance
         .total_duration_ns
@@ -2131,7 +2131,7 @@ fn latency_from_metrics(metrics: Option<&LocalInferenceExecutionMetrics>) -> Opt
 }
 
 fn throughput_from_provenance(
-    provenance: &crate::ollama_execution::LocalInferenceExecutionProvenance,
+    provenance: &crate::local_inference_runtime::LocalInferenceExecutionProvenance,
     quantity_hint: u64,
 ) -> Option<u32> {
     let duration_ns = provenance.total_duration_ns?;
@@ -3442,7 +3442,7 @@ mod tests {
             execution_params: Vec::new(),
             requested_model: Some("llama3.2:latest".to_string()),
             execution_provenance: Some(
-                crate::ollama_execution::LocalInferenceExecutionProvenance {
+                crate::local_inference_runtime::LocalInferenceExecutionProvenance {
                     backend: "ollama".to_string(),
                     requested_model: Some("llama3.2:latest".to_string()),
                     served_model: "llama3.2:latest".to_string(),
@@ -3494,14 +3494,16 @@ mod tests {
             provider_thread_id: Some("thread-1".to_string()),
             provider_turn_id: Some("turn-1".to_string()),
             ollama_ready_model: Some("llama3.2:latest".to_string()),
-            ollama_metrics: Some(crate::ollama_execution::LocalInferenceExecutionMetrics {
-                total_duration_ns: Some(1_000_000_000),
-                load_duration_ns: Some(10_000_000),
-                prompt_eval_count: Some(11),
-                prompt_eval_duration_ns: Some(100_000_000),
-                eval_count: Some(7),
-                eval_duration_ns: Some(900_000_000),
-            }),
+            ollama_metrics: Some(
+                crate::local_inference_runtime::LocalInferenceExecutionMetrics {
+                    total_duration_ns: Some(1_000_000_000),
+                    load_duration_ns: Some(10_000_000),
+                    prompt_eval_count: Some(11),
+                    prompt_eval_duration_ns: Some(100_000_000),
+                    eval_count: Some(7),
+                    eval_duration_ns: Some(900_000_000),
+                },
+            ),
             apple_ready_model: Some("apple-foundation-model".to_string()),
             apple_metrics: None,
             apple_model_available: true,
