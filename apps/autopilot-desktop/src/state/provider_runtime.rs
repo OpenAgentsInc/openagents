@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::ollama_execution::OllamaExecutionMetrics;
+use crate::ollama_execution::LocalInferenceExecutionMetrics;
 pub use openagents_provider_substrate::{
     ProviderAdvertisedProduct, ProviderAvailability, ProviderBackendHealth, ProviderBackendKind,
     ProviderBlocker, ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,
@@ -29,7 +29,7 @@ pub struct ProviderOllamaRuntimeState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub last_request_id: Option<String>,
-    pub last_metrics: Option<OllamaExecutionMetrics>,
+    pub last_metrics: Option<LocalInferenceExecutionMetrics>,
     pub refreshed_at: Option<Instant>,
 }
 
@@ -66,7 +66,7 @@ pub struct ProviderAppleFmRuntimeState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub last_request_id: Option<String>,
-    pub last_metrics: Option<OllamaExecutionMetrics>,
+    pub last_metrics: Option<LocalInferenceExecutionMetrics>,
     pub refreshed_at: Option<Instant>,
     pub availability_message: Option<String>,
     pub bridge_status: Option<String>,

@@ -21,7 +21,7 @@ use crate::labor_orchestrator::{
     CodexLaborVerdictState, CodexRunClassification,
 };
 use crate::ollama_execution::{
-    OllamaExecutionCommand, OllamaExecutionProvenance, OllamaExecutionSnapshot,
+    LocalInferenceExecutionProvenance, OllamaExecutionCommand, OllamaExecutionSnapshot,
     OllamaExecutionWorker,
 };
 use crate::provider_nip90_lane::{
@@ -3685,7 +3685,7 @@ pub struct ActiveJobRecord {
     pub execution_prompt: Option<String>,
     pub execution_params: Vec<crate::state::job_inbox::JobExecutionParam>,
     pub requested_model: Option<String>,
-    pub execution_provenance: Option<OllamaExecutionProvenance>,
+    pub execution_provenance: Option<LocalInferenceExecutionProvenance>,
     pub skill_scope_id: Option<String>,
     pub skl_manifest_a: Option<String>,
     pub skl_manifest_event_id: Option<String>,
@@ -4042,7 +4042,7 @@ pub struct JobHistoryReceiptRow {
     pub result_hash: String,
     pub payment_pointer: String,
     pub failure_reason: Option<String>,
-    pub execution_provenance: Option<OllamaExecutionProvenance>,
+    pub execution_provenance: Option<LocalInferenceExecutionProvenance>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]

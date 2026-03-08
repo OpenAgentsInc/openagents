@@ -1,4 +1,4 @@
-use crate::ollama_execution::{OllamaExecutionMetrics, OllamaExecutionProvenance};
+use crate::ollama_execution::{LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance};
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use reqwest::Url;
 use reqwest::blocking::Client;
@@ -76,7 +76,7 @@ pub struct AppleFmBridgeSnapshot {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub last_request_id: Option<String>,
-    pub last_metrics: Option<OllamaExecutionMetrics>,
+    pub last_metrics: Option<LocalInferenceExecutionMetrics>,
     pub refreshed_at: Option<Instant>,
 }
 
@@ -112,8 +112,8 @@ pub struct AppleFmExecutionCompleted {
     pub request_id: String,
     pub model: String,
     pub output: String,
-    pub metrics: OllamaExecutionMetrics,
-    pub provenance: OllamaExecutionProvenance,
+    pub metrics: LocalInferenceExecutionMetrics,
+    pub provenance: LocalInferenceExecutionProvenance,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -410,7 +410,7 @@ impl AppleFmBridgeState {
             Ok(result) => {
                 let total_duration_ns =
                     Some(start.elapsed().as_nanos().min(u64::MAX as u128) as u64);
-                let metrics = OllamaExecutionMetrics {
+                let metrics = LocalInferenceExecutionMetrics {
                     total_duration_ns,
                     load_duration_ns: None,
                     prompt_eval_count: result.prompt_tokens,
@@ -419,7 +419,7 @@ impl AppleFmBridgeState {
                     eval_duration_ns: None,
                 };
                 let normalized_options_json = "{}".to_string();
-                let provenance = OllamaExecutionProvenance {
+                let provenance = LocalInferenceExecutionProvenance {
                     backend: "apple_foundation_models".to_string(),
                     requested_model: job.requested_model.clone(),
                     served_model: result.model.clone(),
