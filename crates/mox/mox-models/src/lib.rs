@@ -1407,7 +1407,7 @@ impl GgufContent {
         }
 
         let merges = match model {
-            GgufTokenizerModel::SentencePiece => {
+            GgufTokenizerModel::SentencePiece | GgufTokenizerModel::BertWordPiece => {
                 read_optional_tokenizer_string_array(&self.metadata, "tokenizer.ggml.merges")?
             }
             GgufTokenizerModel::Gpt2Bpe => {
@@ -1441,9 +1441,9 @@ impl GgufContent {
             .metadata
             .get("tokenizer.ggml.add_eos_token")
             .and_then(GgufMetadataValue::as_bool)
-            .unwrap_or(false);
+            .unwrap_or(matches!(model, GgufTokenizerModel::BertWordPiece));
         let pretokenizer = match model {
-            GgufTokenizerModel::SentencePiece => None,
+            GgufTokenizerModel::SentencePiece | GgufTokenizerModel::BertWordPiece => None,
             GgufTokenizerModel::Gpt2Bpe => Some(
                 self.metadata
                     .get("tokenizer.ggml.pre")
@@ -1454,6 +1454,8 @@ impl GgufContent {
                     ),
             ),
         };
+        let token_type_count =
+            read_optional_gguf_usize(&self.metadata, "tokenizer.ggml.token_type_count")?;
 
         validate_tokenizer_id("tokenizer.ggml.bos_token_id", bos_token_id, tokens.len())?;
         validate_tokenizer_id(
@@ -1493,6 +1495,7 @@ impl GgufContent {
             add_bos,
             add_eos,
             pretokenizer.as_ref(),
+            token_type_count,
         );
 
         Ok(GgufTokenizerMetadata {
@@ -1510,6 +1513,7 @@ impl GgufContent {
             add_bos,
             add_eos,
             pretokenizer,
+            token_type_count,
             digest,
         })
     }
@@ -1726,6 +1730,8 @@ pub enum GgufTokenizerModel {
     SentencePiece,
     /// GPT-2 style byte-level BPE tokenizer using GGML `gpt2` metadata.
     Gpt2Bpe,
+    /// BERT-style wordpiece tokenizer using GGML `bert` metadata.
+    BertWordPiece,
 }
 
 impl GgufTokenizerModel {
@@ -1733,6 +1739,7 @@ impl GgufTokenizerModel {
         match value {
             "llama" => Ok(Self::SentencePiece),
             "gpt2" => Ok(Self::Gpt2Bpe),
+            "bert" => Ok(Self::BertWordPiece),
             other => Err(ModelLoadError::UnsupportedTokenizerModel {
                 model: other.to_string(),
             }),
@@ -1743,6 +1750,7 @@ impl GgufTokenizerModel {
         match self {
             Self::SentencePiece => "sentencepiece",
             Self::Gpt2Bpe => "gpt2_bpe",
+            Self::BertWordPiece => "bert_wordpiece",
         }
     }
 }
@@ -1878,6 +1886,9 @@ pub struct GgufTokenizerMetadata {
     /// GPT-style BPE pretokenizer family when applicable.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pretokenizer: Option<GgufTokenizerPretokenizer>,
+    /// Token-type vocabulary width when the tokenizer declares it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub token_type_count: Option<usize>,
     /// Stable digest over tokenizer metadata relevant to serving behavior.
     pub digest: String,
 }
@@ -2033,6 +2044,180 @@ pub struct GgufDecoderTensorLayout {
     pub output: Option<String>,
     /// Decoder-layer tensor layouts in stable layer order.
     pub layers: Vec<GgufDecoderLayerTensorLayout>,
+}
+
+/// First-launch GGUF embedding family classification used by Mox.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GgufEmbeddingFamily {
+    /// BERT-style embedding encoder behavior.
+    Bert,
+    /// Nomic BERT-style embedding encoder behavior.
+    #[serde(rename = "nomic-bert")]
+    NomicBert,
+}
+
+impl GgufEmbeddingFamily {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Bert => "bert",
+            Self::NomicBert => "nomic-bert",
+        }
+    }
+}
+
+/// Embedding pooling mode reconstructed from GGUF metadata.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GgufEmbeddingPooling {
+    /// No sequence pooling was requested.
+    None,
+    /// Mean-pool token states over the sequence.
+    Mean,
+    /// Pool from the CLS token state.
+    Cls,
+    /// Pool from the final token state.
+    Last,
+    /// Pool from a rank/classification head.
+    Rank,
+}
+
+impl GgufEmbeddingPooling {
+    fn from_gguf_value(value: usize, key: &str) -> Result<Self, ModelLoadError> {
+        match value {
+            0 => Ok(Self::None),
+            1 => Ok(Self::Mean),
+            2 => Ok(Self::Cls),
+            3 => Ok(Self::Last),
+            4 => Ok(Self::Rank),
+            other => Err(ModelLoadError::InvalidGgufMetadata {
+                key: key.to_string(),
+                message: format!("unsupported pooling type `{other}`"),
+            }),
+        }
+    }
+}
+
+/// Family-specific GGUF embeddings metadata kept outside the generic embedding descriptor.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GgufEmbeddingFamilyMetadata {
+    /// Launch-family label used by higher layers.
+    pub family: GgufEmbeddingFamily,
+    /// Raw GGUF `general.architecture` label.
+    pub architecture: String,
+    /// Human-readable model name when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub display_name: Option<String>,
+    /// Maximum supported context length.
+    pub max_context: usize,
+    /// Encoder layer count.
+    pub layer_count: usize,
+    /// Attention head count.
+    pub attention_head_count: usize,
+    /// Attention KV head count when it differs from query heads.
+    pub attention_kv_head_count: usize,
+    /// Effective layer norm epsilon.
+    pub layer_norm_epsilon: f32,
+    /// Effective RoPE frequency base when the family uses rotary positions.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub rope_theta: Option<f32>,
+    /// Pooling mode applied to per-token outputs.
+    pub pooling: GgufEmbeddingPooling,
+    /// Output normalization policy.
+    pub normalization: EmbeddingNormalization,
+    /// Whether the family uses explicit absolute position embeddings.
+    pub uses_position_embeddings: bool,
+    /// Whether the family stores fused QKV projection weights.
+    pub uses_fused_qkv: bool,
+}
+
+/// Family-specific tensor naming for one GGUF embedding layer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GgufEmbeddingLayerTensorLayout {
+    /// Zero-based encoder layer index.
+    pub layer_index: usize,
+    /// Attention output norm tensor.
+    pub attention_output_norm: String,
+    /// Separate attention query weight tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_query_weight: Option<String>,
+    /// Separate attention query bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_query_bias: Option<String>,
+    /// Separate attention query norm tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_query_norm: Option<String>,
+    /// Separate attention key weight tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_key_weight: Option<String>,
+    /// Separate attention key bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_key_bias: Option<String>,
+    /// Separate attention key norm tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_key_norm: Option<String>,
+    /// Separate attention value weight tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_value_weight: Option<String>,
+    /// Separate attention value bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_value_bias: Option<String>,
+    /// Fused attention QKV weight tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_qkv_weight: Option<String>,
+    /// Fused attention QKV bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_qkv_bias: Option<String>,
+    /// Attention output projection tensor.
+    pub attention_output_weight: String,
+    /// Attention output bias tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub attention_output_bias: Option<String>,
+    /// Feed-forward gate tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_gate_weight: Option<String>,
+    /// Feed-forward gate bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_gate_bias: Option<String>,
+    /// Feed-forward up tensor.
+    pub feed_forward_up_weight: String,
+    /// Feed-forward up bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_up_bias: Option<String>,
+    /// Feed-forward down tensor.
+    pub feed_forward_down_weight: String,
+    /// Feed-forward down bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_down_bias: Option<String>,
+    /// Feed-forward router tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_router_weight: Option<String>,
+    /// Feed-forward router bias when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_router_bias: Option<String>,
+    /// Expert up projections when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_up_experts_weight: Option<String>,
+    /// Expert down projections when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub feed_forward_down_experts_weight: Option<String>,
+    /// Final MLP output norm tensor.
+    pub layer_output_norm: String,
+}
+
+/// Reusable tensor-name layout for a GGUF-backed embeddings family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GgufEmbeddingTensorLayout {
+    /// Token embedding tensor.
+    pub token_embedding: String,
+    /// Token-type embedding tensor.
+    pub token_type_embedding: String,
+    /// Token embedding normalization tensor.
+    pub token_embedding_norm: String,
+    /// Position embedding tensor when present.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub position_embedding: Option<String>,
+    /// Encoder-layer tensor layouts in stable layer order.
+    pub layers: Vec<GgufEmbeddingLayerTensorLayout>,
 }
 
 /// Backend-neutral quantized GGML/GGUF block storage preserved by the loader.
@@ -2423,6 +2608,97 @@ impl DecoderModelDescriptor {
     }
 }
 
+/// Reusable GGUF-backed embeddings-family adapter for supported first-launch model families.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct GgufEmbeddingAdapter {
+    descriptor: EmbeddingModelDescriptor,
+    family_metadata: GgufEmbeddingFamilyMetadata,
+    tokenizer: GgufTokenizerMetadata,
+    tensor_layout: GgufEmbeddingTensorLayout,
+}
+
+impl GgufEmbeddingAdapter {
+    /// Returns the generic embeddings descriptor for higher-layer request contracts.
+    #[must_use]
+    pub fn descriptor(&self) -> &EmbeddingModelDescriptor {
+        &self.descriptor
+    }
+
+    /// Returns the family-specific GGUF metadata.
+    #[must_use]
+    pub fn family_metadata(&self) -> &GgufEmbeddingFamilyMetadata {
+        &self.family_metadata
+    }
+
+    /// Returns the tokenizer metadata loaded from GGUF.
+    #[must_use]
+    pub fn tokenizer(&self) -> &GgufTokenizerMetadata {
+        &self.tokenizer
+    }
+
+    /// Returns the reusable GGUF tensor-name layout for the embeddings family.
+    #[must_use]
+    pub fn tensor_layout(&self) -> &GgufEmbeddingTensorLayout {
+        &self.tensor_layout
+    }
+}
+
+/// GGUF-backed embeddings-family adapter loader.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct GgufEmbeddingAdapterLoader;
+
+impl GgufEmbeddingAdapterLoader {
+    /// Loads an embeddings-family adapter from an already-open GGUF blob artifact.
+    pub fn load_blob_artifact(
+        &self,
+        artifact: &GgufBlobArtifact,
+    ) -> Result<GgufEmbeddingAdapter, ModelLoadError> {
+        let content = artifact.content();
+        let metadata = content.metadata();
+        let architecture = read_required_gguf_string(metadata, "general.architecture")?;
+        let family = classify_gguf_embedding_family(architecture.as_str())?;
+        validate_supported_embedding_family_features(metadata, family, architecture.as_str())?;
+
+        let tokenizer = content.load_tokenizer()?;
+        let bundle = GgufWeightBundleLoader.load_blob_artifact(artifact)?;
+        let family_metadata =
+            build_gguf_embedding_family_metadata(metadata, content, family, architecture)?;
+        let descriptor = build_gguf_embedding_descriptor(
+            artifact.artifact_metadata(),
+            &bundle.metadata,
+            &family_metadata,
+            &tokenizer,
+            content,
+        )?;
+        let tensor_layout =
+            build_gguf_embedding_tensor_layout(content, &family_metadata, &tokenizer)?;
+
+        Ok(GgufEmbeddingAdapter {
+            descriptor,
+            family_metadata,
+            tokenizer,
+            tensor_layout,
+        })
+    }
+
+    /// Loads an embeddings-family adapter from a local GGUF path.
+    pub fn load_path(&self, path: &Path) -> Result<GgufEmbeddingAdapter, ModelLoadError> {
+        let artifact = GgufBlobArtifact::open_path(path, LocalBlobOpenOptions::default())?;
+        self.load_blob_artifact(&artifact)
+    }
+
+    /// Loads an embeddings-family adapter from an Ollama-managed GGUF blob.
+    pub fn load_ollama_blob(
+        &self,
+        models_root: impl AsRef<Path>,
+        digest: &str,
+        options: LocalBlobOpenOptions,
+    ) -> Result<GgufEmbeddingAdapter, ModelLoadError> {
+        let artifact = GgufBlobArtifact::open_ollama_blob(models_root, digest, options)?;
+        self.load_blob_artifact(&artifact)
+    }
+}
+
 /// Reusable GGUF-backed decoder-family adapter for supported first-launch model families.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct GgufDecoderAdapter {
@@ -2525,6 +2801,493 @@ impl GgufDecoderAdapterLoader {
         let artifact = GgufBlobArtifact::open_ollama_blob(models_root, digest, options)?;
         self.load_blob_artifact(&artifact)
     }
+}
+
+fn classify_gguf_embedding_family(
+    architecture: &str,
+) -> Result<GgufEmbeddingFamily, ModelLoadError> {
+    match architecture {
+        "bert" => Ok(GgufEmbeddingFamily::Bert),
+        "nomic-bert" | "nomic-bert-moe" => Ok(GgufEmbeddingFamily::NomicBert),
+        other => Err(ModelLoadError::UnsupportedGgufEmbeddingArchitecture {
+            architecture: other.to_string(),
+        }),
+    }
+}
+
+fn validate_supported_embedding_family_features(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    family: GgufEmbeddingFamily,
+    architecture: &str,
+) -> Result<(), ModelLoadError> {
+    let attention_causal_key = format!("{architecture}.attention.causal");
+    if read_optional_gguf_bool(metadata, attention_causal_key.as_str())?.unwrap_or(false) {
+        return Err(ModelLoadError::InvalidGgufMetadata {
+            key: attention_causal_key,
+            message: String::from("embedding families must be non-causal"),
+        });
+    }
+
+    if matches!(family, GgufEmbeddingFamily::NomicBert)
+        && (architecture.ends_with("-moe")
+            || read_optional_gguf_usize(metadata, format!("{architecture}.expert_count").as_str())?
+                .unwrap_or(0)
+                > 0
+            || read_optional_gguf_usize(
+                metadata,
+                format!("{architecture}.moe_every_n_layers").as_str(),
+            )?
+            .unwrap_or(0)
+                > 0)
+    {
+        return Err(ModelLoadError::UnsupportedGgufEmbeddingFamilyFeature {
+            family: family.as_str().to_string(),
+            feature: String::from("mixture_of_experts"),
+        });
+    }
+
+    Ok(())
+}
+
+fn build_gguf_embedding_family_metadata(
+    metadata: &BTreeMap<String, GgufMetadataValue>,
+    content: &GgufContent,
+    family: GgufEmbeddingFamily,
+    architecture: String,
+) -> Result<GgufEmbeddingFamilyMetadata, ModelLoadError> {
+    let max_context =
+        read_required_gguf_usize(metadata, format!("{architecture}.context_length").as_str())?;
+    let layer_count =
+        read_required_gguf_usize(metadata, format!("{architecture}.block_count").as_str())?;
+    let attention_head_count = read_required_gguf_usize(
+        metadata,
+        format!("{architecture}.attention.head_count").as_str(),
+    )?;
+    let pooling_key = format!("{architecture}.pooling_type");
+    let pooling = GgufEmbeddingPooling::from_gguf_value(
+        read_optional_gguf_usize(metadata, pooling_key.as_str())?.unwrap_or(0),
+        pooling_key.as_str(),
+    )?;
+    let normalization = if read_optional_gguf_bool(
+        metadata,
+        format!("{architecture}.normalize_embeddings").as_str(),
+    )?
+    .unwrap_or(matches!(family, GgufEmbeddingFamily::Bert))
+    {
+        EmbeddingNormalization::UnitLength
+    } else {
+        EmbeddingNormalization::None
+    };
+
+    Ok(GgufEmbeddingFamilyMetadata {
+        family,
+        architecture: architecture.clone(),
+        display_name: read_optional_gguf_string(metadata, "general.name")?,
+        max_context,
+        layer_count,
+        attention_head_count,
+        attention_kv_head_count: read_optional_gguf_usize(
+            metadata,
+            format!("{architecture}.attention.head_count_kv").as_str(),
+        )?
+        .unwrap_or(attention_head_count),
+        layer_norm_epsilon: read_required_gguf_f32(
+            metadata,
+            format!("{architecture}.attention.layer_norm_epsilon").as_str(),
+        )?,
+        rope_theta: read_optional_gguf_f32(
+            metadata,
+            format!("{architecture}.rope.freq_base").as_str(),
+        )?,
+        pooling,
+        normalization,
+        uses_position_embeddings: matches!(family, GgufEmbeddingFamily::Bert)
+            || content.tensor_info("position_embd.weight").is_some(),
+        uses_fused_qkv: matches!(family, GgufEmbeddingFamily::NomicBert),
+    })
+}
+
+fn build_gguf_embedding_descriptor(
+    artifact: &WeightArtifactMetadata,
+    bundle: &WeightBundleMetadata,
+    family_metadata: &GgufEmbeddingFamilyMetadata,
+    tokenizer: &GgufTokenizerMetadata,
+    content: &GgufContent,
+) -> Result<EmbeddingModelDescriptor, ModelLoadError> {
+    let metadata = content.metadata();
+    let architecture = family_metadata.architecture.as_str();
+    let hidden_size = read_required_gguf_usize(
+        metadata,
+        format!("{architecture}.embedding_length").as_str(),
+    )?;
+    let head_count = family_metadata.attention_head_count;
+    if head_count == 0 || hidden_size % head_count != 0 {
+        return Err(ModelLoadError::InvalidGgufMetadata {
+            key: format!("{architecture}.attention.head_count"),
+            message: format!(
+                "embedding length {hidden_size} is not divisible by attention head count {head_count}"
+            ),
+        });
+    }
+
+    let token_embedding = required_tensor_info(content, "token_embd.weight")?;
+    let (vocab_size, token_hidden_size) = tensor_matrix_shape(token_embedding)?;
+    if token_hidden_size != hidden_size {
+        return Err(artifact_format_error(
+            "gguf",
+            format!(
+                "token_embd.weight hidden size {token_hidden_size} does not match metadata embedding length {hidden_size}"
+            ),
+        ));
+    }
+
+    let token_embedding_norm = required_tensor_info(content, "token_embd_norm.weight")?;
+    if tensor_vector_shape(token_embedding_norm)? != hidden_size {
+        return Err(artifact_format_error(
+            "gguf",
+            format!(
+                "token_embd_norm.weight width {} does not match metadata embedding length {hidden_size}",
+                tensor_vector_shape(token_embedding_norm)?
+            ),
+        ));
+    }
+
+    let token_type_embedding = required_tensor_info(content, "token_types.weight")?;
+    let (token_type_rows, token_type_hidden_size) = tensor_matrix_shape(token_type_embedding)?;
+    if token_type_hidden_size != hidden_size {
+        return Err(artifact_format_error(
+            "gguf",
+            format!(
+                "token_types.weight hidden size {token_type_hidden_size} does not match metadata embedding length {hidden_size}"
+            ),
+        ));
+    }
+    if let Some(token_type_count) = tokenizer.token_type_count {
+        if token_type_rows != token_type_count {
+            return Err(ModelLoadError::InvalidTokenizerMetadata {
+                key: String::from("tokenizer.ggml.token_type_count"),
+                message: format!(
+                    "declared token type count {token_type_count} does not match token_types.weight rows {token_type_rows}"
+                ),
+            });
+        }
+    }
+
+    if family_metadata.uses_position_embeddings {
+        let position_embedding = required_tensor_info(content, "position_embd.weight")?;
+        let (position_rows, position_hidden_size) = tensor_matrix_shape(position_embedding)?;
+        if position_rows != family_metadata.max_context || position_hidden_size != hidden_size {
+            return Err(artifact_format_error(
+                "gguf",
+                format!(
+                    "position_embd.weight shape [{position_rows}, {position_hidden_size}] does not match expected [{}, {hidden_size}]",
+                    family_metadata.max_context
+                ),
+            ));
+        }
+    }
+
+    if tokenizer.vocabulary.len() != vocab_size {
+        return Err(ModelLoadError::InvalidTokenizerMetadata {
+            key: String::from("tokenizer.ggml.tokens"),
+            message: format!(
+                "tokenizer vocabulary length {} does not match token_embd.weight rows {vocab_size}",
+                tokenizer.vocabulary.len()
+            ),
+        });
+    }
+
+    let model_id = build_gguf_model_id(
+        artifact,
+        family_metadata.display_name.as_deref(),
+        family_metadata.family.as_str(),
+    );
+    let revision = format!("sha256:{}", artifact.sha256);
+    Ok(EmbeddingModelDescriptor::new(
+        ModelDescriptor::new(model_id, family_metadata.family.as_str(), revision),
+        hidden_size,
+        family_metadata.normalization,
+        bundle.clone(),
+    ))
+}
+
+fn build_gguf_embedding_tensor_layout(
+    content: &GgufContent,
+    family_metadata: &GgufEmbeddingFamilyMetadata,
+    tokenizer: &GgufTokenizerMetadata,
+) -> Result<GgufEmbeddingTensorLayout, ModelLoadError> {
+    let hidden_size = tensor_matrix_shape(required_tensor_info(content, "token_embd.weight")?)?.1;
+    let metadata = content.metadata();
+    let architecture = family_metadata.architecture.as_str();
+    let intermediate_size = read_required_gguf_usize(
+        metadata,
+        format!("{architecture}.feed_forward_length").as_str(),
+    )?;
+    let head_dim = hidden_size / family_metadata.attention_head_count;
+    let kv_hidden_size = family_metadata.attention_kv_head_count * head_dim;
+
+    let token_type_embedding = required_tensor_info(content, "token_types.weight")?;
+    let (token_type_rows, token_type_hidden_size) = tensor_matrix_shape(token_type_embedding)?;
+    if token_type_hidden_size != hidden_size {
+        return Err(artifact_format_error(
+            "gguf",
+            format!(
+                "token_types.weight hidden size {token_type_hidden_size} does not match token embedding width {hidden_size}"
+            ),
+        ));
+    }
+    if let Some(token_type_count) = tokenizer.token_type_count {
+        if token_type_rows != token_type_count {
+            return Err(ModelLoadError::InvalidTokenizerMetadata {
+                key: String::from("tokenizer.ggml.token_type_count"),
+                message: format!(
+                    "declared token type count {token_type_count} does not match token_types.weight rows {token_type_rows}"
+                ),
+            });
+        }
+    }
+
+    let position_embedding = match family_metadata.uses_position_embeddings {
+        true => Some(
+            required_tensor_info(content, "position_embd.weight")?
+                .name
+                .clone(),
+        ),
+        false => optional_tensor_name(content, "position_embd.weight"),
+    };
+
+    let mut layers = Vec::with_capacity(family_metadata.layer_count);
+    for layer_index in 0..family_metadata.layer_count {
+        let prefix = format!("blk.{layer_index}");
+        let attention_output_norm =
+            required_tensor_info(content, &format!("{prefix}.attn_output_norm.weight"))?;
+        if tensor_vector_shape(attention_output_norm)? != hidden_size {
+            return Err(artifact_format_error(
+                "gguf",
+                format!(
+                    "{} width {} does not match hidden size {hidden_size}",
+                    attention_output_norm.name,
+                    tensor_vector_shape(attention_output_norm)?
+                ),
+            ));
+        }
+        let layer_output_norm =
+            required_tensor_info(content, &format!("{prefix}.layer_output_norm.weight"))?;
+        if tensor_vector_shape(layer_output_norm)? != hidden_size {
+            return Err(artifact_format_error(
+                "gguf",
+                format!(
+                    "{} width {} does not match hidden size {hidden_size}",
+                    layer_output_norm.name,
+                    tensor_vector_shape(layer_output_norm)?
+                ),
+            ));
+        }
+
+        let (
+            attention_query_weight,
+            attention_query_bias,
+            attention_query_norm,
+            attention_key_weight,
+            attention_key_bias,
+            attention_key_norm,
+            attention_value_weight,
+            attention_value_bias,
+            attention_qkv_weight,
+            attention_qkv_bias,
+        ) = if family_metadata.uses_fused_qkv {
+            let qkv_weight = required_tensor_info(content, &format!("{prefix}.attn_qkv.weight"))?;
+            let (rows, columns) = tensor_matrix_shape(qkv_weight)?;
+            if rows != hidden_size * 3 || columns != hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{rows}, {columns}] does not match expected [{}, {hidden_size}]",
+                        qkv_weight.name,
+                        hidden_size * 3
+                    ),
+                ));
+            }
+            (
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+                Some(qkv_weight.name.clone()),
+                optional_tensor_name(content, &format!("{prefix}.attn_qkv.bias")),
+            )
+        } else {
+            let query_weight = required_tensor_info(content, &format!("{prefix}.attn_q.weight"))?;
+            let (query_rows, query_columns) = tensor_matrix_shape(query_weight)?;
+            if query_rows != hidden_size || query_columns != hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{query_rows}, {query_columns}] does not match expected [{hidden_size}, {hidden_size}]",
+                        query_weight.name
+                    ),
+                ));
+            }
+            let key_weight = required_tensor_info(content, &format!("{prefix}.attn_k.weight"))?;
+            let (key_rows, key_columns) = tensor_matrix_shape(key_weight)?;
+            if key_rows != kv_hidden_size || key_columns != hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{key_rows}, {key_columns}] does not match expected [{kv_hidden_size}, {hidden_size}]",
+                        key_weight.name
+                    ),
+                ));
+            }
+            let value_weight = required_tensor_info(content, &format!("{prefix}.attn_v.weight"))?;
+            let (value_rows, value_columns) = tensor_matrix_shape(value_weight)?;
+            if value_rows != kv_hidden_size || value_columns != hidden_size {
+                return Err(artifact_format_error(
+                    "gguf",
+                    format!(
+                        "{} shape [{value_rows}, {value_columns}] does not match expected [{kv_hidden_size}, {hidden_size}]",
+                        value_weight.name
+                    ),
+                ));
+            }
+            (
+                Some(query_weight.name.clone()),
+                optional_tensor_name(content, &format!("{prefix}.attn_q.bias")),
+                optional_tensor_name(content, &format!("{prefix}.attn_q_norm.weight")),
+                Some(key_weight.name.clone()),
+                optional_tensor_name(content, &format!("{prefix}.attn_k.bias")),
+                optional_tensor_name(content, &format!("{prefix}.attn_k_norm.weight")),
+                Some(value_weight.name.clone()),
+                optional_tensor_name(content, &format!("{prefix}.attn_v.bias")),
+                None,
+                None,
+            )
+        };
+
+        let attention_output =
+            required_tensor_info(content, &format!("{prefix}.attn_output.weight"))?;
+        let (attention_output_rows, attention_output_columns) =
+            tensor_matrix_shape(attention_output)?;
+        if attention_output_rows != hidden_size || attention_output_columns != hidden_size {
+            return Err(artifact_format_error(
+                "gguf",
+                format!(
+                    "{} shape [{attention_output_rows}, {attention_output_columns}] does not match expected [{hidden_size}, {hidden_size}]",
+                    attention_output.name
+                ),
+            ));
+        }
+
+        let feed_forward_up = required_tensor_info(content, &format!("{prefix}.ffn_up.weight"))?;
+        let (feed_forward_up_rows, feed_forward_up_columns) = tensor_matrix_shape(feed_forward_up)?;
+        if feed_forward_up_rows != intermediate_size || feed_forward_up_columns != hidden_size {
+            return Err(artifact_format_error(
+                "gguf",
+                format!(
+                    "{} shape [{feed_forward_up_rows}, {feed_forward_up_columns}] does not match expected [{intermediate_size}, {hidden_size}]",
+                    feed_forward_up.name
+                ),
+            ));
+        }
+        let feed_forward_down =
+            required_tensor_info(content, &format!("{prefix}.ffn_down.weight"))?;
+        let (feed_forward_down_rows, feed_forward_down_columns) =
+            tensor_matrix_shape(feed_forward_down)?;
+        if feed_forward_down_rows != hidden_size || feed_forward_down_columns != intermediate_size {
+            return Err(artifact_format_error(
+                "gguf",
+                format!(
+                    "{} shape [{feed_forward_down_rows}, {feed_forward_down_columns}] does not match expected [{hidden_size}, {intermediate_size}]",
+                    feed_forward_down.name
+                ),
+            ));
+        }
+
+        let feed_forward_gate_weight = match family_metadata.family {
+            GgufEmbeddingFamily::Bert => {
+                optional_tensor_name(content, &format!("{prefix}.ffn_gate.weight"))
+            }
+            GgufEmbeddingFamily::NomicBert => {
+                let feed_forward_gate =
+                    required_tensor_info(content, &format!("{prefix}.ffn_gate.weight"))?;
+                let (feed_forward_gate_rows, feed_forward_gate_columns) =
+                    tensor_matrix_shape(feed_forward_gate)?;
+                if feed_forward_gate_rows != intermediate_size
+                    || feed_forward_gate_columns != hidden_size
+                {
+                    return Err(artifact_format_error(
+                        "gguf",
+                        format!(
+                            "{} shape [{feed_forward_gate_rows}, {feed_forward_gate_columns}] does not match expected [{intermediate_size}, {hidden_size}]",
+                            feed_forward_gate.name
+                        ),
+                    ));
+                }
+                Some(feed_forward_gate.name.clone())
+            }
+        };
+
+        layers.push(GgufEmbeddingLayerTensorLayout {
+            layer_index,
+            attention_output_norm: attention_output_norm.name.clone(),
+            attention_query_weight,
+            attention_query_bias,
+            attention_query_norm,
+            attention_key_weight,
+            attention_key_bias,
+            attention_key_norm,
+            attention_value_weight,
+            attention_value_bias,
+            attention_qkv_weight,
+            attention_qkv_bias,
+            attention_output_weight: attention_output.name.clone(),
+            attention_output_bias: optional_tensor_name(
+                content,
+                &format!("{prefix}.attn_output.bias"),
+            ),
+            feed_forward_gate_weight,
+            feed_forward_gate_bias: optional_tensor_name(
+                content,
+                &format!("{prefix}.ffn_gate.bias"),
+            ),
+            feed_forward_up_weight: feed_forward_up.name.clone(),
+            feed_forward_up_bias: optional_tensor_name(content, &format!("{prefix}.ffn_up.bias")),
+            feed_forward_down_weight: feed_forward_down.name.clone(),
+            feed_forward_down_bias: optional_tensor_name(
+                content,
+                &format!("{prefix}.ffn_down.bias"),
+            ),
+            feed_forward_router_weight: optional_tensor_name(
+                content,
+                &format!("{prefix}.ffn_gate_inp.weight"),
+            ),
+            feed_forward_router_bias: optional_tensor_name(
+                content,
+                &format!("{prefix}.ffn_gate_inp.bias"),
+            ),
+            feed_forward_up_experts_weight: optional_tensor_name(
+                content,
+                &format!("{prefix}.ffn_up_exps.weight"),
+            ),
+            feed_forward_down_experts_weight: optional_tensor_name(
+                content,
+                &format!("{prefix}.ffn_down_exps.weight"),
+            ),
+            layer_output_norm: layer_output_norm.name.clone(),
+        });
+    }
+
+    Ok(GgufEmbeddingTensorLayout {
+        token_embedding: String::from("token_embd.weight"),
+        token_type_embedding: String::from("token_types.weight"),
+        token_embedding_norm: String::from("token_embd_norm.weight"),
+        position_embedding,
+        layers,
+    })
 }
 
 fn classify_gguf_decoder_family(
@@ -2817,6 +3580,7 @@ fn gguf_tokenizer_family_label(tokenizer: &GgufTokenizerMetadata) -> String {
             || String::from("gpt2_bpe"),
             |pretokenizer| format!("gpt2_bpe:{}", pretokenizer.digest_label()),
         ),
+        GgufTokenizerModel::BertWordPiece => String::from("bert_wordpiece"),
     }
 }
 
@@ -2827,6 +3591,10 @@ fn required_tensor_info<'a>(
     content
         .tensor_info(name)
         .ok_or_else(|| ModelLoadError::MissingTensor(name.to_string()))
+}
+
+fn optional_tensor_name(content: &GgufContent, name: &str) -> Option<String> {
+    content.tensor_info(name).map(|tensor| tensor.name.clone())
 }
 
 fn tensor_matrix_shape(tensor: &GgufTensorInfo) -> Result<(usize, usize), ModelLoadError> {
@@ -3026,9 +3794,23 @@ pub enum ModelLoadError {
         /// Raw architecture string from `general.architecture`.
         architecture: String,
     },
+    /// The GGUF architecture is not one of the supported first-launch embedding families.
+    #[error("unsupported gguf embedding architecture `{architecture}`")]
+    UnsupportedGgufEmbeddingArchitecture {
+        /// Raw architecture string from `general.architecture`.
+        architecture: String,
+    },
     /// The GGUF decoder artifact uses a family feature that the first-launch adapters do not support yet.
     #[error("unsupported gguf decoder family feature for `{family}`: {feature}")]
     UnsupportedGgufDecoderFamilyFeature {
+        /// Launch-family label.
+        family: String,
+        /// Unsupported feature summary.
+        feature: String,
+    },
+    /// The GGUF embedding artifact uses a family feature that the first-launch adapters do not support yet.
+    #[error("unsupported gguf embedding family feature for `{family}`: {feature}")]
+    UnsupportedGgufEmbeddingFamilyFeature {
         /// Launch-family label.
         family: String,
         /// Unsupported feature summary.
@@ -4319,6 +5101,7 @@ fn digest_gguf_tokenizer(
     add_bos: bool,
     add_eos: bool,
     pretokenizer: Option<&GgufTokenizerPretokenizer>,
+    token_type_count: Option<usize>,
 ) -> String {
     let mut hasher = Sha256::new();
     hasher.update(model.as_str().as_bytes());
@@ -4330,6 +5113,11 @@ fn digest_gguf_tokenizer(
     hasher.update(b"\n");
     match pretokenizer {
         Some(pretokenizer) => hasher.update(pretokenizer.digest_label().as_bytes()),
+        None => hasher.update(b"none"),
+    }
+    hasher.update(b"\n");
+    match token_type_count {
+        Some(token_type_count) => hasher.update(token_type_count.to_be_bytes()),
         None => hasher.update(b"none"),
     }
     hasher.update(b"\n");
@@ -4725,7 +5513,8 @@ mod tests {
     use super::{
         ActivationFunction, ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader,
         FixtureDecoderLoader, FixtureWordTokenizer, GgufBlobArtifact, GgufContent,
-        GgufDecoderAdapterLoader, GgufDecoderFamily, GgufMetadataValue, GgufTensorType,
+        GgufDecoderAdapterLoader, GgufDecoderFamily, GgufEmbeddingAdapterLoader,
+        GgufEmbeddingFamily, GgufEmbeddingPooling, GgufMetadataValue, GgufTensorType,
         GgufTokenizerMetadata, GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion,
         GgufWeightBundleLoader, LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader,
         QuantizedTensorStorage, ReferenceWordDecoder, SafeTensorsDecoderLoader,
@@ -5160,6 +5949,35 @@ mod tests {
     }
 
     #[test]
+    fn gguf_content_loads_bert_wordpiece_tokenizer_metadata()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("bert_tokenizer.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &bert_wordpiece_tokenizer_metadata_entries(2),
+            &[],
+        )?;
+
+        let content = GgufContent::read_path(&path)?;
+        let tokenizer = content.load_tokenizer()?;
+
+        assert_eq!(tokenizer.model, GgufTokenizerModel::BertWordPiece);
+        assert_eq!(tokenizer.vocabulary.len(), 6);
+        assert_eq!(tokenizer.vocabulary.bos_token_id(), Some(TokenId(1)));
+        assert_eq!(tokenizer.vocabulary.eos_token_ids(), &[TokenId(2)]);
+        assert_eq!(tokenizer.vocabulary.pad_token_id(), Some(TokenId(0)));
+        assert_eq!(tokenizer.vocabulary.unknown_token_id(), Some(TokenId(3)));
+        assert_eq!(tokenizer.token_type_count, Some(2));
+        assert!(tokenizer.merges.is_empty());
+        assert_eq!(tokenizer.pretokenizer, None);
+        assert!(tokenizer.add_bos);
+        assert!(tokenizer.add_eos);
+        Ok(())
+    }
+
+    #[test]
     fn gguf_content_rejects_unsupported_tokenizer_model() -> Result<(), Box<dyn std::error::Error>>
     {
         let temp = tempdir()?;
@@ -5378,6 +6196,7 @@ mod tests {
             add_bos: true,
             add_eos: false,
             pretokenizer: None,
+            token_type_count: None,
             digest: String::from("fixture"),
         };
 
@@ -5785,6 +6604,155 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn gguf_embedding_adapter_loader_maps_bert_family_and_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("bert_embed.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &bert_embedding_metadata("bert-bge"),
+            &bert_embedding_tensors(2),
+        )?;
+
+        let adapter = GgufEmbeddingAdapterLoader.load_path(&path)?;
+        assert_eq!(adapter.descriptor().model.family, "bert");
+        assert_eq!(adapter.descriptor().dimensions, 4);
+        assert_eq!(
+            adapter.descriptor().normalization,
+            super::EmbeddingNormalization::UnitLength
+        );
+        assert_eq!(adapter.family_metadata().family, GgufEmbeddingFamily::Bert);
+        assert_eq!(adapter.family_metadata().architecture, "bert");
+        assert_eq!(adapter.family_metadata().max_context, 64);
+        assert_eq!(adapter.family_metadata().layer_count, 2);
+        assert_eq!(
+            adapter.family_metadata().pooling,
+            GgufEmbeddingPooling::Mean
+        );
+        assert!(adapter.family_metadata().uses_position_embeddings);
+        assert!(!adapter.family_metadata().uses_fused_qkv);
+        assert_eq!(adapter.tokenizer().model, GgufTokenizerModel::BertWordPiece);
+        assert_eq!(adapter.tokenizer().token_type_count, Some(2));
+        assert_eq!(
+            adapter.tensor_layout().position_embedding.as_deref(),
+            Some("position_embd.weight")
+        );
+        assert_eq!(adapter.tensor_layout().layers.len(), 2);
+        assert_eq!(
+            adapter.tensor_layout().layers[0]
+                .attention_query_weight
+                .as_deref(),
+            Some("blk.0.attn_q.weight")
+        );
+        assert_eq!(
+            adapter.tensor_layout().layers[0]
+                .attention_query_bias
+                .as_deref(),
+            Some("blk.0.attn_q.bias")
+        );
+        assert!(
+            adapter.tensor_layout().layers[0]
+                .attention_qkv_weight
+                .is_none()
+        );
+        assert!(
+            adapter.tensor_layout().layers[0]
+                .feed_forward_gate_weight
+                .is_none()
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_embedding_adapter_loader_maps_nomic_bert_family_and_layout()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("nomic_bert_embed.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &nomic_bert_embedding_metadata("nomic-embed", "nomic-bert"),
+            &nomic_bert_embedding_tensors(1),
+        )?;
+
+        let adapter = GgufEmbeddingAdapterLoader.load_path(&path)?;
+        assert_eq!(adapter.descriptor().model.family, "nomic-bert");
+        assert_eq!(
+            adapter.descriptor().normalization,
+            super::EmbeddingNormalization::None
+        );
+        assert_eq!(
+            adapter.family_metadata().family,
+            GgufEmbeddingFamily::NomicBert
+        );
+        assert_eq!(adapter.family_metadata().architecture, "nomic-bert");
+        assert_eq!(adapter.family_metadata().pooling, GgufEmbeddingPooling::Cls);
+        assert_eq!(adapter.family_metadata().rope_theta, Some(10_000.0));
+        assert!(!adapter.family_metadata().uses_position_embeddings);
+        assert!(adapter.family_metadata().uses_fused_qkv);
+        assert!(adapter.tensor_layout().position_embedding.is_none());
+        assert_eq!(
+            adapter.tensor_layout().layers[0]
+                .attention_qkv_weight
+                .as_deref(),
+            Some("blk.0.attn_qkv.weight")
+        );
+        assert_eq!(
+            adapter.tensor_layout().layers[0]
+                .attention_qkv_bias
+                .as_deref(),
+            Some("blk.0.attn_qkv.bias")
+        );
+        assert!(
+            adapter.tensor_layout().layers[0]
+                .attention_query_weight
+                .is_none()
+        );
+        assert_eq!(
+            adapter.tensor_layout().layers[0]
+                .feed_forward_gate_weight
+                .as_deref(),
+            Some("blk.0.ffn_gate.weight")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_embedding_adapter_loader_rejects_moe_nomic_bert_artifacts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("nomic_bert_moe.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &{
+                let mut metadata = nomic_bert_embedding_metadata("nomic-moe", "nomic-bert-moe");
+                metadata.push((
+                    String::from("nomic-bert-moe.expert_count"),
+                    GgufMetadataValue::U32(8),
+                ));
+                metadata.push((
+                    String::from("nomic-bert-moe.moe_every_n_layers"),
+                    GgufMetadataValue::U32(2),
+                ));
+                metadata
+            },
+            &[],
+        )?;
+
+        let error = GgufEmbeddingAdapterLoader
+            .load_path(&path)
+            .expect_err("nomic bert moe should remain unsupported");
+        assert!(matches!(
+            error,
+            super::ModelLoadError::UnsupportedGgufEmbeddingFamilyFeature { family, feature }
+                if family == "nomic-bert" && feature == "mixture_of_experts"
+        ));
+        Ok(())
+    }
+
     fn build_test_tokenizer_metadata(add_bos: bool, add_eos: bool) -> GgufTokenizerMetadata {
         GgufTokenizerMetadata {
             model: GgufTokenizerModel::SentencePiece,
@@ -5808,6 +6776,7 @@ mod tests {
             add_bos,
             add_eos,
             pretokenizer: None,
+            token_type_count: None,
             digest: String::from("fixture"),
         }
     }
@@ -6013,6 +6982,147 @@ mod tests {
         ]
     }
 
+    fn bert_wordpiece_tokenizer_metadata_entries(
+        token_type_count: u32,
+    ) -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("bert")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("[PAD]")),
+                    GgufMetadataValue::String(String::from("[CLS]")),
+                    GgufMetadataValue::String(String::from("[SEP]")),
+                    GgufMetadataValue::String(String::from("[UNK]")),
+                    GgufMetadataValue::String(String::from("hello")),
+                    GgufMetadataValue::String(String::from("world")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.padding_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("tokenizer.ggml.unknown_token_id"),
+                GgufMetadataValue::U32(3),
+            ),
+            (
+                String::from("tokenizer.ggml.token_type_count"),
+                GgufMetadataValue::U32(token_type_count),
+            ),
+        ]
+    }
+
+    fn bert_embedding_metadata(name: &str) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("bert")),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(name.to_string()),
+            ),
+            (
+                String::from("bert.context_length"),
+                GgufMetadataValue::U32(64),
+            ),
+            (
+                String::from("bert.embedding_length"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                String::from("bert.feed_forward_length"),
+                GgufMetadataValue::U32(8),
+            ),
+            (String::from("bert.block_count"), GgufMetadataValue::U32(2)),
+            (
+                String::from("bert.attention.head_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("bert.attention.layer_norm_epsilon"),
+                GgufMetadataValue::F32(1e-12),
+            ),
+            (
+                String::from("bert.attention.causal"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (String::from("bert.pooling_type"), GgufMetadataValue::U32(1)),
+            (
+                String::from("bert.normalize_embeddings"),
+                GgufMetadataValue::Bool(true),
+            ),
+        ];
+        metadata.extend(bert_wordpiece_tokenizer_metadata_entries(2));
+        metadata
+    }
+
+    fn nomic_bert_embedding_metadata(
+        name: &str,
+        architecture: &str,
+    ) -> Vec<(String, GgufMetadataValue)> {
+        let mut metadata = vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(architecture.to_string()),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(name.to_string()),
+            ),
+            (
+                format!("{architecture}.context_length"),
+                GgufMetadataValue::U32(128),
+            ),
+            (
+                format!("{architecture}.embedding_length"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                format!("{architecture}.feed_forward_length"),
+                GgufMetadataValue::U32(8),
+            ),
+            (
+                format!("{architecture}.block_count"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                format!("{architecture}.attention.head_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                format!("{architecture}.attention.layer_norm_epsilon"),
+                GgufMetadataValue::F32(1e-5),
+            ),
+            (
+                format!("{architecture}.attention.causal"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                format!("{architecture}.pooling_type"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                format!("{architecture}.rope.freq_base"),
+                GgufMetadataValue::F32(10_000.0),
+            ),
+        ];
+        metadata.extend(bert_wordpiece_tokenizer_metadata_entries(2));
+        metadata
+    }
+
     fn decoder_family_tensors(
         layer_count: usize,
         include_qkv_bias: bool,
@@ -6067,6 +7177,124 @@ mod tests {
             ));
             tensors.push(dense_f32_tensor(
                 &format!("{prefix}.ffn_norm.weight"),
+                vec![4],
+            ));
+        }
+
+        tensors
+    }
+
+    fn bert_embedding_tensors(layer_count: usize) -> Vec<TestGgufTensor> {
+        let mut tensors = vec![
+            dense_f32_tensor("token_embd.weight", vec![6, 4]),
+            dense_f32_tensor("token_types.weight", vec![2, 4]),
+            dense_f32_tensor("token_embd_norm.weight", vec![4]),
+            dense_f32_tensor("position_embd.weight", vec![64, 4]),
+        ];
+
+        for layer_index in 0..layer_count {
+            let prefix = format!("blk.{layer_index}");
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_q.weight"),
+                vec![4, 4],
+            ));
+            tensors.push(dense_f32_tensor(&format!("{prefix}.attn_q.bias"), vec![4]));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_k.weight"),
+                vec![4, 4],
+            ));
+            tensors.push(dense_f32_tensor(&format!("{prefix}.attn_k.bias"), vec![4]));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_v.weight"),
+                vec![4, 4],
+            ));
+            tensors.push(dense_f32_tensor(&format!("{prefix}.attn_v.bias"), vec![4]));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_output.weight"),
+                vec![4, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_output.bias"),
+                vec![4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_output_norm.weight"),
+                vec![4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_up.weight"),
+                vec![8, 4],
+            ));
+            tensors.push(dense_f32_tensor(&format!("{prefix}.ffn_up.bias"), vec![8]));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_down.weight"),
+                vec![4, 8],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_down.bias"),
+                vec![4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.layer_output_norm.weight"),
+                vec![4],
+            ));
+        }
+
+        tensors
+    }
+
+    fn nomic_bert_embedding_tensors(layer_count: usize) -> Vec<TestGgufTensor> {
+        let mut tensors = vec![
+            dense_f32_tensor("token_embd.weight", vec![6, 4]),
+            dense_f32_tensor("token_types.weight", vec![2, 4]),
+            dense_f32_tensor("token_embd_norm.weight", vec![4]),
+        ];
+
+        for layer_index in 0..layer_count {
+            let prefix = format!("blk.{layer_index}");
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_qkv.weight"),
+                vec![12, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_qkv.bias"),
+                vec![12],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_output.weight"),
+                vec![4, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_output.bias"),
+                vec![4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.attn_output_norm.weight"),
+                vec![4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_gate.weight"),
+                vec![8, 4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_gate.bias"),
+                vec![8],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_up.weight"),
+                vec![8, 4],
+            ));
+            tensors.push(dense_f32_tensor(&format!("{prefix}.ffn_up.bias"), vec![8]));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_down.weight"),
+                vec![4, 8],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.ffn_down.bias"),
+                vec![4],
+            ));
+            tensors.push(dense_f32_tensor(
+                &format!("{prefix}.layer_output_norm.weight"),
                 vec![4],
             ));
         }

@@ -17,10 +17,12 @@ pub use mox_models::{
     DecoderModelDescriptor, DecoderWeightLoader, EmbeddingModelDescriptor, EmbeddingNormalization,
     EmbeddingWeights, FixtureDecoderLoader, FixtureWordTokenizer, GgufDecoderAdapter,
     GgufDecoderAdapterLoader, GgufDecoderFamily, GgufDecoderFamilyMetadata,
-    GgufDecoderLayerTensorLayout, GgufDecoderTensorLayout, ModelDescriptor, ModelLoadError,
-    ReferenceWordDecoder, SmokeByteEmbedder, TokenId, TokenSequence, TokenVocabulary,
-    TokenizerBoundary, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
-    WeightTensorMetadata,
+    GgufDecoderLayerTensorLayout, GgufDecoderTensorLayout, GgufEmbeddingAdapter,
+    GgufEmbeddingAdapterLoader, GgufEmbeddingFamily, GgufEmbeddingFamilyMetadata,
+    GgufEmbeddingLayerTensorLayout, GgufEmbeddingPooling, GgufEmbeddingTensorLayout,
+    ModelDescriptor, ModelLoadError, ReferenceWordDecoder, SmokeByteEmbedder, TokenId,
+    TokenSequence, TokenVocabulary, TokenizerBoundary, WeightArtifactMetadata,
+    WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
 };
 use mox_runtime::{BackendSelection, DeviceDiscovery, HealthStatus, RuntimeError};
 use serde::{Deserialize, Serialize};
