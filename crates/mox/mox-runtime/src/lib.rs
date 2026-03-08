@@ -6,8 +6,8 @@ mod validation;
 use std::collections::{BTreeMap, VecDeque};
 
 use mox_core::{
-    BackendExtensionKind, DType, Device, QuantizationMode, QuantizedBlockLayout, TensorId,
-    TensorSpec,
+    BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
+    TensorId, TensorSpec,
 };
 use mox_ir::ExecutionPlan;
 pub use parity::*;
@@ -185,6 +185,102 @@ pub struct DeviceDescriptor {
     /// NVIDIA-specific topology/risk metadata when the device belongs to a CUDA backend.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub nvidia_metadata: Option<NvidiaDeviceMetadata>,
+}
+
+/// High-level memory posture for one advertised execution device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceMemoryClass {
+    /// Pure host/system-memory execution.
+    HostOnly,
+    /// Shared host/device memory such as unified-memory accelerators.
+    SharedHostDevice,
+    /// Dedicated accelerator memory.
+    DedicatedDevice,
+}
+
+/// High-level performance class for one advertised execution device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DevicePerformanceClass {
+    /// Reference path, typically host CPU execution.
+    Reference,
+    /// Integrated or shared-memory accelerator path.
+    IntegratedAccelerator,
+    /// Dedicated discrete accelerator path.
+    DiscreteAccelerator,
+    /// Partitioned accelerator path such as MIG.
+    PartitionedAccelerator,
+}
+
+/// Reusable inventory qualifiers for compute-market capability surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceInventoryQualifiers {
+    /// Stable device identifier used for inventory comparisons when available.
+    pub stable_device_id: String,
+    /// Stable topology key such as PCI BDF when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_key: Option<String>,
+    /// High-level performance class for the device.
+    pub performance_class: DevicePerformanceClass,
+    /// High-level memory posture for the device.
+    pub memory_class: DeviceMemoryClass,
+    /// Total memory visible to the runtime for this device when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_memory_bytes: Option<u64>,
+    /// Currently free memory visible to the runtime for this device when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub free_memory_bytes: Option<u64>,
+}
+
+impl DeviceDescriptor {
+    /// Returns stable inventory qualifiers derived from the current device/topology metadata.
+    #[must_use]
+    pub fn inventory_qualifiers(&self) -> DeviceInventoryQualifiers {
+        let topology_key = self
+            .nvidia_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.topology.pci_bdf.clone())
+            .or_else(|| {
+                self.amd_metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.topology.pci_bdf.clone())
+            });
+        let stable_device_id = topology_key
+            .clone()
+            .or_else(|| self.device.label().map(String::from))
+            .unwrap_or_else(|| format!("{}:{}", self.backend, self.device.ordinal()));
+        let performance_class = if self.device.kind() == DeviceKind::Cpu {
+            DevicePerformanceClass::Reference
+        } else if self
+            .nvidia_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.topology.mig_profile.as_ref())
+            .is_some()
+        {
+            DevicePerformanceClass::PartitionedAccelerator
+        } else if self.unified_memory == Some(true) {
+            DevicePerformanceClass::IntegratedAccelerator
+        } else {
+            DevicePerformanceClass::DiscreteAccelerator
+        };
+        let memory_class = if self.device.kind() == DeviceKind::Cpu {
+            DeviceMemoryClass::HostOnly
+        } else if self.unified_memory == Some(true) {
+            DeviceMemoryClass::SharedHostDevice
+        } else {
+            DeviceMemoryClass::DedicatedDevice
+        };
+
+        DeviceInventoryQualifiers {
+            stable_device_id,
+            topology_key,
+            performance_class,
+            memory_class,
+            total_memory_bytes: self.memory_capacity_bytes,
+            free_memory_bytes: None,
+        }
+    }
 }
 
 /// Exact allocator-pool reuse posture for one backend.
@@ -2142,6 +2238,21 @@ pub struct BackendToolchainIdentity {
     /// Stable backend feature flags compiled or selected for the active path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub compiled_backend_features: Vec<String>,
+    /// Whether the toolchain truth is compile-only or also backed by a live host probe.
+    pub probe_state: BackendProbeState,
+    /// Stable backend/runtime feature flags observed from the host probe.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probed_backend_features: Vec<String>,
+}
+
+/// Whether backend/toolchain truth is compile-only or backed by a live host probe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendProbeState {
+    /// Capability truth comes only from what was compiled into the binary.
+    CompiledOnly,
+    /// Capability truth is backed by a live host/backend probe.
+    CompiledAndProbed,
 }
 
 impl BackendToolchainIdentity {
@@ -2156,7 +2267,23 @@ impl BackendToolchainIdentity {
             effective_backend: effective_backend.into(),
             toolchain_version: toolchain_version.into(),
             compiled_backend_features,
+            probe_state: BackendProbeState::CompiledOnly,
+            probed_backend_features: Vec::new(),
         }
+    }
+
+    /// Attaches probe-backed runtime feature truth for the active backend path.
+    #[must_use]
+    pub fn with_probe(
+        mut self,
+        probe_state: BackendProbeState,
+        mut probed_backend_features: Vec<String>,
+    ) -> Self {
+        probed_backend_features.sort();
+        probed_backend_features.dedup();
+        self.probe_state = probe_state;
+        self.probed_backend_features = probed_backend_features;
+        self
     }
 }
 
@@ -2863,6 +2990,18 @@ impl BackendSelection {
         self.backend_extensions = backend_extensions;
         self
     }
+
+    /// Returns selected-device inventory qualifiers enriched with current runtime budget truth.
+    #[must_use]
+    pub fn selected_device_inventory(&self) -> Option<DeviceInventoryQualifiers> {
+        let mut qualifiers = self.selected_device.as_ref()?.inventory_qualifiers();
+        qualifiers.free_memory_bytes = self
+            .runtime_resources
+            .as_ref()
+            .and_then(|resources| resources.device_memory_budget.as_ref())
+            .and_then(|budget| budget.available_execution_bytes);
+        Some(qualifiers)
+    }
 }
 
 /// Minimal execution metrics.
@@ -3096,22 +3235,23 @@ mod tests {
         BackendExtensionSupport, BackendHealthTracker, BackendRuntimeResources, BackendSelection,
         BackendSelectionState, BackendToolchainIdentity, BufferHandle, BufferResidency,
         BufferStorageKind, CacheAction, CacheInvalidationTrigger, CacheKind, CacheObservation,
-        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
-        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
-        LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction,
-        RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
-        RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedArtifactIdentity,
-        ServedProductBackendPolicy, ServedProductFallbackAction, ServedProductFallbackLattice,
-        ServedProductFallbackTrigger, TokenSampler, apply_sampling_penalties,
-        default_cache_invalidation_policy, plan_model_admission,
+        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
+        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
+        ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
+        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
+        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
+        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction, RuntimeError,
+        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
+        SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ServedProductBackendPolicy,
+        ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
+        TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
+        plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4336,6 +4476,66 @@ mod tests {
             json!(2944)
         );
         Ok(())
+    }
+
+    #[test]
+    fn backend_selection_selected_device_inventory_uses_runtime_budget_bytes() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        )
+        .with_runtime_resources(Some(BackendRuntimeResources {
+            allocator_pool: AllocatorPoolReport {
+                policy: AllocatorPoolPolicy::disabled(),
+                state: AllocatorPoolState {
+                    cached_buffers: 0,
+                    cached_bytes: 0,
+                },
+            },
+            kernel_cache: KernelCacheReport {
+                policy: KernelCachePolicy::disabled(),
+                state: KernelCacheState {
+                    cached_entries: 0,
+                    cached_bytes: 0,
+                },
+            },
+            device_memory_budget: Some(DeviceMemoryBudget::new(
+                Some(16 * 1024 * 1024 * 1024),
+                4 * 1024 * 1024 * 1024,
+                1024,
+            )),
+        }));
+
+        assert_eq!(
+            selection.selected_device_inventory(),
+            Some(DeviceInventoryQualifiers {
+                stable_device_id: String::from("00000000:01:00.0"),
+                topology_key: Some(String::from("00000000:01:00.0")),
+                performance_class: DevicePerformanceClass::DiscreteAccelerator,
+                memory_class: DeviceMemoryClass::DedicatedDevice,
+                total_memory_bytes: Some(16 * 1024 * 1024 * 1024),
+                free_memory_bytes: Some(
+                    (16 * 1024 * 1024 * 1024) - (4 * 1024 * 1024 * 1024) - 1024
+                ),
+            })
+        );
+    }
+
+    #[test]
+    fn device_inventory_qualifiers_mark_mig_devices_as_partitioned() {
+        let mut device = sample_cuda_device();
+        let metadata = device
+            .nvidia_metadata
+            .as_mut()
+            .expect("sample cuda metadata");
+        metadata.topology.mig_profile = Some(String::from("1g.10gb"));
+        metadata.risk.mig_partitioned = true;
+
+        assert_eq!(
+            device.inventory_qualifiers().performance_class,
+            DevicePerformanceClass::PartitionedAccelerator
+        );
     }
 
     #[test]
