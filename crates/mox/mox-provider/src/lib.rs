@@ -5,14 +5,15 @@ use sha2::{Digest, Sha256};
 
 use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
-    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy,
+    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, PrefixCacheIdentity,
+    PrefixCacheReusePolicy, PrefixCacheState,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
     EmbeddingResponse, GenerationInput, GenerationLoadState, GenerationRequest, GenerationResponse,
     QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason,
     WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
-    default_decoder_kv_cache_policy,
+    default_decoder_kv_cache_policy, default_prefix_cache_policy,
 };
 
 /// Human-readable crate ownership summary.
@@ -364,6 +365,9 @@ pub struct TextGenerationCapabilityEnvelope {
     /// Explicit paged-KV policy when the served path uses paged KV state.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache_policy: Option<KvCachePolicy>,
+    /// Explicit shared prompt-prefix reuse policy.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_policy: Option<PrefixCacheReusePolicy>,
     /// Advertised batching posture.
     pub batch_posture: BatchPosture,
     /// Current readiness state.
@@ -393,6 +397,7 @@ impl TextGenerationCapabilityEnvelope {
             max_context: model.config.max_context,
             kv_cache_policy: (kv_cache_mode == KvCacheMode::Paged)
                 .then(|| default_decoder_kv_cache_policy(model)),
+            prefix_cache_policy: Some(default_prefix_cache_policy()),
             kv_cache_mode,
             batch_posture,
             readiness,
@@ -451,6 +456,18 @@ pub struct TextGenerationReceipt {
     /// Explicit paged-KV accounting for the request, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache: Option<KvCacheAccounting>,
+    /// Shared prefix-cache state for the request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_state: Option<PrefixCacheState>,
+    /// Shared prefix-cache reuse policy for the request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_policy: Option<PrefixCacheReusePolicy>,
+    /// Shared prefix-cache identity for the request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_cache_identity: Option<PrefixCacheIdentity>,
+    /// Number of prompt-prefix tokens reused from the shared prefix cache.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prefix_tokens_reused: Option<usize>,
     /// Terminal termination reason when execution succeeded.
     pub termination: Option<TerminationReason>,
     /// Timestamp when execution started.
@@ -505,6 +522,19 @@ impl TextGenerationReceipt {
                 .as_ref()
                 .and_then(|value| value.kv_cache_policy.clone()),
             kv_cache: response.metrics.kv_cache.clone(),
+            prefix_cache_state: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            prefix_cache_policy: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_policy.clone()),
+            prefix_cache_identity: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_identity.clone()),
+            prefix_tokens_reused: response.metrics.prefix_tokens_reused,
             termination: Some(response.termination),
             started_at_unix_ms,
             ended_at_unix_ms,
@@ -571,6 +601,10 @@ impl TextGenerationReceipt {
             load_state: None,
             kv_cache_policy: None,
             kv_cache: None,
+            prefix_cache_state: None,
+            prefix_cache_policy: None,
+            prefix_cache_identity: None,
+            prefix_tokens_reused: None,
             termination: None,
             started_at_unix_ms,
             ended_at_unix_ms,
@@ -735,14 +769,14 @@ mod tests {
     use mox_runtime::{
         AmdDeviceMetadata, AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
         AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendSelection, DeviceDescriptor,
-        HealthStatus, KvCacheAccounting, QuantizationExecution, QuantizationLoadPath,
-        QuantizationSupport,
+        HealthStatus, KvCacheAccounting, PrefixCacheIdentity, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     };
     use mox_serve::{
         EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationLoadState,
         GenerationMetrics, GenerationOptions, GenerationProvenance, GenerationRequest,
         GenerationResponse, ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TokenSequence,
-        default_decoder_kv_cache_policy,
+        default_decoder_kv_cache_policy, default_prefix_cache_policy,
     };
     use serde_json::json;
 
@@ -888,6 +922,12 @@ mod tests {
                         "page_bytes": 640,
                         "max_pages": 1
                     }
+                },
+                "prefix_cache_policy": {
+                    "shared_across_sessions": true,
+                    "shared_across_users": false,
+                    "shared_across_models": false,
+                    "shared_across_backends": false
                 },
                 "batch_posture": "single_request_only",
                 "readiness": {
@@ -1059,11 +1099,26 @@ mod tests {
                         pages: 1,
                     },
                 }),
+                prefix_tokens_reused: Some(1),
             },
             GenerationProvenance {
                 execution_plan_digest: String::from("plan-digest-from-response"),
                 load_state: GenerationLoadState::Cold,
                 kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
+                prefix_cache_state: Some(PrefixCacheState::Hit),
+                prefix_cache_policy: Some(default_prefix_cache_policy()),
+                prefix_cache_identity: Some(PrefixCacheIdentity {
+                    model_id: request.model.model.model_id.clone(),
+                    model_revision: request.model.model.revision.clone(),
+                    weight_bundle_digest: request.model.weights.digest.clone(),
+                    tokenizer_family: request.model.tokenizer_family.clone(),
+                    tokenizer_digest: Some(String::from("tokenizer-digest")),
+                    chat_template_digest: None,
+                    generation_defaults_digest: None,
+                    backend_compatibility: String::from("cpu"),
+                    prefix_digest: String::from("prefix-digest"),
+                    prefix_tokens: 1,
+                }),
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -1095,6 +1150,19 @@ mod tests {
         assert_eq!(
             receipt.kv_cache.as_ref().map(|value| value.current.pages),
             Some(1)
+        );
+        assert_eq!(receipt.prefix_cache_state, Some(PrefixCacheState::Hit));
+        assert_eq!(
+            receipt.prefix_cache_policy,
+            Some(default_prefix_cache_policy())
+        );
+        assert_eq!(receipt.prefix_tokens_reused, Some(1));
+        assert_eq!(
+            receipt
+                .prefix_cache_identity
+                .as_ref()
+                .map(|value| value.prefix_digest.as_str()),
+            Some("prefix-digest")
         );
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: TextGenerationReceipt = serde_json::from_str(&encoded)?;

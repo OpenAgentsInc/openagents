@@ -502,6 +502,63 @@ impl KvCacheAccounting {
     }
 }
 
+/// Observable state for shared prompt-prefix reuse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrefixCacheState {
+    /// No compatible shared prefix cache existed for the request.
+    None,
+    /// A compatible shared prefix cache was found and reused.
+    Hit,
+    /// Compatible shared prefix caches existed but none matched the request prefix.
+    Miss,
+    /// Reuse was intentionally skipped under the current policy.
+    Bypassed,
+    /// A stale or invalid shared prefix entry was discarded and rebuilt.
+    Rebuilt,
+}
+
+/// Explicit reuse boundaries for shared prompt-prefix caches.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefixCacheReusePolicy {
+    /// Whether prefixes may be reused across distinct sessions.
+    pub shared_across_sessions: bool,
+    /// Whether prefixes may be reused across distinct user/security domains.
+    pub shared_across_users: bool,
+    /// Whether prefixes may be reused across different models or revisions.
+    pub shared_across_models: bool,
+    /// Whether prefixes may be reused across different backend identities.
+    pub shared_across_backends: bool,
+}
+
+/// Stable identity tuple for one reusable shared prompt prefix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefixCacheIdentity {
+    /// Stable model identifier.
+    pub model_id: String,
+    /// Stable model revision.
+    pub model_revision: String,
+    /// Stable weight-bundle digest.
+    pub weight_bundle_digest: String,
+    /// Tokenizer family label used to produce the prompt tokens.
+    pub tokenizer_family: String,
+    /// Stable tokenizer digest when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer_digest: Option<String>,
+    /// Stable chat-template digest when prompt rendering supplied one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_template_digest: Option<String>,
+    /// Stable generation-defaults digest when prompt rendering depended on one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_defaults_digest: Option<String>,
+    /// Stable backend compatibility label required for reuse.
+    pub backend_compatibility: String,
+    /// Stable digest of the reusable prompt-prefix tokens.
+    pub prefix_digest: String,
+    /// Number of reusable prompt-prefix tokens represented by the digest.
+    pub prefix_tokens: usize,
+}
+
 /// Explicit runtime backend selection and fallback truth.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendSelection {
@@ -810,8 +867,9 @@ mod tests {
         ExecutionResult, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
         KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelResidency, LoadedModelState,
         ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind,
-        PagedTensorStoragePlan, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeError, RuntimeHealth,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeError,
+        RuntimeHealth,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1197,6 +1255,56 @@ mod tests {
                     "pages": 1
                 }
             })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prefix_cache_identity_and_policy_serialize_stably() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let policy = PrefixCacheReusePolicy {
+            shared_across_sessions: true,
+            shared_across_users: false,
+            shared_across_models: false,
+            shared_across_backends: false,
+        };
+        let identity = PrefixCacheIdentity {
+            model_id: String::from("fixture-word-decoder-v0"),
+            model_revision: String::from("v0"),
+            weight_bundle_digest: String::from("bundle-digest"),
+            tokenizer_family: String::from("fixture_wordpiece"),
+            tokenizer_digest: Some(String::from("tokenizer-digest")),
+            chat_template_digest: None,
+            generation_defaults_digest: None,
+            backend_compatibility: String::from("cpu"),
+            prefix_digest: String::from("prefix-digest"),
+            prefix_tokens: 3,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&policy)?,
+            json!({
+                "shared_across_sessions": true,
+                "shared_across_users": false,
+                "shared_across_models": false,
+                "shared_across_backends": false
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&(PrefixCacheState::Hit, identity))?,
+            json!([
+                "hit",
+                {
+                    "model_id": "fixture-word-decoder-v0",
+                    "model_revision": "v0",
+                    "weight_bundle_digest": "bundle-digest",
+                    "tokenizer_family": "fixture_wordpiece",
+                    "tokenizer_digest": "tokenizer-digest",
+                    "backend_compatibility": "cpu",
+                    "prefix_digest": "prefix-digest",
+                    "prefix_tokens": 3
+                }
+            ])
         );
         Ok(())
     }
