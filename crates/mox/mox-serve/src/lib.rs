@@ -101,6 +101,51 @@ pub fn default_decoder_memory_plan(
     }
 }
 
+/// Slow-reader handling for the local streaming API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamingBackpressurePolicy {
+    /// Generation advances only when the caller pulls the next stream event.
+    PullDriven,
+}
+
+/// Dropped-client handling for the local streaming API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamingDisconnectPolicy {
+    /// Abort generation and discard uncommitted output when the client disconnects.
+    AbortGeneration,
+}
+
+/// Explicit cancellation handling for the local streaming API.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum StreamingCancellationPolicy {
+    /// Abort generation and discard uncommitted output after the current token step.
+    AbortAfterCurrentToken,
+}
+
+/// Explicit streaming policy for in-process local generation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationStreamingPolicy {
+    /// Slow-reader / backpressure behavior.
+    pub backpressure: StreamingBackpressurePolicy,
+    /// Dropped-client behavior.
+    pub disconnect: StreamingDisconnectPolicy,
+    /// Explicit cancellation behavior.
+    pub cancellation: StreamingCancellationPolicy,
+}
+
+/// Returns the default streaming policy for local Mox serving.
+#[must_use]
+pub fn default_generation_streaming_policy() -> GenerationStreamingPolicy {
+    GenerationStreamingPolicy {
+        backpressure: StreamingBackpressurePolicy::PullDriven,
+        disconnect: StreamingDisconnectPolicy::AbortGeneration,
+        cancellation: StreamingCancellationPolicy::AbortAfterCurrentToken,
+    }
+}
+
 /// Returns the default shared prompt-prefix reuse policy for local Mox serving.
 #[must_use]
 pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
@@ -455,6 +500,9 @@ pub struct GenerationProvenance {
     pub execution_plan_digest: String,
     /// Whether the request took the warm or cold model path.
     pub load_state: GenerationLoadState,
+    /// Explicit streaming policy when the request used the local streaming API.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streaming_policy: Option<GenerationStreamingPolicy>,
     /// Explicit resident-memory plan for the active loaded model.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_plan: Option<ModelMemoryPlan>,
@@ -488,6 +536,63 @@ pub enum TerminationReason {
     MaxOutputTokens,
     /// The request hit the context limit.
     ContextLimit,
+    /// The caller explicitly cancelled a streaming request.
+    Cancelled,
+    /// The caller disconnected after streaming started.
+    Disconnected,
+    /// The runtime failed after at least one chunk was emitted.
+    Error,
+}
+
+/// One streamed output chunk from a generation request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationStreamChunk {
+    /// Stable request identifier.
+    pub request_id: String,
+    /// Model identifier used for execution.
+    pub model_id: String,
+    /// Optional bound session identifier.
+    pub session_id: Option<SessionId>,
+    /// Newly emitted output tokens for this chunk.
+    pub output: GenerationOutput,
+    /// Number of output tokens emitted so far.
+    pub cumulative_output_tokens: usize,
+}
+
+/// Terminal status for a streamed generation request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationStreamStatus {
+    /// Generation completed successfully and committed its output.
+    Succeeded,
+    /// The caller explicitly cancelled the stream.
+    Cancelled,
+    /// The caller disconnected after streaming started.
+    Disconnected,
+    /// The runtime failed after streaming started.
+    Failed,
+}
+
+/// Terminal event for a streamed generation request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationStreamTerminal {
+    /// Terminal stream status.
+    pub status: GenerationStreamStatus,
+    /// Final or partial response snapshot at termination time.
+    pub response: GenerationResponse,
+    /// Explicit failure reason when the stream did not succeed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+}
+
+/// Typed event emitted by the local streaming generation API.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationStreamEvent {
+    /// Non-terminal output chunk.
+    Chunk(GenerationStreamChunk),
+    /// Terminal result for the stream.
+    Terminal(GenerationStreamTerminal),
 }
 
 /// Text-generation response contract.
@@ -597,6 +702,56 @@ pub trait TextGenerationExecutor {
     fn generate(&mut self, request: &GenerationRequest) -> Result<GenerationResponse, Self::Error>;
 }
 
+/// Library-first pull stream for local text generation.
+pub trait GenerationEventStream {
+    /// Returns the explicit policy governing the stream.
+    fn policy(&self) -> &GenerationStreamingPolicy;
+
+    /// Returns the next chunk or terminal event, pausing generation until pulled.
+    fn next_event(&mut self) -> Option<GenerationStreamEvent>;
+
+    /// Cancels the stream and returns the terminal event when cancellation starts a terminal path.
+    fn cancel(&mut self) -> Option<GenerationStreamTerminal>;
+
+    /// Signals that the client disconnected and returns the terminal event when disconnect starts a terminal path.
+    fn disconnect(&mut self) -> Option<GenerationStreamTerminal>;
+}
+
+impl<T> GenerationEventStream for Box<T>
+where
+    T: GenerationEventStream + ?Sized,
+{
+    fn policy(&self) -> &GenerationStreamingPolicy {
+        (**self).policy()
+    }
+
+    fn next_event(&mut self) -> Option<GenerationStreamEvent> {
+        (**self).next_event()
+    }
+
+    fn cancel(&mut self) -> Option<GenerationStreamTerminal> {
+        (**self).cancel()
+    }
+
+    fn disconnect(&mut self) -> Option<GenerationStreamTerminal> {
+        (**self).disconnect()
+    }
+}
+
+/// Minimal streaming text-generation execution interface.
+pub trait StreamingTextGenerationExecutor: TextGenerationExecutor {
+    /// Concrete stream returned by the executor.
+    type Stream<'a>: GenerationEventStream
+    where
+        Self: 'a;
+
+    /// Starts a pull-driven generation stream.
+    fn generate_stream<'a>(
+        &'a mut self,
+        request: &GenerationRequest,
+    ) -> Result<Self::Stream<'a>, <Self as TextGenerationExecutor>::Error>;
+}
+
 /// Library-first catalog surface for local installed-model inspection.
 pub trait LocalModelCatalog {
     /// Returns the local installed-model observation.
@@ -607,7 +762,9 @@ pub trait LocalModelCatalog {
 }
 
 /// Library-first generation surface that also exposes local model lifecycle.
-pub trait ManagedTextGenerationRuntime: TextGenerationExecutor {
+pub trait ManagedTextGenerationRuntime:
+    TextGenerationExecutor + StreamingTextGenerationExecutor
+{
     /// Returns the current loaded-model observation.
     fn loaded_models(&mut self) -> LoadedModelsObservation;
 
@@ -616,10 +773,13 @@ pub trait ManagedTextGenerationRuntime: TextGenerationExecutor {
         &mut self,
         model_id: &str,
         keep_alive_millis: u64,
-    ) -> Result<LoadedModelView, Self::Error>;
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error>;
 
     /// Unloads one currently loaded model.
-    fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, Self::Error>;
+    fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error>;
 }
 
 /// Library-first aggregate runtime boundary over catalog, generation, and embeddings.
@@ -709,12 +869,15 @@ where
         &mut self,
         model_id: &str,
         keep_alive_millis: u64,
-    ) -> Result<LoadedModelView, G::Error> {
+    ) -> Result<LoadedModelView, <G as TextGenerationExecutor>::Error> {
         self.generation.warm_model(model_id, keep_alive_millis)
     }
 
     /// Unloads one loaded generation model.
-    pub fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, G::Error> {
+    pub fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, <G as TextGenerationExecutor>::Error> {
         self.generation.unload_model(model_id)
     }
 
@@ -722,8 +885,16 @@ where
     pub fn generate(
         &mut self,
         request: &GenerationRequest,
-    ) -> Result<GenerationResponse, G::Error> {
+    ) -> Result<GenerationResponse, <G as TextGenerationExecutor>::Error> {
         self.generation.generate(request)
+    }
+
+    /// Starts a pull-driven streaming generation request through the managed generation surface.
+    pub fn generate_stream<'a>(
+        &'a mut self,
+        request: &GenerationRequest,
+    ) -> Result<G::Stream<'a>, <G as TextGenerationExecutor>::Error> {
+        self.generation.generate_stream(request)
     }
 
     /// Executes an embeddings request through the configured embeddings surface.
@@ -748,6 +919,10 @@ trait WordDecoderExecutionModel: Clone {
     fn descriptor(&self) -> &DecoderModelDescriptor;
     fn tokenizer(&self) -> &FixtureWordTokenizer;
     fn weights(&self) -> &DecoderFixtureWeights;
+
+    fn injected_stream_failure(&self, _position: usize) -> Option<ReferenceTextGenerationError> {
+        None
+    }
 }
 
 impl WordDecoderExecutionModel for ReferenceWordDecoder {
@@ -1956,6 +2131,9 @@ where
                 actual: context.len(),
             });
         }
+        if let Some(error) = self.model.injected_stream_failure(position) {
+            return Err(error);
+        }
 
         let mut runtime_inputs = BTreeMap::new();
         runtime_inputs.insert(
@@ -2161,6 +2339,23 @@ impl TextGenerationExecutor for CpuReferenceTextGenerationService {
     }
 }
 
+impl StreamingTextGenerationExecutor for CpuReferenceTextGenerationService {
+    type Stream<'a> = Box<dyn GenerationEventStream + 'a>;
+
+    fn generate_stream<'a>(
+        &'a mut self,
+        request: &GenerationRequest,
+    ) -> Result<Self::Stream<'a>, <Self as TextGenerationExecutor>::Error> {
+        Ok(Box::new(CpuGenerationStream::new(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            request,
+        )?))
+    }
+}
+
 impl ManagedTextGenerationRuntime for CpuReferenceTextGenerationService {
     fn loaded_models(&mut self) -> LoadedModelsObservation {
         CpuReferenceTextGenerationService::loaded_models(self)
@@ -2170,11 +2365,14 @@ impl ManagedTextGenerationRuntime for CpuReferenceTextGenerationService {
         &mut self,
         model_id: &str,
         keep_alive_millis: u64,
-    ) -> Result<LoadedModelView, Self::Error> {
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
         CpuReferenceTextGenerationService::warm_model(self, model_id, keep_alive_millis)
     }
 
-    fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, Self::Error> {
+    fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
         CpuReferenceTextGenerationService::unload_model(self, model_id)
     }
 }
@@ -2333,6 +2531,23 @@ impl TextGenerationExecutor for CpuModelTextGenerationService {
     }
 }
 
+impl StreamingTextGenerationExecutor for CpuModelTextGenerationService {
+    type Stream<'a> = Box<dyn GenerationEventStream + 'a>;
+
+    fn generate_stream<'a>(
+        &'a mut self,
+        request: &GenerationRequest,
+    ) -> Result<Self::Stream<'a>, <Self as TextGenerationExecutor>::Error> {
+        Ok(Box::new(CpuGenerationStream::new(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            request,
+        )?))
+    }
+}
+
 impl ManagedTextGenerationRuntime for CpuModelTextGenerationService {
     fn loaded_models(&mut self) -> LoadedModelsObservation {
         CpuModelTextGenerationService::loaded_models(self)
@@ -2342,11 +2557,14 @@ impl ManagedTextGenerationRuntime for CpuModelTextGenerationService {
         &mut self,
         model_id: &str,
         keep_alive_millis: u64,
-    ) -> Result<LoadedModelView, Self::Error> {
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
         CpuModelTextGenerationService::warm_model(self, model_id, keep_alive_millis)
     }
 
-    fn unload_model(&mut self, model_id: &str) -> Result<LoadedModelView, Self::Error> {
+    fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
         CpuModelTextGenerationService::unload_model(self, model_id)
     }
 }
@@ -2374,6 +2592,533 @@ impl GenerationSampler {
         self.sampler
             .select_next_token(logits, &history)
             .map(TokenId)
+    }
+}
+
+/// Pull-driven CPU generation stream for the local runtime API.
+struct CpuGenerationStream<'a, M>
+where
+    M: WordDecoderExecutionModel,
+{
+    backend: &'a mut CpuBackend,
+    models: &'a mut InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
+    sessions: &'a mut InMemoryGenerationSessionStore,
+    request: GenerationRequest,
+    loaded_model: CpuWordGenerationModel<M>,
+    model_id: String,
+    load_state: GenerationLoadState,
+    generation_start: Instant,
+    streaming_policy: GenerationStreamingPolicy,
+    memory_plan: Option<ModelMemoryPlan>,
+    residency_policy: Option<ModelResidencyPolicy>,
+    residency_snapshot: Option<MemoryResidencySnapshot>,
+    context_window: ContextWindowAccounting,
+    previous_kv_state: KvCacheState,
+    cache: InMemoryKvCache,
+    sampler: GenerationSampler,
+    session_tokens: Vec<TokenId>,
+    prompt_tokens: TokenSequence,
+    prefix_policy: PrefixCacheReusePolicy,
+    prefix_state: PrefixCacheState,
+    prefix_tokens_reused: usize,
+    prefix_identity: Option<PrefixCacheIdentity>,
+    last_logits: Vec<f32>,
+    generated_tokens: Vec<TokenId>,
+    emitted_token_count: usize,
+    emitted_text_bytes: usize,
+    pending_terminal: Option<GenerationStreamTerminal>,
+    request_finished: bool,
+}
+
+impl<'a, M> CpuGenerationStream<'a, M>
+where
+    M: WordDecoderExecutionModel,
+{
+    fn new(
+        backend: &'a mut CpuBackend,
+        models: &'a mut InMemoryGenerationModelRegistry<CpuWordGenerationModel<M>>,
+        sessions: &'a mut InMemoryGenerationSessionStore,
+        shared_prefixes: &'a mut SharedPrefixStore,
+        request: &GenerationRequest,
+    ) -> Result<Self, ReferenceTextGenerationError> {
+        if request.product_id != TEXT_GENERATION_PRODUCT_ID {
+            return Err(ReferenceTextGenerationError::UnsupportedProduct(
+                request.product_id.clone(),
+            ));
+        }
+
+        let loaded_model = models
+            .active(request.model.model.model_id.as_str())
+            .ok_or_else(|| {
+                ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
+            })?
+            .clone();
+        if loaded_model.descriptor() != &request.model {
+            return Err(ReferenceTextGenerationError::UnsupportedModel(
+                request.model.model.model_id.clone(),
+            ));
+        }
+
+        let model_id = request.model.model.model_id.clone();
+        let load_state = models
+            .load_state(model_id.as_str())
+            .unwrap_or(GenerationLoadState::Warm);
+        let request_start = current_time_millis();
+        models.begin_request(model_id.as_str(), request_start)?;
+        let streaming_policy = default_generation_streaming_policy();
+        let memory_plan = models.memory_plan(model_id.as_str()).cloned();
+        let residency_policy = Some(models.residency_policy().clone());
+        let residency_snapshot = Some(models.memory_snapshot());
+        let generation_start = Instant::now();
+
+        let prepared = (|| -> Result<_, ReferenceTextGenerationError> {
+            let tokenizer = loaded_model.model().tokenizer();
+            let prompt_tokens = match &request.prompt {
+                GenerationInput::Text(text) => {
+                    tokenizer.encode_with_special_tokens(text, true, false)
+                }
+                GenerationInput::Tokens(tokens) => tokens.clone(),
+            };
+            if prompt_tokens.is_empty() {
+                return Err(ReferenceTextGenerationError::EmptyPrompt);
+            }
+
+            let hidden_size = loaded_model.descriptor().config.hidden_size;
+            let mut session_tokens = Vec::new();
+            let compatibility = prefix_compatibility(&loaded_model);
+            let prefix_policy = default_prefix_cache_policy();
+            let mut prefix_state = PrefixCacheState::None;
+            let mut prefix_tokens_reused = 0usize;
+            let mut prefix_identity = None;
+            let mut shared_prefix_eligible = false;
+            let previous_kv_state = if let Some(session_id) = &request.session_id {
+                if request.reset_session {
+                    sessions.reset(session_id)?;
+                }
+                let state = sessions.state(session_id)?;
+                validate_session_model(state, session_id, loaded_model.descriptor())?;
+                session_tokens = state.tokens().to_vec();
+                if state.cache().is_empty() {
+                    shared_prefix_eligible = true;
+                } else {
+                    prefix_state = PrefixCacheState::Bypassed;
+                }
+                state.cache().state()
+            } else {
+                shared_prefix_eligible = true;
+                KvCacheState::default()
+            };
+            let preserve_prefix_tokens = usize::from(
+                prompt_tokens.as_slice().first().copied() == Some(tokenizer.vocabulary().bos_id()),
+            );
+            let (prompt_tokens, context_window) = apply_context_window(
+                &prompt_tokens,
+                loaded_model.descriptor().config.max_context,
+                previous_kv_state.tokens,
+                request.options.max_output_tokens,
+                request.options.context_overflow_policy,
+                preserve_prefix_tokens,
+            )?;
+            let mut prompt_logits = Vec::new();
+            let mut last_logits = Vec::new();
+            let mut cache = if shared_prefix_eligible {
+                let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+                prefix_state = lookup.state;
+                prefix_tokens_reused = lookup.reused_tokens;
+                prefix_identity = lookup.identity;
+                prompt_logits = lookup.prompt_logits;
+                last_logits = prompt_logits.last().cloned().unwrap_or_default();
+                lookup.cache.unwrap_or_else(|| {
+                    InMemoryKvCache::new(
+                        loaded_model.descriptor().config.max_context,
+                        loaded_model.descriptor().config.hidden_size,
+                    )
+                })
+            } else if let Some(session_id) = &request.session_id {
+                sessions.state(session_id)?.cache().clone()
+            } else {
+                InMemoryKvCache::new(
+                    loaded_model.descriptor().config.max_context,
+                    loaded_model.descriptor().config.hidden_size,
+                )
+            };
+            if cache.width() != hidden_size {
+                return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                    hidden_size,
+                    kv_width: cache.width(),
+                });
+            }
+            for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
+                let context = mean_cache_value(&cache, hidden_size);
+                let step = loaded_model.execute_step(backend, *token, cache.len(), &context)?;
+                cache.append(*token, step.hidden.clone(), step.hidden)?;
+                last_logits = step.logits;
+                prompt_logits.push(last_logits.clone());
+            }
+
+            if shared_prefix_eligible {
+                let recorded_identity =
+                    shared_prefixes.record(compatibility, &prompt_tokens, &prompt_logits, &cache);
+                if prefix_state != PrefixCacheState::Hit || prefix_identity.is_none() {
+                    prefix_identity = Some(recorded_identity);
+                }
+            }
+
+            Ok((
+                prompt_tokens,
+                context_window,
+                previous_kv_state,
+                cache,
+                session_tokens,
+                prefix_policy,
+                prefix_state,
+                prefix_tokens_reused,
+                prefix_identity,
+                last_logits,
+            ))
+        })();
+
+        match prepared {
+            Ok((
+                prompt_tokens,
+                context_window,
+                previous_kv_state,
+                cache,
+                session_tokens,
+                prefix_policy,
+                prefix_state,
+                prefix_tokens_reused,
+                prefix_identity,
+                last_logits,
+            )) => Ok(Self {
+                backend,
+                models,
+                sessions,
+                request: request.clone(),
+                loaded_model,
+                model_id,
+                load_state,
+                generation_start,
+                streaming_policy,
+                memory_plan,
+                residency_policy,
+                residency_snapshot,
+                context_window,
+                previous_kv_state,
+                cache,
+                sampler: GenerationSampler::new(&request.options),
+                session_tokens,
+                prompt_tokens,
+                prefix_policy,
+                prefix_state,
+                prefix_tokens_reused,
+                prefix_identity,
+                last_logits,
+                generated_tokens: Vec::new(),
+                emitted_token_count: 0,
+                emitted_text_bytes: 0,
+                pending_terminal: None,
+                request_finished: false,
+            }),
+            Err(error) => {
+                let _ = models.finish_request(model_id.as_str(), current_time_millis());
+                Err(error)
+            }
+        }
+    }
+
+    fn finish_request_once(&mut self) {
+        if !self.request_finished {
+            let _ = self
+                .models
+                .finish_request(self.model_id.as_str(), current_time_millis());
+            self.request_finished = true;
+        }
+    }
+
+    fn build_response(
+        &self,
+        output_tokens: &[TokenId],
+        termination: TerminationReason,
+        streaming_policy: bool,
+    ) -> GenerationResponse {
+        let generated = TokenSequence::new(output_tokens.to_vec());
+        let usage = GenerationUsage {
+            input_tokens: self.prompt_tokens.len(),
+            output_tokens: generated.len(),
+            cache_tokens: self.cache.len(),
+        };
+        let metrics = GenerationMetrics {
+            total_duration_ns: Some(
+                self.generation_start
+                    .elapsed()
+                    .as_nanos()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            load_duration_ns: Some(match self.load_state {
+                GenerationLoadState::Cold => self.loaded_model.load_duration_ns(),
+                GenerationLoadState::Warm => 0,
+            }),
+            prompt_eval_count: Some(usage.input_tokens),
+            context_window: Some(self.context_window.clone()),
+            eval_count: Some(usage.output_tokens),
+            kv_cache: Some(KvCacheAccounting::from_states(
+                &self.previous_kv_state,
+                self.cache.state(),
+            )),
+            prefix_tokens_reused: Some(self.prefix_tokens_reused),
+        };
+        let provenance = GenerationProvenance {
+            execution_plan_digest: self.loaded_model.plan_digest().to_string(),
+            load_state: self.load_state,
+            streaming_policy: streaming_policy.then(|| self.streaming_policy.clone()),
+            memory_plan: self.memory_plan.clone(),
+            residency_policy: self.residency_policy.clone(),
+            residency_snapshot: self.residency_snapshot.clone(),
+            kv_cache_policy: Some(self.cache.policy().clone()),
+            prefix_cache_state: Some(self.prefix_state),
+            prefix_cache_policy: Some(self.prefix_policy.clone()),
+            prefix_cache_identity: self.prefix_identity.clone(),
+        };
+        GenerationResponse::new(
+            &self.request,
+            self.request.session_id.clone(),
+            generated,
+            self.loaded_model.model().tokenizer().decode(output_tokens),
+            usage.input_tokens,
+            usage.cache_tokens,
+            termination,
+        )
+        .with_metrics_and_provenance(metrics, provenance)
+    }
+
+    fn build_terminal(
+        &mut self,
+        status: GenerationStreamStatus,
+        termination: TerminationReason,
+        failure_reason: Option<String>,
+    ) -> GenerationStreamTerminal {
+        if status == GenerationStreamStatus::Succeeded {
+            if let Some(session_id) = &self.request.session_id {
+                let mut committed_tokens = self.session_tokens.clone();
+                committed_tokens.extend_from_slice(self.prompt_tokens.as_slice());
+                committed_tokens.extend_from_slice(self.generated_tokens.as_slice());
+                let _ = self.sessions.replace_cache(
+                    session_id,
+                    self.loaded_model.descriptor(),
+                    self.cache.clone(),
+                    TokenSequence::new(committed_tokens),
+                );
+            }
+        }
+        let response = self.build_response(&self.generated_tokens, termination, true);
+        self.finish_request_once();
+        GenerationStreamTerminal {
+            status,
+            response,
+            failure_reason,
+        }
+    }
+
+    fn maybe_emit_chunk(&mut self, allow_full_flush: bool) -> Option<GenerationStreamChunk> {
+        let tokenizer = self.loaded_model.model().tokenizer();
+        let full_text = tokenizer.decode(self.generated_tokens.as_slice());
+        let reserved_chars = if allow_full_flush {
+            0
+        } else {
+            self.request
+                .options
+                .stop_sequences
+                .iter()
+                .filter(|stop| !stop.is_empty())
+                .map(|stop| stop.chars().count())
+                .max()
+                .unwrap_or(0)
+                .saturating_sub(1)
+        };
+        let safe_text = text_prefix_without_trailing_chars(full_text.as_str(), reserved_chars);
+        let safe_token_count = token_count_for_decoded_prefix(
+            self.loaded_model.model().tokenizer(),
+            self.generated_tokens.as_slice(),
+            safe_text,
+        );
+        if safe_token_count <= self.emitted_token_count {
+            return None;
+        }
+
+        let delta_tokens =
+            self.generated_tokens[self.emitted_token_count..safe_token_count].to_vec();
+        let delta_text = safe_text[self.emitted_text_bytes..].to_string();
+        self.emitted_token_count = safe_token_count;
+        self.emitted_text_bytes = safe_text.len();
+        Some(GenerationStreamChunk {
+            request_id: self.request.request_id.clone(),
+            model_id: self.request.model.model.model_id.clone(),
+            session_id: self.request.session_id.clone(),
+            output: GenerationOutput {
+                tokens: TokenSequence::new(delta_tokens),
+                text: delta_text,
+            },
+            cumulative_output_tokens: self.emitted_token_count,
+        })
+    }
+
+    fn emit_terminal_or_chunk(
+        &mut self,
+        status: GenerationStreamStatus,
+        termination: TerminationReason,
+        failure_reason: Option<String>,
+    ) -> GenerationStreamEvent {
+        let terminal = self.build_terminal(status, termination, failure_reason);
+        if let Some(chunk) = self.maybe_emit_chunk(true) {
+            self.pending_terminal = Some(terminal);
+            GenerationStreamEvent::Chunk(chunk)
+        } else {
+            GenerationStreamEvent::Terminal(terminal)
+        }
+    }
+}
+
+impl<M> GenerationEventStream for CpuGenerationStream<'_, M>
+where
+    M: WordDecoderExecutionModel,
+{
+    fn policy(&self) -> &GenerationStreamingPolicy {
+        &self.streaming_policy
+    }
+
+    fn next_event(&mut self) -> Option<GenerationStreamEvent> {
+        if let Some(terminal) = self.pending_terminal.take() {
+            return Some(GenerationStreamEvent::Terminal(terminal));
+        }
+        if self.request_finished {
+            return None;
+        }
+
+        loop {
+            if self.generated_tokens.len() >= self.request.options.max_output_tokens {
+                return Some(self.emit_terminal_or_chunk(
+                    GenerationStreamStatus::Succeeded,
+                    TerminationReason::MaxOutputTokens,
+                    None,
+                ));
+            }
+            if self.cache.len() >= self.cache.max_context() {
+                return Some(self.emit_terminal_or_chunk(
+                    GenerationStreamStatus::Succeeded,
+                    TerminationReason::ContextLimit,
+                    None,
+                ));
+            }
+
+            let next_token = match self
+                .sampler
+                .select_next_token(&self.last_logits, &self.cache)
+            {
+                Some(token) => token,
+                None => {
+                    return Some(self.emit_terminal_or_chunk(
+                        GenerationStreamStatus::Failed,
+                        TerminationReason::Error,
+                        Some(String::from("missing next token")),
+                    ));
+                }
+            };
+            if next_token == self.loaded_model.model().tokenizer().vocabulary().eos_id() {
+                return Some(self.emit_terminal_or_chunk(
+                    GenerationStreamStatus::Succeeded,
+                    TerminationReason::EndOfSequence,
+                    None,
+                ));
+            }
+
+            self.generated_tokens.push(next_token);
+            let context = mean_cache_value(
+                &self.cache,
+                self.loaded_model.descriptor().config.hidden_size,
+            );
+            match self.loaded_model.execute_step(
+                self.backend,
+                next_token,
+                self.cache.len(),
+                &context,
+            ) {
+                Ok(step) => {
+                    if let Err(error) =
+                        self.cache
+                            .append(next_token, step.hidden.clone(), step.hidden)
+                    {
+                        return Some(self.emit_terminal_or_chunk(
+                            GenerationStreamStatus::Failed,
+                            TerminationReason::Error,
+                            Some(error.to_string()),
+                        ));
+                    }
+                    self.last_logits = step.logits;
+                }
+                Err(error) => {
+                    return Some(self.emit_terminal_or_chunk(
+                        GenerationStreamStatus::Failed,
+                        TerminationReason::Error,
+                        Some(error.to_string()),
+                    ));
+                }
+            }
+
+            if truncate_generated_text(
+                self.loaded_model.model().tokenizer(),
+                &mut self.generated_tokens,
+                &self.request.options.stop_sequences,
+            )
+            .is_some()
+            {
+                return Some(self.emit_terminal_or_chunk(
+                    GenerationStreamStatus::Succeeded,
+                    TerminationReason::EndOfSequence,
+                    None,
+                ));
+            }
+
+            if let Some(chunk) = self.maybe_emit_chunk(false) {
+                return Some(GenerationStreamEvent::Chunk(chunk));
+            }
+        }
+    }
+
+    fn cancel(&mut self) -> Option<GenerationStreamTerminal> {
+        if self.request_finished {
+            return None;
+        }
+        let terminal = self.build_terminal(
+            GenerationStreamStatus::Cancelled,
+            TerminationReason::Cancelled,
+            Some(String::from("stream cancelled by caller")),
+        );
+        self.pending_terminal = None;
+        Some(terminal)
+    }
+
+    fn disconnect(&mut self) -> Option<GenerationStreamTerminal> {
+        if self.request_finished {
+            return None;
+        }
+        let terminal = self.build_terminal(
+            GenerationStreamStatus::Disconnected,
+            TerminationReason::Disconnected,
+            Some(String::from("stream disconnected by caller")),
+        );
+        self.pending_terminal = None;
+        Some(terminal)
+    }
+}
+
+impl<M> Drop for CpuGenerationStream<'_, M>
+where
+    M: WordDecoderExecutionModel,
+{
+    fn drop(&mut self) {
+        self.finish_request_once();
     }
 }
 
@@ -2589,6 +3334,7 @@ where
         let provenance = GenerationProvenance {
             execution_plan_digest: loaded_model.plan_digest().to_string(),
             load_state,
+            streaming_policy: None,
             memory_plan,
             residency_policy,
             residency_snapshot,
@@ -2631,6 +3377,37 @@ fn truncate_generated_text(
     let truncated = text[..stop_index].trim_end().to_string();
     *generated_tokens = tokenizer.encode(truncated.as_str()).as_slice().to_vec();
     Some(truncated)
+}
+
+fn text_prefix_without_trailing_chars(text: &str, trailing_chars: usize) -> &str {
+    if trailing_chars == 0 {
+        return text;
+    }
+    let char_count = text.chars().count();
+    if trailing_chars >= char_count {
+        return "";
+    }
+    let keep_chars = char_count - trailing_chars;
+    text.char_indices()
+        .nth(keep_chars)
+        .map_or(text, |(index, _)| &text[..index])
+}
+
+fn token_count_for_decoded_prefix(
+    tokenizer: &FixtureWordTokenizer,
+    tokens: &[TokenId],
+    prefix_text: &str,
+) -> usize {
+    let mut safe_count = 0;
+    for count in 1..=tokens.len() {
+        let decoded = tokenizer.decode(&tokens[..count]);
+        if prefix_text.starts_with(decoded.as_str()) {
+            safe_count = count;
+            continue;
+        }
+        break;
+    }
+    safe_count
 }
 
 fn build_generation_graph<M>(
@@ -3168,6 +3945,7 @@ fn normalize_embedding(values: Vec<f32>, normalization: EmbeddingNormalization) 
 
 #[cfg(test)]
 mod tests {
+    use mox_backend_cpu::CpuBackend;
     use mox_core::{DType, Shape};
     use mox_runtime::{
         AdmissionRefusalReason, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
@@ -3176,22 +3954,27 @@ mod tests {
     };
 
     use super::{
-        ContextOverflowPolicy, ContextWindowError, CpuReferenceTextGenerationService,
-        CpuWordGenerationModel, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
-        EmbeddingsExecutor, FixtureWordTokenizer, GenerationLoadState, GenerationModelHandle,
-        GenerationOptions, GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
-        InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
-        LoadedModelRegistryError, LocalModelCatalog, ModelDescriptor, ModelSummary,
-        MoxLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
-        SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
-        TerminationReason, TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat,
-        WeightSource, WeightTensorMetadata, prefix_compatibility,
+        ContextOverflowPolicy, ContextWindowError, CpuGenerationStream,
+        CpuReferenceTextGenerationService, CpuWordGenerationModel, DEFAULT_MODEL_KEEPALIVE_MILLIS,
+        EmbeddingRequest, EmbeddingResponse, EmbeddingVector, EmbeddingsExecutor,
+        FixtureWordTokenizer, GenerationEventStream, GenerationLoadState, GenerationModelHandle,
+        GenerationOptions, GenerationRequest, GenerationResponse, GenerationStreamEvent,
+        GenerationStreamStatus, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
+        InMemoryKvCache, KvCacheError, ListModelsObservation, LoadedModelRegistryError,
+        LocalModelCatalog, ModelDescriptor, ModelSummary, MoxLocalRuntime,
+        ReferenceTextGenerationError, ReferenceWordDecoder, SessionId, SharedPrefixStore,
+        ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
+        StreamingTextGenerationExecutor, TerminationReason, TextGenerationExecutor, TokenId,
+        WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
+        WordDecoderExecutionModel, current_time_millis, default_generation_streaming_policy,
+        prefix_compatibility,
     };
     use crate::{DecoderBlockConfig, DecoderConfig, DecoderModelDescriptor};
     use mox_models::{
-        ActivationFunction, DecoderAttentionConfig, DecoderFeedForwardConfig, TokenSequence,
-        assert_prompt_window_case, assert_rendered_prompt_case, golden_prompt_fixture,
-        golden_prompt_fixtures, golden_tokenizer_fixture,
+        ActivationFunction, DecoderAttentionConfig, DecoderFeedForwardConfig,
+        DecoderFixtureWeights, TokenSequence, assert_prompt_window_case,
+        assert_rendered_prompt_case, golden_prompt_fixture, golden_prompt_fixtures,
+        golden_tokenizer_fixture,
     };
 
     #[test]
@@ -3501,6 +4284,21 @@ mod tests {
         );
         let generation_response = runtime.generate(&generation_request)?;
         assert_eq!(generation_response.output.text, "open agents");
+        let mut generation_stream = runtime.generate_stream(&generation_request)?;
+        let mut streamed = String::new();
+        let mut stream_status = None;
+        while let Some(event) = generation_stream.next_event() {
+            match event {
+                GenerationStreamEvent::Chunk(chunk) => streamed.push_str(&chunk.output.text),
+                GenerationStreamEvent::Terminal(terminal) => {
+                    stream_status = Some(terminal.status);
+                    break;
+                }
+            }
+        }
+        assert_eq!(streamed, "open agents");
+        assert_eq!(stream_status, Some(GenerationStreamStatus::Succeeded));
+        drop(generation_stream);
 
         let embedding_request = EmbeddingRequest::new(
             "runtime-embed-1",
@@ -3748,6 +4546,32 @@ mod tests {
         }
     }
 
+    #[derive(Clone, Debug)]
+    struct FailingStreamWordDecoder {
+        inner: ReferenceWordDecoder,
+        fail_at_position: usize,
+    }
+
+    impl WordDecoderExecutionModel for FailingStreamWordDecoder {
+        fn descriptor(&self) -> &DecoderModelDescriptor {
+            self.inner.descriptor()
+        }
+
+        fn tokenizer(&self) -> &FixtureWordTokenizer {
+            self.inner.tokenizer()
+        }
+
+        fn weights(&self) -> &DecoderFixtureWeights {
+            self.inner.weights()
+        }
+
+        fn injected_stream_failure(&self, position: usize) -> Option<ReferenceTextGenerationError> {
+            (position >= self.fail_at_position).then_some(
+                ReferenceTextGenerationError::MissingOutput("injected_stream_failure"),
+            )
+        }
+    }
+
     #[test]
     fn model_registry_tracks_keepalive_order_and_idle_expiry() {
         let mut registry = InMemoryGenerationModelRegistry::new();
@@ -3915,6 +4739,189 @@ mod tests {
         assert_eq!(views[0].residency_snapshot.resident_host_bytes, 192);
         assert!(registry.active("alpha").is_none());
         assert!(registry.active("beta").is_some());
+    }
+
+    #[test]
+    fn cpu_reference_generation_stream_emits_chunks_then_terminal()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let request = GenerationRequest::new_text(
+            "stream-1",
+            service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(4),
+        );
+        let mut stream = service.generate_stream(&request)?;
+        assert_eq!(stream.policy(), &default_generation_streaming_policy());
+
+        let mut chunk_text = String::new();
+        let mut terminal = None;
+        while let Some(event) = stream.next_event() {
+            match event {
+                GenerationStreamEvent::Chunk(chunk) => {
+                    chunk_text.push_str(&chunk.output.text);
+                }
+                GenerationStreamEvent::Terminal(value) => {
+                    terminal = Some(value);
+                    break;
+                }
+            }
+        }
+
+        let terminal = terminal.expect("terminal event");
+        assert_eq!(chunk_text, "open agents");
+        assert_eq!(terminal.status, GenerationStreamStatus::Succeeded);
+        assert_eq!(terminal.response.output.text, "open agents");
+        assert_eq!(
+            terminal
+                .response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.streaming_policy.clone()),
+            Some(default_generation_streaming_policy())
+        );
+        drop(stream);
+        assert_eq!(service.loaded_model_views()[0].residency.active_requests, 0);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_generation_stream_cancellation_discards_uncommitted_session_output()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let session = service.create_session(ReferenceWordDecoder::MODEL_ID)?;
+        let request = GenerationRequest::new_text(
+            "stream-cancel-1",
+            service.model_descriptor().clone(),
+            Some(session.session_id.clone()),
+            "hello",
+            GenerationOptions::greedy(4),
+        );
+
+        let mut stream = service.generate_stream(&request)?;
+        let first = stream.next_event().expect("first stream event");
+        assert!(matches!(first, GenerationStreamEvent::Chunk(_)));
+        let terminal = stream.cancel().expect("cancel terminal");
+        assert_eq!(terminal.status, GenerationStreamStatus::Cancelled);
+        assert_eq!(terminal.response.termination, TerminationReason::Cancelled);
+
+        drop(stream);
+
+        let follow_up = GenerationRequest::new_text(
+            "stream-cancel-2",
+            service.model_descriptor().clone(),
+            Some(session.session_id.clone()),
+            "rusty",
+            GenerationOptions::greedy(1),
+        );
+        let follow_up_response = service.generate(&follow_up)?;
+        assert_eq!(follow_up_response.output.text, "grad");
+        assert_eq!(follow_up_response.usage.cache_tokens, 3);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_generation_stream_disconnect_returns_terminal()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let request = GenerationRequest::new_text(
+            "stream-disconnect-1",
+            service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(4),
+        );
+
+        let mut stream = service.generate_stream(&request)?;
+        let _ = stream.next_event().expect("first event");
+        let terminal = stream.disconnect().expect("disconnect terminal");
+        assert_eq!(terminal.status, GenerationStreamStatus::Disconnected);
+        assert_eq!(
+            terminal.response.termination,
+            TerminationReason::Disconnected
+        );
+        assert_eq!(
+            terminal.failure_reason.as_deref(),
+            Some("stream disconnected by caller")
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn generation_stream_returns_error_before_first_chunk_when_prompt_is_empty() {
+        let mut service =
+            CpuReferenceTextGenerationService::new().expect("reference service should build");
+        let request = GenerationRequest::new_tokens(
+            "stream-empty-1",
+            service.model_descriptor().clone(),
+            None,
+            TokenSequence::new(Vec::new()),
+            GenerationOptions::greedy(1),
+        );
+
+        let error = match service.generate_stream(&request) {
+            Ok(_) => panic!("empty prompt should fail before streaming starts"),
+            Err(error) => error,
+        };
+        assert!(matches!(error, ReferenceTextGenerationError::EmptyPrompt));
+    }
+
+    #[test]
+    fn generation_stream_reports_runtime_failure_after_stream_start()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CpuBackend::new();
+        let mut models = InMemoryGenerationModelRegistry::new();
+        let failing_model = FailingStreamWordDecoder {
+            inner: ReferenceWordDecoder::new(),
+            fail_at_position: 3,
+        };
+        models.warm_with_metadata(
+            CpuWordGenerationModel::new(failing_model.clone())?,
+            current_time_millis(),
+            DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from("cpu")),
+            None,
+        )?;
+        let mut sessions = InMemoryGenerationSessionStore::new();
+        let mut shared_prefixes = SharedPrefixStore::default();
+        let request = GenerationRequest::new_text(
+            "stream-fail-1",
+            failing_model.descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(4),
+        );
+
+        let mut stream = CpuGenerationStream::new(
+            &mut backend,
+            &mut models,
+            &mut sessions,
+            &mut shared_prefixes,
+            &request,
+        )?;
+        let mut saw_chunk = false;
+        let mut terminal = None;
+        while let Some(event) = stream.next_event() {
+            match event {
+                GenerationStreamEvent::Chunk(_) => saw_chunk = true,
+                GenerationStreamEvent::Terminal(value) => {
+                    terminal = Some(value);
+                    break;
+                }
+            }
+        }
+
+        let terminal = terminal.expect("failure terminal");
+        assert!(saw_chunk);
+        assert_eq!(terminal.status, GenerationStreamStatus::Failed);
+        assert_eq!(terminal.response.termination, TerminationReason::Error);
+        assert_eq!(
+            terminal.failure_reason.as_deref(),
+            Some("missing graph output `injected_stream_failure`")
+        );
+        Ok(())
     }
 
     #[test]

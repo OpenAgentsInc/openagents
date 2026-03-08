@@ -12,9 +12,10 @@ use mox_runtime::{
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
     EmbeddingResponse, GenerationInput, GenerationLoadState, GenerationRequest, GenerationResponse,
-    QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason,
-    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
-    default_decoder_kv_cache_policy, default_prefix_cache_policy,
+    GenerationStreamStatus, GenerationStreamTerminal, GenerationStreamingPolicy, QuantizationMode,
+    SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata,
+    WeightBundleMetadata, WeightFormat, WeightSource, default_decoder_kv_cache_policy,
+    default_prefix_cache_policy,
 };
 
 /// Human-readable crate ownership summary.
@@ -187,6 +188,10 @@ impl ProviderReadiness {
 pub enum ReceiptStatus {
     /// Execution completed successfully.
     Succeeded,
+    /// Execution was cancelled by the caller.
+    Cancelled,
+    /// Execution aborted because the client disconnected mid-stream.
+    Disconnected,
     /// Execution failed.
     Failed,
 }
@@ -365,6 +370,8 @@ pub struct TextGenerationCapabilityEnvelope {
     pub memory_plan: ModelMemoryPlan,
     /// Active local-serving residency policy for the served model set.
     pub residency_policy: ModelResidencyPolicy,
+    /// Explicit streaming policy for the local runtime API.
+    pub streaming_policy: GenerationStreamingPolicy,
     /// Advertised KV cache posture.
     pub kv_cache_mode: KvCacheMode,
     /// Explicit paged-KV policy when the served path uses paged KV state.
@@ -404,6 +411,7 @@ impl TextGenerationCapabilityEnvelope {
             max_context: model.config.max_context,
             memory_plan,
             residency_policy,
+            streaming_policy: mox_serve::default_generation_streaming_policy(),
             kv_cache_policy: (kv_cache_mode == KvCacheMode::Paged)
                 .then(|| default_decoder_kv_cache_policy(model)),
             prefix_cache_policy: Some(default_prefix_cache_policy()),
@@ -451,6 +459,9 @@ pub struct TextGenerationReceipt {
     /// Aggregate resident-memory snapshot for the loaded-model set, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub residency_snapshot: Option<MemoryResidencySnapshot>,
+    /// Streaming policy for the local runtime API, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub streaming_policy: Option<GenerationStreamingPolicy>,
     /// Optional bound session identifier.
     pub session_id: Option<SessionId>,
     /// Prompt token count.
@@ -540,6 +551,10 @@ impl TextGenerationReceipt {
                 .provenance
                 .as_ref()
                 .and_then(|value| value.residency_snapshot.clone()),
+            streaming_policy: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.streaming_policy.clone()),
             session_id: response.session_id.clone(),
             input_tokens: response.usage.input_tokens,
             output_tokens: response.usage.output_tokens,
@@ -625,6 +640,7 @@ impl TextGenerationReceipt {
             memory_plan: None,
             residency_policy: None,
             residency_snapshot: None,
+            streaming_policy: None,
             session_id: request.session_id.clone(),
             input_tokens,
             output_tokens: 0,
@@ -643,6 +659,45 @@ impl TextGenerationReceipt {
             ended_at_unix_ms,
             status: ReceiptStatus::Failed,
             failure_reason: Some(failure_reason.into()),
+        }
+    }
+
+    /// Creates a receipt from a terminal streaming event, preserving partial output when present.
+    #[must_use]
+    pub fn from_stream_terminal(
+        backend_selection: BackendSelection,
+        request: &GenerationRequest,
+        terminal: &GenerationStreamTerminal,
+        execution_plan_digest: impl Into<String>,
+        started_at_unix_ms: u64,
+        ended_at_unix_ms: u64,
+    ) -> Self {
+        let mut receipt = Self::succeeded(
+            backend_selection,
+            request,
+            &terminal.response,
+            digest_generation_request(request),
+            execution_plan_digest,
+            started_at_unix_ms,
+            ended_at_unix_ms,
+        );
+        match terminal.status {
+            GenerationStreamStatus::Succeeded => receipt,
+            GenerationStreamStatus::Cancelled => {
+                receipt.status = ReceiptStatus::Cancelled;
+                receipt.failure_reason = terminal.failure_reason.clone();
+                receipt
+            }
+            GenerationStreamStatus::Disconnected => {
+                receipt.status = ReceiptStatus::Disconnected;
+                receipt.failure_reason = terminal.failure_reason.clone();
+                receipt
+            }
+            GenerationStreamStatus::Failed => {
+                receipt.status = ReceiptStatus::Failed;
+                receipt.failure_reason = terminal.failure_reason.clone();
+                receipt
+            }
         }
     }
 }
@@ -809,8 +864,10 @@ mod tests {
     use mox_serve::{
         EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationLoadState,
         GenerationMetrics, GenerationOptions, GenerationProvenance, GenerationRequest,
-        GenerationResponse, ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TokenSequence,
-        default_decoder_kv_cache_policy, default_decoder_memory_plan, default_prefix_cache_policy,
+        GenerationResponse, GenerationStreamStatus, GenerationStreamTerminal, ReferenceWordDecoder,
+        SessionId, SmokeByteEmbedder, TerminationReason, TokenSequence,
+        default_decoder_kv_cache_policy, default_decoder_memory_plan,
+        default_generation_streaming_policy, default_prefix_cache_policy,
     };
     use serde_json::json;
 
@@ -961,6 +1018,11 @@ mod tests {
                         "resident_device_bytes": null
                     },
                     "pressure_action": "refuse_new_model"
+                },
+                "streaming_policy": {
+                    "backpressure": "pull_driven",
+                    "disconnect": "abort_generation",
+                    "cancellation": "abort_after_current_token"
                 },
                 "kv_cache_mode": "paged",
                 "kv_cache_policy": {
@@ -1156,6 +1218,7 @@ mod tests {
             GenerationProvenance {
                 execution_plan_digest: String::from("plan-digest-from-response"),
                 load_state: GenerationLoadState::Cold,
+                streaming_policy: None,
                 memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
                 residency_policy: Some(ModelResidencyPolicy::default()),
                 residency_snapshot: Some(MemoryResidencySnapshot {
@@ -1218,6 +1281,7 @@ mod tests {
                 resident_device_bytes: 0,
             })
         );
+        assert_eq!(receipt.streaming_policy, None);
         assert_eq!(
             receipt.kv_cache_policy,
             Some(default_decoder_kv_cache_policy(&request.model))
@@ -1251,6 +1315,78 @@ mod tests {
             WeightBundleEvidence::from_metadata(&request.model.weights)
         );
         Ok(())
+    }
+
+    #[test]
+    fn streaming_terminal_receipt_preserves_partial_cancellation_output() {
+        let request = GenerationRequest::new_text(
+            "gen-stream-1",
+            sample_decoder_descriptor(),
+            Some(SessionId::new("sess-stream-1")),
+            "hello",
+            GenerationOptions::greedy(4),
+        );
+        let response = GenerationResponse::new(
+            &request,
+            request.session_id.clone(),
+            TokenSequence::new(vec![mox_serve::FixtureWordTokenizer::OPEN_ID]),
+            "open",
+            1,
+            2,
+            TerminationReason::Cancelled,
+        )
+        .with_metrics_and_provenance(
+            GenerationMetrics {
+                total_duration_ns: Some(10),
+                load_duration_ns: Some(2),
+                prompt_eval_count: Some(1),
+                context_window: None,
+                eval_count: Some(1),
+                kv_cache: None,
+                prefix_tokens_reused: Some(0),
+            },
+            GenerationProvenance {
+                execution_plan_digest: String::from("stream-plan"),
+                load_state: GenerationLoadState::Cold,
+                streaming_policy: Some(default_generation_streaming_policy()),
+                memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
+                residency_policy: Some(ModelResidencyPolicy::default()),
+                residency_snapshot: Some(MemoryResidencySnapshot {
+                    loaded_models: 1,
+                    resident_host_bytes: 640,
+                    resident_device_bytes: 0,
+                }),
+                kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
+                prefix_cache_state: Some(PrefixCacheState::None),
+                prefix_cache_policy: Some(default_prefix_cache_policy()),
+                prefix_cache_identity: None,
+            },
+        );
+        let terminal = GenerationStreamTerminal {
+            status: GenerationStreamStatus::Cancelled,
+            response,
+            failure_reason: Some(String::from("stream cancelled by caller")),
+        };
+
+        let receipt = TextGenerationReceipt::from_stream_terminal(
+            cpu_backend_selection(),
+            &request,
+            &terminal,
+            "stream-plan",
+            5,
+            12,
+        );
+
+        assert_eq!(receipt.status, ReceiptStatus::Cancelled);
+        assert_eq!(receipt.output_tokens, 1);
+        assert_eq!(
+            receipt.streaming_policy,
+            Some(default_generation_streaming_policy())
+        );
+        assert_eq!(
+            receipt.failure_reason.as_deref(),
+            Some("stream cancelled by caller")
+        );
     }
 
     #[test]
