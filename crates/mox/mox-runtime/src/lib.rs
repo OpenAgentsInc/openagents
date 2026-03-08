@@ -1252,6 +1252,79 @@ pub struct PrefixCacheIdentity {
 }
 
 /// Explicit runtime backend selection and fallback truth.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendUnavailablePolicy {
+    /// Refuse execution instead of switching backends.
+    Refuse,
+    /// Fall back to a compatible backend explicitly.
+    FallbackToCompatibleBackend,
+}
+
+/// Explicit degraded-state policy for one served product path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendDegradedPolicy {
+    /// Refuse execution when the requested backend is degraded.
+    Refuse,
+    /// Continue on the same backend explicitly even though it is degraded.
+    AllowSameBackend,
+}
+
+/// Explicit served-product backend policy for unavailable and degraded states.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServedProductBackendPolicy {
+    /// Action when the requested backend is unavailable.
+    pub unavailable: BackendUnavailablePolicy,
+    /// Action when the requested backend is degraded but still executable.
+    pub degraded: BackendDegradedPolicy,
+}
+
+impl ServedProductBackendPolicy {
+    /// Creates a served-product backend policy.
+    #[must_use]
+    pub const fn new(
+        unavailable: BackendUnavailablePolicy,
+        degraded: BackendDegradedPolicy,
+    ) -> Self {
+        Self {
+            unavailable,
+            degraded,
+        }
+    }
+
+    /// Returns the default same-backend CPU-style policy.
+    #[must_use]
+    pub const fn same_backend_only() -> Self {
+        Self::new(
+            BackendUnavailablePolicy::Refuse,
+            BackendDegradedPolicy::AllowSameBackend,
+        )
+    }
+
+    /// Returns a policy that allows explicit cross-backend fallback.
+    #[must_use]
+    pub const fn fallback_to_compatible_backend(degraded: BackendDegradedPolicy) -> Self {
+        Self::new(
+            BackendUnavailablePolicy::FallbackToCompatibleBackend,
+            degraded,
+        )
+    }
+}
+
+/// Actual backend-selection state used by one served request or capability.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendSelectionState {
+    /// The requested backend executes directly with no fallback or degradation.
+    Direct,
+    /// The requested backend executes explicitly while degraded.
+    SameBackendDegraded,
+    /// Execution switched to a different backend explicitly.
+    CrossBackendFallback,
+}
+
+/// Explicit runtime backend selection and fallback truth.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendSelection {
     /// Backend the caller or higher-level runtime requested.
@@ -1262,8 +1335,14 @@ pub struct BackendSelection {
     pub selected_device: Option<DeviceDescriptor>,
     /// Supported op labels for the advertised product path.
     pub supported_ops: Vec<String>,
+    /// Explicit served-product fallback and degraded-state policy.
+    pub policy: ServedProductBackendPolicy,
+    /// Actual selection state under that policy.
+    pub selection_state: BackendSelectionState,
     /// Explicit fallback reason when the effective backend differs from the requested backend.
     pub fallback_reason: Option<String>,
+    /// Explicit degraded-state reason when the requested backend still executes while degraded.
+    pub degraded_reason: Option<String>,
 }
 
 impl BackendSelection {
@@ -1274,13 +1353,32 @@ impl BackendSelection {
         selected_device: Option<DeviceDescriptor>,
         supported_ops: Vec<String>,
     ) -> Self {
+        Self::direct_with_policy(
+            backend,
+            selected_device,
+            supported_ops,
+            ServedProductBackendPolicy::same_backend_only(),
+        )
+    }
+
+    /// Creates a direct backend selection with an explicit served-product policy.
+    #[must_use]
+    pub fn direct_with_policy(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+    ) -> Self {
         let backend = backend.into();
         Self {
             requested_backend: backend.clone(),
             effective_backend: backend,
             selected_device,
             supported_ops,
+            policy,
+            selection_state: BackendSelectionState::Direct,
             fallback_reason: None,
+            degraded_reason: None,
         }
     }
 
@@ -1293,12 +1391,59 @@ impl BackendSelection {
         supported_ops: Vec<String>,
         fallback_reason: impl Into<String>,
     ) -> Self {
+        Self::fallback_with_policy(
+            requested_backend,
+            effective_backend,
+            selected_device,
+            supported_ops,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+            fallback_reason,
+        )
+    }
+
+    /// Creates an explicit fallback selection with an explicit served-product policy.
+    #[must_use]
+    pub fn fallback_with_policy(
+        requested_backend: impl Into<String>,
+        effective_backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        fallback_reason: impl Into<String>,
+    ) -> Self {
         Self {
             requested_backend: requested_backend.into(),
             effective_backend: effective_backend.into(),
             selected_device,
             supported_ops,
+            policy,
+            selection_state: BackendSelectionState::CrossBackendFallback,
             fallback_reason: Some(fallback_reason.into()),
+            degraded_reason: None,
+        }
+    }
+
+    /// Creates an explicit same-backend degraded selection.
+    #[must_use]
+    pub fn degraded(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        degraded_reason: impl Into<String>,
+    ) -> Self {
+        let backend = backend.into();
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_device,
+            supported_ops,
+            policy,
+            selection_state: BackendSelectionState::SameBackendDegraded,
+            fallback_reason: None,
+            degraded_reason: Some(degraded_reason.into()),
         }
     }
 
@@ -1327,7 +1472,7 @@ impl BackendSelection {
     where
         B: DeviceDiscovery + ?Sized,
     {
-        Ok(Self::fallback(
+        Ok(Self::fallback_with_policy(
             requested_backend,
             effective_backend.backend_name(),
             effective_backend.discover_devices()?.into_iter().next(),
@@ -1335,6 +1480,9 @@ impl BackendSelection {
                 .iter()
                 .map(|label| String::from(*label))
                 .collect(),
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
             fallback_reason,
         ))
     }
@@ -1554,17 +1702,18 @@ mod tests {
     use super::{
         AdmissionRefusalReason, Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding,
         AmdOptInStatus, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
-        AmdRuntimeMode, AmdTopologyInfo, ArtifactReadPath, BackendSelection, BufferHandle,
-        BufferResidency, BufferStorageKind, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor,
-        DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus,
-        KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-        LoadedModelState, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        ResidencyPressureAction, RuntimeError, RuntimeHealth, SamplingPolicy, SamplingStrategy,
-        TokenSampler, apply_sampling_penalties, plan_model_admission,
+        AmdRuntimeMode, AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendSelection,
+        BackendSelectionState, BufferHandle, BufferResidency, BufferStorageKind,
+        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
+        ExecutionMetrics, ExecutionResult, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
+        LoadedModelResidency, LoadedModelState, MemoryBudget, MemoryResidencySnapshot,
+        ModelAdmissionDecision, ModelArtifactBlobKind, ModelArtifactStorage,
+        ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction, RuntimeError,
+        RuntimeHealth, SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy, TokenSampler,
+        apply_sampling_penalties, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1688,7 +1837,13 @@ mod tests {
             direct.supported_ops,
             vec![String::from("input"), String::from("matmul")]
         );
+        assert_eq!(
+            direct.policy,
+            ServedProductBackendPolicy::same_backend_only()
+        );
+        assert_eq!(direct.selection_state, BackendSelectionState::Direct);
         assert!(direct.fallback_reason.is_none());
+        assert!(direct.degraded_reason.is_none());
         assert_eq!(
             serde_json::to_value(&direct)?,
             json!({
@@ -1713,7 +1868,13 @@ mod tests {
                     "feature_flags": ["mock_execution"]
                 },
                 "supported_ops": ["input", "matmul"],
-                "fallback_reason": null
+                "policy": {
+                    "unavailable": "refuse",
+                    "degraded": "allow_same_backend"
+                },
+                "selection_state": "direct",
+                "fallback_reason": null,
+                "degraded_reason": null
             })
         );
 
@@ -1726,8 +1887,46 @@ mod tests {
         assert_eq!(fallback.requested_backend, "metal");
         assert_eq!(fallback.effective_backend, "mock");
         assert_eq!(
+            fallback.policy,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            fallback.selection_state,
+            BackendSelectionState::CrossBackendFallback
+        );
+        assert_eq!(
             fallback.fallback_reason.as_deref(),
             Some("metal backend unavailable: offline")
+        );
+        assert!(fallback.degraded_reason.is_none());
+
+        let degraded = BackendSelection::degraded(
+            "metal",
+            direct.selected_device.clone(),
+            vec![String::from("input"), String::from("matmul")],
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+            "metal backend degraded: legacy-family device",
+        );
+        assert_eq!(degraded.requested_backend, "metal");
+        assert_eq!(degraded.effective_backend, "metal");
+        assert_eq!(
+            degraded.policy,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            degraded.selection_state,
+            BackendSelectionState::SameBackendDegraded
+        );
+        assert!(degraded.fallback_reason.is_none());
+        assert_eq!(
+            degraded.degraded_reason.as_deref(),
+            Some("metal backend degraded: legacy-family device")
         );
         Ok(())
     }
