@@ -12,8 +12,8 @@ use mox_runtime::{
     LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
     ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
     NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    ServedArtifactIdentity, SettlementLinkageInput, ValidationMatrixReference,
-    validation_reference_for_served_product,
+    SandboxExecutionCapabilityProfile, ServedArtifactIdentity, SettlementLinkageInput,
+    ValidationMatrixReference, validation_reference_for_served_product,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -33,6 +33,9 @@ pub const CRATE_ROLE: &str = "provider integration, capabilities, and receipts";
 
 /// Provider-facing backend family identifier.
 pub const BACKEND_FAMILY: &str = "mox";
+
+/// Stable provider-facing product identifier for bounded sandbox execution.
+pub const SANDBOX_EXECUTION_PRODUCT_ID: &str = "mox.sandbox_execution";
 
 /// Stable provider-facing summary of the weight bundle backing a served model.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -470,6 +473,65 @@ impl LocalRuntimeObservabilityEnvelope {
         Self {
             backend_family: String::from(BACKEND_FAMILY),
             observability,
+        }
+    }
+}
+
+/// Capability envelope for a bounded sandbox-execution lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionCapabilityEnvelope {
+    /// Engine backend family.
+    pub backend_family: String,
+    /// Product identifier.
+    pub product_id: String,
+    /// Runtime backend such as `cpu` or `cuda`.
+    pub runtime_backend: String,
+    /// Explicit backend selection and fallback truth.
+    pub backend_selection: BackendSelection,
+    /// Explicit compile-vs-probe backend/toolchain truth for the selected path.
+    pub backend_toolchain: BackendToolchainIdentity,
+    /// Reusable selected-device inventory and performance qualifiers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
+    /// All selected devices participating in the effective backend path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+    /// Explicit multi-device or sharded execution topology when the path is planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// AMD-specific capability context when the selected backend is AMD.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd: Option<AmdCapabilityContext>,
+    /// NVIDIA-specific capability context when the selected backend is CUDA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia: Option<NvidiaCapabilityContext>,
+    /// Explicit bounded sandbox execution profile.
+    pub execution_profile: SandboxExecutionCapabilityProfile,
+    /// Current readiness state.
+    pub readiness: ProviderReadiness,
+}
+
+impl SandboxExecutionCapabilityEnvelope {
+    /// Creates a capability envelope for a bounded sandbox-execution lane.
+    #[must_use]
+    pub fn new(
+        backend_selection: BackendSelection,
+        execution_profile: SandboxExecutionCapabilityProfile,
+        readiness: ProviderReadiness,
+    ) -> Self {
+        Self {
+            backend_family: String::from(BACKEND_FAMILY),
+            product_id: String::from(SANDBOX_EXECUTION_PRODUCT_ID),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
+            backend_selection,
+            execution_profile,
+            readiness,
         }
     }
 }
@@ -1740,8 +1802,8 @@ mod tests {
         ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
         NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
         PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeTransitionEvent, RuntimeTransitionKind, ServedProductBackendPolicy,
-        ValidationCoverage,
+        RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
+        ServedProductBackendPolicy, ValidationCoverage,
     };
     use mox_serve::{
         ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
@@ -1761,10 +1823,11 @@ mod tests {
     use super::{
         CapabilityEnvelope, ComputeMarketSupplyViolationCode, ExecutionReceipt, KvCacheMode,
         LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
-        TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
-        cache_invalidation_policy, compute_market_supply_refusal_diagnostic,
-        default_compute_market_supply_policy, digest_embedding_request, digest_generation_request,
-        evaluate_compute_market_supply, served_artifact_identity_for_decoder_model,
+        SandboxExecutionCapabilityEnvelope, TextGenerationCapabilityEnvelope,
+        TextGenerationReceipt, WeightBundleEvidence, cache_invalidation_policy,
+        compute_market_supply_refusal_diagnostic, default_compute_market_supply_policy,
+        digest_embedding_request, digest_generation_request, evaluate_compute_market_supply,
+        served_artifact_identity_for_decoder_model,
     };
 
     #[test]
@@ -2064,6 +2127,213 @@ mod tests {
                 "readiness": {
                     "status": "Ready",
                     "message": "cpu backend ready"
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sandbox_execution_capability_json_is_stable() -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = SandboxExecutionCapabilityEnvelope::new(
+            cpu_backend_selection(),
+            SandboxExecutionCapabilityProfile::bounded_cpu(),
+            ProviderReadiness::ready("sandbox lane ready"),
+        );
+
+        assert_eq!(
+            serde_json::to_value(&envelope)?,
+            json!({
+                "backend_family": "mox",
+                "product_id": "mox.sandbox_execution",
+                "runtime_backend": "cpu",
+                "backend_selection": {
+                    "requested_backend": "cpu",
+                    "effective_backend": "cpu",
+                    "selected_device": {
+                        "backend": "cpu",
+                        "device": {
+                            "kind": "Cpu",
+                            "ordinal": 0,
+                            "label": "cpu:0"
+                        },
+                        "device_name": "host cpu",
+                        "supported_dtypes": ["F32"],
+                        "supported_quantization": [
+                            {
+                                "mode": "none",
+                                "load_path": "dense_f32",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "int8_symmetric",
+                                "load_path": "dequantized_f32",
+                                "execution": "dequantize_to_f32"
+                            },
+                            {
+                                "mode": "ggml_q4_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q4_1",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q8_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            }
+                        ],
+                        "memory_capacity_bytes": null,
+                        "unified_memory": true,
+                        "feature_flags": ["host_memory"]
+                    },
+                    "selected_devices": [{
+                        "backend": "cpu",
+                        "device": {
+                            "kind": "Cpu",
+                            "ordinal": 0,
+                            "label": "cpu:0"
+                        },
+                        "device_name": "host cpu",
+                        "supported_dtypes": ["F32"],
+                        "supported_quantization": [
+                            {
+                                "mode": "none",
+                                "load_path": "dense_f32",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "int8_symmetric",
+                                "load_path": "dequantized_f32",
+                                "execution": "dequantize_to_f32"
+                            },
+                            {
+                                "mode": "ggml_q4_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q4_1",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            },
+                            {
+                                "mode": "ggml_q8_0",
+                                "load_path": "backend_quantized",
+                                "execution": "native"
+                            }
+                        ],
+                        "memory_capacity_bytes": null,
+                        "unified_memory": true,
+                        "feature_flags": ["host_memory"]
+                    }],
+                    "supported_ops": ["input", "constant", "matmul", "add"],
+                    "policy": {
+                        "unavailable": "refuse",
+                        "degraded": "allow_same_backend"
+                    },
+                    "fallback_lattice": {
+                        "unavailable": "refuse",
+                        "degraded": "degrade",
+                        "numerical_safety": "refuse",
+                        "memory_pressure": "refuse",
+                        "plan_unavailable": "same_backend_slow_path",
+                        "transient_backend_failure": "retry"
+                    },
+                    "selection_state": "direct",
+                    "fallback_trigger": null,
+                    "fallback_action": null,
+                    "fallback_reason": null,
+                    "degraded_reason": null,
+                    "retry_attempt": null,
+                    "execution_topology": {
+                        "effective_backend": "cpu",
+                        "kind": "single_device",
+                        "assignments": [{
+                            "shard_id": 0,
+                            "device": {
+                                "stable_device_id": "cpu:0",
+                                "placement_index": 0
+                            },
+                            "partition": {
+                                "kind": "whole_model"
+                            }
+                        }]
+                    }
+                },
+                "backend_toolchain": {
+                    "effective_backend": "cpu",
+                    "toolchain_version": "cpu@0.1.0",
+                    "probe_state": "compiled_and_probed",
+                    "probed_backend_features": ["host_memory"]
+                },
+                "selected_device_inventory": {
+                    "stable_device_id": "cpu:0",
+                    "performance_class": "reference",
+                    "memory_class": "host_only"
+                },
+                "selected_devices": [{
+                    "stable_device_id": "cpu:0",
+                    "performance_class": "reference",
+                    "memory_class": "host_only"
+                }],
+                "execution_topology": {
+                    "effective_backend": "cpu",
+                    "kind": "single_device",
+                    "assignments": [{
+                        "shard_id": 0,
+                        "device": {
+                            "stable_device_id": "cpu:0",
+                            "placement_index": 0
+                        },
+                        "partition": {
+                            "kind": "whole_model"
+                        }
+                    }]
+                },
+                "execution_profile": {
+                    "dispatch_profile": {
+                        "batch_posture": "single_request_only",
+                        "queue_policy": {
+                            "discipline": "direct_caller_backpressure",
+                            "max_active_requests": 1,
+                            "max_queued_requests": 0,
+                            "per_model_serialization": true
+                        },
+                        "throughput_class": "latency_optimized"
+                    },
+                    "isolation_boundary": "container",
+                    "filesystem": {
+                        "root": "read_only",
+                        "writable_mounts": ["/tmp"],
+                        "max_write_bytes": 67108864
+                    },
+                    "network": {
+                        "mode": "disabled",
+                        "allow_loopback": false
+                    },
+                    "process": {
+                        "max_processes": 32,
+                        "max_threads_per_process": 8,
+                        "allow_privilege_escalation": false
+                    },
+                    "resource_limits": {
+                        "max_wall_time_ms": 300000,
+                        "max_cpu_time_ms": 300000,
+                        "max_memory_bytes": 2147483648u64,
+                        "max_stdout_bytes": 1048576,
+                        "max_stderr_bytes": 1048576
+                    },
+                    "accelerator_access": {
+                        "mode": "disabled"
+                    }
+                },
+                "readiness": {
+                    "status": "Ready",
+                    "message": "sandbox lane ready"
                 }
             })
         );
