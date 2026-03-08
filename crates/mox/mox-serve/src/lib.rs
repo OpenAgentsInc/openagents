@@ -1080,6 +1080,12 @@ pub struct GenerationSession {
     pub session_id: SessionId,
     /// Bound model identifier.
     pub model_id: String,
+    /// Bound model family.
+    pub model_family: String,
+    /// Bound model revision.
+    pub model_revision: String,
+    /// Stable weight-bundle digest that owns the session KV state.
+    pub weight_bundle_digest: String,
     /// Maximum context for the session cache.
     pub max_context: usize,
     /// KV vector width.
@@ -1093,6 +1099,7 @@ pub struct GenerationSession {
 pub struct GenerationSessionState {
     session: GenerationSession,
     cache: InMemoryKvCache,
+    tokens: Vec<TokenId>,
 }
 
 impl GenerationSessionState {
@@ -1107,6 +1114,12 @@ impl GenerationSessionState {
     pub fn cache(&self) -> &InMemoryKvCache {
         &self.cache
     }
+
+    /// Returns the tokens currently owned by the session.
+    #[must_use]
+    pub fn tokens(&self) -> &[TokenId] {
+        &self.tokens
+    }
 }
 
 /// Session store failure.
@@ -1117,15 +1130,23 @@ pub enum SessionStoreError {
     SessionNotFound(String),
     /// The caller attempted to use a session with the wrong model.
     #[error(
-        "generation session `{session_id}` expects model `{expected_model}` but got `{actual_model}`"
+        "generation session `{session_id}` expects model `{expected_model}` revision `{expected_revision}` bundle `{expected_weight_bundle_digest}` but got model `{actual_model}` revision `{actual_revision}` bundle `{actual_weight_bundle_digest}`"
     )]
     ModelMismatch {
         /// Session identifier.
         session_id: String,
         /// Expected model identifier.
         expected_model: String,
+        /// Expected model revision.
+        expected_revision: String,
+        /// Expected weight-bundle digest.
+        expected_weight_bundle_digest: String,
         /// Actual model identifier.
         actual_model: String,
+        /// Actual model revision.
+        actual_revision: String,
+        /// Actual weight-bundle digest.
+        actual_weight_bundle_digest: String,
     },
     /// The caller attempted to replace a session cache with incompatible
     /// geometry.
@@ -1173,6 +1194,9 @@ impl InMemoryGenerationSessionStore {
         let session = GenerationSession {
             session_id: session_id.clone(),
             model_id: model.model.model_id.clone(),
+            model_family: model.model.family.clone(),
+            model_revision: model.model.revision.clone(),
+            weight_bundle_digest: model.weights.digest.clone(),
             max_context: model.config.max_context,
             kv_width: model.config.kv_width(),
             cached_tokens: 0,
@@ -1180,6 +1204,7 @@ impl InMemoryGenerationSessionStore {
         let state = GenerationSessionState {
             session: session.clone(),
             cache: InMemoryKvCache::new(model.config.max_context, model.config.kv_width()),
+            tokens: Vec::new(),
         };
         self.sessions.insert(session_id, state);
         session
@@ -1212,7 +1237,7 @@ impl InMemoryGenerationSessionStore {
     pub fn append(
         &mut self,
         session_id: &SessionId,
-        model_id: &str,
+        model: &DecoderModelDescriptor,
         token: TokenId,
         key: Vec<f32>,
         value: Vec<f32>,
@@ -1221,15 +1246,10 @@ impl InMemoryGenerationSessionStore {
             .sessions
             .get_mut(session_id)
             .ok_or_else(|| SessionStoreError::SessionNotFound(session_id.as_str().to_string()))?;
-        if state.session.model_id != model_id {
-            return Err(SessionStoreError::ModelMismatch {
-                session_id: session_id.as_str().to_string(),
-                expected_model: state.session.model_id.clone(),
-                actual_model: model_id.to_string(),
-            });
-        }
+        validate_session_model(state, session_id, model)?;
 
         state.cache.append(token, key, value)?;
+        state.tokens.push(token);
         state.session.cached_tokens = state.cache.len();
         Ok(state.session.clone())
     }
@@ -1244,6 +1264,7 @@ impl InMemoryGenerationSessionStore {
             .get_mut(session_id)
             .ok_or_else(|| SessionStoreError::SessionNotFound(session_id.as_str().to_string()))?;
         state.cache.reset();
+        state.tokens.clear();
         state.session.cached_tokens = 0;
         Ok(state.session.clone())
     }
@@ -1263,20 +1284,15 @@ impl InMemoryGenerationSessionStore {
     pub fn replace_cache(
         &mut self,
         session_id: &SessionId,
-        model_id: &str,
+        model: &DecoderModelDescriptor,
         cache: InMemoryKvCache,
+        tokens: TokenSequence,
     ) -> Result<GenerationSession, SessionStoreError> {
         let state = self
             .sessions
             .get_mut(session_id)
             .ok_or_else(|| SessionStoreError::SessionNotFound(session_id.as_str().to_string()))?;
-        if state.session.model_id != model_id {
-            return Err(SessionStoreError::ModelMismatch {
-                session_id: session_id.as_str().to_string(),
-                expected_model: state.session.model_id.clone(),
-                actual_model: model_id.to_string(),
-            });
-        }
+        validate_session_model(state, session_id, model)?;
         if state.cache.max_context() != cache.max_context() || state.cache.width() != cache.width()
         {
             return Err(SessionStoreError::CacheGeometryMismatch {
@@ -1289,9 +1305,32 @@ impl InMemoryGenerationSessionStore {
         }
 
         state.cache = cache;
+        state.tokens = tokens.as_slice().to_vec();
         state.session.cached_tokens = state.cache.len();
         Ok(state.session.clone())
     }
+}
+
+fn validate_session_model(
+    state: &GenerationSessionState,
+    session_id: &SessionId,
+    model: &DecoderModelDescriptor,
+) -> Result<(), SessionStoreError> {
+    if state.session.model_id != model.model.model_id
+        || state.session.model_revision != model.model.revision
+        || state.session.weight_bundle_digest != model.weights.digest
+    {
+        return Err(SessionStoreError::ModelMismatch {
+            session_id: session_id.as_str().to_string(),
+            expected_model: state.session.model_id.clone(),
+            expected_revision: state.session.model_revision.clone(),
+            expected_weight_bundle_digest: state.session.weight_bundle_digest.clone(),
+            actual_model: model.model.model_id.clone(),
+            actual_revision: model.model.revision.clone(),
+            actual_weight_bundle_digest: model.weights.digest.clone(),
+        });
+    }
+    Ok(())
 }
 
 /// CPU reference text-generation error.
@@ -1930,11 +1969,15 @@ where
         }
 
         let hidden_size = loaded_model.descriptor().config.hidden_size;
+        let mut session_tokens = Vec::new();
         let mut cache = if let Some(session_id) = &request.session_id {
             if request.reset_session {
                 sessions.reset(session_id)?;
             }
-            sessions.cache(session_id)?.clone()
+            let state = sessions.state(session_id)?;
+            validate_session_model(state, session_id, loaded_model.descriptor())?;
+            session_tokens = state.tokens().to_vec();
+            state.cache().clone()
         } else {
             InMemoryKvCache::new(
                 loaded_model.descriptor().config.max_context,
@@ -1991,11 +2034,17 @@ where
             }
         };
 
-        if let Some(session_id) = &request.session_id {
-            sessions.replace_cache(session_id, model_id, cache.clone())?;
-        }
-
         let generated = TokenSequence::new(generated_tokens);
+        if let Some(session_id) = &request.session_id {
+            session_tokens.extend_from_slice(prompt_tokens.as_slice());
+            session_tokens.extend_from_slice(generated.as_slice());
+            sessions.replace_cache(
+                session_id,
+                loaded_model.descriptor(),
+                cache.clone(),
+                TokenSequence::new(session_tokens),
+            )?;
+        }
         let text = loaded_model
             .model()
             .tokenizer()
@@ -3048,16 +3097,20 @@ mod tests {
         let session_a = store.create(&descriptor);
         let session_b = store.create(&descriptor);
 
+        assert_eq!(session_a.model_family, "fixture_decoder");
+        assert_eq!(session_a.model_revision, "v0");
+        assert_eq!(session_a.weight_bundle_digest, descriptor.weights.digest);
+
         store.append(
             &session_a.session_id,
-            descriptor.model.model_id.as_str(),
+            &descriptor,
             FixtureWordTokenizer::HELLO_ID,
             vec![1.0; descriptor.config.kv_width()],
             vec![2.0; descriptor.config.kv_width()],
         )?;
         store.append(
             &session_b.session_id,
-            descriptor.model.model_id.as_str(),
+            &descriptor,
             FixtureWordTokenizer::RUSTY_ID,
             vec![3.0; descriptor.config.kv_width()],
             vec![4.0; descriptor.config.kv_width()],
@@ -3071,16 +3124,58 @@ mod tests {
             store.cache(&session_b.session_id)?.entries()[0].token,
             FixtureWordTokenizer::RUSTY_ID
         );
+        assert_eq!(
+            store.state(&session_a.session_id)?.tokens(),
+            &[FixtureWordTokenizer::HELLO_ID]
+        );
+        assert_eq!(
+            store.state(&session_b.session_id)?.tokens(),
+            &[FixtureWordTokenizer::RUSTY_ID]
+        );
 
         let reset = store.reset(&session_a.session_id)?;
         assert_eq!(reset.cached_tokens, 0);
         assert!(store.cache(&session_a.session_id)?.is_empty());
+        assert!(store.state(&session_a.session_id)?.tokens().is_empty());
         assert_eq!(store.cache(&session_b.session_id)?.len(), 1);
 
         let closed = store.close(&session_b.session_id)?;
         assert_eq!(closed.cached_tokens, 1);
         assert!(store.cache(&session_b.session_id).is_err());
         Ok(())
+    }
+
+    #[test]
+    fn generation_sessions_reject_descriptor_drift_even_when_model_id_matches() {
+        let descriptor = sample_decoder_descriptor();
+        let mut drifted = descriptor.clone();
+        drifted.weights.digest = String::from("different-weight-bundle");
+
+        let mut store = InMemoryGenerationSessionStore::new();
+        let session = store.create(&descriptor);
+        let error = store
+            .append(
+                &session.session_id,
+                &drifted,
+                FixtureWordTokenizer::HELLO_ID,
+                vec![1.0; descriptor.config.kv_width()],
+                vec![2.0; descriptor.config.kv_width()],
+            )
+            .expect_err("drifted descriptor should fail");
+
+        assert!(matches!(
+            error,
+            super::SessionStoreError::ModelMismatch {
+                expected_model,
+                actual_model,
+                expected_weight_bundle_digest,
+                actual_weight_bundle_digest,
+                ..
+            } if expected_model == descriptor.model.model_id
+                && actual_model == descriptor.model.model_id
+                && expected_weight_bundle_digest == descriptor.weights.digest
+                && actual_weight_bundle_digest == "different-weight-bundle"
+        ));
     }
 
     #[test]
