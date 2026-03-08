@@ -2,7 +2,7 @@
 
 use std::collections::BTreeMap;
 
-use mox_core::{DType, Device, QuantizationMode, TensorId, TensorSpec};
+use mox_core::{DType, Device, QuantizationMode, QuantizedBlockLayout, TensorId, TensorSpec};
 use mox_ir::ExecutionPlan;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -196,11 +196,25 @@ pub enum QuantizationExecution {
     DequantizeToF32,
 }
 
+/// Explicit load/storage posture for a quantized mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationLoadPath {
+    /// Weights arrive as ordinary dense `f32` tensors.
+    DenseF32,
+    /// The runtime loads quantized weights and immediately dequantizes them to `f32`.
+    DequantizedF32,
+    /// The runtime preserves quantized blocks in backend-owned storage.
+    BackendQuantized,
+}
+
 /// Runtime support declaration for a quantization mode.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct QuantizationSupport {
     /// Supported quantization mode.
     pub mode: QuantizationMode,
+    /// Explicit load/storage path for the quantized weights.
+    pub load_path: QuantizationLoadPath,
     /// How the runtime executes that mode.
     pub execution: QuantizationExecution,
 }
@@ -325,6 +339,43 @@ pub struct ExecutionMetrics {
 pub trait BufferHandle {
     /// Returns the buffer tensor spec.
     fn spec(&self) -> &TensorSpec;
+
+    /// Returns the storage posture for the buffer.
+    fn storage_kind(&self) -> BufferStorageKind {
+        BufferStorageKind::DenseF32
+    }
+}
+
+/// Physical residency of a backend-owned buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BufferResidency {
+    /// Storage lives in host-managed memory.
+    Host,
+    /// Storage lives in backend-owned device memory.
+    Backend,
+}
+
+/// Explicit buffer storage kind surfaced by runtime backends.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BufferStorageKind {
+    /// Ordinary dense `f32` tensor storage.
+    DenseF32,
+    /// Dense `f32` storage that came from a quantized source tensor.
+    DequantizedF32 {
+        /// Source quantization mode that was dequantized.
+        source_quantization: QuantizationMode,
+    },
+    /// Quantized GGML/GGUF block storage that remains quantized.
+    QuantizedBlocks {
+        /// Quantized storage family.
+        mode: QuantizationMode,
+        /// Stable GGML block layout.
+        layout: QuantizedBlockLayout,
+        /// Whether the storage is host- or backend-resident.
+        residency: BufferResidency,
+    },
 }
 
 /// Trait for device discovery.
@@ -381,9 +432,10 @@ mod tests {
     use super::{
         Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
-        AmdTopologyInfo, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
-        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
-        QuantizationSupport, RuntimeError, RuntimeHealth,
+        AmdTopologyInfo, BackendSelection, BufferHandle, BufferResidency, BufferStorageKind,
+        DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult,
+        HealthStatus, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeError, RuntimeHealth,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -412,6 +464,7 @@ mod tests {
                 supported_dtypes: vec![DType::F32],
                 supported_quantization: vec![QuantizationSupport {
                     mode: mox_core::QuantizationMode::None,
+                    load_path: QuantizationLoadPath::DenseF32,
                     execution: QuantizationExecution::Native,
                 }],
                 memory_capacity_bytes: None,
@@ -497,8 +550,8 @@ mod tests {
     }
 
     #[test]
-    fn backend_selection_helpers_capture_direct_and_fallback_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn backend_selection_helpers_capture_direct_and_fallback_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let direct = BackendSelection::from_backend(&MockRuntime, &["input", "matmul"])?;
         assert_eq!(direct.requested_backend, "mock");
         assert_eq!(direct.effective_backend, "mock");
@@ -523,6 +576,7 @@ mod tests {
                     "supported_dtypes": ["F32"],
                     "supported_quantization": [{
                         "mode": "none",
+                        "load_path": "dense_f32",
                         "execution": "native"
                     }],
                     "memory_capacity_bytes": null,
@@ -550,8 +604,86 @@ mod tests {
     }
 
     #[test]
-    fn amd_backend_model_serializes_mode_topology_risk_and_recovery(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn quantization_support_surfaces_storage_path_and_pending_execution_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let support = QuantizationSupport {
+            mode: mox_core::QuantizationMode::GgmlQ4_0,
+            load_path: QuantizationLoadPath::BackendQuantized,
+            execution: QuantizationExecution::DequantizeToF32,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&support)?,
+            json!({
+                "mode": "ggml_q4_0",
+                "load_path": "backend_quantized",
+                "execution": "dequantize_to_f32"
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn buffer_handles_can_distinguish_quantized_storage_from_dequantized_fallback() {
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        struct QuantizedMockBuffer {
+            spec: TensorSpec,
+        }
+
+        impl BufferHandle for QuantizedMockBuffer {
+            fn spec(&self) -> &TensorSpec {
+                &self.spec
+            }
+
+            fn storage_kind(&self) -> BufferStorageKind {
+                BufferStorageKind::QuantizedBlocks {
+                    mode: mox_core::QuantizationMode::GgmlQ8_0,
+                    layout: mox_core::QuantizedBlockLayout::new(32, 34, 2),
+                    residency: BufferResidency::Backend,
+                }
+            }
+        }
+
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        struct DequantizedMockBuffer {
+            spec: TensorSpec,
+        }
+
+        impl BufferHandle for DequantizedMockBuffer {
+            fn spec(&self) -> &TensorSpec {
+                &self.spec
+            }
+
+            fn storage_kind(&self) -> BufferStorageKind {
+                BufferStorageKind::DequantizedF32 {
+                    source_quantization: mox_core::QuantizationMode::GgmlQ8_0,
+                }
+            }
+        }
+
+        let spec = TensorSpec::new(Shape::new(vec![64]), DType::F32, Device::cpu());
+        let quantized = QuantizedMockBuffer { spec: spec.clone() };
+        let dequantized = DequantizedMockBuffer { spec };
+
+        assert_eq!(
+            quantized.storage_kind(),
+            BufferStorageKind::QuantizedBlocks {
+                mode: mox_core::QuantizationMode::GgmlQ8_0,
+                layout: mox_core::QuantizedBlockLayout::new(32, 34, 2),
+                residency: BufferResidency::Backend,
+            }
+        );
+        assert_eq!(
+            dequantized.storage_kind(),
+            BufferStorageKind::DequantizedF32 {
+                source_quantization: mox_core::QuantizationMode::GgmlQ8_0,
+            }
+        );
+    }
+
+    #[test]
+    fn amd_backend_model_serializes_mode_topology_risk_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("amd_userspace"),
             device: Device::new(

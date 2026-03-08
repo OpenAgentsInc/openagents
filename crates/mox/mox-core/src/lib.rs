@@ -50,6 +50,78 @@ pub enum QuantizationMode {
     None,
     /// Symmetric int8 quantization with explicit scale tensors.
     Int8Symmetric,
+    /// GGML/GGUF Q4_0 block quantization.
+    GgmlQ4_0,
+    /// GGML/GGUF Q4_1 block quantization.
+    GgmlQ4_1,
+    /// GGML/GGUF Q8_0 block quantization.
+    GgmlQ8_0,
+}
+
+impl QuantizationMode {
+    /// Returns the GGML block shape for the quantization mode when one exists.
+    #[must_use]
+    pub const fn ggml_block_spec(self) -> Option<(usize, usize)> {
+        match self {
+            Self::GgmlQ4_0 => Some((32, 18)),
+            Self::GgmlQ4_1 => Some((32, 20)),
+            Self::GgmlQ8_0 => Some((32, 34)),
+            Self::None | Self::Int8Symmetric => None,
+        }
+    }
+
+    /// Returns the block layout for a tensor with the provided logical element count.
+    #[must_use]
+    pub fn ggml_block_layout(self, element_count: usize) -> Option<QuantizedBlockLayout> {
+        let (elements_per_block, bytes_per_block) = self.ggml_block_spec()?;
+        if element_count == 0 || element_count % elements_per_block != 0 {
+            return None;
+        }
+        Some(QuantizedBlockLayout::new(
+            elements_per_block,
+            bytes_per_block,
+            element_count / elements_per_block,
+        ))
+    }
+}
+
+/// Stable block layout for GGML/GGUF quantized tensor storage.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct QuantizedBlockLayout {
+    /// Logical scalar elements covered by a single quantized block.
+    pub elements_per_block: usize,
+    /// Serialized byte width of a single quantized block.
+    pub bytes_per_block: usize,
+    /// Number of quantized blocks in the tensor.
+    pub block_count: usize,
+}
+
+impl QuantizedBlockLayout {
+    /// Creates an explicit block layout.
+    #[must_use]
+    pub const fn new(
+        elements_per_block: usize,
+        bytes_per_block: usize,
+        block_count: usize,
+    ) -> Self {
+        Self {
+            elements_per_block,
+            bytes_per_block,
+            block_count,
+        }
+    }
+
+    /// Returns the logical scalar element count represented by the layout.
+    #[must_use]
+    pub const fn element_count(self) -> usize {
+        self.elements_per_block * self.block_count
+    }
+
+    /// Returns the serialized byte length represented by the layout.
+    #[must_use]
+    pub const fn byte_len(self) -> usize {
+        self.bytes_per_block * self.block_count
+    }
 }
 
 /// Runtime backend family for a device.
