@@ -14,5 +14,6 @@ workspace = true
 path = "src/lib.rs"
 
 [dependencies]
+libloading = "0.8.9"
 mox-core = { path = "../mox-core" }
 mox-runtime = { path = "../mox-runtime" }

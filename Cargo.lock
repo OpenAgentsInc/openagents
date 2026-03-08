@@ -4434,6 +4434,7 @@ dependencies = [
 name = "mox-backend-cuda"
 version = "0.1.0"
 dependencies = [
+ "libloading",
  "mox-core",
  "mox-runtime",
 ]
