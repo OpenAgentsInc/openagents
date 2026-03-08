@@ -4,7 +4,7 @@ mod conformance;
 
 use std::{
     collections::BTreeMap,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 pub use conformance::*;
@@ -348,6 +348,42 @@ pub struct GenerationUsage {
     pub cache_tokens: usize,
 }
 
+/// Explicit timing and token metrics for one generation call.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GenerationMetrics {
+    /// End-to-end generation duration in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_duration_ns: Option<u64>,
+    /// Model-load or compile duration attributable to this request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load_duration_ns: Option<u64>,
+    /// Prompt token count surfaced in the metrics lane.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_count: Option<usize>,
+    /// Output token count surfaced in the metrics lane.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eval_count: Option<usize>,
+}
+
+/// Whether a request hit a cold or warm model path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum GenerationLoadState {
+    /// The request consumed a freshly loaded model path.
+    Cold,
+    /// The request ran against an already-warm model.
+    Warm,
+}
+
+/// Provenance fields attached to one generation response.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenerationProvenance {
+    /// Stable execution-plan digest for the active model graph.
+    pub execution_plan_digest: String,
+    /// Whether the request took the warm or cold model path.
+    pub load_state: GenerationLoadState,
+}
+
 /// Terminal reason for a generation response.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -375,6 +411,12 @@ pub struct GenerationResponse {
     pub output: GenerationOutput,
     /// Usage counters.
     pub usage: GenerationUsage,
+    /// Explicit timing and token metrics.
+    #[serde(default, skip_serializing_if = "GenerationMetrics::is_empty")]
+    pub metrics: GenerationMetrics,
+    /// Explicit execution provenance.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provenance: Option<GenerationProvenance>,
     /// Terminal termination reason.
     pub termination: TerminationReason,
 }
@@ -392,6 +434,11 @@ impl GenerationResponse {
         termination: TerminationReason,
     ) -> Self {
         let output_tokens = tokens.len();
+        let usage = GenerationUsage {
+            input_tokens,
+            output_tokens,
+            cache_tokens,
+        };
         Self {
             request_id: request.request_id.clone(),
             product_id: request.product_id.clone(),
@@ -401,13 +448,43 @@ impl GenerationResponse {
                 tokens,
                 text: text.into(),
             },
-            usage: GenerationUsage {
-                input_tokens,
-                output_tokens,
-                cache_tokens,
-            },
+            metrics: GenerationMetrics::from_usage(&usage),
+            usage,
+            provenance: None,
             termination,
         }
+    }
+
+    /// Attaches explicit metrics and provenance to a generation response.
+    #[must_use]
+    pub fn with_metrics_and_provenance(
+        mut self,
+        metrics: GenerationMetrics,
+        provenance: GenerationProvenance,
+    ) -> Self {
+        self.metrics = metrics;
+        self.provenance = Some(provenance);
+        self
+    }
+}
+
+impl GenerationMetrics {
+    #[must_use]
+    fn from_usage(usage: &GenerationUsage) -> Self {
+        Self {
+            total_duration_ns: None,
+            load_duration_ns: None,
+            prompt_eval_count: Some(usage.input_tokens),
+            eval_count: Some(usage.output_tokens),
+        }
+    }
+
+    #[must_use]
+    fn is_empty(&self) -> bool {
+        self.total_duration_ns.is_none()
+            && self.load_duration_ns.is_none()
+            && self.prompt_eval_count.is_none()
+            && self.eval_count.is_none()
     }
 }
 
@@ -482,6 +559,7 @@ pub struct LoadedModelView {
 struct LoadedGenerationModel<M> {
     model: M,
     residency: LoadedModelResidency,
+    has_served_request: bool,
     size_bytes: Option<u64>,
     size_vram_bytes: Option<u64>,
     backend: Option<String>,
@@ -558,6 +636,7 @@ where
                 LoadedGenerationModel {
                     model,
                     residency: LoadedModelResidency::ready(now_millis, keep_alive_millis),
+                    has_served_request: false,
                     size_bytes,
                     size_vram_bytes,
                     backend,
@@ -594,6 +673,7 @@ where
             .models
             .get_mut(model_id)
             .ok_or_else(|| LoadedModelRegistryError::ModelNotLoaded(model_id.to_string()))?;
+        entry.has_served_request = true;
         entry.residency.begin_request(now_millis);
         Ok(entry.view())
     }
@@ -685,6 +765,17 @@ where
                 .map(|view| view.summary)
                 .collect(),
         )
+    }
+
+    #[must_use]
+    fn load_state(&self, model_id: &str) -> Option<GenerationLoadState> {
+        self.models.get(model_id).map(|entry| {
+            if entry.has_served_request {
+                GenerationLoadState::Warm
+            } else {
+                GenerationLoadState::Cold
+            }
+        })
     }
 
     /// Returns the number of active models.
@@ -1146,6 +1237,7 @@ struct CpuWordGenerationModel<M> {
     hidden_output_id: TensorId,
     logits_output_id: TensorId,
     plan_digest: String,
+    load_duration_ns: u64,
 }
 
 impl<M> CpuWordGenerationModel<M>
@@ -1154,6 +1246,7 @@ where
 {
     /// Loads and compiles a decoder model.
     fn new(model: M) -> Result<Self, ReferenceTextGenerationError> {
+        let load_start = Instant::now();
         let (
             graph,
             token_input_id,
@@ -1163,6 +1256,11 @@ where
             logits_output_id,
         ) = build_generation_graph(&model)?;
         let plan_digest = compile_graph(&graph)?.stable_digest();
+        let load_duration_ns = load_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
         Ok(Self {
             model,
             graph,
@@ -1172,6 +1270,7 @@ where
             hidden_output_id,
             logits_output_id,
             plan_digest,
+            load_duration_ns,
         })
     }
 
@@ -1185,6 +1284,11 @@ where
     #[must_use]
     fn plan_digest(&self) -> &str {
         self.plan_digest.as_str()
+    }
+
+    #[must_use]
+    fn load_duration_ns(&self) -> u64 {
+        self.load_duration_ns
     }
 
     fn execute_step(
@@ -1625,7 +1729,11 @@ where
     }
 
     let model_id = request.model.model.model_id.as_str();
+    let load_state = models
+        .load_state(model_id)
+        .unwrap_or(GenerationLoadState::Warm);
     let request_start = current_time_millis();
+    let generation_start = Instant::now();
     models.begin_request(model_id, request_start)?;
 
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
@@ -1711,15 +1819,40 @@ where
             .model()
             .tokenizer()
             .decode(generated.as_slice());
+        let usage = GenerationUsage {
+            input_tokens: prompt_tokens.len(),
+            output_tokens: generated.len(),
+            cache_tokens: cache.len(),
+        };
+        let metrics = GenerationMetrics {
+            total_duration_ns: Some(
+                generation_start
+                    .elapsed()
+                    .as_nanos()
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            load_duration_ns: Some(match load_state {
+                GenerationLoadState::Cold => loaded_model.load_duration_ns(),
+                GenerationLoadState::Warm => 0,
+            }),
+            prompt_eval_count: Some(usage.input_tokens),
+            eval_count: Some(usage.output_tokens),
+        };
+        let provenance = GenerationProvenance {
+            execution_plan_digest: loaded_model.plan_digest().to_string(),
+            load_state,
+        };
         Ok(GenerationResponse::new(
             request,
             request.session_id.clone(),
             generated,
             text,
-            prompt_tokens.len(),
-            cache.len(),
+            usage.input_tokens,
+            usage.cache_tokens,
             termination,
-        ))
+        )
+        .with_metrics_and_provenance(metrics, provenance))
     })();
 
     let _ = models.finish_request(model_id, current_time_millis());
@@ -2391,8 +2524,8 @@ mod tests {
 
     use super::{
         CpuReferenceTextGenerationService, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
-        EmbeddingsExecutor, FixtureWordTokenizer, GenerationModelHandle, GenerationOptions,
-        GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
+        EmbeddingsExecutor, FixtureWordTokenizer, GenerationLoadState, GenerationModelHandle,
+        GenerationOptions, GenerationRequest, GenerationResponse, InMemoryGenerationModelRegistry,
         InMemoryGenerationSessionStore, ModelDescriptor, ReferenceTextGenerationError,
         ReferenceWordDecoder, SessionId, SmokeByteEmbedder, SmokeEmbeddingsService,
         TerminationReason, TextGenerationExecutor, TokenId, WeightBundleMetadata, WeightFormat,
@@ -2547,6 +2680,11 @@ mod tests {
         let decoded: GenerationResponse = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, response);
         assert_eq!(decoded.usage.output_tokens, 2);
+        assert_eq!(decoded.metrics.prompt_eval_count, Some(1));
+        assert_eq!(decoded.metrics.eval_count, Some(2));
+        assert_eq!(decoded.metrics.total_duration_ns, None);
+        assert_eq!(decoded.metrics.load_duration_ns, None);
+        assert_eq!(decoded.provenance, None);
         Ok(())
     }
 
@@ -2865,7 +3003,19 @@ mod tests {
 
         let first = service.generate(&request)?;
         let second = service.generate(&request)?;
-        assert_eq!(first, second);
+        assert_eq!(first.output, second.output);
+        assert_eq!(first.usage, second.usage);
+        assert_eq!(first.termination, second.termination);
+        assert_eq!(
+            first
+                .provenance
+                .as_ref()
+                .map(|value| value.execution_plan_digest.as_str()),
+            second
+                .provenance
+                .as_ref()
+                .map(|value| value.execution_plan_digest.as_str())
+        );
         assert_eq!(
             first.output.tokens.as_slice(),
             &[
@@ -2881,6 +3031,70 @@ mod tests {
                 .plan_digest(ReferenceWordDecoder::MODEL_ID)
                 .is_some()
         );
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_reference_text_generation_reports_cold_then_warm_provenance()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut service = CpuReferenceTextGenerationService::new()?;
+        let request = GenerationRequest::new_text(
+            "gen-ref-metrics-1",
+            service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(4),
+        );
+        let expected_plan_digest = service
+            .plan_digest(ReferenceWordDecoder::MODEL_ID)
+            .expect("plan digest")
+            .to_string();
+
+        let first = service.generate(&request)?;
+        assert_eq!(
+            first.provenance.as_ref().map(|value| value.load_state),
+            Some(GenerationLoadState::Cold)
+        );
+        assert_eq!(
+            first
+                .provenance
+                .as_ref()
+                .map(|value| value.execution_plan_digest.as_str()),
+            Some(expected_plan_digest.as_str())
+        );
+        assert_eq!(
+            first.metrics.prompt_eval_count,
+            Some(first.usage.input_tokens)
+        );
+        assert_eq!(first.metrics.eval_count, Some(first.usage.output_tokens));
+        assert!(first.metrics.total_duration_ns.is_some());
+        assert!(first.metrics.load_duration_ns.is_some());
+
+        let second = service.generate(&GenerationRequest::new_text(
+            "gen-ref-metrics-2",
+            service.model_descriptor().clone(),
+            None,
+            "hello",
+            GenerationOptions::greedy(4),
+        ))?;
+        assert_eq!(
+            second.provenance.as_ref().map(|value| value.load_state),
+            Some(GenerationLoadState::Warm)
+        );
+        assert_eq!(
+            second
+                .provenance
+                .as_ref()
+                .map(|value| value.execution_plan_digest.as_str()),
+            Some(expected_plan_digest.as_str())
+        );
+        assert_eq!(
+            second.metrics.prompt_eval_count,
+            Some(second.usage.input_tokens)
+        );
+        assert_eq!(second.metrics.eval_count, Some(second.usage.output_tokens));
+        assert!(second.metrics.total_duration_ns.is_some());
+        assert_eq!(second.metrics.load_duration_ns, Some(0));
         Ok(())
     }
 
