@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, and after verifying the current GitHub issue set via `gh issue list --state all`.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -19,6 +19,12 @@ concise summary of what landed when closing it, and then move directly to the
 next roadmap item. Do not stop partway through the roadmap unless blocked by a
 real external dependency or an explicit user instruction to pause or
 reprioritize.
+
+Roadmap hygiene rule: after each completed roadmap issue, update this document
+before moving to the next issue so it reflects the new GitHub state, landed
+commit link or hash, shipped-status notes, and current execution queue. Commit
+and push that roadmap update as well; do not leave the roadmap stale after an
+issue lands.
 
 Reference-first implementation rule: for any issue that touches externally
 defined semantics such as GGUF/GGML parsing, quantization or block layouts,
@@ -114,7 +120,9 @@ to run the launch `inference` and `embeddings` product paths:
 
 `main` now includes the merged phase-2/3/4 baseline from PR `#3163`
 (`53f31280a`) plus the `MOX-115` follow-up that closed [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164)
-in commits `887e202ed` and `bdc9ab114`.
+in commits `887e202ed` and `bdc9ab114`, plus the `MOX-110` follow-up that
+closed [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) in
+commit `9f395ead7`.
 
 ### Delivered in the merged baseline
 
@@ -138,6 +146,11 @@ in commits `887e202ed` and `bdc9ab114`.
   last-dimension block validation for GGML-shaped tensors
 - explicit runtime truth for dense storage versus dequantized fallback versus
   backend-quantized storage paths
+- `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172):
+  reusable GGUF metadata and tensor parsing in `mox-models`, `WeightFormat::Gguf`,
+  explicit GGUF tensor-type metadata, truthful `F16` / `BF16` dtype support,
+  a `GgufWeightBundleLoader`, and GGUF tests for metadata parsing, tensor
+  loading, alignment, and unsupported-type refusal
 
 ### GitHub issue status
 
@@ -150,6 +163,7 @@ checks via `gh issue view`:
 | [#3150](https://github.com/OpenAgentsInc/openagents/issues/3150), [#3151](https://github.com/OpenAgentsInc/openagents/issues/3151) to [#3156](https://github.com/OpenAgentsInc/openagents/issues/3156) | Closed | Phase-3 Metal baseline: discovery, allocator/submission substrate, minimum kernel coverage, truthful backend selection, parity coverage, and Metal embeddings. |
 | [#3157](https://github.com/OpenAgentsInc/openagents/issues/3157), [#3158](https://github.com/OpenAgentsInc/openagents/issues/3158) to [#3162](https://github.com/OpenAgentsInc/openagents/issues/3162) | Closed | Phase-4 AMD truth baseline: AMD metadata model, KFD/userspace discovery, provider truth, and runbook coverage. |
 | [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | `MOX-115` landed: GGML quantized tensor storage substrate, Candle-aligned `Q4_0` / `Q4_1` decode order, and stricter GGML block-shape validation. |
+| [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Closed | `MOX-110` landed: reusable GGUF metadata/tensor parsing, `WeightFormat::Gguf`, `GgufWeightBundleLoader`, and truthful GGUF tensor-type coverage for currently supported dense and quantized families. |
 | [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174), [#3175](https://github.com/OpenAgentsInc/openagents/issues/3175), [#3176](https://github.com/OpenAgentsInc/openagents/issues/3176), [#3221](https://github.com/OpenAgentsInc/openagents/issues/3221) | Closed | Historical roadmap-seeded duplicates for `MOX-117`, `MOX-118`, `MOX-119`, and `MOX-161`; use the open detailed issues `#3166`, `#3167`, `#3168`, and `#3171` instead. |
 
 Current execution queue in dependency order, verified against live GitHub issue
@@ -157,8 +171,8 @@ state:
 
 | Order | Local ID | GitHub issue | State | Why this is the current flow |
 | --- | --- | --- | --- | --- |
-| 1 | `MOX-110` | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Open | This is the next unresolved dependency and should have gone before `MOX-115`. |
-| 2 | `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Open | Tokenizer loading depends on real GGUF metadata extraction. |
+| 1 | `MOX-110` | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Closed | GGUF metadata and tensor loader substrate is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 2 | `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Open | This is now the next unresolved dependency because tokenizer loading depends on real GGUF metadata extraction. |
 | 3 | `MOX-115` | [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | Already landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 4 | `MOX-116` | [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | Open | Local blob mmap and paged tensor storage follow the loader and quant substrate. |
 | 5 | `MOX-117` | [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | Open | This is the authoritative open conformance issue; [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174) is the closed duplicate. |
