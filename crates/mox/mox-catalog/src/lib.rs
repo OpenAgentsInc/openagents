@@ -1,6 +1,7 @@
 //! Local blob and catalog substrate for Mox.
 
 mod ollama;
+mod registry;
 
 use std::{
     fs,
@@ -13,6 +14,7 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 pub use ollama::*;
+pub use registry::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "local blob access and catalog substrate";

@@ -12,7 +12,7 @@ use std::{
 
 use mox_catalog::{
     BlobError, BlobReadPath, LocalBlob, LocalBlobKind, LocalBlobMetadata, LocalBlobOpenOptions,
-    PagedBlobRange,
+    OllamaManifest, PagedBlobRange,
 };
 use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
 use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
@@ -1677,6 +1677,27 @@ impl GgufBlobArtifact {
         Self::from_blob(blob)
     }
 
+    /// Opens the primary GGUF model layer from a resolved local Ollama manifest.
+    pub fn open_ollama_manifest(
+        manifest: &OllamaManifest,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Self, ModelLoadError> {
+        let layer =
+            manifest
+                .primary_model_layer()
+                .ok_or_else(|| ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: String::from("ollama manifest does not carry a primary model layer"),
+                })?;
+        let blob = layer
+            .open_blob(options)
+            .map_err(|error| ModelLoadError::ArtifactRead {
+                path: layer.blob_path.display().to_string(),
+                message: error.to_string(),
+            })?;
+        Self::from_blob(blob)
+    }
+
     fn from_blob(blob: LocalBlob) -> Result<Self, ModelLoadError> {
         let content = GgufContent::read(blob.bytes())?;
         let artifact = WeightArtifactMetadata::for_blob(blob.metadata());
@@ -2869,6 +2890,16 @@ impl GgufWeightBundleLoader {
         options: LocalBlobOpenOptions,
     ) -> Result<LoadedWeightBundle, ModelLoadError> {
         let artifact = GgufBlobArtifact::open_ollama_blob(models_root, digest, options)?;
+        self.load_artifact(&artifact)
+    }
+
+    /// Loads a GGUF-backed bundle from a resolved local Ollama manifest.
+    pub fn load_ollama_manifest(
+        &self,
+        manifest: &OllamaManifest,
+        options: LocalBlobOpenOptions,
+    ) -> Result<LoadedWeightBundle, ModelLoadError> {
+        let artifact = GgufBlobArtifact::open_ollama_manifest(manifest, options)?;
         self.load_artifact(&artifact)
     }
 }
@@ -5826,7 +5857,7 @@ fn decode_int8_symmetric_values(
 mod tests {
     use std::{collections::BTreeMap, path::Path};
 
-    use mox_catalog::BlobReadPreference;
+    use mox_catalog::{BlobReadPreference, OllamaModelCatalog};
     use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
     use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
     use sha2::{Digest, Sha256};
@@ -6871,6 +6902,64 @@ mod tests {
                 .values()?
                 .as_ref(),
             &[3.0, -1.0]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_weight_bundle_loader_loads_from_resolved_ollama_manifest()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let bytes = build_test_gguf(
+            GgufVersion::V3,
+            &[],
+            &[TestGgufTensor::new(
+                "dense",
+                vec![2],
+                GgufTensorType::F32,
+                super::encode_f32_bytes(&[4.0, -2.0]),
+            )],
+        )?;
+        let digest = hex::encode(Sha256::digest(bytes.as_slice()));
+        let blob_path = temp.path().join("blobs").join(format!("sha256-{digest}"));
+        std::fs::create_dir_all(blob_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(&blob_path, &bytes)?;
+
+        let manifest_path = temp
+            .path()
+            .join("manifests/registry.ollama.ai/library/qwen2/latest");
+        std::fs::create_dir_all(manifest_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(
+            &manifest_path,
+            format!(
+                r#"{{"schemaVersion":2,"mediaType":"application/vnd.docker.distribution.manifest.v2+json","layers":[{{"mediaType":"application/vnd.ollama.image.model","digest":"sha256:{digest}","size":{}}}]}}"#,
+                bytes.len()
+            ),
+        )?;
+
+        let manifest = OllamaModelCatalog::new(temp.path()).resolve_model("qwen2")?;
+        let bundle = GgufWeightBundleLoader.load_ollama_manifest(
+            &manifest,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::PreferBuffered)
+                .with_page_size(16),
+        )?;
+
+        let artifact = &bundle.metadata().artifacts[0];
+        let storage = artifact
+            .storage
+            .as_ref()
+            .ok_or("missing artifact storage metadata")?;
+        assert_eq!(artifact.sha256, digest);
+        assert_eq!(storage.blob_kind, WeightArtifactBlobKind::OllamaBlob);
+        assert_eq!(storage.read_path, WeightArtifactReadPath::Buffered);
+        assert_eq!(
+            bundle
+                .tensor("dense")
+                .ok_or("missing dense")?
+                .values()?
+                .as_ref(),
+            &[4.0, -2.0]
         );
         Ok(())
     }
