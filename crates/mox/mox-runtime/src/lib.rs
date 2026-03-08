@@ -3705,6 +3705,7 @@ const fn quantization_family_label(mode: QuantizationMode) -> &'static str {
     match mode {
         QuantizationMode::None => "none",
         QuantizationMode::Int8Symmetric => "int8_symmetric",
+        QuantizationMode::GgmlMxfp4 => "ggml_mxfp4",
         QuantizationMode::GgmlQ4_0 => "ggml_q4_0",
         QuantizationMode::GgmlQ4_1 => "ggml_q4_1",
         QuantizationMode::GgmlQ8_0 => "ggml_q8_0",

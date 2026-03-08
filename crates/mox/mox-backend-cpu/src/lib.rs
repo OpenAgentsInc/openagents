@@ -1017,6 +1017,11 @@ fn quantized_row_dot(
         let lhs_block_start = block_index * elements_per_block;
         let lhs_block = &lhs[lhs_block_start..lhs_block_start + elements_per_block];
         sum += match mode {
+            QuantizationMode::GgmlMxfp4 => {
+                return Err(RuntimeError::Backend(format!(
+                    "unsupported quantized matmul mode {mode:?}",
+                )));
+            }
             QuantizationMode::GgmlQ4_0 => dot_q4_0_block(lhs_block, block_bytes)?,
             QuantizationMode::GgmlQ4_1 => dot_q4_1_block(lhs_block, block_bytes)?,
             QuantizationMode::GgmlQ8_0 => dot_q8_0_block(lhs_block, block_bytes)?,
@@ -1087,6 +1092,11 @@ fn decode_quantized_row_into(
     };
     for block_bytes in bytes.chunks_exact(bytes_per_block) {
         match mode {
+            QuantizationMode::GgmlMxfp4 => {
+                return Err(RuntimeError::Backend(format!(
+                    "unsupported quantized decode mode {mode:?}",
+                )));
+            }
             QuantizationMode::GgmlQ4_0 => decode_q4_0_block_into(block_bytes, output)?,
             QuantizationMode::GgmlQ4_1 => decode_q4_1_block_into(block_bytes, output)?,
             QuantizationMode::GgmlQ8_0 => decode_q8_0_block_into(block_bytes, output)?,

@@ -55,6 +55,8 @@ pub enum QuantizationMode {
     None,
     /// Symmetric int8 quantization with explicit scale tensors.
     Int8Symmetric,
+    /// GGML/GGUF MXFP4 block quantization.
+    GgmlMxfp4,
     /// GGML/GGUF Q4_0 block quantization.
     GgmlQ4_0,
     /// GGML/GGUF Q4_1 block quantization.
@@ -68,6 +70,7 @@ impl QuantizationMode {
     #[must_use]
     pub const fn ggml_block_spec(self) -> Option<(usize, usize)> {
         match self {
+            Self::GgmlMxfp4 => Some((32, 17)),
             Self::GgmlQ4_0 => Some((32, 18)),
             Self::GgmlQ4_1 => Some((32, 20)),
             Self::GgmlQ8_0 => Some((32, 34)),
