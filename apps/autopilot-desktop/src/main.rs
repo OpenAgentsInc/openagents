@@ -22,6 +22,7 @@ mod labor_orchestrator;
 mod local_inference_runtime;
 mod logging;
 mod nip_sa_wallet_bridge;
+#[cfg(test)]
 mod ollama_execution;
 mod openagents_dynamic_tools;
 mod pane_registry;

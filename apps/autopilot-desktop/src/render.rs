@@ -22,10 +22,9 @@ use crate::codex_lane::{CodexLaneConfig, CodexLaneSnapshot, CodexLaneWorker};
 use crate::hotbar::{configure_hotbar, hotbar_bounds, new_hotbar};
 use crate::input::bootstrap_startup_cad_mesh;
 use crate::local_inference_runtime::{
-    LocalInferenceRuntimeCommand, default_local_inference_runtime,
+    LocalInferenceExecutionSnapshot, LocalInferenceRuntimeCommand, default_local_inference_runtime,
 };
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::ollama_execution::OllamaExecutionSnapshot;
 use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
@@ -304,7 +303,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             provider_nip90_lane_worker,
             apple_fm_execution: AppleFmBridgeSnapshot::default(),
             apple_fm_execution_worker,
-            ollama_execution: OllamaExecutionSnapshot::default(),
+            ollama_execution: LocalInferenceExecutionSnapshot::default(),
             local_inference_runtime,
             runtime_command_responses: Vec::new(),
             next_runtime_command_seq: 1,

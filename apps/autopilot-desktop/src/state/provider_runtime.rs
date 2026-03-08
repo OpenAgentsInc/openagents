@@ -7,7 +7,7 @@
 
 use std::time::{Duration, Instant};
 
-use crate::ollama_execution::LocalInferenceExecutionMetrics;
+use crate::local_inference_runtime::LocalInferenceExecutionMetrics;
 pub use openagents_provider_substrate::{
     ProviderAdvertisedProduct, ProviderAvailability, ProviderBackendHealth, ProviderBackendKind,
     ProviderBlocker, ProviderComputeProduct, ProviderFailureClass, ProviderInventoryControls,

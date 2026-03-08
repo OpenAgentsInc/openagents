@@ -1,4 +1,6 @@
-use crate::ollama_execution::{LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance};
+use crate::local_inference_runtime::{
+    LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
+};
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use reqwest::Url;
 use reqwest::blocking::Client;

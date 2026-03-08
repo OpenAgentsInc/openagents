@@ -667,7 +667,7 @@ fn paint_go_online_pane(
         paint,
         left_card.origin.x + 12.0,
         left_y,
-        "Ollama",
+        "Local inference",
         if provider_runtime.ollama.is_ready() {
             "ready"
         } else if provider_runtime.ollama.reachable {
@@ -717,7 +717,7 @@ fn paint_go_online_pane(
             paint,
             left_card.origin.x + 12.0,
             left_y,
-            "Ollama model",
+            "Serving model",
             model,
             left_value_chunk_len,
         );
@@ -1203,7 +1203,7 @@ fn paint_provider_status_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Ollama",
+        "Local inference",
         if provider_runtime.ollama.is_ready() {
             "ready"
         } else if provider_runtime.ollama.reachable {
@@ -1229,7 +1229,7 @@ fn paint_provider_status_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
-        "Ollama model",
+        "Configured local model",
         provider_runtime
             .ollama
             .configured_model
@@ -1371,7 +1371,7 @@ fn paint_provider_status_pane(
     ));
     dep_y += 14.0;
     paint.scene.draw_text(paint.text.layout_mono(
-        &format!("ollama: {ollama_status}"),
+        &format!("local_inference: {ollama_status}"),
         Point::new(content_bounds.origin.x + 12.0, dep_y),
         10.0,
         theme::text::PRIMARY,
@@ -1393,7 +1393,7 @@ fn paint_provider_status_pane(
     dep_y += 18.0;
 
     paint.scene.draw_text(paint.text.layout(
-        "Ollama inventory",
+        "Local inference inventory",
         Point::new(content_bounds.origin.x + 12.0, dep_y),
         11.0,
         theme::text::MUTED,
@@ -4234,7 +4234,15 @@ fn mission_control_blocker_detail(
                 .map(str::trim)
                 .filter(|entry| !entry.is_empty())
                 .map(ToString::to_string)
-                .unwrap_or_else(|| blocker.detail().to_string())
+                .unwrap_or_else(|| match blocker {
+                    ProviderBlocker::OllamaUnavailable => {
+                        "Local inference backend is unavailable".to_string()
+                    }
+                    ProviderBlocker::OllamaModelUnavailable => {
+                        "No local inference model is ready".to_string()
+                    }
+                    _ => blocker.detail().to_string(),
+                })
         }
         ProviderBlocker::AppleFoundationModelsUnavailable
         | ProviderBlocker::AppleFoundationModelsModelUnavailable => provider_runtime

@@ -179,7 +179,7 @@ pub(super) fn run_active_job_execution_tick(state: &mut RenderState) -> bool {
                     Err(error) => {
                         fail_active_job_execution(
                             state,
-                            format!("failed to start local Ollama execution: {error}"),
+                            format!("failed to start local inference execution: {error}"),
                             "active_job.ollama_execution_start_failed",
                             true,
                         );
@@ -628,7 +628,7 @@ fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90Co
 
 fn provider_compute_capability_from_ollama(state: &RenderState) -> ProviderNip90ComputeCapability {
     ProviderNip90ComputeCapability {
-        backend: "ollama".to_string(),
+        backend: "mox".to_string(),
         reachable: state.ollama_execution.reachable,
         configured_model: state.ollama_execution.configured_model.clone(),
         ready_model: state.ollama_execution.ready_model.clone(),
@@ -899,7 +899,7 @@ fn queue_provider_execution_thread_start(state: &mut RenderState) -> Result<(), 
 
 fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), String> {
     let Some(job) = state.active_job.job.as_ref() else {
-        return Err("Cannot start Ollama execution without an active job".to_string());
+        return Err("Cannot start local inference execution without an active job".to_string());
     };
     let request_id = job.request_id.clone();
     let prompt = job
@@ -920,9 +920,10 @@ fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), 
     state.active_job.execution_backend_request_id = Some(request_id.clone());
     state.active_job.execution_deadline_epoch_seconds =
         Some(current_epoch_seconds().saturating_add(ttl_seconds));
-    state
-        .active_job
-        .append_event(format!("queued local Ollama generation for {}", request_id));
+    state.active_job.append_event(format!(
+        "queued local inference generation for {}",
+        request_id
+    ));
     Ok(())
 }
 
@@ -1075,11 +1076,11 @@ fn apply_ollama_execution_started(
         return false;
     }
     state.provider_runtime.last_result = Some(format!(
-        "local Ollama execution started request={} model={}",
+        "local inference execution started request={} model={}",
         started.request_id, started.model
     ));
     state.active_job.append_event(format!(
-        "local Ollama generation started with model {}",
+        "local inference generation started with model {}",
         started.model
     ));
     if let Err(error) =
@@ -1087,7 +1088,7 @@ fn apply_ollama_execution_started(
     {
         fail_active_job_execution(
             state,
-            format!("failed to transition active Ollama job to running: {error}"),
+            format!("failed to transition active local inference job to running: {error}"),
             "active_job.ollama_running_transition_failed",
             true,
         );
@@ -1109,11 +1110,11 @@ fn apply_ollama_execution_completed(
         job.execution_provenance = Some(completed.provenance.clone());
     }
     state.provider_runtime.last_result = Some(format!(
-        "local Ollama execution completed request={} model={}",
+        "local inference execution completed request={} model={}",
         completed.request_id, completed.model
     ));
     state.active_job.append_event(format!(
-        "local Ollama generation completed model={} prompt_eval={} eval={}",
+        "local inference generation completed model={} prompt_eval={} eval={}",
         completed.model,
         completed.metrics.prompt_eval_count.unwrap_or(0),
         completed.metrics.eval_count.unwrap_or(0)
@@ -1131,7 +1132,7 @@ fn apply_ollama_execution_failed(
     state.active_job.execution_backend_request_id = None;
     fail_active_job_execution(
         state,
-        format!("local Ollama execution failed: {}", failed.error),
+        format!("local inference execution failed: {}", failed.error),
         "active_job.ollama_execution_failed",
         true,
     );
@@ -1887,7 +1888,7 @@ fn ollama_request_accept_block_reason(
 ) -> Option<String> {
     if request.request_kind != KIND_JOB_TEXT_GENERATION {
         return Some(format!(
-            "Unsupported request kind {}; Ollama provider serves only kind 5050 text generation",
+            "Unsupported request kind {}; local inference serves only kind 5050 text generation",
             request.request_kind
         ));
     }
@@ -1912,7 +1913,7 @@ fn ollama_request_accept_block_reason(
             ollama
                 .last_error
                 .clone()
-                .unwrap_or_else(|| "Local Ollama backend is unavailable".to_string()),
+                .unwrap_or_else(|| "Local inference backend is unavailable".to_string()),
         );
     }
     if let Some(requested_model) = request.requested_model.as_deref() {
@@ -1922,7 +1923,7 @@ fn ollama_request_accept_block_reason(
             .any(|candidate| candidate == requested_model)
         {
             return Some(format!(
-                "Requested Ollama model '{}' is not installed locally",
+                "Requested local model '{}' is not installed locally",
                 requested_model
             ));
         }
@@ -1933,7 +1934,7 @@ fn ollama_request_accept_block_reason(
             && requested_model != serving_model
         {
             return Some(format!(
-                "Requested Ollama model '{}' is blocked by local policy; provider currently serves '{}'",
+                "Requested local model '{}' is blocked by local policy; provider currently serves '{}'",
                 requested_model, serving_model
             ));
         }
@@ -1942,7 +1943,7 @@ fn ollama_request_accept_block_reason(
             ollama
                 .last_error
                 .clone()
-                .unwrap_or_else(|| "No local Ollama serving model is ready".to_string()),
+                .unwrap_or_else(|| "No local inference model is ready".to_string()),
         );
     }
     None
@@ -2059,7 +2060,7 @@ mod tests {
     use crate::app_state::{
         JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,
     };
-    use crate::ollama_execution::OllamaExecutionSnapshot;
+    use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
     use crate::state::provider_runtime::{
         ProviderAppleFmRuntimeState, ProviderMode, ProviderOllamaRuntimeState,
     };
@@ -2215,11 +2216,11 @@ mod tests {
 
     #[test]
     fn ollama_snapshot_needs_ready_model_before_serving() {
-        let snapshot = OllamaExecutionSnapshot {
+        let snapshot = LocalInferenceExecutionSnapshot {
             reachable: true,
             ready_model: None,
             last_error: Some("No local Ollama text-generation models are installed".to_string()),
-            ..OllamaExecutionSnapshot::default()
+            ..LocalInferenceExecutionSnapshot::default()
         };
         assert!(!snapshot.is_ready());
     }
