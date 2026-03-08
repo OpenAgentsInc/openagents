@@ -2590,12 +2590,14 @@ where
             .get(&self.hidden_output_id)
             .ok_or(ReferenceTextGenerationError::MissingOutput("hidden"))?
             .as_f32_slice()
+            .ok_or(ReferenceTextGenerationError::MissingOutput("hidden_dense"))?
             .to_vec();
         let logits = result
             .outputs
             .get(&self.logits_output_id)
             .ok_or(ReferenceTextGenerationError::MissingOutput("logits"))?
             .as_f32_slice()
+            .ok_or(ReferenceTextGenerationError::MissingOutput("logits_dense"))?
             .to_vec();
         Ok(GenerationStepOutput { hidden, logits })
     }
@@ -4673,7 +4675,10 @@ fn execute_cpu_embedding_graph(
             "missing embedding output",
         )));
     };
-    Ok(output.as_f32_slice().to_vec())
+    Ok(output
+        .as_f32_slice()
+        .ok_or_else(|| RuntimeError::Backend(String::from("embedding output must be dense f32")))?
+        .to_vec())
 }
 
 fn execute_metal_embedding_graph(

@@ -182,9 +182,13 @@ mod tests {
 
     fn extension_graph() -> Result<mox_ir::Graph, mox_ir::GraphError> {
         let mut builder = GraphBuilder::new(Device::cpu());
-        let input = builder.input("input", Shape::new(vec![2, 4]), DType::F32);
-        let weight = builder.constant_f32(Shape::new(vec![4]), vec![1.0, 1.0, 1.0, 1.0])?;
-        let rhs = builder.constant_f32(Shape::new(vec![4, 2]), vec![1.0f32; 8])?;
+        let input = builder.input("input", Shape::new(vec![2, 32]), DType::F32);
+        let weight = builder.constant_f32(Shape::new(vec![32]), vec![1.0f32; 32])?;
+        let rhs = builder.constant_quantized_blocks(
+            Shape::new(vec![2, 32]),
+            QuantizationMode::GgmlQ4_0,
+            vec![0x88_u8; 36],
+        )?;
         let normed = builder.rms_norm(&input, &weight, 1e-5)?;
         let output = builder.quantized_matmul(&normed, &rhs, QuantizationMode::GgmlQ4_0)?;
         Ok(builder.finish(vec![output]))
