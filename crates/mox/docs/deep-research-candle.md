@@ -58,7 +58,7 @@ Why it matters to Mox:
 
 ### KV-cache and attention patterns, including a path to paged attention
 
-Candle’s transformer models (e.g., llama) keep KV-cache state in an explicit cache object, and the forward pass uses that cache when enabled—this is the structural baseline you need for `RGR-126` style “deterministic KV-cache ownership and session lifecycle.” citeturn17view0  
+Candle’s transformer models (e.g., llama) keep KV-cache state in an explicit cache object, and the forward pass uses that cache when enabled—this is the structural baseline you need for `MOX-126` style “deterministic KV-cache ownership and session lifecycle.” citeturn17view0
 
 For scaling beyond naive KV growth, Candle’s ecosystem includes **paged attention** work. Hugging Face maintains `candle-paged-attention`, and its README explicitly states the kernels are adapted from vLLM’s CUDA sources. citeturn20view0turn21view3  
 That matters because your roadmap’s long-term “compute-market substrate” items include batch posture, queueing, throughput truth, and later possibly `sandbox_execution`—all of which become much easier if KV-cache memory and batching are explicit.
