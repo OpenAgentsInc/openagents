@@ -2333,6 +2333,337 @@ impl Default for ExecutionCapabilityProfile {
     }
 }
 
+/// Explicit isolation boundary for bounded sandbox execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxIsolationBoundary {
+    /// Work runs inside the current host process boundary.
+    Process,
+    /// Work runs inside a container-style process boundary.
+    Container,
+    /// Work runs inside a VM-style boundary.
+    VirtualMachine,
+}
+
+/// Root filesystem posture for bounded sandbox execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxFilesystemRoot {
+    /// The root filesystem is mounted read-only.
+    ReadOnly,
+    /// The root filesystem is ephemeral and writable for the job lifetime only.
+    EphemeralWritable,
+}
+
+/// Explicit filesystem policy for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxFilesystemPolicy {
+    /// Root filesystem posture for the sandbox.
+    pub root: SandboxFilesystemRoot,
+    /// Explicit writable mounts exposed to the job.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub writable_mounts: Vec<String>,
+    /// Maximum bytes the sandbox may write across writable mounts.
+    pub max_write_bytes: u64,
+}
+
+/// Network posture for bounded sandbox execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxNetworkMode {
+    /// No outbound network access is permitted.
+    Disabled,
+    /// Only explicit destinations are permitted.
+    RestrictedEgress,
+}
+
+/// Explicit network policy for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxNetworkPolicy {
+    /// High-level network mode for the sandbox.
+    pub mode: SandboxNetworkMode,
+    /// Whether loopback access remains available inside the sandbox.
+    pub allow_loopback: bool,
+    /// Explicit allowed egress destinations when the sandbox permits restricted egress.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_hosts: Vec<String>,
+}
+
+/// Explicit process-spawning boundary for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxProcessPolicy {
+    /// Maximum number of live processes allowed for the job.
+    pub max_processes: u32,
+    /// Maximum threads allowed within one process.
+    pub max_threads_per_process: u32,
+    /// Whether privilege escalation inside the sandbox is permitted.
+    pub allow_privilege_escalation: bool,
+}
+
+/// Explicit resource limits for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxResourceLimits {
+    /// Maximum wall-clock execution time in milliseconds.
+    pub max_wall_time_ms: u64,
+    /// Maximum CPU time in milliseconds across the sandbox.
+    pub max_cpu_time_ms: u64,
+    /// Maximum resident memory for the sandbox.
+    pub max_memory_bytes: u64,
+    /// Maximum stdout bytes retained in evidence.
+    pub max_stdout_bytes: u64,
+    /// Maximum stderr bytes retained in evidence.
+    pub max_stderr_bytes: u64,
+}
+
+/// Accelerator exposure policy for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum SandboxAcceleratorAccess {
+    /// No accelerator devices are exposed to the sandbox.
+    Disabled,
+    /// Accelerator devices are exposed under an explicit backend and device bound.
+    Allowed {
+        /// Backend family exposed to the sandbox.
+        runtime_backend: String,
+        /// Maximum number of visible devices.
+        max_visible_devices: usize,
+        /// Allowed performance classes for exposed devices.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        allowed_performance_classes: Vec<DevicePerformanceClass>,
+        /// Whether exposed devices must surface stable topology keys.
+        require_topology_keys: bool,
+    },
+}
+
+impl SandboxAcceleratorAccess {
+    /// Returns an explicit no-accelerator policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self::Disabled
+    }
+
+    /// Returns an explicit bounded accelerator policy.
+    #[must_use]
+    pub fn allowed(runtime_backend: impl Into<String>, max_visible_devices: usize) -> Self {
+        Self::Allowed {
+            runtime_backend: runtime_backend.into(),
+            max_visible_devices,
+            allowed_performance_classes: vec![
+                DevicePerformanceClass::IntegratedAccelerator,
+                DevicePerformanceClass::DiscreteAccelerator,
+                DevicePerformanceClass::PartitionedAccelerator,
+            ],
+            require_topology_keys: true,
+        }
+    }
+
+    /// Returns whether the sandbox expects accelerator visibility at all.
+    #[must_use]
+    pub const fn requires_accelerator(&self) -> bool {
+        matches!(self, Self::Allowed { .. })
+    }
+}
+
+/// Reusable execution profile for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionCapabilityProfile {
+    /// Dispatch posture for the sandbox job lane.
+    pub dispatch_profile: ExecutionCapabilityProfile,
+    /// Isolation boundary for the job.
+    pub isolation_boundary: SandboxIsolationBoundary,
+    /// Filesystem policy for the sandbox.
+    pub filesystem: SandboxFilesystemPolicy,
+    /// Network policy for the sandbox.
+    pub network: SandboxNetworkPolicy,
+    /// Process-spawning policy for the sandbox.
+    pub process: SandboxProcessPolicy,
+    /// Explicit resource limits for the sandbox.
+    pub resource_limits: SandboxResourceLimits,
+    /// Accelerator exposure policy for the sandbox.
+    pub accelerator_access: SandboxAcceleratorAccess,
+}
+
+impl SandboxExecutionCapabilityProfile {
+    /// Returns a bounded CPU-only sandbox profile.
+    #[must_use]
+    pub fn bounded_cpu() -> Self {
+        Self {
+            dispatch_profile: ExecutionCapabilityProfile::single_request_latency_optimized(),
+            isolation_boundary: SandboxIsolationBoundary::Container,
+            filesystem: SandboxFilesystemPolicy {
+                root: SandboxFilesystemRoot::ReadOnly,
+                writable_mounts: vec![String::from("/tmp")],
+                max_write_bytes: 64 * 1024 * 1024,
+            },
+            network: SandboxNetworkPolicy {
+                mode: SandboxNetworkMode::Disabled,
+                allow_loopback: false,
+                allowed_hosts: Vec::new(),
+            },
+            process: SandboxProcessPolicy {
+                max_processes: 32,
+                max_threads_per_process: 8,
+                allow_privilege_escalation: false,
+            },
+            resource_limits: SandboxResourceLimits {
+                max_wall_time_ms: 300_000,
+                max_cpu_time_ms: 300_000,
+                max_memory_bytes: 2 * 1024 * 1024 * 1024,
+                max_stdout_bytes: 1 * 1024 * 1024,
+                max_stderr_bytes: 1 * 1024 * 1024,
+            },
+            accelerator_access: SandboxAcceleratorAccess::disabled(),
+        }
+    }
+
+    /// Returns a bounded accelerator-visible sandbox profile.
+    #[must_use]
+    pub fn bounded_accelerated(
+        runtime_backend: impl Into<String>,
+        max_visible_devices: usize,
+    ) -> Self {
+        Self {
+            accelerator_access: SandboxAcceleratorAccess::allowed(
+                runtime_backend,
+                max_visible_devices,
+            ),
+            ..Self::bounded_cpu()
+        }
+    }
+
+    /// Returns a stable digest for the bounded sandbox profile.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(match self.dispatch_profile.batch_posture {
+            BatchExecutionPosture::SingleRequestOnly => b"single_request_only".as_slice(),
+            BatchExecutionPosture::CallerStaticBatch => b"caller_static_batch".as_slice(),
+            BatchExecutionPosture::SchedulerStaticBatch => b"scheduler_static_batch".as_slice(),
+            BatchExecutionPosture::ContinuousBatch => b"continuous_batch".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.dispatch_profile.throughput_class {
+            ThroughputClass::LatencyOptimized => b"latency_optimized".as_slice(),
+            ThroughputClass::Balanced => b"balanced".as_slice(),
+            ThroughputClass::ThroughputOptimized => b"throughput_optimized".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(
+            self.dispatch_profile
+                .queue_policy
+                .max_active_requests
+                .to_string(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            self.dispatch_profile
+                .queue_policy
+                .max_queued_requests
+                .to_string(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            if self.dispatch_profile.queue_policy.per_model_serialization {
+                b"1".as_slice()
+            } else {
+                b"0".as_slice()
+            },
+        );
+        hasher.update(b"|");
+        hasher.update(match self.isolation_boundary {
+            SandboxIsolationBoundary::Process => b"process".as_slice(),
+            SandboxIsolationBoundary::Container => b"container".as_slice(),
+            SandboxIsolationBoundary::VirtualMachine => b"virtual_machine".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.filesystem.root {
+            SandboxFilesystemRoot::ReadOnly => b"read_only".as_slice(),
+            SandboxFilesystemRoot::EphemeralWritable => b"ephemeral_writable".as_slice(),
+        });
+        hasher.update(b"|");
+        for mount in &self.filesystem.writable_mounts {
+            hasher.update(mount.as_bytes());
+            hasher.update(b"\x1f");
+        }
+        hasher.update(b"|");
+        hasher.update(self.filesystem.max_write_bytes.to_string());
+        hasher.update(b"|");
+        hasher.update(match self.network.mode {
+            SandboxNetworkMode::Disabled => b"disabled".as_slice(),
+            SandboxNetworkMode::RestrictedEgress => b"restricted_egress".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(if self.network.allow_loopback {
+            b"1".as_slice()
+        } else {
+            b"0".as_slice()
+        });
+        hasher.update(b"|");
+        for host in &self.network.allowed_hosts {
+            hasher.update(host.as_bytes());
+            hasher.update(b"\x1f");
+        }
+        hasher.update(b"|");
+        hasher.update(self.process.max_processes.to_string());
+        hasher.update(b"|");
+        hasher.update(self.process.max_threads_per_process.to_string());
+        hasher.update(b"|");
+        hasher.update(if self.process.allow_privilege_escalation {
+            b"1".as_slice()
+        } else {
+            b"0".as_slice()
+        });
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_wall_time_ms.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_cpu_time_ms.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_memory_bytes.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_stdout_bytes.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_stderr_bytes.to_string());
+        hasher.update(b"|");
+        match &self.accelerator_access {
+            SandboxAcceleratorAccess::Disabled => hasher.update(b"disabled"),
+            SandboxAcceleratorAccess::Allowed {
+                runtime_backend,
+                max_visible_devices,
+                allowed_performance_classes,
+                require_topology_keys,
+            } => {
+                hasher.update(b"allowed|");
+                hasher.update(runtime_backend.as_bytes());
+                hasher.update(b"|");
+                hasher.update(max_visible_devices.to_string());
+                hasher.update(b"|");
+                for class in allowed_performance_classes {
+                    hasher.update(match class {
+                        DevicePerformanceClass::Reference => b"reference".as_slice(),
+                        DevicePerformanceClass::IntegratedAccelerator => {
+                            b"integrated_accelerator".as_slice()
+                        }
+                        DevicePerformanceClass::DiscreteAccelerator => {
+                            b"discrete_accelerator".as_slice()
+                        }
+                        DevicePerformanceClass::PartitionedAccelerator => {
+                            b"partitioned_accelerator".as_slice()
+                        }
+                    });
+                    hasher.update(b"\x1f");
+                }
+                hasher.update(b"|");
+                hasher.update(if *require_topology_keys {
+                    b"1".as_slice()
+                } else {
+                    b"0".as_slice()
+                });
+            }
+        }
+        format!("{:x}", hasher.finalize())
+    }
+}
+
 /// Explicit local-runtime observability snapshot for app cutover and debugging.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalRuntimeObservability {
@@ -3855,9 +4186,12 @@ mod tests {
         QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
         ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
         RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
-        ServedArtifactIdentity, ServedProductBackendPolicy, ServedProductFallbackAction,
-        ServedProductFallbackLattice, ServedProductFallbackTrigger, ThroughputClass, TokenSampler,
-        apply_sampling_penalties, default_cache_invalidation_policy, plan_model_admission,
+        SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxFilesystemPolicy,
+        SandboxFilesystemRoot, SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy,
+        SandboxProcessPolicy, SandboxResourceLimits, ServedArtifactIdentity,
+        ServedProductBackendPolicy, ServedProductFallbackAction, ServedProductFallbackLattice,
+        ServedProductFallbackTrigger, ThroughputClass, TokenSampler, apply_sampling_penalties,
+        default_cache_invalidation_policy, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -5518,6 +5852,105 @@ mod tests {
                 throughput_class: ThroughputClass::Balanced,
             }
         );
+    }
+
+    #[test]
+    fn sandbox_execution_capability_profiles_are_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let profile = SandboxExecutionCapabilityProfile::bounded_accelerated("cuda", 2);
+        assert!(profile.accelerator_access.requires_accelerator());
+        assert_eq!(
+            serde_json::to_value(&profile)?,
+            json!({
+                "dispatch_profile": {
+                    "batch_posture": "single_request_only",
+                    "queue_policy": {
+                        "discipline": "direct_caller_backpressure",
+                        "max_active_requests": 1,
+                        "max_queued_requests": 0,
+                        "per_model_serialization": true
+                    },
+                    "throughput_class": "latency_optimized"
+                },
+                "isolation_boundary": "container",
+                "filesystem": {
+                    "root": "read_only",
+                    "writable_mounts": ["/tmp"],
+                    "max_write_bytes": 67108864
+                },
+                "network": {
+                    "mode": "disabled",
+                    "allow_loopback": false
+                },
+                "process": {
+                    "max_processes": 32,
+                    "max_threads_per_process": 8,
+                    "allow_privilege_escalation": false
+                },
+                "resource_limits": {
+                    "max_wall_time_ms": 300000,
+                    "max_cpu_time_ms": 300000,
+                    "max_memory_bytes": 2147483648u64,
+                    "max_stdout_bytes": 1048576,
+                    "max_stderr_bytes": 1048576
+                },
+                "accelerator_access": {
+                    "mode": "allowed",
+                    "runtime_backend": "cuda",
+                    "max_visible_devices": 2,
+                    "allowed_performance_classes": [
+                        "integrated_accelerator",
+                        "discrete_accelerator",
+                        "partitioned_accelerator"
+                    ],
+                    "require_topology_keys": true
+                }
+            })
+        );
+        assert_eq!(
+            SandboxExecutionCapabilityProfile::bounded_cpu(),
+            SandboxExecutionCapabilityProfile {
+                dispatch_profile: ExecutionCapabilityProfile::single_request_latency_optimized(),
+                isolation_boundary: SandboxIsolationBoundary::Container,
+                filesystem: SandboxFilesystemPolicy {
+                    root: SandboxFilesystemRoot::ReadOnly,
+                    writable_mounts: vec![String::from("/tmp")],
+                    max_write_bytes: 64 * 1024 * 1024,
+                },
+                network: SandboxNetworkPolicy {
+                    mode: SandboxNetworkMode::Disabled,
+                    allow_loopback: false,
+                    allowed_hosts: Vec::new(),
+                },
+                process: SandboxProcessPolicy {
+                    max_processes: 32,
+                    max_threads_per_process: 8,
+                    allow_privilege_escalation: false,
+                },
+                resource_limits: SandboxResourceLimits {
+                    max_wall_time_ms: 300_000,
+                    max_cpu_time_ms: 300_000,
+                    max_memory_bytes: 2 * 1024 * 1024 * 1024,
+                    max_stdout_bytes: 1 * 1024 * 1024,
+                    max_stderr_bytes: 1 * 1024 * 1024,
+                },
+                accelerator_access: SandboxAcceleratorAccess::Disabled,
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sandbox_execution_profile_digest_changes_with_bounds() {
+        let baseline = SandboxExecutionCapabilityProfile::bounded_cpu();
+        let tightened = SandboxExecutionCapabilityProfile {
+            resource_limits: SandboxResourceLimits {
+                max_wall_time_ms: 60_000,
+                ..baseline.resource_limits.clone()
+            },
+            ..baseline.clone()
+        };
+        assert_ne!(baseline.stable_digest(), tightened.stable_digest());
     }
 
     #[test]
