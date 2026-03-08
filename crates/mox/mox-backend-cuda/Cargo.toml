@@ -19,3 +19,6 @@ mox-compiler = { path = "../mox-compiler" }
 mox-core = { path = "../mox-core" }
 mox-ir = { path = "../mox-ir" }
 mox-runtime = { path = "../mox-runtime" }
+
+[dev-dependencies]
+mox-backend-cpu = { path = "../mox-backend-cpu" }

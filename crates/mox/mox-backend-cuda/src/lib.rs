@@ -9,12 +9,12 @@ use mox_compiler::compile_graph;
 use mox_core::{DType, Device, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
-    Allocator, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendName,
-    BackendRuntimeResources, BufferHandle, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
-    ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
-    KernelCacheReport, KernelCacheState, NvidiaBackendReport, NvidiaDeviceMetadata,
-    NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile,
-    NvidiaTopologyInfo, RuntimeError, RuntimeHealth,
+    Allocator, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, BackendDegradedPolicy,
+    BackendName, BackendRuntimeResources, BackendSelection, BufferHandle, DeviceDescriptor,
+    DeviceDiscovery, DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics, ExecutionResult,
+    HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, NvidiaBackendReport,
+    NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
+    NvidiaRiskProfile, NvidiaTopologyInfo, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
 };
 
 /// Human-readable crate ownership summary.
@@ -373,6 +373,83 @@ impl CudaBackend {
         let plan =
             compile_graph(graph).map_err(|error| RuntimeError::Backend(error.to_string()))?;
         self.execute(&plan, inputs)
+    }
+
+    /// Returns truthful backend-selection data for a supported CUDA product path.
+    pub fn backend_selection(
+        &self,
+        supported_ops: &[&str],
+    ) -> Result<BackendSelection, RuntimeError> {
+        let policy = ServedProductBackendPolicy::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
+        match &self.state {
+            CudaBackendState::Available(backend) => {
+                let supported_ops = supported_ops
+                    .iter()
+                    .map(|label| String::from(*label))
+                    .collect();
+                let health = self.health();
+                match health.status {
+                    HealthStatus::Ready => Ok(BackendSelection::direct_with_policy(
+                        self.backend_name(),
+                        Some(backend.descriptor.clone()),
+                        supported_ops,
+                        policy,
+                    )
+                    .with_runtime_resources(self.runtime_resources())
+                    .with_backend_extensions(self.extension_support())),
+                    HealthStatus::Degraded => Ok(BackendSelection::degraded(
+                        self.backend_name(),
+                        Some(backend.descriptor.clone()),
+                        supported_ops,
+                        policy,
+                        health.message,
+                    )
+                    .with_runtime_resources(self.runtime_resources())
+                    .with_backend_extensions(self.extension_support())),
+                    HealthStatus::Offline => Err(RuntimeError::Backend(format!(
+                        "cuda backend unavailable: {}",
+                        health.message
+                    ))),
+                }
+            }
+            CudaBackendState::Unavailable(health) => Err(RuntimeError::Backend(format!(
+                "cuda backend unavailable: {}",
+                health.message
+            ))),
+        }
+    }
+
+    /// Returns an explicit fallback selection when CUDA cannot execute the
+    /// requested product path on the local machine.
+    pub fn fallback_selection<B>(
+        &self,
+        fallback_backend: &B,
+        supported_ops: &[&str],
+    ) -> Result<BackendSelection, RuntimeError>
+    where
+        B: DeviceDiscovery + ?Sized,
+    {
+        let policy = ServedProductBackendPolicy::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
+        match &self.state {
+            CudaBackendState::Available(_) => self.backend_selection(supported_ops),
+            CudaBackendState::Unavailable(health) => Ok(BackendSelection::fallback_with_policy(
+                self.backend_name(),
+                fallback_backend.backend_name(),
+                fallback_backend.discover_devices()?.into_iter().next(),
+                supported_ops
+                    .iter()
+                    .map(|label| String::from(*label))
+                    .collect(),
+                policy,
+                format!("cuda backend unavailable: {}", health.message),
+            )
+            .with_runtime_resources(fallback_backend.runtime_resources())
+            .with_backend_extensions(fallback_backend.extension_support())),
+        }
     }
 
     /// Allocates a CUDA buffer for the provided tensor specification.
@@ -1703,6 +1780,7 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
+    use mox_backend_cpu::CpuBackend;
     use mox_compiler::compile_graph;
     use mox_core::{DType, DeviceKind, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
@@ -1714,7 +1792,10 @@ mod tests {
         recovery_profile, risk_profile, validate_supported_plan,
     };
     use mox_core::Device;
-    use mox_runtime::{Allocator, DeviceDiscovery, NvidiaRecoveryAction, NvidiaRiskLevel};
+    use mox_runtime::{
+        Allocator, BackendDegradedPolicy, BackendSelectionState, DeviceDiscovery,
+        NvidiaRecoveryAction, NvidiaRiskLevel, ServedProductBackendPolicy,
+    };
 
     #[test]
     fn inventory_row_parses_into_expected_descriptor_inputs() {
@@ -1851,6 +1932,88 @@ mod tests {
         } else {
             assert!(backend.runtime_resources().is_none());
         }
+    }
+
+    #[test]
+    fn cuda_backend_selection_reports_ready_or_degraded_cuda_when_available()
+    -> Result<(), mox_runtime::RuntimeError> {
+        let backend = CudaBackend::new();
+        let Some(_) = backend.selected_device() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+
+        let selection = backend.backend_selection(SUPPORTED_OPS)?;
+        assert_eq!(selection.requested_backend, "cuda");
+        assert_eq!(selection.effective_backend, "cuda");
+        assert_eq!(
+            selection.supported_ops,
+            SUPPORTED_OPS
+                .iter()
+                .map(|label| String::from(*label))
+                .collect::<Vec<_>>()
+        );
+        assert!(selection.selected_device.is_some());
+        assert!(selection.runtime_resources.is_some());
+        assert_eq!(
+            selection.policy,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+
+        match backend.health().status {
+            HealthStatus::Ready => {
+                assert_eq!(selection.selection_state, BackendSelectionState::Direct);
+                assert!(selection.degraded_reason.is_none());
+            }
+            HealthStatus::Degraded => {
+                assert_eq!(
+                    selection.selection_state,
+                    BackendSelectionState::SameBackendDegraded
+                );
+                assert!(selection.degraded_reason.is_some());
+            }
+            HealthStatus::Offline => {
+                panic!("selected CUDA device should not report offline health");
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_fallback_selection_reports_explicit_cpu_fallback_when_unavailable()
+    -> Result<(), mox_runtime::RuntimeError> {
+        let backend = CudaBackend::new();
+        if backend.selected_device().is_none() {
+            let cpu = CpuBackend::new();
+            let selection = backend.fallback_selection(&cpu, SUPPORTED_OPS)?;
+            assert_eq!(selection.requested_backend, "cuda");
+            assert_eq!(selection.effective_backend, "cpu");
+            assert_eq!(
+                selection.supported_ops,
+                SUPPORTED_OPS
+                    .iter()
+                    .map(|label| String::from(*label))
+                    .collect::<Vec<_>>()
+            );
+            assert!(selection.selected_device.is_some());
+            assert!(selection.runtime_resources.is_some());
+            assert!(selection.fallback_reason.is_some());
+            assert_eq!(
+                selection.policy,
+                ServedProductBackendPolicy::fallback_to_compatible_backend(
+                    BackendDegradedPolicy::AllowSameBackend
+                )
+            );
+            assert_eq!(
+                selection.selection_state,
+                BackendSelectionState::CrossBackendFallback
+            );
+            assert!(selection.degraded_reason.is_none());
+        }
+        Ok(())
     }
 
     #[test]

@@ -1034,14 +1034,15 @@ mod tests {
     use mox_runtime::{
         AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState, AmdDeviceMetadata,
         AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
-        AmdRuntimeMode, AmdTopologyInfo, BackendExtensionSupport, BackendRuntimeResources,
-        BackendSelection, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic,
-        LocalRuntimeErrorCode, LocalRuntimeObservability, MemoryResidencySnapshot,
-        ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
-        RuntimeTransitionEvent, RuntimeTransitionKind,
+        AmdRuntimeMode, AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport,
+        BackendRuntimeResources, BackendSelection, DeviceDescriptor, DeviceMemoryBudget,
+        HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
+        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
+        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
+        ServedProductBackendPolicy,
     };
     use mox_serve::{
         EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
@@ -1504,12 +1505,7 @@ mod tests {
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_backend_selection(),
             &sample_embedding_descriptor(),
-            ProviderReadiness {
-                status: HealthStatus::Offline,
-                message: String::from(
-                    "cuda backend architecture is present but NVIDIA discovery and execution are not landed yet",
-                ),
-            },
+            ProviderReadiness::ready("cuda backend ready"),
         );
 
         let encoded = serde_json::to_value(&envelope)?;
@@ -1523,8 +1519,16 @@ mod tests {
             json!("cuda")
         );
         assert_eq!(
+            encoded["backend_selection"]["selection_state"],
+            json!("direct")
+        );
+        assert_eq!(
             encoded["backend_selection"]["selected_device"]["device"]["kind"],
             json!("Cuda")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["supported_ops"],
+            json!(["input", "constant", "matmul", "add"])
         );
         assert_eq!(
             encoded["nvidia"]["topology"]["compute_capability"],
@@ -1535,6 +1539,69 @@ mod tests {
             encoded["nvidia"]["recovery"]["expected_actions"],
             json!(["process_restart", "gpu_reset", "reboot_host"])
         );
+        assert_eq!(encoded["amd"], serde_json::Value::Null);
+        Ok(())
+    }
+
+    #[test]
+    fn degraded_cuda_capability_reports_same_backend_degraded_state()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            degraded_cuda_backend_selection(),
+            &sample_embedding_descriptor(),
+            ProviderReadiness {
+                status: HealthStatus::Degraded,
+                message: String::from(
+                    "cuda discovered a display-attached GPU; local latency may vary",
+                ),
+            },
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(encoded["runtime_backend"], json!("cuda"));
+        assert_eq!(
+            encoded["backend_selection"]["selection_state"],
+            json!("same_backend_degraded")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["degraded_reason"],
+            json!("cuda discovered a display-attached GPU; local latency may vary")
+        );
+        assert_eq!(encoded["nvidia"]["risk"]["display_attached"], json!(true));
+        assert_eq!(encoded["amd"], serde_json::Value::Null);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_fallback_capability_reports_requested_cuda_but_effective_cpu()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cuda_fallback_selection(),
+            &sample_embedding_descriptor(),
+            ProviderReadiness::ready("cpu fallback ready"),
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(encoded["runtime_backend"], json!("cpu"));
+        assert_eq!(
+            encoded["backend_selection"]["requested_backend"],
+            json!("cuda")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["effective_backend"],
+            json!("cpu")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["selection_state"],
+            json!("cross_backend_fallback")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["fallback_reason"],
+            json!(
+                "cuda backend unavailable: nvidia-smi is not installed or the NVIDIA driver is not reachable"
+            )
+        );
+        assert_eq!(encoded["nvidia"], serde_json::Value::Null);
         assert_eq!(encoded["amd"], serde_json::Value::Null);
         Ok(())
     }
@@ -1908,7 +1975,7 @@ mod tests {
             &request,
             10,
             11,
-            "backend still architecture-only",
+            "cuda execution failed after launch",
         );
         let Some(nvidia) = receipt.nvidia else {
             return Err("nvidia context missing".into());
@@ -2080,6 +2147,15 @@ mod tests {
         )
     }
 
+    fn dense_supported_ops() -> Vec<String> {
+        vec![
+            String::from("input"),
+            String::from("constant"),
+            String::from("matmul"),
+            String::from("add"),
+        ]
+    }
+
     fn sample_cpu_device() -> DeviceDescriptor {
         DeviceDescriptor {
             backend: String::from("cpu"),
@@ -2138,11 +2214,42 @@ mod tests {
     }
 
     fn cuda_backend_selection() -> BackendSelection {
-        BackendSelection::direct(
+        BackendSelection::direct_with_policy(
             "cuda",
             Some(sample_cuda_device()),
-            vec![String::from("probe_only")],
+            dense_supported_ops(),
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
         )
+        .with_runtime_resources(Some(sample_backend_runtime_resources()))
+    }
+
+    fn degraded_cuda_backend_selection() -> BackendSelection {
+        BackendSelection::degraded(
+            "cuda",
+            Some(sample_degraded_cuda_device()),
+            dense_supported_ops(),
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+            "cuda discovered a display-attached GPU; local latency may vary",
+        )
+        .with_runtime_resources(Some(sample_backend_runtime_resources()))
+    }
+
+    fn cuda_fallback_selection() -> BackendSelection {
+        BackendSelection::fallback_with_policy(
+            "cuda",
+            "cpu",
+            Some(sample_cpu_device()),
+            dense_supported_ops(),
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+            "cuda backend unavailable: nvidia-smi is not installed or the NVIDIA driver is not reachable",
+        )
+        .with_runtime_resources(Some(sample_backend_runtime_resources()))
     }
 
     fn sample_amd_kfd_device() -> DeviceDescriptor {
@@ -2220,6 +2327,19 @@ mod tests {
                 },
             }),
         }
+    }
+
+    fn sample_degraded_cuda_device() -> DeviceDescriptor {
+        let mut device = sample_cuda_device();
+        let Some(metadata) = device.nvidia_metadata.as_mut() else {
+            return device;
+        };
+        metadata.risk.level = NvidiaRiskLevel::Elevated;
+        metadata.risk.display_attached = Some(true);
+        metadata.risk.warnings = vec![String::from(
+            "display-attached NVIDIA devices may show variable latency under local desktop load",
+        )];
+        device
     }
 
     fn sample_amd_userspace_device() -> DeviceDescriptor {
