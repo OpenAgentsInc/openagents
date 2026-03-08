@@ -359,6 +359,149 @@ impl LoadedModelResidency {
     }
 }
 
+/// Whether KV pages stay bound to one backend/device posture or can move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvCacheDeviceScope {
+    /// KV state stays bound to the active backend/device and is not migrated.
+    SameDeviceOnly,
+    /// KV state may move across devices through an explicit transfer path.
+    CrossDeviceExplicit,
+}
+
+/// Policy to apply when paged KV growth would exceed the admitted budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvCacheSpillPolicy {
+    /// Refuse additional KV growth instead of evicting or spilling silently.
+    RefuseNewPages,
+    /// Evict older pages to admit new ones.
+    EvictOldestPages,
+    /// Spill pages to a slower/offloaded tier.
+    SpillToHost,
+}
+
+/// Stable logical page layout for paged KV state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCachePageLayout {
+    /// Maximum supported context tokens for the cache.
+    pub max_context_tokens: usize,
+    /// Number of tokens stored in one logical page.
+    pub tokens_per_page: usize,
+    /// Number of bytes consumed per cached token.
+    pub bytes_per_token: usize,
+    /// Number of bytes consumed by one full logical page.
+    pub page_bytes: usize,
+    /// Maximum number of pages the cache may own.
+    pub max_pages: usize,
+}
+
+impl KvCachePageLayout {
+    /// Creates a logical page layout from token and byte geometry.
+    #[must_use]
+    pub fn new(max_context_tokens: usize, tokens_per_page: usize, bytes_per_token: usize) -> Self {
+        let max_context_tokens = max_context_tokens.max(1);
+        let tokens_per_page = tokens_per_page.max(1);
+        let bytes_per_token = bytes_per_token.max(1);
+        let max_pages = max_context_tokens.div_ceil(tokens_per_page);
+        Self {
+            max_context_tokens,
+            tokens_per_page,
+            bytes_per_token,
+            page_bytes: tokens_per_page.saturating_mul(bytes_per_token),
+            max_pages,
+        }
+    }
+
+    /// Returns the number of pages required for the provided token count.
+    #[must_use]
+    pub fn page_count_for_tokens(&self, tokens: usize) -> usize {
+        if tokens == 0 {
+            0
+        } else {
+            tokens.div_ceil(self.tokens_per_page)
+        }
+    }
+
+    /// Returns the number of bytes required for the provided token count.
+    #[must_use]
+    pub fn bytes_for_tokens(&self, tokens: usize) -> u64 {
+        tokens
+            .saturating_mul(self.bytes_per_token)
+            .try_into()
+            .unwrap_or(u64::MAX)
+    }
+}
+
+/// Explicit paged-KV policy exposed through runtime and evidence surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCachePolicy {
+    /// Whether KV state stays on one backend/device or can move explicitly.
+    pub device_scope: KvCacheDeviceScope,
+    /// What to do when the page budget would be exceeded.
+    pub spill_policy: KvCacheSpillPolicy,
+    /// Logical page layout for the cache.
+    pub page_layout: KvCachePageLayout,
+}
+
+/// Snapshot of current paged-KV usage.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheState {
+    /// Number of tokens currently cached.
+    pub tokens: usize,
+    /// Number of bytes currently owned by the cache.
+    pub bytes: u64,
+    /// Number of pages currently owned by the cache.
+    pub pages: usize,
+}
+
+impl KvCacheState {
+    /// Builds paged-KV state from a logical layout and token count.
+    #[must_use]
+    pub fn paged(layout: &KvCachePageLayout, tokens: usize) -> Self {
+        Self {
+            tokens,
+            bytes: layout.bytes_for_tokens(tokens),
+            pages: layout.page_count_for_tokens(tokens),
+        }
+    }
+}
+
+/// Growth delta between two paged-KV states.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheGrowth {
+    /// Net token growth between the baseline and current state.
+    pub tokens: usize,
+    /// Net byte growth between the baseline and current state.
+    pub bytes: u64,
+    /// Net page growth between the baseline and current state.
+    pub pages: usize,
+}
+
+/// Current paged-KV state plus request-local growth accounting.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheAccounting {
+    /// Current paged-KV state after the request.
+    pub current: KvCacheState,
+    /// Growth attributable to the request.
+    pub growth: KvCacheGrowth,
+}
+
+impl KvCacheAccounting {
+    /// Creates accounting from a before/after paged-KV snapshot.
+    #[must_use]
+    pub fn from_states(before: &KvCacheState, current: KvCacheState) -> Self {
+        Self {
+            growth: KvCacheGrowth {
+                tokens: current.tokens.saturating_sub(before.tokens),
+                bytes: current.bytes.saturating_sub(before.bytes),
+                pages: current.pages.saturating_sub(before.pages),
+            },
+            current,
+        }
+    }
+}
+
 /// Explicit runtime backend selection and fallback truth.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct BackendSelection {
@@ -664,7 +807,8 @@ mod tests {
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, ArtifactReadPath, BackendSelection, BufferHandle, BufferResidency,
         BufferStorageKind, DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics,
-        ExecutionResult, HealthStatus, LoadedModelResidency, LoadedModelState,
+        ExecutionResult, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
+        KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelResidency, LoadedModelState,
         ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind,
         PagedTensorStoragePlan, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
         RuntimeError, RuntimeHealth,
@@ -1000,6 +1144,61 @@ mod tests {
         residency.refresh_keep_alive(0, 8_500);
         assert_eq!(residency.expires_at_millis, Some(8_500));
         assert!(residency.is_expired(8_500));
+    }
+
+    #[test]
+    fn kv_page_layout_reports_page_and_byte_geometry() {
+        let layout = KvCachePageLayout::new(9, 4, 32);
+        assert_eq!(layout.page_bytes, 128);
+        assert_eq!(layout.max_pages, 3);
+        assert_eq!(layout.page_count_for_tokens(0), 0);
+        assert_eq!(layout.page_count_for_tokens(1), 1);
+        assert_eq!(layout.page_count_for_tokens(4), 1);
+        assert_eq!(layout.page_count_for_tokens(5), 2);
+        assert_eq!(layout.bytes_for_tokens(3), 96);
+    }
+
+    #[test]
+    fn kv_cache_state_and_growth_serialize_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let policy = KvCachePolicy {
+            device_scope: KvCacheDeviceScope::SameDeviceOnly,
+            spill_policy: KvCacheSpillPolicy::RefuseNewPages,
+            page_layout: KvCachePageLayout::new(8, 4, 64),
+        };
+        let before = KvCacheState::paged(&policy.page_layout, 3);
+        let current = KvCacheState::paged(&policy.page_layout, 6);
+        let accounting = KvCacheAccounting::from_states(&before, current.clone());
+
+        assert_eq!(
+            serde_json::to_value(&policy)?,
+            json!({
+                "device_scope": "same_device_only",
+                "spill_policy": "refuse_new_pages",
+                "page_layout": {
+                    "max_context_tokens": 8,
+                    "tokens_per_page": 4,
+                    "bytes_per_token": 64,
+                    "page_bytes": 256,
+                    "max_pages": 2
+                }
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&accounting)?,
+            json!({
+                "current": {
+                    "tokens": 6,
+                    "bytes": 384,
+                    "pages": 2
+                },
+                "growth": {
+                    "tokens": 3,
+                    "bytes": 192,
+                    "pages": 1
+                }
+            })
+        );
+        Ok(())
     }
 
     #[test]

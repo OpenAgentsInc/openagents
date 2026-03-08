@@ -32,7 +32,7 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     let capability = TextGenerationCapabilityEnvelope::from_decoder_model(
         cpu_backend_selection()?,
         service.model_descriptor(),
-        KvCacheMode::InMemory,
+        KvCacheMode::Paged,
         BatchPosture::SingleRequestOnly,
         ProviderReadiness::ready("cpu backend ready"),
     );
@@ -67,7 +67,8 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
         request.model.weights.digest
     );
     assert_eq!(capability.weight_bundle.artifacts.len(), 1);
-    assert_eq!(capability.kv_cache_mode, KvCacheMode::InMemory);
+    assert_eq!(capability.kv_cache_mode, KvCacheMode::Paged);
+    assert!(capability.kv_cache_policy.is_some());
     assert_eq!(capability.batch_posture, BatchPosture::SingleRequestOnly);
     let capability_json = serde_json::to_string_pretty(&capability)?;
     assert!(capability_json.contains("\"model_revision\": \"v1\""));
@@ -83,6 +84,11 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert_eq!(receipt.input_tokens, 2);
     assert_eq!(receipt.output_tokens, 2);
     assert_eq!(receipt.cache_tokens, 4);
+    assert!(receipt.kv_cache_policy.is_some());
+    assert_eq!(
+        receipt.kv_cache.as_ref().map(|value| value.current.pages),
+        Some(1)
+    );
     assert_eq!(receipt.termination, Some(TerminationReason::EndOfSequence));
     assert!(receipt.execution_plan_digest.is_some());
     let receipt_json = serde_json::to_string_pretty(&receipt)?;

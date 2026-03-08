@@ -5,13 +5,14 @@ use sha2::{Digest, Sha256};
 
 use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
-    BackendSelection, HealthStatus,
+    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor, EmbeddingRequest,
     EmbeddingResponse, GenerationInput, GenerationLoadState, GenerationRequest, GenerationResponse,
     QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID, TerminationReason,
     WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
+    default_decoder_kv_cache_policy,
 };
 
 /// Human-readable crate ownership summary.
@@ -316,7 +317,7 @@ impl ExecutionReceipt {
 pub enum KvCacheMode {
     /// In-memory per-session KV cache.
     InMemory,
-    /// Future paged KV cache.
+    /// Explicit paged KV cache.
     Paged,
     /// Future tiered/offloaded KV cache.
     Tiered,
@@ -360,6 +361,9 @@ pub struct TextGenerationCapabilityEnvelope {
     pub max_context: usize,
     /// Advertised KV cache posture.
     pub kv_cache_mode: KvCacheMode,
+    /// Explicit paged-KV policy when the served path uses paged KV state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_cache_policy: Option<KvCachePolicy>,
     /// Advertised batching posture.
     pub batch_posture: BatchPosture,
     /// Current readiness state.
@@ -387,6 +391,8 @@ impl TextGenerationCapabilityEnvelope {
             model_revision: model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&model.weights),
             max_context: model.config.max_context,
+            kv_cache_policy: (kv_cache_mode == KvCacheMode::Paged)
+                .then(|| default_decoder_kv_cache_policy(model)),
             kv_cache_mode,
             batch_posture,
             readiness,
@@ -439,6 +445,12 @@ pub struct TextGenerationReceipt {
     /// Whether the request took a warm or cold model path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub load_state: Option<GenerationLoadState>,
+    /// Explicit paged-KV policy for the request path, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_cache_policy: Option<KvCachePolicy>,
+    /// Explicit paged-KV accounting for the request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_cache: Option<KvCacheAccounting>,
     /// Terminal termination reason when execution succeeded.
     pub termination: Option<TerminationReason>,
     /// Timestamp when execution started.
@@ -488,6 +500,11 @@ impl TextGenerationReceipt {
             total_duration_ns: response.metrics.total_duration_ns,
             load_duration_ns: response.metrics.load_duration_ns,
             load_state: response.provenance.as_ref().map(|value| value.load_state),
+            kv_cache_policy: response
+                .provenance
+                .as_ref()
+                .and_then(|value| value.kv_cache_policy.clone()),
+            kv_cache: response.metrics.kv_cache.clone(),
             termination: Some(response.termination),
             started_at_unix_ms,
             ended_at_unix_ms,
@@ -552,6 +569,8 @@ impl TextGenerationReceipt {
             total_duration_ns: None,
             load_duration_ns: None,
             load_state: None,
+            kv_cache_policy: None,
+            kv_cache: None,
             termination: None,
             started_at_unix_ms,
             ended_at_unix_ms,
@@ -716,12 +735,14 @@ mod tests {
     use mox_runtime::{
         AmdDeviceMetadata, AmdDriverBinding, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
         AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendSelection, DeviceDescriptor,
-        HealthStatus, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        HealthStatus, KvCacheAccounting, QuantizationExecution, QuantizationLoadPath,
+        QuantizationSupport,
     };
     use mox_serve::{
         EmbeddingRequest, EmbeddingResponse, EmbeddingVector, GenerationLoadState,
         GenerationMetrics, GenerationOptions, GenerationProvenance, GenerationRequest,
         GenerationResponse, ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TokenSequence,
+        default_decoder_kv_cache_policy,
     };
     use serde_json::json;
 
@@ -803,7 +824,7 @@ mod tests {
         let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
             cpu_backend_selection(),
             &model,
-            KvCacheMode::InMemory,
+            KvCacheMode::Paged,
             BatchPosture::SingleRequestOnly,
             ProviderReadiness::ready("cpu backend ready"),
         );
@@ -856,7 +877,18 @@ mod tests {
                     "artifacts": []
                 },
                 "max_context": 8,
-                "kv_cache_mode": "in_memory",
+                "kv_cache_mode": "paged",
+                "kv_cache_policy": {
+                    "device_scope": "same_device_only",
+                    "spill_policy": "refuse_new_pages",
+                    "page_layout": {
+                        "max_context_tokens": 8,
+                        "tokens_per_page": 8,
+                        "bytes_per_token": 80,
+                        "page_bytes": 640,
+                        "max_pages": 1
+                    }
+                },
                 "batch_posture": "single_request_only",
                 "readiness": {
                     "status": "Ready",
@@ -1015,10 +1047,23 @@ mod tests {
                 load_duration_ns: Some(25),
                 prompt_eval_count: Some(1),
                 eval_count: Some(1),
+                kv_cache: Some(KvCacheAccounting {
+                    current: mox_runtime::KvCacheState {
+                        tokens: 2,
+                        bytes: 64,
+                        pages: 1,
+                    },
+                    growth: mox_runtime::KvCacheGrowth {
+                        tokens: 2,
+                        bytes: 64,
+                        pages: 1,
+                    },
+                }),
             },
             GenerationProvenance {
                 execution_plan_digest: String::from("plan-digest-from-response"),
                 load_state: GenerationLoadState::Cold,
+                kv_cache_policy: Some(default_decoder_kv_cache_policy(&request.model)),
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -1043,6 +1088,14 @@ mod tests {
         assert_eq!(receipt.total_duration_ns, Some(75));
         assert_eq!(receipt.load_duration_ns, Some(25));
         assert_eq!(receipt.load_state, Some(GenerationLoadState::Cold));
+        assert_eq!(
+            receipt.kv_cache_policy,
+            Some(default_decoder_kv_cache_policy(&request.model))
+        );
+        assert_eq!(
+            receipt.kv_cache.as_ref().map(|value| value.current.pages),
+            Some(1)
+        );
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: TextGenerationReceipt = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, receipt);
