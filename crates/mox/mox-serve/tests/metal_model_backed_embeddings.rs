@@ -1,0 +1,84 @@
+use mox_provider::{CapabilityEnvelope, ExecutionReceipt, ProviderReadiness, ReceiptStatus};
+use mox_runtime::HealthStatus;
+use mox_serve::{
+    ByteProjectionEmbedder, EmbeddingRequest, EmbeddingsExecutor, MetalEmbeddingsError,
+    MetalModelEmbeddingsService,
+};
+use tempfile::tempdir;
+
+#[test]
+fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_explicit_unavailability(
+) -> Result<(), Box<dyn std::error::Error>> {
+    let temp = tempdir()?;
+    let path = temp.path().join("byte_projection.safetensors");
+    ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
+
+    match MetalModelEmbeddingsService::from_safetensors_artifact(&path) {
+        Ok(mut service) => {
+            let request = EmbeddingRequest::new(
+                "req-metal-model-1",
+                service.model_descriptor().clone(),
+                vec![String::from("open agents"), String::from("open agents")],
+            );
+
+            let response = service.embed(&request)?;
+            let capability = CapabilityEnvelope::from_embedding_model(
+                service.backend_selection().clone(),
+                service.model_descriptor(),
+                ProviderReadiness::ready("metal backend ready"),
+            );
+            let receipt = ExecutionReceipt::succeeded_for_response(
+                service.backend_selection().clone(),
+                &request,
+                &response,
+                100,
+                120,
+            );
+
+            assert_eq!(response.metadata.model_id, ByteProjectionEmbedder::MODEL_ID);
+            assert_eq!(response.metadata.dimensions, 8);
+            assert_eq!(
+                response.metadata.normalization,
+                mox_serve::EmbeddingNormalization::UnitLength
+            );
+            assert_eq!(response.embeddings.len(), 2);
+            assert_eq!(response.embeddings[0].values, response.embeddings[1].values);
+
+            assert_eq!(capability.product_id, "mox.embeddings");
+            assert_eq!(capability.runtime_backend, "metal");
+            assert_eq!(capability.backend_selection.requested_backend, "metal");
+            assert_eq!(capability.backend_selection.effective_backend, "metal");
+            assert!(capability.backend_selection.selected_device.is_some());
+            assert!(capability.backend_selection.fallback_reason.is_none());
+            assert_eq!(capability.model_id, ByteProjectionEmbedder::MODEL_ID);
+            assert_eq!(
+                capability.model_family,
+                ByteProjectionEmbedder::MODEL_FAMILY
+            );
+            assert_eq!(capability.model_revision, "v1");
+            let capability_json = serde_json::to_string_pretty(&capability)?;
+            assert!(capability_json.contains("\"runtime_backend\": \"metal\""));
+            assert!(capability_json.contains("\"effective_backend\": \"metal\""));
+
+            assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+            assert_eq!(receipt.runtime_backend, "metal");
+            assert_eq!(receipt.backend_selection.effective_backend, "metal");
+            assert_eq!(receipt.model_family, ByteProjectionEmbedder::MODEL_FAMILY);
+            assert_eq!(receipt.model_revision, "v1");
+            assert_eq!(receipt.weight_bundle.digest, request.model.weights.digest);
+            assert_eq!(receipt.output_dimensions, 8);
+            assert_eq!(receipt.output_vector_count, 2);
+            assert!(receipt.failure_reason.is_none());
+        }
+        Err(MetalEmbeddingsError::BackendUnavailable { status, message }) => {
+            assert!(matches!(
+                status,
+                HealthStatus::Offline | HealthStatus::Degraded
+            ));
+            assert!(!message.is_empty());
+        }
+        Err(error) => return Err(error.into()),
+    }
+
+    Ok(())
+}
