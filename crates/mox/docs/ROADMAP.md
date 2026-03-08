@@ -7,6 +7,15 @@
 > runtime subtree" and "the desktop fully replaces Ollama with Mox and uses it
 > as truthful compute-market substrate."
 
+Agent execution instruction: implement this roadmap one issue at a time in the
+recommended dependency order listed here, not by GitHub issue number when the
+two differ. For each issue, complete the full scoped implementation, run the
+relevant verification, commit and push that issue's work immediately, comment
+on the GitHub issue with a concise summary of what landed when closing it, and
+then move directly to the next roadmap item. Do not stop partway through the
+roadmap unless blocked by a real external dependency or an explicit user
+instruction to pause or reprioritize.
+
 ## Objective
 
 Replace the desktop's external Ollama dependency with an in-process Rust
