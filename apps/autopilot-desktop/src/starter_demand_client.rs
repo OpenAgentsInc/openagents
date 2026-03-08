@@ -321,10 +321,10 @@ fn truncate_body(body: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
+        StarterDemandPollRequest, ack_starter_demand_offer_blocking,
         canonical_starter_demand_ack_endpoint, canonical_starter_demand_complete_endpoint,
         canonical_starter_demand_fail_endpoint, canonical_starter_demand_heartbeat_endpoint,
-        canonical_starter_demand_poll_endpoint, StarterDemandPollRequest,
-        ack_starter_demand_offer_blocking, complete_starter_demand_offer_blocking,
+        canonical_starter_demand_poll_endpoint, complete_starter_demand_offer_blocking,
         heartbeat_starter_demand_offer_blocking, poll_starter_demand_blocking,
     };
     use openagents_kernel_core::authority::{

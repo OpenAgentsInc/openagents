@@ -7,8 +7,8 @@ use mox_serve::{
 use tempfile::tempdir;
 
 #[test]
-fn model_backed_embeddings_flow_returns_response_capability_and_receipt(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn model_backed_embeddings_flow_returns_response_capability_and_receipt()
+-> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -100,8 +100,8 @@ fn model_backed_embeddings_service_reports_missing_artifact() {
 }
 
 #[test]
-fn model_backed_embeddings_reject_reference_descriptor_without_fallback(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn model_backed_embeddings_reject_reference_descriptor_without_fallback()
+-> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -124,8 +124,7 @@ fn model_backed_embeddings_reject_reference_descriptor_without_fallback(
     Ok(())
 }
 
-fn cpu_backend_selection(
-) -> Result<mox_runtime::BackendSelection, mox_runtime::RuntimeError> {
+fn cpu_backend_selection() -> Result<mox_runtime::BackendSelection, mox_runtime::RuntimeError> {
     CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }
 

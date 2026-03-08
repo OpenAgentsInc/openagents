@@ -1,5 +1,5 @@
 use mox_backend_cpu::CpuBackend;
-use mox_backend_metal::{MetalBackend, EMBEDDINGS_SUPPORTED_OPS};
+use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend};
 use mox_runtime::{DeviceDiscovery, HealthStatus};
 
 #[cfg(target_os = "macos")]
@@ -20,8 +20,8 @@ use tempfile::tempdir;
 
 #[cfg(not(target_os = "macos"))]
 #[test]
-fn metal_model_backed_embeddings_parity_reports_explicit_offline_state(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn metal_model_backed_embeddings_parity_reports_explicit_offline_state()
+-> Result<(), Box<dyn std::error::Error>> {
     let metal = MetalBackend::new();
     assert_eq!(metal.health().status, HealthStatus::Offline);
 
@@ -34,8 +34,8 @@ fn metal_model_backed_embeddings_parity_reports_explicit_offline_state(
 
 #[cfg(target_os = "macos")]
 #[test]
-fn metal_model_backed_embeddings_match_cpu_baseline_within_tolerance_on_ready_hardware(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn metal_model_backed_embeddings_match_cpu_baseline_within_tolerance_on_ready_hardware()
+-> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;

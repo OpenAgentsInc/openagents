@@ -9,12 +9,11 @@ use openagents_provider_substrate::{
     ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
     ProviderEarningsSummary, ProviderFailureClass, ProviderHealthEvent, ProviderIdentityMetadata,
     ProviderInventoryControls, ProviderInventoryRow, ProviderJsonEntry, ProviderMode,
-    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderReceiptSummary,
-    ProviderRecentJob, ProviderRuntimeStatusSnapshot, ProviderSnapshotParts,
-    ProviderSandboxDetectionConfig, ProviderSandboxProfile, ProviderSandboxProfileSpec,
-    ProviderSandboxRuntimeHealth, ProviderStatusResponse, assemble_provider_persisted_snapshot,
-    derive_provider_products, detect_sandbox_supply, provider_runtime_state_label,
-    validate_provider_control_action,
+    ProviderPersistedSnapshot, ProviderPersistenceStore, ProviderReceiptSummary, ProviderRecentJob,
+    ProviderRuntimeStatusSnapshot, ProviderSandboxDetectionConfig, ProviderSandboxProfile,
+    ProviderSandboxProfileSpec, ProviderSandboxRuntimeHealth, ProviderSnapshotParts,
+    ProviderStatusResponse, assemble_provider_persisted_snapshot, derive_provider_products,
+    detect_sandbox_supply, provider_runtime_state_label, validate_provider_control_action,
 };
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
@@ -387,26 +386,28 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             Ok(Command::Status { json })
         }
         "backends" => {
-            let (json, limit) = parse_observability_flags(args, start_index + 1, "backends", false)?;
+            let (json, limit) =
+                parse_observability_flags(args, start_index + 1, "backends", false)?;
             if limit.is_some() {
                 bail!("backends does not support --limit");
             }
             Ok(Command::Backends { json })
         }
         "inventory" => {
-            let (json, limit) = parse_observability_flags(args, start_index + 1, "inventory", true)?;
+            let (json, limit) =
+                parse_observability_flags(args, start_index + 1, "inventory", true)?;
             Ok(Command::Inventory { json, limit })
         }
         "products" => {
-            let (json, limit) = parse_observability_flags(args, start_index + 1, "products", false)?;
+            let (json, limit) =
+                parse_observability_flags(args, start_index + 1, "products", false)?;
             if limit.is_some() {
                 bail!("products does not support --limit");
             }
             Ok(Command::Products { json })
         }
         "sandbox" => {
-            let (json, limit) =
-                parse_observability_flags(args, start_index + 1, "sandbox", true)?;
+            let (json, limit) = parse_observability_flags(args, start_index + 1, "sandbox", true)?;
             Ok(Command::Sandbox { json, limit })
         }
         "jobs" => {
@@ -414,7 +415,8 @@ fn parse_command(args: &[String], start_index: usize) -> Result<Command> {
             Ok(Command::Jobs { json, limit })
         }
         "earnings" => {
-            let (json, limit) = parse_observability_flags(args, start_index + 1, "earnings", false)?;
+            let (json, limit) =
+                parse_observability_flags(args, start_index + 1, "earnings", false)?;
             if limit.is_some() {
                 bail!("earnings does not support --limit");
             }
@@ -496,9 +498,10 @@ fn parse_observability_flags(
                 let value = args
                     .get(index)
                     .ok_or_else(|| anyhow!("missing value for --limit"))?;
-                limit = Some(value.parse::<usize>().with_context(|| {
-                    format!("invalid numeric limit for {command}: {value}")
-                })?);
+                limit =
+                    Some(value.parse::<usize>().with_context(|| {
+                        format!("invalid numeric limit for {command}: {value}")
+                    })?);
                 index += 1;
             }
             other => bail!("unexpected argument for {command}: {other}"),
@@ -1203,7 +1206,11 @@ fn render_sandbox_status_lines(availability: &ProviderAvailability) -> Vec<Strin
     let ready = sandbox_ready_execution_classes(availability);
     let runtimes = sandbox_runtime_kinds(availability, false);
     let profiles = sandbox_profile_ids(availability);
-    if !supported.is_empty() || !runtimes.is_empty() || !profiles.is_empty() || sandbox.last_scan_error.is_some() {
+    if !supported.is_empty()
+        || !runtimes.is_empty()
+        || !profiles.is_empty()
+        || sandbox.last_scan_error.is_some()
+    {
         lines.push(format!(
             "sandbox_execution_classes: {}",
             comma_or_none(supported.as_slice())
@@ -1287,7 +1294,9 @@ fn load_config_or_default(path: &Path) -> Result<PylonConfig> {
     Ok(default_config(base_dir.as_path()))
 }
 
-async fn load_config_and_status(config_path: &Path) -> Result<(PylonConfig, ProviderStatusResponse)> {
+async fn load_config_and_status(
+    config_path: &Path,
+) -> Result<(PylonConfig, ProviderStatusResponse)> {
     let config = load_config_or_default(config_path)?;
     let status = load_status_or_detect(config_path).await?;
     Ok((config, status))
@@ -1308,7 +1317,9 @@ fn products_from_status(
     status
         .snapshot
         .as_ref()
-        .map(|snapshot| derive_provider_products(&snapshot.availability, &config.inventory_controls))
+        .map(|snapshot| {
+            derive_provider_products(&snapshot.availability, &config.inventory_controls)
+        })
         .unwrap_or_default()
 }
 
@@ -1415,16 +1426,16 @@ fn sandbox_ready_execution_classes(availability: &ProviderAvailability) -> Vec<S
         .collect()
 }
 
-fn sandbox_runtime_kinds(
-    availability: &ProviderAvailability,
-    ready_only: bool,
-) -> Vec<String> {
+fn sandbox_runtime_kinds(availability: &ProviderAvailability, ready_only: bool) -> Vec<String> {
     let kinds = if ready_only {
         availability.sandbox.ready_runtime_kinds()
     } else {
         availability.sandbox.detected_runtime_kinds()
     };
-    kinds.into_iter().map(|runtime_kind| runtime_kind.id().to_string()).collect()
+    kinds
+        .into_iter()
+        .map(|runtime_kind| runtime_kind.id().to_string())
+        .collect()
 }
 
 fn sandbox_profile_ids(availability: &ProviderAvailability) -> Vec<String> {
@@ -1451,11 +1462,7 @@ fn sandbox_health_state(
         return "healthy".to_string();
     }
     if availability.sandbox.profiles.is_empty() {
-        return if availability
-            .sandbox
-            .detected_runtime_kinds()
-            .is_empty()
-        {
+        return if availability.sandbox.detected_runtime_kinds().is_empty() {
             "unsupported".to_string()
         } else {
             "misconfigured".to_string()
@@ -1512,7 +1519,12 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
     let availability = if config_path.exists() {
         try_live_json::<ProviderAvailability>(&config, "/v1/backend-health")
             .await?
-            .or_else(|| status.snapshot.as_ref().map(|snapshot| snapshot.availability.clone()))
+            .or_else(|| {
+                status
+                    .snapshot
+                    .as_ref()
+                    .map(|snapshot| snapshot.availability.clone())
+            })
             .unwrap_or_default()
     } else {
         ProviderAvailability::default()
@@ -1555,7 +1567,10 @@ async fn load_backend_report(config_path: &Path) -> Result<BackendReport> {
     })
 }
 
-async fn load_inventory_report(config_path: &Path, limit: Option<usize>) -> Result<InventoryReport> {
+async fn load_inventory_report(
+    config_path: &Path,
+    limit: Option<usize>,
+) -> Result<InventoryReport> {
     let (config, status) = load_config_and_status(config_path).await?;
     let rows = if config_path.exists() {
         if let Some(rows) =
@@ -1564,7 +1579,9 @@ async fn load_inventory_report(config_path: &Path, limit: Option<usize>) -> Resu
         {
             rows
         } else if let Some(store) = open_existing_store(&config)? {
-            store.load_inventory_rows(limit).map_err(anyhow::Error::msg)?
+            store
+                .load_inventory_rows(limit)
+                .map_err(anyhow::Error::msg)?
         } else {
             take_limited_rows(
                 status
@@ -1728,7 +1745,10 @@ async fn load_earnings_report(config_path: &Path) -> Result<EarningsReport> {
                 .snapshot
                 .and_then(|snapshot| snapshot.earnings)
         } else {
-            status.snapshot.as_ref().and_then(|snapshot| snapshot.earnings.clone())
+            status
+                .snapshot
+                .as_ref()
+                .and_then(|snapshot| snapshot.earnings.clone())
         }
     } else {
         None
@@ -2121,7 +2141,7 @@ async fn try_live_json<T: DeserializeOwned>(
             return Err(anyhow!(
                 "failed to query pylon admin endpoint {}: {error}",
                 endpoint
-            ))
+            ));
         }
     };
     if !response.status().is_success() {
@@ -2419,20 +2439,19 @@ fn now_epoch_ms() -> i64 {
 #[cfg(test)]
 mod tests {
     use super::{
-        Command, PylonConfig, apply_config_set, apply_control_command, build_snapshot_from_availability,
-        default_config, ensure_identity, inventory_rows, load_backend_report,
-        load_earnings_report, load_inventory_report, load_jobs_report, load_or_create_config,
-        load_product_report, load_receipts_report, load_sandbox_report, load_status_or_detect,
-        parse_args, provider_admin_config, render_human_status, render_sandbox_report,
-        save_config,
+        Command, PylonConfig, apply_config_set, apply_control_command,
+        build_snapshot_from_availability, default_config, ensure_identity, inventory_rows,
+        load_backend_report, load_earnings_report, load_inventory_report, load_jobs_report,
+        load_or_create_config, load_product_report, load_receipts_report, load_sandbox_report,
+        load_status_or_detect, parse_args, provider_admin_config, render_human_status,
+        render_sandbox_report, save_config,
     };
     use openagents_provider_substrate::{
         ProviderAvailability, ProviderBackendHealth, ProviderControlAction, ProviderDesiredMode,
         ProviderEarningsSummary, ProviderInventoryControls, ProviderPersistenceStore,
         ProviderReceiptSummary, ProviderRecentJob, ProviderSandboxAvailability,
         ProviderSandboxExecutionClass, ProviderSandboxProfile, ProviderSandboxProfileSpec,
-        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind,
-        provider_runtime_state_label,
+        ProviderSandboxRuntimeHealth, ProviderSandboxRuntimeKind, provider_runtime_state_label,
     };
     use serde_json::json;
 
@@ -2675,7 +2694,10 @@ mod tests {
             ready: true,
             configured_model: Some(ready_model.to_string()),
             ready_model: Some(ready_model.to_string()),
-            available_models: available_models.iter().map(|model| (*model).to_string()).collect(),
+            available_models: available_models
+                .iter()
+                .map(|model| (*model).to_string())
+                .collect(),
             last_error: None,
             last_action: Some("health check ready".to_string()),
             availability_message: availability_message.map(str::to_string),
@@ -2777,78 +2799,86 @@ mod tests {
             availability.clone(),
             None,
         );
-        snapshot.inventory_rows =
-            inventory_rows(&super::derive_provider_products(&availability, &config.inventory_controls), ProviderDesiredMode::Online);
-        snapshot.recent_jobs = vec![ProviderRecentJob {
-            job_id: "job-1".to_string(),
-            request_id: Some("req-1".to_string()),
-            status: "settled".to_string(),
-            demand_source: "open_network".to_string(),
-            product_id: Some("ollama.embeddings".to_string()),
-            compute_family: Some("embeddings".to_string()),
-            backend_family: Some("ollama".to_string()),
-            sandbox_execution_class: None,
-            sandbox_profile_id: None,
-            sandbox_profile_digest: None,
-            sandbox_termination_reason: None,
-            completed_at_epoch_seconds: 1_762_300_030,
-            payout_sats: 42,
-            payment_pointer: "payment-1".to_string(),
-            failure_reason: None,
-            delivery_proof_id: Some("proof-1".to_string()),
-        }, ProviderRecentJob {
-            job_id: "job-2".to_string(),
-            request_id: Some("req-2".to_string()),
-            status: "failed".to_string(),
-            demand_source: "open_network".to_string(),
-            product_id: Some("sandbox.python.exec".to_string()),
-            compute_family: Some("sandbox_execution".to_string()),
-            backend_family: Some("sandbox".to_string()),
-            sandbox_execution_class: Some("sandbox.python.exec".to_string()),
-            sandbox_profile_id: Some("python-batch".to_string()),
-            sandbox_profile_digest: Some("sha256:python-profile".to_string()),
-            sandbox_termination_reason: Some("timeout".to_string()),
-            completed_at_epoch_seconds: 1_762_300_032,
-            payout_sats: 0,
-            payment_pointer: "payment-2".to_string(),
-            failure_reason: Some("sandbox execution exceeded timeout".to_string()),
-            delivery_proof_id: Some("proof-2".to_string()),
-        }];
-        snapshot.receipts = vec![ProviderReceiptSummary {
-            receipt_id: "receipt-1".to_string(),
-            receipt_type: "earn.job.settled.v1".to_string(),
-            created_at_ms: 1_762_300_030_500,
-            canonical_hash: "sha256:receipt-1".to_string(),
-            compute_family: Some("embeddings".to_string()),
-            backend_family: Some("ollama".to_string()),
-            sandbox_execution_class: None,
-            sandbox_profile_id: None,
-            sandbox_profile_digest: None,
-            sandbox_termination_reason: None,
-            reason_code: Some("SETTLED".to_string()),
-            failure_reason: None,
-            severity: Some("low".to_string()),
-            notional_sats: Some(42),
-            liability_premium_sats: Some(0),
-            work_unit_id: Some("work-unit-1".to_string()),
-        }, ProviderReceiptSummary {
-            receipt_id: "receipt-2".to_string(),
-            receipt_type: "sandbox.execution.delivery.v1".to_string(),
-            created_at_ms: 1_762_300_032_500,
-            canonical_hash: "sha256:receipt-2".to_string(),
-            compute_family: Some("sandbox_execution".to_string()),
-            backend_family: Some("sandbox".to_string()),
-            sandbox_execution_class: Some("sandbox.python.exec".to_string()),
-            sandbox_profile_id: Some("python-batch".to_string()),
-            sandbox_profile_digest: Some("sha256:python-profile".to_string()),
-            sandbox_termination_reason: Some("timeout".to_string()),
-            reason_code: Some("SANDBOX_TIMEOUT".to_string()),
-            failure_reason: Some("sandbox execution exceeded timeout".to_string()),
-            severity: Some("warn".to_string()),
-            notional_sats: Some(0),
-            liability_premium_sats: Some(0),
-            work_unit_id: Some("work-unit-2".to_string()),
-        }];
+        snapshot.inventory_rows = inventory_rows(
+            &super::derive_provider_products(&availability, &config.inventory_controls),
+            ProviderDesiredMode::Online,
+        );
+        snapshot.recent_jobs = vec![
+            ProviderRecentJob {
+                job_id: "job-1".to_string(),
+                request_id: Some("req-1".to_string()),
+                status: "settled".to_string(),
+                demand_source: "open_network".to_string(),
+                product_id: Some("ollama.embeddings".to_string()),
+                compute_family: Some("embeddings".to_string()),
+                backend_family: Some("ollama".to_string()),
+                sandbox_execution_class: None,
+                sandbox_profile_id: None,
+                sandbox_profile_digest: None,
+                sandbox_termination_reason: None,
+                completed_at_epoch_seconds: 1_762_300_030,
+                payout_sats: 42,
+                payment_pointer: "payment-1".to_string(),
+                failure_reason: None,
+                delivery_proof_id: Some("proof-1".to_string()),
+            },
+            ProviderRecentJob {
+                job_id: "job-2".to_string(),
+                request_id: Some("req-2".to_string()),
+                status: "failed".to_string(),
+                demand_source: "open_network".to_string(),
+                product_id: Some("sandbox.python.exec".to_string()),
+                compute_family: Some("sandbox_execution".to_string()),
+                backend_family: Some("sandbox".to_string()),
+                sandbox_execution_class: Some("sandbox.python.exec".to_string()),
+                sandbox_profile_id: Some("python-batch".to_string()),
+                sandbox_profile_digest: Some("sha256:python-profile".to_string()),
+                sandbox_termination_reason: Some("timeout".to_string()),
+                completed_at_epoch_seconds: 1_762_300_032,
+                payout_sats: 0,
+                payment_pointer: "payment-2".to_string(),
+                failure_reason: Some("sandbox execution exceeded timeout".to_string()),
+                delivery_proof_id: Some("proof-2".to_string()),
+            },
+        ];
+        snapshot.receipts = vec![
+            ProviderReceiptSummary {
+                receipt_id: "receipt-1".to_string(),
+                receipt_type: "earn.job.settled.v1".to_string(),
+                created_at_ms: 1_762_300_030_500,
+                canonical_hash: "sha256:receipt-1".to_string(),
+                compute_family: Some("embeddings".to_string()),
+                backend_family: Some("ollama".to_string()),
+                sandbox_execution_class: None,
+                sandbox_profile_id: None,
+                sandbox_profile_digest: None,
+                sandbox_termination_reason: None,
+                reason_code: Some("SETTLED".to_string()),
+                failure_reason: None,
+                severity: Some("low".to_string()),
+                notional_sats: Some(42),
+                liability_premium_sats: Some(0),
+                work_unit_id: Some("work-unit-1".to_string()),
+            },
+            ProviderReceiptSummary {
+                receipt_id: "receipt-2".to_string(),
+                receipt_type: "sandbox.execution.delivery.v1".to_string(),
+                created_at_ms: 1_762_300_032_500,
+                canonical_hash: "sha256:receipt-2".to_string(),
+                compute_family: Some("sandbox_execution".to_string()),
+                backend_family: Some("sandbox".to_string()),
+                sandbox_execution_class: Some("sandbox.python.exec".to_string()),
+                sandbox_profile_id: Some("python-batch".to_string()),
+                sandbox_profile_digest: Some("sha256:python-profile".to_string()),
+                sandbox_termination_reason: Some("timeout".to_string()),
+                reason_code: Some("SANDBOX_TIMEOUT".to_string()),
+                failure_reason: Some("sandbox execution exceeded timeout".to_string()),
+                severity: Some("warn".to_string()),
+                notional_sats: Some(0),
+                liability_premium_sats: Some(0),
+                work_unit_id: Some("work-unit-2".to_string()),
+            },
+        ];
         snapshot.earnings = Some(ProviderEarningsSummary {
             sats_today: 42,
             lifetime_sats: 420,
@@ -2915,13 +2945,10 @@ mod tests {
             "product report must not overclaim Apple FM embeddings support",
         )?;
         ensure(
-            product_report
-                .products
-                .iter()
-                .any(|product| {
-                    product.product_id == "ollama.embeddings"
-                        && product.capability_summary.contains("family=embeddings")
-                }),
+            product_report.products.iter().any(|product| {
+                product.product_id == "ollama.embeddings"
+                    && product.capability_summary.contains("family=embeddings")
+            }),
             "product report should preserve capability-envelope qualifiers for embeddings",
         )?;
         let sandbox = backend_report
@@ -3006,8 +3033,7 @@ mod tests {
             .ok_or_else(|| std::io::Error::other("missing sandbox receipt row"))?;
         ensure(
             sandbox_receipt.sandbox_profile_id.as_deref() == Some("python-batch")
-                && sandbox_receipt.sandbox_termination_reason.as_deref()
-                    == Some("timeout"),
+                && sandbox_receipt.sandbox_termination_reason.as_deref() == Some("timeout"),
             "receipts report should surface sandbox receipt integrity fields",
         )
     }
@@ -3036,10 +3062,9 @@ mod tests {
             "sandbox report should expose declared execution classes",
         )?;
         ensure(
-            sandbox_report
-                .profiles
-                .first()
-                .is_some_and(|profile| profile.profile_id == "python-batch" && profile.runtime_ready),
+            sandbox_report.profiles.first().is_some_and(|profile| {
+                profile.profile_id == "python-batch" && profile.runtime_ready
+            }),
             "sandbox report should expose runtime-ready declared profiles",
         )?;
 

@@ -183,7 +183,9 @@ mod tests {
             .duration_since(std::time::UNIX_EPOCH)
             .map_or(0, |duration| duration.as_nanos());
         let counter = UNIQUE_PATH_COUNTER.fetch_add(1, Ordering::Relaxed);
-        std::env::temp_dir().join(format!("openagents-project-ops-pilot-{name}-{nanos}-{counter}.json"))
+        std::env::temp_dir().join(format!(
+            "openagents-project-ops-pilot-{name}-{nanos}-{counter}.json"
+        ))
     }
 
     #[test]
@@ -191,9 +193,12 @@ mod tests {
         let path = unique_temp_path("metrics");
         let mut metrics = ProjectOpsPilotMetricsState::from_metrics_path_for_tests(path.clone())
             .expect("metrics should initialize");
-        metrics.record_projection_rebuild(14, 3).expect("rebuild should record");
+        metrics
+            .record_projection_rebuild(14, 3)
+            .expect("rebuild should record");
         metrics.record_view("my-work").expect("view should record");
-        metrics.record_commands(&["CreateWorkItem", "EditWorkItemFields"])
+        metrics
+            .record_commands(&["CreateWorkItem", "EditWorkItemFields"])
             .expect("commands should record");
         metrics
             .record_cycle_summary("scripted Step 0 pilot cycle executed")

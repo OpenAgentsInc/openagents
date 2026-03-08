@@ -299,7 +299,9 @@ impl ProviderComputeProduct {
     pub const fn backend_kind(self) -> Option<ProviderBackendKind> {
         match self {
             Self::OllamaInference | Self::OllamaEmbeddings => Some(ProviderBackendKind::Ollama),
-            Self::AppleFoundationModelsInference => Some(ProviderBackendKind::AppleFoundationModels),
+            Self::AppleFoundationModelsInference => {
+                Some(ProviderBackendKind::AppleFoundationModels)
+            }
             Self::SandboxContainerExec
             | Self::SandboxPythonExec
             | Self::SandboxNodeExec
@@ -662,15 +664,12 @@ mod tests {
         ProviderAvailability, ProviderBackendHealth, ProviderBackendKind, ProviderComputeProduct,
         ProviderFailureClass, ProviderIngressMode, ProviderInventoryControls,
         ProviderLifecycleInput, ProviderLifecycleTransition, ProviderMode,
-        ProviderSandboxAvailability, ProviderSandboxDetectionConfig,
-        ProviderSandboxExecutionClass, ProviderSandboxProfileSpec, detect_sandbox_supply,
-        describe_provider_product_id, derive_provider_lifecycle, derive_provider_products,
+        ProviderSandboxAvailability, ProviderSandboxDetectionConfig, ProviderSandboxExecutionClass,
+        ProviderSandboxProfileSpec, derive_provider_lifecycle, derive_provider_products,
+        describe_provider_product_id, detect_sandbox_supply,
     };
 
-    fn ensure(
-        condition: bool,
-        message: &str,
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn ensure(condition: bool, message: &str) -> Result<(), Box<dyn std::error::Error>> {
         if condition {
             Ok(())
         } else {
@@ -767,11 +766,15 @@ mod tests {
     fn product_descriptor_preserves_launch_and_sandbox_taxonomy() {
         let embeddings = describe_provider_product_id("ollama.embeddings");
         assert_eq!(
-            embeddings.as_ref().map(|descriptor| descriptor.compute_family.as_str()),
+            embeddings
+                .as_ref()
+                .map(|descriptor| descriptor.compute_family.as_str()),
             Some("embeddings")
         );
         assert_eq!(
-            embeddings.as_ref().map(|descriptor| descriptor.backend_family.as_str()),
+            embeddings
+                .as_ref()
+                .map(|descriptor| descriptor.backend_family.as_str()),
             Some("ollama")
         );
         assert_eq!(
@@ -783,11 +786,15 @@ mod tests {
 
         let sandbox = describe_provider_product_id("sandbox.python.exec");
         assert_eq!(
-            sandbox.as_ref().map(|descriptor| descriptor.compute_family.as_str()),
+            sandbox
+                .as_ref()
+                .map(|descriptor| descriptor.compute_family.as_str()),
             Some("sandbox_execution")
         );
         assert_eq!(
-            sandbox.as_ref().map(|descriptor| descriptor.backend_family.as_str()),
+            sandbox
+                .as_ref()
+                .map(|descriptor| descriptor.backend_family.as_str()),
             Some("sandbox")
         );
         assert_eq!(
@@ -799,39 +806,37 @@ mod tests {
     }
 
     #[test]
-    fn derive_provider_products_includes_declared_sandbox_profiles_when_enabled(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn derive_provider_products_includes_declared_sandbox_profiles_when_enabled()
+    -> Result<(), Box<dyn std::error::Error>> {
         let availability = ProviderAvailability {
             ollama: ProviderBackendHealth::default(),
             apple_foundation_models: ProviderBackendHealth::default(),
-            sandbox: detect_sandbox_supply(
-                &ProviderSandboxDetectionConfig {
-                    path_entries: Vec::new(),
-                    declared_profiles: vec![ProviderSandboxProfileSpec {
-                        profile_id: "python-batch".to_string(),
-                        execution_class: ProviderSandboxExecutionClass::PythonExec,
-                        runtime_family: "python3".to_string(),
-                        runtime_version: Some("3.11".to_string()),
-                        sandbox_engine: "local_subprocess".to_string(),
-                        os_family: std::env::consts::OS.to_string(),
-                        arch: std::env::consts::ARCH.to_string(),
-                        cpu_limit: 2,
-                        memory_limit_mb: 2048,
-                        disk_limit_mb: 4096,
-                        timeout_limit_s: 120,
-                        network_mode: "none".to_string(),
-                        filesystem_mode: "workspace_only".to_string(),
-                        workspace_mode: "ephemeral".to_string(),
-                        artifact_output_mode: "declared_paths_only".to_string(),
-                        secrets_mode: "none".to_string(),
-                        allowed_binaries: vec!["python3".to_string()],
-                        toolchain_inventory: vec!["python3".to_string()],
-                        container_image: None,
-                        runtime_image_digest: None,
-                        accelerator_policy: None,
-                    }],
-                },
-            ),
+            sandbox: detect_sandbox_supply(&ProviderSandboxDetectionConfig {
+                path_entries: Vec::new(),
+                declared_profiles: vec![ProviderSandboxProfileSpec {
+                    profile_id: "python-batch".to_string(),
+                    execution_class: ProviderSandboxExecutionClass::PythonExec,
+                    runtime_family: "python3".to_string(),
+                    runtime_version: Some("3.11".to_string()),
+                    sandbox_engine: "local_subprocess".to_string(),
+                    os_family: std::env::consts::OS.to_string(),
+                    arch: std::env::consts::ARCH.to_string(),
+                    cpu_limit: 2,
+                    memory_limit_mb: 2048,
+                    disk_limit_mb: 4096,
+                    timeout_limit_s: 120,
+                    network_mode: "none".to_string(),
+                    filesystem_mode: "workspace_only".to_string(),
+                    workspace_mode: "ephemeral".to_string(),
+                    artifact_output_mode: "declared_paths_only".to_string(),
+                    secrets_mode: "none".to_string(),
+                    allowed_binaries: vec!["python3".to_string()],
+                    toolchain_inventory: vec!["python3".to_string()],
+                    container_image: None,
+                    runtime_image_digest: None,
+                    accelerator_policy: None,
+                }],
+            }),
         };
         let mut controls = ProviderInventoryControls::default();
         controls.sandbox_python_exec_enabled = true;
@@ -846,7 +851,9 @@ mod tests {
             "sandbox product should stay unready without a detected runtime",
         )?;
         ensure(
-            sandbox_product.capability_summary.contains("sandbox.python.exec"),
+            sandbox_product
+                .capability_summary
+                .contains("sandbox.python.exec"),
             "sandbox capability summary should include python execution class",
         )?;
         ensure(

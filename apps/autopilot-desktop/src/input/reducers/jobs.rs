@@ -2,12 +2,12 @@ use crate::app_state::{
     EarnFailureClass, JobHistoryStatus, JobInboxDecision, JobInboxRequest, JobInboxValidation,
     JobLifecycleStage, PaneKind, PaneLoadState, ProviderMode, RenderState,
 };
-use crate::codex_lane::{
-    CodexLaneCommand, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
-};
 use crate::apple_fm_bridge::{
     AppleFmBridgeCommand, AppleFmBridgeUpdate, AppleFmExecutionCompleted, AppleFmExecutionFailed,
     AppleFmExecutionStarted, AppleFmGenerateJob,
+};
+use crate::codex_lane::{
+    CodexLaneCommand, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
 };
 use crate::ollama_execution::{
     OllamaExecutionCommand, OllamaExecutionCompleted, OllamaExecutionFailed, OllamaExecutionStarted,
@@ -505,14 +505,18 @@ pub(super) fn apply_active_job_ollama_update(
         crate::ollama_execution::OllamaExecutionUpdate::Snapshot(snapshot) => {
             state.ollama_execution = *snapshot;
             sync_provider_runtime_ollama_state(state);
-            if state.provider_runtime.inventory_session_started_at_ms.is_some()
+            if state
+                .provider_runtime
+                .inventory_session_started_at_ms
+                .is_some()
                 && !matches!(state.provider_runtime.mode, ProviderMode::Offline)
                 && let Err(error) =
                     crate::kernel_control::register_online_compute_inventory_with_kernel(state)
             {
                 state.provider_runtime.last_error_detail = Some(error.clone());
-                state.provider_runtime.last_result =
-                    Some(format!("Kernel online inventory registration failed: {error}"));
+                state.provider_runtime.last_result = Some(format!(
+                    "Kernel online inventory registration failed: {error}"
+                ));
                 state.provider_runtime.last_authoritative_error_class =
                     Some(EarnFailureClass::Reconciliation);
             }
@@ -540,14 +544,18 @@ pub(super) fn apply_active_job_apple_fm_update(
         AppleFmBridgeUpdate::Snapshot(snapshot) => {
             state.apple_fm_execution = *snapshot;
             sync_provider_runtime_apple_fm_state(state);
-            if state.provider_runtime.inventory_session_started_at_ms.is_some()
+            if state
+                .provider_runtime
+                .inventory_session_started_at_ms
+                .is_some()
                 && !matches!(state.provider_runtime.mode, ProviderMode::Offline)
                 && let Err(error) =
                     crate::kernel_control::register_online_compute_inventory_with_kernel(state)
             {
                 state.provider_runtime.last_error_detail = Some(error.clone());
-                state.provider_runtime.last_result =
-                    Some(format!("Kernel online inventory registration failed: {error}"));
+                state.provider_runtime.last_result = Some(format!(
+                    "Kernel online inventory registration failed: {error}"
+                ));
                 state.provider_runtime.last_authoritative_error_class =
                     Some(EarnFailureClass::Reconciliation);
             }
@@ -937,9 +945,9 @@ fn queue_provider_apple_fm_execution_start(state: &mut RenderState) -> Result<()
     state.active_job.execution_backend_request_id = Some(request_id.clone());
     state.active_job.execution_deadline_epoch_seconds =
         Some(current_epoch_seconds().saturating_add(ttl_seconds));
-    state
-        .active_job
-        .append_event(format!("queued Apple Foundation Models generation for {request_id}"));
+    state.active_job.append_event(format!(
+        "queued Apple Foundation Models generation for {request_id}"
+    ));
     Ok(())
 }
 
@@ -1181,7 +1189,10 @@ fn apply_apple_fm_execution_completed(
     true
 }
 
-fn apply_apple_fm_execution_failed(state: &mut RenderState, failed: AppleFmExecutionFailed) -> bool {
+fn apply_apple_fm_execution_failed(
+    state: &mut RenderState,
+    failed: AppleFmExecutionFailed,
+) -> bool {
     if !active_job_matches_apple_request(state, failed.request_id.as_str()) {
         return false;
     }
@@ -1796,10 +1807,9 @@ fn request_accept_block_reason(state: &RenderState, request_id: &str) -> Option<
                 }
             }
             Some(LocalInferenceBackend::AppleFoundationModels) => {
-                if let Some(reason) = apple_fm_request_accept_block_reason(
-                    &state.provider_runtime.apple_fm,
-                    request,
-                ) {
+                if let Some(reason) =
+                    apple_fm_request_accept_block_reason(&state.provider_runtime.apple_fm, request)
+                {
                     return Some(reason);
                 }
             }
@@ -1971,7 +1981,10 @@ fn apple_fm_request_accept_block_reason(
         );
     }
     if let Some(requested_model) = request.requested_model.as_deref() {
-        let serving_model = apple_fm.ready_model.as_deref().unwrap_or("apple-foundation-model");
+        let serving_model = apple_fm
+            .ready_model
+            .as_deref()
+            .unwrap_or("apple-foundation-model");
         if requested_model != serving_model {
             return Some(format!(
                 "Requested Apple Foundation Models model '{}' is blocked by local policy; provider currently serves '{}'",
@@ -2038,8 +2051,7 @@ mod tests {
         ProviderExecutionBackend, apple_fm_request_accept_block_reason,
         next_auto_accept_request_id_for, next_invalid_request_rejection_for,
         ollama_request_accept_block_reason, provider_execution_backend_for_kind,
-        turn_completed_failed,
-        visible_result_content_for_job_kind,
+        turn_completed_failed, visible_result_content_for_job_kind,
     };
     use crate::app_state::{
         JobDemandSource, JobInboxDecision, JobInboxRequest, JobInboxValidation,

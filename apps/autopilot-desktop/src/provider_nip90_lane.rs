@@ -109,7 +109,11 @@ impl ProviderNip90ComputeCapability {
 
     pub fn backend_or_default(&self) -> &str {
         let backend = self.backend.trim();
-        if backend.is_empty() { "unknown" } else { backend }
+        if backend.is_empty() {
+            "unknown"
+        } else {
+            backend
+        }
     }
 }
 
@@ -2041,8 +2045,8 @@ fn normalize_relays(relays: Vec<String>) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::{
-        ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90LaneCommand,
-        ProviderNip90ComputeCapability, ProviderNip90LaneUpdate, ProviderNip90LaneWorker,
+        ProviderNip90AuthIdentity, ProviderNip90BuyerResponseKind, ProviderNip90ComputeCapability,
+        ProviderNip90LaneCommand, ProviderNip90LaneUpdate, ProviderNip90LaneWorker,
         ProviderNip90PublishRole, ProviderNip90RelayStatus, event_to_buyer_response_event,
         event_to_inbox_request, execution_input_from_request,
     };

@@ -7,8 +7,8 @@ use mox_serve::{
 use tempfile::tempdir;
 
 #[test]
-fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_explicit_unavailability(
-) -> Result<(), Box<dyn std::error::Error>> {
+fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_explicit_unavailability()
+-> Result<(), Box<dyn std::error::Error>> {
     let temp = tempdir()?;
     let path = temp.path().join("byte_projection.safetensors");
     ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;

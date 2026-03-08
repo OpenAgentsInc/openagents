@@ -264,7 +264,7 @@ mod platform {
 mod tests {
     use mox_runtime::{AmdOptInStatus, AmdRuntimeMode};
 
-    use super::{kfd_health, AmdKfdBackend, HealthStatus};
+    use super::{AmdKfdBackend, HealthStatus, kfd_health};
 
     #[test]
     fn amd_kfd_health_is_offline_without_devices_or_kfd() {

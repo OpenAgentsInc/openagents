@@ -147,8 +147,9 @@ impl AppleFmBridgeWorker {
         let (update_tx, update_rx) = mpsc::channel::<AppleFmBridgeUpdate>();
         let (shutdown_tx, shutdown_rx) = mpsc::channel::<()>();
 
-        let join_handle =
-            std::thread::spawn(move || run_apple_fm_loop(command_rx, update_tx, shutdown_rx, config));
+        let join_handle = std::thread::spawn(move || {
+            run_apple_fm_loop(command_rx, update_tx, shutdown_rx, config)
+        });
 
         Self {
             command_tx,
@@ -255,7 +256,11 @@ struct AppleFmBridgeState {
 
 impl AppleFmBridgeState {
     fn new(config: AppleFmBridgeConfig) -> Self {
-        let client = Client::builder().timeout(REQUEST_TIMEOUT).no_proxy().build().ok();
+        let client = Client::builder()
+            .timeout(REQUEST_TIMEOUT)
+            .no_proxy()
+            .build()
+            .ok();
         let mut snapshot = AppleFmBridgeSnapshot {
             base_url: config.base_url.clone(),
             bridge_status: Some(if cfg!(target_os = "macos") {
@@ -420,7 +425,9 @@ impl AppleFmBridgeState {
                     served_model: result.model.clone(),
                     normalized_prompt_digest: sha256_prefixed_text(job.prompt.as_str()),
                     normalized_options_json: normalized_options_json.clone(),
-                    normalized_options_digest: sha256_prefixed_text(normalized_options_json.as_str()),
+                    normalized_options_digest: sha256_prefixed_text(
+                        normalized_options_json.as_str(),
+                    ),
                     base_url: self.config.base_url.trim_end_matches('/').to_string(),
                     total_duration_ns: metrics.total_duration_ns,
                     load_duration_ns: None,
@@ -434,19 +441,19 @@ impl AppleFmBridgeState {
                 self.snapshot.last_error = None;
                 self.snapshot.last_request_id = Some(job.request_id.clone());
                 self.snapshot.last_metrics = Some(metrics.clone());
-                self.snapshot.last_action =
-                    Some(format!("Completed Apple FM generation for {}", job.request_id));
+                self.snapshot.last_action = Some(format!(
+                    "Completed Apple FM generation for {}",
+                    job.request_id
+                ));
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
-                let _ = update_tx.send(AppleFmBridgeUpdate::Completed(
-                    AppleFmExecutionCompleted {
-                        request_id: job.request_id,
-                        model: result.model,
-                        output: result.output,
-                        metrics,
-                        provenance,
-                    },
-                ));
+                let _ = update_tx.send(AppleFmBridgeUpdate::Completed(AppleFmExecutionCompleted {
+                    request_id: job.request_id,
+                    model: result.model,
+                    output: result.output,
+                    metrics,
+                    provenance,
+                }));
             }
             Err(error) => {
                 self.snapshot.last_error = Some(error.clone());
@@ -626,7 +633,10 @@ fn execute_completion(
     Ok(CompletionResult {
         model: response.model,
         output,
-        prompt_tokens: response.usage.as_ref().and_then(|usage| usage.prompt_tokens),
+        prompt_tokens: response
+            .usage
+            .as_ref()
+            .and_then(|usage| usage.prompt_tokens),
         completion_tokens: response
             .usage
             .as_ref()
@@ -650,13 +660,16 @@ fn canonical_bridge_endpoint(base_url: &str, path: &str) -> Result<Url, String> 
     if trimmed_base.is_empty() {
         return Err("Apple FM base URL is empty".to_string());
     }
-    let url = Url::parse(trimmed_base).map_err(|error| format!("invalid Apple FM base URL: {error}"))?;
+    let url =
+        Url::parse(trimmed_base).map_err(|error| format!("invalid Apple FM base URL: {error}"))?;
     url.join(path)
         .map_err(|error| format!("invalid Apple FM endpoint path: {error}"))
 }
 
 fn port_from_base_url(base_url: &str) -> Option<u16> {
-    Url::parse(base_url).ok().and_then(|url| url.port_or_known_default())
+    Url::parse(base_url)
+        .ok()
+        .and_then(|url| url.port_or_known_default())
 }
 
 fn find_bridge_binary() -> Option<PathBuf> {
@@ -670,7 +683,9 @@ fn find_bridge_binary() -> Option<PathBuf> {
     let candidates = [
         PathBuf::from("bin/foundation-bridge"),
         PathBuf::from("swift/foundation-bridge/.build/release/foundation-bridge"),
-        PathBuf::from("swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge"),
+        PathBuf::from(
+            "swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge",
+        ),
     ];
     for candidate in candidates {
         if candidate.exists() {
@@ -832,8 +847,7 @@ mod tests {
                     AppleFmBridgeUpdate::Snapshot(snapshot) => {
                         if snapshot.reachable
                             && snapshot.model_available
-                            && snapshot.ready_model.as_deref()
-                                == Some("apple-foundation-model")
+                            && snapshot.ready_model.as_deref() == Some("apple-foundation-model")
                         {
                             saw_ready_snapshot = true;
                         }
@@ -852,7 +866,10 @@ mod tests {
         }
 
         let completed = completed.expect("healthy bridge should complete generation");
-        assert!(saw_ready_snapshot, "expected ready snapshot before completion");
+        assert!(
+            saw_ready_snapshot,
+            "expected ready snapshot before completion"
+        );
         assert_eq!(completed.output, "hello from apple fm");
         assert_eq!(completed.provenance.backend, "apple_foundation_models");
         assert_eq!(completed.provenance.base_url, base_url);
@@ -864,7 +881,10 @@ mod tests {
     #[test]
     fn worker_refresh_reports_unavailable_bridge() {
         let unused_listener = TcpListener::bind("127.0.0.1:0").expect("bind temp port");
-        let base_url = format!("http://{}", unused_listener.local_addr().expect("temp addr"));
+        let base_url = format!(
+            "http://{}",
+            unused_listener.local_addr().expect("temp addr")
+        );
         drop(unused_listener);
 
         let mut worker = AppleFmBridgeWorker::spawn_with_config(AppleFmBridgeConfig {

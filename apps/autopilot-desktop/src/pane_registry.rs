@@ -690,8 +690,7 @@ const PANE_SPECS: [PaneSpec; 39] = [
 mod tests {
     use super::{
         enabled_pane_specs, pane_kind_enabled, pane_kind_for_hotbar_slot, pane_spec,
-        pane_spec_by_command_id, pane_specs,
-        startup_pane_kinds,
+        pane_spec_by_command_id, pane_specs, startup_pane_kinds,
     };
     use crate::app_state::PaneKind;
     use std::collections::BTreeSet;

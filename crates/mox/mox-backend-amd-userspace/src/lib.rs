@@ -318,7 +318,7 @@ mod platform {
 mod tests {
     use mox_runtime::{AmdOptInStatus, AmdRuntimeMode};
 
-    use super::{parse_opt_in_value, userspace_health, AmdUserspaceBackend, HealthStatus};
+    use super::{AmdUserspaceBackend, HealthStatus, parse_opt_in_value, userspace_health};
 
     #[test]
     fn userspace_opt_in_parser_recognizes_enabled_values() {
@@ -353,8 +353,7 @@ mod tests {
 
     #[cfg(not(target_os = "linux"))]
     #[test]
-    fn amd_userspace_reports_offline_outside_linux() -> Result<(), mox_runtime::RuntimeError>
-    {
+    fn amd_userspace_reports_offline_outside_linux() -> Result<(), mox_runtime::RuntimeError> {
         let backend = AmdUserspaceBackend::new();
         let report = backend.discovery_report()?;
         assert_eq!(report.mode, AmdRuntimeMode::Userspace);
@@ -365,8 +364,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn amd_userspace_report_is_self_consistent_on_linux(
-    ) -> Result<(), mox_runtime::RuntimeError> {
+    fn amd_userspace_report_is_self_consistent_on_linux() -> Result<(), mox_runtime::RuntimeError> {
         let backend = AmdUserspaceBackend::new();
         let report = backend.discovery_report()?;
         assert_eq!(report.mode, AmdRuntimeMode::Userspace);
