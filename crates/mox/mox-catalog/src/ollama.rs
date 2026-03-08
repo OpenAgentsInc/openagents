@@ -972,6 +972,15 @@ fn parse_manifest_file(
         path: path.display().to_string(),
         message: error.to_string(),
     })?;
+    parse_manifest_bytes(&bytes, path, name, models_root)
+}
+
+pub(crate) fn parse_manifest_bytes(
+    bytes: &[u8],
+    path: &Path,
+    name: OllamaModelName,
+    models_root: &Path,
+) -> Result<OllamaManifest, CatalogError> {
     let raw = serde_json::from_slice::<RawManifest>(&bytes).map_err(|error| {
         CatalogError::DecodeManifest {
             path: path.display().to_string(),
@@ -1002,7 +1011,7 @@ fn parse_manifest_file(
         manifest_path: path.to_path_buf(),
         schema_version: raw.schema_version,
         media_type: raw.media_type,
-        manifest_sha256: hex::encode(Sha256::digest(&bytes)),
+        manifest_sha256: hex::encode(Sha256::digest(bytes)),
         manifest_byte_length: bytes.len() as u64,
         total_blob_size_bytes,
         config,
