@@ -280,6 +280,42 @@ objects. The generic qualifiers are for reusable inventory comparison and
 compute-market filtering; the backend-specific contexts remain the source of
 truth for vendor detail such as PCI topology, MIG state, or recovery posture.
 
+## Batch And Queueing Schema
+
+`MOX-172` defines the minimum batching, queueing, and throughput truth that
+capability and observability surfaces must expose.
+
+At minimum, served-product capability envelopes must carry an
+`execution_profile` with:
+
+- `batch_posture`
+  - `single_request_only`
+  - `caller_static_batch`
+  - `scheduler_static_batch`
+  - `continuous_batch`
+- `queue_policy`
+  - `discipline`
+    - at least `direct_caller_backpressure` or `fifo`
+  - `max_active_requests`
+  - `max_queued_requests`
+  - `per_model_serialization`
+- `throughput_class`
+  - at least `latency_optimized`, `balanced`, or `throughput_optimized`
+
+The current Mox implementation is intentionally explicit rather than
+aspirational:
+
+- local text generation is `single_request_only` with direct caller-owned
+  backpressure, one active request, and no internal queue
+- local embeddings are `caller_static_batch` with the same direct-caller queue
+  posture, because callers may submit bounded input batches even though the
+  runtime does not yet claim shared scheduler batching
+
+Local-runtime observability must stay aligned with that capability truth. If it
+surfaces queue depth or queue capacity, it must also carry the same
+`execution_profile`/queue-policy context so callers can tell whether "queue
+depth = 0" means "no queue currently" or "no internal queue exists at all."
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or

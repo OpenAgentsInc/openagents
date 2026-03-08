@@ -1866,6 +1866,107 @@ impl Default for LocalServingIsolationPolicy {
     }
 }
 
+/// Advertised batch execution posture for one served path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchExecutionPosture {
+    /// One request executes at a time without admitted multi-request batching.
+    SingleRequestOnly,
+    /// Callers may submit one bounded batch in a single request.
+    CallerStaticBatch,
+    /// The runtime may combine compatible requests into a static shared batch.
+    SchedulerStaticBatch,
+    /// The runtime supports continuous batching across active requests.
+    ContinuousBatch,
+}
+
+/// How the runtime admits work before execution starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueDiscipline {
+    /// The caller provides backpressure directly; there is no internal queue.
+    DirectCallerBackpressure,
+    /// The runtime admits work into a first-in/first-out queue.
+    Fifo,
+}
+
+/// Explicit queueing policy for one served path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuePolicy {
+    /// Queue discipline used before execution starts.
+    pub discipline: QueueDiscipline,
+    /// Maximum concurrently active requests admitted by the runtime.
+    pub max_active_requests: usize,
+    /// Maximum queued requests admitted behind active execution.
+    pub max_queued_requests: usize,
+    /// Whether the runtime serializes execution per loaded model.
+    pub per_model_serialization: bool,
+}
+
+impl QueuePolicy {
+    /// Direct caller-owned backpressure with one active request and no internal queue.
+    #[must_use]
+    pub const fn direct_caller_serial() -> Self {
+        Self {
+            discipline: QueueDiscipline::DirectCallerBackpressure,
+            max_active_requests: 1,
+            max_queued_requests: 0,
+            per_model_serialization: true,
+        }
+    }
+}
+
+/// High-level throughput category for one served path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThroughputClass {
+    /// Optimized for low-latency single-request execution.
+    LatencyOptimized,
+    /// Balanced around caller-supplied bounded batches.
+    Balanced,
+    /// Optimized for throughput via runtime-owned batching.
+    ThroughputOptimized,
+}
+
+/// Reusable execution profile for capability and observability surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionCapabilityProfile {
+    /// Advertised batch posture for the served path.
+    pub batch_posture: BatchExecutionPosture,
+    /// Explicit queueing policy for the served path.
+    pub queue_policy: QueuePolicy,
+    /// High-level throughput class for the served path.
+    pub throughput_class: ThroughputClass,
+}
+
+impl ExecutionCapabilityProfile {
+    /// Single-request, direct-caller execution profile.
+    #[must_use]
+    pub const fn single_request_latency_optimized() -> Self {
+        Self {
+            batch_posture: BatchExecutionPosture::SingleRequestOnly,
+            queue_policy: QueuePolicy::direct_caller_serial(),
+            throughput_class: ThroughputClass::LatencyOptimized,
+        }
+    }
+
+    /// Caller-batched execution profile with direct caller backpressure.
+    #[must_use]
+    pub const fn caller_static_batch_balanced() -> Self {
+        Self {
+            batch_posture: BatchExecutionPosture::CallerStaticBatch,
+            queue_policy: QueuePolicy::direct_caller_serial(),
+            throughput_class: ThroughputClass::Balanced,
+        }
+    }
+}
+
+impl Default for ExecutionCapabilityProfile {
+    fn default() -> Self {
+        Self::single_request_latency_optimized()
+    }
+}
+
 /// Explicit local-runtime observability snapshot for app cutover and debugging.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalRuntimeObservability {
@@ -1873,6 +1974,8 @@ pub struct LocalRuntimeObservability {
     pub isolation_policy: LocalServingIsolationPolicy,
     /// Explicit invalidation policy for reusable cache and persisted-state families.
     pub cache_invalidation_policy: CacheInvalidationPolicy,
+    /// Explicit batch, queueing, and throughput profile for the served path.
+    pub execution_profile: ExecutionCapabilityProfile,
     /// Number of requests currently queued behind active execution.
     pub queue_depth: usize,
     /// Maximum queued requests admitted by policy, when bounded.
@@ -3233,25 +3336,25 @@ mod tests {
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendExtensionExecution,
         BackendExtensionSupport, BackendHealthTracker, BackendRuntimeResources, BackendSelection,
-        BackendSelectionState, BackendToolchainIdentity, BufferHandle, BufferResidency,
-        BufferStorageKind, CacheAction, CacheInvalidationTrigger, CacheKind, CacheObservation,
-        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
-        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
-        ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
-        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
-        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
-        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction, RuntimeError,
-        RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-        SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, ServedProductBackendPolicy,
-        ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
-        TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
-        plan_model_admission,
+        BackendSelectionState, BackendToolchainIdentity, BatchExecutionPosture, BufferHandle,
+        BufferResidency, BufferStorageKind, CacheAction, CacheInvalidationTrigger, CacheKind,
+        CacheObservation, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
+        DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
+        ExecutionBackend, ExecutionCapabilityProfile, ExecutionMetrics, ExecutionResult,
+        HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
+        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
+        ServedArtifactIdentity, ServedProductBackendPolicy, ServedProductFallbackAction,
+        ServedProductFallbackLattice, ServedProductFallbackTrigger, ThroughputClass, TokenSampler,
+        apply_sampling_penalties, default_cache_invalidation_policy, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4621,6 +4724,7 @@ mod tests {
         let observability = LocalRuntimeObservability {
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             cache_invalidation_policy: default_cache_invalidation_policy(),
+            execution_profile: ExecutionCapabilityProfile::single_request_latency_optimized(),
             queue_depth: 0,
             queue_capacity: None,
             active_sessions: 2,
@@ -4740,6 +4844,16 @@ mod tests {
                         ]
                     }
                 },
+                "execution_profile": {
+                    "batch_posture": "single_request_only",
+                    "queue_policy": {
+                        "discipline": "direct_caller_backpressure",
+                        "max_active_requests": 1,
+                        "max_queued_requests": 0,
+                        "per_model_serialization": true
+                    },
+                    "throughput_class": "latency_optimized"
+                },
                 "queue_depth": 0,
                 "active_sessions": 2,
                 "active_requests": 1,
@@ -4773,6 +4887,36 @@ mod tests {
             })
         );
         Ok(())
+    }
+
+    #[test]
+    fn execution_capability_profiles_are_machine_checkable() {
+        assert_eq!(
+            ExecutionCapabilityProfile::single_request_latency_optimized(),
+            ExecutionCapabilityProfile {
+                batch_posture: BatchExecutionPosture::SingleRequestOnly,
+                queue_policy: QueuePolicy {
+                    discipline: QueueDiscipline::DirectCallerBackpressure,
+                    max_active_requests: 1,
+                    max_queued_requests: 0,
+                    per_model_serialization: true,
+                },
+                throughput_class: ThroughputClass::LatencyOptimized,
+            }
+        );
+        assert_eq!(
+            ExecutionCapabilityProfile::caller_static_batch_balanced(),
+            ExecutionCapabilityProfile {
+                batch_posture: BatchExecutionPosture::CallerStaticBatch,
+                queue_policy: QueuePolicy {
+                    discipline: QueueDiscipline::DirectCallerBackpressure,
+                    max_active_requests: 1,
+                    max_queued_requests: 0,
+                    per_model_serialization: true,
+                },
+                throughput_class: ThroughputClass::Balanced,
+            }
+        );
     }
 
     #[test]
