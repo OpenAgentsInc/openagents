@@ -526,8 +526,28 @@ pub struct GenerateObservation {
     pub prompt_eval_count: Option<usize>,
     /// Output-token count when exposed by the subject.
     pub eval_count: Option<usize>,
+    /// Performance metrics when the subject can expose them honestly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub performance: Option<GeneratePerformanceObservation>,
     /// Semantic error instead of a successful response.
     pub error: Option<SemanticError>,
+}
+
+/// Comparable generation performance metrics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GeneratePerformanceObservation {
+    /// End-to-end generation duration in nanoseconds.
+    pub total_duration_ns: u64,
+    /// Model-load or compile duration attributable to this request.
+    pub load_duration_ns: u64,
+    /// Prompt token count.
+    pub prompt_eval_count: usize,
+    /// Prompt-evaluation duration in nanoseconds.
+    pub prompt_eval_duration_ns: u64,
+    /// Output token count.
+    pub eval_count: usize,
+    /// Output-generation duration in nanoseconds.
+    pub eval_duration_ns: u64,
 }
 
 impl GenerateObservation {
@@ -540,6 +560,31 @@ impl GenerateObservation {
             done_reason: Some(termination_reason_label(response.termination)),
             prompt_eval_count: Some(response.usage.input_tokens),
             eval_count: Some(response.usage.output_tokens),
+            performance: match (
+                response.metrics.total_duration_ns,
+                response.metrics.load_duration_ns,
+                response.metrics.prompt_eval_count,
+                response.metrics.prompt_eval_duration_ns,
+                response.metrics.eval_count,
+                response.metrics.eval_duration_ns,
+            ) {
+                (
+                    Some(total_duration_ns),
+                    Some(load_duration_ns),
+                    Some(prompt_eval_count),
+                    Some(prompt_eval_duration_ns),
+                    Some(eval_count),
+                    Some(eval_duration_ns),
+                ) => Some(GeneratePerformanceObservation {
+                    total_duration_ns,
+                    load_duration_ns,
+                    prompt_eval_count,
+                    prompt_eval_duration_ns,
+                    eval_count,
+                    eval_duration_ns,
+                }),
+                _ => None,
+            },
             error: None,
         }
     }
@@ -553,6 +598,7 @@ impl GenerateObservation {
             done_reason: None,
             prompt_eval_count: None,
             eval_count: None,
+            performance: None,
             error: Some(SemanticError::new(status, message)),
         }
     }
@@ -649,8 +695,26 @@ pub struct EmbedObservation {
     pub dimensions: Option<usize>,
     /// Whether every returned vector is approximately normalized.
     pub normalized: Option<bool>,
+    /// Performance metrics when the subject can expose them honestly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub performance: Option<EmbedPerformanceObservation>,
     /// Semantic error instead of embeddings.
     pub error: Option<SemanticError>,
+}
+
+/// Comparable embeddings performance metrics.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EmbedPerformanceObservation {
+    /// End-to-end embeddings duration in nanoseconds.
+    pub total_duration_ns: u64,
+    /// Model-load or compile duration attributable to this request.
+    pub load_duration_ns: u64,
+    /// Prompt token count when exposed honestly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_count: Option<usize>,
+    /// Prompt-evaluation duration in nanoseconds when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_duration_ns: Option<u64>,
 }
 
 impl EmbedObservation {
@@ -671,6 +735,20 @@ impl EmbedObservation {
                     .all(|vector| is_normalized(vector.values.as_slice())),
             ),
             vectors,
+            performance: match (
+                response.metrics.total_duration_ns,
+                response.metrics.load_duration_ns,
+            ) {
+                (Some(total_duration_ns), Some(load_duration_ns)) => {
+                    Some(EmbedPerformanceObservation {
+                        total_duration_ns,
+                        load_duration_ns,
+                        prompt_eval_count: response.metrics.prompt_eval_count,
+                        prompt_eval_duration_ns: response.metrics.prompt_eval_duration_ns,
+                    })
+                }
+                _ => None,
+            },
             error: None,
         }
     }
@@ -682,6 +760,7 @@ impl EmbedObservation {
             vectors: Vec::new(),
             dimensions: None,
             normalized: None,
+            performance: None,
             error: Some(SemanticError::new(status, message)),
         }
     }
@@ -810,9 +889,150 @@ impl ConformanceReport {
         self.summary.failed == 0 && self.summary.unsupported == 0
     }
 
+    /// Evaluates the performance gate for the current report.
+    #[must_use]
+    pub fn performance_gate(
+        &self,
+        thresholds: &CutoverPerformanceThresholds,
+    ) -> PerformanceGateReport {
+        let checks = self
+            .checks
+            .iter()
+            .filter_map(|check| match check.surface {
+                ConformanceSurface::Generate => {
+                    Some(evaluate_generate_performance_gate(check, thresholds))
+                }
+                ConformanceSurface::Embed => {
+                    Some(evaluate_embed_performance_gate(check, thresholds))
+                }
+                _ => None,
+            })
+            .collect::<Vec<_>>();
+        PerformanceGateReport {
+            thresholds: thresholds.clone(),
+            summary: PerformanceGateSummary::from_checks(&checks),
+            checks,
+        }
+    }
+
+    /// Returns whether semantic and performance gates are both satisfied.
+    #[must_use]
+    pub fn cutover_ready_with_performance(
+        &self,
+        thresholds: &CutoverPerformanceThresholds,
+    ) -> bool {
+        self.cutover_ready() && self.performance_gate(thresholds).cutover_ready()
+    }
+
     /// Serializes the report as pretty JSON.
     pub fn to_pretty_json(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
+    }
+}
+
+/// Ratio-based acceptance thresholds for cutover performance.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct CutoverPerformanceThresholds {
+    /// Maximum allowed candidate-vs-baseline total-duration ratio for generation.
+    pub max_generation_total_duration_ratio: f32,
+    /// Maximum allowed candidate-vs-baseline load-duration ratio for generation.
+    pub max_generation_load_duration_ratio: f32,
+    /// Minimum allowed candidate-vs-baseline prompt throughput ratio for generation.
+    pub min_generation_prompt_tokens_per_second_ratio: f32,
+    /// Minimum allowed candidate-vs-baseline decode throughput ratio for generation.
+    pub min_generation_eval_tokens_per_second_ratio: f32,
+    /// Maximum allowed candidate-vs-baseline total-duration ratio for embeddings.
+    pub max_embedding_total_duration_ratio: f32,
+    /// Maximum allowed candidate-vs-baseline load-duration ratio for embeddings.
+    pub max_embedding_load_duration_ratio: f32,
+}
+
+impl Default for CutoverPerformanceThresholds {
+    fn default() -> Self {
+        Self {
+            max_generation_total_duration_ratio: 1.25,
+            max_generation_load_duration_ratio: 1.25,
+            min_generation_prompt_tokens_per_second_ratio: 0.80,
+            min_generation_eval_tokens_per_second_ratio: 0.80,
+            max_embedding_total_duration_ratio: 1.25,
+            max_embedding_load_duration_ratio: 1.25,
+        }
+    }
+}
+
+/// Final status for one performance gate check.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PerformanceGateStatus {
+    /// Candidate satisfied the configured threshold.
+    Passed,
+    /// Candidate violated the configured threshold.
+    Failed,
+    /// The check could not run honestly because evidence was missing.
+    InsufficientEvidence,
+}
+
+/// One evaluated cutover performance check.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PerformanceGateCheck {
+    /// Surface being evaluated.
+    pub surface: ConformanceSurface,
+    /// Stable case identifier.
+    pub case_id: String,
+    /// Gate result.
+    pub status: PerformanceGateStatus,
+    /// Human-readable summary of the decision.
+    pub detail: String,
+    /// Baseline performance facts used by the gate.
+    pub baseline: Value,
+    /// Candidate performance facts used by the gate.
+    pub candidate: Value,
+}
+
+/// Summary counters over all performance checks.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PerformanceGateSummary {
+    /// Passing checks.
+    pub passed: usize,
+    /// Failing checks.
+    pub failed: usize,
+    /// Checks blocked by missing evidence.
+    pub insufficient_evidence: usize,
+}
+
+impl PerformanceGateSummary {
+    #[must_use]
+    fn from_checks(checks: &[PerformanceGateCheck]) -> Self {
+        let mut summary = Self::default();
+        for check in checks {
+            match check.status {
+                PerformanceGateStatus::Passed => summary.passed += 1,
+                PerformanceGateStatus::Failed => summary.failed += 1,
+                PerformanceGateStatus::InsufficientEvidence => summary.insufficient_evidence += 1,
+            }
+        }
+        summary
+    }
+}
+
+/// Structured performance report emitted from a conformance report.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PerformanceGateReport {
+    /// Thresholds applied to the report.
+    pub thresholds: CutoverPerformanceThresholds,
+    /// Individual evaluated checks.
+    pub checks: Vec<PerformanceGateCheck>,
+    /// Aggregate counters.
+    pub summary: PerformanceGateSummary,
+}
+
+impl PerformanceGateReport {
+    /// Returns whether every evaluated performance check passed.
+    #[must_use]
+    pub fn cutover_ready(&self) -> bool {
+        !self.checks.is_empty()
+            && self.summary.failed == 0
+            && self.summary.insufficient_evidence == 0
     }
 }
 
@@ -830,6 +1050,322 @@ pub enum ConformanceArtifactError {
     /// Encoding the report failed.
     #[error("failed to encode conformance report: {0}")]
     Encode(#[from] serde_json::Error),
+}
+
+fn evaluate_generate_performance_gate(
+    check: &ConformanceCheckResult,
+    thresholds: &CutoverPerformanceThresholds,
+) -> PerformanceGateCheck {
+    if check.status != ConformanceCheckStatus::Passed {
+        return insufficient_performance_check(
+            check,
+            format!("semantic conformance status was {:?}", check.status),
+        );
+    }
+    let baseline = match serde_json::from_value::<GenerateObservation>(check.baseline.clone()) {
+        Ok(value) => value,
+        Err(error) => {
+            return insufficient_performance_check(
+                check,
+                format!("failed to decode baseline generation observation: {error}"),
+            );
+        }
+    };
+    let candidate = match serde_json::from_value::<GenerateObservation>(check.candidate.clone()) {
+        Ok(value) => value,
+        Err(error) => {
+            return insufficient_performance_check(
+                check,
+                format!("failed to decode candidate generation observation: {error}"),
+            );
+        }
+    };
+    let Some(baseline_perf) = baseline.performance else {
+        return insufficient_performance_check(
+            check,
+            String::from("baseline generation observation missing performance metrics"),
+        );
+    };
+    let Some(candidate_perf) = candidate.performance else {
+        return insufficient_performance_check(
+            check,
+            String::from("candidate generation observation missing performance metrics"),
+        );
+    };
+
+    let Some(baseline_prompt_tps) = tokens_per_second(
+        baseline_perf.prompt_eval_count,
+        baseline_perf.prompt_eval_duration_ns,
+    ) else {
+        return insufficient_performance_check(
+            check,
+            String::from("baseline generation prompt throughput is undefined"),
+        );
+    };
+    let Some(candidate_prompt_tps) = tokens_per_second(
+        candidate_perf.prompt_eval_count,
+        candidate_perf.prompt_eval_duration_ns,
+    ) else {
+        return insufficient_performance_check(
+            check,
+            String::from("candidate generation prompt throughput is undefined"),
+        );
+    };
+    let Some(baseline_eval_tps) =
+        tokens_per_second(baseline_perf.eval_count, baseline_perf.eval_duration_ns)
+    else {
+        return insufficient_performance_check(
+            check,
+            String::from("baseline generation decode throughput is undefined"),
+        );
+    };
+    let Some(candidate_eval_tps) =
+        tokens_per_second(candidate_perf.eval_count, candidate_perf.eval_duration_ns)
+    else {
+        return insufficient_performance_check(
+            check,
+            String::from("candidate generation decode throughput is undefined"),
+        );
+    };
+
+    let mut failures = Vec::new();
+    if ratio(
+        candidate_perf.total_duration_ns,
+        baseline_perf.total_duration_ns,
+    ) > f64::from(thresholds.max_generation_total_duration_ratio)
+    {
+        failures.push(format!(
+            "candidate total_duration ratio {:.3} exceeded {:.3}",
+            ratio(
+                candidate_perf.total_duration_ns,
+                baseline_perf.total_duration_ns
+            ),
+            thresholds.max_generation_total_duration_ratio,
+        ));
+    }
+    if baseline_perf.load_duration_ns == 0 {
+        if candidate_perf.load_duration_ns != 0 {
+            failures.push(format!(
+                "candidate load_duration {}ns must remain 0ns when baseline is 0ns",
+                candidate_perf.load_duration_ns
+            ));
+        }
+    } else if ratio(
+        candidate_perf.load_duration_ns,
+        baseline_perf.load_duration_ns,
+    ) > f64::from(thresholds.max_generation_load_duration_ratio)
+    {
+        failures.push(format!(
+            "candidate load_duration ratio {:.3} exceeded {:.3}",
+            ratio(
+                candidate_perf.load_duration_ns,
+                baseline_perf.load_duration_ns
+            ),
+            thresholds.max_generation_load_duration_ratio,
+        ));
+    }
+    if candidate_prompt_tps
+        < baseline_prompt_tps * f64::from(thresholds.min_generation_prompt_tokens_per_second_ratio)
+    {
+        failures.push(format!(
+            "candidate prompt throughput {:.3} tok/s fell below {:.3} tok/s",
+            candidate_prompt_tps,
+            baseline_prompt_tps
+                * f64::from(thresholds.min_generation_prompt_tokens_per_second_ratio),
+        ));
+    }
+    if candidate_eval_tps
+        < baseline_eval_tps * f64::from(thresholds.min_generation_eval_tokens_per_second_ratio)
+    {
+        failures.push(format!(
+            "candidate decode throughput {:.3} tok/s fell below {:.3} tok/s",
+            candidate_eval_tps,
+            baseline_eval_tps * f64::from(thresholds.min_generation_eval_tokens_per_second_ratio),
+        ));
+    }
+
+    build_performance_check(
+        check,
+        failures,
+        json!({
+            "total_duration_ns": baseline_perf.total_duration_ns,
+            "load_duration_ns": baseline_perf.load_duration_ns,
+            "prompt_tokens_per_second": baseline_prompt_tps,
+            "eval_tokens_per_second": baseline_eval_tps,
+        }),
+        json!({
+            "total_duration_ns": candidate_perf.total_duration_ns,
+            "load_duration_ns": candidate_perf.load_duration_ns,
+            "prompt_tokens_per_second": candidate_prompt_tps,
+            "eval_tokens_per_second": candidate_eval_tps,
+        }),
+        format!(
+            "generation total ratio {:.3}, prompt ratio {:.3}, eval ratio {:.3}",
+            ratio(
+                candidate_perf.total_duration_ns,
+                baseline_perf.total_duration_ns
+            ),
+            candidate_prompt_tps / baseline_prompt_tps,
+            candidate_eval_tps / baseline_eval_tps,
+        ),
+    )
+}
+
+fn evaluate_embed_performance_gate(
+    check: &ConformanceCheckResult,
+    thresholds: &CutoverPerformanceThresholds,
+) -> PerformanceGateCheck {
+    if check.status != ConformanceCheckStatus::Passed {
+        return insufficient_performance_check(
+            check,
+            format!("semantic conformance status was {:?}", check.status),
+        );
+    }
+    let baseline = match serde_json::from_value::<EmbedObservation>(check.baseline.clone()) {
+        Ok(value) => value,
+        Err(error) => {
+            return insufficient_performance_check(
+                check,
+                format!("failed to decode baseline embeddings observation: {error}"),
+            );
+        }
+    };
+    let candidate = match serde_json::from_value::<EmbedObservation>(check.candidate.clone()) {
+        Ok(value) => value,
+        Err(error) => {
+            return insufficient_performance_check(
+                check,
+                format!("failed to decode candidate embeddings observation: {error}"),
+            );
+        }
+    };
+    let Some(baseline_perf) = baseline.performance else {
+        return insufficient_performance_check(
+            check,
+            String::from("baseline embeddings observation missing performance metrics"),
+        );
+    };
+    let Some(candidate_perf) = candidate.performance else {
+        return insufficient_performance_check(
+            check,
+            String::from("candidate embeddings observation missing performance metrics"),
+        );
+    };
+
+    let mut failures = Vec::new();
+    if ratio(
+        candidate_perf.total_duration_ns,
+        baseline_perf.total_duration_ns,
+    ) > f64::from(thresholds.max_embedding_total_duration_ratio)
+    {
+        failures.push(format!(
+            "candidate embeddings total_duration ratio {:.3} exceeded {:.3}",
+            ratio(
+                candidate_perf.total_duration_ns,
+                baseline_perf.total_duration_ns
+            ),
+            thresholds.max_embedding_total_duration_ratio,
+        ));
+    }
+    if baseline_perf.load_duration_ns == 0 {
+        if candidate_perf.load_duration_ns != 0 {
+            failures.push(format!(
+                "candidate embeddings load_duration {}ns must remain 0ns when baseline is 0ns",
+                candidate_perf.load_duration_ns
+            ));
+        }
+    } else if ratio(
+        candidate_perf.load_duration_ns,
+        baseline_perf.load_duration_ns,
+    ) > f64::from(thresholds.max_embedding_load_duration_ratio)
+    {
+        failures.push(format!(
+            "candidate embeddings load_duration ratio {:.3} exceeded {:.3}",
+            ratio(
+                candidate_perf.load_duration_ns,
+                baseline_perf.load_duration_ns
+            ),
+            thresholds.max_embedding_load_duration_ratio,
+        ));
+    }
+
+    build_performance_check(
+        check,
+        failures,
+        json!({
+            "total_duration_ns": baseline_perf.total_duration_ns,
+            "load_duration_ns": baseline_perf.load_duration_ns,
+            "prompt_eval_count": baseline_perf.prompt_eval_count,
+            "prompt_eval_duration_ns": baseline_perf.prompt_eval_duration_ns,
+        }),
+        json!({
+            "total_duration_ns": candidate_perf.total_duration_ns,
+            "load_duration_ns": candidate_perf.load_duration_ns,
+            "prompt_eval_count": candidate_perf.prompt_eval_count,
+            "prompt_eval_duration_ns": candidate_perf.prompt_eval_duration_ns,
+        }),
+        format!(
+            "embeddings total ratio {:.3}",
+            ratio(
+                candidate_perf.total_duration_ns,
+                baseline_perf.total_duration_ns
+            ),
+        ),
+    )
+}
+
+fn build_performance_check(
+    check: &ConformanceCheckResult,
+    failures: Vec<String>,
+    baseline: Value,
+    candidate: Value,
+    success_detail: String,
+) -> PerformanceGateCheck {
+    if failures.is_empty() {
+        PerformanceGateCheck {
+            surface: check.surface,
+            case_id: check.case_id.clone(),
+            status: PerformanceGateStatus::Passed,
+            detail: success_detail,
+            baseline,
+            candidate,
+        }
+    } else {
+        PerformanceGateCheck {
+            surface: check.surface,
+            case_id: check.case_id.clone(),
+            status: PerformanceGateStatus::Failed,
+            detail: failures.join("; "),
+            baseline,
+            candidate,
+        }
+    }
+}
+
+fn insufficient_performance_check(
+    check: &ConformanceCheckResult,
+    detail: String,
+) -> PerformanceGateCheck {
+    PerformanceGateCheck {
+        surface: check.surface,
+        case_id: check.case_id.clone(),
+        status: PerformanceGateStatus::InsufficientEvidence,
+        detail,
+        baseline: check.baseline.clone(),
+        candidate: check.candidate.clone(),
+    }
+}
+
+fn tokens_per_second(tokens: usize, duration_ns: u64) -> Option<f64> {
+    (duration_ns > 0).then_some((tokens as f64) * 1_000_000_000.0 / (duration_ns as f64))
+}
+
+fn ratio(candidate: u64, baseline: u64) -> f64 {
+    if baseline == 0 {
+        if candidate == 0 { 1.0 } else { f64::INFINITY }
+    } else {
+        (candidate as f64) / (baseline as f64)
+    }
 }
 
 /// Comparable subject boundary for the cutover harness.
@@ -1501,6 +2037,31 @@ impl ConformanceSubject for OllamaHttpSubject {
             done_reason: payload.done_reason,
             prompt_eval_count: payload.prompt_eval_count,
             eval_count: payload.eval_count,
+            performance: match (
+                payload.total_duration,
+                payload.load_duration,
+                payload.prompt_eval_count,
+                payload.prompt_eval_duration,
+                payload.eval_count,
+                payload.eval_duration,
+            ) {
+                (
+                    Some(total_duration_ns),
+                    Some(load_duration_ns),
+                    Some(prompt_eval_count),
+                    Some(prompt_eval_duration_ns),
+                    Some(eval_count),
+                    Some(eval_duration_ns),
+                ) => Some(GeneratePerformanceObservation {
+                    total_duration_ns,
+                    load_duration_ns,
+                    prompt_eval_count,
+                    prompt_eval_duration_ns,
+                    eval_count,
+                    eval_duration_ns,
+                }),
+                _ => None,
+            },
             error: None,
         }))
     }
@@ -1644,6 +2205,17 @@ impl ConformanceSubject for OllamaHttpSubject {
                     .all(|values| is_normalized(values)),
             ),
             vectors,
+            performance: match (payload.total_duration, payload.load_duration) {
+                (Some(total_duration_ns), Some(load_duration_ns)) => {
+                    Some(EmbedPerformanceObservation {
+                        total_duration_ns,
+                        load_duration_ns,
+                        prompt_eval_count: payload.prompt_eval_count,
+                        prompt_eval_duration_ns: payload.prompt_eval_duration,
+                    })
+                }
+                _ => None,
+            },
             error: None,
         }))
     }
@@ -1901,7 +2473,13 @@ fn compare_generate(
         }
     }
 
-    if baseline == candidate {
+    if baseline.rendered_prompt == candidate.rendered_prompt
+        && baseline.output_text == candidate.output_text
+        && baseline.done_reason == candidate.done_reason
+        && baseline.prompt_eval_count == candidate.prompt_eval_count
+        && baseline.eval_count == candidate.eval_count
+        && baseline.error == candidate.error
+    {
         Ok(())
     } else {
         Err(format_observation_difference(
@@ -2404,8 +2982,12 @@ struct OllamaGenerateResponse {
     response: Option<String>,
     done: Option<bool>,
     done_reason: Option<String>,
+    total_duration: Option<u64>,
+    load_duration: Option<u64>,
     prompt_eval_count: Option<usize>,
+    prompt_eval_duration: Option<u64>,
     eval_count: Option<usize>,
+    eval_duration: Option<u64>,
     #[serde(rename = "_debug_info")]
     debug_info: Option<OllamaDebugInfo>,
 }
@@ -2413,6 +2995,10 @@ struct OllamaGenerateResponse {
 #[derive(Debug, Deserialize)]
 struct OllamaEmbedResponse {
     embeddings: Vec<Vec<f32>>,
+    total_duration: Option<u64>,
+    load_duration: Option<u64>,
+    prompt_eval_count: Option<usize>,
+    prompt_eval_duration: Option<u64>,
 }
 
 #[cfg(test)]
@@ -2490,6 +3076,7 @@ mod tests {
                 done_reason: None,
                 prompt_eval_count: None,
                 eval_count: None,
+                performance: None,
                 error: None,
             }),
         );
@@ -2501,6 +3088,7 @@ mod tests {
                 done_reason: None,
                 prompt_eval_count: None,
                 eval_count: None,
+                performance: None,
                 error: None,
             }),
         );
@@ -2545,6 +3133,7 @@ mod tests {
                 }],
                 dimensions: Some(2),
                 normalized: Some(true),
+                performance: None,
                 error: None,
             }),
         );
@@ -2557,6 +3146,7 @@ mod tests {
                 }],
                 dimensions: Some(2),
                 normalized: Some(false),
+                performance: None,
                 error: None,
             }),
         );
@@ -2567,6 +3157,123 @@ mod tests {
 
         assert_eq!(report.summary.failed, 1);
         assert!(!report.cutover_ready());
+        Ok(())
+    }
+
+    #[test]
+    fn performance_gate_accepts_candidate_within_generation_budget()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = ConformanceReport {
+            suite_id: String::from("perf-ok"),
+            baseline_subject: String::from("ollama"),
+            candidate_subject: String::from("mox"),
+            checks: vec![ConformanceCheckResult {
+                surface: ConformanceSurface::Generate,
+                case_id: String::from("generate-1"),
+                status: ConformanceCheckStatus::Passed,
+                detail: String::from("semantic match"),
+                baseline: serde_json::to_value(GenerateObservation {
+                    rendered_prompt: None,
+                    output_text: String::from("hello"),
+                    done_reason: Some(String::from("stop")),
+                    prompt_eval_count: Some(16),
+                    eval_count: Some(8),
+                    performance: Some(GeneratePerformanceObservation {
+                        total_duration_ns: 2_000_000_000,
+                        load_duration_ns: 500_000_000,
+                        prompt_eval_count: 16,
+                        prompt_eval_duration_ns: 400_000_000,
+                        eval_count: 8,
+                        eval_duration_ns: 1_200_000_000,
+                    }),
+                    error: None,
+                })?,
+                candidate: serde_json::to_value(GenerateObservation {
+                    rendered_prompt: None,
+                    output_text: String::from("hello"),
+                    done_reason: Some(String::from("stop")),
+                    prompt_eval_count: Some(16),
+                    eval_count: Some(8),
+                    performance: Some(GeneratePerformanceObservation {
+                        total_duration_ns: 2_200_000_000,
+                        load_duration_ns: 550_000_000,
+                        prompt_eval_count: 16,
+                        prompt_eval_duration_ns: 440_000_000,
+                        eval_count: 8,
+                        eval_duration_ns: 1_250_000_000,
+                    }),
+                    error: None,
+                })?,
+            }],
+            summary: ConformanceSummary {
+                passed: 1,
+                failed: 0,
+                unsupported: 0,
+                intentional_differences: 0,
+            },
+        };
+
+        let performance = report.performance_gate(&CutoverPerformanceThresholds::default());
+        assert_eq!(performance.summary.passed, 1);
+        assert_eq!(performance.summary.failed, 0);
+        assert_eq!(performance.summary.insufficient_evidence, 0);
+        assert!(performance.cutover_ready());
+        assert!(report.cutover_ready_with_performance(&CutoverPerformanceThresholds::default()));
+        Ok(())
+    }
+
+    #[test]
+    fn performance_gate_refuses_cutover_when_metrics_are_missing()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let report = ConformanceReport {
+            suite_id: String::from("perf-missing"),
+            baseline_subject: String::from("ollama"),
+            candidate_subject: String::from("mox"),
+            checks: vec![ConformanceCheckResult {
+                surface: ConformanceSurface::Embed,
+                case_id: String::from("embed-1"),
+                status: ConformanceCheckStatus::Passed,
+                detail: String::from("semantic match"),
+                baseline: serde_json::to_value(EmbedObservation {
+                    vectors: vec![EmbedVectorObservation {
+                        index: 0,
+                        values: vec![1.0, 0.0],
+                    }],
+                    dimensions: Some(2),
+                    normalized: Some(true),
+                    performance: Some(EmbedPerformanceObservation {
+                        total_duration_ns: 1_000_000_000,
+                        load_duration_ns: 250_000_000,
+                        prompt_eval_count: Some(4),
+                        prompt_eval_duration_ns: Some(800_000_000),
+                    }),
+                    error: None,
+                })?,
+                candidate: serde_json::to_value(EmbedObservation {
+                    vectors: vec![EmbedVectorObservation {
+                        index: 0,
+                        values: vec![1.0, 0.0],
+                    }],
+                    dimensions: Some(2),
+                    normalized: Some(true),
+                    performance: None,
+                    error: None,
+                })?,
+            }],
+            summary: ConformanceSummary {
+                passed: 1,
+                failed: 0,
+                unsupported: 0,
+                intentional_differences: 0,
+            },
+        };
+
+        let performance = report.performance_gate(&CutoverPerformanceThresholds::default());
+        assert_eq!(performance.summary.passed, 0);
+        assert_eq!(performance.summary.failed, 0);
+        assert_eq!(performance.summary.insufficient_evidence, 1);
+        assert!(!performance.cutover_ready());
+        assert!(!report.cutover_ready_with_performance(&CutoverPerformanceThresholds::default()));
         Ok(())
     }
 

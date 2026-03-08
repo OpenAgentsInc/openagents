@@ -95,6 +95,29 @@ The harness emits a `ConformanceReport` JSON artifact with this top-level shape:
 `ConformanceReport::cutover_ready()` returns `true` only when there are no
 `failed` or `unsupported` checks.
 
+`MOX-138` adds a separate performance gate on top of that semantic gate:
+
+```rust
+let thresholds = CutoverPerformanceThresholds::default();
+let performance = report.performance_gate(&thresholds);
+let ready = report.cutover_ready_with_performance(&thresholds);
+```
+
+The default thresholds are ratio-based against the Ollama baseline for the
+same case:
+
+- generation total duration: candidate must stay within `1.25x`
+- generation load duration: candidate must stay within `1.25x`
+- generation prompt throughput: candidate must stay above `0.80x`
+- generation decode throughput: candidate must stay above `0.80x`
+- embeddings total duration: candidate must stay within `1.25x`
+- embeddings load duration: candidate must stay within `1.25x`
+
+If either side omits the required timing evidence for a compared `generate` or
+`embed` case, the performance gate reports `insufficient_evidence` instead of
+guessing. That is intentional: cutover should fail closed when performance
+evidence is missing.
+
 ## Documented Run
 
 Repeatable CI-stable harness run for a supported model family:

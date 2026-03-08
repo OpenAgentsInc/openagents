@@ -250,6 +250,12 @@ pub struct ExecutionReceipt {
     /// Requested output dimensions when the caller asked for truncated vectors.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub requested_output_dimensions: Option<usize>,
+    /// End-to-end embeddings duration in nanoseconds, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_duration_ns: Option<u64>,
+    /// Model-load or compile duration attributable to this request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load_duration_ns: Option<u64>,
     /// Timestamp when execution started.
     pub started_at_unix_ms: u64,
     /// Timestamp when execution ended.
@@ -291,6 +297,8 @@ impl ExecutionReceipt {
             output_vector_count: response.metadata.vector_count,
             normalization: response.metadata.normalization,
             requested_output_dimensions: response.metadata.requested_output_dimensions,
+            total_duration_ns: response.metrics.total_duration_ns,
+            load_duration_ns: response.metrics.load_duration_ns,
             started_at_unix_ms,
             ended_at_unix_ms,
             status: ReceiptStatus::Succeeded,
@@ -349,6 +357,8 @@ impl ExecutionReceipt {
             requested_output_dimensions: request
                 .output_dimensions
                 .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions),
+            total_duration_ns: None,
+            load_duration_ns: None,
             started_at_unix_ms,
             ended_at_unix_ms,
             status: ReceiptStatus::Failed,
@@ -526,6 +536,12 @@ pub struct TextGenerationReceipt {
     /// Model-load or compile duration attributable to this request, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub load_duration_ns: Option<u64>,
+    /// Prompt-evaluation duration in nanoseconds, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_duration_ns: Option<u64>,
+    /// Output-generation duration in nanoseconds, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eval_duration_ns: Option<u64>,
     /// Whether the request took a warm or cold model path.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub load_state: Option<GenerationLoadState>,
@@ -614,6 +630,8 @@ impl TextGenerationReceipt {
             cache_tokens: response.usage.cache_tokens,
             total_duration_ns: response.metrics.total_duration_ns,
             load_duration_ns: response.metrics.load_duration_ns,
+            prompt_eval_duration_ns: response.metrics.prompt_eval_duration_ns,
+            eval_duration_ns: response.metrics.eval_duration_ns,
             load_state: response.provenance.as_ref().map(|value| value.load_state),
             kv_cache_policy: response
                 .provenance
@@ -701,6 +719,8 @@ impl TextGenerationReceipt {
             cache_tokens: 0,
             total_duration_ns: None,
             load_duration_ns: None,
+            prompt_eval_duration_ns: None,
+            eval_duration_ns: None,
             load_state: None,
             kv_cache_policy: None,
             kv_cache: None,
@@ -944,12 +964,13 @@ mod tests {
         QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
     };
     use mox_serve::{
-        EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
-        GenerationLoadState, GenerationMetrics, GenerationOptions, GenerationProvenance,
-        GenerationRequest, GenerationResponse, GenerationStreamStatus, GenerationStreamTerminal,
-        ReferenceWordDecoder, SessionId, SmokeByteEmbedder, TerminationReason, TokenSequence,
-        default_decoder_kv_cache_policy, default_decoder_memory_plan,
-        default_generation_streaming_policy, default_prefix_cache_policy,
+        EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
+        EmbeddingVector, GenerationLoadState, GenerationMetrics, GenerationOptions,
+        GenerationProvenance, GenerationRequest, GenerationResponse, GenerationStreamStatus,
+        GenerationStreamTerminal, ReferenceWordDecoder, SessionId, SmokeByteEmbedder,
+        TerminationReason, TokenSequence, default_decoder_kv_cache_policy,
+        default_decoder_memory_plan, default_generation_streaming_policy,
+        default_prefix_cache_policy,
     };
     use serde_json::json;
 
@@ -1260,7 +1281,13 @@ mod tests {
                 values: vec![0.1, 0.2, 0.3, 0.4],
                 // Receipt tests do not care about matching model dimensions here.
             }],
-        );
+        )
+        .with_metrics(EmbeddingMetrics {
+            total_duration_ns: Some(50),
+            load_duration_ns: Some(5),
+            prompt_eval_count: None,
+            prompt_eval_duration_ns: None,
+        });
         let receipt = ExecutionReceipt::succeeded_for_response(
             cpu_backend_selection(),
             &request,
@@ -1270,6 +1297,8 @@ mod tests {
         );
 
         assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+        assert_eq!(receipt.total_duration_ns, Some(50));
+        assert_eq!(receipt.load_duration_ns, Some(5));
         let encoded = serde_json::to_string(&receipt)?;
         let decoded: ExecutionReceipt = serde_json::from_str(&encoded)?;
         assert_eq!(decoded, receipt);
@@ -1312,8 +1341,10 @@ mod tests {
                 total_duration_ns: Some(75),
                 load_duration_ns: Some(25),
                 prompt_eval_count: Some(1),
+                prompt_eval_duration_ns: Some(15),
                 context_window: None,
                 eval_count: Some(1),
+                eval_duration_ns: Some(60),
                 kv_cache: Some(KvCacheAccounting {
                     current: mox_runtime::KvCacheState {
                         tokens: 2,
@@ -1377,6 +1408,8 @@ mod tests {
         );
         assert_eq!(receipt.total_duration_ns, Some(75));
         assert_eq!(receipt.load_duration_ns, Some(25));
+        assert_eq!(receipt.prompt_eval_duration_ns, Some(15));
+        assert_eq!(receipt.eval_duration_ns, Some(60));
         assert_eq!(receipt.load_state, Some(GenerationLoadState::Cold));
         assert_eq!(
             receipt.memory_plan,
@@ -1453,8 +1486,10 @@ mod tests {
                 total_duration_ns: Some(10),
                 load_duration_ns: Some(2),
                 prompt_eval_count: Some(1),
+                prompt_eval_duration_ns: Some(4),
                 context_window: None,
                 eval_count: Some(1),
+                eval_duration_ns: Some(6),
                 kv_cache: None,
                 prefix_tokens_reused: Some(0),
             },

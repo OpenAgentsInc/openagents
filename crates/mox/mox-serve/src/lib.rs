@@ -230,6 +230,23 @@ pub struct EmbeddingResponseMetadata {
     pub requested_output_dimensions: Option<usize>,
 }
 
+/// Explicit timing metrics for one embeddings call.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct EmbeddingMetrics {
+    /// End-to-end embeddings duration in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_duration_ns: Option<u64>,
+    /// Model-load or compile duration attributable to this request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub load_duration_ns: Option<u64>,
+    /// Prompt-token count surfaced when the backend can expose it honestly.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_count: Option<usize>,
+    /// Prompt-evaluation duration in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_duration_ns: Option<u64>,
+}
+
 /// Embeddings response contract.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct EmbeddingResponse {
@@ -241,6 +258,9 @@ pub struct EmbeddingResponse {
     pub embeddings: Vec<EmbeddingVector>,
     /// Metadata describing the outputs.
     pub metadata: EmbeddingResponseMetadata,
+    /// Explicit timing metrics for the request path, when known.
+    #[serde(default, skip_serializing_if = "EmbeddingMetrics::is_empty")]
+    pub metrics: EmbeddingMetrics,
 }
 
 impl EmbeddingResponse {
@@ -269,7 +289,15 @@ impl EmbeddingResponse {
                 requested_output_dimensions,
             },
             embeddings,
+            metrics: EmbeddingMetrics::default(),
         }
+    }
+
+    /// Attaches explicit metrics to an embeddings response.
+    #[must_use]
+    pub fn with_metrics(mut self, metrics: EmbeddingMetrics) -> Self {
+        self.metrics = metrics;
+        self
     }
 }
 
@@ -502,12 +530,18 @@ pub struct GenerationMetrics {
     /// Prompt token count surfaced in the metrics lane.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prompt_eval_count: Option<usize>,
+    /// Prompt-evaluation duration in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt_eval_duration_ns: Option<u64>,
     /// Explicit prompt-budget accounting for the request.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub context_window: Option<ContextWindowAccounting>,
     /// Output token count surfaced in the metrics lane.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub eval_count: Option<usize>,
+    /// Output-generation duration in nanoseconds, when measured.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub eval_duration_ns: Option<u64>,
     /// Explicit paged-KV accounting for the request, when available.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub kv_cache: Option<KvCacheAccounting>,
@@ -710,8 +744,10 @@ impl GenerationMetrics {
             total_duration_ns: None,
             load_duration_ns: None,
             prompt_eval_count: Some(usage.input_tokens),
+            prompt_eval_duration_ns: None,
             context_window: None,
             eval_count: Some(usage.output_tokens),
+            eval_duration_ns: None,
             kv_cache: None,
             prefix_tokens_reused: None,
         }
@@ -722,10 +758,22 @@ impl GenerationMetrics {
         self.total_duration_ns.is_none()
             && self.load_duration_ns.is_none()
             && self.prompt_eval_count.is_none()
+            && self.prompt_eval_duration_ns.is_none()
             && self.context_window.is_none()
             && self.eval_count.is_none()
+            && self.eval_duration_ns.is_none()
             && self.kv_cache.is_none()
             && self.prefix_tokens_reused.is_none()
+    }
+}
+
+impl EmbeddingMetrics {
+    #[must_use]
+    fn is_empty(&self) -> bool {
+        self.total_duration_ns.is_none()
+            && self.load_duration_ns.is_none()
+            && self.prompt_eval_count.is_none()
+            && self.prompt_eval_duration_ns.is_none()
     }
 }
 
@@ -2883,6 +2931,7 @@ where
     memory_plan: Option<ModelMemoryPlan>,
     residency_policy: Option<ModelResidencyPolicy>,
     residency_snapshot: Option<MemoryResidencySnapshot>,
+    prompt_eval_duration_ns: u64,
     context_window: ContextWindowAccounting,
     previous_kv_state: KvCacheState,
     cache: InMemoryKvCache,
@@ -2943,6 +2992,7 @@ where
         let generation_start = Instant::now();
 
         let prepared = (|| -> Result<_, ReferenceTextGenerationError> {
+            let prompt_eval_start = Instant::now();
             let tokenizer = loaded_model.model().tokenizer();
             let prompt_tokens = match &request.prompt {
                 GenerationInput::Text(text) => {
@@ -3035,6 +3085,12 @@ where
                 }
             }
 
+            let prompt_eval_duration_ns = prompt_eval_start
+                .elapsed()
+                .as_nanos()
+                .try_into()
+                .unwrap_or(u64::MAX);
+
             Ok((
                 prompt_tokens,
                 context_window,
@@ -3045,6 +3101,7 @@ where
                 prefix_state,
                 prefix_tokens_reused,
                 prefix_identity,
+                prompt_eval_duration_ns,
                 last_logits,
             ))
         })();
@@ -3060,6 +3117,7 @@ where
                 prefix_state,
                 prefix_tokens_reused,
                 prefix_identity,
+                prompt_eval_duration_ns,
                 last_logits,
             )) => Ok(Self {
                 backend,
@@ -3074,6 +3132,7 @@ where
                 memory_plan,
                 residency_policy,
                 residency_snapshot,
+                prompt_eval_duration_ns,
                 context_window,
                 previous_kv_state,
                 cache,
@@ -3119,21 +3178,23 @@ where
             output_tokens: generated.len(),
             cache_tokens: self.cache.len(),
         };
+        let total_duration_ns = self
+            .generation_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
         let metrics = GenerationMetrics {
-            total_duration_ns: Some(
-                self.generation_start
-                    .elapsed()
-                    .as_nanos()
-                    .try_into()
-                    .unwrap_or(u64::MAX),
-            ),
+            total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match self.load_state {
                 GenerationLoadState::Cold => self.loaded_model.load_duration_ns(),
                 GenerationLoadState::Warm => 0,
             }),
             prompt_eval_count: Some(usage.input_tokens),
+            prompt_eval_duration_ns: Some(self.prompt_eval_duration_ns),
             context_window: Some(self.context_window.clone()),
             eval_count: Some(usage.output_tokens),
+            eval_duration_ns: Some(total_duration_ns.saturating_sub(self.prompt_eval_duration_ns)),
             kv_cache: Some(KvCacheAccounting::from_states(
                 &self.previous_kv_state,
                 self.cache.state(),
@@ -3478,6 +3539,7 @@ where
     let residency_snapshot = Some(models.memory_snapshot());
 
     let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
+        let prompt_eval_start = Instant::now();
         let tokenizer = loaded_model.model().tokenizer();
         let prompt_tokens = match &request.prompt {
             GenerationInput::Text(text) => tokenizer.encode_with_special_tokens(text, true, false),
@@ -3608,6 +3670,12 @@ where
             }
         }
 
+        let prompt_eval_duration_ns = prompt_eval_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+
         let generated = TokenSequence::new(generated_tokens);
         if let Some(session_id) = &request.session_id {
             session_tokens.extend_from_slice(prompt_tokens.as_slice());
@@ -3629,21 +3697,22 @@ where
             cache_tokens: cache.len(),
         };
         let kv_cache = KvCacheAccounting::from_states(&previous_kv_state, cache.state());
+        let total_duration_ns = generation_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
         let metrics = GenerationMetrics {
-            total_duration_ns: Some(
-                generation_start
-                    .elapsed()
-                    .as_nanos()
-                    .try_into()
-                    .unwrap_or(u64::MAX),
-            ),
+            total_duration_ns: Some(total_duration_ns),
             load_duration_ns: Some(match load_state {
                 GenerationLoadState::Cold => loaded_model.load_duration_ns(),
                 GenerationLoadState::Warm => 0,
             }),
             prompt_eval_count: Some(usage.input_tokens),
+            prompt_eval_duration_ns: Some(prompt_eval_duration_ns),
             context_window: Some(context_window),
             eval_count: Some(usage.output_tokens),
+            eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
         };
@@ -4103,6 +4172,7 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
     type Error = SmokeEmbeddingsError;
 
     fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        let embed_start = Instant::now();
         if request.product_id != EMBEDDINGS_PRODUCT_ID {
             return Err(SmokeEmbeddingsError::UnsupportedProduct(
                 request.product_id.clone(),
@@ -4114,7 +4184,14 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
             ));
         }
         if request.inputs.is_empty() {
-            return Ok(EmbeddingResponse::new(request, Vec::new()));
+            return Ok(EmbeddingResponse::new(request, Vec::new()).with_metrics(
+                EmbeddingMetrics {
+                    total_duration_ns: Some(0),
+                    load_duration_ns: Some(0),
+                    prompt_eval_count: None,
+                    prompt_eval_duration_ns: None,
+                },
+            ));
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
@@ -4128,7 +4205,20 @@ impl EmbeddingsExecutor for SmokeEmbeddingsService {
             embeddings.push(EmbeddingVector { index, values });
         }
 
-        Ok(EmbeddingResponse::new(request, embeddings))
+        Ok(
+            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
+                total_duration_ns: Some(
+                    embed_start
+                        .elapsed()
+                        .as_nanos()
+                        .try_into()
+                        .unwrap_or(u64::MAX),
+                ),
+                load_duration_ns: Some(0),
+                prompt_eval_count: None,
+                prompt_eval_duration_ns: None,
+            }),
+        )
     }
 }
 
@@ -4191,6 +4281,7 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
     type Error = ModelEmbeddingsError;
 
     fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        let embed_start = Instant::now();
         if request.product_id != EMBEDDINGS_PRODUCT_ID {
             return Err(ModelEmbeddingsError::UnsupportedProduct(
                 request.product_id.clone(),
@@ -4202,7 +4293,14 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
             ));
         }
         if request.inputs.is_empty() {
-            return Ok(EmbeddingResponse::new(request, Vec::new()));
+            return Ok(EmbeddingResponse::new(request, Vec::new()).with_metrics(
+                EmbeddingMetrics {
+                    total_duration_ns: Some(0),
+                    load_duration_ns: Some(0),
+                    prompt_eval_count: None,
+                    prompt_eval_duration_ns: None,
+                },
+            ));
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
@@ -4216,7 +4314,20 @@ impl EmbeddingsExecutor for CpuModelEmbeddingsService {
             embeddings.push(EmbeddingVector { index, values });
         }
 
-        Ok(EmbeddingResponse::new(request, embeddings))
+        Ok(
+            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
+                total_duration_ns: Some(
+                    embed_start
+                        .elapsed()
+                        .as_nanos()
+                        .try_into()
+                        .unwrap_or(u64::MAX),
+                ),
+                load_duration_ns: Some(0),
+                prompt_eval_count: None,
+                prompt_eval_duration_ns: None,
+            }),
+        )
     }
 }
 
@@ -4309,6 +4420,7 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
     type Error = MetalEmbeddingsError;
 
     fn embed(&mut self, request: &EmbeddingRequest) -> Result<EmbeddingResponse, Self::Error> {
+        let embed_start = Instant::now();
         if request.product_id != EMBEDDINGS_PRODUCT_ID {
             return Err(MetalEmbeddingsError::UnsupportedProduct(
                 request.product_id.clone(),
@@ -4320,7 +4432,14 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
             ));
         }
         if request.inputs.is_empty() {
-            return Ok(EmbeddingResponse::new(request, Vec::new()));
+            return Ok(EmbeddingResponse::new(request, Vec::new()).with_metrics(
+                EmbeddingMetrics {
+                    total_duration_ns: Some(0),
+                    load_duration_ns: Some(0),
+                    prompt_eval_count: None,
+                    prompt_eval_duration_ns: None,
+                },
+            ));
         }
 
         let mut embeddings = Vec::with_capacity(request.inputs.len());
@@ -4334,7 +4453,20 @@ impl EmbeddingsExecutor for MetalModelEmbeddingsService {
             embeddings.push(EmbeddingVector { index, values });
         }
 
-        Ok(EmbeddingResponse::new(request, embeddings))
+        Ok(
+            EmbeddingResponse::new(request, embeddings).with_metrics(EmbeddingMetrics {
+                total_duration_ns: Some(
+                    embed_start
+                        .elapsed()
+                        .as_nanos()
+                        .try_into()
+                        .unwrap_or(u64::MAX),
+                ),
+                load_duration_ns: Some(0),
+                prompt_eval_count: None,
+                prompt_eval_duration_ns: None,
+            }),
+        )
     }
 }
 
@@ -4570,6 +4702,8 @@ mod tests {
         assert_eq!(decoded.metadata.model_family, "smoke");
         assert_eq!(decoded.metadata.model_revision, "v0");
         assert_eq!(decoded.metadata.requested_output_dimensions, None);
+        assert_eq!(decoded.metrics.total_duration_ns, None);
+        assert_eq!(decoded.metrics.load_duration_ns, None);
         Ok(())
     }
 
@@ -4584,7 +4718,10 @@ mod tests {
 
         let first = service.embed(&request)?;
         let second = service.embed(&request)?;
-        assert_eq!(first, second);
+        assert_eq!(first.embeddings, second.embeddings);
+        assert_eq!(first.metadata, second.metadata);
+        assert!(first.metrics.total_duration_ns.is_some());
+        assert!(second.metrics.total_duration_ns.is_some());
         assert_eq!(first.metadata.dimensions, 8);
         Ok(())
     }
@@ -4646,7 +4783,9 @@ mod tests {
         assert_eq!(decoded, response);
         assert_eq!(decoded.usage.output_tokens, 2);
         assert_eq!(decoded.metrics.prompt_eval_count, Some(1));
+        assert_eq!(decoded.metrics.prompt_eval_duration_ns, None);
         assert_eq!(decoded.metrics.eval_count, Some(2));
+        assert_eq!(decoded.metrics.eval_duration_ns, None);
         assert_eq!(decoded.metrics.total_duration_ns, None);
         assert_eq!(decoded.metrics.load_duration_ns, None);
         assert_eq!(decoded.provenance, None);
@@ -5667,6 +5806,8 @@ mod tests {
             Some(0)
         );
         assert_eq!(first.metrics.eval_count, Some(first.usage.output_tokens));
+        assert!(first.metrics.prompt_eval_duration_ns.is_some());
+        assert!(first.metrics.eval_duration_ns.is_some());
         assert_eq!(
             first
                 .metrics
@@ -5724,6 +5865,8 @@ mod tests {
             Some(0)
         );
         assert_eq!(second.metrics.eval_count, Some(second.usage.output_tokens));
+        assert!(second.metrics.prompt_eval_duration_ns.is_some());
+        assert!(second.metrics.eval_duration_ns.is_some());
         assert_eq!(
             second
                 .metrics
