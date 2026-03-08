@@ -1445,6 +1445,38 @@ mod tests {
     }
 
     #[test]
+    fn cuda_capability_reports_backend_identity_without_amd_context()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cuda_backend_selection(),
+            &sample_embedding_descriptor(),
+            ProviderReadiness {
+                status: HealthStatus::Offline,
+                message: String::from(
+                    "cuda backend architecture is present but NVIDIA discovery and execution are not landed yet",
+                ),
+            },
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(encoded["runtime_backend"], json!("cuda"));
+        assert_eq!(
+            encoded["backend_selection"]["requested_backend"],
+            json!("cuda")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["effective_backend"],
+            json!("cuda")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["selected_device"]["device"]["kind"],
+            json!("Cuda")
+        );
+        assert_eq!(encoded["amd"], serde_json::Value::Null);
+        Ok(())
+    }
+
+    #[test]
     fn execution_receipt_round_trips() -> Result<(), Box<dyn std::error::Error>> {
         let request = EmbeddingRequest::new(
             "req-3",
@@ -2015,6 +2047,14 @@ mod tests {
         )
     }
 
+    fn cuda_backend_selection() -> BackendSelection {
+        BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("probe_only")],
+        )
+    }
+
     fn sample_amd_kfd_device() -> DeviceDescriptor {
         DeviceDescriptor {
             backend: String::from("amd_kfd"),
@@ -2050,6 +2090,20 @@ mod tests {
                     ],
                 },
             }),
+        }
+    }
+
+    fn sample_cuda_device() -> DeviceDescriptor {
+        DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("NVIDIA CUDA Test Device")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
         }
     }
 

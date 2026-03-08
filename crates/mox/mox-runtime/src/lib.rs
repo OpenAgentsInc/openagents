@@ -2182,7 +2182,7 @@ pub struct ExecutionResult<B> {
 mod tests {
     use std::collections::BTreeMap;
 
-    use mox_core::{BackendExtensionKind, DType, Device, Shape, TensorSpec};
+    use mox_core::{BackendExtensionKind, DType, Device, DeviceKind, Shape, TensorSpec};
     use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
     use serde_json::json;
 
@@ -2263,6 +2263,20 @@ mod tests {
 
         fn allocate(&mut self, spec: &TensorSpec) -> Result<Self::Buffer, RuntimeError> {
             Ok(MockBuffer { spec: spec.clone() })
+        }
+    }
+
+    fn sample_cuda_device() -> DeviceDescriptor {
+        DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("NVIDIA CUDA Test Device")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
         }
     }
 
@@ -2437,6 +2451,25 @@ mod tests {
             Some("metal backend degraded: legacy-family device")
         );
         Ok(())
+    }
+
+    #[test]
+    fn backend_selection_can_carry_cuda_backend_identity() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("probe_only")],
+        );
+        assert_eq!(selection.requested_backend, "cuda");
+        assert_eq!(selection.effective_backend, "cuda");
+        assert_eq!(
+            selection
+                .selected_device
+                .as_ref()
+                .map(|descriptor| descriptor.device.kind()),
+            Some(DeviceKind::Cuda)
+        );
+        assert_eq!(selection.selection_state, BackendSelectionState::Direct);
     }
 
     #[test]

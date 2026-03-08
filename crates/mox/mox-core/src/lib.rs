@@ -243,6 +243,8 @@ impl QuantizedBlockLayout {
 pub enum DeviceKind {
     /// Host CPU execution.
     Cpu,
+    /// NVIDIA CUDA execution.
+    Cuda,
     /// Apple Metal execution.
     Metal,
     /// AMD KFD execution.
@@ -255,6 +257,7 @@ impl fmt::Display for DeviceKind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let label = match self {
             Self::Cpu => "cpu",
+            Self::Cuda => "cuda",
             Self::Metal => "metal",
             Self::AmdKfd => "amd_kfd",
             Self::AmdUserspace => "amd_userspace",
@@ -764,7 +767,7 @@ fn is_permutation(order: &[usize]) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::{DType, Device, Layout, Shape, TensorSpec};
+    use super::{DType, Device, DeviceKind, Layout, Shape, TensorSpec};
 
     #[test]
     fn scalar_shape_counts_as_one_element() {
@@ -783,6 +786,13 @@ mod tests {
         assert_eq!(spec.dtype(), DType::F32);
         assert_eq!(spec.device().kind(), super::DeviceKind::Cpu);
         assert!(spec.layout().is_contiguous());
+    }
+
+    #[test]
+    fn cuda_device_kind_formats_stably() {
+        let device = Device::new(DeviceKind::Cuda, 0, None);
+        assert_eq!(device.kind(), DeviceKind::Cuda);
+        assert_eq!(device.to_string(), "cuda:0");
     }
 
     #[test]

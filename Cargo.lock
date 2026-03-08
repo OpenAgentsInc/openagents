@@ -4431,6 +4431,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "mox-backend-cuda"
+version = "0.1.0"
+dependencies = [
+ "mox-runtime",
+]
+
+[[package]]
 name = "mox-backend-metal"
 version = "0.1.0"
 dependencies = [

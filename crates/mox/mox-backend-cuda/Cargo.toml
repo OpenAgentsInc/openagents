@@ -1,0 +1,17 @@
+[package]
+name = "mox-backend-cuda"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "CUDA backend architecture and truthful readiness surface for Mox"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+mox-runtime = { path = "../mox-runtime" }
