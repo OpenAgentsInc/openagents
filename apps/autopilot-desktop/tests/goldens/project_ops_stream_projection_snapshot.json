@@ -1,19 +1,11 @@
 {
   "source_badge": "source: stream.pm.work_items.v1",
-  "project_source_badge": "source: stream.pm.projects.v1",
-  "team_source_badge": "source: stream.pm.teams.v1",
-  "active_team_key": "desktop",
-  "active_team_title": "Desktop",
-  "active_project_id": "desktop-pm",
-  "active_project_title": "Desktop Pm",
   "active_saved_view": "My Work",
   "selected_work_item_id": "wi-1",
   "checkpoints": {
     "stream.pm.activity_projection.v1": 7,
     "stream.pm.cycles.v1": 1,
-    "stream.pm.projects.v1": 0,
     "stream.pm.saved_views.v1": 0,
-    "stream.pm.teams.v1": 0,
     "stream.pm.work_items.v1": 7
   },
   "accepted_events": [
@@ -36,7 +28,6 @@
           "priority": "high",
           "assignee": "cdavid",
           "team_key": "desktop",
-          "project_id": "desktop-pm",
           "cycle_id": null,
           "parent_id": null,
           "area_tags": [
@@ -99,7 +90,6 @@
           "priority": "urgent",
           "assignee": "cdavid",
           "team_key": "desktop",
-          "project_id": "desktop-pm",
           "cycle_id": null,
           "parent_id": null,
           "area_tags": [
@@ -159,7 +149,6 @@
           "title": "Freeze PM sync contract",
           "description": "Keep the Phase 1 badge, grant, and checkpoint contract stable.",
           "priority": "urgent",
-          "project_id": null,
           "due_at_unix_ms": 1762500000000,
           "area_tags": [
             "pm",
@@ -189,48 +178,6 @@
       "blocked_reason": "Waiting on relay telemetry",
       "cycle_id": null,
       "updated_at_unix_ms": 1762100005000
-    }
-  ],
-  "board_lanes": [
-    {
-      "status": "backlog",
-      "work_item_count": 0,
-      "blocked_count": 0,
-      "work_item_ids": []
-    },
-    {
-      "status": "todo",
-      "work_item_count": 1,
-      "blocked_count": 0,
-      "work_item_ids": [
-        "wi-1"
-      ]
-    },
-    {
-      "status": "in_progress",
-      "work_item_count": 1,
-      "blocked_count": 1,
-      "work_item_ids": [
-        "wi-2"
-      ]
-    },
-    {
-      "status": "in_review",
-      "work_item_count": 0,
-      "blocked_count": 0,
-      "work_item_ids": []
-    },
-    {
-      "status": "done",
-      "work_item_count": 0,
-      "blocked_count": 0,
-      "work_item_ids": []
-    },
-    {
-      "status": "cancelled",
-      "work_item_count": 0,
-      "blocked_count": 0,
-      "work_item_ids": []
     }
   ],
   "detail": {

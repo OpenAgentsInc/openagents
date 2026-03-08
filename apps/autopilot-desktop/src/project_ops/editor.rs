@@ -1,6 +1,6 @@
 use super::schema::{
-    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsProjectId, ProjectOpsTeamKey,
-    ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
+    ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey, ProjectOpsWorkItem,
+    ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
 };
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -9,7 +9,6 @@ pub struct ProjectOpsQuickCreateDraft {
     pub description: String,
     pub priority: ProjectOpsPriority,
     pub team_key: ProjectOpsTeamKey,
-    pub project_id: Option<ProjectOpsProjectId>,
     pub area_tags: Vec<String>,
     pub due_at_unix_ms: Option<u64>,
 }
@@ -22,7 +21,6 @@ impl Default for ProjectOpsQuickCreateDraft {
             priority: ProjectOpsPriority::Medium,
             team_key: ProjectOpsTeamKey::new("desktop")
                 .unwrap_or_else(|_| ProjectOpsTeamKey::new("pm").expect("fallback team")),
-            project_id: None,
             area_tags: vec!["pm".to_string()],
             due_at_unix_ms: None,
         }
@@ -56,7 +54,6 @@ impl ProjectOpsQuickCreateDraft {
             priority: self.priority,
             assignee: None,
             team_key: self.team_key.clone(),
-            project_id: self.project_id.clone(),
             cycle_id: None,
             parent_id: None,
             area_tags: self.area_tags.clone(),
@@ -74,7 +71,6 @@ pub struct ProjectOpsDetailDraft {
     pub status: ProjectOpsWorkItemStatus,
     pub priority: ProjectOpsPriority,
     pub assignee: Option<String>,
-    pub project_id: Option<ProjectOpsProjectId>,
     pub cycle_id: Option<ProjectOpsCycleId>,
     pub parent_id: Option<ProjectOpsWorkItemId>,
     pub area_tags: Vec<String>,
@@ -94,7 +90,6 @@ impl ProjectOpsDetailDraft {
             status: work_item.status,
             priority: work_item.priority,
             assignee: work_item.assignee.clone(),
-            project_id: work_item.project_id.clone(),
             cycle_id: work_item.cycle_id.clone(),
             parent_id: work_item.parent_id.clone(),
             area_tags: work_item.area_tags.clone(),

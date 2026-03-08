@@ -42,7 +42,5 @@ As of 2026-03-05, the audit-driven Spacetime reintegration program backlog (`#29
 Project management follows the same rollout discipline:
 
 - Current PM work is Phase 1 only: stream-shaped local projections, shared checkpoints, and truthful `source: stream.pm.*` or `source: spacetime.sync.lifecycle` labels where applicable.
-- `stream.pm.projects.v1` project records, scoped defaults, and project planning context may exist locally in Phase 1, but they remain replay-safe local PM projection truth until a later ADR-approved live cutover.
-- `stream.pm.teams.v1` team records and team-scoped planning defaults may exist locally in Phase 1, but they remain replay-safe local PM projection truth until a later ADR-approved live cutover.
 - Live remote PM reducers/subscriptions are Phase 2 target behavior only for domains explicitly promoted by `docs/adr/ADR-0001-spacetime-domain-authority-matrix.md`.
 - Wallet, payout, trust, and policy truth remain outside PM even when PM later references those systems.

@@ -29,9 +29,9 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 - `mox-serve`: request/response and execution interfaces for served products.
 - `mox-provider`: capability, readiness, and receipt-facing types.
 - `mox-backend-cpu`: CPU reference backend.
-- `mox-backend-metal`: Metal backend placeholder.
-- `mox-backend-amd-kfd`: AMD KFD backend placeholder.
-- `mox-backend-amd-userspace`: AMD userspace backend placeholder.
+- `mox-backend-metal`: Metal backend with a first embeddings product path.
+- `mox-backend-amd-kfd`: AMD KFD discovery/readiness backend.
+- `mox-backend-amd-userspace`: AMD userspace discovery/readiness backend.
 
 ## Design Principles
 
@@ -45,5 +45,6 @@ engine can evolve without bleeding product-specific behavior into shared crates.
 
 ## Current Phase
 
-This subtree is in phase 0 bootstrap. The immediate goal is a compile-clean crate
-layout that can support a tested CPU-backed `mox.embeddings` smoke flow.
+This subtree now has a tested CPU product baseline, a first Metal-backed
+`mox.embeddings` path, and explicit AMD discovery/readiness groundwork.
+AMD execution support is still future work.

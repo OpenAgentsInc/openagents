@@ -1604,7 +1604,7 @@ checksum = "c07782be35f9e1140080c6b96f0d44b739e2278479f64e02fdab4e32dfd8b081"
 dependencies = [
  "bitflags 1.3.2",
  "core-foundation 0.9.4",
- "core-graphics-types",
+ "core-graphics-types 0.1.3",
  "foreign-types 0.5.0",
  "libc",
 ]
@@ -1617,6 +1617,17 @@ checksum = "45390e6114f68f718cc7a830514a96f903cccd70d02a8f6d9f643ac4ba45afaf"
 dependencies = [
  "bitflags 1.3.2",
  "core-foundation 0.9.4",
+ "libc",
+]
+
+[[package]]
+name = "core-graphics-types"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3d44a101f213f6c4cdc1853d4b78aef6db6bdfa3468798cc1d9912f4735013eb"
+dependencies = [
+ "bitflags 2.10.0",
+ "core-foundation 0.10.1",
  "libc",
 ]
 
@@ -2457,6 +2468,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d9c4f5dac5e15c24eb999c26181a6ca40b39fe946cbe4c263c7209467bc83af2"
 
 [[package]]
+name = "foldhash"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "77ce24cb58228fbb8aa041425bb1050850ac19177686ea6e0f41a70416f56fdb"
+
+[[package]]
 name = "font-types"
 version = "0.7.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3125,7 +3142,7 @@ version = "0.15.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9229cfe53dfd69f0609a49f65461bd93001ea1ef889cd5529dd176593f5338a1"
 dependencies = [
- "foldhash",
+ "foldhash 0.1.5",
 ]
 
 [[package]]
@@ -3133,6 +3150,13 @@ name = "hashbrown"
 version = "0.16.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "841d1cc9bed7f9236f321df977030373f4a4163ae1a7dbfe1a51a2c1a51d9100"
+dependencies = [
+ "allocator-api2",
+ "equivalent",
+ "foldhash 0.2.0",
+ "serde",
+ "serde_core",
+]
 
 [[package]]
 name = "hashlink"
@@ -4308,7 +4332,22 @@ checksum = "f569fb946490b5743ad69813cb19629130ce9374034abe31614a36402d18f99e"
 dependencies = [
  "bitflags 2.10.0",
  "block",
- "core-graphics-types",
+ "core-graphics-types 0.1.3",
+ "foreign-types 0.5.0",
+ "log",
+ "objc",
+ "paste",
+]
+
+[[package]]
+name = "metal"
+version = "0.33.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7047791b5bc903b8cd963014b355f71dc9864a9a0b727057676c1dcae5cbc15"
+dependencies = [
+ "bitflags 2.10.0",
+ "block",
+ "core-graphics-types 0.2.0",
  "foreign-types 0.5.0",
  "log",
  "objc",
@@ -4368,10 +4407,18 @@ dependencies = [
 [[package]]
 name = "mox-backend-amd-kfd"
 version = "0.1.0"
+dependencies = [
+ "mox-core",
+ "mox-runtime",
+]
 
 [[package]]
 name = "mox-backend-amd-userspace"
 version = "0.1.0"
+dependencies = [
+ "mox-core",
+ "mox-runtime",
+]
 
 [[package]]
 name = "mox-backend-cpu"
@@ -4386,6 +4433,14 @@ dependencies = [
 [[package]]
 name = "mox-backend-metal"
 version = "0.1.0"
+dependencies = [
+ "metal 0.33.0",
+ "mox-backend-cpu",
+ "mox-compiler",
+ "mox-core",
+ "mox-ir",
+ "mox-runtime",
+]
 
 [[package]]
 name = "mox-compiler"
@@ -4420,8 +4475,10 @@ version = "0.1.0"
 dependencies = [
  "hex",
  "mox-core",
+ "safetensors",
  "serde",
  "sha2",
+ "tempfile",
  "thiserror 2.0.17",
 ]
 
@@ -4430,6 +4487,7 @@ name = "mox-provider"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "mox-core",
  "mox-runtime",
  "mox-serve",
  "serde",
@@ -4444,6 +4502,7 @@ dependencies = [
  "mox-core",
  "mox-ir",
  "serde",
+ "serde_json",
  "thiserror 2.0.17",
 ]
 
@@ -4452,6 +4511,7 @@ name = "mox-serve"
 version = "0.1.0"
 dependencies = [
  "mox-backend-cpu",
+ "mox-backend-metal",
  "mox-compiler",
  "mox-core",
  "mox-ir",
@@ -4460,6 +4520,7 @@ dependencies = [
  "mox-runtime",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror 2.0.17",
 ]
 
@@ -7022,6 +7083,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a50f4cf475b65d88e057964e0e9bb1f0aa9bbb2036dc65c64596b42932536984"
 
 [[package]]
+name = "safetensors"
+version = "0.7.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "675656c1eabb620b921efea4f9199f97fc86e36dd6ffd1fbbe48d0f59a4987f5"
+dependencies = [
+ "hashbrown 0.16.1",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "salsa20"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9580,7 +9652,7 @@ dependencies = [
  "block",
  "bytemuck",
  "cfg_aliases",
- "core-graphics-types",
+ "core-graphics-types 0.1.3",
  "glow",
  "glutin_wgl_sys",
  "gpu-alloc",
@@ -9591,7 +9663,7 @@ dependencies = [
  "libc",
  "libloading",
  "log",
- "metal",
+ "metal 0.31.0",
  "naga",
  "ndk-sys 0.5.0+25.2.9519653",
  "objc",

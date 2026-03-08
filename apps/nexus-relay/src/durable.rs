@@ -213,10 +213,16 @@ async fn healthz(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 async fn proxy_upstream_metrics(State(state): State<AppState>) -> Response {
-    let request = Request::builder()
-        .uri("/metrics")
-        .body(Body::empty())
-        .expect("metrics request");
+    let request = match Request::builder().uri("/metrics").body(Body::empty()) {
+        Ok(request) => request,
+        Err(error) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("failed to build upstream metrics request: {error}"),
+            )
+                .into_response();
+        }
+    };
     proxy_upstream_request(&state, request, false).await
 }
 
@@ -369,7 +375,7 @@ fn client_message_to_upstream(message: Message) -> UpstreamMessage {
         Message::Pong(bytes) => UpstreamMessage::Pong(bytes.to_vec()),
         Message::Close(frame) => {
             UpstreamMessage::Close(frame.map(|frame| tungstenite::protocol::CloseFrame {
-                code: CloseCode::from(u16::from(frame.code)),
+                code: CloseCode::from(frame.code),
                 reason: frame.reason.to_string().into(),
             }))
         }
@@ -383,7 +389,7 @@ fn upstream_message_to_client(message: UpstreamMessage) -> Option<Message> {
         UpstreamMessage::Ping(bytes) => Some(Message::Ping(bytes.into())),
         UpstreamMessage::Pong(bytes) => Some(Message::Pong(bytes.into())),
         UpstreamMessage::Close(frame) => Some(Message::Close(frame.map(|frame| CloseFrame {
-            code: u16::from(frame.code).into(),
+            code: frame.code.into(),
             reason: frame.reason.to_string().into(),
         }))),
         UpstreamMessage::Frame(_) => None,
@@ -461,7 +467,9 @@ fn build_authority_config(
 ) -> Result<nexus_control::ServiceConfig, anyhow::Error> {
     let mut authority_config = nexus_control::ServiceConfig::from_env()
         .map_err(|error| anyhow::anyhow!("failed to load in-process authority config: {error}"))?;
-    authority_config.hosted_nexus_relay_url = config.public_ws_url.clone();
+    authority_config
+        .hosted_nexus_relay_url
+        .clone_from(&config.public_ws_url);
     Ok(authority_config)
 }
 

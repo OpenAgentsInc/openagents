@@ -20,3 +20,6 @@ mox-serve = { path = "../mox-serve" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 sha2 = { workspace = true }
+
+[dev-dependencies]
+mox-core = { path = "../mox-core" }

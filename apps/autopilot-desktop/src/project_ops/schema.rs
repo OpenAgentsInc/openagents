@@ -56,24 +56,6 @@ impl ProjectOpsTeamKey {
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
-pub struct ProjectOpsProjectId(String);
-
-impl ProjectOpsProjectId {
-    pub fn new(value: impl Into<String>) -> Result<Self, String> {
-        let value = value.into();
-        let normalized = value.trim();
-        if normalized.is_empty() {
-            return Err("project id must not be empty".to_string());
-        }
-        Ok(Self(normalized.to_string()))
-    }
-
-    pub fn as_str(&self) -> &str {
-        &self.0
-    }
-}
-
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ProjectOpsWorkItemStatus {
@@ -170,7 +152,6 @@ pub struct ProjectOpsWorkItem {
     pub priority: ProjectOpsPriority,
     pub assignee: Option<String>,
     pub team_key: ProjectOpsTeamKey,
-    pub project_id: Option<ProjectOpsProjectId>,
     pub cycle_id: Option<ProjectOpsCycleId>,
     pub parent_id: Option<ProjectOpsWorkItemId>,
     pub area_tags: Vec<String>,
@@ -237,9 +218,8 @@ impl ProjectOpsWorkItem {
 #[cfg(test)]
 mod tests {
     use super::{
-        PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority,
-        ProjectOpsProjectId, ProjectOpsTeamKey, ProjectOpsWorkItem, ProjectOpsWorkItemId,
-        ProjectOpsWorkItemStatus,
+        PROJECT_OPS_STEP0_SCHEMA_VERSION, ProjectOpsCycleId, ProjectOpsPriority, ProjectOpsTeamKey,
+        ProjectOpsWorkItem, ProjectOpsWorkItemId, ProjectOpsWorkItemStatus,
     };
 
     fn sample_work_item() -> ProjectOpsWorkItem {
@@ -251,7 +231,6 @@ mod tests {
             priority: ProjectOpsPriority::High,
             assignee: Some("cdavid".to_string()),
             team_key: ProjectOpsTeamKey::new("desktop").expect("team"),
-            project_id: Some(ProjectOpsProjectId::new("desktop-pm").expect("project")),
             cycle_id: Some(ProjectOpsCycleId::new("2026-w10").expect("cycle")),
             parent_id: None,
             area_tags: vec!["pm".to_string(), "desktop".to_string()],
@@ -348,10 +327,6 @@ mod tests {
         assert_eq!(
             ProjectOpsTeamKey::new(""),
             Err("team key must not be empty".to_string())
-        );
-        assert_eq!(
-            ProjectOpsProjectId::new(""),
-            Err("project id must not be empty".to_string())
         );
     }
 }
