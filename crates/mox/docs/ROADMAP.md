@@ -18,12 +18,33 @@ and push that issue's work immediately, comment on the GitHub issue with a
 concise summary of what landed when closing it, and then move directly to the
 next roadmap item. Do not stop partway through the roadmap unless blocked by a
 real external dependency or an explicit user instruction to pause or
-reprioritize. When implementation details are unclear or a
-backend/model/runtime pattern needs a concrete reference, the agent may inspect
-`~/code/candle` for Candle Rust implementations and `~/code/tinygrad` for
-Tinygrad implementations and `~/code/ollama` for Ollama source behavior and
-compatibility details and treat those trees as reference source material for
-how comparable pieces are built.
+reprioritize.
+
+Reference-first implementation rule: for any issue that touches externally
+defined semantics such as GGUF/GGML parsing, quantization or block layouts,
+tokenizer reconstruction, prompt rendering, sampler behavior, streaming,
+catalog behavior, lifecycle semantics, or backend/runtime truth, the agent must
+inspect the equivalent implementation and nearby tests in the most relevant
+reference tree before coding. Do not implement those paths from memory or from
+roadmap wording alone.
+
+Choose the primary reference intentionally:
+
+- start with `~/code/candle` for Rust GGUF/GGML loading, quantized tensor
+  storage, quantized block layout/decode rules, tokenizer reconstruction, and
+  backend/runtime structure
+- start with `~/code/tinygrad` for GGUF decode math cross-checks, KV-cache or
+  JIT/runtime-plan behavior, and execution-evidence patterns
+- start with `~/code/ollama` for API-visible behavior such as prompt
+  rendering, BOS/EOS defaults, truncation, streaming, catalog/lifecycle, and
+  error semantics
+
+Before coding, compare the planned Mox behavior against the chosen primary
+reference and note any intentional deviations. If the reference reveals tricky
+ordering, layout, shape, or fallback rules, encode those semantics in tests in
+the same issue. If multiple references disagree, follow the source of truth for
+the layer being implemented and say which reference won and why in the issue
+comment when closing the work.
 
 ## Objective
 
