@@ -11,8 +11,9 @@ use mox_core::QuantizationMode;
 use mox_core::{DType, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
-    Allocator, BackendName, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
-    ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
+    Allocator, BackendDegradedPolicy, BackendName, BackendSelection, BufferHandle,
+    DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult,
+    HealthStatus, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
 };
 #[cfg(target_os = "macos")]
 use mox_runtime::{QuantizationExecution, QuantizationLoadPath, QuantizationSupport};
@@ -384,15 +385,36 @@ impl MetalBackend {
         &self,
         supported_ops: &[&str],
     ) -> Result<BackendSelection, RuntimeError> {
+        let policy = ServedProductBackendPolicy::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
         match &self.state {
-            MetalBackendState::Available(backend) => Ok(BackendSelection::direct(
-                self.backend_name(),
-                Some(backend.descriptor.clone()),
-                supported_ops
+            MetalBackendState::Available(backend) => {
+                let supported_ops = supported_ops
                     .iter()
                     .map(|label| String::from(*label))
-                    .collect(),
-            )),
+                    .collect();
+                let health = self.health();
+                match health.status {
+                    HealthStatus::Ready => Ok(BackendSelection::direct_with_policy(
+                        self.backend_name(),
+                        Some(backend.descriptor.clone()),
+                        supported_ops,
+                        policy,
+                    )),
+                    HealthStatus::Degraded => Ok(BackendSelection::degraded(
+                        self.backend_name(),
+                        Some(backend.descriptor.clone()),
+                        supported_ops,
+                        policy,
+                        health.message,
+                    )),
+                    HealthStatus::Offline => Err(RuntimeError::Backend(format!(
+                        "metal backend unavailable: {}",
+                        health.message
+                    ))),
+                }
+            }
             MetalBackendState::Unavailable(health) => Err(RuntimeError::Backend(format!(
                 "metal backend unavailable: {}",
                 health.message
@@ -410,14 +432,22 @@ impl MetalBackend {
     where
         B: DeviceDiscovery + ?Sized,
     {
+        let policy = ServedProductBackendPolicy::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
         match &self.state {
             MetalBackendState::Available(_) => self.backend_selection(supported_ops),
-            MetalBackendState::Unavailable(health) => BackendSelection::fallback_to_backend(
+            MetalBackendState::Unavailable(health) => Ok(BackendSelection::fallback_with_policy(
                 self.backend_name(),
-                fallback_backend,
-                supported_ops,
+                fallback_backend.backend_name(),
+                fallback_backend.discover_devices()?.into_iter().next(),
+                supported_ops
+                    .iter()
+                    .map(|label| String::from(*label))
+                    .collect(),
+                policy,
                 format!("metal backend unavailable: {}", health.message),
-            ),
+            )),
         }
     }
 }
@@ -1534,7 +1564,10 @@ mod tests {
     use mox_compiler::compile_graph;
     use mox_core::{DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
-    use mox_runtime::{Allocator, BackendParityPolicy, HealthStatus};
+    use mox_runtime::{
+        Allocator, BackendDegradedPolicy, BackendParityPolicy, BackendSelectionState, HealthStatus,
+        ServedProductBackendPolicy,
+    };
 
     use super::{
         DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend, classify_support,
@@ -1633,6 +1666,17 @@ mod tests {
                 .map(|label| String::from(*label))
                 .collect::<Vec<_>>()
         );
+        assert_eq!(
+            selection.policy,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            selection.selection_state,
+            BackendSelectionState::CrossBackendFallback
+        );
+        assert!(selection.degraded_reason.is_none());
         Ok(())
     }
 
@@ -1691,6 +1735,28 @@ mod tests {
                 assert_eq!(selection.effective_backend, "metal");
                 assert!(selection.selected_device.is_some());
                 assert!(selection.fallback_reason.is_none());
+                assert_eq!(
+                    selection.policy,
+                    ServedProductBackendPolicy::fallback_to_compatible_backend(
+                        BackendDegradedPolicy::AllowSameBackend
+                    )
+                );
+                match backend.health().status {
+                    HealthStatus::Ready => {
+                        assert_eq!(selection.selection_state, BackendSelectionState::Direct);
+                        assert!(selection.degraded_reason.is_none());
+                    }
+                    HealthStatus::Degraded => {
+                        assert_eq!(
+                            selection.selection_state,
+                            BackendSelectionState::SameBackendDegraded
+                        );
+                        assert!(selection.degraded_reason.is_some());
+                    }
+                    HealthStatus::Offline => {
+                        panic!("backend_selection should not succeed when Metal is offline");
+                    }
+                }
             }
             Err(error) => {
                 assert!(error.to_string().starts_with("metal backend unavailable: "));
@@ -1699,6 +1765,17 @@ mod tests {
                 assert_eq!(fallback.effective_backend, "cpu");
                 assert!(fallback.selected_device.is_some());
                 assert!(fallback.fallback_reason.is_some());
+                assert_eq!(
+                    fallback.policy,
+                    ServedProductBackendPolicy::fallback_to_compatible_backend(
+                        BackendDegradedPolicy::AllowSameBackend
+                    )
+                );
+                assert_eq!(
+                    fallback.selection_state,
+                    BackendSelectionState::CrossBackendFallback
+                );
+                assert!(fallback.degraded_reason.is_none());
             }
         }
         Ok(())

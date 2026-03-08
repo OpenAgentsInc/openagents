@@ -1003,7 +1003,13 @@ mod tests {
                         "feature_flags": ["host_memory"]
                     },
                     "supported_ops": ["input", "constant", "matmul", "add"],
-                    "fallback_reason": null
+                    "policy": {
+                        "unavailable": "refuse",
+                        "degraded": "allow_same_backend"
+                    },
+                    "selection_state": "direct",
+                    "fallback_reason": null,
+                    "degraded_reason": null
                 },
                 "model_id": "smoke-byte-embed-v0",
                 "model_family": "smoke",
@@ -1078,7 +1084,13 @@ mod tests {
                         "feature_flags": ["host_memory"]
                     },
                     "supported_ops": ["input", "constant", "matmul", "add"],
-                    "fallback_reason": null
+                    "policy": {
+                        "unavailable": "refuse",
+                        "degraded": "allow_same_backend"
+                    },
+                    "selection_state": "direct",
+                    "fallback_reason": null,
+                    "degraded_reason": null
                 },
                 "model_id": "fixture-word-decoder-v0",
                 "model_family": "fixture_decoder",
@@ -1162,6 +1174,17 @@ mod tests {
         assert_eq!(
             encoded["backend_selection"]["fallback_reason"],
             json!("metal backend unavailable: no supported Metal device")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["policy"],
+            json!({
+                "unavailable": "fallback_to_compatible_backend",
+                "degraded": "allow_same_backend"
+            })
+        );
+        assert_eq!(
+            encoded["backend_selection"]["selection_state"],
+            json!("cross_backend_fallback")
         );
         Ok(())
     }

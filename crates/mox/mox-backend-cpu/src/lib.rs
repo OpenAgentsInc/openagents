@@ -461,7 +461,10 @@ mod tests {
 
     use mox_core::{DType, Device, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
-    use mox_runtime::{Allocator, BufferHandle, DeviceDiscovery, HealthStatus, RuntimeError};
+    use mox_runtime::{
+        Allocator, BackendSelectionState, BufferHandle, DeviceDiscovery, HealthStatus,
+        RuntimeError, ServedProductBackendPolicy,
+    };
 
     use super::CpuBackend;
 
@@ -515,7 +518,13 @@ mod tests {
                 String::from("add")
             ]
         );
+        assert_eq!(
+            selection.policy,
+            ServedProductBackendPolicy::same_backend_only()
+        );
+        assert_eq!(selection.selection_state, BackendSelectionState::Direct);
         assert!(selection.fallback_reason.is_none());
+        assert!(selection.degraded_reason.is_none());
         assert_eq!(backend.health().status, HealthStatus::Ready);
         Ok(())
     }
