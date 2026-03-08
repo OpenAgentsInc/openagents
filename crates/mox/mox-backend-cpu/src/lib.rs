@@ -1,18 +1,23 @@
 //! CPU backend for Mox.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 
 use mox_compiler::compile_graph;
 use mox_core::{DType, Device, Shape, TensorData, TensorId, TensorSpec};
 use mox_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use mox_runtime::{
-    Allocator, BackendName, BackendSelection, BufferHandle, DeviceDescriptor, DeviceDiscovery,
-    ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, QuantizationExecution,
+    Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
+    BackendName, BackendRuntimeResources, BackendSelection, BufferHandle, DeviceDescriptor,
+    DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus,
+    KernelCachePolicy, KernelCacheReport, KernelCacheState, QuantizationExecution,
     QuantizationLoadPath, QuantizationSupport, RuntimeError, RuntimeHealth,
 };
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "CPU reference backend";
+
+const CPU_POOL_MAX_CACHED_BUFFERS: usize = 64;
+const CPU_POOL_MAX_CACHED_BYTES: u64 = 8 * 1024 * 1024;
 
 /// Host-resident tensor buffer for CPU execution.
 #[derive(Clone, Debug, PartialEq)]
@@ -107,14 +112,18 @@ impl BufferHandle for CpuBuffer {
 }
 
 /// CPU reference backend implementation.
-#[derive(Clone, Debug, Default)]
-pub struct CpuBackend;
+#[derive(Clone, Debug)]
+pub struct CpuBackend {
+    pool: CpuAllocatorPool,
+}
 
 impl CpuBackend {
     /// Creates a CPU backend.
     #[must_use]
-    pub const fn new() -> Self {
-        Self
+    pub fn new() -> Self {
+        Self {
+            pool: CpuAllocatorPool::new(cpu_allocator_pool_policy()),
+        }
     }
 
     /// Creates a host input buffer on the default CPU device.
@@ -320,6 +329,94 @@ impl CpuBackend {
     }
 }
 
+impl Default for CpuBackend {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CpuAllocatorPool {
+    policy: AllocatorPoolPolicy,
+    cached: HashMap<TensorSpec, Vec<Vec<f32>>>,
+    state: AllocatorPoolState,
+}
+
+impl CpuAllocatorPool {
+    fn new(policy: AllocatorPoolPolicy) -> Self {
+        Self {
+            policy,
+            cached: HashMap::new(),
+            state: AllocatorPoolState::default(),
+        }
+    }
+
+    fn allocate(&mut self, spec: &TensorSpec) -> CpuBuffer {
+        if self.policy.mode == AllocatorPoolMode::ExactTensorSpec {
+            if let Some(entries) = self.cached.get_mut(spec) {
+                if let Some(mut data) = entries.pop() {
+                    if entries.is_empty() {
+                        self.cached.remove(spec);
+                    }
+                    data.fill(0.0);
+                    self.state.cached_buffers = self.state.cached_buffers.saturating_sub(1);
+                    self.state.cached_bytes = self
+                        .state
+                        .cached_bytes
+                        .saturating_sub(buffer_bytes_from_len(data.len()));
+                    return CpuBuffer {
+                        spec: spec.clone(),
+                        data,
+                    };
+                }
+            }
+        }
+        CpuBuffer::zeros(spec)
+    }
+
+    fn recycle(&mut self, buffer: CpuBuffer) {
+        if self.policy.mode != AllocatorPoolMode::ExactTensorSpec {
+            return;
+        }
+        let bytes = buffer_bytes_from_len(buffer.data.len());
+        if self.state.cached_buffers >= self.policy.max_cached_buffers
+            || self.state.cached_bytes.saturating_add(bytes) > self.policy.max_cached_bytes
+        {
+            return;
+        }
+        self.cached
+            .entry(buffer.spec)
+            .or_default()
+            .push(buffer.data);
+        self.state.cached_buffers += 1;
+        self.state.cached_bytes = self.state.cached_bytes.saturating_add(bytes);
+    }
+
+    fn report(&self) -> AllocatorPoolReport {
+        AllocatorPoolReport {
+            policy: self.policy.clone(),
+            state: self.state.clone(),
+        }
+    }
+}
+
+fn cpu_allocator_pool_policy() -> AllocatorPoolPolicy {
+    AllocatorPoolPolicy::exact_tensor_spec(CPU_POOL_MAX_CACHED_BUFFERS, CPU_POOL_MAX_CACHED_BYTES)
+}
+
+fn cpu_kernel_cache_report() -> KernelCacheReport {
+    KernelCacheReport {
+        policy: KernelCachePolicy::disabled(),
+        state: KernelCacheState::default(),
+    }
+}
+
+fn buffer_bytes_from_len(len: usize) -> u64 {
+    len.saturating_mul(std::mem::size_of::<f32>())
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
 impl DeviceDiscovery for CpuBackend {
     fn backend_name(&self) -> BackendName {
         "cpu"
@@ -356,13 +453,21 @@ impl DeviceDiscovery for CpuBackend {
             message: String::from("cpu backend ready"),
         }
     }
+
+    fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        Some(BackendRuntimeResources {
+            allocator_pool: self.pool.report(),
+            kernel_cache: cpu_kernel_cache_report(),
+            device_memory_budget: None,
+        })
+    }
 }
 
 impl Allocator for CpuBackend {
     type Buffer = CpuBuffer;
 
     fn allocate(&mut self, spec: &TensorSpec) -> Result<Self::Buffer, RuntimeError> {
-        Ok(CpuBuffer::zeros(spec))
+        Ok(self.pool.allocate(spec))
     }
 }
 
@@ -380,11 +485,21 @@ impl ExecutionBackend for CpuBackend {
         }
 
         let mut outputs = BTreeMap::new();
+        let output_ids = plan
+            .outputs
+            .iter()
+            .copied()
+            .collect::<std::collections::HashSet<_>>();
         for output in &plan.outputs {
-            let Some(buffer) = values.get(output).cloned() else {
+            let Some(buffer) = values.remove(output) else {
                 return Err(RuntimeError::MissingInput(*output));
             };
             outputs.insert(*output, buffer);
+        }
+        for (tensor_id, buffer) in values {
+            if !output_ids.contains(&tensor_id) {
+                self.pool.recycle(buffer);
+            }
         }
 
         Ok(ExecutionResult {
@@ -462,8 +577,8 @@ mod tests {
     use mox_core::{DType, Device, Shape, TensorSpec};
     use mox_ir::GraphBuilder;
     use mox_runtime::{
-        Allocator, BackendSelectionState, BufferHandle, DeviceDiscovery, HealthStatus,
-        RuntimeError, ServedProductBackendPolicy,
+        Allocator, AllocatorPoolMode, BackendSelectionState, BufferHandle, DeviceDiscovery,
+        HealthStatus, RuntimeError, ServedProductBackendPolicy,
     };
 
     use super::CpuBackend;
@@ -525,6 +640,16 @@ mod tests {
         assert_eq!(selection.selection_state, BackendSelectionState::Direct);
         assert!(selection.fallback_reason.is_none());
         assert!(selection.degraded_reason.is_none());
+        let runtime_resources = selection
+            .runtime_resources
+            .as_ref()
+            .expect("cpu runtime resources");
+        assert_eq!(
+            runtime_resources.allocator_pool.policy.mode,
+            AllocatorPoolMode::ExactTensorSpec
+        );
+        assert_eq!(runtime_resources.kernel_cache.policy.enabled, false);
+        assert!(runtime_resources.device_memory_budget.is_none());
         assert_eq!(backend.health().status, HealthStatus::Ready);
         Ok(())
     }
@@ -634,6 +759,48 @@ mod tests {
         let buffer = backend.allocate(&spec)?;
         assert_eq!(buffer.as_f32_slice(), &[0.0, 0.0, 0.0, 0.0]);
         assert_eq!(buffer.spec(), &spec);
+        Ok(())
+    }
+
+    #[test]
+    fn cpu_backend_reuses_intermediate_buffers_via_allocator_pool() -> Result<(), RuntimeError> {
+        let mut builder = GraphBuilder::new(Device::cpu());
+        let input = builder.input("input", Shape::new(vec![2, 2]), DType::F32);
+        let weights = builder
+            .constant_f32(Shape::new(vec![2, 2]), vec![1.0, 2.0, 3.0, 4.0])
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let projected = builder
+            .matmul(&input, &weights)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![projected.clone()]);
+
+        let mut backend = CpuBackend::new();
+        let mut inputs = BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![2, 2]), vec![1.0, 0.0, 0.0, 1.0])?,
+        );
+        let _ = backend.compile_and_execute(&graph, &inputs)?;
+
+        let before = backend
+            .runtime_resources()
+            .expect("cpu runtime resources")
+            .allocator_pool
+            .state
+            .cached_buffers;
+        assert!(before >= 1);
+
+        let spec = TensorSpec::new(Shape::new(vec![2, 2]), DType::F32, Device::cpu());
+        let buffer = backend.allocate(&spec)?;
+        let after = backend
+            .runtime_resources()
+            .expect("cpu runtime resources")
+            .allocator_pool
+            .state
+            .cached_buffers;
+
+        assert!(after < before);
+        assert_eq!(buffer.as_f32_slice(), &[0.0, 0.0, 0.0, 0.0]);
         Ok(())
     }
 }

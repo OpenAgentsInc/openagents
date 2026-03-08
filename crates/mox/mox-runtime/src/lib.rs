@@ -178,6 +178,163 @@ pub struct DeviceDescriptor {
     pub amd_metadata: Option<AmdDeviceMetadata>,
 }
 
+/// Exact allocator-pool reuse posture for one backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllocatorPoolMode {
+    /// Do not retain freed buffers for reuse.
+    Disabled,
+    /// Reuse only buffers whose tensor spec matches exactly.
+    ExactTensorSpec,
+}
+
+/// Explicit allocator-pool policy for one backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllocatorPoolPolicy {
+    /// Reuse posture for returned buffers.
+    pub mode: AllocatorPoolMode,
+    /// Maximum cached buffers retained by the pool.
+    pub max_cached_buffers: usize,
+    /// Maximum cached bytes retained by the pool.
+    pub max_cached_bytes: u64,
+}
+
+impl AllocatorPoolPolicy {
+    /// Creates a disabled allocator pool policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self {
+            mode: AllocatorPoolMode::Disabled,
+            max_cached_buffers: 0,
+            max_cached_bytes: 0,
+        }
+    }
+
+    /// Creates an exact-spec reuse policy with explicit bounds.
+    #[must_use]
+    pub const fn exact_tensor_spec(max_cached_buffers: usize, max_cached_bytes: u64) -> Self {
+        Self {
+            mode: AllocatorPoolMode::ExactTensorSpec,
+            max_cached_buffers,
+            max_cached_bytes,
+        }
+    }
+}
+
+/// Current allocator-pool occupancy for one backend.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllocatorPoolState {
+    /// Number of buffers currently retained for reuse.
+    pub cached_buffers: usize,
+    /// Number of bytes currently retained for reuse.
+    pub cached_bytes: u64,
+}
+
+/// Explicit allocator-pool policy plus current occupancy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllocatorPoolReport {
+    /// Allocator-pool policy for the backend.
+    pub policy: AllocatorPoolPolicy,
+    /// Current allocator-pool occupancy.
+    pub state: AllocatorPoolState,
+}
+
+/// Explicit kernel-cache policy for one backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KernelCachePolicy {
+    /// Whether compiled kernels are cached across requests.
+    pub enabled: bool,
+    /// Maximum cache entries retained by the backend.
+    pub max_cached_entries: usize,
+    /// Maximum cache bytes reserved by policy, when bounded.
+    pub max_cached_bytes: Option<u64>,
+}
+
+impl KernelCachePolicy {
+    /// Creates a disabled kernel-cache policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self {
+            enabled: false,
+            max_cached_entries: 0,
+            max_cached_bytes: Some(0),
+        }
+    }
+
+    /// Creates a bounded enabled kernel-cache policy.
+    #[must_use]
+    pub const fn bounded(max_cached_entries: usize, max_cached_bytes: Option<u64>) -> Self {
+        Self {
+            enabled: true,
+            max_cached_entries,
+            max_cached_bytes,
+        }
+    }
+}
+
+/// Current kernel-cache occupancy for one backend.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KernelCacheState {
+    /// Number of compiled cache entries retained by the backend.
+    pub cached_entries: usize,
+    /// Estimated bytes retained by the cache.
+    pub cached_bytes: u64,
+}
+
+/// Explicit kernel-cache policy plus current occupancy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KernelCacheReport {
+    /// Kernel-cache policy for the backend.
+    pub policy: KernelCachePolicy,
+    /// Current kernel-cache occupancy.
+    pub state: KernelCacheState,
+}
+
+/// Backend-visible device-memory budget reserved around allocator and kernel caches.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceMemoryBudget {
+    /// Total device-visible memory budget when the backend can report one.
+    pub total_bytes: Option<u64>,
+    /// Bytes reserved by allocator-pool policy.
+    pub allocator_pool_budget_bytes: u64,
+    /// Bytes reserved by kernel-cache policy.
+    pub kernel_cache_budget_bytes: u64,
+    /// Remaining bytes available for execution/model residency after reserved budgets, when known.
+    pub available_execution_bytes: Option<u64>,
+}
+
+impl DeviceMemoryBudget {
+    /// Creates a device-memory budget from explicit total and reserved budgets.
+    #[must_use]
+    pub fn new(
+        total_bytes: Option<u64>,
+        allocator_pool_budget_bytes: u64,
+        kernel_cache_budget_bytes: u64,
+    ) -> Self {
+        let reserved = allocator_pool_budget_bytes.saturating_add(kernel_cache_budget_bytes);
+        let available_execution_bytes =
+            total_bytes.and_then(|total_bytes| total_bytes.checked_sub(reserved));
+        Self {
+            total_bytes,
+            allocator_pool_budget_bytes,
+            kernel_cache_budget_bytes,
+            available_execution_bytes,
+        }
+    }
+}
+
+/// Explicit backend resource state carried into capability and receipt surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendRuntimeResources {
+    /// Explicit allocator-pool policy and occupancy.
+    pub allocator_pool: AllocatorPoolReport,
+    /// Explicit kernel-cache policy and occupancy.
+    pub kernel_cache: KernelCacheReport,
+    /// Device-memory budget reserved around those runtime-owned caches, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_memory_budget: Option<DeviceMemoryBudget>,
+}
+
 /// Distinct AMD runtime mode.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1333,6 +1490,9 @@ pub struct BackendSelection {
     pub effective_backend: String,
     /// Selected device for the effective backend, when one exists.
     pub selected_device: Option<DeviceDescriptor>,
+    /// Explicit runtime-owned allocator/kernel-cache/device-budget state for the effective backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_resources: Option<BackendRuntimeResources>,
     /// Supported op labels for the advertised product path.
     pub supported_ops: Vec<String>,
     /// Explicit served-product fallback and degraded-state policy.
@@ -1374,6 +1534,7 @@ impl BackendSelection {
             requested_backend: backend.clone(),
             effective_backend: backend,
             selected_device,
+            runtime_resources: None,
             supported_ops,
             policy,
             selection_state: BackendSelectionState::Direct,
@@ -1417,6 +1578,7 @@ impl BackendSelection {
             requested_backend: requested_backend.into(),
             effective_backend: effective_backend.into(),
             selected_device,
+            runtime_resources: None,
             supported_ops,
             policy,
             selection_state: BackendSelectionState::CrossBackendFallback,
@@ -1439,6 +1601,7 @@ impl BackendSelection {
             requested_backend: backend.clone(),
             effective_backend: backend,
             selected_device,
+            runtime_resources: None,
             supported_ops,
             policy,
             selection_state: BackendSelectionState::SameBackendDegraded,
@@ -1459,7 +1622,8 @@ impl BackendSelection {
                 .iter()
                 .map(|label| String::from(*label))
                 .collect(),
-        ))
+        )
+        .with_runtime_resources(backend.runtime_resources()))
     }
 
     /// Creates a fallback selection to an effective backend discovered at runtime.
@@ -1484,7 +1648,18 @@ impl BackendSelection {
                 BackendDegradedPolicy::AllowSameBackend,
             ),
             fallback_reason,
-        ))
+        )
+        .with_runtime_resources(effective_backend.runtime_resources()))
+    }
+
+    /// Attaches explicit backend runtime resource state.
+    #[must_use]
+    pub fn with_runtime_resources(
+        mut self,
+        runtime_resources: Option<BackendRuntimeResources>,
+    ) -> Self {
+        self.runtime_resources = runtime_resources;
+        self
     }
 }
 
@@ -1658,6 +1833,11 @@ pub trait DeviceDiscovery {
 
     /// Returns current runtime health.
     fn health(&self) -> RuntimeHealth;
+
+    /// Returns explicit allocator/kernel-cache/device-budget state for the effective backend.
+    fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        None
+    }
 }
 
 /// Trait for backend allocators.
@@ -1700,12 +1880,14 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        AdmissionRefusalReason, Allocator, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding,
-        AmdOptInStatus, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile,
-        AmdRuntimeMode, AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendSelection,
-        BackendSelectionState, BufferHandle, BufferResidency, BufferStorageKind,
-        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, ExecutionBackend,
-        ExecutionMetrics, ExecutionResult, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
+        AdmissionRefusalReason, Allocator, AllocatorPoolPolicy, AllocatorPoolReport,
+        AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata, AmdDriverBinding, AmdOptInStatus,
+        AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
+        AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy, BackendRuntimeResources,
+        BackendSelection, BackendSelectionState, BufferHandle, BufferResidency, BufferStorageKind,
+        DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery, DeviceMemoryBudget,
+        ExecutionBackend, ExecutionMetrics, ExecutionResult, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
         KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState,
         LoadedModelResidency, LoadedModelState, MemoryBudget, MemoryResidencySnapshot,
         ModelAdmissionDecision, ModelArtifactBlobKind, ModelArtifactStorage,
@@ -2518,6 +2700,43 @@ mod tests {
                     "message": "amdgpu is still loaded; userspace mode not yet ready"
                 }
             })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn backend_runtime_resources_serialize_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let selection = BackendSelection::direct("metal", None, vec![String::from("matmul")])
+            .with_runtime_resources(Some(BackendRuntimeResources {
+                allocator_pool: AllocatorPoolReport {
+                    policy: AllocatorPoolPolicy::exact_tensor_spec(8, 1024),
+                    state: AllocatorPoolState {
+                        cached_buffers: 2,
+                        cached_bytes: 256,
+                    },
+                },
+                kernel_cache: KernelCacheReport {
+                    policy: KernelCachePolicy::bounded(1, Some(128)),
+                    state: KernelCacheState {
+                        cached_entries: 1,
+                        cached_bytes: 64,
+                    },
+                },
+                device_memory_budget: Some(DeviceMemoryBudget::new(Some(4096), 1024, 128)),
+            }));
+
+        let value = serde_json::to_value(selection)?;
+        assert_eq!(
+            value["runtime_resources"]["allocator_pool"]["policy"]["max_cached_buffers"],
+            json!(8)
+        );
+        assert_eq!(
+            value["runtime_resources"]["kernel_cache"]["state"]["cached_entries"],
+            json!(1)
+        );
+        assert_eq!(
+            value["runtime_resources"]["device_memory_budget"]["available_execution_bytes"],
+            json!(2944)
         );
         Ok(())
     }
