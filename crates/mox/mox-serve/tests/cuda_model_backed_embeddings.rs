@@ -74,6 +74,7 @@ fn cuda_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_
 
             assert_eq!(capability.product_id, "mox.embeddings");
             assert_eq!(capability.runtime_backend, "cuda");
+            assert_eq!(capability.validation.claim_id, "cuda.embeddings.nvidia");
             assert_eq!(capability.backend_selection.requested_backend, "cuda");
             assert_eq!(capability.backend_selection.effective_backend, "cuda");
             assert!(capability.backend_selection.selected_device.is_some());
@@ -113,6 +114,7 @@ fn cuda_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_
 
             assert_eq!(receipt.status, ReceiptStatus::Succeeded);
             assert_eq!(receipt.runtime_backend, "cuda");
+            assert_eq!(receipt.validation.claim_id, "cuda.embeddings.nvidia");
             assert_eq!(receipt.backend_selection.effective_backend, "cuda");
             assert_eq!(receipt.model_family, ByteProjectionEmbedder::MODEL_FAMILY);
             assert_eq!(receipt.model_revision, "v1");

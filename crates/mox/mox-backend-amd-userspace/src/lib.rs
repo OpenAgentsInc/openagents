@@ -317,7 +317,10 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-    use mox_runtime::{AmdOptInStatus, AmdRuntimeMode};
+    use mox_runtime::{
+        AmdOptInStatus, AmdRuntimeMode, DeviceDiscovery, ValidationCoverage,
+        validation_reference_for_backend_probe,
+    };
 
     use super::{AmdUserspaceBackend, HealthStatus, parse_opt_in_value, userspace_health};
 
@@ -368,7 +371,10 @@ mod tests {
     fn amd_userspace_report_is_self_consistent_on_linux() -> Result<(), mox_runtime::RuntimeError> {
         let backend = AmdUserspaceBackend::new();
         let report = backend.discovery_report()?;
+        let validation = validation_reference_for_backend_probe(backend.backend_name());
         assert_eq!(report.mode, AmdRuntimeMode::Userspace);
+        assert_eq!(validation.claim_id, "amd_userspace.refusal");
+        assert_eq!(validation.coverage, ValidationCoverage::ExplicitRefusal);
         match report.opt_in {
             AmdOptInStatus::Disabled => assert_eq!(report.health.status, HealthStatus::Offline),
             AmdOptInStatus::Enabled => match report.health.status {

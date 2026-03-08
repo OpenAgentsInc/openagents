@@ -263,7 +263,10 @@ mod platform {
 
 #[cfg(test)]
 mod tests {
-    use mox_runtime::{AmdOptInStatus, AmdRuntimeMode};
+    use mox_runtime::{
+        AmdOptInStatus, AmdRuntimeMode, DeviceDiscovery, ValidationCoverage,
+        validation_reference_for_backend_probe,
+    };
 
     use super::{AmdKfdBackend, HealthStatus, kfd_health};
 
@@ -304,8 +307,11 @@ mod tests {
     fn amd_kfd_report_is_self_consistent_on_linux() -> Result<(), mox_runtime::RuntimeError> {
         let backend = AmdKfdBackend::new();
         let report = backend.discovery_report()?;
+        let validation = validation_reference_for_backend_probe(backend.backend_name());
         assert_eq!(report.mode, AmdRuntimeMode::Kfd);
         assert_eq!(report.opt_in, AmdOptInStatus::NotRequired);
+        assert_eq!(validation.claim_id, "amd_kfd.discovery");
+        assert_eq!(validation.coverage, ValidationCoverage::DiscoveryReadiness);
         match report.health.status {
             HealthStatus::Ready => assert!(!report.devices.is_empty()),
             HealthStatus::Degraded => assert!(!report.devices.is_empty()),

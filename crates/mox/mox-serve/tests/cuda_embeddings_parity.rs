@@ -4,7 +4,9 @@ use mox_backend_cpu::CpuBackend;
 use mox_backend_cuda::{CudaBackend, EMBEDDINGS_SUPPORTED_OPS};
 use mox_core::{DType, Device, QuantizationMode, Shape, TensorId};
 use mox_ir::{Graph, GraphBuilder};
-use mox_runtime::{BackendParityPolicy, compare_embedding_vectors};
+use mox_runtime::{
+    BackendParityPolicy, compare_embedding_vectors, validation_reference_for_served_product,
+};
 use mox_serve::{
     ByteProjectionEmbedder, CpuModelEmbeddingsService, EmbeddingNormalization, EmbeddingRequest,
     EmbeddingsExecutor,
@@ -38,6 +40,10 @@ fn cuda_model_backed_embeddings_match_cpu_baseline_within_tolerance_or_report_ex
         assert_eq!(fallback.requested_backend, "cuda");
         assert_eq!(fallback.effective_backend, "cpu");
         assert!(fallback.fallback_reason.is_some());
+        assert_eq!(
+            validation_reference_for_served_product(&fallback, "mox.embeddings").claim_id,
+            "cuda.refusal.unavailable"
+        );
         return Ok(());
     };
 

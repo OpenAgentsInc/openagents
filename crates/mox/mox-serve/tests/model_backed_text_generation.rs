@@ -64,6 +64,10 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
 
     assert_eq!(capability.product_id, "mox.text_generation");
     assert_eq!(capability.runtime_backend, "cpu");
+    assert_eq!(
+        capability.validation.claim_id,
+        "cpu.text_generation.reference"
+    );
     assert_eq!(capability.backend_selection.requested_backend, "cpu");
     assert!(capability.backend_selection.fallback_reason.is_none());
     assert_eq!(capability.model_id, ArtifactWordDecoder::MODEL_ID);
@@ -83,6 +87,7 @@ fn model_backed_text_generation_flow_returns_response_capability_and_receipt()
     assert!(capability_json.contains("\"weight_bundle\""));
 
     assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+    assert_eq!(receipt.validation.claim_id, "cpu.text_generation.reference");
     assert_eq!(receipt.backend_selection.effective_backend, "cpu");
     assert_eq!(receipt.model_id, ArtifactWordDecoder::MODEL_ID);
     assert_eq!(receipt.model_family, ArtifactWordDecoder::MODEL_FAMILY);

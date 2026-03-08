@@ -53,6 +53,10 @@ fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or
 
             assert_eq!(capability.product_id, "mox.embeddings");
             assert_eq!(capability.runtime_backend, "metal");
+            assert_eq!(
+                capability.validation.claim_id,
+                "metal.embeddings.apple_silicon"
+            );
             assert_eq!(capability.backend_selection.requested_backend, "metal");
             assert_eq!(capability.backend_selection.effective_backend, "metal");
             assert!(capability.backend_selection.selected_device.is_some());
@@ -77,6 +81,10 @@ fn metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or
 
             assert_eq!(receipt.status, ReceiptStatus::Succeeded);
             assert_eq!(receipt.runtime_backend, "metal");
+            assert_eq!(
+                receipt.validation.claim_id,
+                "metal.embeddings.apple_silicon"
+            );
             assert_eq!(receipt.backend_selection.effective_backend, "metal");
             assert_eq!(receipt.model_family, ByteProjectionEmbedder::MODEL_FAMILY);
             assert_eq!(receipt.model_revision, "v1");

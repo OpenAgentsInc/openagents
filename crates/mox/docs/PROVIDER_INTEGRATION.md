@@ -31,10 +31,16 @@ For the phase 0 smoke path that means at least:
 
 - backend family = `mox`
 - runtime backend = `cpu`
+- validation matrix reference for the current support claim
 - model identifier
 - output dimension/count
 - success/failure state
 - timing metadata
+
+The canonical validation profile is
+[HARDWARE_VALIDATION_MATRIX.md](./HARDWARE_VALIDATION_MATRIX.md). Capability
+envelopes and receipts should point at one claim in that matrix or explicitly
+serialize `coverage = not_yet_validated`.
 
 ## Out of Scope
 
