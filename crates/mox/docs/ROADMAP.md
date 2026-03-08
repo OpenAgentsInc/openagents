@@ -17,8 +17,9 @@ roadmap unless blocked by a real external dependency or an explicit user
 instruction to pause or reprioritize. When implementation details are unclear
 or a backend/model/runtime pattern needs a concrete reference, the agent may
 inspect `~/code/candle` for Candle Rust implementations and `~/code/tinygrad`
-for Tinygrad implementations and treat those trees as reference source material
-for how comparable pieces are built.
+for Tinygrad implementations and `~/code/ollama` for Ollama source behavior and
+compatibility details and treat those trees as reference source material for
+how comparable pieces are built.
 
 ## Objective
 
