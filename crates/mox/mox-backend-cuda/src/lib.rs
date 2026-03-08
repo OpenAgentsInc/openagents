@@ -34,6 +34,10 @@ const CUDA_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
 /// milestone.
 pub const SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "add"];
 
+/// Dense op surface currently covered for the first CUDA-backed embeddings
+/// product path.
+pub const EMBEDDINGS_SUPPORTED_OPS: &[&str] = SUPPORTED_OPS;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct NvidiaInventoryRow {
     ordinal: u16,
