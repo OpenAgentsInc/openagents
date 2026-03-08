@@ -594,14 +594,14 @@ impl QuantizedTensorStorage {
     /// Creates quantized storage from validated GGML/GGUF block bytes.
     pub fn from_ggml_blocks(
         quantization: QuantizationMode,
-        element_count: usize,
+        shape: &Shape,
         bytes: impl Into<Vec<u8>>,
     ) -> Result<Self, ModelLoadError> {
         let bytes = bytes.into();
-        let Some(layout) = quantization.ggml_block_layout(element_count) else {
-            return Err(ModelLoadError::InvalidQuantizedTensorLayout {
+        let Some(layout) = quantization.ggml_block_layout(shape) else {
+            return Err(ModelLoadError::InvalidQuantizedTensorShape {
                 quantization,
-                element_count,
+                shape: shape.dims().to_vec(),
             });
         };
         if bytes.len() != layout.byte_len() {
@@ -692,8 +692,7 @@ impl LoadedWeightTensor {
         quantization: QuantizationMode,
         bytes: impl Into<Vec<u8>>,
     ) -> Result<Self, ModelLoadError> {
-        let storage =
-            QuantizedTensorStorage::from_ggml_blocks(quantization, shape.element_count(), bytes)?;
+        let storage = QuantizedTensorStorage::from_ggml_blocks(quantization, &shape, bytes)?;
         let metadata = WeightTensorMetadata::new(name, shape, DType::F32)
             .with_quantization(quantization)
             .with_quantized_layout(storage.layout());
@@ -1046,15 +1045,16 @@ pub enum ModelLoadError {
         /// Actual dimensions from the scale tensor.
         actual: Vec<usize>,
     },
-    /// A GGML/GGUF quantized tensor was requested with an invalid logical layout.
+    /// A GGML/GGUF quantized tensor was requested with a shape that is invalid
+    /// for row-wise block quantization.
     #[error(
-        "quantized tensor mode `{quantization:?}` requires a GGML block-aligned element count, got {element_count}"
+        "quantized tensor mode `{quantization:?}` requires a non-scalar shape whose last dimension is block-aligned, got {shape:?}"
     )]
-    InvalidQuantizedTensorLayout {
+    InvalidQuantizedTensorShape {
         /// Quantization family that requires block alignment.
         quantization: QuantizationMode,
-        /// Logical tensor element count requested.
-        element_count: usize,
+        /// Logical tensor shape requested.
+        shape: Vec<usize>,
     },
     /// The serialized byte length for a quantized tensor does not match its block layout.
     #[error(
@@ -1925,13 +1925,16 @@ fn decode_q4_0_blocks(
     layout: QuantizedBlockLayout,
     bytes: &[u8],
 ) -> Result<Vec<f32>, ModelLoadError> {
+    let half_block = layout.elements_per_block / 2;
     decode_fixed_width_blocks(layout, bytes, 18, |block, output| {
         let scale = decode_f16([block[0], block[1]]);
-        for packed in &block[2..18] {
+        let start = output.len();
+        output.resize(start + (half_block * 2), 0.0);
+        for (j, packed) in block[2..18].iter().enumerate() {
             let low = (packed & 0x0f) as i8 - 8;
             let high = ((packed >> 4) & 0x0f) as i8 - 8;
-            output.push(f32::from(low) * scale);
-            output.push(f32::from(high) * scale);
+            output[start + j] = f32::from(low) * scale;
+            output[start + j + half_block] = f32::from(high) * scale;
         }
     })
 }
@@ -1940,14 +1943,17 @@ fn decode_q4_1_blocks(
     layout: QuantizedBlockLayout,
     bytes: &[u8],
 ) -> Result<Vec<f32>, ModelLoadError> {
+    let half_block = layout.elements_per_block / 2;
     decode_fixed_width_blocks(layout, bytes, 20, |block, output| {
         let scale = decode_f16([block[0], block[1]]);
         let minimum = decode_f16([block[2], block[3]]);
-        for packed in &block[4..20] {
+        let start = output.len();
+        output.resize(start + (half_block * 2), 0.0);
+        for (j, packed) in block[4..20].iter().enumerate() {
             let low = f32::from((packed & 0x0f) as i8) * scale + minimum;
             let high = f32::from(((packed >> 4) & 0x0f) as i8) * scale + minimum;
-            output.push(low);
-            output.push(high);
+            output[start + j] = low;
+            output[start + j + half_block] = high;
         }
     })
 }
@@ -2252,8 +2258,11 @@ mod tests {
             .chain(std::iter::once(0x40))
             .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
             .collect::<Vec<_>>();
-        let storage =
-            QuantizedTensorStorage::from_ggml_blocks(QuantizationMode::GgmlQ8_0, 32, bytes)?;
+        let storage = QuantizedTensorStorage::from_ggml_blocks(
+            QuantizationMode::GgmlQ8_0,
+            &Shape::new(vec![32]),
+            bytes,
+        )?;
 
         let expected = (1..=32).map(|value| value as f32 * 2.0).collect::<Vec<_>>();
         assert_eq!(storage.layout(), QuantizedBlockLayout::new(32, 34, 1));
@@ -2279,14 +2288,15 @@ mod tests {
             bytes,
         )?;
 
-        let expected = [
-            -16.0, -14.0, -12.0, -10.0, -8.0, -6.0, -4.0, -2.0, 0.0, 2.0, 4.0, 6.0, 8.0, 10.0,
-            12.0, 14.0,
-        ]
-        .into_iter()
-        .cycle()
-        .take(32)
-        .collect::<Vec<_>>();
+        let low_half = [-16.0, -12.0, -8.0, -4.0, 0.0, 4.0, 8.0, 12.0]
+            .into_iter()
+            .cycle()
+            .take(16);
+        let high_half = [-14.0, -10.0, -6.0, -2.0, 2.0, 6.0, 10.0, 14.0]
+            .into_iter()
+            .cycle()
+            .take(16);
+        let expected = low_half.chain(high_half).collect::<Vec<_>>();
         assert_eq!(
             tensor.metadata().quantized_layout,
             Some(QuantizedBlockLayout::new(32, 18, 1))
@@ -2310,17 +2320,21 @@ mod tests {
                     .take(16),
             )
             .collect::<Vec<_>>();
-        let storage =
-            QuantizedTensorStorage::from_ggml_blocks(QuantizationMode::GgmlQ4_1, 32, bytes)?;
+        let storage = QuantizedTensorStorage::from_ggml_blocks(
+            QuantizationMode::GgmlQ4_1,
+            &Shape::new(vec![32]),
+            bytes,
+        )?;
 
-        let expected = [
-            -1.0, 1.0, 3.0, 5.0, 7.0, 9.0, 11.0, 13.0, 15.0, 17.0, 19.0, 21.0, 23.0, 25.0, 27.0,
-            29.0,
-        ]
-        .into_iter()
-        .cycle()
-        .take(32)
-        .collect::<Vec<_>>();
+        let low_half = [-1.0, 3.0, 7.0, 11.0, 15.0, 19.0, 23.0, 27.0]
+            .into_iter()
+            .cycle()
+            .take(16);
+        let high_half = [1.0, 5.0, 9.0, 13.0, 17.0, 21.0, 25.0, 29.0]
+            .into_iter()
+            .cycle()
+            .take(16);
+        let expected = low_half.chain(high_half).collect::<Vec<_>>();
         assert_eq!(storage.dequantize_values()?, expected);
         Ok(())
     }
@@ -2334,15 +2348,41 @@ mod tests {
             .collect::<Vec<_>>();
         let first = QuantizedTensorStorage::from_ggml_blocks(
             QuantizationMode::GgmlQ8_0,
-            32,
+            &Shape::new(vec![32]),
             bytes.clone(),
         )?;
-        let second =
-            QuantizedTensorStorage::from_ggml_blocks(QuantizationMode::GgmlQ8_0, 32, bytes)?;
+        let second = QuantizedTensorStorage::from_ggml_blocks(
+            QuantizationMode::GgmlQ8_0,
+            &Shape::new(vec![32]),
+            bytes,
+        )?;
 
         assert_eq!(first.layout(), second.layout());
         assert_eq!(first.digest(), second.digest());
         Ok(())
+    }
+
+    #[test]
+    fn ggml_quantized_storage_rejects_shapes_without_block_aligned_last_dim() {
+        let bytes = std::iter::once(0x00)
+            .chain(std::iter::once(0x40))
+            .chain((1_i8..=32).map(|value| value.to_le_bytes()[0]))
+            .collect::<Vec<_>>();
+
+        let error = QuantizedTensorStorage::from_ggml_blocks(
+            QuantizationMode::GgmlQ8_0,
+            &Shape::new(vec![2, 16]),
+            bytes,
+        )
+        .expect_err("shape should be rejected");
+
+        assert!(matches!(
+            error,
+            super::ModelLoadError::InvalidQuantizedTensorShape {
+                quantization: QuantizationMode::GgmlQ8_0,
+                shape
+            } if shape == vec![2, 16]
+        ));
     }
 
     #[test]

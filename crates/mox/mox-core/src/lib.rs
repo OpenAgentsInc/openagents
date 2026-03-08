@@ -70,10 +70,16 @@ impl QuantizationMode {
         }
     }
 
-    /// Returns the block layout for a tensor with the provided logical element count.
+    /// Returns the block layout for a tensor with the provided logical shape.
     #[must_use]
-    pub fn ggml_block_layout(self, element_count: usize) -> Option<QuantizedBlockLayout> {
+    pub fn ggml_block_layout(self, shape: &Shape) -> Option<QuantizedBlockLayout> {
         let (elements_per_block, bytes_per_block) = self.ggml_block_spec()?;
+        let dims = shape.dims();
+        let last_dim = *dims.last()?;
+        if last_dim == 0 || last_dim % elements_per_block != 0 {
+            return None;
+        }
+        let element_count = shape.element_count();
         if element_count == 0 || element_count % elements_per_block != 0 {
             return None;
         }
