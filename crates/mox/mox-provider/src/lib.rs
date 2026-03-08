@@ -1071,11 +1071,11 @@ mod tests {
         BackendRuntimeResources, BackendSelection, DeviceDescriptor, DeviceMemoryBudget,
         HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
         LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
-        MemoryResidencySnapshot, ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
-        QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
-        ServedProductBackendPolicy, ValidationCoverage,
+        LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelResidencyPolicy,
+        NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile, NvidiaRiskLevel,
+        NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeTransitionEvent,
+        RuntimeTransitionKind, ServedProductBackendPolicy, ValidationCoverage,
     };
     use mox_serve::{
         EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
@@ -1385,6 +1385,7 @@ mod tests {
     fn local_runtime_observability_envelope_serializes_stably()
     -> Result<(), Box<dyn std::error::Error>> {
         let envelope = LocalRuntimeObservabilityEnvelope::new(LocalRuntimeObservability {
+            isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             queue_depth: 0,
             queue_capacity: None,
             active_sessions: 2,
@@ -1424,6 +1425,20 @@ mod tests {
             json!({
                 "backend_family": "mox",
                 "observability": {
+                    "isolation_policy": {
+                        "backend_interface_mode": "in_process",
+                        "failure_boundary": "shared_host_process",
+                        "request_failure_recovery": "refuse_request",
+                        "backend_error_recovery": "reset_runtime_state",
+                        "crash_recovery": "restart_host_process",
+                        "reset_scopes": [
+                            "loaded_models",
+                            "sessions",
+                            "prefix_cache",
+                            "kv_state",
+                            "backend_runtime_resources"
+                        ]
+                    },
                     "queue_depth": 0,
                     "active_sessions": 2,
                     "active_requests": 1,
@@ -1850,6 +1865,7 @@ mod tests {
             GenerationProvenance {
                 execution_plan_digest: String::from("plan-digest-from-response"),
                 load_state: GenerationLoadState::Cold,
+                isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
                 streaming_policy: None,
                 memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
                 residency_policy: Some(ModelResidencyPolicy::default()),
@@ -1989,6 +2005,7 @@ mod tests {
             GenerationProvenance {
                 execution_plan_digest: String::from("stream-plan"),
                 load_state: GenerationLoadState::Cold,
+                isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
                 streaming_policy: Some(default_generation_streaming_policy()),
                 memory_plan: Some(default_decoder_memory_plan(&request.model, None, None)),
                 residency_policy: Some(ModelResidencyPolicy::default()),

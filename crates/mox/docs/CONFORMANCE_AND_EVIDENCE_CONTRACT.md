@@ -89,6 +89,23 @@ If any element of that tuple changes, cache reuse, comparability claims, and
 receipt equivalence must be treated as changed unless a narrower reuse rule is
 explicitly documented.
 
+## Local Serving Isolation Policy
+
+`MOX-160` should make the crash/reset boundary explicit instead of leaving the
+desktop to infer it from implementation details.
+
+At minimum the reusable runtime contract should surface:
+
+- whether the active path is `in_process` or `subprocess`
+- the smallest process boundary that contains a backend/runtime crash
+- what happens on request-local failure versus backend error versus crash
+- which state scopes are discarded on an isolation reset
+
+For the current Mox path, that policy is intentionally `in_process`: request
+failures are refused directly, backend execution errors require an explicit
+runtime-state reset, and an outright backend/runtime crash implies host-process
+restart because there is no smaller subprocess boundary yet.
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or
@@ -109,6 +126,7 @@ Required identity and backend fields:
 - `quantization_family`
 - `backend_family`
 - `backend_interface_mode`
+- `isolation_policy`
 - `backend_toolchain_version`
 - `compiled_backend_features`
 - `selected_devices`

@@ -34,11 +34,11 @@ use mox_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, DeviceDiscovery, HealthStatus,
     KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy,
     KvCacheState, LoadedModelMemoryState, LoadedModelResidency, LocalRuntimeDiagnostic,
-    LocalRuntimeErrorCode, LocalRuntimeObservability, MemoryResidencySnapshot,
-    ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, RuntimeError, RuntimeTransitionEvent,
-    RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, TokenSampler,
-    plan_model_admission,
+    LocalRuntimeErrorCode, LocalRuntimeObservability, LocalServingIsolationPolicy,
+    MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan, ModelResidencyPolicy,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, RuntimeError,
+    RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy,
+    SamplingStrategy, TokenSampler, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -570,6 +570,8 @@ pub struct GenerationProvenance {
     pub execution_plan_digest: String,
     /// Whether the request took the warm or cold model path.
     pub load_state: GenerationLoadState,
+    /// Explicit local-serving isolation policy for the active runtime.
+    pub isolation_policy: LocalServingIsolationPolicy,
     /// Explicit streaming policy when the request used the local streaming API.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub streaming_policy: Option<GenerationStreamingPolicy>,
@@ -858,6 +860,11 @@ pub trait ManagedTextGenerationRuntime:
     /// Returns current local-runtime observability for lifecycle/debug surfaces.
     fn observability(&mut self) -> LocalRuntimeObservability;
 
+    /// Returns the explicit local-serving isolation policy for this runtime.
+    fn isolation_policy(&self) -> LocalServingIsolationPolicy {
+        LocalServingIsolationPolicy::in_process_runtime()
+    }
+
     /// Refreshes or overrides keepalive for one already-loaded model.
     fn warm_model(
         &mut self,
@@ -958,6 +965,12 @@ where
     #[must_use]
     pub fn observability(&mut self) -> LocalRuntimeObservability {
         self.generation.observability()
+    }
+
+    /// Returns the explicit local-serving isolation policy for this runtime.
+    #[must_use]
+    pub fn isolation_policy(&self) -> LocalServingIsolationPolicy {
+        self.generation.isolation_policy()
     }
 
     /// Refreshes keepalive for one loaded generation model.
@@ -1488,6 +1501,7 @@ where
     });
 
     LocalRuntimeObservability {
+        isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
         queue_depth: 0,
         queue_capacity: None,
         active_sessions: sessions.len(),
@@ -3764,6 +3778,7 @@ where
         let provenance = GenerationProvenance {
             execution_plan_digest: self.loaded_model.plan_digest().to_string(),
             load_state: self.load_state,
+            isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: streaming_policy.then(|| self.streaming_policy.clone()),
             memory_plan: self.memory_plan.clone(),
             residency_policy: self.residency_policy.clone(),
@@ -4276,6 +4291,7 @@ where
         let provenance = GenerationProvenance {
             execution_plan_digest: loaded_model.plan_digest().to_string(),
             load_state,
+            isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: None,
             memory_plan,
             residency_policy,
@@ -5540,8 +5556,8 @@ mod tests {
     use mox_runtime::{
         AdmissionRefusalReason, HealthStatus, KvCacheAccounting, KvCacheDeviceScope,
         KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelState,
-        LocalRuntimeErrorCode, MemoryBudget, ModelResidencyPolicy, PrefixCacheState,
-        ResidencyPressureAction, RuntimeTransitionEvent, RuntimeTransitionKind,
+        LocalRuntimeErrorCode, LocalServingIsolationPolicy, MemoryBudget, ModelResidencyPolicy,
+        PrefixCacheState, ResidencyPressureAction, RuntimeTransitionEvent, RuntimeTransitionKind,
     };
 
     use super::{
@@ -5884,6 +5900,10 @@ mod tests {
         assert_eq!(loaded.models.len(), 1);
         assert_eq!(loaded.models[0].model, ReferenceWordDecoder::MODEL_ID);
         let observability = runtime.observability();
+        assert_eq!(
+            observability.isolation_policy,
+            LocalServingIsolationPolicy::in_process_runtime()
+        );
         assert_eq!(observability.queue_depth, 0);
         assert_eq!(observability.active_sessions, 0);
         assert_eq!(observability.active_requests, 0);
@@ -5891,6 +5911,10 @@ mod tests {
         assert_eq!(observability.backend_health.len(), 1);
         assert_eq!(observability.backend_health[0].backend, "cpu");
         assert_eq!(observability.backend_health[0].status, HealthStatus::Ready);
+        assert_eq!(
+            runtime.isolation_policy(),
+            LocalServingIsolationPolicy::in_process_runtime()
+        );
         assert!(
             observability
                 .recent_transitions
@@ -6821,6 +6845,13 @@ mod tests {
             first
                 .provenance
                 .as_ref()
+                .map(|value| value.isolation_policy.clone()),
+            Some(LocalServingIsolationPolicy::in_process_runtime())
+        );
+        assert_eq!(
+            first
+                .provenance
+                .as_ref()
                 .map(|value| value.execution_plan_digest.as_str()),
             Some(expected_plan_digest.as_str())
         );
@@ -6883,6 +6914,13 @@ mod tests {
         assert_eq!(
             second.provenance.as_ref().map(|value| value.load_state),
             Some(GenerationLoadState::Warm)
+        );
+        assert_eq!(
+            second
+                .provenance
+                .as_ref()
+                .map(|value| value.isolation_policy.clone()),
+            Some(LocalServingIsolationPolicy::in_process_runtime())
         );
         assert_eq!(
             second
