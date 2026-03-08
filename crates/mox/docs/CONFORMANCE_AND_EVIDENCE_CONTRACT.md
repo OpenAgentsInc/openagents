@@ -124,6 +124,49 @@ failures are refused directly, backend execution errors require an explicit
 runtime-state reset, and an outright backend/runtime crash implies host-process
 restart because there is no smaller subprocess boundary yet.
 
+## Cache Invalidation Policy
+
+`MOX-163` defines a reusable `CacheInvalidationPolicy` plus per-request
+`CacheObservation` records so cache and persisted-state behavior stops depending
+on implicit process details.
+
+The policy must cover at least:
+
+- execution-plan caches
+- backend kernel caches
+- artifact-backed paged tensor storage
+- shared prefix caches
+- session KV state
+
+For each cache family, the runtime must make explicit:
+
+- the reuse scope
+  - `process_local`, `shared_across_requests`, `session_bound`, or
+    `artifact_backed`
+- the current format version
+- the compatible action
+  - usually `reuse`
+- the incompatible action
+  - `rebuild`, `invalidate`, or `restore`
+- the triggers that force invalidation
+
+Those triggers must include the relevant subset of:
+
+- `binary_upgrade`
+- `backend_toolchain_upgrade`
+- `model_metadata_change`
+- `tokenizer_drift`
+- `chat_template_drift`
+- `generation_defaults_drift`
+- `quantization_change`
+- the cache-family format upgrade trigger
+- `explicit_reset` where caller policy can discard state directly
+
+Capability and observability surfaces should carry the full invalidation policy.
+Generation provenance and generation receipts should carry the realized cache
+observations for the request path so the runtime can explain whether state was
+reused, rebuilt, bypassed, invalidated, or restored.
+
 ## Runtime Evidence Schema
 
 Every `generate` and `embed` execution path that can feed receipts or

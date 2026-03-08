@@ -5,7 +5,8 @@ use sha2::{Digest, Sha256};
 
 use mox_runtime::{
     AmdDeviceMetadata, AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo,
-    BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
+    BackendSelection, CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind,
+    CacheObservation, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
     LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
     NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
     PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, ServedArtifactIdentity,
@@ -17,7 +18,8 @@ use mox_serve::{
     GenerationLoadState, GenerationRequest, GenerationResponse, GenerationStreamStatus,
     GenerationStreamTerminal, GenerationStreamingPolicy, QuantizationMode, SessionId,
     TEXT_GENERATION_PRODUCT_ID, TerminationReason, WeightArtifactMetadata, WeightBundleMetadata,
-    WeightFormat, WeightSource, default_decoder_kv_cache_policy, default_prefix_cache_policy,
+    WeightFormat, WeightSource, cache_invalidation_policy, cache_observations_for_embedding_model,
+    default_decoder_kv_cache_policy, default_prefix_cache_policy,
     served_artifact_identity_for_decoder_model, served_artifact_identity_for_embedding_model,
 };
 
@@ -174,6 +176,8 @@ pub struct CapabilityEnvelope {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable served-artifact identity for the active model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Explicit runtime-owned cache invalidation policy.
+    pub cache_invalidation_policy: CacheInvalidationPolicy,
     /// Stable output dimensions.
     pub dimensions: usize,
     /// Normalization policy applied to returned vectors.
@@ -220,6 +224,7 @@ impl CapabilityEnvelope {
             model_revision: model_revision.into(),
             weight_bundle,
             served_artifact,
+            cache_invalidation_policy: cache_invalidation_policy(),
             dimensions,
             normalization,
             preserves_input_order: true,
@@ -319,6 +324,9 @@ pub struct ExecutionReceipt {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable served-artifact identity for the realized model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Explicit cache actions surfaced for the request path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_observations: Vec<CacheObservation>,
     /// Output dimensions.
     pub output_dimensions: usize,
     /// Number of request inputs.
@@ -380,6 +388,7 @@ impl ExecutionReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
+            cache_observations: cache_observations_for_embedding_model(&request.model),
             output_dimensions: response.metadata.dimensions,
             input_count: response.metadata.input_count,
             output_vector_count: response.metadata.vector_count,
@@ -443,6 +452,7 @@ impl ExecutionReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
+            cache_observations: cache_observations_for_embedding_model(&request.model),
             output_dimensions: request
                 .output_dimensions
                 .filter(|dimensions| *dimensions > 0 && *dimensions < request.model.dimensions)
@@ -527,6 +537,8 @@ pub struct TextGenerationCapabilityEnvelope {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable served-artifact identity for the active model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Explicit runtime-owned cache invalidation policy.
+    pub cache_invalidation_policy: CacheInvalidationPolicy,
     /// Maximum supported context length.
     pub max_context: usize,
     /// Explicit resident-memory plan for the loaded model.
@@ -578,6 +590,7 @@ impl TextGenerationCapabilityEnvelope {
             model_revision: model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&model.weights),
             served_artifact,
+            cache_invalidation_policy: cache_invalidation_policy(),
             max_context: model.config.max_context,
             memory_plan,
             residency_policy,
@@ -627,6 +640,9 @@ pub struct TextGenerationReceipt {
     pub weight_bundle: WeightBundleEvidence,
     /// Stable served-artifact identity for the realized model/backend path.
     pub served_artifact: ServedArtifactIdentity,
+    /// Explicit cache actions surfaced for the request path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_observations: Vec<CacheObservation>,
     /// Explicit resident-memory plan for the loaded model, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub memory_plan: Option<ModelMemoryPlan>,
@@ -738,6 +754,11 @@ impl TextGenerationReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
+            cache_observations: response
+                .provenance
+                .as_ref()
+                .map(|value| value.cache_observations.clone())
+                .unwrap_or_default(),
             memory_plan: response
                 .provenance
                 .as_ref()
@@ -847,6 +868,7 @@ impl TextGenerationReceipt {
             model_revision: request.model.model.revision.clone(),
             weight_bundle: WeightBundleEvidence::from_metadata(&request.model.weights),
             served_artifact,
+            cache_observations: failed_generation_cache_observations(request),
             memory_plan: None,
             residency_policy: None,
             residency_snapshot: None,
@@ -1147,6 +1169,56 @@ fn digest_weight_bundle(hasher: &mut Sha256, weight_bundle: &WeightBundleMetadat
     }
 }
 
+fn failed_generation_cache_observations(request: &GenerationRequest) -> Vec<CacheObservation> {
+    let mut observations = vec![
+        CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            CacheAction::Bypass,
+            "failed request did not complete enough work to surface reusable execution-plan state",
+        ),
+        CacheObservation::new(
+            CacheKind::PagedTensorStorage,
+            if request.model.weights.is_artifact_backed() {
+                CacheAction::Restore
+            } else {
+                CacheAction::Bypass
+            },
+            if request.model.weights.is_artifact_backed() {
+                "artifact-backed tensor storage remains restoreable from local model bytes"
+            } else {
+                "fixture-backed weights do not use reusable paged tensor storage"
+            },
+        ),
+        CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Bypass,
+            "failed request did not report a realized shared prefix-cache action",
+        ),
+    ];
+    let kv_observation = if request.reset_session {
+        CacheObservation::new(
+            CacheKind::KvState,
+            CacheAction::Invalidate,
+            "session KV state was discarded before the failed request path",
+        )
+        .with_trigger(CacheInvalidationTrigger::ExplicitReset)
+    } else if request.session_id.is_some() {
+        CacheObservation::new(
+            CacheKind::KvState,
+            CacheAction::Bypass,
+            "failed request did not report compatible session KV reuse",
+        )
+    } else {
+        CacheObservation::new(
+            CacheKind::KvState,
+            CacheAction::Bypass,
+            "failed request did not target session-bound KV reuse",
+        )
+    };
+    observations.push(kv_observation);
+    observations
+}
+
 #[cfg(test)]
 mod tests {
     use mox_core::{
@@ -1181,7 +1253,7 @@ mod tests {
         BatchPosture, CapabilityEnvelope, ExecutionReceipt, KvCacheMode,
         LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
         TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
-        digest_embedding_request, digest_generation_request,
+        cache_invalidation_policy, digest_embedding_request, digest_generation_request,
         served_artifact_identity_for_decoder_model,
     };
 
@@ -1290,6 +1362,80 @@ mod tests {
                     "backend": {
                         "effective_backend": "cpu",
                         "toolchain_version": "cpu@0.1.0"
+                    }
+                },
+                "cache_invalidation_policy": {
+                    "runtime_binary_version": "0.1.0",
+                    "execution_plan": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "plan_format_upgrade"
+                        ]
+                    },
+                    "kernel_cache": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "kernel_format_upgrade"
+                        ]
+                    },
+                    "paged_tensor_storage": {
+                        "scope": "artifact_backed",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "restore",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "model_metadata_change",
+                            "quantization_change",
+                            "paged_tensor_format_upgrade"
+                        ]
+                    },
+                    "prefix_cache": {
+                        "scope": "shared_across_requests",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "prefix_cache_format_upgrade"
+                        ]
+                    },
+                    "kv_state": {
+                        "scope": "session_bound",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "kv_state_format_upgrade"
+                        ]
                     }
                 },
                 "dimensions": 8,
@@ -1419,6 +1565,80 @@ mod tests {
                         "toolchain_version": "cpu@0.1.0"
                     }
                 },
+                "cache_invalidation_policy": {
+                    "runtime_binary_version": "0.1.0",
+                    "execution_plan": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "plan_format_upgrade"
+                        ]
+                    },
+                    "kernel_cache": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "kernel_format_upgrade"
+                        ]
+                    },
+                    "paged_tensor_storage": {
+                        "scope": "artifact_backed",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "restore",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "model_metadata_change",
+                            "quantization_change",
+                            "paged_tensor_format_upgrade"
+                        ]
+                    },
+                    "prefix_cache": {
+                        "scope": "shared_across_requests",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "prefix_cache_format_upgrade"
+                        ]
+                    },
+                    "kv_state": {
+                        "scope": "session_bound",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "kv_state_format_upgrade"
+                        ]
+                    }
+                },
                 "max_context": 8,
                 "memory_plan": {
                     "weights_bytes": 0,
@@ -1525,6 +1745,7 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let envelope = LocalRuntimeObservabilityEnvelope::new(LocalRuntimeObservability {
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+            cache_invalidation_policy: cache_invalidation_policy(),
             queue_depth: 0,
             queue_capacity: None,
             active_sessions: 2,
@@ -1577,6 +1798,80 @@ mod tests {
                             "kv_state",
                             "backend_runtime_resources"
                         ]
+                    },
+                    "cache_invalidation_policy": {
+                        "runtime_binary_version": "0.1.0",
+                        "execution_plan": {
+                            "scope": "process_local",
+                            "format_version": 1,
+                            "compatible_action": "reuse",
+                            "incompatible_action": "rebuild",
+                            "invalidates_on": [
+                                "binary_upgrade",
+                                "backend_toolchain_upgrade",
+                                "model_metadata_change",
+                                "tokenizer_drift",
+                                "chat_template_drift",
+                                "generation_defaults_drift",
+                                "quantization_change",
+                                "plan_format_upgrade"
+                            ]
+                        },
+                        "kernel_cache": {
+                            "scope": "process_local",
+                            "format_version": 1,
+                            "compatible_action": "reuse",
+                            "incompatible_action": "invalidate",
+                            "invalidates_on": [
+                                "binary_upgrade",
+                                "backend_toolchain_upgrade",
+                                "kernel_format_upgrade"
+                            ]
+                        },
+                        "paged_tensor_storage": {
+                            "scope": "artifact_backed",
+                            "format_version": 1,
+                            "compatible_action": "reuse",
+                            "incompatible_action": "restore",
+                            "invalidates_on": [
+                                "binary_upgrade",
+                                "model_metadata_change",
+                                "quantization_change",
+                                "paged_tensor_format_upgrade"
+                            ]
+                        },
+                        "prefix_cache": {
+                            "scope": "shared_across_requests",
+                            "format_version": 1,
+                            "compatible_action": "reuse",
+                            "incompatible_action": "rebuild",
+                            "invalidates_on": [
+                                "binary_upgrade",
+                                "backend_toolchain_upgrade",
+                                "model_metadata_change",
+                                "tokenizer_drift",
+                                "chat_template_drift",
+                                "generation_defaults_drift",
+                                "quantization_change",
+                                "prefix_cache_format_upgrade"
+                            ]
+                        },
+                        "kv_state": {
+                            "scope": "session_bound",
+                            "format_version": 1,
+                            "compatible_action": "reuse",
+                            "incompatible_action": "invalidate",
+                            "invalidates_on": [
+                                "binary_upgrade",
+                                "backend_toolchain_upgrade",
+                                "model_metadata_change",
+                                "tokenizer_drift",
+                                "chat_template_drift",
+                                "generation_defaults_drift",
+                                "quantization_change",
+                                "kv_state_format_upgrade"
+                            ]
+                        }
                     },
                     "queue_depth": 0,
                     "active_sessions": 2,
@@ -2037,6 +2332,7 @@ mod tests {
                     prefix_digest: String::from("prefix-digest"),
                     prefix_tokens: 1,
                 }),
+                cache_observations: Vec::new(),
             },
         );
         let receipt = TextGenerationReceipt::succeeded_for_response(
@@ -2170,6 +2466,7 @@ mod tests {
                 prefix_cache_state: Some(PrefixCacheState::None),
                 prefix_cache_policy: Some(default_prefix_cache_policy()),
                 prefix_cache_identity: None,
+                cache_observations: Vec::new(),
             },
         );
         let terminal = GenerationStreamTerminal {

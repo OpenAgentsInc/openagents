@@ -32,13 +32,15 @@ pub use mox_models::{
 };
 use mox_runtime::{
     BackendHealthTracker, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
+    CacheAction, CacheInvalidationPolicy, CacheInvalidationTrigger, CacheKind, CacheObservation,
     DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout,
     KvCachePolicy, KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
     LocalRuntimeDiagnostic, LocalRuntimeErrorCode, LocalRuntimeObservability,
     LocalServingIsolationPolicy, MemoryResidencySnapshot, ModelAdmissionRefusal, ModelMemoryPlan,
     ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
     RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
-    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler, plan_model_admission,
+    SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler,
+    default_cache_invalidation_policy, plan_model_admission,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -161,6 +163,12 @@ pub fn default_prefix_cache_policy() -> PrefixCacheReusePolicy {
     }
 }
 
+/// Returns the current runtime-owned cache invalidation policy.
+#[must_use]
+pub fn cache_invalidation_policy() -> CacheInvalidationPolicy {
+    default_cache_invalidation_policy()
+}
+
 fn default_generation_defaults_digest() -> String {
     digest_generation_defaults(false, false, &[])
 }
@@ -248,6 +256,133 @@ fn served_artifact_identity_for_decoder_backend(
         compiled_backend_features,
         model.artifact_identity.as_ref(),
     )
+}
+
+fn paged_tensor_cache_observation(weights: &WeightBundleMetadata) -> CacheObservation {
+    if weights.is_artifact_backed() {
+        CacheObservation::new(
+            CacheKind::PagedTensorStorage,
+            CacheAction::Restore,
+            "artifact-backed tensor storage is reopened from local model bytes instead of trusted by display name",
+        )
+    } else {
+        CacheObservation::new(
+            CacheKind::PagedTensorStorage,
+            CacheAction::Bypass,
+            "fixture-backed weights do not use reusable paged tensor storage",
+        )
+    }
+}
+
+fn execution_plan_cache_observation(load_state: GenerationLoadState) -> CacheObservation {
+    match load_state {
+        GenerationLoadState::Cold => CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            CacheAction::Rebuild,
+            "execution plan was rebuilt while loading the cold model path",
+        ),
+        GenerationLoadState::Warm => CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            CacheAction::Reuse,
+            "resident model reused its in-process execution plan",
+        ),
+    }
+}
+
+fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation {
+    match prefix_state {
+        PrefixCacheState::None => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Bypass,
+            "no compatible shared prefix entry existed for this prompt",
+        ),
+        PrefixCacheState::Hit => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Reuse,
+            "compatible shared prefix state was reused",
+        ),
+        PrefixCacheState::Miss => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Rebuild,
+            "shared prefix reuse missed and a fresh entry was recorded",
+        ),
+        PrefixCacheState::Bypassed => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Bypass,
+            "shared prefix reuse was skipped because request-owned KV state already existed",
+        ),
+        PrefixCacheState::Rebuilt => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Rebuild,
+            "stale shared prefix state was discarded and rebuilt",
+        ),
+    }
+}
+
+fn kv_state_observation(
+    session_id: Option<&SessionId>,
+    reset_session: bool,
+    previous_kv_state: &KvCacheState,
+) -> CacheObservation {
+    if reset_session {
+        return CacheObservation::new(
+            CacheKind::KvState,
+            CacheAction::Invalidate,
+            "existing session KV state was discarded before execution",
+        )
+        .with_trigger(CacheInvalidationTrigger::ExplicitReset);
+    }
+    if session_id.is_none() {
+        return CacheObservation::new(
+            CacheKind::KvState,
+            CacheAction::Bypass,
+            "request did not target session-bound KV reuse",
+        );
+    }
+    if previous_kv_state.tokens > 0 {
+        CacheObservation::new(
+            CacheKind::KvState,
+            CacheAction::Reuse,
+            "compatible session KV state was reused",
+        )
+    } else {
+        CacheObservation::new(
+            CacheKind::KvState,
+            CacheAction::Bypass,
+            "session existed but no retained KV state was available to reuse",
+        )
+    }
+}
+
+fn generation_cache_observations(
+    model: &DecoderModelDescriptor,
+    load_state: GenerationLoadState,
+    session_id: Option<&SessionId>,
+    reset_session: bool,
+    previous_kv_state: &KvCacheState,
+    prefix_state: PrefixCacheState,
+) -> Vec<CacheObservation> {
+    vec![
+        execution_plan_cache_observation(load_state),
+        paged_tensor_cache_observation(&model.weights),
+        prefix_cache_observation(prefix_state),
+        kv_state_observation(session_id, reset_session, previous_kv_state),
+    ]
+}
+
+/// Returns the current cache observations surfaced for embeddings execution receipts.
+#[must_use]
+pub fn cache_observations_for_embedding_model(
+    model: &EmbeddingModelDescriptor,
+) -> Vec<CacheObservation> {
+    vec![
+        CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            CacheAction::Bypass,
+            "embeddings receipts do not currently surface a reusable execution-plan cache",
+        ),
+        paged_tensor_cache_observation(&model.weights),
+    ]
 }
 
 /// Embeddings request contract.
@@ -687,6 +822,9 @@ pub struct GenerationProvenance {
     /// Shared prefix-cache identity when the request used or rebuilt a prefix entry.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_cache_identity: Option<PrefixCacheIdentity>,
+    /// Explicit cache actions observed for the request path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub cache_observations: Vec<CacheObservation>,
 }
 
 /// Terminal reason for a generation response.
@@ -1593,6 +1731,7 @@ where
 
     LocalRuntimeObservability {
         isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+        cache_invalidation_policy: cache_invalidation_policy(),
         queue_depth: 0,
         queue_capacity: None,
         active_sessions: sessions.len(),
@@ -3941,6 +4080,14 @@ where
             prefix_cache_state: Some(self.prefix_state),
             prefix_cache_policy: Some(self.prefix_policy.clone()),
             prefix_cache_identity: self.prefix_identity.clone(),
+            cache_observations: generation_cache_observations(
+                self.loaded_model.descriptor(),
+                self.load_state,
+                self.request.session_id.as_ref(),
+                self.request.reset_session,
+                &self.previous_kv_state,
+                self.prefix_state,
+            ),
         };
         GenerationResponse::new(
             &self.request,
@@ -4467,6 +4614,14 @@ where
             prefix_cache_state: Some(prefix_state),
             prefix_cache_policy: Some(prefix_policy),
             prefix_cache_identity: prefix_identity,
+            cache_observations: generation_cache_observations(
+                loaded_model.descriptor(),
+                load_state,
+                request.session_id.as_ref(),
+                request.reset_session,
+                &previous_kv_state,
+                prefix_state,
+            ),
         };
         Ok(GenerationResponse::new(
             request,
