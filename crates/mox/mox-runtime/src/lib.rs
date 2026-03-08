@@ -1954,6 +1954,161 @@ impl ServedProductBackendPolicy {
     }
 }
 
+/// Trigger that forced the runtime to leave the preferred direct path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServedProductFallbackTrigger {
+    /// The requested backend was unavailable and could not execute the request directly.
+    RequestedBackendUnavailable,
+    /// The requested backend was available but degraded.
+    RequestedBackendDegraded,
+    /// The preferred path was numerically unsafe for the current request.
+    NumericalSafetyRisk,
+    /// The preferred path could not execute within the admitted memory budget.
+    MemoryPressure,
+    /// The preferred plan or kernel was not yet available.
+    PlanUnavailable,
+    /// The backend returned a transient failure and the runtime may retry explicitly.
+    TransientBackendFailure,
+}
+
+/// Allowed fallback action in the full served-product lattice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServedProductFallbackAction {
+    /// Refuse execution rather than changing semantics or backend posture.
+    Refuse,
+    /// Continue on the same backend explicitly in a degraded mode.
+    Degrade,
+    /// Replan execution explicitly, potentially onto another backend.
+    Replan,
+    /// Retry the same request explicitly after a transient failure.
+    Retry,
+    /// Continue on the same backend using a slower but still-correct path.
+    SameBackendSlowPath,
+}
+
+/// Full fallback lattice for one served product path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServedProductFallbackLattice {
+    /// Action when the requested backend is unavailable.
+    pub unavailable: ServedProductFallbackAction,
+    /// Action when the requested backend is degraded but still executable.
+    pub degraded: ServedProductFallbackAction,
+    /// Action when the preferred path is numerically unsafe.
+    pub numerical_safety: ServedProductFallbackAction,
+    /// Action when the preferred path exceeds the admitted memory budget.
+    pub memory_pressure: ServedProductFallbackAction,
+    /// Action when the preferred plan or kernel is not yet available.
+    pub plan_unavailable: ServedProductFallbackAction,
+    /// Action when the backend returns a transient failure.
+    pub transient_backend_failure: ServedProductFallbackAction,
+}
+
+impl ServedProductFallbackLattice {
+    /// Creates a full fallback lattice.
+    #[must_use]
+    pub const fn new(
+        unavailable: ServedProductFallbackAction,
+        degraded: ServedProductFallbackAction,
+        numerical_safety: ServedProductFallbackAction,
+        memory_pressure: ServedProductFallbackAction,
+        plan_unavailable: ServedProductFallbackAction,
+        transient_backend_failure: ServedProductFallbackAction,
+    ) -> Self {
+        Self {
+            unavailable,
+            degraded,
+            numerical_safety,
+            memory_pressure,
+            plan_unavailable,
+            transient_backend_failure,
+        }
+    }
+
+    /// Conservative default lattice for same-backend-only serving.
+    #[must_use]
+    pub const fn same_backend_only() -> Self {
+        Self::new(
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::Degrade,
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::SameBackendSlowPath,
+            ServedProductFallbackAction::Retry,
+        )
+    }
+
+    /// Default lattice for paths that may explicitly replan onto a compatible backend.
+    #[must_use]
+    pub const fn fallback_to_compatible_backend(degraded: BackendDegradedPolicy) -> Self {
+        Self::new(
+            ServedProductFallbackAction::Replan,
+            degraded.to_fallback_action(),
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::Replan,
+            ServedProductFallbackAction::SameBackendSlowPath,
+            ServedProductFallbackAction::Retry,
+        )
+    }
+
+    /// Derives the full lattice from the narrower backend-selection policy.
+    #[must_use]
+    pub const fn from_backend_policy(policy: ServedProductBackendPolicy) -> Self {
+        let unavailable = match policy.unavailable {
+            BackendUnavailablePolicy::Refuse => ServedProductFallbackAction::Refuse,
+            BackendUnavailablePolicy::FallbackToCompatibleBackend => {
+                ServedProductFallbackAction::Replan
+            }
+        };
+        let degraded = policy.degraded.to_fallback_action();
+        Self::new(
+            unavailable,
+            degraded,
+            ServedProductFallbackAction::Refuse,
+            unavailable,
+            ServedProductFallbackAction::SameBackendSlowPath,
+            ServedProductFallbackAction::Retry,
+        )
+    }
+
+    /// Returns the allowed action for one fallback trigger.
+    #[must_use]
+    pub const fn action_for(
+        self,
+        trigger: ServedProductFallbackTrigger,
+    ) -> ServedProductFallbackAction {
+        match trigger {
+            ServedProductFallbackTrigger::RequestedBackendUnavailable => self.unavailable,
+            ServedProductFallbackTrigger::RequestedBackendDegraded => self.degraded,
+            ServedProductFallbackTrigger::NumericalSafetyRisk => self.numerical_safety,
+            ServedProductFallbackTrigger::MemoryPressure => self.memory_pressure,
+            ServedProductFallbackTrigger::PlanUnavailable => self.plan_unavailable,
+            ServedProductFallbackTrigger::TransientBackendFailure => self.transient_backend_failure,
+        }
+    }
+
+    /// Returns whether one trigger/action pair is allowed by the lattice.
+    #[must_use]
+    pub fn allows(
+        self,
+        trigger: ServedProductFallbackTrigger,
+        action: ServedProductFallbackAction,
+    ) -> bool {
+        self.action_for(trigger) == action
+    }
+}
+
+impl BackendDegradedPolicy {
+    #[must_use]
+    const fn to_fallback_action(self) -> ServedProductFallbackAction {
+        match self {
+            Self::Refuse => ServedProductFallbackAction::Refuse,
+            Self::AllowSameBackend => ServedProductFallbackAction::Degrade,
+        }
+    }
+}
+
 /// Actual backend-selection state used by one served request or capability.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -1962,8 +2117,14 @@ pub enum BackendSelectionState {
     Direct,
     /// The requested backend executes explicitly while degraded.
     SameBackendDegraded,
+    /// The requested backend executes explicitly on a slower same-backend path.
+    SameBackendSlowPath,
     /// Execution switched to a different backend explicitly.
     CrossBackendFallback,
+    /// Execution succeeded only after an explicit retry.
+    Retried,
+    /// Execution was explicitly refused under the active fallback lattice.
+    Refused,
 }
 
 /// Explicit runtime backend selection and fallback truth.
@@ -1985,12 +2146,20 @@ pub struct BackendSelection {
     pub supported_ops: Vec<String>,
     /// Explicit served-product fallback and degraded-state policy.
     pub policy: ServedProductBackendPolicy,
+    /// Full fallback lattice used to decide allowed state transitions.
+    pub fallback_lattice: ServedProductFallbackLattice,
     /// Actual selection state under that policy.
     pub selection_state: BackendSelectionState,
+    /// Explicit trigger that forced the runtime off the preferred direct path.
+    pub fallback_trigger: Option<ServedProductFallbackTrigger>,
+    /// Explicit fallback action taken under the lattice.
+    pub fallback_action: Option<ServedProductFallbackAction>,
     /// Explicit fallback reason when the effective backend differs from the requested backend.
     pub fallback_reason: Option<String>,
     /// Explicit degraded-state reason when the requested backend still executes while degraded.
     pub degraded_reason: Option<String>,
+    /// Retry attempt count when the runtime retried explicitly.
+    pub retry_attempt: Option<u32>,
 }
 
 impl BackendSelection {
@@ -2026,9 +2195,13 @@ impl BackendSelection {
             backend_extensions: Vec::new(),
             supported_ops,
             policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
             selection_state: BackendSelectionState::Direct,
+            fallback_trigger: None,
+            fallback_action: None,
             fallback_reason: None,
             degraded_reason: None,
+            retry_attempt: None,
         }
     }
 
@@ -2071,9 +2244,13 @@ impl BackendSelection {
             backend_extensions: Vec::new(),
             supported_ops,
             policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
             selection_state: BackendSelectionState::CrossBackendFallback,
+            fallback_trigger: Some(ServedProductFallbackTrigger::RequestedBackendUnavailable),
+            fallback_action: Some(ServedProductFallbackAction::Replan),
             fallback_reason: Some(fallback_reason.into()),
             degraded_reason: None,
+            retry_attempt: None,
         }
     }
 
@@ -2095,9 +2272,101 @@ impl BackendSelection {
             backend_extensions: Vec::new(),
             supported_ops,
             policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
             selection_state: BackendSelectionState::SameBackendDegraded,
+            fallback_trigger: Some(ServedProductFallbackTrigger::RequestedBackendDegraded),
+            fallback_action: Some(ServedProductFallbackAction::Degrade),
             fallback_reason: None,
             degraded_reason: Some(degraded_reason.into()),
+            retry_attempt: None,
+        }
+    }
+
+    /// Creates an explicit same-backend slow-path selection.
+    #[must_use]
+    pub fn slow_path(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        trigger: ServedProductFallbackTrigger,
+        reason: impl Into<String>,
+    ) -> Self {
+        let backend = backend.into();
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::SameBackendSlowPath,
+            fallback_trigger: Some(trigger),
+            fallback_action: Some(ServedProductFallbackAction::SameBackendSlowPath),
+            fallback_reason: Some(reason.into()),
+            degraded_reason: None,
+            retry_attempt: None,
+        }
+    }
+
+    /// Creates an explicit retried selection.
+    #[must_use]
+    pub fn retried(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        trigger: ServedProductFallbackTrigger,
+        retry_attempt: u32,
+        reason: impl Into<String>,
+    ) -> Self {
+        let backend = backend.into();
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::Retried,
+            fallback_trigger: Some(trigger),
+            fallback_action: Some(ServedProductFallbackAction::Retry),
+            fallback_reason: Some(reason.into()),
+            degraded_reason: None,
+            retry_attempt: Some(retry_attempt),
+        }
+    }
+
+    /// Creates an explicit refused selection.
+    #[must_use]
+    pub fn refused(
+        requested_backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        trigger: ServedProductFallbackTrigger,
+        reason: impl Into<String>,
+    ) -> Self {
+        let requested_backend = requested_backend.into();
+        Self {
+            requested_backend: requested_backend.clone(),
+            effective_backend: requested_backend,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::Refused,
+            fallback_trigger: Some(trigger),
+            fallback_action: Some(ServedProductFallbackAction::Refuse),
+            fallback_reason: Some(reason.into()),
+            degraded_reason: None,
+            retry_attempt: None,
         }
     }
 
@@ -2407,6 +2676,7 @@ mod tests {
         QuantizationExecution, QuantizationLoadPath, QuantizationSupport, ResidencyPressureAction,
         RuntimeError, RuntimeHealth, RuntimeTransitionEvent, RuntimeTransitionKind,
         RuntimeTransitionLog, SamplingPolicy, SamplingStrategy, ServedProductBackendPolicy,
+        ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
         TokenSampler, apply_sampling_penalties, plan_model_admission,
     };
 
@@ -2581,9 +2851,16 @@ mod tests {
             direct.policy,
             ServedProductBackendPolicy::same_backend_only()
         );
+        assert_eq!(
+            direct.fallback_lattice,
+            ServedProductFallbackLattice::same_backend_only()
+        );
         assert_eq!(direct.selection_state, BackendSelectionState::Direct);
+        assert!(direct.fallback_trigger.is_none());
+        assert!(direct.fallback_action.is_none());
         assert!(direct.fallback_reason.is_none());
         assert!(direct.degraded_reason.is_none());
+        assert!(direct.retry_attempt.is_none());
         assert_eq!(
             serde_json::to_value(&direct)?,
             json!({
@@ -2622,9 +2899,20 @@ mod tests {
                     "unavailable": "refuse",
                     "degraded": "allow_same_backend"
                 },
+                "fallback_lattice": {
+                    "unavailable": "refuse",
+                    "degraded": "degrade",
+                    "numerical_safety": "refuse",
+                    "memory_pressure": "refuse",
+                    "plan_unavailable": "same_backend_slow_path",
+                    "transient_backend_failure": "retry"
+                },
                 "selection_state": "direct",
+                "fallback_trigger": null,
+                "fallback_action": null,
                 "fallback_reason": null,
-                "degraded_reason": null
+                "degraded_reason": null,
+                "retry_attempt": null
             })
         );
 
@@ -2643,14 +2931,29 @@ mod tests {
             )
         );
         assert_eq!(
+            fallback.fallback_lattice,
+            ServedProductFallbackLattice::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
             fallback.selection_state,
             BackendSelectionState::CrossBackendFallback
+        );
+        assert_eq!(
+            fallback.fallback_trigger,
+            Some(ServedProductFallbackTrigger::RequestedBackendUnavailable)
+        );
+        assert_eq!(
+            fallback.fallback_action,
+            Some(ServedProductFallbackAction::Replan)
         );
         assert_eq!(
             fallback.fallback_reason.as_deref(),
             Some("metal backend unavailable: offline")
         );
         assert!(fallback.degraded_reason.is_none());
+        assert!(fallback.retry_attempt.is_none());
 
         let degraded = BackendSelection::degraded(
             "metal",
@@ -2670,15 +2973,118 @@ mod tests {
             )
         );
         assert_eq!(
+            degraded.fallback_lattice,
+            ServedProductFallbackLattice::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
             degraded.selection_state,
             BackendSelectionState::SameBackendDegraded
+        );
+        assert_eq!(
+            degraded.fallback_trigger,
+            Some(ServedProductFallbackTrigger::RequestedBackendDegraded)
+        );
+        assert_eq!(
+            degraded.fallback_action,
+            Some(ServedProductFallbackAction::Degrade)
         );
         assert!(degraded.fallback_reason.is_none());
         assert_eq!(
             degraded.degraded_reason.as_deref(),
             Some("metal backend degraded: legacy-family device")
         );
+        assert!(degraded.retry_attempt.is_none());
         Ok(())
+    }
+
+    #[test]
+    fn fallback_lattice_supports_refuse_replan_retry_and_same_backend_slow_path() {
+        let lattice = ServedProductFallbackLattice::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::RequestedBackendUnavailable,
+            ServedProductFallbackAction::Replan
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::RequestedBackendDegraded,
+            ServedProductFallbackAction::Degrade
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::PlanUnavailable,
+            ServedProductFallbackAction::SameBackendSlowPath
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::TransientBackendFailure,
+            ServedProductFallbackAction::Retry
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::NumericalSafetyRisk,
+            ServedProductFallbackAction::Refuse
+        ));
+        assert!(!lattice.allows(
+            ServedProductFallbackTrigger::NumericalSafetyRisk,
+            ServedProductFallbackAction::Replan
+        ));
+    }
+
+    #[test]
+    fn backend_selection_can_surface_refusal_retry_and_same_backend_slow_path() {
+        let policy = ServedProductBackendPolicy::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
+        let slow_path = BackendSelection::slow_path(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+            policy,
+            ServedProductFallbackTrigger::PlanUnavailable,
+            "kernel fusion not compiled yet; using unfused path",
+        );
+        assert_eq!(
+            slow_path.selection_state,
+            BackendSelectionState::SameBackendSlowPath
+        );
+        assert_eq!(
+            slow_path.fallback_action,
+            Some(ServedProductFallbackAction::SameBackendSlowPath)
+        );
+
+        let retried = BackendSelection::retried(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+            policy,
+            ServedProductFallbackTrigger::TransientBackendFailure,
+            1,
+            "retry after transient launch timeout",
+        );
+        assert_eq!(retried.selection_state, BackendSelectionState::Retried);
+        assert_eq!(
+            retried.fallback_action,
+            Some(ServedProductFallbackAction::Retry)
+        );
+        assert_eq!(retried.retry_attempt, Some(1));
+
+        let refused = BackendSelection::refused(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+            policy,
+            ServedProductFallbackTrigger::NumericalSafetyRisk,
+            "tensor core path failed numerical safety gate",
+        );
+        assert_eq!(refused.selection_state, BackendSelectionState::Refused);
+        assert_eq!(
+            refused.fallback_action,
+            Some(ServedProductFallbackAction::Refuse)
+        );
+        assert_eq!(
+            refused.fallback_trigger,
+            Some(ServedProductFallbackTrigger::NumericalSafetyRisk)
+        );
     }
 
     #[test]

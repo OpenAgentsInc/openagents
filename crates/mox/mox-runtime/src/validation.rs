@@ -214,10 +214,14 @@ pub fn validation_reference_for_served_product(
     backend_selection: &BackendSelection,
     product_id: &str,
 ) -> ValidationMatrixReference {
+    let refusal_state = matches!(
+        backend_selection.selection_state,
+        BackendSelectionState::CrossBackendFallback | BackendSelectionState::Refused
+    );
     match (
         backend_selection.requested_backend.as_str(),
         product_label(product_id),
-        backend_selection.selection_state,
+        refusal_state,
     ) {
         ("cpu", "embeddings", _) => ValidationMatrixReference::minimum(
             "cpu.embeddings.reference",
@@ -227,33 +231,27 @@ pub fn validation_reference_for_served_product(
             "cpu.text_generation.reference",
             ValidationCoverage::PositiveExecution,
         ),
-        ("metal", "embeddings", BackendSelectionState::CrossBackendFallback) => {
-            ValidationMatrixReference::minimum(
-                "metal.refusal.off_platform",
-                ValidationCoverage::ExplicitRefusal,
-            )
-        }
-        ("metal", "embeddings", _) => ValidationMatrixReference::minimum(
+        ("metal", "embeddings", true) => ValidationMatrixReference::minimum(
+            "metal.refusal.off_platform",
+            ValidationCoverage::ExplicitRefusal,
+        ),
+        ("metal", "embeddings", false) => ValidationMatrixReference::minimum(
             "metal.embeddings.apple_silicon",
             ValidationCoverage::PositiveExecution,
         ),
-        ("metal", "text_generation", BackendSelectionState::CrossBackendFallback) => {
-            ValidationMatrixReference::minimum(
-                "metal.refusal.off_platform",
-                ValidationCoverage::ExplicitRefusal,
-            )
-        }
-        ("metal", "text_generation", _) => ValidationMatrixReference::minimum(
+        ("metal", "text_generation", true) => ValidationMatrixReference::minimum(
+            "metal.refusal.off_platform",
+            ValidationCoverage::ExplicitRefusal,
+        ),
+        ("metal", "text_generation", false) => ValidationMatrixReference::minimum(
             "metal.text_generation.apple_silicon",
             ValidationCoverage::PositiveExecution,
         ),
-        ("cuda", "embeddings", BackendSelectionState::CrossBackendFallback) => {
-            ValidationMatrixReference::minimum(
-                "cuda.refusal.unavailable",
-                ValidationCoverage::ExplicitRefusal,
-            )
-        }
-        ("cuda", "embeddings", _) => ValidationMatrixReference::minimum(
+        ("cuda", "embeddings", true) => ValidationMatrixReference::minimum(
+            "cuda.refusal.unavailable",
+            ValidationCoverage::ExplicitRefusal,
+        ),
+        ("cuda", "embeddings", false) => ValidationMatrixReference::minimum(
             "cuda.embeddings.nvidia",
             ValidationCoverage::PositiveExecution,
         ),
