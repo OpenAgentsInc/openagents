@@ -12,7 +12,8 @@ use mox_runtime::{
     LocalRuntimeDiagnostic, LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan,
     ModelResidencyPolicy, NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile,
     NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-    SandboxExecutionCapabilityProfile, ServedArtifactIdentity, SettlementLinkageInput,
+    SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
+    SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
     ValidationMatrixReference, validation_reference_for_served_product,
 };
 use mox_serve::{
@@ -532,6 +533,99 @@ impl SandboxExecutionCapabilityEnvelope {
             backend_selection,
             execution_profile,
             readiness,
+        }
+    }
+}
+
+/// Provider-facing receipt for one bounded sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionReceipt {
+    /// Product identifier.
+    pub product_id: String,
+    /// Backend family.
+    pub backend_family: String,
+    /// Runtime backend.
+    pub runtime_backend: String,
+    /// Explicit backend selection and fallback truth.
+    pub backend_selection: BackendSelection,
+    /// Explicit compile-vs-probe backend/toolchain truth for the realized path.
+    pub backend_toolchain: BackendToolchainIdentity,
+    /// Reusable selected-device inventory and performance qualifiers.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selected_device_inventory: Option<DeviceInventoryQualifiers>,
+    /// All selected devices participating in the effective backend path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+    /// Explicit multi-device or sharded execution topology when the path is planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// AMD-specific execution context when the selected backend is AMD.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd: Option<AmdCapabilityContext>,
+    /// NVIDIA-specific execution context when the selected backend is CUDA.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia: Option<NvidiaCapabilityContext>,
+    /// Stable request identifier.
+    pub request_id: String,
+    /// Stable request digest.
+    pub request_digest: String,
+    /// Runtime-owned sandbox evidence for the realized request path.
+    pub evidence: SandboxExecutionEvidence,
+    /// Timestamp when execution started.
+    pub started_at_unix_ms: u64,
+    /// Timestamp when execution ended.
+    pub ended_at_unix_ms: u64,
+    /// Terminal receipt status.
+    pub status: ReceiptStatus,
+    /// Optional failure reason surfaced from the sandbox terminal state.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    /// Structured local-runtime diagnostic for failed requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<LocalRuntimeDiagnostic>,
+}
+
+impl SandboxExecutionReceipt {
+    /// Creates a receipt from explicit sandbox request identity and runtime evidence.
+    #[must_use]
+    pub fn from_evidence(
+        backend_selection: BackendSelection,
+        request: &SandboxExecutionRequestIdentity,
+        evidence: SandboxExecutionEvidence,
+        started_at_unix_ms: u64,
+        ended_at_unix_ms: u64,
+        diagnostic: Option<LocalRuntimeDiagnostic>,
+    ) -> Self {
+        let status = match evidence.exit.kind {
+            SandboxExecutionExitKind::Succeeded => ReceiptStatus::Succeeded,
+            SandboxExecutionExitKind::Cancelled => ReceiptStatus::Cancelled,
+            SandboxExecutionExitKind::NonZeroExit
+            | SandboxExecutionExitKind::TimedOut
+            | SandboxExecutionExitKind::Killed
+            | SandboxExecutionExitKind::RefusedByPolicy => ReceiptStatus::Failed,
+        };
+        let failure_reason =
+            (status != ReceiptStatus::Succeeded).then(|| evidence.exit.detail.clone());
+
+        Self {
+            product_id: String::from(SANDBOX_EXECUTION_PRODUCT_ID),
+            backend_family: String::from(BACKEND_FAMILY),
+            runtime_backend: backend_selection.effective_backend.clone(),
+            backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
+            selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
+            selected_devices: selected_devices_inventory_for_selection(&backend_selection),
+            execution_topology: execution_topology_for_selection(&backend_selection),
+            amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
+            nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
+            backend_selection,
+            request_id: request.request_id.clone(),
+            request_digest: evidence.request_digest.clone(),
+            evidence,
+            started_at_unix_ms,
+            ended_at_unix_ms,
+            status,
+            failure_reason,
+            diagnostic,
         }
     }
 }
@@ -1672,6 +1766,26 @@ pub fn digest_generation_request(request: &GenerationRequest) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Computes a deterministic digest for a sandbox-execution request identity.
+#[must_use]
+pub fn digest_sandbox_execution_request(request: &SandboxExecutionRequestIdentity) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(request.request_id.as_bytes());
+    hasher.update(b"|");
+    hasher.update(SANDBOX_EXECUTION_PRODUCT_ID.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.sandbox_profile_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.command_digest.as_bytes());
+    hasher.update(b"|");
+    hasher.update(request.environment_digest.as_bytes());
+    for digest in &request.input_artifact_digests {
+        hasher.update(b"|");
+        hasher.update(digest.as_bytes());
+    }
+    hex::encode(hasher.finalize())
+}
+
 /// Provider-side adapter interface for the embeddings smoke path.
 pub trait EmbeddingsProviderAdapter {
     /// Returns the advertised capability envelope.
@@ -1803,6 +1917,8 @@ mod tests {
         NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
         PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
         RuntimeTransitionEvent, RuntimeTransitionKind, SandboxExecutionCapabilityProfile,
+        SandboxExecutionEvidence, SandboxExecutionExit, SandboxExecutionExitKind,
+        SandboxExecutionRequestIdentity, SandboxExecutionResourceSummary,
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use mox_serve::{
@@ -1823,10 +1939,11 @@ mod tests {
     use super::{
         CapabilityEnvelope, ComputeMarketSupplyViolationCode, ExecutionReceipt, KvCacheMode,
         LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
-        SandboxExecutionCapabilityEnvelope, TextGenerationCapabilityEnvelope,
-        TextGenerationReceipt, WeightBundleEvidence, cache_invalidation_policy,
-        compute_market_supply_refusal_diagnostic, default_compute_market_supply_policy,
-        digest_embedding_request, digest_generation_request, evaluate_compute_market_supply,
+        SandboxExecutionCapabilityEnvelope, SandboxExecutionReceipt,
+        TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
+        cache_invalidation_policy, compute_market_supply_refusal_diagnostic,
+        default_compute_market_supply_policy, digest_embedding_request, digest_generation_request,
+        digest_sandbox_execution_request, evaluate_compute_market_supply,
         served_artifact_identity_for_decoder_model,
     };
 
@@ -2336,6 +2453,77 @@ mod tests {
                     "message": "sandbox lane ready"
                 }
             })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sandbox_execution_receipt_round_trips() -> Result<(), Box<dyn std::error::Error>> {
+        let request = SandboxExecutionRequestIdentity {
+            request_id: String::from("sandbox-req-1"),
+            sandbox_profile_digest: SandboxExecutionCapabilityProfile::bounded_cpu()
+                .stable_digest(),
+            command_digest: String::from("command123"),
+            environment_digest: String::from("env123"),
+            input_artifact_digests: vec![String::from("input-a")],
+        };
+        let evidence = SandboxExecutionEvidence {
+            request_digest: digest_sandbox_execution_request(&request),
+            sandbox_profile_digest: request.sandbox_profile_digest.clone(),
+            command_digest: request.command_digest.clone(),
+            environment_digest: request.environment_digest.clone(),
+            input_artifact_digests: request.input_artifact_digests.clone(),
+            output_artifact_digests: vec![String::from("output-a")],
+            exit: SandboxExecutionExit {
+                kind: SandboxExecutionExitKind::TimedOut,
+                exit_code: None,
+                detail: String::from("sandbox exceeded wall-clock budget"),
+            },
+            resources: SandboxExecutionResourceSummary {
+                wall_time_ms: 301_000,
+                cpu_time_ms: 280_000,
+                peak_memory_bytes: 256 * 1024 * 1024,
+                filesystem_write_bytes: 8192,
+                stdout_bytes: 32,
+                stderr_bytes: 128,
+                network_egress_bytes: 0,
+            },
+            stdout_sha256: Some(String::from("stdout123")),
+            stderr_sha256: Some(String::from("stderr123")),
+            delivery_proof: Some(ExecutionDeliveryProof {
+                execution_plan_digest: String::from("plan123"),
+                kernel_count: 2,
+                bytes_moved: 4096,
+                plan_cache_hits: 1,
+                plan_cache_misses: 0,
+                kv_growth: None,
+            }),
+        };
+        let diagnostic = Some(LocalRuntimeDiagnostic::new(
+            LocalRuntimeErrorCode::AdmissionRefused,
+            403,
+            "sandbox wall-clock limit exceeded",
+        ));
+
+        let receipt = SandboxExecutionReceipt::from_evidence(
+            cpu_backend_selection(),
+            &request,
+            evidence.clone(),
+            10,
+            311_000,
+            diagnostic.clone(),
+        );
+
+        assert_eq!(receipt.status, ReceiptStatus::Failed);
+        assert_eq!(
+            receipt.failure_reason.as_deref(),
+            Some("sandbox exceeded wall-clock budget")
+        );
+        assert_eq!(receipt.evidence, evidence);
+        assert_eq!(receipt.diagnostic, diagnostic);
+        assert_eq!(
+            serde_json::from_value::<SandboxExecutionReceipt>(serde_json::to_value(&receipt)?)?,
+            receipt
         );
         Ok(())
     }
@@ -3876,6 +4064,22 @@ mod tests {
         assert_eq!(
             digest_generation_request(&generation_request),
             digest_generation_request(&generation_request)
+        );
+    }
+
+    #[test]
+    fn sandbox_request_digests_are_deterministic() {
+        let request = SandboxExecutionRequestIdentity {
+            request_id: String::from("sandbox-req-1"),
+            sandbox_profile_digest: String::from("profile123"),
+            command_digest: String::from("command123"),
+            environment_digest: String::from("env123"),
+            input_artifact_digests: vec![String::from("input-a"), String::from("input-b")],
+        };
+
+        assert_eq!(
+            digest_sandbox_execution_request(&request),
+            digest_sandbox_execution_request(&request)
         );
     }
 

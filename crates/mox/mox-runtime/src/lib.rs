@@ -2664,6 +2664,103 @@ impl SandboxExecutionCapabilityProfile {
     }
 }
 
+/// Stable identity inputs for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionRequestIdentity {
+    /// Stable request identifier.
+    pub request_id: String,
+    /// Stable digest of the bounded sandbox profile used for the request.
+    pub sandbox_profile_digest: String,
+    /// Stable digest of the command or job spec executed inside the sandbox.
+    pub command_digest: String,
+    /// Stable digest of the execution environment exposed to the job.
+    pub environment_digest: String,
+    /// Stable digests for declared input artifacts when the request consumes them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_artifact_digests: Vec<String>,
+}
+
+/// Explicit terminal reason for one sandbox-execution request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxExecutionExitKind {
+    /// The sandbox job completed successfully.
+    Succeeded,
+    /// The sandbox job exited with a non-zero exit code.
+    NonZeroExit,
+    /// The sandbox job exceeded its explicit time budget.
+    TimedOut,
+    /// The sandbox job was cancelled by the caller.
+    Cancelled,
+    /// The runtime killed the sandbox job for safety or resource reasons.
+    Killed,
+    /// The runtime refused the sandbox job before launch under explicit policy.
+    RefusedByPolicy,
+}
+
+/// Explicit terminal exit facts for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionExit {
+    /// Stable terminal reason.
+    pub kind: SandboxExecutionExitKind,
+    /// Concrete process exit code when one existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// Short machine-readable explanation for the realized terminal state.
+    pub detail: String,
+}
+
+/// Explicit resource summary for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionResourceSummary {
+    /// Realized wall-clock runtime in milliseconds.
+    pub wall_time_ms: u64,
+    /// Realized CPU time in milliseconds.
+    pub cpu_time_ms: u64,
+    /// Peak resident memory observed for the sandbox.
+    pub peak_memory_bytes: u64,
+    /// Total bytes written through writable filesystem mounts.
+    pub filesystem_write_bytes: u64,
+    /// Total stdout bytes produced by the sandbox.
+    pub stdout_bytes: u64,
+    /// Total stderr bytes produced by the sandbox.
+    pub stderr_bytes: u64,
+    /// Total network egress bytes observed for the sandbox.
+    pub network_egress_bytes: u64,
+}
+
+/// Machine-checkable runtime evidence for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionEvidence {
+    /// Stable digest for the request identity.
+    pub request_digest: String,
+    /// Stable digest of the bounded sandbox profile used for the request.
+    pub sandbox_profile_digest: String,
+    /// Stable digest of the executed command or job spec.
+    pub command_digest: String,
+    /// Stable digest of the execution environment exposed to the job.
+    pub environment_digest: String,
+    /// Stable input artifact digests declared for the request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_artifact_digests: Vec<String>,
+    /// Stable output artifact digests emitted by the request when applicable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_artifact_digests: Vec<String>,
+    /// Explicit terminal status for the sandbox job.
+    pub exit: SandboxExecutionExit,
+    /// Explicit resource summary for the sandbox job.
+    pub resources: SandboxExecutionResourceSummary,
+    /// Stable digest of stdout bytes when retained.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stdout_sha256: Option<String>,
+    /// Stable digest of stderr bytes when retained.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stderr_sha256: Option<String>,
+    /// Delivery-proof facts surfaced by the underlying execution runtime when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof: Option<ExecutionDeliveryProof>,
+}
+
 /// Explicit local-runtime observability snapshot for app cutover and debugging.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalRuntimeObservability {
@@ -4172,26 +4269,28 @@ mod tests {
         BufferResidency, BufferStorageKind, CacheAction, CacheInvalidationTrigger, CacheKind,
         CacheObservation, DEFAULT_PENALTY_LOOKBACK, DeviceDescriptor, DeviceDiscovery,
         DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass,
-        ExecutionBackend, ExecutionCapabilityProfile, ExecutionMetrics, ExecutionPlanCachePolicy,
-        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
-        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
-        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
-        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
-        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
-        ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        ExecutionBackend, ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
+        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
+        ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
+        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
+        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
         RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
-        SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxFilesystemPolicy,
-        SandboxFilesystemRoot, SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy,
-        SandboxProcessPolicy, SandboxResourceLimits, ServedArtifactIdentity,
-        ServedProductBackendPolicy, ServedProductFallbackAction, ServedProductFallbackLattice,
-        ServedProductFallbackTrigger, ThroughputClass, TokenSampler, apply_sampling_penalties,
-        default_cache_invalidation_policy, plan_model_admission,
+        SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
+        SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
+        SandboxExecutionResourceSummary, SandboxFilesystemPolicy, SandboxFilesystemRoot,
+        SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy,
+        SandboxResourceLimits, ServedArtifactIdentity, ServedProductBackendPolicy,
+        ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
+        ThroughputClass, TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
+        plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -5951,6 +6050,85 @@ mod tests {
             ..baseline.clone()
         };
         assert_ne!(baseline.stable_digest(), tightened.stable_digest());
+    }
+
+    #[test]
+    fn sandbox_execution_evidence_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let request = SandboxExecutionRequestIdentity {
+            request_id: String::from("sandbox-req-1"),
+            sandbox_profile_digest: String::from("profile123"),
+            command_digest: String::from("command123"),
+            environment_digest: String::from("env123"),
+            input_artifact_digests: vec![String::from("input-a"), String::from("input-b")],
+        };
+        let evidence = SandboxExecutionEvidence {
+            request_digest: String::from("request123"),
+            sandbox_profile_digest: request.sandbox_profile_digest.clone(),
+            command_digest: request.command_digest.clone(),
+            environment_digest: request.environment_digest.clone(),
+            input_artifact_digests: request.input_artifact_digests.clone(),
+            output_artifact_digests: vec![String::from("output-a")],
+            exit: SandboxExecutionExit {
+                kind: SandboxExecutionExitKind::NonZeroExit,
+                exit_code: Some(17),
+                detail: String::from("tool exited non-zero"),
+            },
+            resources: SandboxExecutionResourceSummary {
+                wall_time_ms: 1500,
+                cpu_time_ms: 900,
+                peak_memory_bytes: 512 * 1024 * 1024,
+                filesystem_write_bytes: 4096,
+                stdout_bytes: 128,
+                stderr_bytes: 64,
+                network_egress_bytes: 0,
+            },
+            stdout_sha256: Some(String::from("stdout123")),
+            stderr_sha256: Some(String::from("stderr123")),
+            delivery_proof: Some(ExecutionDeliveryProof {
+                execution_plan_digest: String::from("plan123"),
+                kernel_count: 3,
+                bytes_moved: 1024,
+                plan_cache_hits: 1,
+                plan_cache_misses: 0,
+                kv_growth: None,
+            }),
+        };
+
+        assert_eq!(
+            serde_json::to_value(&evidence)?,
+            json!({
+                "request_digest": "request123",
+                "sandbox_profile_digest": "profile123",
+                "command_digest": "command123",
+                "environment_digest": "env123",
+                "input_artifact_digests": ["input-a", "input-b"],
+                "output_artifact_digests": ["output-a"],
+                "exit": {
+                    "kind": "non_zero_exit",
+                    "exit_code": 17,
+                    "detail": "tool exited non-zero"
+                },
+                "resources": {
+                    "wall_time_ms": 1500,
+                    "cpu_time_ms": 900,
+                    "peak_memory_bytes": 536870912u64,
+                    "filesystem_write_bytes": 4096,
+                    "stdout_bytes": 128,
+                    "stderr_bytes": 64,
+                    "network_egress_bytes": 0
+                },
+                "stdout_sha256": "stdout123",
+                "stderr_sha256": "stderr123",
+                "delivery_proof": {
+                    "execution_plan_digest": "plan123",
+                    "kernel_count": 3,
+                    "bytes_moved": 1024,
+                    "plan_cache_hits": 1,
+                    "plan_cache_misses": 0
+                }
+            })
+        );
+        Ok(())
     }
 
     #[test]
