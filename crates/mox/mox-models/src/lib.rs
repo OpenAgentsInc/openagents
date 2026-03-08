@@ -8,6 +8,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use mox_catalog::{
+    BlobError, BlobReadPath, LocalBlob, LocalBlobKind, LocalBlobMetadata, LocalBlobOpenOptions,
+    PagedBlobRange,
+};
 use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
 use safetensors::{Dtype as SafeTensorsDType, SafeTensors, serialize_to_file, tensor::TensorView};
 use serde::{Deserialize, Serialize};
@@ -485,6 +489,61 @@ pub struct WeightArtifactMetadata {
     pub byte_length: u64,
     /// Stable SHA-256 digest of the artifact bytes.
     pub sha256: String,
+    /// Explicit local storage posture when the artifact came from blob-backed paging.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub storage: Option<WeightArtifactStorageMetadata>,
+}
+
+/// Blob family used to back a paged artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WeightArtifactBlobKind {
+    /// Standalone GGUF file discovered directly on disk.
+    GgufFile,
+    /// Ollama-managed blob discovered by digest.
+    OllamaBlob,
+}
+
+impl WeightArtifactBlobKind {
+    fn from_local_blob_kind(kind: LocalBlobKind) -> Self {
+        match kind {
+            LocalBlobKind::GgufFile => Self::GgufFile,
+            LocalBlobKind::OllamaBlob => Self::OllamaBlob,
+        }
+    }
+}
+
+/// Actual local read path used for a paged artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum WeightArtifactReadPath {
+    /// Artifact bytes are exposed through a memory map.
+    MemoryMapped,
+    /// Artifact bytes are exposed from a buffered in-memory copy.
+    Buffered,
+}
+
+impl WeightArtifactReadPath {
+    fn from_blob_read_path(read_path: BlobReadPath) -> Self {
+        match read_path {
+            BlobReadPath::MemoryMapped => Self::MemoryMapped,
+            BlobReadPath::Buffered => Self::Buffered,
+        }
+    }
+}
+
+/// Stable paging and read-path metadata for a blob-backed artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct WeightArtifactStorageMetadata {
+    /// Local blob family that backed the artifact.
+    pub blob_kind: WeightArtifactBlobKind,
+    /// Actual local read path used for the artifact.
+    pub read_path: WeightArtifactReadPath,
+    /// Logical page size used for paged tensor slices.
+    pub page_size: usize,
+    /// Explicit fallback reason when mmap was requested but not used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
 }
 
 impl WeightArtifactMetadata {
@@ -495,6 +554,7 @@ impl WeightArtifactMetadata {
             name: name.into(),
             byte_length,
             sha256: sha256.into(),
+            storage: None,
         }
     }
 
@@ -505,6 +565,24 @@ impl WeightArtifactMetadata {
             .filter(|value| !value.is_empty())
             .unwrap_or_else(|| path.display().to_string());
         Self::new(name, bytes.len() as u64, hex::encode(Sha256::digest(bytes)))
+    }
+
+    fn for_blob(blob: &LocalBlobMetadata) -> Self {
+        Self {
+            name: blob.name.clone(),
+            byte_length: blob.byte_length,
+            sha256: blob
+                .sha256
+                .strip_prefix("sha256:")
+                .unwrap_or(blob.sha256.as_str())
+                .to_string(),
+            storage: Some(WeightArtifactStorageMetadata {
+                blob_kind: WeightArtifactBlobKind::from_local_blob_kind(blob.kind),
+                read_path: WeightArtifactReadPath::from_blob_read_path(blob.read_path),
+                page_size: blob.page_size,
+                fallback_reason: blob.fallback_reason.clone(),
+            }),
+        }
     }
 }
 
@@ -1019,6 +1097,37 @@ impl GgufTensorInfo {
             tensor_type: self.tensor_type,
         })
     }
+
+    fn weight_metadata(&self) -> Result<WeightTensorMetadata, ModelLoadError> {
+        if let Some(dtype) = self.tensor_type.dense_dtype() {
+            return Ok(WeightTensorMetadata::new(
+                self.name.clone(),
+                self.shape.clone(),
+                dtype,
+            ));
+        }
+
+        if let Some(quantization) = self.tensor_type.quantization_mode() {
+            let layout = quantization.ggml_block_layout(&self.shape).ok_or_else(|| {
+                ModelLoadError::InvalidQuantizedTensorShape {
+                    quantization,
+                    shape: self.shape.dims().to_vec(),
+                }
+            })?;
+            return Ok(WeightTensorMetadata::new(
+                self.name.clone(),
+                self.shape.clone(),
+                DType::F32,
+            )
+            .with_quantization(quantization)
+            .with_quantized_layout(layout));
+        }
+
+        Err(ModelLoadError::UnsupportedGgufTensorType {
+            name: self.name.clone(),
+            tensor_type: self.tensor_type,
+        })
+    }
 }
 
 /// Reusable GGUF metadata and tensor table parsed from an artifact.
@@ -1167,21 +1276,7 @@ impl GgufContent {
         artifact_bytes: &'a [u8],
         name: &str,
     ) -> Result<&'a [u8], ModelLoadError> {
-        let tensor = self
-            .tensor_info(name)
-            .ok_or_else(|| ModelLoadError::MissingTensor(String::from(name)))?;
-        let byte_len = tensor.byte_len()?;
-        let start = usize::try_from(self.tensor_data_offset)
-            .map_err(|_| artifact_format_error("gguf", "tensor data offset does not fit usize"))?
-            .checked_add(usize::try_from(tensor.offset).map_err(|_| {
-                artifact_format_error("gguf", format!("tensor `{name}` offset does not fit usize"))
-            })?)
-            .ok_or_else(|| {
-                artifact_format_error(
-                    "gguf",
-                    format!("tensor `{name}` start offset overflows usize"),
-                )
-            })?;
+        let (start, byte_len) = self.tensor_byte_range(name)?;
         let end = start.checked_add(byte_len).ok_or_else(|| {
             artifact_format_error(
                 "gguf",
@@ -1197,6 +1292,26 @@ impl GgufContent {
                 ),
             )
         })
+    }
+
+    /// Returns the exact byte range for a tensor inside the GGUF artifact.
+    pub fn tensor_byte_range(&self, name: &str) -> Result<(usize, usize), ModelLoadError> {
+        let tensor = self
+            .tensor_info(name)
+            .ok_or_else(|| ModelLoadError::MissingTensor(String::from(name)))?;
+        let byte_len = tensor.byte_len()?;
+        let start = usize::try_from(self.tensor_data_offset)
+            .map_err(|_| artifact_format_error("gguf", "tensor data offset does not fit usize"))?
+            .checked_add(usize::try_from(tensor.offset).map_err(|_| {
+                artifact_format_error("gguf", format!("tensor `{name}` offset does not fit usize"))
+            })?)
+            .ok_or_else(|| {
+                artifact_format_error(
+                    "gguf",
+                    format!("tensor `{name}` start offset overflows usize"),
+                )
+            })?;
+        Ok((start, byte_len))
     }
 
     /// Loads a single tensor from GGUF bytes into Mox loader storage.
@@ -1391,6 +1506,171 @@ impl GgufContent {
             pretokenizer,
             digest,
         })
+    }
+}
+
+/// Paged tensor bytes backed by a local model blob.
+#[derive(Clone, Debug)]
+pub struct PagedTensorStorage {
+    metadata: WeightTensorMetadata,
+    bytes: PagedBlobRange,
+}
+
+impl PagedTensorStorage {
+    fn new(metadata: WeightTensorMetadata, bytes: PagedBlobRange) -> Self {
+        Self { metadata, bytes }
+    }
+
+    /// Returns the stable tensor metadata.
+    #[must_use]
+    pub fn metadata(&self) -> &WeightTensorMetadata {
+        &self.metadata
+    }
+
+    /// Returns the metadata for the underlying blob.
+    #[must_use]
+    pub fn blob_metadata(&self) -> &LocalBlobMetadata {
+        self.bytes.blob_metadata()
+    }
+
+    /// Returns the starting byte offset inside the blob.
+    #[must_use]
+    pub fn blob_offset(&self) -> usize {
+        self.bytes.offset()
+    }
+
+    /// Returns the tensor byte length.
+    #[must_use]
+    pub fn byte_length(&self) -> usize {
+        self.bytes.len()
+    }
+
+    /// Returns the logical page size.
+    #[must_use]
+    pub fn page_size(&self) -> usize {
+        self.bytes.page_size()
+    }
+
+    /// Returns the total page count for the tensor bytes.
+    #[must_use]
+    pub fn page_count(&self) -> usize {
+        self.bytes.page_count()
+    }
+
+    /// Returns the full tensor bytes.
+    pub fn bytes(&self) -> Result<&[u8], ModelLoadError> {
+        self.bytes.bytes().map_err(ModelLoadError::from)
+    }
+
+    /// Returns a single page inside the tensor byte range.
+    pub fn page(&self, page_index: usize) -> Result<&[u8], ModelLoadError> {
+        self.bytes.page(page_index).map_err(ModelLoadError::from)
+    }
+
+    /// Returns a validated byte slice inside the paged tensor bytes.
+    pub fn read_range(&self, offset: usize, len: usize) -> Result<&[u8], ModelLoadError> {
+        self.bytes
+            .read_range(offset, len)
+            .map_err(ModelLoadError::from)
+    }
+
+    /// Materializes the paged bytes into a loaded tensor.
+    pub fn load(&self) -> Result<LoadedWeightTensor, ModelLoadError> {
+        let bytes = self.bytes()?;
+        if self.metadata.quantization == QuantizationMode::None {
+            let values = match self.metadata.dtype {
+                DType::F32 => decode_f32_values("gguf", &self.metadata.name, bytes)?,
+                DType::F16 => decode_f16_values("gguf", &self.metadata.name, bytes)?,
+                DType::BF16 => decode_bf16_values("gguf", &self.metadata.name, bytes)?,
+                other => {
+                    return Err(ModelLoadError::UnsupportedTensorDType {
+                        name: self.metadata.name.clone(),
+                        dtype: format!("{other:?}"),
+                    });
+                }
+            };
+            return Ok(LoadedWeightTensor::new(self.metadata.clone(), values));
+        }
+
+        LoadedWeightTensor::from_ggml_blocks(
+            self.metadata.name.clone(),
+            self.metadata.shape.clone(),
+            self.metadata.quantization,
+            bytes.to_vec(),
+        )
+    }
+}
+
+/// Parsed GGUF metadata backed by a local blob that supports paged tensor reads.
+#[derive(Clone, Debug)]
+pub struct GgufBlobArtifact {
+    content: GgufContent,
+    blob: LocalBlob,
+    artifact: WeightArtifactMetadata,
+}
+
+impl GgufBlobArtifact {
+    /// Opens a GGUF artifact directly from a local file path.
+    pub fn open_path(
+        path: impl AsRef<Path>,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Self, ModelLoadError> {
+        let blob = LocalBlob::open_path(path, LocalBlobKind::GgufFile, options)?;
+        Self::from_blob(blob)
+    }
+
+    /// Opens an Ollama-managed GGUF blob from the provided models root and digest.
+    pub fn open_ollama_blob(
+        models_root: impl AsRef<Path>,
+        digest: &str,
+        options: LocalBlobOpenOptions,
+    ) -> Result<Self, ModelLoadError> {
+        let blob = LocalBlob::open_ollama_blob(models_root, digest, options)?;
+        Self::from_blob(blob)
+    }
+
+    fn from_blob(blob: LocalBlob) -> Result<Self, ModelLoadError> {
+        let content = GgufContent::read(blob.bytes())?;
+        let artifact = WeightArtifactMetadata::for_blob(blob.metadata());
+        Ok(Self {
+            content,
+            blob,
+            artifact,
+        })
+    }
+
+    /// Returns the parsed GGUF content.
+    #[must_use]
+    pub fn content(&self) -> &GgufContent {
+        &self.content
+    }
+
+    /// Returns the opened blob metadata.
+    #[must_use]
+    pub fn blob_metadata(&self) -> &LocalBlobMetadata {
+        self.blob.metadata()
+    }
+
+    /// Returns artifact metadata suitable for weight-bundle evidence.
+    #[must_use]
+    pub fn artifact_metadata(&self) -> &WeightArtifactMetadata {
+        &self.artifact
+    }
+
+    /// Returns paged tensor storage for the named tensor.
+    pub fn paged_tensor(&self, name: &str) -> Result<PagedTensorStorage, ModelLoadError> {
+        let tensor = self
+            .content
+            .tensor_info(name)
+            .ok_or_else(|| ModelLoadError::MissingTensor(String::from(name)))?;
+        let (offset, byte_length) = self.content.tensor_byte_range(name)?;
+        let bytes = self.blob.paged_range(offset, byte_length)?;
+        Ok(PagedTensorStorage::new(tensor.weight_metadata()?, bytes))
+    }
+
+    /// Loads the named tensor through the paged blob path.
+    pub fn load_tensor(&self, name: &str) -> Result<LoadedWeightTensor, ModelLoadError> {
+        self.paged_tensor(name)?.load()
     }
 }
 
@@ -1856,19 +2136,18 @@ impl LocalWeightBundleLoader for SafeTensorsWeightBundleLoader {
 pub struct GgufWeightBundleLoader;
 
 impl GgufWeightBundleLoader {
-    fn load_bytes(
+    fn load_artifact(
         &self,
-        bytes: &[u8],
-        artifact: WeightArtifactMetadata,
+        artifact: &GgufBlobArtifact,
     ) -> Result<LoadedWeightBundle, ModelLoadError> {
-        let content = GgufContent::read(bytes)?;
+        let content = artifact.content();
         let mut metadata = Vec::with_capacity(content.tensor_infos.len());
         let mut loaded = BTreeMap::new();
         let mut hasher = Sha256::new();
         let mut quantized_bytes = Vec::new();
 
         for tensor_info in content.tensor_infos() {
-            let tensor = content.load_tensor(bytes, &tensor_info.name)?;
+            let tensor = artifact.load_tensor(&tensor_info.name)?;
             if let WeightTensorStorage::QuantizedBlocks(storage) = tensor.storage() {
                 track_quantized_bytes(
                     &mut quantized_bytes,
@@ -1889,10 +2168,29 @@ impl GgufWeightBundleLoader {
                 quantization: dominant_quantization_mode(&quantized_bytes),
                 digest: hex::encode(hasher.finalize()),
                 tensors: metadata,
-                artifacts: vec![artifact],
+                artifacts: vec![artifact.artifact_metadata().clone()],
             },
             loaded,
         ))
+    }
+
+    /// Loads a GGUF-backed bundle from a paged local blob artifact.
+    pub fn load_blob_artifact(
+        &self,
+        artifact: &GgufBlobArtifact,
+    ) -> Result<LoadedWeightBundle, ModelLoadError> {
+        self.load_artifact(artifact)
+    }
+
+    /// Loads an Ollama-managed GGUF blob from the provided models root and digest.
+    pub fn load_ollama_blob(
+        &self,
+        models_root: impl AsRef<Path>,
+        digest: &str,
+        options: LocalBlobOpenOptions,
+    ) -> Result<LoadedWeightBundle, ModelLoadError> {
+        let artifact = GgufBlobArtifact::open_ollama_blob(models_root, digest, options)?;
+        self.load_artifact(&artifact)
     }
 }
 
@@ -1900,11 +2198,8 @@ impl LocalWeightBundleLoader for GgufWeightBundleLoader {
     type Error = ModelLoadError;
 
     fn load_path(&self, path: &Path) -> Result<LoadedWeightBundle, Self::Error> {
-        let bytes = fs::read(path).map_err(|error| ModelLoadError::ArtifactRead {
-            path: path.display().to_string(),
-            message: error.to_string(),
-        })?;
-        self.load_bytes(&bytes, WeightArtifactMetadata::for_path(path, &bytes))
+        let artifact = GgufBlobArtifact::open_path(path, LocalBlobOpenOptions::default())?;
+        self.load_artifact(&artifact)
     }
 }
 
@@ -2055,6 +2350,9 @@ pub enum ModelLoadError {
         /// Parse failure summary.
         message: String,
     },
+    /// Opening or paging a local blob failed.
+    #[error(transparent)]
+    Blob(#[from] BlobError),
     /// GGUF tokenizer metadata is missing a required key.
     #[error("missing tokenizer metadata `{key}` in gguf artifact")]
     MissingTokenizerMetadata {
@@ -3580,17 +3878,20 @@ fn decode_int8_symmetric_values(
 mod tests {
     use std::{collections::BTreeMap, path::Path};
 
+    use mox_catalog::BlobReadPreference;
     use mox_core::{DType, QuantizationMode, QuantizedBlockLayout, Shape};
     use safetensors::{Dtype as SafeTensorsDType, serialize_to_file, tensor::TensorView};
+    use sha2::{Digest, Sha256};
     use tempfile::tempdir;
 
     use super::{
         ByteProjectionEmbedder, DecoderModelDescriptor, DecoderWeightLoader, FixtureDecoderLoader,
-        FixtureWordTokenizer, GgufContent, GgufMetadataValue, GgufTensorType, GgufTokenizerModel,
-        GgufTokenizerPretokenizer, GgufVersion, GgufWeightBundleLoader, LoadedWeightTensor,
-        LocalWeightBundleLoader, QuantizedTensorStorage, ReferenceWordDecoder,
-        SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader, SmokeByteEmbedder, TokenId,
-        TokenizerBoundary, WeightFormat, WeightSource, WeightTensorStorage,
+        FixtureWordTokenizer, GgufBlobArtifact, GgufContent, GgufMetadataValue, GgufTensorType,
+        GgufTokenizerModel, GgufTokenizerPretokenizer, GgufVersion, GgufWeightBundleLoader,
+        LoadedWeightTensor, LocalBlobOpenOptions, LocalWeightBundleLoader, QuantizedTensorStorage,
+        ReferenceWordDecoder, SafeTensorsDecoderLoader, SafeTensorsWeightBundleLoader,
+        SmokeByteEmbedder, TokenId, TokenizerBoundary, WeightArtifactBlobKind,
+        WeightArtifactReadPath, WeightFormat, WeightSource, WeightTensorStorage,
     };
 
     #[test]
@@ -4177,6 +4478,169 @@ mod tests {
                 name,
                 tensor_type: GgufTensorType::Q6K
             } if name == "unsupported"
+        ));
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_blob_artifact_pages_tensor_bytes_and_reports_buffered_fallback()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("paged.gguf");
+        let dense_bytes = super::encode_f32_bytes(&[1.0, 2.0, 3.0, 4.0]);
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[(
+                String::from("general.alignment"),
+                GgufMetadataValue::U32(32),
+            )],
+            &[TestGgufTensor::new(
+                "dense",
+                vec![4],
+                GgufTensorType::F32,
+                dense_bytes.clone(),
+            )],
+        )?;
+
+        let artifact = GgufBlobArtifact::open_path(
+            &path,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::PreferBuffered)
+                .with_page_size(8),
+        )?;
+
+        let storage = artifact
+            .artifact_metadata()
+            .storage
+            .as_ref()
+            .ok_or("missing artifact storage metadata")?;
+        assert_eq!(storage.blob_kind, WeightArtifactBlobKind::GgufFile);
+        assert_eq!(storage.read_path, WeightArtifactReadPath::Buffered);
+        assert_eq!(storage.page_size, 8);
+
+        let paged = artifact.paged_tensor("dense")?;
+        assert_eq!(paged.metadata().shape, Shape::new(vec![4]));
+        assert_eq!(paged.blob_offset() % 32, 0);
+        assert_eq!(paged.byte_length(), dense_bytes.len());
+        assert_eq!(paged.page_count(), 2);
+        assert_eq!(paged.page(0)?, &dense_bytes[..8]);
+        assert_eq!(paged.page(1)?, &dense_bytes[8..]);
+        assert_eq!(paged.read_range(4, 8)?, &dense_bytes[4..12]);
+        assert_eq!(paged.read_range(4, 8)?, &dense_bytes[4..12]);
+
+        let loaded = paged.load()?;
+        assert_eq!(loaded.values()?.as_ref(), &[1.0, 2.0, 3.0, 4.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_blob_artifact_supports_memory_mapped_open_path()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("mapped.gguf");
+        write_test_gguf(
+            &path,
+            GgufVersion::V3,
+            &[],
+            &[TestGgufTensor::new(
+                "dense",
+                vec![1],
+                GgufTensorType::F32,
+                super::encode_f32_bytes(&[7.0]),
+            )],
+        )?;
+
+        let artifact = GgufBlobArtifact::open_path(
+            &path,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::RequireMemoryMap),
+        )?;
+        let storage = artifact
+            .artifact_metadata()
+            .storage
+            .as_ref()
+            .ok_or("missing artifact storage metadata")?;
+
+        assert_eq!(storage.read_path, WeightArtifactReadPath::MemoryMapped);
+        assert_eq!(artifact.load_tensor("dense")?.values()?.as_ref(), &[7.0]);
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_weight_bundle_loader_loads_ollama_blob_with_storage_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let bytes = build_test_gguf(
+            GgufVersion::V3,
+            &[],
+            &[TestGgufTensor::new(
+                "dense",
+                vec![2],
+                GgufTensorType::F32,
+                super::encode_f32_bytes(&[3.0, -1.0]),
+            )],
+        )?;
+        let digest = hex::encode(Sha256::digest(bytes.as_slice()));
+        let blob_path = temp.path().join("blobs").join(format!("sha256-{digest}"));
+        std::fs::create_dir_all(blob_path.parent().ok_or("missing parent")?)?;
+        std::fs::write(&blob_path, &bytes)?;
+
+        let bundle = GgufWeightBundleLoader.load_ollama_blob(
+            temp.path(),
+            &format!("sha256:{digest}"),
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::PreferBuffered)
+                .with_page_size(16),
+        )?;
+
+        let artifact = &bundle.metadata().artifacts[0];
+        let storage = artifact
+            .storage
+            .as_ref()
+            .ok_or("missing artifact storage metadata")?;
+        assert_eq!(artifact.sha256, digest);
+        assert_eq!(storage.blob_kind, WeightArtifactBlobKind::OllamaBlob);
+        assert_eq!(storage.read_path, WeightArtifactReadPath::Buffered);
+        assert_eq!(storage.page_size, 16);
+        assert_eq!(
+            bundle
+                .tensor("dense")
+                .ok_or("missing dense")?
+                .values()?
+                .as_ref(),
+            &[3.0, -1.0]
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn gguf_blob_artifact_reports_missing_and_corrupt_blob_failures()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let missing = temp.path().join("missing.gguf");
+        let error = GgufBlobArtifact::open_path(
+            &missing,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::PreferBuffered),
+        )
+        .expect_err("missing blob should fail");
+        assert!(matches!(
+            error,
+            super::ModelLoadError::Blob(mox_catalog::BlobError::MissingFile { .. })
+        ));
+
+        let corrupt = temp.path().join("corrupt.gguf");
+        std::fs::write(&corrupt, b"not-a-gguf")?;
+        let error = GgufBlobArtifact::open_path(
+            &corrupt,
+            LocalBlobOpenOptions::default()
+                .with_read_preference(BlobReadPreference::PreferBuffered),
+        )
+        .expect_err("corrupt blob should fail");
+        assert!(matches!(
+            error,
+            super::ModelLoadError::ArtifactFormat { format, .. } if format == "gguf"
         ));
         Ok(())
     }

@@ -4443,6 +4443,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "mox-catalog"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "memmap2",
+ "serde",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+]
+
+[[package]]
 name = "mox-compiler"
 version = "0.1.0"
 dependencies = [
@@ -4474,6 +4486,7 @@ name = "mox-models"
 version = "0.1.0"
 dependencies = [
  "hex",
+ "mox-catalog",
  "mox-core",
  "safetensors",
  "serde",

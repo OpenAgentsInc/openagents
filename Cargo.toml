@@ -22,6 +22,7 @@ members = [
     "crates/mox/mox-compiler",
     "crates/mox/mox-runtime",
     "crates/mox/mox-models",
+    "crates/mox/mox-catalog",
     "crates/mox/mox-serve",
     "crates/mox/mox-provider",
     "crates/mox/mox-backend-cpu",
