@@ -8,7 +8,8 @@ use mox_runtime::{
     BackendSelection, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
     LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
     NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
-    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, ValidationMatrixReference,
+    validation_reference_for_served_product,
 };
 use mox_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -152,6 +153,8 @@ pub struct CapabilityEnvelope {
     pub product_id: String,
     /// Runtime backend such as `cpu`.
     pub runtime_backend: String,
+    /// Minimum hardware validation claim backing the current support posture.
+    pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
     /// AMD-specific capability context when the selected backend is AMD.
@@ -201,6 +204,10 @@ impl CapabilityEnvelope {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(EMBEDDINGS_PRODUCT_ID),
             runtime_backend: backend_selection.effective_backend.clone(),
+            validation: validation_reference_for_served_product(
+                &backend_selection,
+                EMBEDDINGS_PRODUCT_ID,
+            ),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -280,6 +287,8 @@ pub struct ExecutionReceipt {
     pub backend_family: String,
     /// Runtime backend.
     pub runtime_backend: String,
+    /// Minimum hardware validation claim backing the current support posture.
+    pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
     /// AMD-specific execution context when the selected backend is AMD.
@@ -345,6 +354,10 @@ impl ExecutionReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            validation: validation_reference_for_served_product(
+                &backend_selection,
+                request.product_id.as_str(),
+            ),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -401,6 +414,10 @@ impl ExecutionReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            validation: validation_reference_for_served_product(
+                &backend_selection,
+                request.product_id.as_str(),
+            ),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -474,6 +491,8 @@ pub struct TextGenerationCapabilityEnvelope {
     pub product_id: String,
     /// Runtime backend such as `cpu`.
     pub runtime_backend: String,
+    /// Minimum hardware validation claim backing the current support posture.
+    pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
     /// AMD-specific capability context when the selected backend is AMD.
@@ -528,6 +547,10 @@ impl TextGenerationCapabilityEnvelope {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
             runtime_backend: backend_selection.effective_backend.clone(),
+            validation: validation_reference_for_served_product(
+                &backend_selection,
+                TEXT_GENERATION_PRODUCT_ID,
+            ),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -558,6 +581,8 @@ pub struct TextGenerationReceipt {
     pub backend_family: String,
     /// Runtime backend.
     pub runtime_backend: String,
+    /// Minimum hardware validation claim backing the current support posture.
+    pub validation: ValidationMatrixReference,
     /// Explicit backend selection and fallback truth.
     pub backend_selection: BackendSelection,
     /// AMD-specific execution context when the selected backend is AMD.
@@ -669,6 +694,10 @@ impl TextGenerationReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            validation: validation_reference_for_served_product(
+                &backend_selection,
+                request.product_id.as_str(),
+            ),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -771,6 +800,10 @@ impl TextGenerationReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
+            validation: validation_reference_for_served_product(
+                &backend_selection,
+                request.product_id.as_str(),
+            ),
             amd: AmdCapabilityContext::from_backend_selection(&backend_selection),
             nvidia: NvidiaCapabilityContext::from_backend_selection(&backend_selection),
             backend_selection,
@@ -1042,7 +1075,7 @@ mod tests {
         NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
         PrefixCacheIdentity, PrefixCacheState, QuantizationExecution, QuantizationLoadPath,
         QuantizationSupport, RuntimeTransitionEvent, RuntimeTransitionKind,
-        ServedProductBackendPolicy,
+        ServedProductBackendPolicy, ValidationCoverage,
     };
     use mox_serve::{
         EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse,
@@ -1077,6 +1110,12 @@ mod tests {
                 "backend_family": "mox",
                 "product_id": "mox.embeddings",
                 "runtime_backend": "cpu",
+                "validation": {
+                    "matrix_id": "mox.minimum_hardware_validation.v1",
+                    "documentation_path": "crates/mox/docs/HARDWARE_VALIDATION_MATRIX.md",
+                    "claim_id": "cpu.embeddings.reference",
+                    "coverage": "positive_execution"
+                },
                 "backend_selection": {
                     "requested_backend": "cpu",
                     "effective_backend": "cpu",
@@ -1173,6 +1212,12 @@ mod tests {
                 "backend_family": "mox",
                 "product_id": "mox.text_generation",
                 "runtime_backend": "cpu",
+                "validation": {
+                    "matrix_id": "mox.minimum_hardware_validation.v1",
+                    "documentation_path": "crates/mox/docs/HARDWARE_VALIDATION_MATRIX.md",
+                    "claim_id": "cpu.text_generation.reference",
+                    "coverage": "positive_execution"
+                },
                 "backend_selection": {
                     "requested_backend": "cpu",
                     "effective_backend": "cpu",
@@ -1301,6 +1346,14 @@ mod tests {
 
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("cpu.embeddings.reference")
+        );
+        assert_eq!(
+            encoded["validation"]["coverage"],
+            json!("positive_execution")
+        );
+        assert_eq!(
             encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]["max_cached_bytes"],
             json!(8 * 1024 * 1024)
         );
@@ -1417,6 +1470,11 @@ mod tests {
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(encoded["runtime_backend"], json!("cpu"));
         assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("metal.refusal.off_platform")
+        );
+        assert_eq!(encoded["validation"]["coverage"], json!("explicit_refusal"));
+        assert_eq!(
             encoded["backend_selection"]["requested_backend"],
             json!("metal")
         );
@@ -1456,6 +1514,14 @@ mod tests {
 
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(encoded["runtime_backend"], json!("amd_kfd"));
+        assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("amd_kfd.embeddings.not_yet_validated")
+        );
+        assert_eq!(
+            encoded["validation"]["coverage"],
+            json!("not_yet_validated")
+        );
         assert_eq!(encoded["amd"]["mode"], json!("kfd"));
         assert_eq!(encoded["amd"]["topology"]["architecture"], json!("gfx1100"));
         assert_eq!(
@@ -1483,6 +1549,14 @@ mod tests {
 
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(encoded["runtime_backend"], json!("amd_userspace"));
+        assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("amd_userspace.embeddings.not_yet_validated")
+        );
+        assert_eq!(
+            encoded["validation"]["coverage"],
+            json!("not_yet_validated")
+        );
         assert_eq!(encoded["amd"]["mode"], json!("userspace"));
         assert_eq!(
             encoded["amd"]["risk"]["requires_explicit_opt_in"],
@@ -1510,6 +1584,14 @@ mod tests {
 
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(encoded["runtime_backend"], json!("cuda"));
+        assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("cuda.embeddings.nvidia")
+        );
+        assert_eq!(
+            encoded["validation"]["coverage"],
+            json!("positive_execution")
+        );
         assert_eq!(
             encoded["backend_selection"]["requested_backend"],
             json!("cuda")
@@ -1560,6 +1642,10 @@ mod tests {
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(encoded["runtime_backend"], json!("cuda"));
         assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("cuda.embeddings.nvidia")
+        );
+        assert_eq!(
             encoded["backend_selection"]["selection_state"],
             json!("same_backend_degraded")
         );
@@ -1583,6 +1669,11 @@ mod tests {
 
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(encoded["runtime_backend"], json!("cpu"));
+        assert_eq!(
+            encoded["validation"]["claim_id"],
+            json!("cuda.refusal.unavailable")
+        );
+        assert_eq!(encoded["validation"]["coverage"], json!("explicit_refusal"));
         assert_eq!(
             encoded["backend_selection"]["requested_backend"],
             json!("cuda")
@@ -1636,6 +1727,11 @@ mod tests {
         );
 
         assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+        assert_eq!(receipt.validation.claim_id, "cpu.embeddings.reference");
+        assert_eq!(
+            receipt.validation.coverage,
+            ValidationCoverage::PositiveExecution
+        );
         assert_eq!(receipt.total_duration_ns, Some(50));
         assert_eq!(receipt.load_duration_ns, Some(5));
         let encoded = serde_json::to_string(&receipt)?;
@@ -1736,6 +1832,11 @@ mod tests {
         );
 
         assert_eq!(receipt.status, ReceiptStatus::Succeeded);
+        assert_eq!(receipt.validation.claim_id, "cpu.text_generation.reference");
+        assert_eq!(
+            receipt.validation.coverage,
+            ValidationCoverage::PositiveExecution
+        );
         assert_eq!(receipt.output_tokens, 1);
         assert_eq!(
             receipt.termination,
@@ -1875,6 +1976,7 @@ mod tests {
         );
 
         assert_eq!(receipt.status, ReceiptStatus::Cancelled);
+        assert_eq!(receipt.validation.claim_id, "cpu.text_generation.reference");
         assert_eq!(receipt.output_tokens, 1);
         assert_eq!(
             receipt.streaming_policy,
@@ -1916,6 +2018,11 @@ mod tests {
             .with_backend("metal"),
         );
         assert_eq!(receipt.status, ReceiptStatus::Failed);
+        assert_eq!(receipt.validation.claim_id, "metal.refusal.off_platform");
+        assert_eq!(
+            receipt.validation.coverage,
+            ValidationCoverage::ExplicitRefusal
+        );
         assert_eq!(receipt.input_count, 1);
         assert_eq!(receipt.normalization, EmbeddingNormalization::None);
         assert_eq!(receipt.requested_output_dimensions, None);
@@ -1951,6 +2058,14 @@ mod tests {
             11,
             "backend disabled",
         );
+        assert_eq!(
+            receipt.validation.claim_id,
+            "amd_userspace.embeddings.not_yet_validated"
+        );
+        assert_eq!(
+            receipt.validation.coverage,
+            ValidationCoverage::NotYetValidated
+        );
         let Some(amd) = receipt.amd else {
             return Err("amd context missing".into());
         };
@@ -1976,6 +2091,11 @@ mod tests {
             10,
             11,
             "cuda execution failed after launch",
+        );
+        assert_eq!(receipt.validation.claim_id, "cuda.embeddings.nvidia");
+        assert_eq!(
+            receipt.validation.coverage,
+            ValidationCoverage::PositiveExecution
         );
         let Some(nvidia) = receipt.nvidia else {
             return Err("nvidia context missing".into());

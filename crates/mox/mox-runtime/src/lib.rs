@@ -1,6 +1,7 @@
 //! Runtime traits and execution surfaces for Mox.
 
 mod parity;
+mod validation;
 
 use std::collections::{BTreeMap, VecDeque};
 
@@ -13,6 +14,7 @@ pub use parity::*;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
+pub use validation::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "runtime traits for devices and execution";

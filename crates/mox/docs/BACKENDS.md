@@ -24,6 +24,11 @@ Each backend is expected to report:
 - runtime health/readiness
 - supported execution modes and limitations
 
+Shipped backend claims are bounded by
+[HARDWARE_VALIDATION_MATRIX.md](./HARDWARE_VALIDATION_MATRIX.md). Do not claim a
+backend/product lane as shipped unless it has a row in that matrix and the
+referenced tests are green.
+
 ## AMD Policy
 
 AMD KFD and AMD userspace remain separate backends in both code and provider

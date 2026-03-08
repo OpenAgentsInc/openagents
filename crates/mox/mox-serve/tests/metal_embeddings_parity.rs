@@ -1,6 +1,6 @@
 use mox_backend_cpu::CpuBackend;
 use mox_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend};
-use mox_runtime::{DeviceDiscovery, HealthStatus};
+use mox_runtime::{DeviceDiscovery, HealthStatus, validation_reference_for_served_product};
 
 #[cfg(target_os = "macos")]
 use mox_core::QuantizationMode;
@@ -31,6 +31,10 @@ fn metal_model_backed_embeddings_parity_reports_explicit_offline_state()
     assert_eq!(fallback.requested_backend, "metal");
     assert_eq!(fallback.effective_backend, "cpu");
     assert!(fallback.fallback_reason.is_some());
+    assert_eq!(
+        validation_reference_for_served_product(&fallback, "mox.embeddings").claim_id,
+        "metal.refusal.off_platform"
+    );
     Ok(())
 }
 
