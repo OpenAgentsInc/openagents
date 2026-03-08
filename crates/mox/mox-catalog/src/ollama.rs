@@ -502,6 +502,33 @@ impl OllamaManifestLayer {
     }
 }
 
+/// Current Mox policy for Ollama manifests that carry adapter layers.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum OllamaAdapterPolicy {
+    /// Refuse manifest-backed loading when one or more adapter layers are present.
+    RefuseManifestWithAdapters,
+}
+
+impl fmt::Display for OllamaAdapterPolicy {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::RefuseManifestWithAdapters => f.write_str("refuse_manifest_with_adapters"),
+        }
+    }
+}
+
+/// Machine-checkable adapter support status for one local Ollama manifest.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OllamaAdapterPolicyStatus {
+    /// Current Mox adapter policy for Ollama manifests.
+    pub policy: OllamaAdapterPolicy,
+    /// Number of adapter layers carried by the manifest.
+    pub adapter_layer_count: usize,
+    /// Whether the manifest is admissible under the current policy.
+    pub supported: bool,
+}
+
 /// One resolved local Ollama manifest plus layer identity and size truth.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OllamaManifest {
@@ -541,6 +568,30 @@ impl OllamaManifest {
     #[must_use]
     pub fn first_layer_of_kind(&self, kind: OllamaLayerKind) -> Option<&OllamaManifestLayer> {
         self.layers.iter().find(|layer| layer.kind == kind)
+    }
+
+    /// Returns every adapter layer in manifest order.
+    pub fn adapter_layers(&self) -> impl Iterator<Item = &OllamaManifestLayer> {
+        self.layers
+            .iter()
+            .filter(|layer| layer.kind == OllamaLayerKind::Adapter)
+    }
+
+    /// Returns the number of adapter layers carried by the manifest.
+    #[must_use]
+    pub fn adapter_layer_count(&self) -> usize {
+        self.adapter_layers().count()
+    }
+
+    /// Returns the current Mox adapter support status for the manifest.
+    #[must_use]
+    pub fn adapter_policy_status(&self) -> OllamaAdapterPolicyStatus {
+        let adapter_layer_count = self.adapter_layer_count();
+        OllamaAdapterPolicyStatus {
+            policy: OllamaAdapterPolicy::RefuseManifestWithAdapters,
+            adapter_layer_count,
+            supported: adapter_layer_count == 0,
+        }
     }
 
     /// Returns the manifest file modification time.
@@ -1383,8 +1434,9 @@ mod tests {
 
     use super::{
         CatalogError, OLLAMA_DEFAULT_HOST, OLLAMA_DEFAULT_NAMESPACE, OLLAMA_DEFAULT_TAG,
-        OllamaIntegrityScope, OllamaLayerKind, OllamaMediaType, OllamaModelCatalog,
-        OllamaModelConfig, OllamaModelName, OllamaRepairAction, OllamaStoredMessage,
+        OllamaAdapterPolicy, OllamaIntegrityScope, OllamaLayerKind, OllamaMediaType,
+        OllamaModelCatalog, OllamaModelConfig, OllamaModelName, OllamaRepairAction,
+        OllamaStoredMessage,
     };
 
     #[test]
@@ -1813,6 +1865,47 @@ mod tests {
             vec![String::from("Apache-2.0")]
         );
         assert!(manifest.modified_at()?.elapsed().is_ok());
+        Ok(())
+    }
+
+    #[test]
+    fn ollama_manifest_reports_adapter_policy_status() -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let model_digest = write_blob(temp.path(), b"qwen2-gguf")?;
+        let adapter_digest = write_blob(temp.path(), b"adapter-gguf")?;
+
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2-adapter/latest",
+            serde_json::json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                        "size": 10
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.adapter",
+                        "digest": adapter_digest,
+                        "size": 12
+                    }
+                ]
+            }),
+        )?;
+
+        let manifest = OllamaModelCatalog::new(temp.path()).resolve_model("qwen2-adapter")?;
+        let status = manifest.adapter_policy_status();
+
+        assert_eq!(manifest.adapter_layer_count(), 1);
+        assert_eq!(manifest.adapter_layers().count(), 1);
+        assert_eq!(
+            status.policy,
+            OllamaAdapterPolicy::RefuseManifestWithAdapters
+        );
+        assert_eq!(status.adapter_layer_count, 1);
+        assert!(!status.supported);
         Ok(())
     }
 

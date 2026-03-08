@@ -1735,11 +1735,26 @@ impl LocalOllamaCatalogSubject {
                 .map(str::to_string);
         }
 
-        let facts = if let Some(metadata) = model_metadata {
+        let mut facts = if let Some(metadata) = model_metadata {
             select_model_info_facts(local_gguf_model_info(metadata))
         } else {
             select_model_info_facts(remote_model_info(config))
         };
+        let adapter_policy = manifest.adapter_policy_status();
+        if adapter_policy.adapter_layer_count > 0 {
+            facts.insert(
+                String::from("mox.ollama_adapter_policy"),
+                adapter_policy.policy.to_string(),
+            );
+            facts.insert(
+                String::from("mox.ollama_adapter_layer_count"),
+                adapter_policy.adapter_layer_count.to_string(),
+            );
+            facts.insert(
+                String::from("mox.ollama_adapter_manifest_supported"),
+                adapter_policy.supported.to_string(),
+            );
+        }
 
         Ok(ShowObservation {
             model: requested_model.to_string(),
@@ -2430,13 +2445,15 @@ fn compare_list_models(
 }
 
 fn compare_show(baseline: &ShowObservation, candidate: &ShowObservation) -> Result<(), String> {
-    if baseline == candidate {
+    let mut candidate = candidate.clone();
+    candidate.facts.retain(|key, _| !key.starts_with("mox."));
+    if baseline == &candidate {
         Ok(())
     } else {
         Err(format_observation_difference(
             "show mismatch",
             baseline,
-            candidate,
+            &candidate,
         ))
     }
 }
@@ -3572,6 +3589,119 @@ mod tests {
                 let error = show.error.expect("missing-model error");
                 assert_eq!(error.status, 404);
                 assert_eq!(error.message, "model 'missing-model' not found");
+            }
+            SubjectObservation::Unsupported { reason } => {
+                return Err(format!("unexpected show unsupported: {reason}").into());
+            }
+        }
+
+        Ok(())
+    }
+
+    #[test]
+    fn compare_show_ignores_candidate_only_mox_facts() {
+        let baseline = ShowObservation {
+            model: String::from("qwen2"),
+            format: Some(String::from("gguf")),
+            family: Some(String::from("qwen2")),
+            families: vec![String::from("qwen2")],
+            quantization: Some(String::from("Q4_0")),
+            chat_template_digest: None,
+            capabilities: vec![String::from("completion")],
+            facts: BTreeMap::from([(String::from("general.architecture"), String::from("qwen2"))]),
+            error: None,
+        };
+        let mut candidate = baseline.clone();
+        candidate.facts.insert(
+            String::from("mox.ollama_adapter_policy"),
+            String::from("refuse_manifest_with_adapters"),
+        );
+
+        assert!(compare_show(&baseline, &candidate).is_ok());
+    }
+
+    #[test]
+    fn local_ollama_catalog_subject_show_reports_adapter_policy_facts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempfile::tempdir()?;
+        let model_bytes = build_test_gguf(&[
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("qwen2")),
+            ),
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("gpt2")),
+            ),
+            (
+                String::from("tokenizer.ggml.pre"),
+                GgufMetadataValue::String(String::from("qwen2")),
+            ),
+        ])?;
+        let model_digest = write_blob(temp.path(), model_bytes.as_slice())?;
+        let adapter_digest = write_blob(temp.path(), b"adapter-gguf")?;
+        let config_digest = write_blob(
+            temp.path(),
+            br#"{
+                "model_format":"gguf",
+                "model_family":"qwen2",
+                "model_families":["qwen2"],
+                "file_type":"Q4_0"
+            }"#,
+        )?;
+
+        write_manifest(
+            temp.path(),
+            "registry.ollama.ai/library/qwen2-adapter/latest",
+            json!({
+                "schemaVersion": 2,
+                "mediaType": "application/vnd.docker.distribution.manifest.v2+json",
+                "config": {
+                    "mediaType": "application/vnd.docker.container.image.v1+json",
+                    "digest": config_digest,
+                    "size": 1
+                },
+                "layers": [
+                    {
+                        "mediaType": "application/vnd.ollama.image.model",
+                        "digest": model_digest,
+                        "size": 456
+                    },
+                    {
+                        "mediaType": "application/vnd.ollama.image.adapter",
+                        "digest": adapter_digest,
+                        "size": 12
+                    }
+                ]
+            }),
+        )?;
+
+        let mut subject = LocalOllamaCatalogSubject::new(temp.path());
+        let show = subject.show(&ShowConformanceCase {
+            id: String::from("local-show-adapter"),
+            model: String::from("qwen2-adapter"),
+            expected_candidate_difference: None,
+        })?;
+        match show {
+            SubjectObservation::Supported(show) => {
+                assert_eq!(
+                    show.facts
+                        .get("mox.ollama_adapter_policy")
+                        .map(String::as_str),
+                    Some("refuse_manifest_with_adapters")
+                );
+                assert_eq!(
+                    show.facts
+                        .get("mox.ollama_adapter_layer_count")
+                        .map(String::as_str),
+                    Some("1")
+                );
+                assert_eq!(
+                    show.facts
+                        .get("mox.ollama_adapter_manifest_supported")
+                        .map(String::as_str),
+                    Some("false")
+                );
             }
             SubjectObservation::Unsupported { reason } => {
                 return Err(format!("unexpected show unsupported: {reason}").into());
