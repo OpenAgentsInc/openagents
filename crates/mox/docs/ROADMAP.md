@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
+> Status: updated 2026-03-08 after PR [#3163](https://github.com/OpenAgentsInc/openagents/pull/3163) merged to `main`, after `MOX-115` / [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) landed in commits `887e202ed` and `bdc9ab114`, after `MOX-110` / [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) landed in commit `9f395ead7`, after `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) landed in commit `0663e651b`, and after verifying the current GitHub issue set via `gh issue list --state all` and `gh issue view`.
 >
 > This is the live roadmap for `crates/mox/`. The phase-2/3/4 baseline is now
 > merged. The remaining work below is the gap between "we have a local Rust
@@ -122,7 +122,9 @@ to run the launch `inference` and `embeddings` product paths:
 (`53f31280a`) plus the `MOX-115` follow-up that closed [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164)
 in commits `887e202ed` and `bdc9ab114`, plus the `MOX-110` follow-up that
 closed [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) in
-commit `9f395ead7`.
+commit `9f395ead7`, plus the `MOX-111` follow-up that closed
+[#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) in commit
+`0663e651b`.
 
 ### Delivered in the merged baseline
 
@@ -151,6 +153,11 @@ commit `9f395ead7`.
   explicit GGUF tensor-type metadata, truthful `F16` / `BF16` dtype support,
   a `GgufWeightBundleLoader`, and GGUF tests for metadata parsing, tensor
   loading, alignment, and unsupported-type refusal
+- `MOX-111` / [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173):
+  reusable GGUF tokenizer metadata loading in `mox-models` for SentencePiece
+  (`llama`) and GPT-style BPE (`gpt2`) families, plus stable tokenizer digests,
+  preserved BOS/EOS/add-bos/add-eos and BPE pretokenizer truth, and explicit
+  validation for missing tokenizer metadata and out-of-range special-token IDs
 
 ### GitHub issue status
 
@@ -164,6 +171,7 @@ checks via `gh issue view`:
 | [#3157](https://github.com/OpenAgentsInc/openagents/issues/3157), [#3158](https://github.com/OpenAgentsInc/openagents/issues/3158) to [#3162](https://github.com/OpenAgentsInc/openagents/issues/3162) | Closed | Phase-4 AMD truth baseline: AMD metadata model, KFD/userspace discovery, provider truth, and runbook coverage. |
 | [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | `MOX-115` landed: GGML quantized tensor storage substrate, Candle-aligned `Q4_0` / `Q4_1` decode order, and stricter GGML block-shape validation. |
 | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Closed | `MOX-110` landed: reusable GGUF metadata/tensor parsing, `WeightFormat::Gguf`, `GgufWeightBundleLoader`, and truthful GGUF tensor-type coverage for currently supported dense and quantized families. |
+| [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Closed | `MOX-111` landed: reusable GGUF tokenizer metadata loading for SentencePiece and GPT-style BPE families, stable tokenizer digests, preserved BOS/EOS/add-bos/add-eos and pretokenizer truth, and validation for missing or invalid tokenizer metadata. |
 | [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174), [#3175](https://github.com/OpenAgentsInc/openagents/issues/3175), [#3176](https://github.com/OpenAgentsInc/openagents/issues/3176), [#3221](https://github.com/OpenAgentsInc/openagents/issues/3221) | Closed | Historical roadmap-seeded duplicates for `MOX-117`, `MOX-118`, `MOX-119`, and `MOX-161`; use the open detailed issues `#3166`, `#3167`, `#3168`, and `#3171` instead. |
 
 Current execution queue in dependency order, verified against live GitHub issue
@@ -172,9 +180,9 @@ state:
 | Order | Local ID | GitHub issue | State | Why this is the current flow |
 | --- | --- | --- | --- | --- |
 | 1 | `MOX-110` | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Closed | GGUF metadata and tensor loader substrate is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
-| 2 | `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Open | This is now the next unresolved dependency because tokenizer loading depends on real GGUF metadata extraction. |
+| 2 | `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Closed | GGUF tokenizer metadata loading is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 3 | `MOX-115` | [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | Already landed on `main`; keep it in sequence but skip it when choosing the next issue. |
-| 4 | `MOX-116` | [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | Open | Local blob mmap and paged tensor storage follow the loader and quant substrate. |
+| 4 | `MOX-116` | [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | Open | This is now the next unresolved dependency because local blob paging follows the now-landed loader, tokenizer, and quantization substrate. |
 | 5 | `MOX-117` | [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | Open | This is the authoritative open conformance issue; [#3174](https://github.com/OpenAgentsInc/openagents/issues/3174) is the closed duplicate. |
 | 6 | `MOX-118` | [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) | Open | This is the authoritative open fixtures issue; [#3175](https://github.com/OpenAgentsInc/openagents/issues/3175) is the closed duplicate. |
 | 7 | `MOX-119` | [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) | Open | This is the authoritative open parity issue; [#3176](https://github.com/OpenAgentsInc/openagents/issues/3176) is the closed duplicate. |
@@ -199,6 +207,9 @@ baseline on `main` is:
 - CPU model-backed embeddings and text generation exist and are tested
 - initial GGML quantized tensor storage and decode coverage exists for `Q4_0`,
   `Q4_1`, and `Q8_0`, but backend-side quantized execution is still future work
+- GGUF tokenizer metadata loading exists for SentencePiece and GPT-style BPE
+  families, but prompt rendering and full tokenizer-conformance fixtures are
+  still future work
 - Metal has a truthful accelerated embeddings path, but not text generation
 - AMD has truthful discovery/readiness surfaces, but not execution kernels
 - provider-facing capability and receipt truth is ahead of the app cutover
@@ -379,8 +390,8 @@ called out in the status section above.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `MOX-110` | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Open | Add `WeightFormat::Gguf` and a reusable GGUF metadata/tensor loader | `mox-models` | Required to read the format Ollama actually points at during migration. |
-| `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Open | Implement tokenizer loading from GGUF metadata for SentencePiece and GPT-style BPE families | `mox-models` | Fixture tokenizers are not enough for real model parity. |
+| `MOX-110` | [#3172](https://github.com/OpenAgentsInc/openagents/issues/3172) | Closed | Add `WeightFormat::Gguf` and a reusable GGUF metadata/tensor loader | `mox-models` | Required to read the format Ollama actually points at during migration. |
+| `MOX-111` | [#3173](https://github.com/OpenAgentsInc/openagents/issues/3173) | Closed | Implement tokenizer loading from GGUF metadata for SentencePiece and GPT-style BPE families | `mox-models` | Fixture tokenizers are not enough for real model parity. |
 | `MOX-115` | [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | Closed | Add GGML/GGUF quant block decode coverage and backend-backed quantized tensor storage | `mox-models`, `mox-runtime`, backend crates | Candle and Tinygrad both treat quantized tensor decode/storage as a core loader/runtime boundary; the first Mox pass is now landed. |
 | `MOX-116` | [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | Open | Add memory-mapped model blob access and paged tensor storage for local GGUF and Ollama blobs | `mox-catalog`, `mox-models`, `mox-runtime` | Large local models should load through mmap/paged storage instead of eager copies when possible. |
 | `MOX-117` | [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | Open | Build an Ollama-to-Mox conformance suite for `tags` / `show` / `ps` / `generate` / `embed` behavior, prompt rendering, truncation, stop handling, streaming, and error semantics | `mox-catalog`, `mox-serve`, `mox-provider`, test fixtures | Cutover should be decided by repeatable conformance evidence, not hand inspection. |
