@@ -46,8 +46,8 @@ use crate::hotbar::{
     HOTBAR_SLOT_NOSTR_IDENTITY, HOTBAR_SLOT_SPARK_WALLET, activate_hotbar_slot,
     hotbar_slot_for_key, process_hotbar_clicks,
 };
+use crate::local_inference_runtime::LocalInferenceRuntimeCommand;
 use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
-use crate::ollama_execution::OllamaExecutionCommand;
 use crate::pane_registry::pane_spec_by_command_id;
 use crate::pane_system::{
     ActivityFeedPaneAction, AlertsRecoveryPaneAction, CadDemoPaneAction, CastControlPaneAction,
@@ -2620,8 +2620,10 @@ pub(crate) fn apply_provider_mode_target(
         );
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Refresh);
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::EnsureBridgeRunning);
-        let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::Refresh);
-        let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::WarmConfiguredModel);
+        let _ = state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Refresh);
+        let _ = state.queue_local_inference_runtime_command(
+            LocalInferenceRuntimeCommand::WarmConfiguredModel,
+        );
         if let Some(reason) = provider_go_online_block_reason(state) {
             state.provider_runtime.last_result = Some(format!("{origin}: {reason}"));
             state.provider_runtime.last_error_detail = Some(reason);
@@ -2668,7 +2670,9 @@ pub(crate) fn apply_provider_mode_target(
             state.provider_runtime.inventory_session_started_at_ms = None;
         }
         let _ = state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::StopBridge);
-        let _ = state.queue_ollama_execution_command(OllamaExecutionCommand::UnloadConfiguredModel);
+        let _ = state.queue_local_inference_runtime_command(
+            LocalInferenceRuntimeCommand::UnloadConfiguredModel,
+        );
     }
     state.spacetime_presence_snapshot = state.spacetime_presence.snapshot();
 

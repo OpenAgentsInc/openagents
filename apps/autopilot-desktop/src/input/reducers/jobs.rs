@@ -9,8 +9,10 @@ use crate::apple_fm_bridge::{
 use crate::codex_lane::{
     CodexLaneCommand, CodexLaneCommandResponse, CodexLaneCommandStatus, CodexLaneNotification,
 };
-use crate::ollama_execution::{
-    OllamaExecutionCommand, OllamaExecutionCompleted, OllamaExecutionFailed, OllamaExecutionStarted,
+use crate::local_inference_runtime::{
+    LocalInferenceExecutionCompleted, LocalInferenceExecutionFailed,
+    LocalInferenceExecutionStarted, LocalInferenceGenerateJob, LocalInferenceRuntimeCommand,
+    LocalInferenceRuntimeUpdate,
 };
 use crate::pane_system::{
     ActiveJobPaneAction, JobHistoryPaneAction, JobInboxPaneAction, PaneController,
@@ -497,13 +499,13 @@ pub(super) fn apply_active_job_publish_outcome(
     }
 }
 
-pub(super) fn apply_active_job_ollama_update(
+pub(super) fn apply_active_job_local_inference_runtime_update(
     state: &mut RenderState,
-    update: crate::ollama_execution::OllamaExecutionUpdate,
+    update: LocalInferenceRuntimeUpdate,
 ) -> bool {
     match update {
-        crate::ollama_execution::OllamaExecutionUpdate::Snapshot(snapshot) => {
-            state.ollama_execution = *snapshot;
+        LocalInferenceRuntimeUpdate::Snapshot(snapshot) => {
+            state.ollama_execution = (*snapshot).into();
             sync_provider_runtime_ollama_state(state);
             if state
                 .provider_runtime
@@ -524,15 +526,13 @@ pub(super) fn apply_active_job_ollama_update(
             super::provider_ingress::sync_provider_runtime_mode_from_provider_state(state);
             true
         }
-        crate::ollama_execution::OllamaExecutionUpdate::Started(started) => {
+        LocalInferenceRuntimeUpdate::Started(started) => {
             apply_ollama_execution_started(state, started)
         }
-        crate::ollama_execution::OllamaExecutionUpdate::Completed(completed) => {
+        LocalInferenceRuntimeUpdate::Completed(completed) => {
             apply_ollama_execution_completed(state, completed)
         }
-        crate::ollama_execution::OllamaExecutionUpdate::Failed(failed) => {
-            apply_ollama_execution_failed(state, failed)
-        }
+        LocalInferenceRuntimeUpdate::Failed(failed) => apply_ollama_execution_failed(state, failed),
     }
 }
 
@@ -909,8 +909,8 @@ fn queue_provider_ollama_execution_start(state: &mut RenderState) -> Result<(), 
     let requested_model = job.requested_model.clone();
     let params = job.execution_params.clone();
     let ttl_seconds = job.ttl_seconds;
-    state.queue_ollama_execution_command(OllamaExecutionCommand::Generate(
-        crate::ollama_execution::OllamaGenerateJob {
+    state.queue_local_inference_runtime_command(LocalInferenceRuntimeCommand::Generate(
+        LocalInferenceGenerateJob {
             request_id: request_id.clone(),
             prompt,
             requested_model,
@@ -1069,7 +1069,7 @@ fn store_execution_output(state: &mut RenderState, output: &str) {
 
 fn apply_ollama_execution_started(
     state: &mut RenderState,
-    started: OllamaExecutionStarted,
+    started: LocalInferenceExecutionStarted,
 ) -> bool {
     if !active_job_matches_ollama_request(state, started.request_id.as_str()) {
         return false;
@@ -1097,7 +1097,7 @@ fn apply_ollama_execution_started(
 
 fn apply_ollama_execution_completed(
     state: &mut RenderState,
-    completed: OllamaExecutionCompleted,
+    completed: LocalInferenceExecutionCompleted,
 ) -> bool {
     if !active_job_matches_ollama_request(state, completed.request_id.as_str()) {
         return false;
@@ -1121,7 +1121,10 @@ fn apply_ollama_execution_completed(
     true
 }
 
-fn apply_ollama_execution_failed(state: &mut RenderState, failed: OllamaExecutionFailed) -> bool {
+fn apply_ollama_execution_failed(
+    state: &mut RenderState,
+    failed: LocalInferenceExecutionFailed,
+) -> bool {
     if !active_job_matches_ollama_request(state, failed.request_id.as_str()) {
         return false;
     }

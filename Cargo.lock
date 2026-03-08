@@ -498,6 +498,7 @@ dependencies = [
  "futures-util",
  "hex",
  "keyring",
+ "mox-serve",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-cad",

@@ -20,10 +20,8 @@ use crate::labor_orchestrator::{
     CodexLaborApprovalEvent, CodexLaborBinding, CodexLaborClaimState, CodexLaborSubmissionState,
     CodexLaborVerdictState, CodexRunClassification,
 };
-use crate::ollama_execution::{
-    LocalInferenceExecutionProvenance, OllamaExecutionCommand, OllamaExecutionSnapshot,
-    OllamaExecutionWorker,
-};
+use crate::local_inference_runtime::{LocalInferenceRuntime, LocalInferenceRuntimeCommand};
+use crate::ollama_execution::{LocalInferenceExecutionProvenance, OllamaExecutionSnapshot};
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
     ProviderNip90LaneWorker,
@@ -5089,7 +5087,7 @@ pub struct RenderState {
     pub apple_fm_execution: AppleFmBridgeSnapshot,
     pub apple_fm_execution_worker: AppleFmBridgeWorker,
     pub ollama_execution: OllamaExecutionSnapshot,
-    pub ollama_execution_worker: OllamaExecutionWorker,
+    pub local_inference_runtime: Box<dyn LocalInferenceRuntime>,
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
@@ -5264,11 +5262,11 @@ impl RenderState {
         self.provider_nip90_lane_worker.enqueue(command)
     }
 
-    pub fn queue_ollama_execution_command(
+    pub fn queue_local_inference_runtime_command(
         &mut self,
-        command: OllamaExecutionCommand,
+        command: LocalInferenceRuntimeCommand,
     ) -> Result<(), String> {
-        self.ollama_execution_worker.enqueue(command)
+        self.local_inference_runtime.enqueue(command)
     }
 
     pub fn queue_apple_fm_bridge_command(
