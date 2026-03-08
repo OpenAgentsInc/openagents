@@ -91,7 +91,7 @@ to run the launch `inference` and `embeddings` product paths:
 
 ### GitHub issue status
 
-Verified on 2026-03-08 via `gh issue view`:
+Verified on 2026-03-08 via `gh issue view` and `gh issue create`:
 
 | Issue span | State | What landed |
 | --- | --- | --- |
@@ -99,12 +99,18 @@ Verified on 2026-03-08 via `gh issue view`:
 | [#3150](https://github.com/OpenAgentsInc/openagents/issues/3150), [#3151](https://github.com/OpenAgentsInc/openagents/issues/3151) to [#3156](https://github.com/OpenAgentsInc/openagents/issues/3156) | Closed | Phase-3 Metal baseline: discovery, allocator/submission substrate, minimum kernel coverage, truthful backend selection, parity coverage, and Metal embeddings. |
 | [#3157](https://github.com/OpenAgentsInc/openagents/issues/3157), [#3158](https://github.com/OpenAgentsInc/openagents/issues/3158) to [#3162](https://github.com/OpenAgentsInc/openagents/issues/3162) | Closed | Phase-4 AMD truth baseline: AMD metadata model, KFD/userspace discovery, provider truth, and runbook coverage. |
 
-Important status note:
+Current open GitHub issues seeded from this roadmap:
 
-- there are currently no open GitHub issues for the remaining Mox replacement
-  backlog
-- the rest of this roadmap is therefore a proposed next issue stack, not a
-  reflection of already-tracked open work
+| Issue | Title | Why it is open now |
+| --- | --- | --- |
+| [#3164](https://github.com/OpenAgentsInc/openagents/issues/3164) | MOX-115: Add GGML/GGUF quant block decode coverage and backend-backed quantized tensor storage | First-wave GGUF and quantized runtime substrate. |
+| [#3165](https://github.com/OpenAgentsInc/openagents/issues/3165) | MOX-116: Add memory-mapped model blob access and paged tensor storage for local GGUF and Ollama blobs | First-wave local model ingress and load policy. |
+| [#3166](https://github.com/OpenAgentsInc/openagents/issues/3166) | MOX-117: Build an Ollama-to-Mox conformance suite for catalog, generation, embeddings, and error semantics | Cutover should be gated by harnessed conformance, not hand inspection. |
+| [#3167](https://github.com/OpenAgentsInc/openagents/issues/3167) | MOX-118: Add golden prompt-rendering and tokenizer fixtures from real GGUF and Ollama installs | Prevent silent prompt/tokenizer drift. |
+| [#3168](https://github.com/OpenAgentsInc/openagents/issues/3168) | MOX-119: Define numerical parity tolerances and drift budgets across CPU and accelerated backends | Parity work needs explicit tolerances before backend claims widen. |
+| [#3169](https://github.com/OpenAgentsInc/openagents/issues/3169) | MOX-126A: Add paged KV-cache layout, accounting, and spill policy for long-context text generation | Separates KV paging from model-blob paging. |
+| [#3170](https://github.com/OpenAgentsInc/openagents/issues/3170) | MOX-156: Add backend-specific quantized execution kernels and parity coverage for supported GGUF quant families | Separates quantized load truth from quantized execution truth. |
+| [#3171](https://github.com/OpenAgentsInc/openagents/issues/3171) | MOX-161: Define allowed fallback lattice for Mox served products | Makes correctness-versus-speed fallback policy explicit before cutover. |
 
 ## Current Reality
 
