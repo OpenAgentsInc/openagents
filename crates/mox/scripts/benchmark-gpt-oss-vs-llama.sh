@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  crates/mox/scripts/benchmark-gpt-oss-vs-llama.sh [--model PATH] [--mox-bin PATH] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N]
+  crates/mox/scripts/benchmark-gpt-oss-vs-llama.sh [--model PATH] [--mox-bin PATH] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N] [--json-out DIR]
 
 Defaults:
   model:     /home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
@@ -18,6 +18,7 @@ Defaults:
 Notes:
   - The script prefers ./target/release/mox-gpt-oss-server, then ./target/debug/mox-gpt-oss-server.
   - It warms each server once, times the second request, prints the visible response, and reports completion_tokens, seconds, and tok/s.
+  - When --json-out DIR is set, the script writes raw responses and derived summaries to DIR.
 EOF
 }
 
@@ -31,6 +32,7 @@ PORT=8099
 CTX=4096
 NGL=999
 MOX_BIN=
+JSON_OUT=
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -62,6 +64,10 @@ while [[ $# -gt 0 ]]; do
       NGL=${2:?missing value for --ngl}
       shift 2
       ;;
+    --json-out)
+      JSON_OUT=${2:?missing value for --json-out}
+      shift 2
+      ;;
     -h|--help)
       usage
       exit 0
@@ -84,6 +90,10 @@ if [[ -z "$MOX_BIN" ]]; then
     echo "build it first, or pass --mox-bin PATH" >&2
     exit 1
   fi
+fi
+
+if [[ -n "$JSON_OUT" ]]; then
+  mkdir -p "$JSON_OUT"
 fi
 
 for tool in curl jq awk date; do
@@ -146,6 +156,35 @@ run_request() {
     -d "$REQUEST_JSON" | tee "$output_file" | jq -r '.choices[0].message.content'
 }
 
+write_summary_json() {
+  local name=$1
+  local response_file=$2
+  local elapsed=$3
+  local tokens=$4
+  local tokps=$5
+
+  [[ -n "$JSON_OUT" ]] || return 0
+
+  cp "$response_file" "$JSON_OUT/$name.response.json"
+  jq -n \
+    --arg server "$name" \
+    --arg model "$MODEL_PATH" \
+    --arg endpoint "http://$HOST:$PORT/v1/chat/completions" \
+    --arg elapsed_seconds "$elapsed" \
+    --arg completion_tokens "$tokens" \
+    --arg tokens_per_second "$tokps" \
+    --slurpfile response "$response_file" \
+    '{
+      server: $server,
+      model_path: $model,
+      endpoint: $endpoint,
+      elapsed_seconds: ($elapsed_seconds | tonumber),
+      completion_tokens: ($completion_tokens | tonumber),
+      tokens_per_second: ($tokens_per_second | tonumber),
+      response: $response[0]
+    }' > "$JSON_OUT/$name.summary.json"
+}
+
 bench() {
   local name=$1
   shift
@@ -170,6 +209,7 @@ bench() {
   elapsed=$(awk "BEGIN { printf \"%.3f\", $end - $start }")
   tokps=$(awk "BEGIN { printf \"%.2f\", $tokens / ($end - $start) }")
   echo "completion_tokens=$tokens seconds=$elapsed tok/s=$tokps"
+  write_summary_json "$name" "$TMP_DIR/$name.json" "$elapsed" "$tokens" "$tokps"
 
   kill "$SERVER_PID" >/dev/null 2>&1 || true
   wait "$SERVER_PID" 2>/dev/null || true
