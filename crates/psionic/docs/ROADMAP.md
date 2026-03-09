@@ -16,8 +16,9 @@
 > remain open, and after opening the native-Rust Apple Silicon Metal
 > completion queue `#3270`, `#3268`, `#3269`, `#3271`, `#3272`, `#3261`, and
 > `#3262` from the 2026-03-09 throughput audit, and after the latest live benchmark plus deeper
-> llama.cpp-alignment checkpoint showing that Psionic now runs the exact
-> GPT-OSS HTTP lane at about `101.32 tok/s` on this RTX 4080 host after
+> llama.cpp-alignment checkpoint plus the later exact-CUDA-prefix detachment
+> fix showing that Psionic now runs the exact GPT-OSS HTTP lane at about
+> `124.36 tok/s` on this RTX 4080 host after
 > trimming the default OpenAI/Harmony hot path, with the MXFP4 correctness
 > fixes, expanded `Q8_1` fast-path routing, per-request CUDA graph replay, the
 > new CUDA-side shared-prefix residency, prompt-token reuse on the HTTP lane,
@@ -48,7 +49,7 @@
 > the newest attention-output fusion shows `prefix_tokens_reused = 158`,
 > `step_count = 37`, `kernel_launches = 8214`, `host_to_device_bytes = 426832`,
 > and `device_to_host_bytes = 296`. The current same-moment `llama.cpp` oracle
-> on this host is about `187.13 tok/s`, so the requested `>190 tok/s` target
+> on this host is about `170.70 tok/s`, so the requested `>190 tok/s` target
 > still cannot be honestly claimed on this machine state yet. The remaining
 > gap is now concentrated even more tightly in the exact
 > llama.cpp CUDA kernels and dispatch policy Psionic still does not match:
@@ -83,8 +84,8 @@
 > contract still shows a large remaining gap. `llama.cpp` serves the timed
 > request with a live prompt cache hit (`prompt eval time = 0.30 ms / 1 token`)
 > and Psionic now keeps a reusable CUDA shared-prefix mirror too, but the last
-> direct comparison now sits at about `101.32 tok/s` for Psionic versus
-> `187.13 tok/s` for `llama.cpp` on this machine state. Six follow-up
+> direct comparison now sits at about `124.36 tok/s` for Psionic versus
+> `170.70 tok/s` for `llama.cpp` on this machine state. Six follow-up
 > experiments are now explicitly ruled out on this exact workload: q8_0
 > projection `f16` mirrors through cuBLAS, a direct per-expert replacement
 > for the `selected_count = 4` custom MoE kernels, a grouped-query
@@ -1396,3 +1397,22 @@ The right near-term target is smaller:
   third exact `HTTPS ...` request with the warm `TLS ...` device KV entry.
 - This means the tracked throughput number is now both slightly better and more
   trustworthy than the previous `123.42 tok/s` baseline on `#3276`.
+
+## 2026-03-09 GPT-OSS Exact CUDA Prefix Detachment Checkpoint
+
+- Current truthful exact benchmark floor on this NVIDIA host:
+  Psionic `prompt_cache_hit = 124.36 tok/s`
+- Current same-run control:
+  `llama.cpp prompt_cache_hit = 170.70 tok/s`
+- The earlier exact-prefix fix was incomplete because `CudaSharedPrefixStore`
+  still aliased device buffers across requests.
+- A later non-exact shared-prefix reuse could mutate the stored exact prompt KV
+  rows in-place, which is why the real `HTTPS -> TLS -> HTTPS` sequence could
+  still return the wrong third answer even while reporting
+  `prefix_tokens_reused = 158`.
+- The current fix detaches non-exact CUDA shared-prefix hits into a fresh
+  writable device KV allocation before prompt-tail append, so the exact stored
+  prompt prefix stays truthful.
+- This makes `124.36 tok/s` the real floor to beat on `#3276`; the next work
+  is still decode-side CUDA parity with `llama.cpp`, not more cache-lookup
+  changes.

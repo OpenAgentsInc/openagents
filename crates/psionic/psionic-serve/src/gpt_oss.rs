@@ -1207,25 +1207,22 @@ fn run_cuda_generation_request(
                 kv_width: cache.width(),
             });
         }
+        let reserve_tokens = request.options.max_output_tokens.saturating_add(1);
         let mut cuda_cache = if shared_prefix_eligible && prefix_tokens_reused > 0 {
             if let Some(cache) = exact_cuda_cache {
                 cache
             } else if let Some(cache) = cuda_shared_prefixes.lookup(&compatibility, &prompt_tokens)
             {
-                cache
-            } else {
-                CudaKvCacheMirror::from_host_cache(
+                cache.detached_with_reserve(
                     backend,
-                    &cache,
-                    request.options.max_output_tokens.saturating_add(1),
+                    reserve_tokens,
+                    loaded_model.descriptor().config.max_context,
                 )?
+            } else {
+                CudaKvCacheMirror::from_host_cache(backend, &cache, reserve_tokens)?
             }
         } else {
-            CudaKvCacheMirror::from_host_cache(
-                backend,
-                &cache,
-                request.options.max_output_tokens.saturating_add(1),
-            )?
+            CudaKvCacheMirror::from_host_cache(backend, &cache, reserve_tokens)?
         };
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             ensure_cuda_decode_step_plan(
@@ -6026,6 +6023,38 @@ impl CudaKvCacheMirror {
         self.value_buffer = new_values;
         self.capacity_tokens = new_capacity;
         Ok(())
+    }
+
+    fn detached_with_reserve(
+        &self,
+        backend: &mut CudaBackend,
+        reserve_tokens: usize,
+        max_context: usize,
+    ) -> Result<Self, super::RuntimeError> {
+        let capacity_tokens = Self::capacity_for_request(self.len, reserve_tokens, max_context);
+        let key_bytes = capacity_tokens
+            .saturating_mul(self.width)
+            .saturating_mul(std::mem::size_of::<u16>());
+        let value_bytes = key_bytes;
+        let key_buffer = backend.byte_buffer(&vec![0_u8; key_bytes])?;
+        let value_buffer = backend.byte_buffer(&vec![0_u8; value_bytes])?;
+        if self.len > 0 {
+            let copy_bytes = self
+                .len
+                .saturating_mul(self.width)
+                .saturating_mul(std::mem::size_of::<u16>());
+            let mut submission = backend.begin_submission()?;
+            submission.copy_buffer_region(&self.key_buffer, 0, &key_buffer, 0, copy_bytes)?;
+            submission.copy_buffer_region(&self.value_buffer, 0, &value_buffer, 0, copy_bytes)?;
+            submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+        }
+        Ok(Self {
+            key_buffer,
+            value_buffer,
+            width: self.width,
+            len: self.len,
+            capacity_tokens,
+        })
     }
 
     fn read_entry(&self, token_index: usize) -> Result<(Vec<f32>, Vec<f32>), super::RuntimeError> {
