@@ -1,10 +1,11 @@
 # 2026-03-08 Psionic vs llama.cpp GPT-OSS Performance Audit
 
 > Updated 2026-03-09 after re-running the live repo benchmark script against
-> the current Psionic `main` worktree on the local RTX 4080 host, and after
-> comparing the exact timed-request flow with `llama.cpp`'s prompt-cache
-> behavior on the same machine. This file is the current audit for the GPT-OSS
-> throughput gap; later product truth still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
+> the current Psionic worktree on the local RTX 4080 host, after landing the
+> CUDA-side shared-prefix residency follow-up, and after comparing the exact
+> timed-request flow with `llama.cpp`'s prompt-cache behavior on the same
+> machine. This file is the current audit for the GPT-OSS throughput gap;
+> later product truth still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
 > `crates/psionic/docs/ROADMAP.md`, and the referenced issues.
 
 ## Scope
@@ -87,17 +88,17 @@
 ### Current stable checkpoint
 
 - Psionic:
-  - `37` completion tokens in `0.541s`
-  - `68.43 tok/s`
+  - `37` completion tokens in `0.539s`
+  - `68.65 tok/s`
 - `llama.cpp`:
-  - `42` completion tokens in `0.249s`
-  - `168.72 tok/s`
+  - `42` completion tokens in `0.251s`
+  - `167.11 tok/s`
 - Gap:
-  - `2.47x`
+  - `2.43x`
 - Psionic improvement over the original baseline:
-  - `4.09x`
+  - `4.10x`
 - Psionic improvement over the last audited checkpoint:
-  - `1.90x`
+  - `1.91x`
 
 The visible output text matched exactly in the current benchmark:
 
@@ -179,6 +180,12 @@ live number from the mid-30s into the high-60s:
 - re-ran the benchmark through
   `crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh` to confirm the stable
   HTTP result instead of relying on intermediate local probes
+- added CUDA-side shared-prefix residency for the GPT-OSS request path
+  - Psionic now records and reuses the prompt-only `CudaKvCacheMirror` for
+    compatible prompt prefixes instead of always rebuilding the device mirror
+    from host-owned cache state
+  - this closes one concrete behavioral gap with `llama.cpp`'s prompt-cache
+    residency, but only moved the exact HTTP benchmark marginally on this host
 
 Two later experiments were useful but did not move the real benchmark enough to
 keep them as the main story:
@@ -188,8 +195,9 @@ keep them as the main story:
 - an `f16` dense-transposed mirror for the final vocabulary projection slowed
   the real HTTP benchmark and was backed back out
 
-The latest exact-flow comparison also exposed a concrete request-to-request gap
-that is not just "CUDA kernels are slower":
+The latest exact-flow comparison first exposed, and the new checkpoint only
+partially closed, a concrete request-to-request gap that is not just "CUDA
+kernels are slower":
 
 - `llama.cpp` serves the timed request from a live prompt cache
   - warmup request:
@@ -198,12 +206,11 @@ that is not just "CUDA kernels are slower":
   - timed request:
     - `prompt eval time = 0.30 ms / 1 token`
     - `eval time = 235.74 ms / 42 tokens`
-- Psionic already has truthful shared prefix reuse, but it still rebuilds a
-  fresh `CudaKvCacheMirror` from host-owned prefix state on each HTTP request
-  - the current request path clones host KV entries and uploads them back into
-    new CUDA buffers before decode continues
-  - that means Psionic is still missing `llama.cpp`'s backend-resident
-    prompt-cache behavior, even when the visible prompt is identical
+- the current Psionic path now reuses a recorded `CudaKvCacheMirror` for
+  compatible shared prefixes
+  - that closes the most obvious request-local device-mirror rebuild
+  - the modest benchmark change is strong evidence that backend-resident prompt
+    reuse was necessary but not the dominant remaining bottleneck
 
 That prompt-cache difference does not explain the whole remaining gap by
 itself, but it is now proven to be part of the measured benchmark delta.

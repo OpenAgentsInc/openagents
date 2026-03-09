@@ -17,9 +17,10 @@
 > llama.cpp-alignment checkpoint showing that Psionic now runs the exact
 > GPT-OSS HTTP lane at about `68.43 tok/s` versus `168.72 tok/s` for
 > `llama.cpp` on this RTX 4080 host, with the MXFP4 correctness fixes,
-> expanded `Q8_1` fast-path routing, and per-request CUDA graph replay landed,
-> but with the remaining gap now concentrated in `llama.cpp`-class prompt-cache
-> residency, graph update, flash attention, and MMVQ/MMID kernel quality.
+> expanded `Q8_1` fast-path routing, per-request CUDA graph replay, and the
+> new CUDA-side shared-prefix residency landed, but with the remaining gap now
+> concentrated in `llama.cpp`-class graph update, flash attention, and
+> MMQ/MMID kernel quality.
 >
 > This is the live roadmap for `crates/psionic/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -42,11 +43,12 @@
 > checkpoint plus the newer MXFP4 and fast-path fixes moved Psionic from the
 > mid-30s into the high-60s tok/s, but the benchmark contract still shows a
 > large remaining gap. `llama.cpp` serves the timed request with a live prompt
-> cache hit (`prompt eval time = 0.30 ms / 1 token`) while Psionic still
-> rebuilds a fresh CUDA KV mirror from host-owned prefix state for each HTTP
-> request, so the next work should bias toward `llama.cpp`'s prompt-cache
-> residency, graph update, flash attention, and MMVQ/MMID execution path
-> rather than only more small local kernel fusions.
+> cache hit (`prompt eval time = 0.30 ms / 1 token`) and Psionic now keeps a
+> reusable CUDA shared-prefix mirror too, but the exact benchmark still only
+> reaches about `68.65 tok/s` versus `167.11 tok/s` for `llama.cpp`, so the
+> next work should bias toward `llama.cpp`'s MMQ/MMID execution path, graph
+> update, and flash attention rather than only more small local kernel
+> fusions.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the

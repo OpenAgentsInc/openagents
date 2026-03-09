@@ -480,12 +480,97 @@ pub enum CudaGptOssTextGenerationError {
     Generation(#[from] ReferenceTextGenerationError),
 }
 
+#[derive(Clone, Debug)]
+struct CudaSharedPrefixEntry {
+    compatibility: super::SharedPrefixCompatibility,
+    prompt_tokens: TokenSequence,
+    cache: CudaKvCacheMirror,
+}
+
+#[derive(Clone, Debug, Default)]
+struct CudaSharedPrefixStore {
+    entries: Vec<CudaSharedPrefixEntry>,
+}
+
+impl CudaSharedPrefixStore {
+    fn lookup(
+        &mut self,
+        compatibility: &super::SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+    ) -> Option<CudaKvCacheMirror> {
+        let compatible_indices: Vec<usize> = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| (&entry.compatibility == compatibility).then_some(index))
+            .collect();
+        if compatible_indices.is_empty() {
+            return None;
+        }
+
+        let mut best: Option<(usize, usize)> = None;
+        let mut stale_prefix = false;
+        for index in compatible_indices {
+            let entry = &self.entries[index];
+            let shared =
+                super::shared_prefix_len(entry.prompt_tokens.as_slice(), prompt_tokens.as_slice());
+            if shared == 0 {
+                continue;
+            }
+            if entry.cache.len() < shared {
+                stale_prefix = true;
+                continue;
+            }
+            match best {
+                Some((_, best_shared)) if best_shared >= shared => {}
+                _ => best = Some((index, shared)),
+            }
+        }
+
+        if let Some((index, shared)) = best {
+            return Some(self.entries[index].cache.truncated(shared));
+        }
+
+        if stale_prefix {
+            self.entries.retain(|entry| {
+                !(&entry.compatibility == compatibility && entry.cache.len() < entry.prompt_tokens.len())
+            });
+        }
+        None
+    }
+
+    fn record(
+        &mut self,
+        compatibility: super::SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+        cache: &CudaKvCacheMirror,
+    ) {
+        if let Some(existing) = self.entries.iter_mut().find(|entry| {
+            entry.compatibility == compatibility
+                && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
+        }) {
+            existing.cache = cache.clone();
+        } else {
+            self.entries.push(CudaSharedPrefixEntry {
+                compatibility,
+                prompt_tokens: prompt_tokens.clone(),
+                cache: cache.clone(),
+            });
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
 pub struct CudaGgufGptOssTextGenerationService {
     backend: CudaBackend,
     backend_selection: psionic_runtime::BackendSelection,
     models: InMemoryGenerationModelRegistry<CudaGgufGptOssGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
     shared_prefixes: SharedPrefixStore,
+    cuda_shared_prefixes: CudaSharedPrefixStore,
     backend_health: BackendHealthTracker,
     model_descriptor: DecoderModelDescriptor,
 }
@@ -530,6 +615,7 @@ impl CudaGgufGptOssTextGenerationService {
             models,
             sessions: InMemoryGenerationSessionStore::new(),
             shared_prefixes: SharedPrefixStore::default(),
+            cuda_shared_prefixes: CudaSharedPrefixStore::default(),
             backend_health,
             model_descriptor,
         })
@@ -619,6 +705,7 @@ impl TextGenerationExecutor for CudaGgufGptOssTextGenerationService {
             &mut self.models,
             &mut self.sessions,
             &mut self.shared_prefixes,
+            &mut self.cuda_shared_prefixes,
             request,
         )
         .map_err(Into::into)
@@ -659,6 +746,7 @@ fn run_cuda_generation_request(
     models: &mut InMemoryGenerationModelRegistry<CudaGgufGptOssGenerationModel>,
     sessions: &mut InMemoryGenerationSessionStore,
     shared_prefixes: &mut SharedPrefixStore,
+    cuda_shared_prefixes: &mut CudaSharedPrefixStore,
     request: &super::GenerationRequest,
 ) -> Result<GenerationResponse, ReferenceTextGenerationError> {
     if request.product_id != super::TEXT_GENERATION_PRODUCT_ID {
@@ -787,11 +875,23 @@ fn run_cuda_generation_request(
                 kv_width: cache.width(),
             });
         }
-        let mut cuda_cache = CudaKvCacheMirror::from_host_cache(
-            backend,
-            &cache,
-            request.options.max_output_tokens.saturating_add(1),
-        )?;
+        let mut cuda_cache = if shared_prefix_eligible && prefix_tokens_reused > 0 {
+            if let Some(cache) = cuda_shared_prefixes.lookup(&compatibility, &prompt_tokens) {
+                cache
+            } else {
+                CudaKvCacheMirror::from_host_cache(
+                    backend,
+                    &cache,
+                    request.options.max_output_tokens.saturating_add(1),
+                )?
+            }
+        } else {
+            CudaKvCacheMirror::from_host_cache(
+                backend,
+                &cache,
+                request.options.max_output_tokens.saturating_add(1),
+            )?
+        };
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             ensure_cuda_decode_step_plan(
                 &loaded_model,
@@ -827,6 +927,7 @@ fn run_cuda_generation_request(
             prompt_logits.push(last_logits.clone());
         }
         let prompt_cache = cache.clone();
+        let prompt_cuda_cache = cuda_cache.clone();
 
         let mut sampler = super::GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
@@ -902,11 +1003,12 @@ fn run_cuda_generation_request(
 
         if shared_prefix_eligible {
             let recorded_identity = shared_prefixes.record(
-                compatibility,
+                compatibility.clone(),
                 &prompt_tokens,
                 &prompt_logits,
                 &prompt_cache,
             );
+            cuda_shared_prefixes.record(compatibility, &prompt_tokens, &prompt_cuda_cache);
             if prefix_state != super::PrefixCacheState::Hit || prefix_identity.is_none() {
                 prefix_identity = Some(recorded_identity);
             }
@@ -1055,6 +1157,7 @@ impl ManagedTextGenerationRuntime for CudaGgufGptOssTextGenerationService {
         &mut self,
         model_id: &str,
     ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
+        self.cuda_shared_prefixes.clear();
         Ok(self.models.unload_view(model_id, current_time_millis())?)
     }
 }
@@ -3520,6 +3623,12 @@ impl CudaKvCacheMirror {
                     .as_slice(),
             )?,
         ))
+    }
+
+    fn truncated(&self, len: usize) -> Self {
+        let mut truncated = self.clone();
+        truncated.len = len.min(self.len);
+        truncated
     }
 
     fn len(&self) -> usize {
