@@ -368,6 +368,48 @@ Not in the first done definition:
 - Metal GPT-OSS as an eligible clustered execution lane
 - broad tensor-sharding claims before one validated homogeneous path exists
 
+## Proposed GitHub Issue Breakdown
+
+After consulting `crates/psionic/docs/ROADMAP.md`, the dependency order should
+stay honest:
+
+- the live Psionic execution queue is still the single-node throughput-parity
+  track `#3249 -> #3247 -> #3248`
+- real clustered execution should not jump ahead of that queue
+- one exception is a control-plane-only "hello world" cluster connection issue,
+  because it can establish the crate seam and local cluster identity model
+  without pretending distributed execution is already ready
+
+These are the suggested next issues to open on GitHub. They are written in the
+same `PSI-*` style as the current roadmap, but they are suggestions in this
+audit, not claims that the issues already exist.
+
+| Order | Suggested ID | Suggested GitHub Issue Name | Description |
+| --- | --- | --- | --- |
+| 1 | `PSI-184` | `[psionic][cluster] Stand up a hello-world local cluster connection in psionic-cluster` | Create the initial `psionic-cluster` crate, add local cluster config, and prove that two Psionic nodes on the same trusted network can discover each other, exchange a typed hello/ping handshake, report `ClusterId` and `NodeId`, and surface explicit coordinator-versus-executor role truth without claiming any scheduling or execution behavior yet. |
+| 2 | `PSI-185` | `[psionic][cluster] Define cluster identity, node epoch, and admission policy` | Make `ClusterId`, `NodeId`, `NodeEpoch`, and `NodeRole::{CoordinatorOnly, ExecutorOnly, Mixed}` first-class runtime types, add persistent local identity storage, add explicit namespace/admission configuration, and refuse cross-cluster joins or stale-node epochs instead of silently accepting ambiguous membership. |
+| 3 | `PSI-186` | `[psionic][cluster] Add typed cluster commands, events, and authoritative ordered state` | Implement the control-plane vocabulary Exo makes useful: typed commands, local events, global ordered events, election messages, and connection facts, plus a Psionic-owned ordered event log and cluster-state model with stable digests so cluster truth is replayable and inspectable. |
+| 4 | `PSI-187` | `[psionic][cluster] Add catchup, snapshots, compaction, and recovery semantics` | Extend the ordered state model with explicit catchup requests, replay bounds, snapshots, compaction, leader failover behavior, partition healing, node rejoin rules, and schema/version migration boundaries so the cluster state machine is operationally supportable rather than only conceptually event-sourced. |
+| 5 | `PSI-188` | `[psionic][cluster] Publish topology, link-class, and node telemetry facts` | Make cluster topology explicit by publishing node resource facts, backend readiness, link class, latency, bandwidth, and stability posture into the replicated cluster state, and add stable topology digests so placement decisions can be justified from shared facts rather than hidden scheduler heuristics. |
+| 6 | `PSI-189` | `[psionic][cluster] Add artifact residency and cluster staging truth` | Separate placement from artifact readiness by exposing `resident`, `copy_required`, `pull_required`, and `refused` artifact states, wire cluster-aware staging decisions to the existing Psionic artifact/provenance/license surfaces, and make peer-copy versus OCI-pull behavior explicit instead of burying it in runner logic. |
+| 7 | `PSI-190` | `[psionic][cluster] Extend capability and receipt evidence for clustered execution` | Extend existing `psionic-provider` and `psionic-runtime` evidence seams with cluster-specific truth such as `cluster_plan_digest`, `selected_nodes`, `selected_node_inventory`, `shard_assignments`, `artifact_residency`, `transport_class`, `degraded_or_fallback_history`, `per_node_warm_state`, and `cluster_policy_digest`. |
+| 8 | `PSI-191` | `[psionic][cluster] Add whole-request remote scheduling for one-node execution` | Use the new cluster state to choose the best remote node for an entire request, express the outcome as a truthful single-node `ExecutionTopologyPlan`, and surface explicit selection reasons, node/device identity, and refusal diagnostics without yet claiming replicated or sharded inference. |
+| 9 | `PSI-192` | `[psionic][cluster] Add queue policy, fairness, cancellation, and backpressure rules` | Make cluster serving policy explicit by implementing queue discipline, prefill-versus-decode fairness, cancellation propagation, slow-node backpressure, and degraded replica routing so the cluster can serve mixed workloads without hidden starvation or scheduler-induced regressions. |
+| 10 | `PSI-193` | `[psionic][cluster] Ship replicated cluster serving for one validated backend lane` | Turn `ExecutionTopologyKind::Replicated` into a real served behavior for one validated backend/product lane, add replica warm-state and load/unload policy, and make cluster routing across warm replicas explicit in receipts and capability reporting. |
+| 11 | `PSI-194` | `[psionic][cluster][cuda] Add homogeneous CUDA layer-sharded execution` | After the single-node CUDA GPT-OSS parity stack closes, implement layer-sharded execution across homogeneous CUDA nodes, make activation and KV handoff explicit, and extend placement and receipts so layer-sharded cluster execution is truthful, measurable, and refusal-capable when topology or artifact readiness is insufficient. |
+| 12 | `PSI-195` | `[psionic][cluster][cuda] Add homogeneous CUDA tensor-sharded execution and transport policy` | Add the first real tensor-sharded cluster path on homogeneous CUDA nodes, including explicit transport requirements, link-policy-aware placement, tensor-axis partition evidence, and stable refusal semantics when the required inter-node transport or model eligibility constraints are not satisfied. |
+| 13 | `PSI-196` | `[psionic][cluster] Add cluster validation, fault-injection, and performance gates` | Add integration coverage and runbooks for hello-world connectivity, membership refusal, catchup, partition/rejoin, artifact staging, remote scheduling, replication, and sharding, plus benchmark gates so cluster claims remain evidence-backed instead of aspirational. |
+| 14 | `PSI-197` | `[psionic][cluster][security] Harden cluster trust beyond the first LAN scope` | Add authenticated membership, signed control-plane messages, replay protection, multi-subnet/configured-peer posture, and stronger admission policy so the cluster substrate can widen beyond the initial trusted same-network scope without pretending Exo's current LAN-oriented trust assumptions already solve that problem. |
+
+Recommended dependency notes:
+
+- `PSI-184` can start before `#3249/#3247/#3248` finish because it is limited to
+  hello-world cluster bring-up and must not claim real execution.
+- `PSI-191` onward should depend on the current single-node CUDA parity track
+  closing for the first validated execution lane.
+- `PSI-194` and `PSI-195` should stay explicitly CUDA-first unless a later
+  roadmap update makes another backend equally truthful.
+
 ## Path Forward
 
 ### Phase 0: Treat `#3249` as a hard gate for real clustered execution
