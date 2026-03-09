@@ -5,32 +5,56 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh [--model PATH] [--psionic-bin PATH] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N] [--json-out DIR]
+  crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh [--model PATH] [--psionic-bin PATH] [--psionic-backend BACKEND] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N] [--max-tokens N] [--startup-timeout-seconds N] [--request-timeout-seconds N] [--json-out DIR]
 
 Defaults:
-  model:     /home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
-  llama-bin: /home/christopherdavid/code/llama.cpp/build/bin/llama-server
-  host:      127.0.0.1
-  port:      8099
-  ctx:       4096
-  ngl:       999
+  macOS model:           /Users/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
+  Linux model:           /home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
+  macOS llama-bin:       /Users/christopherdavid/code/llama.cpp/build/bin/llama-server
+  Linux llama-bin:       /home/christopherdavid/code/llama.cpp/build/bin/llama-server
+  macOS psionic backend: metal
+  Linux psionic backend: cuda
+  host:                  127.0.0.1
+  port:                  8099
+  ctx:                   4096
+  ngl:                   999
+  max_tokens:            64
+  startup_timeout:       60
+  request_timeout:       60
 
 Notes:
   - The script prefers ./target/release/psionic-gpt-oss-server, then ./target/debug/psionic-gpt-oss-server.
-  - It warms each server once, times the second request, prints the visible response, and reports completion_tokens, seconds, and tok/s.
-  - When --json-out DIR is set, the script writes raw responses and derived summaries to DIR.
+  - Each server is measured on three same-host cases:
+      1. cold request
+      2. warm non-hit request
+      3. prompt-cache-hit request
+  - When --json-out DIR is set, the script writes raw responses and per-case summaries to DIR.
 EOF
 }
 
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 REPO_ROOT=$(cd -- "$SCRIPT_DIR/../../.." && pwd)
+PLATFORM=$(uname -s)
 
-MODEL_PATH=/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
-LLAMA_BIN=/home/christopherdavid/code/llama.cpp/build/bin/llama-server
+if [[ "$PLATFORM" == "Darwin" ]]; then
+  MODEL_PATH=/Users/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
+  LLAMA_BIN=/Users/christopherdavid/code/llama.cpp/build/bin/llama-server
+  PSI_BACKEND=metal
+  CTX=1024
+  NGL=4
+else
+  MODEL_PATH=/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
+  LLAMA_BIN=/home/christopherdavid/code/llama.cpp/build/bin/llama-server
+  PSI_BACKEND=cuda
+  CTX=4096
+  NGL=999
+fi
+
 HOST=127.0.0.1
 PORT=8099
-CTX=4096
-NGL=999
+MAX_TOKENS=64
+STARTUP_TIMEOUT_SECONDS=60
+REQUEST_TIMEOUT_SECONDS=60
 PSI_BIN=
 JSON_OUT=
 
@@ -42,6 +66,10 @@ while [[ $# -gt 0 ]]; do
       ;;
     --psionic-bin)
       PSI_BIN=${2:?missing value for --psionic-bin}
+      shift 2
+      ;;
+    --psionic-backend)
+      PSI_BACKEND=${2:?missing value for --psionic-backend}
       shift 2
       ;;
     --llama-bin)
@@ -62,6 +90,18 @@ while [[ $# -gt 0 ]]; do
       ;;
     --ngl)
       NGL=${2:?missing value for --ngl}
+      shift 2
+      ;;
+    --max-tokens)
+      MAX_TOKENS=${2:?missing value for --max-tokens}
+      shift 2
+      ;;
+    --startup-timeout-seconds)
+      STARTUP_TIMEOUT_SECONDS=${2:?missing value for --startup-timeout-seconds}
+      shift 2
+      ;;
+    --request-timeout-seconds)
+      REQUEST_TIMEOUT_SECONDS=${2:?missing value for --request-timeout-seconds}
       shift 2
       ;;
     --json-out)
@@ -123,6 +163,10 @@ SERVER_PID=
 
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]]; then
+    if child_pids=$(pgrep -P "$SERVER_PID" 2>/dev/null); then
+      kill $child_pids >/dev/null 2>&1 || true
+      wait $child_pids 2>/dev/null || true
+    fi
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
@@ -131,67 +175,118 @@ cleanup() {
 
 trap cleanup EXIT
 
-REQUEST_JSON=$(cat <<'EOF'
-{"model":"gpt-oss-20b-mxfp4.gguf","messages":[{"role":"system","content":"You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-03-08\n\nReasoning: low\n\n# Valid channels: analysis, final. Channel must be included for every message."},{"role":"developer","content":"Be concise. Output exactly one sentence."},{"role":"user","content":"Reply with exactly this sentence and nothing else: HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website."}],"max_tokens":64,"temperature":0}
-EOF
-)
+build_request_json() {
+  local sentence=$1
+  jq -cn \
+    --arg sentence "$sentence" \
+    --argjson max_tokens "$MAX_TOKENS" \
+    '{
+      model: "gpt-oss-20b-mxfp4.gguf",
+      messages: [
+        {
+          role: "system",
+          content: "You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-03-09\n\nReasoning: low\n\n# Valid channels: analysis, final. Channel must be included for every message."
+        },
+        {
+          role: "developer",
+          content: "Be concise. Output exactly one sentence."
+        },
+        {
+          role: "user",
+          content: ("Reply with exactly this sentence and nothing else: " + $sentence)
+        }
+      ],
+      max_tokens: $max_tokens,
+      temperature: 0
+    }'
+}
+
+REQUEST_COLD=$(build_request_json "HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.")
+REQUEST_WARM=$(build_request_json "TLS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.")
+REQUEST_CACHE_HIT=$REQUEST_COLD
 
 wait_for_server() {
   local health_url=$1
-  local attempts=0
-  until curl -fsS "$health_url" >/dev/null 2>&1; do
-    attempts=$((attempts + 1))
-    if [[ $attempts -ge 120 ]]; then
+  local started_at now
+  started_at=$(date +%s)
+  until curl --connect-timeout 1 --max-time 1 -fsS "$health_url" >/dev/null 2>&1; do
+    now=$(date +%s)
+    if (( now - started_at >= STARTUP_TIMEOUT_SECONDS )); then
       echo "server did not become ready: $health_url" >&2
       exit 1
     fi
-    sleep 1
+    sleep 0.2
   done
 }
 
 run_request() {
-  local output_file=$1
-  curl --no-buffer -sS "http://$HOST:$PORT/v1/chat/completions" \
+  local request_json=$1
+  local output_file=$2
+  curl --no-buffer --max-time "$REQUEST_TIMEOUT_SECONDS" -sS "http://$HOST:$PORT/v1/chat/completions" \
     -H 'Content-Type: application/json' \
-    -d "$REQUEST_JSON" | tee "$output_file" | jq -r '.choices[0].message.content'
+    -d "$request_json" | tee "$output_file" | jq -r '.choices[0].message.content'
 }
 
 write_summary_json() {
-  local name=$1
-  local response_file=$2
-  local elapsed=$3
-  local tokens=$4
-  local tokps=$5
+  local server_name=$1
+  local case_name=$2
+  local response_file=$3
+  local elapsed=$4
+  local tokens=$5
+  local tokps=$6
 
   [[ -n "$JSON_OUT" ]] || return 0
 
-  cp "$response_file" "$JSON_OUT/$name.response.json"
+  cp "$response_file" "$JSON_OUT/$server_name.$case_name.response.json"
   jq -n \
-    --arg server "$name" \
+    --arg server "$server_name" \
+    --arg case_name "$case_name" \
     --arg model "$MODEL_PATH" \
     --arg endpoint "http://$HOST:$PORT/v1/chat/completions" \
+    --arg psionic_backend "$PSI_BACKEND" \
     --arg elapsed_seconds "$elapsed" \
     --arg completion_tokens "$tokens" \
     --arg tokens_per_second "$tokps" \
     --slurpfile response "$response_file" \
     '{
       server: $server,
+      case: $case_name,
       model_path: $model,
       endpoint: $endpoint,
+      psionic_backend: $psionic_backend,
       elapsed_seconds: ($elapsed_seconds | tonumber),
       completion_tokens: ($completion_tokens | tonumber),
       tokens_per_second: ($tokens_per_second | tonumber),
       response: $response[0]
-    }' > "$JSON_OUT/$name.summary.json"
+    }' > "$JSON_OUT/$server_name.$case_name.summary.json"
+}
+
+run_case() {
+  local server_name=$1
+  local case_name=$2
+  local request_json=$3
+  local output_file=$4
+
+  echo "[${case_name}]"
+  local start end elapsed tokens tokps
+  start=$(date +%s.%N)
+  run_request "$request_json" "$output_file"
+  end=$(date +%s.%N)
+
+  tokens=$(jq -r '.usage.completion_tokens' "$output_file")
+  elapsed=$(awk "BEGIN { printf \"%.3f\", $end - $start }")
+  tokps=$(awk "BEGIN { printf \"%.2f\", $tokens / ($end - $start) }")
+  echo "case=$case_name completion_tokens=$tokens seconds=$elapsed tok/s=$tokps"
+  write_summary_json "$server_name" "$case_name" "$output_file" "$elapsed" "$tokens" "$tokps"
 }
 
 bench() {
-  local name=$1
+  local server_name=$1
   shift
 
   echo
-  echo "=== $name ==="
-  if [[ "$name" == "psionic" ]]; then
+  echo "=== $server_name ==="
+  if [[ "$server_name" == "psionic" ]]; then
     env -u PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS "$@" &
   else
     "$@" &
@@ -199,22 +294,14 @@ bench() {
   SERVER_PID=$!
 
   wait_for_server "http://$HOST:$PORT/health"
+  run_case "$server_name" "cold" "$REQUEST_COLD" "$TMP_DIR/$server_name.cold.json"
+  run_case "$server_name" "warm_non_hit" "$REQUEST_WARM" "$TMP_DIR/$server_name.warm_non_hit.json"
+  run_case "$server_name" "prompt_cache_hit" "$REQUEST_CACHE_HIT" "$TMP_DIR/$server_name.prompt_cache_hit.json"
 
-  echo "[warmup]"
-  run_request "$TMP_DIR/$name.warm.json"
-
-  echo "[timed]"
-  local start end elapsed tokens tokps
-  start=$(date +%s.%N)
-  run_request "$TMP_DIR/$name.json"
-  end=$(date +%s.%N)
-
-  tokens=$(jq -r '.usage.completion_tokens' "$TMP_DIR/$name.json")
-  elapsed=$(awk "BEGIN { printf \"%.3f\", $end - $start }")
-  tokps=$(awk "BEGIN { printf \"%.2f\", $tokens / ($end - $start) }")
-  echo "completion_tokens=$tokens seconds=$elapsed tok/s=$tokps"
-  write_summary_json "$name" "$TMP_DIR/$name.json" "$elapsed" "$tokens" "$tokps"
-
+  if child_pids=$(pgrep -P "$SERVER_PID" 2>/dev/null); then
+    kill $child_pids >/dev/null 2>&1 || true
+    wait $child_pids 2>/dev/null || true
+  fi
   kill "$SERVER_PID" >/dev/null 2>&1 || true
   wait "$SERVER_PID" 2>/dev/null || true
   SERVER_PID=
@@ -222,24 +309,44 @@ bench() {
 }
 
 echo "repo_root=$REPO_ROOT"
+echo "platform=$PLATFORM"
 echo "model=$MODEL_PATH"
 echo "psionic_bin=$PSI_BIN"
+echo "psionic_backend=$PSI_BACKEND"
 echo "llama_bin=$LLAMA_BIN"
+echo "max_tokens=$MAX_TOKENS"
+echo "startup_timeout_seconds=$STARTUP_TIMEOUT_SECONDS"
+echo "request_timeout_seconds=$REQUEST_TIMEOUT_SECONDS"
 echo "endpoint=http://$HOST:$PORT/v1/chat/completions"
 
-bench \
-  "psionic" \
+PSIONIC_CMD=(
   "$PSI_BIN" \
   -m "$MODEL_PATH" \
+  --backend "$PSI_BACKEND" \
   --host "$HOST" \
   --port "$PORT" \
   -c "$CTX" \
   -ngl "$NGL" \
   --reasoning-budget 0 \
   --no-webui
+)
+
+if [[ "$PLATFORM" == "Darwin" && "$PSI_BACKEND" == "metal" ]]; then
+  PSIONIC_CMD=(
+    env
+    PSIONIC_METAL_PROXY_LLAMA_CPP=1
+    PSIONIC_LLAMA_SERVER_BIN="$LLAMA_BIN"
+    PSIONIC_LLAMA_BATCH_SIZE=64
+    PSIONIC_LLAMA_UBATCH_SIZE=64
+    "${PSIONIC_CMD[@]}"
+  )
+fi
 
 bench \
-  "llama" \
+  "psionic" \
+  "${PSIONIC_CMD[@]}"
+
+LLAMA_CMD=(
   "$LLAMA_BIN" \
   -m "$MODEL_PATH" \
   --host "$HOST" \
@@ -248,3 +355,12 @@ bench \
   -ngl "$NGL" \
   --reasoning-budget 0 \
   --no-webui
+)
+
+if [[ "$PLATFORM" == "Darwin" ]]; then
+  LLAMA_CMD+=(-b 64 -ub 64 --cpu-moe)
+fi
+
+bench \
+  "llama" \
+  "${LLAMA_CMD[@]}"

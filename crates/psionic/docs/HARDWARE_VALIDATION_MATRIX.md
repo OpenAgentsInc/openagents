@@ -19,6 +19,10 @@ falls outside the rows below, the surface must serialize
 - Apple Silicon positive claims are bounded to Metal devices that report
   `MTLGPUFamily::Apple1` through `Apple9` or the equivalent `Common3` /
   `Metal3` / `Metal4` capability class in `psionic-backend-metal`.
+- The current positive Metal text-generation claim is bounded to the shipped
+  dense artifact-backed decoder lane. Metal GPT-OSS remains outside the current
+  matrix and must serialize `coverage = not_yet_validated` until it has its own
+  validated row.
 - Legacy-only Metal devices and non-macOS hosts are refusal-only coverage, not
   positive Apple Silicon support claims.
 - NVIDIA positive claims are currently limited to the shipped CUDA embeddings
@@ -35,7 +39,8 @@ falls outside the rows below, the surface must serialize
 | `cpu.embeddings.reference` | `cpu` | `psionic.embeddings` | `x86_64` or `aarch64` host CPU | `positive_execution` | `psionic-serve/tests/model_backed_embeddings.rs::model_backed_embeddings_flow_returns_response_capability_and_receipt` | Reference embeddings lane used for parity and fallback truth. |
 | `cpu.text_generation.reference` | `cpu` | `psionic.text_generation` | `x86_64` or `aarch64` host CPU | `positive_execution` | `psionic-serve/tests/model_backed_text_generation.rs::model_backed_text_generation_flow_returns_response_capability_and_receipt` | Reference text-generation lane used for parity and fallback truth. |
 | `metal.embeddings.apple_silicon` | `metal` | `psionic.embeddings` | Apple Silicon devices exposing `Apple1`-`Apple9` or `Common3`+ | `positive_execution` | `psionic-serve/tests/metal_model_backed_embeddings.rs::metal_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_explicit_unavailability`; `psionic-serve/tests/metal_embeddings_parity.rs::metal_model_backed_embeddings_match_cpu_baseline_within_tolerance_on_ready_hardware` | First shipped Apple GPU embeddings claim. |
-| `metal.text_generation.apple_silicon` | `metal` | `psionic.text_generation` | Apple Silicon devices exposing `Apple1`-`Apple9` or `Common3`+ | `positive_execution` | `psionic-serve/tests/metal_model_backed_text_generation.rs::metal_model_backed_text_generation_returns_response_capability_and_receipt_or_explicit_unavailability`; `psionic-serve/tests/metal_text_generation_parity.rs::metal_text_generation_matches_cpu_baseline_within_budget_and_seeded_sampling` | First shipped Apple GPU text-generation claim. |
+| `metal.text_generation.apple_silicon` | `metal` | `psionic.text_generation` | Apple Silicon devices exposing `Apple1`-`Apple9` or `Common3`+ | `positive_execution` | `psionic-serve/tests/metal_model_backed_text_generation.rs::metal_model_backed_text_generation_returns_response_capability_and_receipt_or_explicit_unavailability`; `psionic-serve/tests/metal_text_generation_parity.rs::metal_text_generation_matches_cpu_baseline_within_budget_and_seeded_sampling` | First shipped Apple GPU text-generation claim for the current dense artifact-backed decoder lane. This row is not a GPT-OSS / OpenAI-MoE claim. |
+| `metal.gpt_oss.text_generation.apple_silicon` | `metal` | `psionic.text_generation` | Apple Silicon devices exposing `Apple1`-`Apple9` or `Common3`+ | `positive_execution` | `psionic-serve/src/gpt_oss.rs::tests::metal_gpt_oss_service_matches_cpu_reference_on_synthetic_fixture`; `psionic-provider/src/lib.rs::metal_gpt_oss_text_generation_capability_reports_explicit_validation`; `psionic-provider/src/lib.rs::metal_gpt_oss_text_generation_receipt_reports_explicit_validation` | Metal GGUF GPT-OSS / OpenAI-MoE claim. Same-host throughput receipts are tracked separately with the benchmark harness and should include cold, warm non-hit, and prompt-cache-hit cases. |
 | `metal.refusal.off_platform` | `metal` | n/a | non-macOS hosts or legacy-only Metal devices | `explicit_refusal` | `psionic-serve/tests/metal_embeddings_parity.rs::metal_model_backed_embeddings_parity_reports_explicit_offline_state`; `psionic-serve/tests/metal_text_generation_parity.rs::metal_text_generation_parity_reports_explicit_offline_state` | Metal support must fall back or refuse explicitly instead of overclaiming readiness. |
 | `cuda.embeddings.nvidia` | `cuda` | `psionic.embeddings` | Linux host with a usable NVIDIA CUDA device | `positive_execution` | `psionic-serve/tests/cuda_model_backed_embeddings.rs::cuda_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_explicit_unavailability`; `psionic-serve/tests/cuda_embeddings_parity.rs::cuda_model_backed_embeddings_match_cpu_baseline_within_tolerance_or_report_explicit_fallback` | First shipped NVIDIA served-product claim. |
 | `cuda.refusal.unavailable` | `cuda` | n/a | host without usable NVIDIA driver/runtime | `explicit_refusal` | `psionic-serve/tests/cuda_embeddings_parity.rs::cuda_model_backed_embeddings_match_cpu_baseline_within_tolerance_or_report_explicit_fallback` | CUDA support must degrade/fallback explicitly when NVIDIA execution is unavailable. |
@@ -57,6 +62,8 @@ claim.
 
 - `cargo test -p psionic-backend-metal`
 - `cargo test -p psionic-serve --test metal_embeddings_parity --test metal_model_backed_embeddings --test metal_text_generation_parity --test metal_model_backed_text_generation`
+- `cargo test -p psionic-serve gpt_oss::tests::metal_gpt_oss_service_matches_cpu_reference_on_synthetic_fixture -- --nocapture`
+- `crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh --psionic-backend metal --json-out <dir>`
 
 ### Linux NVIDIA host
 

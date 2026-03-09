@@ -7,6 +7,7 @@ use std::{
     fs,
     path::{Path, PathBuf},
     sync::Arc,
+    time::UNIX_EPOCH,
 };
 
 use serde::{Deserialize, Serialize};
@@ -51,6 +52,16 @@ pub enum BlobReadPath {
     Buffered,
 }
 
+/// Integrity policy applied when opening a local blob.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BlobIntegrityPolicy {
+    /// Compute a stable SHA-256 over the full blob bytes.
+    Sha256,
+    /// Skip the full blob hash and emit a stable local-path metadata label instead.
+    LocalUnverifiedLabel,
+}
+
 /// Open options for local blobs.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LocalBlobOpenOptions {
@@ -58,6 +69,8 @@ pub struct LocalBlobOpenOptions {
     pub read_preference: BlobReadPreference,
     /// Logical page size to use for paged range views.
     pub page_size: usize,
+    /// Integrity policy for the opened blob metadata.
+    pub integrity_policy: BlobIntegrityPolicy,
     /// Optional digest expected by the caller.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub expected_sha256: Option<String>,
@@ -68,6 +81,7 @@ impl Default for LocalBlobOpenOptions {
         Self {
             read_preference: BlobReadPreference::PreferMemoryMap,
             page_size: 4096,
+            integrity_policy: BlobIntegrityPolicy::Sha256,
             expected_sha256: None,
         }
     }
@@ -85,6 +99,13 @@ impl LocalBlobOpenOptions {
     #[must_use]
     pub fn with_page_size(mut self, page_size: usize) -> Self {
         self.page_size = page_size;
+        self
+    }
+
+    /// Returns a copy with a different integrity policy.
+    #[must_use]
+    pub fn with_integrity_policy(mut self, integrity_policy: BlobIntegrityPolicy) -> Self {
+        self.integrity_policy = integrity_policy;
         self
     }
 
@@ -234,18 +255,25 @@ impl LocalBlob {
                 message: error.to_string(),
             },
         })?;
-        let byte_length = file.metadata().map_err(|error| BlobError::Read {
+        let file_metadata = file.metadata().map_err(|error| BlobError::Read {
             path: path.display().to_string(),
             message: error.to_string(),
         })?;
-        let byte_length = usize::try_from(byte_length.len()).map_err(|_| BlobError::Read {
+        let byte_length_u64 = file_metadata.len();
+        let byte_length = usize::try_from(byte_length_u64).map_err(|_| BlobError::Read {
             path: path.display().to_string(),
             message: String::from("blob length does not fit usize on this platform"),
         })?;
 
         let (backing, read_path, fallback_reason) =
             open_blob_backing(&path, &file, byte_length, options.read_preference)?;
-        let sha256 = format!("sha256:{}", hex::encode(Sha256::digest(backing.bytes())));
+        let sha256 = if options.expected_sha256.is_some()
+            || matches!(options.integrity_policy, BlobIntegrityPolicy::Sha256)
+        {
+            format!("sha256:{}", hex::encode(Sha256::digest(backing.bytes())))
+        } else {
+            local_unverified_integrity_label(&path, byte_length_u64, &file_metadata)
+        };
         if let Some(expected) = options.expected_sha256.as_deref() {
             let expected = canonical_ollama_digest(expected)?;
             if sha256 != expected {
@@ -267,7 +295,7 @@ impl LocalBlob {
                 kind,
                 name,
                 path,
-                byte_length: byte_length as u64,
+                byte_length: byte_length_u64,
                 sha256,
                 read_path,
                 page_size: options.page_size,
@@ -334,6 +362,23 @@ impl LocalBlob {
             len,
         })
     }
+}
+
+fn local_unverified_integrity_label(
+    path: &Path,
+    byte_length: u64,
+    metadata: &fs::Metadata,
+) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(path.to_string_lossy().as_bytes());
+    hasher.update(byte_length.to_le_bytes());
+    if let Ok(modified) = metadata.modified() {
+        if let Ok(duration) = modified.duration_since(UNIX_EPOCH) {
+            hasher.update(duration.as_secs().to_le_bytes());
+            hasher.update(duration.subsec_nanos().to_le_bytes());
+        }
+    }
+    format!("local-unverified:{}", hex::encode(hasher.finalize()))
 }
 
 /// Paged view over a byte range inside a local blob.
@@ -526,7 +571,7 @@ mod tests {
     use tempfile::tempdir;
 
     use super::{
-        BlobError, BlobReadPath, BlobReadPreference, LocalBlob, LocalBlobKind,
+        BlobError, BlobIntegrityPolicy, BlobReadPath, BlobReadPreference, LocalBlob, LocalBlobKind,
         LocalBlobOpenOptions, ollama_blob_path,
     };
 
@@ -636,6 +681,24 @@ mod tests {
         )
         .expect_err("digest mismatch should fail");
         assert!(matches!(error, BlobError::DigestMismatch { .. }));
+        Ok(())
+    }
+
+    #[test]
+    fn local_blob_can_skip_full_sha256_for_unverified_local_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("fast-local.gguf");
+        write_blob(&path, b"psionic")?;
+
+        let blob = LocalBlob::open_path(
+            &path,
+            LocalBlobKind::GgufFile,
+            LocalBlobOpenOptions::default()
+                .with_integrity_policy(BlobIntegrityPolicy::LocalUnverifiedLabel),
+        )?;
+
+        assert!(blob.metadata().sha256.starts_with("local-unverified:"));
         Ok(())
     }
 

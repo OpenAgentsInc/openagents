@@ -8,8 +8,8 @@ use crate::app_state::{ActivityFeedFilter, DesktopPane, PaneDragMode, PaneKind, 
 use crate::hotbar::{HOTBAR_FLOAT_GAP, HOTBAR_HEIGHT};
 use crate::pane_registry::pane_spec;
 use crate::panes::{
-    calculator as calculator_pane, chat as chat_pane, relay_connections as relay_connections_pane,
-    wallet as wallet_pane,
+    calculator as calculator_pane, chat as chat_pane, local_inference as local_inference_pane,
+    relay_connections as relay_connections_pane, wallet as wallet_pane,
 };
 use crate::render::{
     logical_size, sidebar_go_online_button_bounds, sidebar_handle_bounds,
@@ -114,6 +114,12 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.network_requests_inputs.delivery_start_minutes.blur();
     state.network_requests_inputs.window_minutes.blur();
     state.network_requests_inputs.max_price_sats.blur();
+    state.local_inference_inputs.prompt.blur();
+    state.local_inference_inputs.requested_model.blur();
+    state.local_inference_inputs.max_tokens.blur();
+    state.local_inference_inputs.temperature.blur();
+    state.local_inference_inputs.top_k.blur();
+    state.local_inference_inputs.top_p.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();
@@ -121,6 +127,33 @@ fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.credentials_inputs.variable_value.blur();
     state.job_history_inputs.search_job_id.blur();
     state.chat_inputs.composer.focus();
+}
+
+fn focus_local_inference_prompt_for_pane_open(state: &mut RenderState) {
+    state.spark_inputs.invoice_amount.blur();
+    state.spark_inputs.send_request.blur();
+    state.spark_inputs.send_amount.blur();
+    state.pay_invoice_inputs.payment_request.blur();
+    state.pay_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.amount_sats.blur();
+    state.create_invoice_inputs.description.blur();
+    state.create_invoice_inputs.expiry_seconds.blur();
+    state.relay_connections_inputs.relay_url.blur();
+    state.network_requests_inputs.compute_family.blur();
+    state.network_requests_inputs.preferred_backend.blur();
+    state.network_requests_inputs.capability_constraints.blur();
+    state.network_requests_inputs.quantity.blur();
+    state.network_requests_inputs.delivery_start_minutes.blur();
+    state.network_requests_inputs.window_minutes.blur();
+    state.network_requests_inputs.max_price_sats.blur();
+    state.settings_inputs.relay_url.blur();
+    state.settings_inputs.wallet_default_send_sats.blur();
+    state.settings_inputs.provider_max_queue_depth.blur();
+    state.credentials_inputs.variable_name.blur();
+    state.credentials_inputs.variable_value.blur();
+    state.job_history_inputs.search_job_id.blur();
+    state.chat_inputs.composer.blur();
+    state.local_inference_inputs.prompt.focus();
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -228,6 +261,14 @@ pub enum SyncHealthPaneAction {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ProviderStatusPaneAction {
     ToggleInventory(crate::app_state::ProviderInventoryProductToggleTarget),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum LocalInferencePaneAction {
+    RefreshRuntime,
+    WarmModel,
+    UnloadModel,
+    RunPrompt,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -701,6 +742,7 @@ pub enum PaneHitAction {
     RelayConnections(RelayConnectionsPaneAction),
     SyncHealth(SyncHealthPaneAction),
     ProviderStatus(ProviderStatusPaneAction),
+    LocalInference(LocalInferencePaneAction),
     NetworkRequests(NetworkRequestsPaneAction),
     StarterJobs(StarterJobsPaneAction),
     ReciprocalLoop(ReciprocalLoopPaneAction),
@@ -803,6 +845,8 @@ impl PaneController {
         let id = Self::create(state, PaneDescriptor::for_kind(kind));
         if kind == PaneKind::AutopilotChat {
             focus_chat_composer_for_pane_open(state);
+        } else if kind == PaneKind::LocalInference {
+            focus_local_inference_prompt_for_pane_open(state);
         }
         id
     }
@@ -1099,6 +1143,17 @@ pub fn cursor_icon_for_pointer(state: &RenderState, point: Point) -> CursorIcon 
                     || network_requests_budget_input_bounds(content_bounds).contains(point)
                     || network_requests_timeout_input_bounds(content_bounds).contains(point)
                     || network_requests_max_price_input_bounds(content_bounds).contains(point)
+                {
+                    return CursorIcon::Text;
+                }
+            }
+            PaneKind::LocalInference => {
+                if local_inference_prompt_input_bounds(content_bounds).contains(point)
+                    || local_inference_requested_model_input_bounds(content_bounds).contains(point)
+                    || local_inference_max_tokens_input_bounds(content_bounds).contains(point)
+                    || local_inference_temperature_input_bounds(content_bounds).contains(point)
+                    || local_inference_top_k_input_bounds(content_bounds).contains(point)
+                    || local_inference_top_p_input_bounds(content_bounds).contains(point)
                 {
                     return CursorIcon::Text;
                 }
@@ -1773,6 +1828,104 @@ pub fn sync_health_rebootstrap_button_bounds(content_bounds: Bounds) -> Bounds {
         content_bounds.origin.y + CHAT_PAD,
         (content_bounds.size.width * 0.28).clamp(160.0, 240.0),
         JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn local_inference_refresh_button_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD,
+        126.0,
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn local_inference_warm_button_bounds(content_bounds: Bounds) -> Bounds {
+    let refresh = local_inference_refresh_button_bounds(content_bounds);
+    Bounds::new(
+        refresh.max_x() + JOB_INBOX_BUTTON_GAP,
+        refresh.origin.y,
+        116.0,
+        refresh.size.height,
+    )
+}
+
+pub fn local_inference_unload_button_bounds(content_bounds: Bounds) -> Bounds {
+    let warm = local_inference_warm_button_bounds(content_bounds);
+    Bounds::new(
+        warm.max_x() + JOB_INBOX_BUTTON_GAP,
+        warm.origin.y,
+        116.0,
+        warm.size.height,
+    )
+}
+
+pub fn local_inference_run_button_bounds(content_bounds: Bounds) -> Bounds {
+    let unload = local_inference_unload_button_bounds(content_bounds);
+    Bounds::new(
+        unload.max_x() + JOB_INBOX_BUTTON_GAP,
+        unload.origin.y,
+        148.0,
+        unload.size.height,
+    )
+}
+
+pub fn local_inference_prompt_input_bounds(content_bounds: Bounds) -> Bounds {
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        content_bounds.origin.y + CHAT_PAD + JOB_INBOX_BUTTON_HEIGHT + 62.0,
+        (content_bounds.size.width - CHAT_PAD * 2.0).max(320.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn local_inference_requested_model_input_bounds(content_bounds: Bounds) -> Bounds {
+    let prompt = local_inference_prompt_input_bounds(content_bounds);
+    Bounds::new(
+        content_bounds.origin.x + CHAT_PAD,
+        prompt.max_y() + 36.0,
+        (content_bounds.size.width * 0.28).clamp(180.0, 250.0),
+        JOB_INBOX_BUTTON_HEIGHT,
+    )
+}
+
+pub fn local_inference_max_tokens_input_bounds(content_bounds: Bounds) -> Bounds {
+    let requested_model = local_inference_requested_model_input_bounds(content_bounds);
+    Bounds::new(
+        requested_model.max_x() + JOB_INBOX_BUTTON_GAP,
+        requested_model.origin.y,
+        98.0,
+        requested_model.size.height,
+    )
+}
+
+pub fn local_inference_temperature_input_bounds(content_bounds: Bounds) -> Bounds {
+    let max_tokens = local_inference_max_tokens_input_bounds(content_bounds);
+    Bounds::new(
+        max_tokens.max_x() + JOB_INBOX_BUTTON_GAP,
+        max_tokens.origin.y,
+        108.0,
+        max_tokens.size.height,
+    )
+}
+
+pub fn local_inference_top_k_input_bounds(content_bounds: Bounds) -> Bounds {
+    let temperature = local_inference_temperature_input_bounds(content_bounds);
+    Bounds::new(
+        temperature.max_x() + JOB_INBOX_BUTTON_GAP,
+        temperature.origin.y,
+        92.0,
+        temperature.size.height,
+    )
+}
+
+pub fn local_inference_top_p_input_bounds(content_bounds: Bounds) -> Bounds {
+    let top_k = local_inference_top_k_input_bounds(content_bounds);
+    Bounds::new(
+        top_k.max_x() + JOB_INBOX_BUTTON_GAP,
+        top_k.origin.y,
+        92.0,
+        top_k.size.height,
     )
 }
 
@@ -3590,6 +3743,29 @@ fn pane_hit_action_for_pane(
             }
             None
         }
+        PaneKind::LocalInference => {
+            if local_inference_refresh_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::LocalInference(
+                    LocalInferencePaneAction::RefreshRuntime,
+                ));
+            }
+            if local_inference_warm_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::LocalInference(
+                    LocalInferencePaneAction::WarmModel,
+                ));
+            }
+            if local_inference_unload_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::LocalInference(
+                    LocalInferencePaneAction::UnloadModel,
+                ));
+            }
+            if local_inference_run_button_bounds(content_bounds).contains(point) {
+                return Some(PaneHitAction::LocalInference(
+                    LocalInferencePaneAction::RunPrompt,
+                ));
+            }
+            None
+        }
         PaneKind::NetworkRequests => {
             if network_requests_submit_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::NetworkRequests(
@@ -4343,6 +4519,10 @@ pub fn dispatch_relay_connections_input_event(state: &mut RenderState, event: &I
     relay_connections_pane::dispatch_input_event(state, event)
 }
 
+pub fn dispatch_local_inference_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
+    local_inference_pane::dispatch_input_event(state, event)
+}
+
 pub fn dispatch_network_requests_input_event(state: &mut RenderState, event: &InputEvent) -> bool {
     let top_network = state
         .panes
@@ -4603,18 +4783,23 @@ mod tests {
         job_history_next_page_button_bounds, job_history_prev_page_button_bounds,
         job_history_search_input_bounds, job_history_status_button_bounds,
         job_history_time_button_bounds, job_inbox_accept_button_bounds,
-        job_inbox_reject_button_bounds, job_inbox_row_bounds, network_requests_budget_input_bounds,
-        network_requests_credit_envelope_input_bounds, network_requests_max_price_input_bounds,
-        network_requests_payload_input_bounds, network_requests_skill_scope_input_bounds,
-        network_requests_submit_button_bounds, network_requests_timeout_input_bounds,
-        network_requests_type_input_bounds, nostr_copy_secret_button_bounds,
-        nostr_regenerate_button_bounds, nostr_reveal_button_bounds, pane_content_bounds,
-        reciprocal_loop_reset_button_bounds, reciprocal_loop_start_button_bounds,
-        reciprocal_loop_stop_button_bounds, relay_connections_add_button_bounds,
-        relay_connections_remove_button_bounds, relay_connections_retry_button_bounds,
-        relay_connections_row_bounds, relay_connections_url_input_bounds,
-        settings_provider_queue_input_bounds, settings_relay_input_bounds,
-        settings_reset_button_bounds, settings_save_button_bounds,
+        job_inbox_reject_button_bounds, job_inbox_row_bounds,
+        local_inference_max_tokens_input_bounds, local_inference_prompt_input_bounds,
+        local_inference_refresh_button_bounds, local_inference_requested_model_input_bounds,
+        local_inference_run_button_bounds, local_inference_temperature_input_bounds,
+        local_inference_top_k_input_bounds, local_inference_top_p_input_bounds,
+        local_inference_unload_button_bounds, local_inference_warm_button_bounds,
+        network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
+        network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
+        network_requests_skill_scope_input_bounds, network_requests_submit_button_bounds,
+        network_requests_timeout_input_bounds, network_requests_type_input_bounds,
+        nostr_copy_secret_button_bounds, nostr_regenerate_button_bounds,
+        nostr_reveal_button_bounds, pane_content_bounds, reciprocal_loop_reset_button_bounds,
+        reciprocal_loop_start_button_bounds, reciprocal_loop_stop_button_bounds,
+        relay_connections_add_button_bounds, relay_connections_remove_button_bounds,
+        relay_connections_retry_button_bounds, relay_connections_row_bounds,
+        relay_connections_url_input_bounds, settings_provider_queue_input_bounds,
+        settings_relay_input_bounds, settings_reset_button_bounds, settings_save_button_bounds,
         settings_wallet_default_input_bounds, skill_registry_discover_button_bounds,
         skill_registry_inspect_button_bounds, skill_registry_install_button_bounds,
         skill_trust_attestations_button_bounds, skill_trust_kill_switch_button_bounds,
@@ -4844,6 +5029,31 @@ mod tests {
         assert!(budget.max_x() < timeout.min_x());
         assert!(timeout.max_x() < max_price.min_x());
         assert!(max_price.max_x() < submit.min_x());
+    }
+
+    #[test]
+    fn local_inference_controls_are_ordered() {
+        let content = Bounds::new(0.0, 0.0, 940.0, 520.0);
+        let refresh = local_inference_refresh_button_bounds(content);
+        let warm = local_inference_warm_button_bounds(content);
+        let unload = local_inference_unload_button_bounds(content);
+        let run = local_inference_run_button_bounds(content);
+        let prompt = local_inference_prompt_input_bounds(content);
+        let model = local_inference_requested_model_input_bounds(content);
+        let max_tokens = local_inference_max_tokens_input_bounds(content);
+        let temperature = local_inference_temperature_input_bounds(content);
+        let top_k = local_inference_top_k_input_bounds(content);
+        let top_p = local_inference_top_p_input_bounds(content);
+
+        assert!(refresh.max_x() < warm.min_x());
+        assert!(warm.max_x() < unload.min_x());
+        assert!(unload.max_x() < run.min_x());
+        assert!(refresh.max_y() < prompt.min_y());
+        assert!(prompt.max_y() < model.min_y());
+        assert!(model.max_x() < max_tokens.min_x());
+        assert!(max_tokens.max_x() < temperature.min_x());
+        assert!(temperature.max_x() < top_k.min_x());
+        assert!(top_k.max_x() < top_p.min_x());
     }
 
     #[test]

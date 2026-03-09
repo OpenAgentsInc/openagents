@@ -88,7 +88,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 39] = [
+const PANE_SPECS: [PaneSpec; 40] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -265,6 +265,21 @@ const PANE_SPECS: [PaneSpec; 39] = [
             id: "pane.provider_status",
             label: "Provider Status",
             description: "Open runtime health and heartbeat visibility pane",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::LocalInference,
+        title: "Local Inference",
+        default_width: 960.0,
+        default_height: 560.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.local_inference",
+            label: "Local Inference",
+            description: "Open the GPT-OSS local inference workbench and runtime controls",
             keybinding: None,
         }),
         hotbar: None,

@@ -1,5 +1,35 @@
 use super::*;
 
+pub struct LocalInferencePaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub pending_request_id: Option<String>,
+    pub last_request_id: Option<String>,
+    pub last_model: Option<String>,
+    pub output_preview: String,
+    pub output_chars: usize,
+    pub last_metrics: Option<LocalInferenceExecutionMetrics>,
+    pub last_provenance: Option<LocalInferenceExecutionProvenance>,
+}
+
+impl Default for LocalInferencePaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for local inference runtime snapshot".to_string()),
+            pending_request_id: None,
+            last_request_id: None,
+            last_model: None,
+            output_preview: String::new(),
+            output_chars: 0,
+            last_metrics: None,
+            last_provenance: None,
+        }
+    }
+}
+
 pub struct CodexAccountPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,

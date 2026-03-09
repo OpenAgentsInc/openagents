@@ -90,6 +90,11 @@ const METAL_TEXT_GENERATION_TESTS: &[&str] = &[
     "psionic-serve/tests/metal_model_backed_text_generation.rs::metal_model_backed_text_generation_returns_response_capability_and_receipt_or_explicit_unavailability",
     "psionic-serve/tests/metal_text_generation_parity.rs::metal_text_generation_matches_cpu_baseline_within_budget_and_seeded_sampling",
 ];
+const METAL_GPT_OSS_TEXT_GENERATION_TESTS: &[&str] = &[
+    "psionic-serve/src/gpt_oss.rs::tests::metal_gpt_oss_service_matches_cpu_reference_on_synthetic_fixture",
+    "psionic-provider/src/lib.rs::metal_gpt_oss_text_generation_capability_reports_explicit_validation",
+    "psionic-provider/src/lib.rs::metal_gpt_oss_text_generation_receipt_reports_explicit_validation",
+];
 const METAL_REFUSAL_TESTS: &[&str] = &[
     "psionic-serve/tests/metal_embeddings_parity.rs::metal_model_backed_embeddings_parity_reports_explicit_offline_state",
     "psionic-serve/tests/metal_text_generation_parity.rs::metal_text_generation_parity_reports_explicit_offline_state",
@@ -143,7 +148,16 @@ const MINIMUM_HARDWARE_VALIDATION_CLAIMS: &[HardwareValidationClaim] = &[
         coverage: ValidationCoverage::PositiveExecution,
         hardware_lane: "apple_silicon_metal_gpu_family_apple1_to_apple9_or_common3_plus",
         required_tests: METAL_TEXT_GENERATION_TESTS,
-        notes: "Apple Silicon text-generation path validated against the CPU baseline.",
+        notes: "Apple Silicon text-generation path validated against the CPU baseline for the dense artifact-backed decoder lane, not for GPT-OSS/OpenAI-MoE.",
+    },
+    HardwareValidationClaim {
+        claim_id: "metal.gpt_oss.text_generation.apple_silicon",
+        backend: "metal",
+        product_id: Some("psionic.text_generation"),
+        coverage: ValidationCoverage::PositiveExecution,
+        hardware_lane: "apple_silicon_metal_gpu_family_apple1_to_apple9_or_common3_plus",
+        required_tests: METAL_GPT_OSS_TEXT_GENERATION_TESTS,
+        notes: "Apple Silicon Metal GGUF GPT-OSS lane validated against the CPU reference path, with benchmark evidence tracked separately for cold, warm, and prompt-cache-hit cases.",
     },
     HardwareValidationClaim {
         claim_id: "metal.refusal.off_platform",
@@ -263,6 +277,35 @@ pub fn validation_reference_for_served_product(
     }
 }
 
+/// Returns the validation reference for one text-generation model family.
+#[must_use]
+pub fn validation_reference_for_text_generation_model(
+    backend_selection: &BackendSelection,
+    model_family: &str,
+) -> ValidationMatrixReference {
+    let normalized_family = model_family.to_ascii_lowercase();
+    let refusal_state = matches!(
+        backend_selection.selection_state,
+        BackendSelectionState::CrossBackendFallback | BackendSelectionState::Refused
+    );
+
+    match (
+        backend_selection.requested_backend.as_str(),
+        refusal_state,
+        normalized_family.as_str(),
+    ) {
+        ("metal", true, _) => ValidationMatrixReference::minimum(
+            "metal.refusal.off_platform",
+            ValidationCoverage::ExplicitRefusal,
+        ),
+        ("metal", false, "gpt-oss" | "gptoss") => ValidationMatrixReference::minimum(
+            "metal.gpt_oss.text_generation.apple_silicon",
+            ValidationCoverage::PositiveExecution,
+        ),
+        _ => validation_reference_for_served_product(backend_selection, "psionic.text_generation"),
+    }
+}
+
 /// Returns the validation reference for one backend probe claim.
 #[must_use]
 pub fn validation_reference_for_backend_probe(backend: &str) -> ValidationMatrixReference {
@@ -295,6 +338,7 @@ mod tests {
         MINIMUM_HARDWARE_VALIDATION_MATRIX_ID, ValidationCoverage,
         minimum_hardware_validation_claim, minimum_hardware_validation_claims,
         validation_reference_for_backend_probe, validation_reference_for_served_product,
+        validation_reference_for_text_generation_model,
     };
     use crate::{BackendSelection, DeviceDescriptor};
 
@@ -334,6 +378,11 @@ mod tests {
             claims
                 .iter()
                 .any(|claim| claim.claim_id == "metal.text_generation.apple_silicon")
+        );
+        assert!(
+            claims
+                .iter()
+                .any(|claim| claim.claim_id == "metal.gpt_oss.text_generation.apple_silicon")
         );
         assert!(
             claims
@@ -397,6 +446,33 @@ mod tests {
         );
         assert_eq!(cuda_refusal.claim_id, "cuda.refusal.unavailable");
         assert_eq!(cuda_refusal.coverage, ValidationCoverage::ExplicitRefusal);
+    }
+
+    #[test]
+    fn metal_gpt_oss_text_generation_maps_to_explicit_matrix_claim() {
+        let reference =
+            validation_reference_for_text_generation_model(&direct_selection("metal"), "gpt-oss");
+        assert_eq!(reference.coverage, ValidationCoverage::PositiveExecution);
+        assert_eq!(
+            reference.claim_id,
+            "metal.gpt_oss.text_generation.apple_silicon"
+        );
+        assert_eq!(
+            minimum_hardware_validation_claim(&reference.claim_id)
+                .expect("matrix claim")
+                .coverage,
+            ValidationCoverage::PositiveExecution
+        );
+    }
+
+    #[test]
+    fn non_gpt_oss_metal_text_generation_keeps_dense_claim() {
+        let reference = validation_reference_for_text_generation_model(
+            &direct_selection("metal"),
+            "wordpiece_decoder",
+        );
+        assert_eq!(reference.coverage, ValidationCoverage::PositiveExecution);
+        assert_eq!(reference.claim_id, "metal.text_generation.apple_silicon");
     }
 
     #[test]

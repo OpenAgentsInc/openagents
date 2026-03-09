@@ -5,6 +5,7 @@ pub mod cast;
 pub mod chat;
 pub mod codex;
 pub mod credit;
+pub mod local_inference;
 pub mod project_ops;
 pub mod relay_connections;
 pub mod skill;

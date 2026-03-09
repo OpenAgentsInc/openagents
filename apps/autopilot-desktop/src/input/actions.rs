@@ -1,5 +1,8 @@
 use super::*;
 use crate::bitcoin_display::format_sats_amount;
+use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRuntimeCommand};
+use crate::pane_system::LocalInferencePaneAction;
+use crate::state::job_inbox::JobExecutionParam;
 
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Managed chat relay publish transport is not wired yet; local echo saved for retry.";
@@ -5469,6 +5472,169 @@ pub(super) fn run_provider_status_action(
             true
         }
     }
+}
+
+pub(super) fn run_local_inference_action(
+    state: &mut crate::app_state::RenderState,
+    action: LocalInferencePaneAction,
+) -> bool {
+    match action {
+        LocalInferencePaneAction::RefreshRuntime => queue_local_inference_pane_command(
+            state,
+            LocalInferenceRuntimeCommand::Refresh,
+            "Queued local inference runtime refresh",
+        ),
+        LocalInferencePaneAction::WarmModel => queue_local_inference_pane_command(
+            state,
+            LocalInferenceRuntimeCommand::WarmConfiguredModel,
+            "Queued configured GPT-OSS model warm",
+        ),
+        LocalInferencePaneAction::UnloadModel => queue_local_inference_pane_command(
+            state,
+            LocalInferenceRuntimeCommand::UnloadConfiguredModel,
+            "Queued configured GPT-OSS model unload",
+        ),
+        LocalInferencePaneAction::RunPrompt => {
+            let prompt = state
+                .local_inference_inputs
+                .prompt
+                .get_value()
+                .trim()
+                .to_string();
+            if prompt.is_empty() {
+                state.local_inference.load_state = crate::app_state::PaneLoadState::Error;
+                state.local_inference.last_error =
+                    Some("Prompt is required before running local inference".to_string());
+                state.local_inference.last_action = Some("Local inference run blocked".to_string());
+                return true;
+            }
+
+            let params = match build_local_inference_pane_params(state) {
+                Ok(value) => value,
+                Err(error) => {
+                    state.local_inference.load_state = crate::app_state::PaneLoadState::Error;
+                    state.local_inference.last_error = Some(error);
+                    state.local_inference.last_action =
+                        Some("Local inference run blocked".to_string());
+                    return true;
+                }
+            };
+            let request_id = format!(
+                "local-inference-pane-{}",
+                state.reserve_runtime_command_seq()
+            );
+            let requested_model =
+                normalize_optional_text(state.local_inference_inputs.requested_model.get_value());
+            let request_id_for_state = request_id.clone();
+            let model_note = requested_model
+                .clone()
+                .unwrap_or_else(|| "configured".to_string());
+            match state.queue_local_inference_runtime_command(
+                LocalInferenceRuntimeCommand::Generate(LocalInferenceGenerateJob {
+                    request_id,
+                    prompt,
+                    requested_model,
+                    params,
+                }),
+            ) {
+                Ok(()) => {
+                    state.local_inference.load_state = crate::app_state::PaneLoadState::Loading;
+                    state.local_inference.last_error = None;
+                    state.local_inference.last_action = Some(format!(
+                        "Queued local inference workbench run {request_id_for_state} ({model_note})"
+                    ));
+                    state.local_inference.pending_request_id = Some(request_id_for_state.clone());
+                    state.local_inference.last_request_id = Some(request_id_for_state.clone());
+                    state.local_inference.last_model = None;
+                    state.provider_runtime.last_result = Some(format!(
+                        "local inference workbench queued request {}",
+                        request_id_for_state
+                    ));
+                }
+                Err(error) => {
+                    state.local_inference.load_state = crate::app_state::PaneLoadState::Error;
+                    state.local_inference.last_error = Some(error.clone());
+                    state.local_inference.last_action =
+                        Some("Local inference runtime enqueue failed".to_string());
+                    state.provider_runtime.last_error_detail = Some(error);
+                }
+            }
+            true
+        }
+    }
+}
+
+fn queue_local_inference_pane_command(
+    state: &mut crate::app_state::RenderState,
+    command: LocalInferenceRuntimeCommand,
+    action_label: &str,
+) -> bool {
+    match state.queue_local_inference_runtime_command(command) {
+        Ok(()) => {
+            state.local_inference.load_state = crate::app_state::PaneLoadState::Loading;
+            state.local_inference.last_error = None;
+            state.local_inference.last_action = Some(action_label.to_string());
+            state.provider_runtime.last_result = Some(action_label.to_string());
+        }
+        Err(error) => {
+            state.local_inference.load_state = crate::app_state::PaneLoadState::Error;
+            state.local_inference.last_error = Some(error.clone());
+            state.local_inference.last_action =
+                Some("Local inference runtime enqueue failed".to_string());
+            state.provider_runtime.last_error_detail = Some(error);
+        }
+    }
+    true
+}
+
+fn build_local_inference_pane_params(
+    state: &crate::app_state::RenderState,
+) -> Result<Vec<JobExecutionParam>, String> {
+    let mut params = Vec::new();
+
+    if let Some(value) =
+        normalize_optional_text(state.local_inference_inputs.max_tokens.get_value())
+    {
+        let max_tokens = parse_positive_amount_str(value.as_str(), "Max tokens")?;
+        params.push(JobExecutionParam {
+            key: "max_tokens".to_string(),
+            value: max_tokens.to_string(),
+        });
+    }
+
+    if let Some(value) =
+        normalize_optional_text(state.local_inference_inputs.temperature.get_value())
+    {
+        let temperature = parse_local_inference_float(value.as_str(), "Temperature")?;
+        params.push(JobExecutionParam {
+            key: "temperature".to_string(),
+            value: temperature.to_string(),
+        });
+    }
+
+    if let Some(value) = normalize_optional_text(state.local_inference_inputs.top_k.get_value()) {
+        let top_k = parse_non_negative_amount_str(value.as_str(), "Top-k")?;
+        params.push(JobExecutionParam {
+            key: "top_k".to_string(),
+            value: top_k.to_string(),
+        });
+    }
+
+    if let Some(value) = normalize_optional_text(state.local_inference_inputs.top_p.get_value()) {
+        let top_p = parse_local_inference_float(value.as_str(), "Top-p")?;
+        params.push(JobExecutionParam {
+            key: "top_p".to_string(),
+            value: top_p.to_string(),
+        });
+    }
+
+    Ok(params)
+}
+
+fn parse_local_inference_float(raw: &str, label: &str) -> Result<f64, String> {
+    raw.trim()
+        .parse::<f64>()
+        .map_err(|error| format!("{label} must be a number: {error}"))
 }
 
 fn build_spot_compute_rfq_from_inputs(

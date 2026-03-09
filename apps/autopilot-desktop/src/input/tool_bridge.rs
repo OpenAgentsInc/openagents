@@ -37,10 +37,10 @@ use crate::pane_system::{
     CodexDiagnosticsPaneAction, CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction,
     CredentialsPaneAction, CreditDeskPaneAction, CreditSettlementLedgerPaneAction,
     EarningsScoreboardPaneAction, JobHistoryPaneAction, JobInboxPaneAction,
-    NetworkRequestsPaneAction, PaneController, PaneHitAction, ReciprocalLoopPaneAction,
-    RelayConnectionsPaneAction, SettingsPaneAction, SkillRegistryPaneAction,
-    SkillTrustRevocationPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    TrajectoryAuditPaneAction,
+    LocalInferencePaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
+    ReciprocalLoopPaneAction, RelayConnectionsPaneAction, SettingsPaneAction,
+    SkillRegistryPaneAction, SkillTrustRevocationPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, TrajectoryAuditPaneAction,
 };
 use crate::runtime_lanes::SaLifecycleCommand;
 use crate::spark_pane::{CreateInvoicePaneAction, PayInvoicePaneAction, SparkPaneAction};
@@ -1772,6 +1772,7 @@ fn execute_pane_set_input(
     let applied = match kind {
         PaneKind::AutopilotChat => apply_chat_input(state, &field, &value),
         PaneKind::RelayConnections => apply_relay_connections_input(state, &field, &value),
+        PaneKind::LocalInference => apply_local_inference_input(state, &field, &value),
         PaneKind::NetworkRequests => apply_network_requests_input(state, &field, &value),
         PaneKind::Settings => apply_settings_input(state, &field, &value),
         PaneKind::Credentials => apply_credentials_input(state, &field, &value),
@@ -1877,6 +1878,21 @@ fn pane_snapshot_details(state: &RenderState, kind: PaneKind) -> Value {
                         "active_turn_id": state.autopilot_chat.active_turn_id,
                         "last_error": state.autopilot_chat.last_error,
                         "message_count": state.autopilot_chat.messages.len(),
+                    }),
+                );
+            }
+            PaneKind::LocalInference => {
+                map.insert(
+                    "local_inference".to_string(),
+                    json!({
+                        "pending_request_id": state.local_inference.pending_request_id,
+                        "last_request_id": state.local_inference.last_request_id,
+                        "last_model": state.local_inference.last_model,
+                        "output_chars": state.local_inference.output_chars,
+                        "runtime_reachable": state.ollama_execution.reachable,
+                        "configured_model": state.ollama_execution.configured_model,
+                        "ready_model": state.ollama_execution.ready_model,
+                        "last_error": state.local_inference.last_error,
                     }),
                 );
             }
@@ -2106,6 +2122,21 @@ fn pane_action_to_hit_action(
         },
         PaneKind::SyncHealth => match action {
             "rebootstrap" => Ok(PaneHitAction::SyncHealth(SyncHealthPaneAction::Rebootstrap)),
+            _ => unsupported(),
+        },
+        PaneKind::LocalInference => match action {
+            "refresh" | "refresh_runtime" => Ok(PaneHitAction::LocalInference(
+                LocalInferencePaneAction::RefreshRuntime,
+            )),
+            "warm" | "warm_model" | "load_model" => Ok(PaneHitAction::LocalInference(
+                LocalInferencePaneAction::WarmModel,
+            )),
+            "unload" | "unload_model" => Ok(PaneHitAction::LocalInference(
+                LocalInferencePaneAction::UnloadModel,
+            )),
+            "run" | "run_prompt" | "submit" => Ok(PaneHitAction::LocalInference(
+                LocalInferencePaneAction::RunPrompt,
+            )),
             _ => unsupported(),
         },
         PaneKind::NetworkRequests => match action {
@@ -2522,6 +2553,37 @@ fn apply_relay_connections_input(state: &mut RenderState, field: &str, value: &s
         return true;
     }
     false
+}
+
+fn apply_local_inference_input(state: &mut RenderState, field: &str, value: &str) -> bool {
+    match field {
+        "prompt" => state
+            .local_inference_inputs
+            .prompt
+            .set_value(value.to_string()),
+        "requested_model" | "model" => state
+            .local_inference_inputs
+            .requested_model
+            .set_value(value.to_string()),
+        "max_tokens" => state
+            .local_inference_inputs
+            .max_tokens
+            .set_value(value.to_string()),
+        "temperature" => state
+            .local_inference_inputs
+            .temperature
+            .set_value(value.to_string()),
+        "top_k" => state
+            .local_inference_inputs
+            .top_k
+            .set_value(value.to_string()),
+        "top_p" => state
+            .local_inference_inputs
+            .top_p
+            .set_value(value.to_string()),
+        _ => return false,
+    }
+    true
 }
 
 fn apply_network_requests_input(state: &mut RenderState, field: &str, value: &str) -> bool {
@@ -5516,6 +5578,13 @@ fn pane_aliases(kind: PaneKind) -> &'static [&'static str] {
         PaneKind::AutopilotChat => &["chat", "autopilot_chat", "autopilot", "codex"],
         PaneKind::ProjectOps => &["project_ops", "projectops", "pm", "project_management"],
         PaneKind::Calculator => &["calculator", "calc"],
+        PaneKind::LocalInference => &[
+            "local_inference",
+            "local_runtime",
+            "gpt_oss",
+            "gptoss",
+            "workbench",
+        ],
         PaneKind::SparkWallet => &["wallet", "spark_wallet"],
         PaneKind::SparkCreateInvoice => &["create_invoice", "invoice_create"],
         PaneKind::SparkPayInvoice => &["pay_invoice", "invoice_pay"],
@@ -5541,6 +5610,7 @@ fn pane_kind_key(kind: PaneKind) -> &'static str {
         PaneKind::CodexDiagnostics => "codex_diagnostics",
         PaneKind::GoOnline => "go_online",
         PaneKind::ProviderStatus => "provider_status",
+        PaneKind::LocalInference => "local_inference",
         PaneKind::EarningsScoreboard => "earnings_scoreboard",
         PaneKind::RelayConnections => "relay_connections",
         PaneKind::SyncHealth => "sync_health",
@@ -5826,6 +5896,14 @@ mod tests {
         assert_eq!(
             resolve_pane_kind_for_runtime("calc"),
             Some(PaneKind::Calculator)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("pane.local_inference"),
+            Some(PaneKind::LocalInference)
+        );
+        assert_eq!(
+            resolve_pane_kind_for_runtime("gptoss"),
+            Some(PaneKind::LocalInference)
         );
     }
 

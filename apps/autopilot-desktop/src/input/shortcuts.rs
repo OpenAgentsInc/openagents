@@ -39,6 +39,15 @@ pub(super) fn settings_inputs_focused(state: &crate::app_state::RenderState) -> 
         || state.settings_inputs.provider_max_queue_depth.is_focused()
 }
 
+pub(super) fn local_inference_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.local_inference_inputs.prompt.is_focused()
+        || state.local_inference_inputs.requested_model.is_focused()
+        || state.local_inference_inputs.max_tokens.is_focused()
+        || state.local_inference_inputs.temperature.is_focused()
+        || state.local_inference_inputs.top_k.is_focused()
+        || state.local_inference_inputs.top_p.is_focused()
+}
+
 pub(super) fn credentials_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.credentials_inputs.variable_name.is_focused()
         || state.credentials_inputs.variable_value.is_focused()
@@ -51,6 +60,7 @@ pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> b
         || pay_invoice_inputs_focused(state)
         || create_invoice_inputs_focused(state)
         || network_requests_inputs_focused(state)
+        || local_inference_inputs_focused(state)
         || settings_inputs_focused(state)
         || credentials_inputs_focused(state)
         || state.relay_connections_inputs.relay_url.is_focused()
@@ -75,6 +85,12 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.network_requests_inputs.delivery_start_minutes.blur();
     state.network_requests_inputs.window_minutes.blur();
     state.network_requests_inputs.max_price_sats.blur();
+    state.local_inference_inputs.prompt.blur();
+    state.local_inference_inputs.requested_model.blur();
+    state.local_inference_inputs.max_tokens.blur();
+    state.local_inference_inputs.temperature.blur();
+    state.local_inference_inputs.top_k.blur();
+    state.local_inference_inputs.top_p.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();
