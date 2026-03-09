@@ -261,6 +261,13 @@ pub enum EarningsScoreboardPaneAction {
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum MissionControlPaneAction {
+    ToggleAmountDisplay,
+    WarmLocalModel,
+    OpenDocumentation,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum RelayConnectionsPaneAction {
     AddRelay,
     RemoveSelected,
@@ -746,6 +753,7 @@ pub enum PaneHitAction {
     ChatToggleCategory(usize),
     ChatSelectThread(usize),
     GoOnlineToggle,
+    MissionControl(MissionControlPaneAction),
     CodexAccount(CodexAccountPaneAction),
     CodexModels(CodexModelsPaneAction),
     CodexConfig(CodexConfigPaneAction),
@@ -1582,14 +1590,166 @@ pub fn chat_transcript_body_bounds_with_height(
     )
 }
 
+#[derive(Clone, Copy, Debug)]
+pub struct MissionControlPaneLayout {
+    pub status_row: Bounds,
+    pub left_column: Bounds,
+    pub right_column: Bounds,
+    pub sell_panel: Bounds,
+    pub earnings_panel: Bounds,
+    pub wallet_panel: Bounds,
+    pub actions_panel: Bounds,
+    pub active_jobs_panel: Bounds,
+    pub log_stream: Bounds,
+}
+
+pub fn mission_control_layout(content_bounds: Bounds) -> MissionControlPaneLayout {
+    let outer_pad = CHAT_PAD;
+    let column_gap = 14.0;
+    let panel_gap = 12.0;
+    let status_row = Bounds::new(
+        content_bounds.origin.x + outer_pad,
+        content_bounds.origin.y + outer_pad,
+        (content_bounds.size.width - outer_pad * 2.0).max(0.0),
+        22.0,
+    );
+    let body_top = status_row.max_y() + 12.0;
+    let body_height = (content_bounds.max_y() - body_top - outer_pad).max(0.0);
+    let available_width = (content_bounds.size.width - outer_pad * 2.0).max(0.0);
+    let tentative_left = (available_width * 0.34).clamp(220.0, 340.0);
+    let max_left = (available_width - column_gap - 180.0).max(140.0);
+    let left_width = tentative_left.min(max_left).max(140.0);
+    let right_width = (available_width - left_width - column_gap).max(140.0);
+    let left_column = Bounds::new(
+        content_bounds.origin.x + outer_pad,
+        body_top,
+        left_width,
+        body_height,
+    );
+    let right_column = Bounds::new(
+        left_column.max_x() + column_gap,
+        body_top,
+        right_width,
+        body_height,
+    );
+
+    let preferred_sell = 126.0;
+    let preferred_earnings = 172.0;
+    let preferred_wallet = 126.0;
+    let preferred_actions = 88.0;
+    let preferred_total = preferred_sell
+        + preferred_earnings
+        + preferred_wallet
+        + preferred_actions
+        + panel_gap * 3.0;
+    let scale = if preferred_total > 0.0 {
+        (body_height / preferred_total).min(1.0)
+    } else {
+        1.0
+    };
+    let sell_height = preferred_sell * scale;
+    let earnings_height = preferred_earnings * scale;
+    let wallet_height = preferred_wallet * scale;
+    let actions_height =
+        (body_height - sell_height - earnings_height - wallet_height - panel_gap * 3.0).max(0.0);
+
+    let sell_panel = Bounds::new(
+        left_column.origin.x,
+        left_column.origin.y,
+        left_column.size.width,
+        sell_height,
+    );
+    let earnings_panel = Bounds::new(
+        left_column.origin.x,
+        sell_panel.max_y() + panel_gap,
+        left_column.size.width,
+        earnings_height,
+    );
+    let wallet_panel = Bounds::new(
+        left_column.origin.x,
+        earnings_panel.max_y() + panel_gap,
+        left_column.size.width,
+        wallet_height,
+    );
+    let actions_panel = Bounds::new(
+        left_column.origin.x,
+        wallet_panel.max_y() + panel_gap,
+        left_column.size.width,
+        actions_height,
+    );
+
+    let active_jobs_height = (88.0 * scale).max(60.0_f32.min(body_height));
+    let active_jobs_panel = Bounds::new(
+        right_column.origin.x,
+        right_column.origin.y,
+        right_column.size.width,
+        active_jobs_height,
+    );
+    let log_stream = Bounds::new(
+        right_column.origin.x,
+        active_jobs_panel.max_y() + panel_gap,
+        right_column.size.width,
+        (right_column.size.height - active_jobs_height - panel_gap).max(0.0),
+    );
+
+    MissionControlPaneLayout {
+        status_row,
+        left_column,
+        right_column,
+        sell_panel,
+        earnings_panel,
+        wallet_panel,
+        actions_panel,
+        active_jobs_panel,
+        log_stream,
+    }
+}
+
 pub fn go_online_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
-    let width = content_bounds.size.width.clamp(160.0, 220.0);
+    let panel = mission_control_layout(content_bounds).sell_panel;
     Bounds::new(
-        content_bounds.origin.x + CHAT_PAD,
-        content_bounds.origin.y + CHAT_PAD,
-        width,
-        34.0,
+        panel.origin.x + 14.0,
+        panel.origin.y + 34.0,
+        (panel.size.width - 28.0).max(0.0),
+        36.0,
     )
+}
+
+pub fn mission_control_amount_toggle_button_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = mission_control_layout(content_bounds).earnings_panel;
+    let width = (panel.size.width * 0.48)
+        .clamp(132.0, 176.0)
+        .min((panel.size.width - 28.0).max(0.0));
+    Bounds::new(
+        panel.max_x() - width - 14.0,
+        panel.origin.y + 12.0,
+        width,
+        28.0,
+    )
+}
+
+pub fn mission_control_download_model_button_bounds(content_bounds: Bounds) -> Bounds {
+    let panel = mission_control_layout(content_bounds).actions_panel;
+    Bounds::new(
+        panel.origin.x + 14.0,
+        panel.origin.y + 30.0,
+        (panel.size.width - 28.0).max(0.0),
+        30.0,
+    )
+}
+
+pub fn mission_control_documentation_button_bounds(content_bounds: Bounds) -> Bounds {
+    let download = mission_control_download_model_button_bounds(content_bounds);
+    Bounds::new(
+        download.origin.x,
+        download.max_y() + 10.0,
+        download.size.width,
+        download.size.height,
+    )
+}
+
+pub fn mission_control_log_stream_bounds(content_bounds: Bounds) -> Bounds {
+    mission_control_layout(content_bounds).log_stream
 }
 
 pub fn provider_inventory_toggle_button_bounds(content_bounds: Bounds, row_index: usize) -> Bounds {
@@ -3518,6 +3678,18 @@ fn pane_hit_action_for_pane(
         PaneKind::GoOnline => {
             if go_online_toggle_button_bounds(content_bounds).contains(point) {
                 Some(PaneHitAction::GoOnlineToggle)
+            } else if mission_control_amount_toggle_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::ToggleAmountDisplay,
+                ))
+            } else if mission_control_download_model_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::WarmLocalModel,
+                ))
+            } else if mission_control_documentation_button_bounds(content_bounds).contains(point) {
+                Some(PaneHitAction::MissionControl(
+                    MissionControlPaneAction::OpenDocumentation,
+                ))
             } else {
                 None
             }
@@ -4444,6 +4616,35 @@ pub fn dispatch_chat_scroll_event(
     scroll_dy: f32,
 ) -> bool {
     chat_pane::dispatch_transcript_scroll_event(state, cursor_position, scroll_dy)
+}
+
+pub fn dispatch_mission_control_log_scroll_event(
+    state: &mut RenderState,
+    cursor_position: Point,
+    event: &InputEvent,
+) -> bool {
+    let Some(pane_idx) = pane_indices_by_z_desc(state)
+        .into_iter()
+        .find(|index| state.panes[*index].bounds.contains(cursor_position))
+    else {
+        return false;
+    };
+    let pane = &state.panes[pane_idx];
+    if pane.kind != PaneKind::GoOnline {
+        return false;
+    }
+
+    let content_bounds = pane_content_bounds(pane.bounds);
+    let log_bounds = mission_control_log_stream_bounds(content_bounds);
+    if !log_bounds.contains(cursor_position) {
+        return false;
+    }
+
+    state
+        .mission_control
+        .log_stream
+        .event(event, log_bounds, &mut state.event_context)
+        .is_handled()
 }
 
 pub fn dispatch_activity_feed_detail_scroll_event(

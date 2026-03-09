@@ -1999,6 +1999,15 @@ fn pane_action_to_hit_action(
         PaneKind::Calculator => unsupported(),
         PaneKind::GoOnline => match action {
             "toggle" | "set_online" => Ok(PaneHitAction::GoOnlineToggle),
+            "toggle_amount_display" | "toggle_amounts" => Ok(PaneHitAction::MissionControl(
+                crate::pane_system::MissionControlPaneAction::ToggleAmountDisplay,
+            )),
+            "warm_model" | "download_model" => Ok(PaneHitAction::MissionControl(
+                crate::pane_system::MissionControlPaneAction::WarmLocalModel,
+            )),
+            "open_docs" | "documentation" => Ok(PaneHitAction::MissionControl(
+                crate::pane_system::MissionControlPaneAction::OpenDocumentation,
+            )),
             _ => unsupported(),
         },
         PaneKind::CodexAccount => match action {
@@ -5676,7 +5685,8 @@ mod tests {
         PaneKind,
     };
     use crate::pane_system::{
-        CadDemoPaneAction, PaneHitAction, RelayConnectionsPaneAction, SettingsPaneAction,
+        CadDemoPaneAction, MissionControlPaneAction, PaneHitAction, RelayConnectionsPaneAction,
+        SettingsPaneAction,
     };
     use crate::spark_pane::SparkPaneAction;
     use crate::state::autopilot_goals::GoalRolloutStage;
@@ -5928,6 +5938,11 @@ mod tests {
         assert_eq!(
             pane_action_to_hit_action(PaneKind::AutopilotChat, "send", None).expect("chat send"),
             PaneHitAction::ChatSend
+        );
+        assert_eq!(
+            pane_action_to_hit_action(PaneKind::GoOnline, "toggle_amount_display", None)
+                .expect("mission control amount toggle"),
+            PaneHitAction::MissionControl(MissionControlPaneAction::ToggleAmountDisplay)
         );
         assert_eq!(
             pane_action_to_hit_action(PaneKind::Settings, "save", None).expect("settings save"),

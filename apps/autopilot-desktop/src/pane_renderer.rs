@@ -7,14 +7,16 @@ use crate::app_state::{
     CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
     CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
     EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
+    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState, MissionControlPaneState,
     NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
     PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState,
     ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
     SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
     StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
 };
-use crate::bitcoin_display::format_sats_amount;
+use crate::bitcoin_display::{
+    BitcoinAmountDisplayMode, format_mission_control_amount, format_sats_amount,
+};
 use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
@@ -35,7 +37,9 @@ use crate::pane_system::{
     job_history_prev_page_button_bounds, job_history_search_input_bounds,
     job_history_status_button_bounds, job_history_time_button_bounds,
     job_inbox_accept_button_bounds, job_inbox_reject_button_bounds, job_inbox_row_bounds,
-    job_inbox_visible_row_count, network_requests_accept_button_bounds,
+    job_inbox_visible_row_count, mission_control_amount_toggle_button_bounds,
+    mission_control_documentation_button_bounds, mission_control_download_model_button_bounds,
+    mission_control_layout, network_requests_accept_button_bounds,
     network_requests_budget_input_bounds, network_requests_credit_envelope_input_bounds,
     network_requests_max_price_input_bounds, network_requests_payload_input_bounds,
     network_requests_quote_row_bounds, network_requests_skill_scope_input_bounds,
@@ -129,6 +133,7 @@ impl PaneRenderer {
         job_history_inputs: &mut JobHistoryPaneInputs,
         chat_inputs: &mut ChatPaneInputs,
         calculator_inputs: &mut CalculatorPaneInputs,
+        mission_control: &mut MissionControlPaneState,
         paint: &mut PaintContext,
     ) -> u32 {
         let mut indices: Vec<usize> = (0..panes.len()).collect();
@@ -199,6 +204,7 @@ impl PaneRenderer {
                 PaneKind::GoOnline => {
                     paint_go_online_pane(
                         content_bounds,
+                        mission_control,
                         provider_runtime,
                         earn_job_lifecycle_projection,
                         backend_kernel_authority,
@@ -499,6 +505,7 @@ fn paint_autopilot_chat_pane(
 
 fn paint_go_online_pane(
     content_bounds: Bounds,
+    mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     backend_kernel_authority: bool,
@@ -512,489 +519,410 @@ fn paint_go_online_pane(
     active_job: &ActiveJobState,
     paint: &mut PaintContext,
 ) {
-    let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
-    let toggle_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-        "Go Online"
-    } else {
-        "Go Offline"
-    };
-    paint_action_button(toggle_bounds, toggle_label, paint);
+    mission_control.sync_log_stream(
+        provider_runtime,
+        provider_blockers,
+        earn_job_lifecycle_projection,
+        spark_wallet,
+        job_inbox,
+        active_job,
+    );
 
-    let title_x = toggle_bounds.max_x() + 18.0;
-    paint.scene.draw_text(paint.text.layout(
-        "Mission Control",
-        Point::new(title_x, content_bounds.origin.y + 16.0),
-        16.0,
-        theme::text::PRIMARY,
-    ));
-    paint.scene.draw_text(paint.text.layout(
-        "Earn-first shell for provider state, wallet truth, and job flow.",
-        Point::new(title_x, content_bounds.origin.y + 36.0),
-        11.0,
+    let layout = mission_control_layout(content_bounds);
+    let now = std::time::Instant::now();
+    let status_label = provider_runtime.mode.label().to_ascii_uppercase();
+    let status_color = match provider_runtime.mode {
+        crate::app_state::ProviderMode::Offline => theme::status::WARNING,
+        crate::app_state::ProviderMode::Connecting => theme::accent::PRIMARY,
+        crate::app_state::ProviderMode::Online => theme::status::SUCCESS,
+        crate::app_state::ProviderMode::Degraded => theme::status::ERROR,
+    };
+
+    let status_x = (layout.status_row.max_x() - 180.0).max(layout.status_row.origin.x);
+    paint.scene.draw_text(paint.text.layout_mono(
+        "STATUS:",
+        Point::new(status_x, layout.status_row.origin.y + 4.0),
+        12.0,
         theme::text::MUTED,
     ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &status_label,
+        Point::new(status_x + 60.0, layout.status_row.origin.y + 4.0),
+        12.0,
+        status_color,
+    ));
 
-    let header_bottom_y = (content_bounds.origin.y + 50.0).max(toggle_bounds.max_y());
-    let card_y = header_bottom_y + 16.0;
-    let card_gap = 12.0;
-    let available_card_height = (content_bounds.max_y() - card_y - 12.0).max(0.0);
-    let desired_top_card_height = (available_card_height * 0.46).min(240.0);
-    let max_top_card_height = (available_card_height - card_gap - 72.0).max(0.0);
-    let top_card_height = desired_top_card_height.min(max_top_card_height);
-    let bottom_card_height = (available_card_height - top_card_height - card_gap).max(0.0);
-    let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(0.0);
-    let left_card = Bounds::new(
-        content_bounds.origin.x + 12.0,
-        card_y,
-        card_width,
-        top_card_height,
+    paint_mission_control_section_panel(
+        layout.sell_panel,
+        "// SELL COMPUTE",
+        theme::accent::PRIMARY,
+        paint,
     );
-    let right_card = Bounds::new(
-        left_card.max_x() + card_gap,
-        card_y,
-        card_width,
-        top_card_height,
-    );
-    let bottom_card = Bounds::new(
-        content_bounds.origin.x + 12.0,
-        left_card.max_y() + card_gap,
-        content_bounds.size.width - 24.0,
-        bottom_card_height,
-    );
-
-    paint_mission_control_card(left_card, "Provider Rig", theme::accent::PRIMARY, paint);
-    paint_mission_control_card(
-        right_card,
-        "Wallet + First Earnings",
+    paint_mission_control_section_panel(
+        layout.earnings_panel,
+        "// EARNINGS",
         theme::status::SUCCESS,
         paint,
     );
-    paint_mission_control_card(bottom_card, "Job Flow", theme::border::DEFAULT, paint);
+    paint_mission_control_section_panel(
+        layout.wallet_panel,
+        "// WALLET",
+        theme::accent::PRIMARY,
+        paint,
+    );
+    paint_mission_control_section_panel(layout.actions_panel, "", theme::border::DEFAULT, paint);
+    paint_mission_control_section_panel(
+        layout.active_jobs_panel,
+        "// ACTIVE JOBS",
+        theme::accent::PRIMARY,
+        paint,
+    );
 
-    let left_clip = Bounds::new(
-        left_card.origin.x + 8.0,
-        left_card.origin.y + 8.0,
-        left_card.size.width - 16.0,
-        left_card.size.height - 16.0,
-    );
-    let right_clip = Bounds::new(
-        right_card.origin.x + 8.0,
-        right_card.origin.y + 8.0,
-        right_card.size.width - 16.0,
-        right_card.size.height - 16.0,
-    );
-    let left_value_chunk_len = mission_control_value_chunk_len(left_card);
-    let right_value_chunk_len = mission_control_value_chunk_len(right_card);
-    let left_body_chunk_len = mission_control_body_chunk_len(left_card);
+    let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
+    let toggle_label = if matches!(
+        provider_runtime.mode,
+        crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
+    ) {
+        "GO ONLINE"
+    } else {
+        "GO OFFLINE"
+    };
+    paint_primary_button(toggle_bounds, toggle_label, paint);
 
-    let now = std::time::Instant::now();
-    paint.scene.push_clip(left_clip);
-    let mut left_y = left_card.origin.y + 32.0;
-    left_y = paint_wrapped_label_line(
+    let sell_clip = mission_control_section_clip_bounds(layout.sell_panel);
+    let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
+    paint.scene.push_clip(sell_clip);
+    let mut sell_y = toggle_bounds.max_y() + 14.0;
+    sell_y = paint_wrapped_label_line(
         paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Lane",
-        provider_runtime.execution_lane_label(),
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Backend",
-        provider_runtime.execution_backend_label(),
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Control",
-        provider_runtime.control_authority_label(backend_kernel_authority),
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Projection",
-        if earn_job_lifecycle_projection.authority == "non-authoritative" {
-            provider_runtime.projection_authority_label()
-        } else {
-            earn_job_lifecycle_projection.authority.as_str()
-        },
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Settlement",
-        provider_runtime.settlement_truth_label(),
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
         "Mode",
         provider_runtime.mode.label(),
-        left_value_chunk_len,
+        sell_value_chunk_len,
+    );
+    sell_y = paint_wrapped_label_line(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Backend",
+        provider_runtime.execution_backend_label(),
+        sell_value_chunk_len,
+    );
+    sell_y = paint_wrapped_label_line(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Control",
+        provider_runtime.control_authority_label(backend_kernel_authority),
+        sell_value_chunk_len,
+    );
+    let preflight_value = if provider_blockers.is_empty() {
+        "clear".to_string()
+    } else {
+        format!("{} blocker(s)", provider_blockers.len())
+    };
+    sell_y = paint_wrapped_label_line(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Preflight",
+        &preflight_value,
+        sell_value_chunk_len,
     );
     if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
-        left_y = paint_wrapped_label_line(
+        sell_y = paint_wrapped_label_line(
             paint,
-            left_card.origin.x + 12.0,
-            left_y,
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
             "Uptime",
             &provider_runtime.uptime_seconds(now).to_string(),
-            left_value_chunk_len,
+            sell_value_chunk_len,
         );
     }
     if sa_lane.mode != crate::runtime_lanes::SaRunnerMode::Offline {
-        left_y = paint_wrapped_label_line(
+        sell_y = paint_wrapped_label_line(
             paint,
-            left_card.origin.x + 12.0,
-            left_y,
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
             "Runner",
             sa_lane.mode.label(),
-            left_value_chunk_len,
+            sell_value_chunk_len,
         );
     }
     if skl_lane.trust_tier != crate::runtime_lanes::SkillTrustTier::Unknown {
-        left_y = paint_wrapped_label_line(
+        sell_y = paint_wrapped_label_line(
             paint,
-            left_card.origin.x + 12.0,
-            left_y,
-            "SKL trust",
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
+            "SKL Trust",
             skl_lane.trust_tier.label(),
-            left_value_chunk_len,
+            sell_value_chunk_len,
         );
     }
     if ac_lane.credit_available {
-        left_y = paint_wrapped_label_line(
+        let _ = paint_wrapped_label_line(
             paint,
-            left_card.origin.x + 12.0,
-            left_y,
+            layout.sell_panel.origin.x + 12.0,
+            sell_y,
             "Credit",
             "available",
-            left_value_chunk_len,
+            sell_value_chunk_len,
         );
-    }
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Local inference",
-        if provider_runtime.ollama.is_ready() {
-            "ready"
-        } else if provider_runtime.ollama.reachable {
-            "degraded"
-        } else {
-            "offline"
-        },
-        left_value_chunk_len,
-    );
-    left_y = paint_wrapped_label_line(
-        paint,
-        left_card.origin.x + 12.0,
-        left_y,
-        "Apple FM",
-        if provider_runtime.apple_fm.is_ready() {
-            "ready"
-        } else if provider_runtime.apple_fm.reachable {
-            "degraded"
-        } else {
-            "offline"
-        },
-        left_value_chunk_len,
-    );
-    if let Some(model) = provider_runtime
-        .apple_fm
-        .ready_model
-        .as_deref()
-        .filter(|model| !model.trim().is_empty())
-    {
-        left_y = paint_wrapped_label_line(
-            paint,
-            left_card.origin.x + 12.0,
-            left_y,
-            "Apple model",
-            model,
-            left_value_chunk_len,
-        );
-    }
-    if let Some(model) = provider_runtime
-        .ollama
-        .ready_model
-        .as_deref()
-        .or(provider_runtime.ollama.configured_model.as_deref())
-        .filter(|model| !model.trim().is_empty())
-    {
-        left_y = paint_wrapped_label_line(
-            paint,
-            left_card.origin.x + 12.0,
-            left_y,
-            "Serving model",
-            model,
-            left_value_chunk_len,
-        );
-    }
-    if provider_blockers.is_empty() {
-        paint.scene.draw_text(paint.text.layout(
-            "Preflight clear",
-            Point::new(left_card.origin.x + 12.0, left_y + 2.0),
-            11.0,
-            theme::status::SUCCESS,
-        ));
-    } else {
-        paint.scene.draw_text(paint.text.layout(
-            "Preflight blockers",
-            Point::new(left_card.origin.x + 12.0, left_y + 2.0),
-            11.0,
-            theme::status::ERROR,
-        ));
-        let mut blocker_y = left_y + 18.0;
-        for blocker in provider_blockers.iter().take(3) {
-            for line in split_text_for_display(
-                &format!(
-                    "{} - {}",
-                    blocker.code(),
-                    mission_control_blocker_detail(*blocker, spark_wallet, provider_runtime)
-                ),
-                left_body_chunk_len,
-            ) {
-                paint.scene.draw_text(paint.text.layout_mono(
-                    &line,
-                    Point::new(left_card.origin.x + 12.0, blocker_y),
-                    10.0,
-                    theme::status::ERROR,
-                ));
-                blocker_y += 14.0;
-            }
-        }
-        let hidden_blockers = provider_blockers.len().saturating_sub(3);
-        if hidden_blockers > 0 {
-            paint.scene.draw_text(paint.text.layout(
-                &format!("+{hidden_blockers} more blockers"),
-                Point::new(left_card.origin.x + 12.0, blocker_y),
-                10.0,
-                theme::status::ERROR,
-            ));
-        }
     }
     paint.scene.pop_clip();
 
-    paint.scene.push_clip(right_clip);
-    let mut right_y = right_card.origin.y + 32.0;
-    let wallet_balance = spark_wallet
-        .balance
-        .as_ref()
-        .map(|balance| format_sats_amount(balance.total_sats()))
-        .unwrap_or_else(|| "loading".to_string());
-    right_y = paint_wrapped_label_line(
+    let toggle_display_bounds = mission_control_amount_toggle_button_bounds(content_bounds);
+    paint_secondary_button(
+        toggle_display_bounds,
+        mission_control.amount_display_mode.button_label(),
         paint,
-        right_card.origin.x + 12.0,
-        right_y,
-        "Wallet",
-        &wallet_balance,
-        right_value_chunk_len,
     );
-    right_y = paint_wrapped_label_line(
+    let earnings_clip = mission_control_section_clip_bounds(layout.earnings_panel);
+    paint.scene.push_clip(earnings_clip);
+    let mut earnings_y = layout.earnings_panel.origin.y + 48.0;
+    earnings_y = paint_wrapped_label_line(
         paint,
-        right_card.origin.x + 12.0,
-        right_y,
-        "Wallet status",
-        spark_wallet.network_status_label(),
-        right_value_chunk_len,
-    );
-    right_y = paint_wrapped_label_line(
-        paint,
-        right_card.origin.x + 12.0,
-        right_y,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
         "Today",
-        &format_sats_amount(earnings_scoreboard.sats_today),
-        right_value_chunk_len,
+        &format_mission_control_amount(
+            earnings_scoreboard.sats_today,
+            mission_control.amount_display_mode,
+        ),
+        mission_control_value_chunk_len(layout.earnings_panel),
     );
-    right_y = paint_wrapped_label_line(
+    earnings_y = paint_wrapped_label_line(
         paint,
-        right_card.origin.x + 12.0,
-        right_y,
-        "Lifetime",
-        &format_sats_amount(earnings_scoreboard.lifetime_sats),
-        right_value_chunk_len,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "This Month",
+        &format_mission_control_amount(
+            earnings_scoreboard.sats_this_month,
+            mission_control.amount_display_mode,
+        ),
+        mission_control_value_chunk_len(layout.earnings_panel),
     );
-    right_y = paint_wrapped_label_line(
+    earnings_y = paint_mission_control_amount_line(
         paint,
-        right_card.origin.x + 12.0,
-        right_y,
-        "Jobs today",
-        &earnings_scoreboard.jobs_today.to_string(),
-        right_value_chunk_len,
+        layout.earnings_panel.origin.x + 12.0,
+        earnings_y,
+        "All Time",
+        &format_mission_control_amount(
+            earnings_scoreboard.lifetime_sats,
+            mission_control.amount_display_mode,
+        ),
+        theme::accent::PRIMARY,
     );
     paint_first_sats_progress(
         Bounds::new(
-            right_card.origin.x + 12.0,
-            right_y + 4.0,
-            right_card.size.width - 24.0,
+            layout.earnings_panel.origin.x + 12.0,
+            earnings_y + 6.0,
+            layout.earnings_panel.size.width - 24.0,
             48.0,
         ),
         earnings_scoreboard.lifetime_sats,
+        mission_control.amount_display_mode,
         paint,
     );
     paint.scene.pop_clip();
 
-    let active_summary = active_job.job.as_ref().map_or_else(
-        || "No active job yet".to_string(),
-        |job| {
-            format!(
-                "{} [{}] {}",
-                job.capability,
-                job.stage.label(),
-                format_sats_amount(job.quoted_price_sats)
-            )
-        },
-    );
-    let job_flow_value_chunk_len = mission_control_value_chunk_len(bottom_card);
-    let job_flow_body_chunk_len = mission_control_body_chunk_len(bottom_card);
-    let job_flow_clip = Bounds::new(
-        bottom_card.origin.x + 8.0,
-        bottom_card.origin.y + 8.0,
-        (bottom_card.size.width - 16.0).max(0.0),
-        (bottom_card.size.height - 16.0).max(0.0),
-    );
-    paint.scene.push_clip(job_flow_clip);
-    let mut list_y = paint_wrapped_label_line(
+    let wallet_clip = mission_control_section_clip_bounds(layout.wallet_panel);
+    paint.scene.push_clip(wallet_clip);
+    let wallet_balance = spark_wallet
+        .balance
+        .as_ref()
+        .map(|balance| {
+            format_mission_control_amount(balance.total_sats(), mission_control.amount_display_mode)
+        })
+        .unwrap_or_else(|| "loading".to_string());
+    let wallet_status = match spark_wallet.network_status_label() {
+        "connected" => "Connected",
+        "disconnected" => "Disconnected",
+        _ => "Unknown",
+    };
+    let wallet_address = spark_wallet
+        .spark_address
+        .as_deref()
+        .or(spark_wallet.bitcoin_address.as_deref())
+        .map(mask_secret)
+        .unwrap_or_else(|| "not generated".to_string());
+    let wallet_value_chunk_len = mission_control_value_chunk_len(layout.wallet_panel);
+    let mut wallet_y = layout.wallet_panel.origin.y + 36.0;
+    wallet_y = paint_wrapped_label_line(
         paint,
-        bottom_card.origin.x + 12.0,
-        bottom_card.origin.y + 32.0,
-        "Active job",
-        &active_summary,
-        job_flow_value_chunk_len,
-    ) + 10.0;
-    let recent_requests = job_inbox.requests.iter().rev().take(5).collect::<Vec<_>>();
-    if recent_requests.is_empty() {
-        let empty_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
-            "No jobs visible yet. Relay preview is warming up; observed market activity will appear here before you go online."
-        } else {
-            "No jobs visible yet. Stay online and Mission Control will fill as demand arrives."
-        };
-        for line in split_text_for_display(empty_label, job_flow_body_chunk_len) {
-            paint.scene.draw_text(paint.text.layout(
-                &line,
-                Point::new(bottom_card.origin.x + 12.0, list_y + 4.0),
-                11.0,
-                theme::text::MUTED,
-            ));
-            list_y += 16.0;
-        }
-    } else {
-        for request in recent_requests.iter() {
-            list_y = paint_mission_control_job_flow_row(
-                bottom_card,
-                list_y,
-                request,
-                provider_runtime.mode == crate::app_state::ProviderMode::Offline,
-                job_flow_body_chunk_len,
-                paint,
-            );
-        }
-    }
+        layout.wallet_panel.origin.x + 12.0,
+        wallet_y,
+        "Status",
+        wallet_status,
+        wallet_value_chunk_len,
+    );
+    wallet_y = paint_wrapped_label_line(
+        paint,
+        layout.wallet_panel.origin.x + 12.0,
+        wallet_y,
+        "Address",
+        &wallet_address,
+        wallet_value_chunk_len,
+    );
+    let _ = paint_wrapped_label_line(
+        paint,
+        layout.wallet_panel.origin.x + 12.0,
+        wallet_y,
+        "Balance",
+        &wallet_balance,
+        wallet_value_chunk_len,
+    );
+    paint.scene.pop_clip();
 
-    if let Some(code) = provider_runtime.degraded_reason_code.as_deref() {
+    let download_label = mission_control_download_button_label(provider_runtime);
+    paint_secondary_button(
+        mission_control_download_model_button_bounds(content_bounds),
+        &download_label,
+        paint,
+    );
+    paint_action_button(
+        mission_control_documentation_button_bounds(content_bounds),
+        "DOCUMENTATION",
+        paint,
+    );
+
+    let active_clip = mission_control_section_clip_bounds(layout.active_jobs_panel);
+    paint.scene.push_clip(active_clip);
+    let active_summary = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+        "Go Online to Start Jobs.".to_string()
+    } else if let Some(job) = active_job.job.as_ref() {
+        format!(
+            "{} [{}] {}",
+            job.capability,
+            job.stage.label(),
+            format_mission_control_amount(
+                job.quoted_price_sats,
+                mission_control.amount_display_mode
+            )
+        )
+    } else {
+        "Watching relays for matching jobs.".to_string()
+    };
+    for (index, line) in split_text_for_display(
+        &active_summary,
+        mission_control_body_chunk_len(layout.active_jobs_panel),
+    )
+    .into_iter()
+    .enumerate()
+    {
+        paint.scene.draw_text(paint.text.layout(
+            &line,
+            Point::new(
+                layout.active_jobs_panel.origin.x + 12.0,
+                layout.active_jobs_panel.origin.y + 38.0 + index as f32 * 16.0,
+            ),
+            11.0,
+            if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
+                theme::text::MUTED
+            } else {
+                theme::text::PRIMARY
+            },
+        ));
+    }
+    if provider_runtime.mode != crate::app_state::ProviderMode::Offline {
         paint.scene.draw_text(paint.text.layout_mono(
-            &format!("Last reason code: {code}"),
-            Point::new(bottom_card.origin.x + 12.0, list_y + 8.0),
+            &format!("Observed requests: {}", job_inbox.requests.len()),
+            Point::new(
+                layout.active_jobs_panel.origin.x + 12.0,
+                layout.active_jobs_panel.max_y() - 18.0,
+            ),
             10.0,
             theme::text::MUTED,
         ));
     }
     paint.scene.pop_clip();
+
+    mission_control.log_stream.set_title("// LOG STREAM");
+    mission_control.log_stream.paint(layout.log_stream, paint);
 }
 
-fn paint_mission_control_card(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
+fn paint_mission_control_section_panel(
+    bounds: Bounds,
+    title: &str,
+    accent: Hsla,
+    paint: &mut PaintContext,
+) {
     paint.scene.draw_quad(
         Quad::new(bounds)
             .with_background(theme::bg::APP.with_alpha(0.52))
             .with_border(accent.with_alpha(0.72), 1.0)
             .with_corner_radius(8.0),
     );
-    paint.scene.draw_text(paint.text.layout(
-        title,
-        Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
-        12.0,
-        theme::text::PRIMARY,
-    ));
-}
-
-fn paint_mission_control_job_flow_row(
-    bottom_card: Bounds,
-    row_y: f32,
-    request: &crate::state::job_inbox::JobInboxRequest,
-    offline_preview: bool,
-    body_chunk_len: usize,
-    paint: &mut PaintContext,
-) -> f32 {
-    let accent = match request.demand_source {
-        crate::app_state::JobDemandSource::StarterDemand => theme::status::SUCCESS,
-        crate::app_state::JobDemandSource::OpenNetwork => theme::accent::PRIMARY,
-    };
-    let source_label = match request.demand_source {
-        crate::app_state::JobDemandSource::StarterDemand => "STARTER",
-        crate::app_state::JobDemandSource::OpenNetwork => "OPEN",
-    };
-    let preview_suffix = if offline_preview {
-        "preview".to_string()
-    } else {
-        request.decision.label()
-    };
-    let detail_lines = split_text_for_display(
-        &format!(
-            "{}  {}  {}",
-            request.capability, request.requester, preview_suffix
-        ),
-        body_chunk_len.saturating_sub(18).max(16),
-    );
-    let row_height = (detail_lines.len() as f32 * 12.0 + 10.0).max(22.0);
-    let row_bounds = Bounds::new(
-        bottom_card.origin.x + 12.0,
-        row_y,
-        (bottom_card.size.width - 24.0).max(0.0),
-        row_height,
-    );
-    paint.scene.draw_quad(
-        Quad::new(row_bounds)
-            .with_background(theme::bg::APP.with_alpha(0.55))
-            .with_border(theme::border::DEFAULT, 1.0)
-            .with_corner_radius(4.0),
-    );
-    paint.scene.draw_text(paint.text.layout_mono(
-        source_label,
-        Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 6.0),
-        9.0,
-        accent,
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
-        &format_sats_amount(request.price_sats),
-        Point::new(row_bounds.origin.x + 74.0, row_bounds.origin.y + 6.0),
-        10.0,
-        theme::text::PRIMARY,
-    ));
-    let mut detail_y = row_bounds.origin.y + 5.0;
-    for line in detail_lines {
-        paint.scene.draw_text(paint.text.layout(
-            &line,
-            Point::new(row_bounds.origin.x + 146.0, detail_y),
-            10.0,
+    if !title.is_empty() {
+        paint.scene.draw_text(paint.text.layout_mono(
+            title,
+            Point::new(bounds.origin.x + 12.0, bounds.origin.y + 12.0),
+            11.0,
             theme::text::PRIMARY,
         ));
-        detail_y += 12.0;
     }
-    row_bounds.max_y() + 6.0
 }
 
-fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut PaintContext) {
+fn mission_control_section_clip_bounds(bounds: Bounds) -> Bounds {
+    Bounds::new(
+        bounds.origin.x + 8.0,
+        bounds.origin.y + 8.0,
+        (bounds.size.width - 16.0).max(0.0),
+        (bounds.size.height - 16.0).max(0.0),
+    )
+}
+
+fn paint_mission_control_amount_line(
+    paint: &mut PaintContext,
+    x: f32,
+    y: f32,
+    label: &str,
+    value: &str,
+    value_color: Hsla,
+) -> f32 {
+    paint.scene.draw_text(paint.text.layout(
+        &format!("{label}:"),
+        Point::new(x, y),
+        theme::font_size::SM,
+        theme::text::MUTED,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        value,
+        Point::new(x + mission_control_value_x_offset(label), y - 1.0),
+        13.0,
+        value_color,
+    ));
+    y + 20.0
+}
+
+fn mission_control_download_button_label(provider_runtime: &ProviderRuntimeState) -> String {
+    provider_runtime
+        .ollama
+        .configured_model
+        .as_deref()
+        .or(provider_runtime.ollama.ready_model.as_deref())
+        .or(provider_runtime.apple_fm.ready_model.as_deref())
+        .filter(|model| !model.trim().is_empty())
+        .map(|model| format!("DOWNLOAD {}", mission_control_short_model_label(model)))
+        .unwrap_or_else(|| "DOWNLOAD MODEL".to_string())
+}
+
+fn mission_control_short_model_label(model: &str) -> String {
+    let trimmed = model.trim();
+    if trimmed.len() <= 18 {
+        return trimmed.to_ascii_uppercase();
+    }
+    let prefix: String = trimmed.chars().take(15).collect();
+    format!("{}...", prefix.to_ascii_uppercase())
+}
+
+fn paint_first_sats_progress(
+    bounds: Bounds,
+    lifetime_sats: u64,
+    amount_display_mode: BitcoinAmountDisplayMode,
+    paint: &mut PaintContext,
+) {
     const FIRST_SATS_MILESTONES: [u64; 4] = [10, 25, 50, 100];
     let next_target = FIRST_SATS_MILESTONES
         .into_iter()
@@ -1002,13 +930,16 @@ fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut Pai
     let progress_label = match next_target {
         Some(target) => format!(
             "Next milestone: {} / {} ({} to go)",
-            format_sats_amount(lifetime_sats),
-            format_sats_amount(target),
-            format_sats_amount(target.saturating_sub(lifetime_sats))
+            format_mission_control_amount(lifetime_sats, amount_display_mode),
+            format_mission_control_amount(target, amount_display_mode),
+            format_mission_control_amount(
+                target.saturating_sub(lifetime_sats),
+                amount_display_mode
+            )
         ),
         None => format!(
             "{} earned. First ladder cleared.",
-            format_sats_amount(lifetime_sats)
+            format_mission_control_amount(lifetime_sats, amount_display_mode)
         ),
     };
     let progress_ratio = next_target.map_or(1.0, |target| {
@@ -1573,6 +1504,13 @@ fn paint_earnings_scoreboard_pane(
         y,
         "Today",
         &format_sats_amount(earnings_scoreboard.sats_today),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "This month",
+        &format_sats_amount(earnings_scoreboard.sats_this_month),
     );
     y = paint_label_line(
         paint,
