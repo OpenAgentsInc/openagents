@@ -1,6 +1,8 @@
 use std::{env, process::ExitCode};
 
-use psionic_serve::{GptOssCudaOpenAiCompatServer, GptOssOpenAiCompatConfig};
+use psionic_serve::{
+    GptOssOpenAiCompatBackend, GptOssOpenAiCompatConfig, GptOssOpenAiCompatServer,
+};
 use tokio::net::TcpListener;
 
 #[tokio::main]
@@ -20,7 +22,7 @@ async fn run() -> Result<(), String> {
     let listener = TcpListener::bind(address)
         .await
         .map_err(|error| format!("failed to bind {address}: {error}"))?;
-    let server = GptOssCudaOpenAiCompatServer::from_config(&config)
+    let server = GptOssOpenAiCompatServer::from_config(&config)
         .map_err(|error| format!("failed to load GPT-OSS GGUF: {error}"))?;
     eprintln!(
         "psionic gpt-oss server listening on http://{} with model {}",
@@ -39,6 +41,7 @@ fn parse_args() -> Result<GptOssOpenAiCompatConfig, String> {
     let mut model_path = None;
     let mut host = String::from("127.0.0.1");
     let mut port = 8080_u16;
+    let mut backend = GptOssOpenAiCompatBackend::Auto;
     let mut context_length = None;
     let mut gpu_layers = None;
     let mut reasoning_budget = 0_u8;
@@ -52,6 +55,19 @@ fn parse_args() -> Result<GptOssOpenAiCompatConfig, String> {
             }
             "--host" => {
                 host = next_value(&mut args, argument.as_str())?;
+            }
+            "--backend" => {
+                backend = match next_value(&mut args, argument.as_str())?.as_str() {
+                    "auto" => GptOssOpenAiCompatBackend::Auto,
+                    "cpu" => GptOssOpenAiCompatBackend::Cpu,
+                    "cuda" => GptOssOpenAiCompatBackend::Cuda,
+                    "metal" => GptOssOpenAiCompatBackend::Metal,
+                    other => {
+                        return Err(format!(
+                            "invalid --backend value `{other}` (expected auto, cpu, cuda, or metal)"
+                        ));
+                    }
+                };
             }
             "--port" => {
                 port = next_value(&mut args, argument.as_str())?
@@ -99,6 +115,7 @@ fn parse_args() -> Result<GptOssOpenAiCompatConfig, String> {
         model_path: model_path.into(),
         host,
         port,
+        backend,
         context_length,
         gpu_layers,
         reasoning_budget,
@@ -113,6 +130,6 @@ fn next_value(args: &mut impl Iterator<Item = String>, flag: &str) -> Result<Str
 
 fn usage() -> String {
     String::from(
-        "usage: psionic-gpt-oss-server -m <model.gguf> [--host <ip>] [--port <port>] [-c <ctx>] [-ngl <n>] [--reasoning-budget <n>] [--no-webui]",
+        "usage: psionic-gpt-oss-server -m <model.gguf> [--backend <auto|cpu|cuda|metal>] [--host <ip>] [--port <port>] [-c <ctx>] [-ngl <n>] [--reasoning-budget <n>] [--no-webui]",
     )
 }

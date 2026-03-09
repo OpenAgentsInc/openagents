@@ -4,6 +4,7 @@ mod ac;
 mod cad;
 mod codex;
 mod jobs;
+mod local_inference;
 mod provider_ingress;
 mod sa;
 mod skl;
@@ -137,6 +138,7 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     }
 
     for update in state.local_inference_runtime.drain_updates() {
+        changed |= local_inference::apply_runtime_update(state, &update);
         changed |= jobs::apply_active_job_local_inference_runtime_update(state, update);
     }
 

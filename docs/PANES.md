@@ -53,6 +53,12 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Runtime status pane for heartbeat freshness, uptime, queue depth, and dependency state.
   - Shows canonical failure taxonomy class (`relay`, `execution`, `payment`, `reconciliation`) with concise diagnostics sourced from runtime/wallet/reconciliation authority.
   - Action: read-only operational visibility.
+- `Local Inference`
+  - GPT-OSS local inference workbench for the app-owned runtime seam.
+  - Shows runtime reachability, configured/ready/loaded model state, pane-owned prompt runs, and the last output preview.
+  - Inputs: prompt, optional requested model, max tokens, temperature, top-k, and top-p.
+  - Actions: refresh runtime, warm configured model, unload configured model, run prompt.
+  - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Relay Connections`
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.
   - The default configuration should preinstall the OpenAgents-hosted Nexus as the primary relay, with a curated default public relay set visible and manageable alongside it.
@@ -215,6 +221,7 @@ Current pane badge mapping:
 - `Codex Diagnostics`: `source: codex`
 - `Go Online`: `source: runtime`
 - `Provider Status`: `source: runtime`
+- `Local Inference`: `source: runtime`
 - `Earnings Scoreboard`: `source: runtime+wallet`
 - `Relay Connections`: `source: runtime`
 - `Sync Health`: `source: spacetime.sync.lifecycle`
@@ -256,6 +263,7 @@ Current pane badge mapping:
   - `Codex Diagnostics` -> opens `Codex Diagnostics`.
   - `Go Online` -> opens `Go Online`.
   - `Provider Status` -> opens `Provider Status`.
+  - `Local Inference` -> opens `Local Inference`.
   - `Earnings Scoreboard` -> opens `Earnings Scoreboard`.
   - `Relay Connections` -> opens `Relay Connections`.
   - `Sync Health` -> opens `Sync Health`.
@@ -282,7 +290,7 @@ Current pane badge mapping:
 
 ## Behavior Notes
 
-- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
+- Chat, Codex Account, Codex Models, Codex Config, Codex MCP, Codex Apps, Codex Labs, Codex Diagnostics, Go Online, Provider Status, Local Inference, Relay Connections, Sync Health, Network Requests, Starter Jobs, Activity Feed, Alerts and Recovery, Settings, Earnings Scoreboard, Job Inbox, Active Job, Job History, Agent Profile and State, Agent Schedule and Tick, Trajectory Audit, CAST Control, Agent Skill Registry, Skill Trust and Revocation, Credit Desk, Credit Settlement Ledger, identity, wallet, create-invoice, and pay-invoice panes are singletons: opening again brings the existing pane to front.
 - Wallet worker updates are shared across wallet-related panes.
 - When a new invoice is created in the wallet pane, that invoice is prefilled into send/payment request inputs.
 

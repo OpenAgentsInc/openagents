@@ -21,8 +21,8 @@ use crate::labor_orchestrator::{
     CodexLaborVerdictState, CodexRunClassification,
 };
 use crate::local_inference_runtime::{
-    LocalInferenceExecutionProvenance, LocalInferenceExecutionSnapshot, LocalInferenceRuntime,
-    LocalInferenceRuntimeCommand,
+    LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
+    LocalInferenceExecutionSnapshot, LocalInferenceRuntime, LocalInferenceRuntimeCommand,
 };
 use crate::provider_nip90_lane::{
     ProviderNip90AuthIdentity, ProviderNip90LaneCommand, ProviderNip90LaneSnapshot,
@@ -85,6 +85,7 @@ pub enum PaneKind {
     CodexDiagnostics,
     GoOnline,
     ProviderStatus,
+    LocalInference,
     EarningsScoreboard,
     RelayConnections,
     SyncHealth,
@@ -261,6 +262,30 @@ impl Default for NetworkRequestsPaneInputs {
                 .value("15")
                 .placeholder("Delivery window minutes"),
             max_price_sats: TextInput::new().value("34").placeholder("Max price sats"),
+        }
+    }
+}
+
+pub struct LocalInferencePaneInputs {
+    pub prompt: TextInput,
+    pub requested_model: TextInput,
+    pub max_tokens: TextInput,
+    pub temperature: TextInput,
+    pub top_k: TextInput,
+    pub top_p: TextInput,
+}
+
+impl Default for LocalInferencePaneInputs {
+    fn default() -> Self {
+        Self {
+            prompt: TextInput::new()
+                .value("Describe the current GPT-OSS local runtime in one short paragraph.")
+                .placeholder("Prompt"),
+            requested_model: TextInput::new().placeholder("Optional model override"),
+            max_tokens: TextInput::new().value("128").placeholder("Max tokens"),
+            temperature: TextInput::new().value("0.2").placeholder("Temperature"),
+            top_k: TextInput::new().placeholder("Top-k (optional)"),
+            top_p: TextInput::new().placeholder("Top-p (optional)"),
         }
     }
 }
@@ -5057,6 +5082,7 @@ pub struct RenderState {
     pub create_invoice_inputs: CreateInvoicePaneInputs,
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub network_requests_inputs: NetworkRequestsPaneInputs,
+    pub local_inference_inputs: LocalInferencePaneInputs,
     pub settings_inputs: SettingsPaneInputs,
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
@@ -5093,6 +5119,7 @@ pub struct RenderState {
     pub runtime_command_responses: Vec<RuntimeCommandResponse>,
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
+    pub local_inference: LocalInferencePaneState,
     pub provider_admin_runtime: Option<crate::provider_admin::DesktopProviderAdminRuntime>,
     pub provider_admin_listen_addr: Option<String>,
     pub provider_admin_last_error: Option<String>,

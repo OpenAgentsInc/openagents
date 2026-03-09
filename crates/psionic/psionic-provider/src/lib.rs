@@ -16,6 +16,7 @@ use psionic_runtime::{
     SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
     SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
     ValidationMatrixReference, validation_reference_for_served_product,
+    validation_reference_for_text_generation_model,
 };
 use psionic_serve::{
     DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
@@ -1192,9 +1193,9 @@ impl TextGenerationCapabilityEnvelope {
             backend_family: String::from(BACKEND_FAMILY),
             product_id: String::from(TEXT_GENERATION_PRODUCT_ID),
             runtime_backend: backend_selection.effective_backend.clone(),
-            validation: validation_reference_for_served_product(
+            validation: validation_reference_for_text_generation_model(
                 &backend_selection,
-                TEXT_GENERATION_PRODUCT_ID,
+                &model.model.family,
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
@@ -1393,9 +1394,9 @@ impl TextGenerationReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
-            validation: validation_reference_for_served_product(
+            validation: validation_reference_for_text_generation_model(
                 &backend_selection,
-                request.product_id.as_str(),
+                &request.model.model.family,
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
@@ -1517,9 +1518,9 @@ impl TextGenerationReceipt {
             product_id: request.product_id.clone(),
             backend_family: String::from(BACKEND_FAMILY),
             runtime_backend: backend_selection.effective_backend.clone(),
-            validation: validation_reference_for_served_product(
+            validation: validation_reference_for_text_generation_model(
                 &backend_selection,
-                request.product_id.as_str(),
+                &request.model.model.family,
             ),
             backend_toolchain: backend_toolchain_identity_for_selection(&backend_selection),
             selected_device_inventory: selected_device_inventory_for_selection(&backend_selection),
@@ -2958,6 +2959,33 @@ mod tests {
     }
 
     #[test]
+    fn metal_gpt_oss_text_generation_capability_reports_explicit_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_gpt_oss_decoder_descriptor();
+        let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
+            metal_backend_selection(),
+            &model,
+            default_decoder_memory_plan(&model, None, None),
+            ModelResidencyPolicy::default(),
+            KvCacheMode::Paged,
+            default_text_generation_execution_profile(),
+            ProviderReadiness::ready("metal backend ready"),
+        );
+
+        assert_eq!(
+            envelope.validation.claim_id,
+            "metal.gpt_oss.text_generation.apple_silicon"
+        );
+        assert_eq!(
+            envelope.validation.coverage,
+            ValidationCoverage::PositiveExecution
+        );
+        assert_eq!(envelope.model_family, "gpt-oss");
+        assert_eq!(envelope.runtime_backend, "metal");
+        Ok(())
+    }
+
+    #[test]
     fn compute_market_supply_refuses_unlicensed_local_path_artifacts()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
@@ -3733,6 +3761,7 @@ mod tests {
                     },
                 }),
                 prefix_tokens_reused: Some(1),
+                gpt_oss_perf: None,
             },
             GenerationProvenance {
                 served_artifact: served_artifact_identity_for_decoder_model(
@@ -3918,6 +3947,47 @@ mod tests {
     }
 
     #[test]
+    fn metal_gpt_oss_text_generation_receipt_reports_explicit_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = GenerationRequest::new_text(
+            "metal-gpt-oss-req",
+            sample_gpt_oss_decoder_descriptor(),
+            Some(SessionId::new("metal-gpt-oss-session")),
+            "hello",
+            GenerationOptions::greedy(1),
+        );
+        let response = GenerationResponse::new(
+            &request,
+            request.session_id.clone(),
+            TokenSequence::new(vec![psionic_serve::FixtureWordTokenizer::OPEN_ID]),
+            "hi",
+            1,
+            1,
+            TerminationReason::EndOfSequence,
+        );
+
+        let receipt = TextGenerationReceipt::succeeded_for_response(
+            metal_backend_selection(),
+            &request,
+            &response,
+            String::from("plan123"),
+            10,
+            20,
+        );
+
+        assert_eq!(
+            receipt.validation.claim_id,
+            "metal.gpt_oss.text_generation.apple_silicon"
+        );
+        assert_eq!(
+            receipt.validation.coverage,
+            ValidationCoverage::PositiveExecution
+        );
+        assert_eq!(receipt.model_family, "gpt-oss");
+        Ok(())
+    }
+
+    #[test]
     fn streaming_terminal_receipt_preserves_partial_cancellation_output() {
         let request = GenerationRequest::new_text(
             "gen-stream-1",
@@ -3946,6 +4016,7 @@ mod tests {
                 eval_duration_ns: Some(6),
                 kv_cache: None,
                 prefix_tokens_reused: Some(0),
+                gpt_oss_perf: None,
             },
             GenerationProvenance {
                 served_artifact: served_artifact_identity_for_decoder_model(
@@ -4294,6 +4365,12 @@ mod tests {
         ReferenceWordDecoder::new().descriptor().clone()
     }
 
+    fn sample_gpt_oss_decoder_descriptor() -> psionic_serve::DecoderModelDescriptor {
+        let mut descriptor = sample_decoder_descriptor();
+        descriptor.model.family = String::from("gpt-oss");
+        descriptor
+    }
+
     fn sample_embedding_descriptor() -> psionic_serve::EmbeddingModelDescriptor {
         SmokeByteEmbedder::new().descriptor().clone()
     }
@@ -4354,6 +4431,18 @@ mod tests {
         )
     }
 
+    fn metal_backend_selection() -> BackendSelection {
+        BackendSelection::direct_with_policy(
+            "metal",
+            Some(sample_metal_device()),
+            dense_supported_ops(),
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+        )
+        .with_runtime_resources(Some(sample_backend_runtime_resources()))
+    }
+
     fn dense_supported_ops() -> Vec<String> {
         vec![
             String::from("input"),
@@ -4399,6 +4488,25 @@ mod tests {
             memory_capacity_bytes: None,
             unified_memory: Some(true),
             feature_flags: vec![String::from("host_memory")],
+            amd_metadata: None,
+            nvidia_metadata: None,
+        }
+    }
+
+    fn sample_metal_device() -> DeviceDescriptor {
+        DeviceDescriptor {
+            backend: String::from("metal"),
+            device: Device::new(DeviceKind::Metal, 0, Some(String::from("metal:0"))),
+            device_name: Some(String::from("apple gpu")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: vec![QuantizationSupport {
+                mode: RuntimeQuantizationMode::None,
+                load_path: QuantizationLoadPath::DenseF32,
+                execution: QuantizationExecution::Native,
+            }],
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(true),
+            feature_flags: vec![String::from("metal3"), String::from("apple_silicon")],
             amd_metadata: None,
             nvidia_metadata: None,
         }

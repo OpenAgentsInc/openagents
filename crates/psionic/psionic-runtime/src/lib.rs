@@ -1,10 +1,12 @@
 //! Runtime traits and execution surfaces for Psionic.
 
+mod gpt_oss;
 mod parity;
 mod validation;
 
 use std::collections::{BTreeMap, VecDeque};
 
+pub use gpt_oss::*;
 pub use parity::*;
 use psionic_core::{
     BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
