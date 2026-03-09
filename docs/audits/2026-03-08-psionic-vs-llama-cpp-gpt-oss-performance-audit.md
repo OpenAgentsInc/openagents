@@ -955,3 +955,54 @@ What should happen next remains the same:
   bookkeeping
 - continue aligning grouped expert execution and attention with
   `llama.cpp`'s `mul_mat_id` / `mmvq` / `fattn` families
+
+## 2026-03-09 CUDA Prefix Detachment Checkpoint
+
+The previous exact-prefix checkpoint fixed only half of the repeated-prompt
+bug. The live HTTP contract still exposed a deeper device-cache aliasing
+problem.
+
+What was actually wrong:
+
+- `CudaSharedPrefixStore` was storing shallow clones of `CudaKvCacheMirror`
+  device buffers
+- a later non-exact shared-prefix reuse could take a truncated view of an
+  earlier exact prompt entry and then append prompt-tail KV rows into the same
+  underlying CUDA allocation
+- that meant the stored exact prompt entry could still be silently corrupted
+  even though the host-side exact prompt lookup and the CUDA-side exact prompt
+  lookup both matched the right prompt tokens
+- under the benchmark contract this showed up as:
+  `HTTPS -> TLS -> HTTPS` returning the wrong third answer, because the exact
+  `HTTPS` device prefix had been overwritten by the warm `TLS` request
+
+What changed:
+
+- non-exact CUDA shared-prefix reuse now detaches into a fresh writable device
+  KV allocation before any prompt-tail append can mutate the stored prefix
+- exact repeated-prompt hits still reuse the stored exact CUDA prefix directly,
+  because they only append generated-token KV after the prompt boundary
+
+Measured after the fix, on the exact same benchmark contract:
+
+- Psionic `cold`: `21.13 tok/s`
+- Psionic `warm_non_hit`: `58.00 tok/s`
+- Psionic `prompt_cache_hit`: `124.36 tok/s`
+- `llama.cpp` `prompt_cache_hit`: `170.70 tok/s`
+
+Interpretation:
+
+- the truthful exact-hit floor is now `124.36 tok/s`, not the previously logged
+  `125.12 tok/s`
+- this checkpoint is primarily a correctness repair; throughput stayed roughly
+  flat once the repeated-prompt lane stopped cheating with corrupted device KV
+- the benchmark baseline is now trustworthy again, because the third exact
+  `HTTPS ...` request really is running on the exact stored `HTTPS` CUDA prefix
+
+What should happen next:
+
+- treat `124.36 tok/s` as the real floor to beat on `#3276`
+- keep the focus on decode-side CUDA execution quality
+- bias the next wave toward direct `llama.cpp` parity in ids-enabled
+  grouped-expert execution and attention dispatch, not more prefix-cache
+  micro-tuning
