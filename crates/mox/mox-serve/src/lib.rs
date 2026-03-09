@@ -390,6 +390,33 @@ fn build_delivery_proof(
     })
 }
 
+fn accumulate_generation_step_counters(
+    step: &GenerationStepOutput,
+    execution_plan_digest: &mut Option<String>,
+    compile_path: &mut Option<CompilePathEvidence>,
+    kernel_count: &mut usize,
+    bytes_moved: &mut u64,
+    plan_cache_hits: &mut usize,
+    plan_cache_misses: &mut usize,
+    gpt_oss_perf: &mut Option<GptOssPerformanceMetrics>,
+) {
+    if execution_plan_digest.is_none() {
+        *execution_plan_digest = step.execution_plan_digest.clone();
+    }
+    if compile_path.is_none() {
+        *compile_path = step.compile_path.clone();
+    }
+    *kernel_count = kernel_count.saturating_add(step.kernel_count);
+    *bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+    *plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
+    *plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
+    if let Some(step_perf) = &step.gpt_oss_perf {
+        gpt_oss_perf
+            .get_or_insert_with(GptOssPerformanceMetrics::default)
+            .accumulate(step_perf);
+    }
+}
+
 fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation {
     match prefix_state {
         PrefixCacheState::None => CacheObservation::new(
@@ -920,6 +947,137 @@ pub struct GenerationMetrics {
     /// Number of prompt-prefix tokens reused from the shared prefix cache.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub prefix_tokens_reused: Option<usize>,
+    /// Mox-owned GPT-OSS performance counters for the realized decode path.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub gpt_oss_perf: Option<GptOssPerformanceMetrics>,
+}
+
+/// Stage timings for one GPT-OSS request, accumulated across prefill and decode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GptOssStageTimingMetrics {
+    /// Token-embedding row decode time in nanoseconds.
+    pub token_embedding_ns: u64,
+    /// Attention RMSNorm time in nanoseconds.
+    pub attention_norm_ns: u64,
+    /// Q/K/V projection time in nanoseconds.
+    pub qkv_projection_ns: u64,
+    /// RoPE application time in nanoseconds.
+    pub rope_ns: u64,
+    /// Attention score/value application time in nanoseconds.
+    pub attention_ns: u64,
+    /// Attention output projection time in nanoseconds.
+    pub attention_output_projection_ns: u64,
+    /// Feed-forward RMSNorm time in nanoseconds.
+    pub feed_forward_norm_ns: u64,
+    /// Router-logit time in nanoseconds.
+    pub router_ns: u64,
+    /// Expert projection time in nanoseconds.
+    pub expert_projection_ns: u64,
+    /// Expert activation time in nanoseconds.
+    pub expert_activation_ns: u64,
+    /// Expert aggregation time in nanoseconds.
+    pub expert_aggregation_ns: u64,
+    /// Final output RMSNorm time in nanoseconds.
+    pub output_norm_ns: u64,
+    /// Final logits projection time in nanoseconds.
+    pub logits_projection_ns: u64,
+}
+
+impl GptOssStageTimingMetrics {
+    fn accumulate(&mut self, other: &Self) {
+        self.token_embedding_ns = self
+            .token_embedding_ns
+            .saturating_add(other.token_embedding_ns);
+        self.attention_norm_ns = self
+            .attention_norm_ns
+            .saturating_add(other.attention_norm_ns);
+        self.qkv_projection_ns = self
+            .qkv_projection_ns
+            .saturating_add(other.qkv_projection_ns);
+        self.rope_ns = self.rope_ns.saturating_add(other.rope_ns);
+        self.attention_ns = self.attention_ns.saturating_add(other.attention_ns);
+        self.attention_output_projection_ns = self
+            .attention_output_projection_ns
+            .saturating_add(other.attention_output_projection_ns);
+        self.feed_forward_norm_ns = self
+            .feed_forward_norm_ns
+            .saturating_add(other.feed_forward_norm_ns);
+        self.router_ns = self.router_ns.saturating_add(other.router_ns);
+        self.expert_projection_ns = self
+            .expert_projection_ns
+            .saturating_add(other.expert_projection_ns);
+        self.expert_activation_ns = self
+            .expert_activation_ns
+            .saturating_add(other.expert_activation_ns);
+        self.expert_aggregation_ns = self
+            .expert_aggregation_ns
+            .saturating_add(other.expert_aggregation_ns);
+        self.output_norm_ns = self.output_norm_ns.saturating_add(other.output_norm_ns);
+        self.logits_projection_ns = self
+            .logits_projection_ns
+            .saturating_add(other.logits_projection_ns);
+    }
+}
+
+/// CUDA-side counters surfaced by the GPT-OSS runtime.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GptOssCudaRuntimeMetrics {
+    /// Bytes uploaded from host to device.
+    pub host_to_device_bytes: u64,
+    /// Bytes read back from device to host.
+    pub device_to_host_bytes: u64,
+    /// Number of CUDA submissions used by the request.
+    pub submission_count: usize,
+    /// Number of CUDA synchronizations used by the request.
+    pub sync_count: usize,
+    /// Number of quantized CUDA kernel launches used by the request.
+    pub kernel_launches: usize,
+}
+
+impl GptOssCudaRuntimeMetrics {
+    fn accumulate(&mut self, other: &Self) {
+        self.host_to_device_bytes = self
+            .host_to_device_bytes
+            .saturating_add(other.host_to_device_bytes);
+        self.device_to_host_bytes = self
+            .device_to_host_bytes
+            .saturating_add(other.device_to_host_bytes);
+        self.submission_count = self
+            .submission_count
+            .saturating_add(other.submission_count);
+        self.sync_count = self.sync_count.saturating_add(other.sync_count);
+        self.kernel_launches = self
+            .kernel_launches
+            .saturating_add(other.kernel_launches);
+    }
+}
+
+/// Mox-owned GPT-OSS performance summary attached to one request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GptOssPerformanceMetrics {
+    /// Number of step invocations accumulated into this summary.
+    pub step_count: usize,
+    /// Number of decoder layers traversed across those steps.
+    pub layer_visit_count: usize,
+    /// Accumulated stage timings in nanoseconds.
+    pub stage_timings: GptOssStageTimingMetrics,
+    /// Accumulated CUDA transfer and synchronization counters.
+    pub cuda: GptOssCudaRuntimeMetrics,
+}
+
+impl GptOssPerformanceMetrics {
+    fn accumulate(&mut self, other: &Self) {
+        self.step_count = self.step_count.saturating_add(other.step_count);
+        self.layer_visit_count = self
+            .layer_visit_count
+            .saturating_add(other.layer_visit_count);
+        self.stage_timings.accumulate(&other.stage_timings);
+        self.cuda.accumulate(&other.cuda);
+    }
+
+    fn is_zero(&self) -> bool {
+        self.step_count == 0 && self.layer_visit_count == 0
+    }
 }
 
 /// Whether a request hit a cold or warm model path.
@@ -1136,6 +1294,7 @@ impl GenerationMetrics {
             eval_duration_ns: None,
             kv_cache: None,
             prefix_tokens_reused: None,
+            gpt_oss_perf: None,
         }
     }
 
@@ -1150,6 +1309,7 @@ impl GenerationMetrics {
             && self.eval_duration_ns.is_none()
             && self.kv_cache.is_none()
             && self.prefix_tokens_reused.is_none()
+            && self.gpt_oss_perf.is_none()
     }
 }
 
@@ -2994,6 +3154,7 @@ struct GenerationStepOutput {
     bytes_moved: u64,
     plan_cache_hits: usize,
     plan_cache_misses: usize,
+    gpt_oss_perf: Option<GptOssPerformanceMetrics>,
 }
 
 #[derive(Clone, Debug)]
@@ -4334,6 +4495,7 @@ where
                 self.cache.state(),
             )),
             prefix_tokens_reused: Some(self.prefix_tokens_reused),
+            gpt_oss_perf: None,
         };
         let provenance = GenerationProvenance {
             served_artifact: self.served_artifact.clone(),
@@ -4762,6 +4924,7 @@ where
         let mut bytes_moved = 0u64;
         let mut plan_cache_hits = 0usize;
         let mut plan_cache_misses = 0usize;
+        let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let mut cache = if shared_prefix_eligible {
             let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
             prefix_state = lookup.state;
@@ -4791,16 +4954,16 @@ where
         }
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
-            if execution_plan_digest.is_none() {
-                execution_plan_digest = step.execution_plan_digest.clone();
-            }
-            if compile_path.is_none() {
-                compile_path = step.compile_path.clone();
-            }
-            kernel_count = kernel_count.saturating_add(step.kernel_count);
-            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
-            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
-            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
+            accumulate_generation_step_counters(
+                &step,
+                &mut execution_plan_digest,
+                &mut compile_path,
+                &mut kernel_count,
+                &mut bytes_moved,
+                &mut plan_cache_hits,
+                &mut plan_cache_misses,
+                &mut gpt_oss_perf,
+            );
             cache.append(*token, step.key, step.value)?;
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
@@ -4826,16 +4989,16 @@ where
 
             generated_tokens.push(next_token);
             let step = loaded_model.execute_step(backend, next_token, cache.len(), &cache)?;
-            if execution_plan_digest.is_none() {
-                execution_plan_digest = step.execution_plan_digest.clone();
-            }
-            if compile_path.is_none() {
-                compile_path = step.compile_path.clone();
-            }
-            kernel_count = kernel_count.saturating_add(step.kernel_count);
-            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
-            plan_cache_hits = plan_cache_hits.saturating_add(step.plan_cache_hits);
-            plan_cache_misses = plan_cache_misses.saturating_add(step.plan_cache_misses);
+            accumulate_generation_step_counters(
+                &step,
+                &mut execution_plan_digest,
+                &mut compile_path,
+                &mut kernel_count,
+                &mut bytes_moved,
+                &mut plan_cache_hits,
+                &mut plan_cache_misses,
+                &mut gpt_oss_perf,
+            );
             cache.append(next_token, step.key, step.value)?;
             last_logits = step.logits;
 
@@ -4905,6 +5068,7 @@ where
             eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
             kv_cache: Some(kv_cache),
             prefix_tokens_reused: Some(prefix_tokens_reused),
+            gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
         };
         let delivery_plan_digest = execution_plan_digest
             .clone()
@@ -5165,6 +5329,7 @@ fn execute_cpu_generation_graph(
         bytes_moved: result.metrics.bytes_moved,
         plan_cache_hits: result.metrics.plan_cache_hits,
         plan_cache_misses: result.metrics.plan_cache_misses,
+        gpt_oss_perf: None,
     })
 }
 
@@ -5224,6 +5389,7 @@ fn execute_metal_generation_graph(
         bytes_moved: result.metrics.bytes_moved,
         plan_cache_hits: result.metrics.plan_cache_hits,
         plan_cache_misses: result.metrics.plan_cache_misses,
+        gpt_oss_perf: None,
     })
 }
 

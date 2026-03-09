@@ -37,7 +37,7 @@ use tokio_stream::iter;
 use crate::{
     CudaGgufGptOssTextGenerationService, CudaGptOssTextGenerationError, DecodeStrategy,
     DecoderModelDescriptor, GenerationOptions, GenerationRequest, GgufDecoderAdapterLoader,
-    PromptRenderError, TerminationReason, TextGenerationExecutor,
+    GptOssPerformanceMetrics, PromptRenderError, TerminationReason, TextGenerationExecutor,
 };
 
 const DEFAULT_MAX_TOKENS: usize = 256;
@@ -421,6 +421,7 @@ async fn handle_chat_completions(
             total_tokens: response.usage.input_tokens + response.usage.output_tokens,
         },
         mox_harmony,
+        mox_perf: response.metrics.gpt_oss_perf.clone(),
     })
     .into_response())
 }
@@ -435,6 +436,8 @@ struct ChatCompletionResponse {
     usage: ChatCompletionUsage,
     #[serde(skip_serializing_if = "Option::is_none")]
     mox_harmony: Option<GptOssHarmonyParsedOutput>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    mox_perf: Option<GptOssPerformanceMetrics>,
 }
 
 #[derive(Clone, Debug, Serialize)]

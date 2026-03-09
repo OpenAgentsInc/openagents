@@ -109,6 +109,45 @@ pub struct CudaSubmissionReport {
     pub encoded_operations: usize,
 }
 
+/// Explicit per-call counters for one quantized CUDA matvec request.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct CudaQuantizedMatvecStats {
+    /// Bytes uploaded from host to device for the activation input.
+    pub host_to_device_bytes: u64,
+    /// Bytes read back from device to host for the output vector.
+    pub device_to_host_bytes: u64,
+    /// Number of CUDA submissions used by the call.
+    pub submission_count: usize,
+    /// Number of CUDA stream synchronizations used by the call.
+    pub sync_count: usize,
+    /// Number of quantized CUDA kernels launched by the call.
+    pub kernel_launches: usize,
+}
+
+impl CudaQuantizedMatvecStats {
+    /// Accumulates another stats snapshot into this one.
+    pub fn accumulate(&mut self, other: &Self) {
+        self.host_to_device_bytes = self
+            .host_to_device_bytes
+            .saturating_add(other.host_to_device_bytes);
+        self.device_to_host_bytes = self
+            .device_to_host_bytes
+            .saturating_add(other.device_to_host_bytes);
+        self.submission_count = self.submission_count.saturating_add(other.submission_count);
+        self.sync_count = self.sync_count.saturating_add(other.sync_count);
+        self.kernel_launches = self.kernel_launches.saturating_add(other.kernel_launches);
+    }
+}
+
+/// Result payload for one profiled quantized CUDA matvec call.
+#[derive(Clone, Debug, PartialEq)]
+pub struct CudaQuantizedMatvecResult {
+    /// Returned dense output values.
+    pub values: Vec<f32>,
+    /// Explicit transfer and submission counters for the call.
+    pub stats: CudaQuantizedMatvecStats,
+}
+
 /// CUDA-backed tensor buffer.
 #[derive(Clone)]
 pub struct CudaBuffer {
@@ -442,7 +481,21 @@ impl CudaBackend {
         cols: usize,
         input: &[f32],
     ) -> Result<Vec<f32>, RuntimeError> {
-        self.quantized_matvec_with_offset(weights, 0, mode, rows, cols, input)
+        Ok(self
+            .quantized_matvec_profiled(weights, mode, rows, cols, input)?
+            .values)
+    }
+
+    /// Executes one profiled quantized row-wise matrix-vector product on CUDA.
+    pub fn quantized_matvec_profiled(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        rows: usize,
+        cols: usize,
+        input: &[f32],
+    ) -> Result<CudaQuantizedMatvecResult, RuntimeError> {
+        self.quantized_matvec_with_offset_profiled(weights, 0, mode, rows, cols, input)
     }
 
     /// Executes one quantized row-wise matrix-vector product from a byte offset.
@@ -455,6 +508,21 @@ impl CudaBackend {
         cols: usize,
         input: &[f32],
     ) -> Result<Vec<f32>, RuntimeError> {
+        Ok(self
+            .quantized_matvec_with_offset_profiled(weights, byte_offset, mode, rows, cols, input)?
+            .values)
+    }
+
+    /// Executes one profiled quantized row-wise matrix-vector product from a byte offset.
+    pub fn quantized_matvec_with_offset_profiled(
+        &mut self,
+        weights: &CudaBuffer,
+        byte_offset: usize,
+        mode: QuantizationMode,
+        rows: usize,
+        cols: usize,
+        input: &[f32],
+    ) -> Result<CudaQuantizedMatvecResult, RuntimeError> {
         if !self.quantized_kernels_available() {
             return Err(RuntimeError::Backend(String::from(
                 "cuda quantized text-generation kernels are not available in this build",
@@ -514,7 +582,23 @@ impl CudaBackend {
             &output,
         )?;
         let _ = submission.commit(CudaCommandWait::Completed)?;
-        output.read_f32()
+        let values = output.read_f32()?;
+        Ok(CudaQuantizedMatvecResult {
+            values,
+            stats: CudaQuantizedMatvecStats {
+                host_to_device_bytes: (input.len())
+                    .saturating_mul(size_of_dtype(DType::F32))
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+                device_to_host_bytes: (rows)
+                    .saturating_mul(size_of_dtype(DType::F32))
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+                submission_count: 1,
+                sync_count: 1,
+                kernel_launches: 1,
+            },
+        })
     }
 
     /// Compiles and executes a graph on the supported dense CUDA surface.

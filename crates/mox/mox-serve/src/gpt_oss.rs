@@ -4,7 +4,8 @@ use mox_backend_cpu::{
     CpuBackend, decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot,
 };
 use mox_backend_cuda::{
-    CudaBackend, CudaBuffer, TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS,
+    CudaBackend, CudaBuffer, CudaQuantizedMatvecStats,
+    TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS,
 };
 use mox_catalog::LocalBlobOpenOptions;
 use mox_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
@@ -14,8 +15,9 @@ use sha2::{Digest, Sha256};
 use super::{
     BackendHealthTracker, CompiledWordGenerationModel, DecoderModelDescriptor,
     GenerationEventStream, GenerationModelHandle, GenerationResponse, GenerationStreamEvent,
-    GenerationStreamStatus, GenerationStreamTerminal, GgufDecoderAdapterLoader, GgufDecoderFamily,
-    GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout, InMemoryGenerationModelRegistry,
+    GenerationStreamStatus, GenerationStreamTerminal, GgufDecoderAdapterLoader,
+    GgufDecoderFamily, GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout,
+    GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
     InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
     LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
     ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
@@ -30,6 +32,33 @@ const GPT_OSS_YARN_BETA_FAST: f32 = 32.0;
 const GPT_OSS_YARN_BETA_SLOW: f32 = 1.0;
 const GPT_OSS_CPU_BACKEND: &str = "cpu";
 const GPT_OSS_CUDA_BACKEND: &str = "cuda";
+
+fn duration_ns(start: Instant) -> u64 {
+    start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX)
+}
+
+fn accumulate_cuda_matvec_stats(
+    perf: &mut GptOssPerformanceMetrics,
+    stats: &CudaQuantizedMatvecStats,
+) {
+    perf.cuda.host_to_device_bytes = perf
+        .cuda
+        .host_to_device_bytes
+        .saturating_add(stats.host_to_device_bytes);
+    perf.cuda.device_to_host_bytes = perf
+        .cuda
+        .device_to_host_bytes
+        .saturating_add(stats.device_to_host_bytes);
+    perf.cuda.submission_count = perf
+        .cuda
+        .submission_count
+        .saturating_add(stats.submission_count);
+    perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(stats.sync_count);
+    perf.cuda.kernel_launches = perf
+        .cuda
+        .kernel_launches
+        .saturating_add(stats.kernel_launches);
+}
 
 /// CPU-backed real GGUF GPT-OSS text-generation service.
 #[derive(Clone, Debug)]
@@ -646,6 +675,7 @@ impl CompiledWordGenerationModel for CpuGgufGptOssGenerationModel {
             bytes_moved: step.bytes_moved,
             plan_cache_hits: 0,
             plan_cache_misses: 0,
+            gpt_oss_perf: step.perf,
         })
     }
 
@@ -814,6 +844,7 @@ impl CompiledWordGenerationModel for CudaGgufGptOssGenerationModel {
             bytes_moved: step.bytes_moved,
             plan_cache_hits: 0,
             plan_cache_misses: 0,
+            gpt_oss_perf: step.perf,
         })
     }
 
@@ -862,8 +893,18 @@ impl GptOssCudaModelInner {
         let kv_width = self.descriptor.config.kv_width();
         let mut bytes_moved = 0_u64;
         let mut kernel_count = 0_usize;
+        let mut perf = GptOssPerformanceMetrics {
+            step_count: 1,
+            layer_visit_count: self.layers.len(),
+            ..GptOssPerformanceMetrics::default()
+        };
 
+        let token_embedding_start = Instant::now();
         let mut hidden = self.token_embedding.decode_row(token.as_u32() as usize)?;
+        perf.stage_timings.token_embedding_ns = perf
+            .stage_timings
+            .token_embedding_ns
+            .saturating_add(duration_ns(token_embedding_start));
         bytes_moved = bytes_moved.saturating_add(self.token_embedding.byte_length() as u64);
 
         let mut cache_key = vec![0.0; self.cache_width()];
@@ -871,30 +912,50 @@ impl GptOssCudaModelInner {
 
         for (layer_index, layer) in self.layers.iter().enumerate() {
             let residual = hidden.clone();
+            let attention_norm_start = Instant::now();
             let hidden_norm = rms_norm(
                 hidden.as_slice(),
                 layer.attention_norm.as_slice(),
                 self.family_metadata.rms_norm_epsilon,
             );
+            perf.stage_timings.attention_norm_ns = perf
+                .stage_timings
+                .attention_norm_ns
+                .saturating_add(duration_ns(attention_norm_start));
 
+            let qkv_start = Instant::now();
             let mut q = Vec::new();
-            layer
-                .attention_query_weight
-                .matvec(backend, hidden_norm.as_slice(), &mut q)?;
+            let q_stats = layer.attention_query_weight.matvec_profiled(
+                backend,
+                hidden_norm.as_slice(),
+                &mut q,
+            )?;
+            accumulate_cuda_matvec_stats(&mut perf, &q_stats);
             add_bias_in_place(&mut q, layer.attention_query_bias.as_slice());
 
             let mut k = Vec::new();
-            layer
-                .attention_key_weight
-                .matvec(backend, hidden_norm.as_slice(), &mut k)?;
+            let k_stats = layer.attention_key_weight.matvec_profiled(
+                backend,
+                hidden_norm.as_slice(),
+                &mut k,
+            )?;
+            accumulate_cuda_matvec_stats(&mut perf, &k_stats);
             add_bias_in_place(&mut k, layer.attention_key_bias.as_slice());
 
             let mut v = Vec::new();
-            layer
-                .attention_value_weight
-                .matvec(backend, hidden_norm.as_slice(), &mut v)?;
+            let v_stats = layer.attention_value_weight.matvec_profiled(
+                backend,
+                hidden_norm.as_slice(),
+                &mut v,
+            )?;
+            accumulate_cuda_matvec_stats(&mut perf, &v_stats);
             add_bias_in_place(&mut v, layer.attention_value_bias.as_slice());
+            perf.stage_timings.qkv_projection_ns = perf
+                .stage_timings
+                .qkv_projection_ns
+                .saturating_add(duration_ns(qkv_start));
 
+            let rope_start = Instant::now();
             apply_rope_neox(
                 &mut q,
                 self.descriptor.config.block.attention.head_count,
@@ -911,11 +972,16 @@ impl GptOssCudaModelInner {
                 position,
                 &self.family_metadata,
             );
+            perf.stage_timings.rope_ns = perf
+                .stage_timings
+                .rope_ns
+                .saturating_add(duration_ns(rope_start));
 
             let cache_offset = layer_index.saturating_mul(kv_width);
             cache_key[cache_offset..cache_offset + kv_width].copy_from_slice(k.as_slice());
             cache_value[cache_offset..cache_offset + kv_width].copy_from_slice(v.as_slice());
 
+            let attention_start = Instant::now();
             let attention = layer.attend(
                 layer_index,
                 q.as_slice(),
@@ -925,25 +991,41 @@ impl GptOssCudaModelInner {
                 &self.descriptor,
                 self.family_metadata.sliding_window,
             );
+            perf.stage_timings.attention_ns = perf
+                .stage_timings
+                .attention_ns
+                .saturating_add(duration_ns(attention_start));
 
+            let attention_output_start = Instant::now();
             let mut attention_out = Vec::new();
-            layer.attention_output_weight.matvec(
+            let attention_out_stats = layer.attention_output_weight.matvec_profiled(
                 backend,
                 attention.as_slice(),
                 &mut attention_out,
             )?;
+            accumulate_cuda_matvec_stats(&mut perf, &attention_out_stats);
             if let Some(bias) = layer.attention_output_bias.as_ref() {
                 add_bias_in_place(&mut attention_out, bias.as_slice());
             }
+            perf.stage_timings.attention_output_projection_ns = perf
+                .stage_timings
+                .attention_output_projection_ns
+                .saturating_add(duration_ns(attention_output_start));
             hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
 
             let ffn_residual = hidden.clone();
+            let feed_forward_norm_start = Instant::now();
             let ffn_input = rms_norm(
                 hidden.as_slice(),
                 layer.feed_forward_norm.as_slice(),
                 self.family_metadata.rms_norm_epsilon,
             );
+            perf.stage_timings.feed_forward_norm_ns = perf
+                .stage_timings
+                .feed_forward_norm_ns
+                .saturating_add(duration_ns(feed_forward_norm_start));
 
+            let router_start = Instant::now();
             let mut router_logits = Vec::new();
             layer
                 .feed_forward_router_weight
@@ -956,16 +1038,22 @@ impl GptOssCudaModelInner {
                 self.family_metadata.expert_used_count.unwrap_or(0),
             );
             let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
+            perf.stage_timings.router_ns = perf
+                .stage_timings
+                .router_ns
+                .saturating_add(duration_ns(router_start));
 
             let mut moe_out = vec![0.0; hidden_size];
             for (selected_index, expert_index) in selected.iter().copied().enumerate() {
+                let expert_projection_start = Instant::now();
                 let mut gate = Vec::new();
-                layer.feed_forward_gate_experts_weight.expert_matvec(
+                let gate_stats = layer.feed_forward_gate_experts_weight.expert_matvec_profiled(
                     backend,
                     expert_index,
                     ffn_input.as_slice(),
                     &mut gate,
                 )?;
+                accumulate_cuda_matvec_stats(&mut perf, &gate_stats);
                 if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
                     add_expert_bias_in_place(
                         &mut gate,
@@ -976,12 +1064,13 @@ impl GptOssCudaModelInner {
                 }
 
                 let mut up = Vec::new();
-                layer.feed_forward_up_experts_weight.expert_matvec(
+                let up_stats = layer.feed_forward_up_experts_weight.expert_matvec_profiled(
                     backend,
                     expert_index,
                     ffn_input.as_slice(),
                     &mut up,
                 )?;
+                accumulate_cuda_matvec_stats(&mut perf, &up_stats);
                 if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
                     add_expert_bias_in_place(
                         &mut up,
@@ -990,15 +1079,27 @@ impl GptOssCudaModelInner {
                         layer.feed_forward_up_experts_weight.rows,
                     );
                 }
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_projection_start));
 
+                let expert_activation_start = Instant::now();
                 let activated = oai_swiglu(gate.as_slice(), up.as_slice());
+                perf.stage_timings.expert_activation_ns = perf
+                    .stage_timings
+                    .expert_activation_ns
+                    .saturating_add(duration_ns(expert_activation_start));
+
+                let expert_down_start = Instant::now();
                 let mut expert = Vec::new();
-                layer.feed_forward_down_experts_weight.expert_matvec(
+                let expert_stats = layer.feed_forward_down_experts_weight.expert_matvec_profiled(
                     backend,
                     expert_index,
                     activated.as_slice(),
                     &mut expert,
                 )?;
+                accumulate_cuda_matvec_stats(&mut perf, &expert_stats);
                 if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
                     add_expert_bias_in_place(
                         &mut expert,
@@ -1007,11 +1108,20 @@ impl GptOssCudaModelInner {
                         layer.feed_forward_down_experts_weight.rows,
                     );
                 }
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_down_start));
 
                 let route = routing[selected_index];
+                let expert_aggregation_start = Instant::now();
                 for (dst, value) in moe_out.iter_mut().zip(expert.iter().copied()) {
                     *dst += value * route;
                 }
+                perf.stage_timings.expert_aggregation_ns = perf
+                    .stage_timings
+                    .expert_aggregation_ns
+                    .saturating_add(duration_ns(expert_aggregation_start));
             }
             hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
 
@@ -1026,16 +1136,29 @@ impl GptOssCudaModelInner {
             kernel_count = kernel_count.saturating_add(7 + selected.len().saturating_mul(3));
         }
 
+        let output_norm_start = Instant::now();
         let final_hidden = rms_norm(
             hidden.as_slice(),
             self.output_norm.as_slice(),
             self.family_metadata.rms_norm_epsilon,
         );
+        perf.stage_timings.output_norm_ns = perf
+            .stage_timings
+            .output_norm_ns
+            .saturating_add(duration_ns(output_norm_start));
+
+        let logits_projection_start = Instant::now();
         let mut logits = Vec::new();
-        self.output
-            .matvec(backend, final_hidden.as_slice(), &mut logits)?;
+        let logits_stats = self
+            .output
+            .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?;
+        accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
         bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
         kernel_count = kernel_count.saturating_add(1);
+        perf.stage_timings.logits_projection_ns = perf
+            .stage_timings
+            .logits_projection_ns
+            .saturating_add(duration_ns(logits_projection_start));
 
         Ok(GptOssForwardStep {
             key: cache_key,
@@ -1043,6 +1166,7 @@ impl GptOssCudaModelInner {
             logits,
             kernel_count,
             bytes_moved,
+            perf: Some(perf),
         })
     }
 }
@@ -1407,6 +1531,7 @@ impl GptOssCpuModelInner {
             logits,
             kernel_count,
             bytes_moved,
+            perf: None,
         })
     }
 }
@@ -1732,12 +1857,12 @@ impl CudaQuantizedMatrix {
         self.storage.byte_len()
     }
 
-    fn matvec(
+    fn matvec_profiled(
         &self,
         backend: &mut CudaBackend,
         input: &[f32],
         output: &mut Vec<f32>,
-    ) -> Result<(), super::RuntimeError> {
+    ) -> Result<CudaQuantizedMatvecStats, super::RuntimeError> {
         if input.len() != self.columns {
             return Err(super::RuntimeError::Backend(format!(
                 "cuda quantized matvec width mismatch: expected {}, actual {}",
@@ -1745,9 +1870,15 @@ impl CudaQuantizedMatrix {
                 input.len()
             )));
         }
-        *output =
-            backend.quantized_matvec(&self.storage, self.mode, self.rows, self.columns, input)?;
-        Ok(())
+        let result = backend.quantized_matvec_profiled(
+            &self.storage,
+            self.mode,
+            self.rows,
+            self.columns,
+            input,
+        )?;
+        *output = result.values;
+        Ok(result.stats)
     }
 }
 
@@ -1817,13 +1948,13 @@ impl CudaQuantizedExpertTensor {
         self.storage.byte_len()
     }
 
-    fn expert_matvec(
+    fn expert_matvec_profiled(
         &self,
         backend: &mut CudaBackend,
         expert_index: usize,
         input: &[f32],
         output: &mut Vec<f32>,
-    ) -> Result<(), super::RuntimeError> {
+    ) -> Result<CudaQuantizedMatvecStats, super::RuntimeError> {
         if expert_index >= self.outer {
             return Err(super::RuntimeError::Backend(format!(
                 "expert index {expert_index} exceeds expert count {}",
@@ -1840,7 +1971,7 @@ impl CudaQuantizedExpertTensor {
         let byte_offset = expert_index
             .saturating_mul(self.rows)
             .saturating_mul(self.row_byte_len);
-        *output = backend.quantized_matvec_with_offset(
+        let result = backend.quantized_matvec_with_offset_profiled(
             &self.storage,
             byte_offset,
             self.mode,
@@ -1848,7 +1979,8 @@ impl CudaQuantizedExpertTensor {
             self.columns,
             input,
         )?;
-        Ok(())
+        *output = result.values;
+        Ok(result.stats)
     }
 }
 
@@ -1859,6 +1991,7 @@ struct GptOssForwardStep {
     logits: Vec<f32>,
     kernel_count: usize,
     bytes_moved: u64,
+    perf: Option<GptOssPerformanceMetrics>,
 }
 
 fn load_quantized_matrix(
