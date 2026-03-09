@@ -9,9 +9,9 @@ use psionic_backend_cpu::{
     CpuBackend, decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot,
 };
 use psionic_backend_cuda::{
-    CudaBackend, CudaBuffer, CudaGraphExec, CudaQuantizedMatvecStats, CudaSubmission,
-    CudaSubmissionReport, TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS,
-    ggml_q8_1_storage_bytes,
+    CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer, CudaQuantizedMatvecStats,
+    CudaSubmission, CudaSubmissionReport,
+    TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS, ggml_q8_1_storage_bytes,
 };
 use psionic_catalog::LocalBlobOpenOptions;
 use psionic_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
@@ -108,21 +108,6 @@ impl GptOssDecodeGraph {
 
 fn duration_ns(start: Instant) -> u64 {
     start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX)
-}
-
-fn encode_cuda_decode_params(past_tokens: usize, position: usize) -> [u8; 8] {
-    let past_tokens = i32::try_from(past_tokens).unwrap_or(i32::MAX).to_ne_bytes();
-    let position = i32::try_from(position).unwrap_or(i32::MAX).to_ne_bytes();
-    [
-        past_tokens[0],
-        past_tokens[1],
-        past_tokens[2],
-        past_tokens[3],
-        position[0],
-        position[1],
-        position[2],
-        position[3],
-    ]
 }
 
 fn can_use_cuda_argmax_fast_path(options: &GenerationOptions) -> bool {
@@ -1618,13 +1603,16 @@ struct GptOssCudaStepPlanLayer {
 #[derive(Debug)]
 struct GptOssCudaStepPlan {
     digest: String,
+    hidden_host_buffer: CudaHostBuffer,
     hidden_buffer: CudaBuffer,
+    decode_params_host_buffer: CudaHostBuffer,
     decode_params_buffer: CudaBuffer,
     vector_q8_1_buffer: CudaBuffer,
     vector_f16_buffer: CudaBuffer,
     layers: Vec<GptOssCudaStepPlanLayer>,
     final_norm_buffer: CudaBuffer,
     logits_buffer: CudaBuffer,
+    next_token_host_buffer: CudaHostBuffer,
     next_token_buffer: CudaBuffer,
     decode_graph_exec: Option<CudaGraphExec>,
     decode_graph_cache_identity: Option<(usize, usize)>,
@@ -1727,13 +1715,17 @@ impl GptOssCudaModelInner {
                 self.plan_digest.as_str(),
                 self.decode_graph.signature_key().as_str(),
             ),
+            hidden_host_buffer: backend
+                .host_buffer(hidden_size.saturating_mul(std::mem::size_of::<f32>()))?,
             hidden_buffer: backend.f32_buffer(hidden_size)?,
+            decode_params_host_buffer: backend.host_buffer(2 * std::mem::size_of::<i32>())?,
             decode_params_buffer: backend.i32_buffer(2)?,
             vector_q8_1_buffer: backend.byte_buffer(&vec![0_u8; vector_q8_1_bytes])?,
             vector_f16_buffer: backend.f16_buffer(vector_q8_1_columns)?,
             layers,
             final_norm_buffer: backend.f32_buffer(hidden_size)?,
             logits_buffer: backend.f32_buffer(self.output.rows)?,
+            next_token_host_buffer: backend.host_buffer(std::mem::size_of::<i32>())?,
             next_token_buffer: backend.byte_buffer(&vec![0_u8; std::mem::size_of::<i32>()])?,
             decode_graph_exec: None,
             decode_graph_cache_identity: None,
@@ -1766,6 +1758,10 @@ impl GptOssCudaModelInner {
                 "cuda gpt-oss path requires expert_used_count metadata",
             )))
         })?;
+
+        submission.copy_host_to_device(&plan.hidden_host_buffer, &plan.hidden_buffer)?;
+        submission
+            .copy_host_to_device(&plan.decode_params_host_buffer, &plan.decode_params_buffer)?;
 
         for (layer_index, layer) in self.layers.iter().enumerate() {
             let current_hidden = if layer_index == 0 {
@@ -2128,6 +2124,8 @@ impl GptOssCudaModelInner {
                 self.output.rows,
                 &plan.next_token_buffer,
             )?;
+            submission
+                .copy_device_to_host(&plan.next_token_buffer, &plan.next_token_host_buffer)?;
         }
         perf.stage_timings.logits_projection_ns = perf
             .stage_timings
@@ -2169,13 +2167,23 @@ impl GptOssCudaModelInner {
             .cuda
             .host_to_device_bytes
             .saturating_add(hidden_upload_bytes.try_into().unwrap_or(u64::MAX));
-        plan.hidden_buffer.write_f32(hidden.as_slice())?;
+        plan.hidden_host_buffer.write_f32(hidden.as_slice())?;
 
         let cache_write_index = cuda_cache.len();
         cuda_cache.ensure_capacity(backend, cache_write_index.saturating_add(1))?;
-        let decode_param_bytes = encode_cuda_decode_params(cache_write_index, position);
-        plan.decode_params_buffer
-            .write_bytes(decode_param_bytes.as_slice())?;
+        let decode_params = [
+            i32::try_from(cache_write_index).map_err(|_| {
+                ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                    "cache write index {cache_write_index} exceeds i32 decode parameter limits",
+                )))
+            })?,
+            i32::try_from(position).map_err(|_| {
+                ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                    "position {position} exceeds i32 decode parameter limits",
+                )))
+            })?,
+        ];
+        plan.decode_params_host_buffer.write_i32(&decode_params)?;
         perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(8);
 
         let use_decode_graph_fast_path =
@@ -2254,12 +2262,11 @@ impl GptOssCudaModelInner {
                     .unwrap_or(u64::MAX),
             ),
             CudaStepOutputMode::DeviceArgmax => {
-                let bytes = plan.next_token_buffer.read_bytes()?;
-                let token = i32::from_ne_bytes(bytes[..4].try_into().map_err(|_| {
-                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
-                        String::from("cuda argmax returned an invalid token buffer"),
-                    ))
-                })?);
+                let token = plan.next_token_host_buffer.read_i32().map_err(|error| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                        "cuda argmax returned an invalid host token buffer: {error}",
+                    )))
+                })?;
                 let token = u32::try_from(token).map(TokenId).map_err(|_| {
                     ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
                         "cuda argmax returned a negative token id {token}",

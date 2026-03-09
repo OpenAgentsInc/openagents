@@ -1165,6 +1165,12 @@ shortcuts.
 | `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | Port llama.cpp GPT-OSS CUDA kernels and dispatch policy | `psionic-backend-cuda`, `psionic-serve` | After `#3249`, the next work is direct `llama.cpp` CUDA kernel parity for MMVQ, MMID, attention, and the real-model MXFP4 expert path on this exact GPT-OSS lane. |
 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Reach llama.cpp-class GPT-OSS throughput on the real Psionic HTTP path | docs/tests/benchmark path plus the serving stack | Keep this open until the exact benchmark contract reaches the promised speed class on the real Psionic-only HTTP lane. |
 
+Recent checkpoint note:
+The 2026-03-09 pinned-host-staging / async-copy alignment landed but did not
+materially move the exact benchmark (`~88.7` to `90.6 tok/s`, still in the same
+`~92 tok/s` class as before). Treat that as evidence that the remaining work is
+still kernel- and graph-algorithm parity, not more host-transfer cleanup.
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
