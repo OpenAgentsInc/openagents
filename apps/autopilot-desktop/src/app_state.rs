@@ -247,7 +247,7 @@ impl Default for NetworkRequestsPaneInputs {
                 .value("inference")
                 .placeholder("Compute family"),
             preferred_backend: TextInput::new()
-                .value("mox")
+                .value("psionic")
                 .placeholder("Preferred backend (optional)"),
             capability_constraints: TextInput::new()
                 .placeholder("Capability envelope constraints (JSON or key=value list)"),

@@ -542,7 +542,6 @@ dependencies = [
  "futures-util",
  "hex",
  "keyring",
- "mox-serve",
  "nostr 0.1.0",
  "nostr-client",
  "openagents-cad",
@@ -550,6 +549,7 @@ dependencies = [
  "openagents-provider-substrate",
  "openagents-spark",
  "pollster",
+ "psionic-serve",
  "reqwest",
  "serde",
  "serde_json",
@@ -4700,172 +4700,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mox-backend-amd-kfd"
-version = "0.1.0"
-dependencies = [
- "mox-backend-cpu",
- "mox-core",
- "mox-runtime",
-]
-
-[[package]]
-name = "mox-backend-amd-userspace"
-version = "0.1.0"
-dependencies = [
- "mox-backend-cpu",
- "mox-core",
- "mox-runtime",
-]
-
-[[package]]
-name = "mox-backend-cpu"
-version = "0.1.0"
-dependencies = [
- "mox-compiler",
- "mox-core",
- "mox-ir",
- "mox-runtime",
-]
-
-[[package]]
-name = "mox-backend-cuda"
-version = "0.1.0"
-dependencies = [
- "cc",
- "libloading",
- "mox-backend-cpu",
- "mox-compiler",
- "mox-core",
- "mox-ir",
- "mox-runtime",
-]
-
-[[package]]
-name = "mox-backend-metal"
-version = "0.1.0"
-dependencies = [
- "metal 0.33.0",
- "mox-backend-cpu",
- "mox-compiler",
- "mox-core",
- "mox-ir",
- "mox-runtime",
-]
-
-[[package]]
-name = "mox-catalog"
-version = "0.1.0"
-dependencies = [
- "hex",
- "memmap2",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "mox-compiler"
-version = "0.1.0"
-dependencies = [
- "mox-core",
- "mox-ir",
- "mox-runtime",
- "sha2",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "mox-core"
-version = "0.1.0"
-dependencies = [
- "serde",
-]
-
-[[package]]
-name = "mox-ir"
-version = "0.1.0"
-dependencies = [
- "hex",
- "mox-core",
- "serde",
- "sha2",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "mox-models"
-version = "0.1.0"
-dependencies = [
- "hex",
- "mox-catalog",
- "mox-core",
- "openai-harmony",
- "safetensors",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "mox-provider"
-version = "0.1.0"
-dependencies = [
- "hex",
- "mox-core",
- "mox-runtime",
- "mox-serve",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
-]
-
-[[package]]
-name = "mox-runtime"
-version = "0.1.0"
-dependencies = [
- "mox-core",
- "mox-ir",
- "rand 0.9.2",
- "serde",
- "serde_json",
- "sha2",
- "thiserror 2.0.17",
-]
-
-[[package]]
-name = "mox-serve"
-version = "0.1.0"
-dependencies = [
- "axum 0.8.8",
- "hex",
- "mox-backend-cpu",
- "mox-backend-cuda",
- "mox-backend-metal",
- "mox-catalog",
- "mox-compiler",
- "mox-core",
- "mox-ir",
- "mox-models",
- "mox-provider",
- "mox-runtime",
- "rand 0.9.2",
- "reqwest",
- "serde",
- "serde_json",
- "sha2",
- "tempfile",
- "thiserror 2.0.17",
- "tokio",
- "tokio-stream",
-]
-
-[[package]]
 name = "moxcms"
 version = "0.7.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6519,6 +6353,172 @@ name = "protoc-bin-vendored-win32"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
+
+[[package]]
+name = "psionic-backend-amd-kfd"
+version = "0.1.0"
+dependencies = [
+ "psionic-backend-cpu",
+ "psionic-core",
+ "psionic-runtime",
+]
+
+[[package]]
+name = "psionic-backend-amd-userspace"
+version = "0.1.0"
+dependencies = [
+ "psionic-backend-cpu",
+ "psionic-core",
+ "psionic-runtime",
+]
+
+[[package]]
+name = "psionic-backend-cpu"
+version = "0.1.0"
+dependencies = [
+ "psionic-compiler",
+ "psionic-core",
+ "psionic-ir",
+ "psionic-runtime",
+]
+
+[[package]]
+name = "psionic-backend-cuda"
+version = "0.1.0"
+dependencies = [
+ "cc",
+ "libloading",
+ "psionic-backend-cpu",
+ "psionic-compiler",
+ "psionic-core",
+ "psionic-ir",
+ "psionic-runtime",
+]
+
+[[package]]
+name = "psionic-backend-metal"
+version = "0.1.0"
+dependencies = [
+ "metal 0.33.0",
+ "psionic-backend-cpu",
+ "psionic-compiler",
+ "psionic-core",
+ "psionic-ir",
+ "psionic-runtime",
+]
+
+[[package]]
+name = "psionic-catalog"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "memmap2",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "psionic-compiler"
+version = "0.1.0"
+dependencies = [
+ "psionic-core",
+ "psionic-ir",
+ "psionic-runtime",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "psionic-core"
+version = "0.1.0"
+dependencies = [
+ "serde",
+]
+
+[[package]]
+name = "psionic-ir"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "psionic-core",
+ "serde",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "psionic-models"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "openai-harmony",
+ "psionic-catalog",
+ "psionic-core",
+ "safetensors",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "psionic-provider"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "psionic-core",
+ "psionic-runtime",
+ "psionic-serve",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+]
+
+[[package]]
+name = "psionic-runtime"
+version = "0.1.0"
+dependencies = [
+ "psionic-core",
+ "psionic-ir",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+]
+
+[[package]]
+name = "psionic-serve"
+version = "0.1.0"
+dependencies = [
+ "axum 0.8.8",
+ "hex",
+ "psionic-backend-cpu",
+ "psionic-backend-cuda",
+ "psionic-backend-metal",
+ "psionic-catalog",
+ "psionic-compiler",
+ "psionic-core",
+ "psionic-ir",
+ "psionic-models",
+ "psionic-provider",
+ "psionic-runtime",
+ "rand 0.9.2",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tempfile",
+ "thiserror 2.0.17",
+ "tokio",
+ "tokio-stream",
+]
 
 [[package]]
 name = "psl-types"

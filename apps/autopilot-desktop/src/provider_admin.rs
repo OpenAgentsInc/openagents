@@ -274,7 +274,7 @@ fn infer_product_id_for_history_row(row: &JobHistoryReceiptRow) -> Option<String
         Some("apple_foundation_models") => {
             Some("apple_foundation_models.text_generation".to_string())
         }
-        Some("mox") | Some("ollama") => Some("ollama.text_generation".to_string()),
+        Some("psionic") | Some("ollama") => Some("ollama.text_generation".to_string()),
         _ => None,
     }
 }
@@ -397,7 +397,7 @@ fn health_events_for_state(state: &RenderState, captured_at_ms: i64) -> Vec<Prov
             severity: "warn".to_string(),
             code: "LOCAL_INFERENCE_RUNTIME_ERROR".to_string(),
             detail: error.to_string(),
-            source: "mox".to_string(),
+            source: "psionic".to_string(),
         });
     }
 

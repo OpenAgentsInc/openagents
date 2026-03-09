@@ -2,7 +2,7 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::state::job_inbox::JobExecutionParam;
-use mox_serve::{
+use psionic_serve::{
     CpuReferenceTextGenerationService, GenerationLoadState, GenerationOptions, GenerationRequest,
     TextGenerationExecutor,
 };
@@ -143,29 +143,29 @@ pub trait LocalInferenceRuntime {
 }
 
 pub fn default_local_inference_runtime() -> Result<Box<dyn LocalInferenceRuntime>, String> {
-    MoxRuntimeAdapter::new_reference()
+    PsionicRuntimeAdapter::new_reference()
         .map(|adapter| Box::new(adapter) as Box<dyn LocalInferenceRuntime>)
 }
 
-/// In-process Mox adapter for the app-owned runtime seam.
-pub struct MoxRuntimeAdapter {
+/// In-process Psionic adapter for the app-owned runtime seam.
+pub struct PsionicRuntimeAdapter {
     service: CpuReferenceTextGenerationService,
     snapshot: LocalInferenceRuntimeSnapshot,
     pending_updates: VecDeque<LocalInferenceRuntimeUpdate>,
 }
 
-impl MoxRuntimeAdapter {
+impl PsionicRuntimeAdapter {
     pub fn new_reference() -> Result<Self, String> {
         let mut adapter = Self {
             service: CpuReferenceTextGenerationService::new()
-                .map_err(|error| format!("failed to initialize Mox reference runtime: {error}"))?,
+                .map_err(|error| format!("failed to initialize Psionic reference runtime: {error}"))?,
             snapshot: LocalInferenceRuntimeSnapshot {
-                base_url: String::from("in-process://mox"),
+                base_url: String::from("in-process://psionic"),
                 ..LocalInferenceRuntimeSnapshot::default()
             },
             pending_updates: VecDeque::new(),
         };
-        adapter.refresh_snapshot(String::from("Mox local runtime ready"));
+        adapter.refresh_snapshot(String::from("Psionic local runtime ready"));
         Ok(adapter)
     }
 
@@ -199,7 +199,7 @@ impl MoxRuntimeAdapter {
         let error = error.into();
         self.snapshot.last_request_id = Some(request_id.clone());
         self.snapshot.last_error = Some(error.clone());
-        self.snapshot.last_action = Some(String::from("Mox generation failed"));
+        self.snapshot.last_action = Some(String::from("Psionic generation failed"));
         self.snapshot.refreshed_at = Some(Instant::now());
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Snapshot(Box::new(
@@ -230,7 +230,7 @@ impl MoxRuntimeAdapter {
             self.push_failure(
                 job.request_id,
                 format!(
-                    "Mox runtime only has '{}' configured, but '{}' was requested",
+                    "Psionic runtime only has '{}' configured, but '{}' was requested",
                     configured_model, requested_model
                 ),
             );
@@ -240,7 +240,7 @@ impl MoxRuntimeAdapter {
         let model = configured_model;
         self.snapshot.last_request_id = Some(job.request_id.clone());
         self.snapshot.last_error = None;
-        self.snapshot.last_action = Some(format!("Mox generation queued for {}", job.request_id));
+        self.snapshot.last_action = Some(format!("Psionic generation queued for {}", job.request_id));
         self.snapshot.refreshed_at = Some(Instant::now());
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Snapshot(Box::new(
@@ -254,7 +254,7 @@ impl MoxRuntimeAdapter {
                 },
             ));
 
-        let options = match mox_generation_options(&options_map) {
+        let options = match psionic_generation_options(&options_map) {
             Ok(value) => value,
             Err(error) => {
                 self.push_failure(job.request_id, error);
@@ -273,7 +273,7 @@ impl MoxRuntimeAdapter {
             Err(error) => {
                 self.push_failure(
                     job.request_id,
-                    format!("Mox local generation failed: {error}"),
+                    format!("Psionic local generation failed: {error}"),
                 );
                 return;
             }
@@ -288,7 +288,7 @@ impl MoxRuntimeAdapter {
         let normalized_options_digest = sha256_prefixed_text(normalized_options_json.as_str());
         let normalized_prompt_digest = sha256_prefixed_text(normalized_prompt.as_str());
         let provenance = LocalInferenceExecutionProvenance {
-            backend: String::from("mox"),
+            backend: String::from("psionic"),
             requested_model: job.requested_model.clone(),
             served_model: response.model_id.clone(),
             normalized_prompt_digest,
@@ -323,10 +323,10 @@ impl MoxRuntimeAdapter {
         };
         self.snapshot.last_metrics = Some(metrics.clone());
         self.snapshot.last_action =
-            Some(format!("Mox generation completed for {}", job.request_id));
+            Some(format!("Psionic generation completed for {}", job.request_id));
         self.snapshot.last_error = None;
         self.snapshot.refreshed_at = Some(Instant::now());
-        self.refresh_snapshot(String::from("Mox local runtime refreshed after generation"));
+        self.refresh_snapshot(String::from("Psionic local runtime refreshed after generation"));
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Completed(
                 LocalInferenceExecutionCompleted {
@@ -340,27 +340,27 @@ impl MoxRuntimeAdapter {
     }
 }
 
-impl LocalInferenceRuntime for MoxRuntimeAdapter {
+impl LocalInferenceRuntime for PsionicRuntimeAdapter {
     fn enqueue(&mut self, command: LocalInferenceRuntimeCommand) -> Result<(), String> {
         match command {
             LocalInferenceRuntimeCommand::Refresh => {
-                self.refresh_snapshot(String::from("Mox local runtime refreshed"));
+                self.refresh_snapshot(String::from("Psionic local runtime refreshed"));
                 Ok(())
             }
             LocalInferenceRuntimeCommand::WarmConfiguredModel => {
                 let model_id = self.configured_model_id();
                 self.service
                     .warm_model(model_id.as_str(), 300_000)
-                    .map_err(|error| format!("failed to warm Mox model '{model_id}': {error}"))?;
-                self.refresh_snapshot(format!("Mox model '{}' warmed", model_id));
+                    .map_err(|error| format!("failed to warm Psionic model '{model_id}': {error}"))?;
+                self.refresh_snapshot(format!("Psionic model '{}' warmed", model_id));
                 Ok(())
             }
             LocalInferenceRuntimeCommand::UnloadConfiguredModel => {
                 let model_id = self.configured_model_id();
                 self.service
                     .unload_model(model_id.as_str())
-                    .map_err(|error| format!("failed to unload Mox model '{model_id}': {error}"))?;
-                self.refresh_snapshot(format!("Mox model '{}' unloaded", model_id));
+                    .map_err(|error| format!("failed to unload Psionic model '{model_id}': {error}"))?;
+                self.refresh_snapshot(format!("Psionic model '{}' unloaded", model_id));
                 Ok(())
             }
             LocalInferenceRuntimeCommand::Generate(job) => {
@@ -375,7 +375,7 @@ impl LocalInferenceRuntime for MoxRuntimeAdapter {
     }
 }
 
-fn mox_generation_options(options: &Map<String, Value>) -> Result<GenerationOptions, String> {
+fn psionic_generation_options(options: &Map<String, Value>) -> Result<GenerationOptions, String> {
     let max_output_tokens = options
         .get("num_predict")
         .and_then(Value::as_i64)
@@ -520,14 +520,14 @@ fn parse_f64(key: &str, raw: &str) -> Result<f64, String> {
 mod tests {
     use super::{
         LocalInferenceGenerateJob, LocalInferenceRuntime, LocalInferenceRuntimeCommand,
-        LocalInferenceRuntimeUpdate, MoxRuntimeAdapter, default_local_inference_runtime,
+        LocalInferenceRuntimeUpdate, PsionicRuntimeAdapter, default_local_inference_runtime,
     };
     use crate::state::job_inbox::JobExecutionParam;
-    use mox_serve::ReferenceWordDecoder;
+    use psionic_serve::ReferenceWordDecoder;
 
     #[test]
-    fn mox_runtime_adapter_refreshes_and_generates() {
-        let mut adapter = MoxRuntimeAdapter::new_reference().expect("mox adapter");
+    fn psionic_runtime_adapter_refreshes_and_generates() {
+        let mut adapter = PsionicRuntimeAdapter::new_reference().expect("psionic adapter");
         adapter
             .enqueue(LocalInferenceRuntimeCommand::Refresh)
             .expect("refresh");
@@ -547,7 +547,7 @@ mod tests {
         adapter
             .enqueue(LocalInferenceRuntimeCommand::Generate(
                 LocalInferenceGenerateJob {
-                    request_id: "req-mox-1".to_string(),
+                    request_id: "req-psionic-1".to_string(),
                     prompt: "hello".to_string(),
                     requested_model: Some(ReferenceWordDecoder::MODEL_ID.to_string()),
                     params: vec![JobExecutionParam {
@@ -565,12 +565,12 @@ mod tests {
         }
         let completed = completed.expect("completed update");
         assert_eq!(completed.model, ReferenceWordDecoder::MODEL_ID);
-        assert_eq!(completed.provenance.backend, "mox");
+        assert_eq!(completed.provenance.backend, "psionic");
         assert!(!completed.output.is_empty());
     }
 
     #[test]
-    fn default_local_inference_runtime_uses_mox_reference_runtime() {
+    fn default_local_inference_runtime_uses_psionic_reference_runtime() {
         let mut runtime = default_local_inference_runtime().expect("default local runtime");
         runtime
             .enqueue(LocalInferenceRuntimeCommand::Refresh)
@@ -583,7 +583,7 @@ mod tests {
                 _ => None,
             })
             .expect("snapshot");
-        assert_eq!(snapshot.base_url, "in-process://mox");
+        assert_eq!(snapshot.base_url, "in-process://psionic");
         assert_eq!(
             snapshot.ready_model.as_deref(),
             Some(ReferenceWordDecoder::MODEL_ID)
