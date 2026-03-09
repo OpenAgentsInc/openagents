@@ -7,32 +7,32 @@ use std::{
 };
 
 use psionic_backend_cpu::{
-    CpuBackend, decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot,
+    decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot, CpuBackend,
 };
 use psionic_backend_cuda::{
-    CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer, CudaQuantizedMatvecStats,
-    CudaSubmission, CudaSubmissionReport,
-    TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS, ggml_q8_1_storage_bytes,
+    ggml_q8_1_storage_bytes, CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer,
+    CudaQuantizedMatvecStats, CudaSubmission, CudaSubmissionReport,
+    TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS,
 };
 use psionic_catalog::LocalBlobOpenOptions;
 use psionic_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
 use psionic_runtime::{
-    CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
-    DeviceDiscovery, HealthStatus,
+    build_gpt_oss_decode_graph, CacheAction, CacheKind, CacheObservation, CompilePathEvidence,
+    CompilePathTemperature, DeviceDiscovery, GptOssDecodeGraph, HealthStatus,
 };
 use sha2::{Digest, Sha256};
 
 use super::{
-    BackendHealthTracker, CompiledWordGenerationModel, DecodeStrategy, DecoderModelDescriptor,
-    GenerationEventStream, GenerationModelHandle, GenerationOptions, GenerationResponse,
-    GenerationStreamEvent, GenerationStreamStatus, GenerationStreamTerminal,
-    GgufDecoderAdapterLoader, GgufDecoderFamily, GgufDecoderFamilyMetadata,
-    GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
-    InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
-    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
-    ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
-    TokenSequence, TokenizerBoundary, current_time_millis, default_prefix_cache_policy,
-    generation_runtime_observability, prefix_compatibility, run_generation_request,
+    current_time_millis, default_prefix_cache_policy, generation_runtime_observability,
+    prefix_compatibility, run_generation_request, BackendHealthTracker,
+    CompiledWordGenerationModel, DecodeStrategy, DecoderModelDescriptor, GenerationEventStream,
+    GenerationModelHandle, GenerationOptions, GenerationResponse, GenerationStreamEvent,
+    GenerationStreamStatus, GenerationStreamTerminal, GgufDecoderAdapterLoader, GgufDecoderFamily,
+    GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics,
+    InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore, LoadedModelRegistryError,
+    LoadedModelView, LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError,
+    QuantizationMode, ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor,
+    TokenId, TokenSequence, TokenizerBoundary,
 };
 use thiserror::Error;
 
@@ -55,64 +55,6 @@ enum CudaStepOutputMode {
     DeviceArgmax,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum GptOssDecodeGraphNodeKind {
-    AttnNorm,
-    AttnQkv,
-    AttnQRope,
-    AttnKRope,
-    AttnOut,
-    FfnInp,
-    AttnPostNorm,
-    FfnMoeTopk,
-    FfnMoeGateUp,
-    FfnMoeDown,
-    FfnMoeOut,
-    ResultNorm,
-    ResultOutput,
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-struct GptOssDecodeGraphNode {
-    kind: GptOssDecodeGraphNodeKind,
-    name: &'static str,
-}
-
-impl GptOssDecodeGraphNode {
-    const fn new(kind: GptOssDecodeGraphNodeKind, name: &'static str) -> Self {
-        Self { kind, name }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct GptOssDecodeGraph {
-    layer_nodes: Vec<Vec<GptOssDecodeGraphNode>>,
-    terminal_nodes: Vec<GptOssDecodeGraphNode>,
-}
-
-impl GptOssDecodeGraph {
-    fn node_count(&self) -> usize {
-        self.layer_nodes.iter().map(Vec::len).sum::<usize>() + self.terminal_nodes.len()
-    }
-
-    fn layer_node_count(&self) -> usize {
-        self.layer_nodes.first().map_or(0, Vec::len)
-    }
-
-    fn signature_key(&self) -> String {
-        let mut names = Vec::with_capacity(self.node_count());
-        for layer in &self.layer_nodes {
-            for node in layer {
-                names.push(node.name);
-            }
-        }
-        for node in &self.terminal_nodes {
-            names.push(node.name);
-        }
-        names.join("|")
-    }
-}
-
 fn duration_ns(start: Instant) -> u64 {
     start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX)
 }
@@ -129,34 +71,6 @@ fn can_use_q8_1_mmvq(mode: QuantizationMode) -> bool {
         mode,
         QuantizationMode::GgmlQ8_0 | QuantizationMode::GgmlMxfp4
     )
-}
-
-fn gpt_oss_layer_decode_graph_nodes() -> Vec<GptOssDecodeGraphNode> {
-    vec![
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnNorm, "attn_norm"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnQkv, "attn_qkv"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnQRope, "attn_q_rope"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnKRope, "attn_k_rope"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnOut, "attn_out"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnInp, "ffn_inp"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnPostNorm, "attn_post_norm"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeTopk, "ffn_moe_topk"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeGateUp, "ffn_moe_gate_up"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeDown, "ffn_moe_down"),
-        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeOut, "ffn_moe_out"),
-    ]
-}
-
-fn build_gpt_oss_decode_graph(layer_count: usize) -> GptOssDecodeGraph {
-    GptOssDecodeGraph {
-        layer_nodes: (0..layer_count)
-            .map(|_| gpt_oss_layer_decode_graph_nodes())
-            .collect(),
-        terminal_nodes: vec![
-            GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::ResultNorm, "result_norm"),
-            GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::ResultOutput, "result_output"),
-        ],
-    }
 }
 
 fn accumulate_cuda_matvec_stats(
@@ -4834,39 +4748,6 @@ mod tests {
             outputs,
             vec![vec![1.0, 2.0], vec![3.0], vec![4.0, 5.0, 6.0]]
         );
-    }
-
-    #[test]
-    fn gpt_oss_decode_graph_matches_llama_cpp_high_level_order() {
-        let graph = build_gpt_oss_decode_graph(2);
-        let layer_names = graph.layer_nodes[0]
-            .iter()
-            .map(|node| node.name)
-            .collect::<Vec<_>>();
-        assert_eq!(
-            layer_names,
-            vec![
-                "attn_norm",
-                "attn_qkv",
-                "attn_q_rope",
-                "attn_k_rope",
-                "attn_out",
-                "ffn_inp",
-                "attn_post_norm",
-                "ffn_moe_topk",
-                "ffn_moe_gate_up",
-                "ffn_moe_down",
-                "ffn_moe_out",
-            ]
-        );
-        let terminal_names = graph
-            .terminal_nodes
-            .iter()
-            .map(|node| node.name)
-            .collect::<Vec<_>>();
-        assert_eq!(terminal_names, vec!["result_norm", "result_output"]);
-        assert_eq!(graph.layer_node_count(), 11);
-        assert_eq!(graph.node_count(), 24);
     }
 
     #[test]

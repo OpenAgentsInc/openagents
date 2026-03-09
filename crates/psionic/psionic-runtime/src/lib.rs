@@ -1,17 +1,19 @@
 //! Runtime traits and execution surfaces for Psionic.
 
+mod gpt_oss;
 mod parity;
 mod validation;
 
 use std::collections::{BTreeMap, VecDeque};
 
+pub use gpt_oss::*;
 pub use parity::*;
 use psionic_core::{
     BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
     TensorId, TensorSpec,
 };
 use psionic_ir::ExecutionPlan;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -4637,6 +4639,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
+        apply_sampling_penalties, default_cache_invalidation_policy, plan_model_admission,
         AcceleratorDeliverabilityDifferenceCode, AcceleratorDeliverabilityStatus,
         AcceleratorExecutionRequirement, AdmissionRefusalReason, Allocator, AllocatorPoolPolicy,
         AllocatorPoolReport, AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata,
@@ -4645,22 +4648,22 @@ mod tests {
         BackendExtensionExecution, BackendExtensionSupport, BackendHealthTracker,
         BackendRuntimeResources, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
         BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
-        CacheInvalidationTrigger, CacheKind, CacheObservation, DEFAULT_PENALTY_LOOKBACK,
-        DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
-        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
-        ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
-        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
-        ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
-        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
-        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        CacheInvalidationTrigger, CacheKind, CacheObservation, DeliveredExecutionContext,
+        DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget,
+        DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
+        ExecutionDeliveryProof, ExecutionMetrics, ExecutionPlanCachePolicy,
+        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
+        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
+        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
+        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
+        ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
         RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
         SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
         SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
@@ -4668,8 +4671,7 @@ mod tests {
         SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy,
         SandboxResourceLimits, ServedArtifactIdentity, ServedProductBackendPolicy,
         ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
-        ThroughputClass, TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
-        plan_model_admission,
+        ThroughputClass, TokenSampler, DEFAULT_PENALTY_LOOKBACK,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4836,8 +4838,8 @@ mod tests {
     }
 
     #[test]
-    fn backend_selection_helpers_capture_direct_and_fallback_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn backend_selection_helpers_capture_direct_and_fallback_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let direct = BackendSelection::from_backend(&MockRuntime, &["input", "matmul"])?;
         assert_eq!(direct.requested_backend, "mock");
         assert_eq!(direct.effective_backend, "mock");
@@ -5137,8 +5139,8 @@ mod tests {
     }
 
     #[test]
-    fn quantization_support_surfaces_storage_path_and_pending_execution_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn quantization_support_surfaces_storage_path_and_pending_execution_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let support = QuantizationSupport {
             mode: psionic_core::QuantizationMode::GgmlQ4_0,
             load_path: QuantizationLoadPath::BackendQuantized,
@@ -5232,8 +5234,8 @@ mod tests {
     }
 
     #[test]
-    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let copy = ModelArtifactStorage::in_memory_copy("weights.gguf", "abcd");
         let paged = ModelArtifactStorage::paged_local_blob(
             "weights.gguf",
@@ -5270,8 +5272,8 @@ mod tests {
     }
 
     #[test]
-    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let plan = PagedTensorStoragePlan {
             tensor_name: String::from("blk.0.attn_q.weight"),
             artifact_name: String::from("weights.gguf"),
@@ -5609,8 +5611,8 @@ mod tests {
     }
 
     #[test]
-    fn sampling_policy_serializes_supported_generation_controls()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sampling_policy_serializes_supported_generation_controls(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let policy = SamplingPolicy {
             strategy: SamplingStrategy::Sample,
             temperature: Some(0.7),
@@ -5693,8 +5695,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_backend_model_serializes_mode_topology_risk_and_recovery()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_backend_model_serializes_mode_topology_risk_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("amd_userspace"),
             device: Device::new(
@@ -5800,8 +5802,8 @@ mod tests {
     }
 
     #[test]
-    fn nvidia_backend_model_serializes_topology_risk_and_recovery()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn nvidia_backend_model_serializes_topology_risk_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("cuda"),
             device: Device::new(
@@ -6426,8 +6428,8 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_execution_capability_profiles_are_machine_checkable()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sandbox_execution_capability_profiles_are_machine_checkable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let profile = SandboxExecutionCapabilityProfile::bounded_accelerated("cuda", 2);
         assert!(profile.accelerator_access.requires_accelerator());
         assert_eq!(
