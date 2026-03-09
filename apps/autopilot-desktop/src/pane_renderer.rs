@@ -7,13 +7,15 @@ use crate::app_state::{
     CreateInvoicePaneInputs, CredentialsPaneInputs, CredentialsState, CreditDeskPaneState,
     CreditSettlementLedgerPaneState, DesktopPane, EarnJobLifecycleProjectionState,
     EarningsScoreboardState, JobHistoryPaneInputs, JobHistoryState, JobInboxState,
-    JobLifecycleStage, NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind,
-    PaneLoadState, PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker,
-    ProviderRuntimeState, ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState,
-    SettingsPaneInputs, SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState,
-    SparkPaneInputs, StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
+    JobLifecycleStage, LocalInferencePaneInputs, LocalInferencePaneState,
+    NetworkRequestsPaneInputs, NetworkRequestsState, NostrSecretState, PaneKind, PaneLoadState,
+    PayInvoicePaneInputs, ProjectOpsPaneState, ProviderBlocker, ProviderRuntimeState,
+    ReciprocalLoopState, RelayConnectionsPaneInputs, RelayConnectionsState, SettingsPaneInputs,
+    SettingsState, SkillRegistryPaneState, SkillTrustRevocationPaneState, SparkPaneInputs,
+    StarterJobStatus, StarterJobsState, SyncHealthState, TrajectoryAuditPaneState,
 };
 use crate::bitcoin_display::format_sats_amount;
+use crate::local_inference_runtime::LocalInferenceExecutionSnapshot;
 use crate::pane_system::{
     PANE_TITLE_HEIGHT, active_job_abort_button_bounds, active_job_advance_button_bounds,
     activity_feed_detail_viewport_bounds, activity_feed_details_bounds,
@@ -50,7 +52,8 @@ use crate::pane_system::{
 };
 use crate::panes::{
     agent as agent_pane, cad as cad_pane, calculator as calculator_pane, cast as cast_pane,
-    chat as chat_pane, codex as codex_pane, credit as credit_pane, project_ops as project_ops_pane,
+    chat as chat_pane, codex as codex_pane, credit as credit_pane,
+    local_inference as local_inference_pane, project_ops as project_ops_pane,
     relay_connections as relay_connections_pane, skill as skill_pane, wallet as wallet_pane,
 };
 use crate::spark_wallet::SparkPaneState;
@@ -88,6 +91,8 @@ impl PaneRenderer {
         skl_lane: &crate::runtime_lanes::SklLaneSnapshot,
         ac_lane: &crate::runtime_lanes::AcLaneSnapshot,
         provider_runtime: &ProviderRuntimeState,
+        local_inference_runtime: &LocalInferenceExecutionSnapshot,
+        local_inference: &LocalInferencePaneState,
         provider_blockers: &[ProviderBlocker],
         earnings_scoreboard: &EarningsScoreboardState,
         relay_connections: &RelayConnectionsState,
@@ -118,6 +123,7 @@ impl PaneRenderer {
         create_invoice_inputs: &mut CreateInvoicePaneInputs,
         relay_connections_inputs: &mut RelayConnectionsPaneInputs,
         network_requests_inputs: &mut NetworkRequestsPaneInputs,
+        local_inference_inputs: &mut LocalInferencePaneInputs,
         settings_inputs: &mut SettingsPaneInputs,
         credentials_inputs: &mut CredentialsPaneInputs,
         job_history_inputs: &mut JobHistoryPaneInputs,
@@ -214,6 +220,15 @@ impl PaneRenderer {
                         earn_job_lifecycle_projection,
                         backend_kernel_authority,
                         provider_blockers,
+                        paint,
+                    );
+                }
+                PaneKind::LocalInference => {
+                    local_inference_pane::paint(
+                        content_bounds,
+                        local_inference,
+                        local_inference_runtime,
+                        local_inference_inputs,
                         paint,
                     );
                 }

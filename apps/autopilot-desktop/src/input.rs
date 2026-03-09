@@ -60,10 +60,10 @@ use crate::pane_system::{
     dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
-    dispatch_network_requests_input_event, dispatch_pay_invoice_input_event,
-    dispatch_relay_connections_input_event, dispatch_settings_input_event,
-    dispatch_spark_input_event, pane_content_bounds, pane_indices_by_z_desc,
-    pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
+    dispatch_local_inference_input_event, dispatch_network_requests_input_event,
+    dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
+    dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
+    pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
 };
 use crate::panes::{cad as cad_pane, chat as chat_pane};
 use crate::provider_nip90_lane::ProviderNip90LaneCommand;
@@ -2324,6 +2324,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_create_invoice_input_event(state, event);
     handled |= dispatch_relay_connections_input_event(state, event);
     handled |= dispatch_network_requests_input_event(state, event);
+    handled |= dispatch_local_inference_input_event(state, event);
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
@@ -2455,6 +2456,7 @@ fn dispatch_keyboard_submit_actions(
         || handle_create_invoice_keyboard_input(state, logical_key)
         || handle_relay_connections_keyboard_input(state, logical_key)
         || handle_network_requests_keyboard_input(state, logical_key)
+        || handle_local_inference_keyboard_input(state, logical_key)
         || handle_settings_keyboard_input(state, logical_key)
         || handle_credentials_keyboard_input(state, logical_key)
         || handle_job_history_keyboard_input(state, logical_key)
@@ -2567,6 +2569,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::RelayConnections(action) => run_relay_connections_action(state, action),
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
+        PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
         PaneHitAction::ReciprocalLoop(action) => run_reciprocal_loop_action(state, action),
@@ -2952,6 +2955,27 @@ fn handle_network_requests_keyboard_input(
         |s| {
             if network_requests_inputs_focused(s) {
                 return run_network_requests_action(s, NetworkRequestsPaneAction::RequestQuotes);
+            }
+            false
+        },
+    )
+}
+
+fn handle_local_inference_keyboard_input(
+    state: &mut crate::app_state::RenderState,
+    logical_key: &WinitLogicalKey,
+) -> bool {
+    handle_focused_keyboard_submit(
+        state,
+        logical_key,
+        local_inference_inputs_focused,
+        dispatch_local_inference_input_event,
+        |s| {
+            if local_inference_inputs_focused(s) {
+                return run_local_inference_action(
+                    s,
+                    crate::pane_system::LocalInferencePaneAction::RunPrompt,
+                );
             }
             false
         },
