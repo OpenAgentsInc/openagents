@@ -138,6 +138,14 @@ pub(super) fn drain_runtime_lane_updates(state: &mut RenderState) -> bool {
     }
 
     for update in state.local_inference_runtime.drain_updates() {
+        if let crate::local_inference_runtime::LocalInferenceRuntimeUpdate::Failed(failed) = &update
+        {
+            tracing::error!(
+                "local inference runtime failed request_id={} error={}",
+                failed.request_id,
+                failed.error
+            );
+        }
         changed |= local_inference::apply_runtime_update(state, &update);
         changed |= jobs::apply_active_job_local_inference_runtime_update(state, update);
     }
