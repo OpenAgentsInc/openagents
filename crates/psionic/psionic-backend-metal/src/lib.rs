@@ -4,21 +4,25 @@
 #![allow(clippy::result_large_err)]
 
 use std::{
+    cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt,
 };
 
 use psionic_compiler::compile_graph;
-use psionic_core::{DType, DeviceKind, Shape, TensorData, TensorId, TensorSpec};
+use psionic_core::{
+    BackendExtensionKind, BackendExtensionOp, DType, DeviceKind, Shape, TensorData, TensorId,
+    TensorSpec,
+};
 use psionic_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use psionic_runtime::{
     Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
-    BackendDegradedPolicy, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
-    BufferResidency, BufferStorageKind, CacheAction, CacheKind, CacheObservation,
-    CompilePathEvidence, CompilePathTemperature, DeviceDescriptor, DeviceDiscovery,
-    ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
-    ExecutionPlanCacheState, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
-    ServedProductBackendPolicy,
+    BackendDegradedPolicy, BackendExtensionSupport, BackendName, BackendRuntimeResources,
+    BackendSelection, BufferHandle, BufferResidency, BufferStorageKind, CacheAction, CacheKind,
+    CacheObservation, CompilePathEvidence, CompilePathTemperature, DeviceDescriptor,
+    DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy,
+    ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, HealthStatus, RuntimeError,
+    RuntimeHealth, ServedProductBackendPolicy,
 };
 #[cfg(target_os = "macos")]
 use psionic_runtime::{KernelCachePolicy, KernelCacheReport, KernelCacheState};
@@ -48,7 +52,16 @@ pub const EMBEDDINGS_SUPPORTED_OPS: &[&str] = &["input", "constant", "matmul", "
 
 /// Dense plan surface currently covered for the first Metal-backed
 /// `psionic.text_generation` milestone.
-pub const TEXT_GENERATION_SUPPORTED_OPS: &[&str] = EMBEDDINGS_SUPPORTED_OPS;
+pub const TEXT_GENERATION_SUPPORTED_OPS: &[&str] = &[
+    "input",
+    "constant",
+    "matmul",
+    "add",
+    "backend_extension:rms_norm",
+    "backend_extension:rotary_embedding",
+    "argmax_f32",
+    "top_k_f32",
+];
 
 /// Metal buffer storage mode visible to Psionic.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -98,6 +111,19 @@ pub struct MetalSubmissionReport {
     pub encoded_operations: usize,
     /// Number of explicit GPU-to-host synchronizations encoded.
     pub synchronized_buffers: usize,
+}
+
+/// Flattened top-k selection result returned by the Metal backend.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalTopKResult {
+    /// Number of rows processed from the source logits buffer.
+    pub row_count: usize,
+    /// Number of selected elements per row.
+    pub top_k: usize,
+    /// Row-major selected indices.
+    pub indices: Vec<u32>,
+    /// Row-major selected values aligned with `indices`.
+    pub values: Vec<f32>,
 }
 
 /// Metal-backed tensor buffer.
@@ -552,6 +578,74 @@ impl MetalBackend {
         Ok(result)
     }
 
+    /// Reduces each contiguous `f32` row to its argmax index.
+    pub fn argmax_f32(
+        &self,
+        input: &MetalBuffer,
+        row_count: usize,
+        column_count: usize,
+    ) -> Result<Vec<u32>, RuntimeError> {
+        if column_count == 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal argmax requires at least one column",
+            )));
+        }
+        let values = dense_row_major_values(input, row_count, column_count, "metal argmax")?;
+        let mut indices = Vec::with_capacity(row_count);
+        for row in values.chunks_exact(column_count) {
+            let mut best_index = 0usize;
+            let mut best_value = row[0];
+            for (index, value) in row.iter().copied().enumerate().skip(1) {
+                if value > best_value {
+                    best_value = value;
+                    best_index = index;
+                }
+            }
+            indices.push(u32::try_from(best_index).map_err(|_| {
+                RuntimeError::Backend(String::from("metal argmax index conversion overflow"))
+            })?);
+        }
+        Ok(indices)
+    }
+
+    /// Selects the top-k values from each contiguous `f32` row.
+    pub fn top_k_f32(
+        &self,
+        input: &MetalBuffer,
+        row_count: usize,
+        column_count: usize,
+        top_k: usize,
+    ) -> Result<MetalTopKResult, RuntimeError> {
+        let values = dense_row_major_values(input, row_count, column_count, "metal top_k")?;
+        let top_k = top_k.min(column_count);
+        let mut indices = Vec::with_capacity(row_count.saturating_mul(top_k));
+        let mut selected_values = Vec::with_capacity(row_count.saturating_mul(top_k));
+
+        for row in values.chunks_exact(column_count) {
+            let mut row_indices = (0..row.len()).collect::<Vec<_>>();
+            row_indices.sort_by(|left, right| {
+                row[*right]
+                    .partial_cmp(&row[*left])
+                    .unwrap_or(Ordering::Equal)
+                    .then_with(|| left.cmp(right))
+            });
+            row_indices.truncate(top_k);
+            for index in row_indices {
+                indices.push(u32::try_from(index).map_err(|_| {
+                    RuntimeError::Backend(String::from("metal top_k index conversion overflow"))
+                })?);
+                selected_values.push(row[index]);
+            }
+        }
+
+        Ok(MetalTopKResult {
+            row_count,
+            top_k,
+            indices,
+            values: selected_values,
+        })
+    }
+
     /// Begins an explicit command submission on the selected Metal device.
     pub fn begin_submission(
         &self,
@@ -680,6 +774,16 @@ impl DeviceDiscovery for MetalBackend {
                 ),
             }),
             MetalBackendState::Unavailable(_) => None,
+        }
+    }
+
+    fn extension_support(&self) -> Vec<BackendExtensionSupport> {
+        match &self.state {
+            MetalBackendState::Available(_) => vec![
+                BackendExtensionSupport::reference(BackendExtensionKind::RmsNorm),
+                BackendExtensionSupport::reference(BackendExtensionKind::RotaryEmbedding),
+            ],
+            MetalBackendState::Unavailable(_) => Vec::new(),
         }
     }
 }
@@ -878,6 +982,9 @@ impl AvailableMetalBackend {
                     submission.encoded_operations += 1;
                     values.insert(step.output, output);
                 }
+                ExecutionOp::BackendExtension { op } => {
+                    values.insert(step.output, self.backend_extension(step, &values, op)?);
+                }
                 _ => {
                     return Err(RuntimeError::UnsupportedStep(step.op.label().to_string()));
                 }
@@ -921,6 +1028,124 @@ impl AvailableMetalBackend {
                 compile_path: None,
             },
         })
+    }
+
+    fn backend_extension(
+        &mut self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, MetalBuffer>,
+        op: &BackendExtensionOp,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        match op {
+            BackendExtensionOp::RmsNorm { epsilon } => {
+                self.rms_norm(step, values, epsilon.to_f32())
+            }
+            BackendExtensionOp::RotaryEmbedding { interleaved } => {
+                self.rotary_embedding(step, values, *interleaved)
+            }
+            _ => Err(RuntimeError::UnsupportedStep(op.label().to_string())),
+        }
+    }
+
+    fn rms_norm(
+        &mut self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, MetalBuffer>,
+        epsilon: f32,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let input_values = input(step, values, 0)?.read_f32()?;
+        let weight_values = input(step, values, 1)?.read_f32()?;
+        let last_dim = weight_values.len();
+        if last_dim == 0 || input_values.len() % last_dim != 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal rms_norm requires a non-empty last dimension that divides the input length",
+            )));
+        }
+
+        let mut output = vec![0.0; input_values.len()];
+        for (src_row, dst_row) in input_values
+            .chunks_exact(last_dim)
+            .zip(output.chunks_exact_mut(last_dim))
+        {
+            let mean_square =
+                src_row.iter().map(|value| value * value).sum::<f32>() / last_dim as f32;
+            let inv = (mean_square + epsilon).sqrt().recip();
+            for ((dst, value), scale) in dst_row
+                .iter_mut()
+                .zip(src_row.iter())
+                .zip(weight_values.iter())
+            {
+                *dst = *value * inv * *scale;
+            }
+        }
+
+        let mut buffer = self.allocate(&step.spec)?;
+        buffer.write_f32(output.as_slice())?;
+        Ok(buffer)
+    }
+
+    fn rotary_embedding(
+        &mut self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, MetalBuffer>,
+        interleaved: bool,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let input_values = input(step, values, 0)?.read_f32()?;
+        let cos_buffer = input(step, values, 1)?;
+        let sin_buffer = input(step, values, 2)?;
+        let cos_values = cos_buffer.read_f32()?;
+        let sin_values = sin_buffer.read_f32()?;
+        let dims = step.spec.shape().dims();
+        if dims.len() != 4 {
+            return Err(RuntimeError::Backend(format!(
+                "metal rotary_embedding requires rank-4 tensors, actual rank {}",
+                dims.len()
+            )));
+        }
+        let batch = dims[0];
+        let heads = dims[1];
+        let seq_len = dims[2];
+        let head_dim = dims[3];
+        if head_dim % 2 != 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal rotary_embedding requires an even head dimension",
+            )));
+        }
+
+        let half_dim = head_dim / 2;
+        let cos_dims = cos_buffer.spec().shape().dims();
+        let batched_cos = cos_dims.len() == 3;
+        let mut output = input_values.clone();
+
+        for batch_index in 0..batch {
+            for head_index in 0..heads {
+                for position in 0..seq_len {
+                    let base = ((batch_index * heads + head_index) * seq_len + position) * head_dim;
+                    for pair in 0..half_dim {
+                        let cos_index = if batched_cos {
+                            (batch_index * seq_len + position) * half_dim + pair
+                        } else {
+                            position * half_dim + pair
+                        };
+                        let cosine = cos_values[cos_index];
+                        let sine = sin_values[cos_index];
+                        let (left_index, right_index) = if interleaved {
+                            (base + pair * 2, base + pair * 2 + 1)
+                        } else {
+                            (base + pair, base + half_dim + pair)
+                        };
+                        let left = input_values[left_index];
+                        let right = input_values[right_index];
+                        output[left_index] = left * cosine - right * sine;
+                        output[right_index] = left * sine + right * cosine;
+                    }
+                }
+            }
+        }
+
+        let mut buffer = self.allocate(&step.spec)?;
+        buffer.write_f32(output.as_slice())?;
+        Ok(buffer)
     }
 }
 
@@ -1126,20 +1351,19 @@ fn validate_supported_step(step: &ExecutionStep) -> Result<(), RuntimeError> {
                 )));
             }
         }
-        ExecutionOp::Constant { data } => {
-            let Some(values) = data.as_f32_slice() else {
-                return Err(RuntimeError::Backend(format!(
-                    "metal constant {} must use dense f32 storage",
-                    step.output
-                )));
-            };
-            if values.len() != step.spec.storage_size() {
-                return Err(RuntimeError::Backend(format!(
-                    "metal constant {} payload length mismatch",
-                    step.output
-                )));
+        ExecutionOp::Constant { data } => match data {
+            TensorData::F32(values) => {
+                if values.len() != step.spec.storage_size() {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal constant {} payload length mismatch",
+                        step.output
+                    )));
+                }
             }
-        }
+            TensorData::QuantizedBlocks(data) => {
+                validate_quantized_storage(&step.spec, data)?;
+            }
+        },
         ExecutionOp::Add => {
             if step.inputs.len() != 2 {
                 return Err(RuntimeError::Backend(format!(
@@ -1164,6 +1388,27 @@ fn validate_supported_step(step: &ExecutionStep) -> Result<(), RuntimeError> {
                 )));
             }
         }
+        ExecutionOp::BackendExtension { op } => match op {
+            BackendExtensionOp::RmsNorm { .. } => {
+                if step.inputs.len() != 2 {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal rms_norm step {} requires two inputs",
+                        step.output
+                    )));
+                }
+            }
+            BackendExtensionOp::RotaryEmbedding { .. } => {
+                if step.inputs.len() != 3 {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal rotary_embedding step {} requires three inputs",
+                        step.output
+                    )));
+                }
+            }
+            _ => {
+                return Err(RuntimeError::UnsupportedStep(op.label().to_string()));
+            }
+        },
         _ => {
             return Err(RuntimeError::UnsupportedStep(step.op.label().to_string()));
         }
@@ -1196,24 +1441,8 @@ fn binary_inputs<'a>(
     step: &ExecutionStep,
     values: &'a BTreeMap<TensorId, MetalBuffer>,
 ) -> Result<(&'a MetalBuffer, &'a MetalBuffer), RuntimeError> {
-    let Some(left_id) = step.inputs.first().copied() else {
-        return Err(RuntimeError::Backend(format!(
-            "missing left input for step {}",
-            step.output
-        )));
-    };
-    let Some(right_id) = step.inputs.get(1).copied() else {
-        return Err(RuntimeError::Backend(format!(
-            "missing right input for step {}",
-            step.output
-        )));
-    };
-    let left = values
-        .get(&left_id)
-        .ok_or(RuntimeError::MissingInput(left_id))?;
-    let right = values
-        .get(&right_id)
-        .ok_or(RuntimeError::MissingInput(right_id))?;
+    let left = input(step, values, 0)?;
+    let right = input(step, values, 1)?;
     if left.spec() != right.spec() && !matches!(step.op, ExecutionOp::Matmul) {
         return Err(RuntimeError::Backend(format!(
             "metal {} requires matching input specs",
@@ -1221,6 +1450,41 @@ fn binary_inputs<'a>(
         )));
     }
     Ok((left, right))
+}
+
+fn input<'a>(
+    step: &ExecutionStep,
+    values: &'a BTreeMap<TensorId, MetalBuffer>,
+    index: usize,
+) -> Result<&'a MetalBuffer, RuntimeError> {
+    let Some(tensor_id) = step.inputs.get(index).copied() else {
+        return Err(RuntimeError::Backend(format!(
+            "missing input {index} for step {}",
+            step.output
+        )));
+    };
+    values
+        .get(&tensor_id)
+        .ok_or(RuntimeError::MissingInput(tensor_id))
+}
+
+fn dense_row_major_values(
+    input: &MetalBuffer,
+    row_count: usize,
+    column_count: usize,
+    label: &str,
+) -> Result<Vec<f32>, RuntimeError> {
+    let element_count = row_count
+        .checked_mul(column_count)
+        .ok_or_else(|| RuntimeError::Backend(format!("{label} shape overflow")))?;
+    let values = input.read_f32()?;
+    if values.len() != element_count {
+        return Err(RuntimeError::Backend(format!(
+            "{label} shape mismatch: expected {element_count} values, actual {}",
+            values.len()
+        )));
+    }
+    Ok(values)
 }
 
 #[cfg(target_os = "macos")]
@@ -2094,7 +2358,8 @@ mod tests {
     use psionic_backend_cpu::CpuBackend;
     use psionic_compiler::compile_graph;
     use psionic_core::{
-        DType, Device, DeviceKind, QuantizationMode, QuantizedTensorData, Shape, TensorSpec,
+        BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedTensorData,
+        Shape, TensorSpec,
     };
     use psionic_ir::GraphBuilder;
     use psionic_runtime::{
@@ -2162,7 +2427,19 @@ mod tests {
             EMBEDDINGS_SUPPORTED_OPS,
             &["input", "constant", "matmul", "add"]
         );
-        assert_eq!(TEXT_GENERATION_SUPPORTED_OPS, EMBEDDINGS_SUPPORTED_OPS);
+        assert_eq!(
+            TEXT_GENERATION_SUPPORTED_OPS,
+            &[
+                "input",
+                "constant",
+                "matmul",
+                "add",
+                "backend_extension:rms_norm",
+                "backend_extension:rotary_embedding",
+                "argmax_f32",
+                "top_k_f32",
+            ]
+        );
         let budget = BackendParityPolicy::default().embedding_budget(QuantizationMode::None);
         assert_eq!(budget.numeric.max_abs_delta, 1.0e-5);
         assert_eq!(budget.numeric.max_rel_delta, 1.0e-5);
@@ -2441,6 +2718,17 @@ mod tests {
                         .map(|label| String::from(*label))
                         .collect::<Vec<_>>()
                 );
+                assert_eq!(
+                    selection.backend_extensions,
+                    vec![
+                        psionic_runtime::BackendExtensionSupport::reference(
+                            BackendExtensionKind::RmsNorm
+                        ),
+                        psionic_runtime::BackendExtensionSupport::reference(
+                            BackendExtensionKind::RotaryEmbedding
+                        ),
+                    ]
+                );
                 assert!(selection.selected_device.is_some());
                 assert!(selection.fallback_reason.is_none());
                 assert!(selection.runtime_resources.is_some());
@@ -2533,6 +2821,73 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn metal_backend_executes_rms_norm_extension_on_supported_hardware()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let input = builder.input("hidden", Shape::new(vec![1, 4]), DType::F32);
+        let weight = builder.constant_f32(Shape::new(vec![4]), vec![1.0; 4])?;
+        let output = builder.rms_norm(&input, &weight, 1.0e-5)?;
+        let graph = builder.finish(vec![output.clone()]);
+
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![1, 4]), vec![1.0, 2.0, 3.0, 4.0])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let output = result
+            .outputs
+            .get(&output.id())
+            .ok_or("missing metal rms_norm output")?;
+        let values = output.read_f32()?;
+        let expected = [0.36514813_f32, 0.73029625_f32, 1.0954444_f32, 1.4605925_f32];
+        for (actual, expected) in values.iter().zip(expected.iter()) {
+            assert!((actual - expected).abs() <= 1.0e-5);
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_executes_rotary_embedding_extension_on_supported_hardware()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let input = builder.input("q", Shape::new(vec![1, 1, 1, 4]), DType::F32);
+        let cos = builder.constant_f32(Shape::new(vec![1, 2]), vec![0.0, 1.0])?;
+        let sin = builder.constant_f32(Shape::new(vec![1, 2]), vec![1.0, 0.0])?;
+        let output = builder.rope(&input, &cos, &sin, false)?;
+        let graph = builder.finish(vec![output.clone()]);
+
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            input.id(),
+            backend.input_buffer(Shape::new(vec![1, 1, 1, 4]), vec![1.0, 2.0, 3.0, 4.0])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let output = result
+            .outputs
+            .get(&output.id())
+            .ok_or("missing metal rope output")?;
+        assert_eq!(output.read_f32()?, vec![-3.0, 2.0, 1.0, 4.0]);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn metal_backend_executes_text_generation_dense_surface_on_supported_hardware()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = MetalBackend::new();
@@ -2590,6 +2945,45 @@ mod tests {
         assert_eq!(hidden_output.read_f32()?, vec![4.5, 6.0]);
         assert_eq!(logits_output.read_f32()?, vec![7.75, 5.5, 4.0]);
         assert_eq!(result.metrics.steps_executed, 15);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_argmax_reads_dense_logits_on_supported_hardware() -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let logits = backend.input_buffer(
+            Shape::new(vec![2, 4]),
+            vec![1.0, -2.0, 4.25, 3.0, 9.5, 0.0, 9.5, -1.0],
+        )?;
+        assert_eq!(backend.argmax_f32(&logits, 2, 4)?, vec![2, 0]);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_top_k_returns_sorted_logits_on_supported_hardware() -> Result<(), RuntimeError>
+    {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let logits = backend.input_buffer(
+            Shape::new(vec![2, 4]),
+            vec![1.0, -2.0, 4.25, 3.0, 9.5, 0.0, 9.5, -1.0],
+        )?;
+        let result = backend.top_k_f32(&logits, 2, 4, 2)?;
+        assert_eq!(result.row_count, 2);
+        assert_eq!(result.top_k, 2);
+        assert_eq!(result.indices, vec![2, 3, 0, 2]);
+        assert_eq!(result.values, vec![4.25, 3.0, 9.5, 9.5]);
         Ok(())
     }
 
