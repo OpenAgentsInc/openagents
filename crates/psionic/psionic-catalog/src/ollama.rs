@@ -828,10 +828,12 @@ impl OllamaManifest {
         let mut diagnostics = Vec::new();
         let verification_options = options.with_read_preference(BlobReadPreference::PreferBuffered);
 
-        if let Some(config) = &self.config {
-            if let Some(diagnostic) = verify_manifest_layer_blob(config, &verification_options) {
-                diagnostics.push(diagnostic);
-            }
+        if let Some(diagnostic) = self
+            .config
+            .as_ref()
+            .and_then(|config| verify_manifest_layer_blob(config, &verification_options))
+        {
+            diagnostics.push(diagnostic);
         }
         for layer in &self.layers {
             if let Some(diagnostic) = verify_manifest_layer_blob(layer, &verification_options) {
@@ -1163,7 +1165,7 @@ impl OllamaModelCatalog {
             Ok(bytes) => {
                 match parse_manifest_bytes(&bytes, &manifest_path, name.clone(), &self.models_root)
                 {
-                    Ok(manifest) => Some(manifest),
+                    Ok(manifest) => manifest,
                     Err(error) => {
                         return Ok(OllamaModelIntegrityReport {
                             requested_reference: reference.to_string(),
@@ -1210,7 +1212,6 @@ impl OllamaModelCatalog {
             }
         };
 
-        let manifest = manifest.expect("manifest should exist after early returns");
         let integrity = manifest.verify_integrity(options);
         Ok(OllamaModelIntegrityReport {
             requested_reference: reference.to_string(),
@@ -1427,7 +1428,7 @@ pub(crate) fn parse_manifest_bytes(
     name: OllamaModelName,
     models_root: &Path,
 ) -> Result<OllamaManifest, CatalogError> {
-    let raw = serde_json::from_slice::<RawManifest>(&bytes).map_err(|error| {
+    let raw = serde_json::from_slice::<RawManifest>(bytes).map_err(|error| {
         CatalogError::DecodeManifest {
             path: path.display().to_string(),
             message: error.to_string(),

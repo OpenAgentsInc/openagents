@@ -19,9 +19,10 @@ if ! git -C "$ROOT_DIR" rev-parse --verify "$BASE_REF" >/dev/null 2>&1; then
 fi
 
 changed_tmp="$(mktemp)"
+packages_tmp="$(mktemp)"
 clippy_tmp="$(mktemp)"
 cleanup() {
-    rm -f "$changed_tmp" "$clippy_tmp"
+    rm -f "$changed_tmp" "$packages_tmp" "$clippy_tmp"
 }
 trap cleanup EXIT
 
@@ -36,7 +37,87 @@ if [[ ! -s "$changed_tmp" ]]; then
     exit 0
 fi
 
-cargo clippy --workspace --lib --bins --examples --message-format=json -- -W clippy::all >"$clippy_tmp"
+python3 - "$ROOT_DIR" "$changed_tmp" >"$packages_tmp" <<'PY'
+import json
+import pathlib
+import subprocess
+import sys
+
+root = pathlib.Path(sys.argv[1]).resolve()
+changed = [
+    line.strip()
+    for line in pathlib.Path(sys.argv[2]).read_text().splitlines()
+    if line.strip()
+]
+
+metadata = json.loads(
+    subprocess.check_output(
+        ["cargo", "metadata", "--format-version", "1", "--no-deps"],
+        cwd=root,
+        text=True,
+    )
+)
+workspace_members = set(metadata["workspace_members"])
+packages = []
+for package in metadata["packages"]:
+    if package["id"] not in workspace_members:
+        continue
+    packages.append(
+        (
+            pathlib.Path(package["manifest_path"]).resolve().parent,
+            package["name"],
+        )
+    )
+
+selected = set()
+unresolved = []
+for rel in changed:
+    path = (root / rel).resolve()
+    best_name = None
+    best_length = -1
+    for manifest_dir, package_name in packages:
+        try:
+            path.relative_to(manifest_dir)
+        except ValueError:
+            continue
+        current_length = len(manifest_dir.as_posix())
+        if current_length > best_length:
+            best_name = package_name
+            best_length = current_length
+    if best_name is None:
+        unresolved.append(rel)
+    else:
+        selected.add(best_name)
+
+if unresolved:
+    for rel in unresolved:
+        print(rel, file=sys.stderr)
+    sys.exit(1)
+
+for package_name in sorted(selected):
+    print(package_name)
+PY
+
+if [[ ! -s "$packages_tmp" ]]; then
+    printf 'Touched-file clippy gate failed: unable to resolve changed Rust files to workspace packages.\n' >&2
+    exit 1
+fi
+
+clippy_command=(
+    cargo
+    clippy
+    --lib
+    --bins
+    --examples
+    --no-deps
+    --message-format=json
+)
+while IFS= read -r package_name; do
+    clippy_command+=(-p "$package_name")
+done <"$packages_tmp"
+clippy_command+=(-- -W clippy::all)
+
+"${clippy_command[@]}" >"$clippy_tmp"
 
 python3 - "$ROOT_DIR" "$changed_tmp" "$clippy_tmp" "$ALLOWLIST_FILE" <<'PY'
 import datetime as dt
