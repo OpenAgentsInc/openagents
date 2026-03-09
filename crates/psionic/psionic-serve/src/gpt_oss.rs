@@ -2817,6 +2817,12 @@ impl GptOssCudaModelInner {
                     layer.attention_qkv_weight.columns,
                     layer.attention_qkv_weight.total_rows(),
                 )?;
+                submission.add_f32_in_place(
+                    &layer_plan.qkv_buffer,
+                    0,
+                    &layer.attention_qkv_bias_device,
+                    layer.attention_qkv_weight.total_rows(),
+                )?;
             } else if can_use_q8_1_mmvq(layer.attention_qkv_weight.mode)
                 && can_use_q8_1_norm_fusion(hidden_size)
             {
@@ -3041,7 +3047,7 @@ impl GptOssCudaModelInner {
                 && can_use_q8_1_mmvq(layer.feed_forward_down_experts_weight.mode)
             {
                 if can_use_q8_1_norm_fusion(layer.feed_forward_gate_up_experts_weight.columns) {
-                    submission.add_residual_rms_norm_q8_1(
+                    submission.add_residual_rms_norm_q8_1_router_topk(
                         &layer_plan.projected_buffer,
                         current_hidden,
                         layer.attention_output_bias_device.as_ref(),
@@ -3049,6 +3055,12 @@ impl GptOssCudaModelInner {
                         &layer_plan.projected_buffer,
                         &layer_plan.ffn_norm_buffer,
                         &plan.vector_q8_1_buffer,
+                        &layer.feed_forward_router_weight_device,
+                        layer.feed_forward_router_bias_device.as_ref(),
+                        layer.feed_forward_router_weight.rows,
+                        selected_count,
+                        &layer_plan.selected_ids_buffer,
+                        &layer_plan.selected_weights_buffer,
                         hidden_size,
                         self.family_metadata.rms_norm_epsilon,
                     )?;
@@ -3063,6 +3075,16 @@ impl GptOssCudaModelInner {
                         hidden_size,
                         self.family_metadata.rms_norm_epsilon,
                     )?;
+                    submission.router_topk_softmax(
+                        &layer.feed_forward_router_weight_device,
+                        layer.feed_forward_router_bias_device.as_ref(),
+                        &layer_plan.ffn_norm_buffer,
+                        layer.feed_forward_router_weight.rows,
+                        layer.feed_forward_router_weight.columns,
+                        selected_count,
+                        &layer_plan.selected_ids_buffer,
+                        &layer_plan.selected_weights_buffer,
+                    )?;
                     submission.quantize_f32_to_q8_1(
                         &layer_plan.ffn_norm_buffer,
                         1,
@@ -3070,16 +3092,6 @@ impl GptOssCudaModelInner {
                         &plan.vector_q8_1_buffer,
                     )?;
                 }
-                submission.router_topk_softmax(
-                    &layer.feed_forward_router_weight_device,
-                    layer.feed_forward_router_bias_device.as_ref(),
-                    &layer_plan.ffn_norm_buffer,
-                    layer.feed_forward_router_weight.rows,
-                    layer.feed_forward_router_weight.columns,
-                    selected_count,
-                    &layer_plan.selected_ids_buffer,
-                    &layer_plan.selected_weights_buffer,
-                )?;
                 submission.moe_gate_up_swiglu_q8_1(
                     &layer.feed_forward_gate_up_experts_weight.storage,
                     layer.feed_forward_gate_up_experts_weight.mode,
@@ -3339,7 +3351,9 @@ impl GptOssCudaModelInner {
                 &plan.logits_buffer,
             )?;
         }
-        if output_mode == CudaStepOutputMode::DeviceArgmax && !can_use_q8_1_mmvq(self.output.mode) {
+        if output_mode == CudaStepOutputMode::DeviceArgmax
+            && (self.output.transposed_f16.is_some() || !can_use_q8_1_mmvq(self.output.mode))
+        {
             submission.argmax_f32(
                 &plan.logits_buffer,
                 1,
@@ -3495,7 +3509,9 @@ impl GptOssCudaModelInner {
                 ),
                 CudaStepOutputMode::DeviceArgmax => {
                     let token =
-                        if can_use_q8_1_mmvq(self.output.mode) {
+                        if can_use_q8_1_mmvq(self.output.mode)
+                            && self.output.transposed_f16.is_none()
+                        {
                             let bytes = plan.argmax_state_host_buffer.read_bytes().map_err(|error| {
                         ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
                             format!("cuda argmax returned an invalid packed host buffer: {error}"),
@@ -6999,15 +7015,43 @@ fn f16_bytes_to_f32_vec(bytes: &[u8]) -> Result<Vec<f32>, super::RuntimeError> {
 fn f32_to_f16_bits(value: f32) -> u16 {
     let bits = value.to_bits();
     let sign = ((bits >> 16) & 0x8000) as u16;
-    let exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
+    let exponent = ((bits >> 23) & 0xff) as i32;
     let mantissa = bits & 0x007f_ffff;
-    if exponent <= 0 {
-        return sign;
+
+    if exponent == 0xff {
+        if mantissa == 0 {
+            return sign | 0x7c00;
+        }
+        return sign | 0x7c00 | ((mantissa >> 13) as u16) | 1;
     }
-    if exponent >= 0x1f {
+
+    let half_exponent = exponent - 127 + 15;
+    if half_exponent >= 0x1f {
         return sign | 0x7c00;
     }
-    sign | ((exponent as u16) << 10) | ((mantissa >> 13) as u16)
+
+    if half_exponent <= 0 {
+        if half_exponent < -10 {
+            return sign;
+        }
+        let mantissa = mantissa | 0x0080_0000;
+        let shift = u32::try_from(14 - half_exponent).unwrap_or(u32::MAX);
+        let round_bit = 1_u32 << shift.saturating_sub(1);
+        let round_mask = round_bit.saturating_sub(1);
+        let mut half_mantissa = (mantissa >> shift) as u16;
+        let round_bits = mantissa & (round_bit | round_mask);
+        if round_bits > round_bit || (round_bits == round_bit && (half_mantissa & 1) != 0) {
+            half_mantissa = half_mantissa.saturating_add(1);
+        }
+        return sign | half_mantissa;
+    }
+
+    let mut half_bits = sign | ((half_exponent as u16) << 10) | ((mantissa >> 13) as u16);
+    let round_bits = mantissa & 0x1fff;
+    if round_bits > 0x1000 || (round_bits == 0x1000 && (half_bits & 1) != 0) {
+        half_bits = half_bits.saturating_add(1);
+    }
+    half_bits
 }
 
 fn f16_bits_to_f32(bits: u16) -> f32 {
@@ -7280,20 +7324,29 @@ fn rope_yarn_ramp(low: f32, high: f32, i0: usize) -> f32 {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(target_os = "macos")]
+    use super::CpuGgufGptOssTextGenerationService;
     use super::{
-        CpuGgufGptOssTextGenerationService, MetalGgufGptOssTextGenerationService,
-        build_gpt_oss_decode_graph, can_use_q8_1_mmvq,
-        decode_quantized_matrix_bytes_transposed_f32, decode_quantized_row_into,
-        digest_gpt_oss_cuda_step_plan, pack_quantized_expert_projection_bytes,
+        MetalGgufGptOssTextGenerationService, build_gpt_oss_decode_graph, can_use_q8_1_mmvq,
+        decode_quantized_matrix_bytes_transposed_f16, decode_quantized_matrix_bytes_transposed_f32,
+        decode_quantized_row_into, digest_gpt_oss_cuda_step_plan, f16_bits_to_f32,
+        f32_slice_to_f16_bytes, f32_to_f16_bits, pack_quantized_expert_projection_bytes,
         pack_quantized_projection_bytes, split_projection_outputs,
     };
+    use crate::QuantizationMode;
+    #[cfg(target_os = "macos")]
     use crate::{
-        GenerationOptions, GenerationRequest, QuantizationMode, TextGenerationExecutor, TokenId,
-        TokenSequence,
+        GenerationOptions, GenerationRequest, TextGenerationExecutor, TokenId, TokenSequence,
     };
+    use psionic_backend_cpu::quantized_row_dot;
+    use psionic_backend_cuda::{CudaBackend, CudaCommandStatus, CudaCommandWait};
     use psionic_models::{GgufMetadataValue, GgufTensorType};
-    use psionic_runtime::{CacheAction, CacheKind, CompilePathTemperature, PrefixCacheState};
+    use psionic_runtime::{
+        CacheAction, CacheKind, CompilePathTemperature, DeviceDiscovery, HealthStatus,
+        PrefixCacheState,
+    };
     use std::{fs, path::Path};
+    #[cfg(target_os = "macos")]
     use tempfile::tempdir;
 
     #[test]
@@ -7377,12 +7430,11 @@ mod tests {
     #[cfg(not(target_os = "macos"))]
     #[test]
     fn metal_gpt_oss_service_reports_backend_unavailable_off_platform() {
-        let error = MetalGgufGptOssTextGenerationService::from_gguf_path("missing.gguf")
-            .expect_err("off-platform metal service should refuse");
-        assert!(matches!(
-            error,
-            super::MetalGptOssTextGenerationError::BackendUnavailable { .. }
-        ));
+        match MetalGgufGptOssTextGenerationService::from_gguf_path("missing.gguf") {
+            Err(super::MetalGptOssTextGenerationError::BackendUnavailable { .. }) => {}
+            Err(error) => panic!("expected backend unavailable error, got {error:?}"),
+            Ok(_) => panic!("off-platform metal service should refuse"),
+        }
     }
 
     #[cfg(target_os = "macos")]
@@ -7877,6 +7929,73 @@ mod tests {
         Ok(())
     }
 
+    #[test]
+    fn f32_to_f16_bits_preserves_half_subnormals() {
+        let value = 1.0e-6_f32;
+        let bits = f32_to_f16_bits(value);
+        assert_ne!(bits, 0);
+        let roundtrip = f16_bits_to_f32(bits);
+        assert!(roundtrip > 0.0);
+        assert!(roundtrip < 6.1035156e-5);
+    }
+
+    #[test]
+    fn q8_0_transposed_f16_mirror_matches_quantized_projection_for_subnormal_scales_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+
+        let row_a = sample_q8_0_row(1.0e-6, 1);
+        let row_b = sample_q8_0_row(2.0e-6, -1);
+        let weights = row_a
+            .iter()
+            .copied()
+            .chain(row_b.iter().copied())
+            .collect::<Vec<_>>();
+        let input = (0..32)
+            .map(|index| index as f32 / 16.0 - 1.0)
+            .collect::<Vec<_>>();
+        let input_f16 = input
+            .iter()
+            .copied()
+            .map(|value| f16_bits_to_f32(f32_to_f16_bits(value)))
+            .collect::<Vec<_>>();
+        let expected = vec![
+            quantized_row_dot(&input_f16, QuantizationMode::GgmlQ8_0, row_a.as_slice())?,
+            quantized_row_dot(&input_f16, QuantizationMode::GgmlQ8_0, row_b.as_slice())?,
+        ];
+        let transposed = decode_quantized_matrix_bytes_transposed_f16(
+            QuantizationMode::GgmlQ8_0,
+            2,
+            32,
+            34,
+            weights.as_slice(),
+            "test",
+        )?;
+
+        let mut left = backend.f16_buffer(32)?;
+        left.write_bytes(f32_slice_to_f16_bytes(input.as_slice()).as_slice())?;
+        let right = backend.byte_buffer(transposed.as_slice())?;
+        let output = backend.f32_buffer(2)?;
+
+        let mut submission = backend.begin_submission()?;
+        submission.matmul_f16_to_f32(&left, &right, &output, 1, 32, 2)?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.status, CudaCommandStatus::Completed);
+
+        let actual = output.read_f32()?;
+        for (actual, expected) in actual.iter().zip(expected.iter()) {
+            assert!(
+                (actual - expected).abs() <= 1.0e-7,
+                "expected {expected}, actual {actual}",
+            );
+        }
+        Ok(())
+    }
+
     fn push_u32(bytes: &mut Vec<u8>, value: u32) {
         bytes.extend(value.to_le_bytes());
     }
@@ -7895,5 +8014,12 @@ mod tests {
         } else {
             value + alignment - remainder
         }
+    }
+
+    fn sample_q8_0_row(scale: f32, multiplier: i8) -> Vec<u8> {
+        std::iter::once(f32_to_f16_bits(scale).to_le_bytes()[0])
+            .chain(std::iter::once(f32_to_f16_bits(scale).to_le_bytes()[1]))
+            .chain((1_i8..=32).map(|value| value.saturating_mul(multiplier).to_le_bytes()[0]))
+            .collect()
     }
 }

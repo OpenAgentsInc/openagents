@@ -872,6 +872,57 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Adds a residual vector, applies RMSNorm, quantizes the normalized
+    /// output into GGML `Q8_1`, and computes router top-k on the normalized
+    /// vector in one CUDA kernel.
+    #[allow(clippy::too_many_arguments)]
+    pub fn add_residual_rms_norm_q8_1_router_topk(
+        &mut self,
+        input: &CudaBuffer,
+        residual: &CudaBuffer,
+        input_bias: Option<&CudaBuffer>,
+        weight: &CudaBuffer,
+        summed_output: &CudaBuffer,
+        normalized_output: &CudaBuffer,
+        quantized_output: &CudaBuffer,
+        router_weights: &CudaBuffer,
+        router_bias: Option<&CudaBuffer>,
+        expert_count: usize,
+        top_k: usize,
+        selected_ids: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+        element_count: usize,
+        epsilon: f32,
+    ) -> Result<(), RuntimeError> {
+        let required_bytes = ggml_q8_1_storage_bytes(1, element_count)?;
+        if quantized_output.byte_len() < required_bytes {
+            return Err(RuntimeError::Backend(format!(
+                "cuda q8_1 norm buffer too small: need {required_bytes} bytes for 1x{element_count}, have {}",
+                quantized_output.byte_len()
+            )));
+        }
+        self.platform
+            .encode_add_residual_rms_norm_q8_1_router_topk(
+                &input.platform,
+                &residual.platform,
+                input_bias.map(|buffer| &buffer.platform),
+                &weight.platform,
+                &summed_output.platform,
+                &normalized_output.platform,
+                &quantized_output.platform,
+                &router_weights.platform,
+                router_bias.map(|buffer| &buffer.platform),
+                expert_count,
+                top_k,
+                &selected_ids.platform,
+                &selected_weights.platform,
+                element_count,
+                epsilon,
+            )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Adds one dense vector into a region of a destination buffer in place.
     pub fn add_f32_in_place(
         &mut self,
@@ -3077,6 +3128,24 @@ mod platform {
             quantized_output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_add_residual_rms_norm_q8_1_router_topk(
+            input: *const c_void,
+            residual: *const c_void,
+            input_bias: *const c_void,
+            weight: *const c_void,
+            element_count: c_int,
+            epsilon: f32,
+            summed_output: *mut c_void,
+            normalized_output: *mut c_void,
+            quantized_output: *mut c_void,
+            router_weights: *const c_void,
+            router_bias: *const c_void,
+            expert_count: c_int,
+            top_k: c_int,
+            selected_ids: *mut c_void,
+            selected_weights: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_add_f32_offset_in_place(
             destination: *mut c_void,
             element_offset: c_int,
@@ -4296,6 +4365,70 @@ mod platform {
                     )
                 },
                 "psionic_cuda_add_residual_rms_norm_q8_1",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_add_residual_rms_norm_q8_1_router_topk(
+            &mut self,
+            input: &PlatformBuffer,
+            residual: &PlatformBuffer,
+            input_bias: Option<&PlatformBuffer>,
+            weight: &PlatformBuffer,
+            summed_output: &PlatformBuffer,
+            normalized_output: &PlatformBuffer,
+            quantized_output: &PlatformBuffer,
+            router_weights: &PlatformBuffer,
+            router_bias: Option<&PlatformBuffer>,
+            expert_count: usize,
+            top_k: usize,
+            selected_ids: &PlatformBuffer,
+            selected_weights: &PlatformBuffer,
+            element_count: usize,
+            epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            let element_count = c_int::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda add_residual_rms_norm_q8_1_router_topk element count exceeds c_int",
+                ))
+            })?;
+            let expert_count = c_int::try_from(expert_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda add_residual_rms_norm_q8_1_router_topk expert count exceeds c_int",
+                ))
+            })?;
+            let top_k = c_int::try_from(top_k).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda add_residual_rms_norm_q8_1_router_topk top-k exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_add_residual_rms_norm_q8_1_router_topk(
+                        input.inner.device_ptr.cast(),
+                        residual.inner.device_ptr.cast(),
+                        input_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        weight.inner.device_ptr.cast(),
+                        element_count,
+                        epsilon,
+                        summed_output.inner.device_ptr.cast(),
+                        normalized_output.inner.device_ptr.cast(),
+                        quantized_output.inner.device_ptr.cast(),
+                        router_weights.inner.device_ptr.cast(),
+                        router_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        expert_count,
+                        top_k,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_weights.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_add_residual_rms_norm_q8_1_router_topk",
             )
         }
 
@@ -6088,6 +6221,30 @@ mod platform {
             )))
         }
 
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_add_residual_rms_norm_q8_1_router_topk(
+            &mut self,
+            _input: &PlatformBuffer,
+            _residual: &PlatformBuffer,
+            _input_bias: Option<&PlatformBuffer>,
+            _weight: &PlatformBuffer,
+            _summed_output: &PlatformBuffer,
+            _normalized_output: &PlatformBuffer,
+            _quantized_output: &PlatformBuffer,
+            _router_weights: &PlatformBuffer,
+            _router_bias: Option<&PlatformBuffer>,
+            _expert_count: usize,
+            _top_k: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_weights: &PlatformBuffer,
+            _element_count: usize,
+            _epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
         pub(super) fn encode_add_f32_in_place(
             &mut self,
             _destination: &PlatformBuffer,
@@ -7404,6 +7561,139 @@ mod tests {
         assert_eq!(
             cache_values_fused.read_bytes()?,
             cache_values_separate.read_bytes()?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_fused_add_residual_rms_norm_q8_1_router_topk_matches_separate_kernels_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let element_count = 32usize;
+        let expert_count = 4usize;
+        let top_k = 2usize;
+        let input = (0..element_count)
+            .map(|index| ((index as f32 % 9.0) - 4.0) * 0.35)
+            .collect::<Vec<_>>();
+        let residual = (0..element_count)
+            .map(|index| ((index as f32 % 11.0) - 5.0) * 0.2)
+            .collect::<Vec<_>>();
+        let input_bias = (0..element_count)
+            .map(|index| ((index as f32 % 7.0) - 3.0) * 0.05)
+            .collect::<Vec<_>>();
+        let weight = (0..element_count)
+            .map(|index| 0.8 + index as f32 * 0.01)
+            .collect::<Vec<_>>();
+        let router_weights = (0..expert_count)
+            .flat_map(|expert| {
+                (0..element_count).map(move |index| {
+                    ((expert as f32 + 1.0) * 0.09) + ((index as f32 % 13.0) - 6.0) * 0.015
+                })
+            })
+            .collect::<Vec<_>>();
+        let router_bias = vec![0.25_f32, -0.5_f32, 0.1_f32, -0.15_f32];
+
+        let input_buffer = backend.input_buffer(Shape::new(vec![element_count]), input)?;
+        let residual_buffer = backend.input_buffer(Shape::new(vec![element_count]), residual)?;
+        let input_bias_buffer =
+            backend.input_buffer(Shape::new(vec![element_count]), input_bias)?;
+        let weight_buffer = backend.input_buffer(Shape::new(vec![element_count]), weight)?;
+        let router_weights_buffer = backend.input_buffer(
+            Shape::new(vec![expert_count, element_count]),
+            router_weights,
+        )?;
+        let router_bias_buffer =
+            backend.input_buffer(Shape::new(vec![expert_count]), router_bias)?;
+        let q8_1_bytes = crate::ggml_q8_1_storage_bytes(1, element_count)?;
+
+        let summed_separate = backend.f32_buffer(element_count)?;
+        let normalized_separate = backend.f32_buffer(element_count)?;
+        let quantized_separate = backend.byte_buffer(&vec![0_u8; q8_1_bytes])?;
+        let selected_ids_separate = backend.byte_buffer(&vec![0_u8; top_k * size_of::<i32>()])?;
+        let selected_weights_separate = backend.f32_buffer(top_k)?;
+
+        let summed_fused = backend.f32_buffer(element_count)?;
+        let normalized_fused = backend.f32_buffer(element_count)?;
+        let quantized_fused = backend.byte_buffer(&vec![0_u8; q8_1_bytes])?;
+        let selected_ids_fused = backend.byte_buffer(&vec![0_u8; top_k * size_of::<i32>()])?;
+        let selected_weights_fused = backend.f32_buffer(top_k)?;
+
+        let mut separate = backend.begin_submission()?;
+        separate.add_residual_rms_norm_q8_1(
+            &input_buffer,
+            &residual_buffer,
+            Some(&input_bias_buffer),
+            &weight_buffer,
+            &summed_separate,
+            &normalized_separate,
+            &quantized_separate,
+            element_count,
+            1.0e-5,
+        )?;
+        separate.router_topk_softmax(
+            &router_weights_buffer,
+            Some(&router_bias_buffer),
+            &normalized_separate,
+            expert_count,
+            element_count,
+            top_k,
+            &selected_ids_separate,
+            &selected_weights_separate,
+        )?;
+        let separate_report = separate.commit(CudaCommandWait::Completed)?;
+        assert_eq!(separate_report.encoded_operations, 2);
+
+        let mut fused = backend.begin_submission()?;
+        fused.add_residual_rms_norm_q8_1_router_topk(
+            &input_buffer,
+            &residual_buffer,
+            Some(&input_bias_buffer),
+            &weight_buffer,
+            &summed_fused,
+            &normalized_fused,
+            &quantized_fused,
+            &router_weights_buffer,
+            Some(&router_bias_buffer),
+            expert_count,
+            top_k,
+            &selected_ids_fused,
+            &selected_weights_fused,
+            element_count,
+            1.0e-5,
+        )?;
+        let fused_report = fused.commit(CudaCommandWait::Completed)?;
+        assert_eq!(fused_report.encoded_operations, 1);
+
+        assert_close(
+            &summed_fused.read_f32()?,
+            &summed_separate.read_f32()?,
+            1e-5,
+        );
+        assert_close(
+            &normalized_fused.read_f32()?,
+            &normalized_separate.read_f32()?,
+            1e-5,
+        );
+        assert_eq!(
+            quantized_fused.read_bytes()?,
+            quantized_separate.read_bytes()?
+        );
+        assert_eq!(
+            selected_ids_fused.read_bytes()?,
+            selected_ids_separate.read_bytes()?
+        );
+        assert_close(
+            &selected_weights_fused.read_f32()?,
+            &selected_weights_separate.read_f32()?,
+            1e-6,
         );
         Ok(())
     }

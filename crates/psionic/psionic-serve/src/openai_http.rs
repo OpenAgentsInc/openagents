@@ -32,6 +32,7 @@ use psionic_models::{
     render_gpt_oss_harmony_prompt,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 use tokio::{
     net::TcpListener,
     sync::{mpsc, oneshot},
@@ -270,7 +271,7 @@ impl Drop for LlamaCppProxyState {
 
 #[derive(Clone, Debug)]
 struct PromptTokenCacheEntry {
-    rendered_prompt: String,
+    request_key: String,
     tokens: TokenSequence,
 }
 
@@ -290,27 +291,27 @@ impl PromptTokenCache {
         }
     }
 
-    fn lookup(&mut self, rendered_prompt: &str) -> Option<TokenSequence> {
+    fn lookup(&mut self, request_key: &str) -> Option<TokenSequence> {
         let index = self
             .entries
             .iter()
-            .position(|entry| entry.rendered_prompt == rendered_prompt)?;
+            .position(|entry| entry.request_key == request_key)?;
         let entry = self.entries.remove(index)?;
         let tokens = entry.tokens.clone();
         self.entries.push_front(entry);
         Some(tokens)
     }
 
-    fn record(&mut self, rendered_prompt: String, tokens: TokenSequence) {
+    fn record(&mut self, request_key: String, tokens: TokenSequence) {
         if let Some(index) = self
             .entries
             .iter()
-            .position(|entry| entry.rendered_prompt == rendered_prompt)
+            .position(|entry| entry.request_key == request_key)
         {
             self.entries.remove(index);
         }
         self.entries.push_front(PromptTokenCacheEntry {
-            rendered_prompt,
+            request_key,
             tokens,
         });
         while self.entries.len() > self.capacity {
@@ -878,18 +879,7 @@ async fn handle_chat_completions(
         return proxy_chat_completions(state.as_ref(), proxy, &request).await;
     }
     validate_requested_model(request.model.as_deref(), &state.accepted_model_names)?;
-    let prompt_messages = chat_messages_to_prompt_messages(&request.messages)?;
-    let rendered = render_gpt_oss_harmony_prompt(
-        prompt_messages.as_slice(),
-        true,
-        Some(&state.prompt_options),
-    )
-    .map_err(|error| {
-        OpenAiCompatHttpError::PromptRender(PromptRenderError::HarmonyRendering {
-            message: error.to_string(),
-        })
-    })?;
-
+    let request_prompt_key = prompt_request_cache_key(request.messages.as_slice());
     let request_id = next_request_id(&state);
     let response_model_name = request
         .model
@@ -904,11 +894,22 @@ async fn handle_chat_completions(
                 )),
             ))
         })?;
-        if let Some(tokens) = cache.lookup(rendered.as_str()) {
+        if let Some(tokens) = cache.lookup(request_prompt_key.as_str()) {
             tokens
         } else {
+            let prompt_messages = chat_messages_to_prompt_messages(&request.messages)?;
+            let rendered = render_gpt_oss_harmony_prompt(
+                prompt_messages.as_slice(),
+                true,
+                Some(&state.prompt_options),
+            )
+            .map_err(|error| {
+                OpenAiCompatHttpError::PromptRender(PromptRenderError::HarmonyRendering {
+                    message: error.to_string(),
+                })
+            })?;
             let tokens = state.tokenizer.encode_with_defaults(rendered.as_str());
-            cache.record(rendered, tokens.clone());
+            cache.record(request_prompt_key, tokens.clone());
             tokens
         }
     };
@@ -1206,6 +1207,21 @@ fn next_request_id(state: &GptOssOpenAiCompatState) -> String {
     format!("psionic-chatcmpl-{next}")
 }
 
+fn prompt_request_cache_key(messages: &[ChatCompletionMessage]) -> String {
+    let mut hasher = Sha256::new();
+    for message in messages {
+        hasher.update(message.role.as_bytes());
+        hasher.update([0xff]);
+        hasher.update(message.content.as_bytes());
+        hasher.update([0xff]);
+        if let Some(name) = message.name.as_deref() {
+            hasher.update(name.as_bytes());
+        }
+        hasher.update([0x00]);
+    }
+    format!("{:x}", hasher.finalize())
+}
+
 fn unix_timestamp_secs() -> u64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -1378,7 +1394,7 @@ mod tests {
         GptOssOpenAiCompatBackend, HARMONY_CALL_STOP, HARMONY_RETURN_STOP, PromptTokenCache,
         chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
         fast_final_assistant_content, final_assistant_content,
-        generation_options_from_chat_request, resolve_execution_summary,
+        generation_options_from_chat_request, prompt_request_cache_key, resolve_execution_summary,
     };
     use psionic_models::{
         GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, PromptMessage, PromptMessageRole,
@@ -1528,22 +1544,42 @@ mod tests {
     fn prompt_token_cache_is_lru() {
         let mut cache = PromptTokenCache::new(2);
         cache.record(
-            String::from("one"),
+            String::from("key-one"),
             TokenSequence::new(vec![TokenId(1), TokenId(2)]),
         );
-        cache.record(String::from("two"), TokenSequence::new(vec![TokenId(3)]));
+        cache.record(
+            String::from("key-two"),
+            TokenSequence::new(vec![TokenId(3)]),
+        );
 
         assert_eq!(
-            cache.lookup("one").expect("cached prompt").as_slice(),
+            cache.lookup("key-one").expect("cached prompt").as_slice(),
             &[TokenId(1), TokenId(2)]
         );
 
-        cache.record(String::from("three"), TokenSequence::new(vec![TokenId(4)]));
+        cache.record(
+            String::from("key-three"),
+            TokenSequence::new(vec![TokenId(4)]),
+        );
 
-        assert!(cache.lookup("two").is_none());
+        assert!(cache.lookup("key-two").is_none());
         assert_eq!(
-            cache.lookup("three").expect("cached prompt").as_slice(),
+            cache.lookup("key-three").expect("cached prompt").as_slice(),
             &[TokenId(4)]
+        );
+    }
+
+    #[test]
+    fn prompt_request_cache_key_is_stable_for_identical_messages() {
+        let messages = vec![ChatCompletionMessage {
+            role: String::from("user"),
+            content: String::from("hello"),
+            name: None,
+        }];
+
+        assert_eq!(
+            prompt_request_cache_key(messages.as_slice()),
+            prompt_request_cache_key(messages.as_slice())
         );
     }
 }
