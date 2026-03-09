@@ -141,3 +141,88 @@ int mox_cuda_attention_decode(
     (void)stream;
     return 1;
 }
+
+int mox_cuda_router_topk_softmax(
+    const void *weights,
+    const void *bias,
+    const void *input,
+    int expert_count,
+    int input_size,
+    int top_k,
+    void *selected_ids,
+    void *selected_weights,
+    void *stream
+) {
+    (void)weights;
+    (void)bias;
+    (void)input;
+    (void)expert_count;
+    (void)input_size;
+    (void)top_k;
+    (void)selected_ids;
+    (void)selected_weights;
+    (void)stream;
+    return 1;
+}
+
+int mox_cuda_moe_gate_up_swiglu(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows_per_expert,
+    int columns,
+    int gate_rows,
+    int up_rows,
+    const void *selected_ids,
+    int selected_count,
+    const void *input,
+    const void *gate_bias,
+    const void *up_bias,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)mode;
+    (void)row_stride;
+    (void)rows_per_expert;
+    (void)columns;
+    (void)gate_rows;
+    (void)up_rows;
+    (void)selected_ids;
+    (void)selected_count;
+    (void)input;
+    (void)gate_bias;
+    (void)up_bias;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int mox_cuda_moe_down_aggregate(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows,
+    int columns,
+    const void *selected_ids,
+    const void *selected_weights,
+    int selected_count,
+    const void *activated,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)mode;
+    (void)row_stride;
+    (void)rows;
+    (void)columns;
+    (void)selected_ids;
+    (void)selected_weights;
+    (void)selected_count;
+    (void)activated;
+    (void)bias;
+    (void)output;
+    (void)stream;
+    return 1;
+}

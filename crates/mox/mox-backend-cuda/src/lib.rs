@@ -514,6 +514,105 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Computes router logits on device, selects the top experts, and writes
+    /// normalized routing weights for the selected set.
+    pub fn router_topk_softmax(
+        &mut self,
+        weights: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        input: &CudaBuffer,
+        expert_count: usize,
+        input_size: usize,
+        top_k: usize,
+        selected_ids: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_router_topk_softmax(
+            &weights.platform,
+            bias.map(|buffer| &buffer.platform),
+            &input.platform,
+            expert_count,
+            input_size,
+            top_k,
+            &selected_ids.platform,
+            &selected_weights.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Executes the packed GPT-OSS gate/up expert projection on device and
+    /// writes the post-SwiGLU activations for the selected experts.
+    #[allow(clippy::too_many_arguments)]
+    pub fn moe_gate_up_swiglu(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        gate_rows: usize,
+        up_rows: usize,
+        selected_ids: &CudaBuffer,
+        selected_count: usize,
+        input: &CudaBuffer,
+        gate_bias: Option<&CudaBuffer>,
+        up_bias: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_moe_gate_up_swiglu(
+            &weights.platform,
+            mode,
+            row_stride,
+            rows_per_expert,
+            columns,
+            gate_rows,
+            up_rows,
+            &selected_ids.platform,
+            selected_count,
+            &input.platform,
+            gate_bias.map(|buffer| &buffer.platform),
+            up_bias.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Executes the GPT-OSS down projection and route-weighted expert
+    /// aggregation on device for the selected experts.
+    #[allow(clippy::too_many_arguments)]
+    pub fn moe_down_aggregate(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows: usize,
+        columns: usize,
+        selected_ids: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+        selected_count: usize,
+        activated: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_moe_down_aggregate(
+            &weights.platform,
+            mode,
+            row_stride,
+            rows,
+            columns,
+            &selected_ids.platform,
+            &selected_weights.platform,
+            selected_count,
+            &activated.platform,
+            bias.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Synchronizes the CUDA stream and returns explicit submission metadata.
     pub fn commit(self, wait: CudaCommandWait) -> Result<CudaSubmissionReport, RuntimeError> {
         let status = self.platform.commit(wait)?;
@@ -664,6 +763,11 @@ impl CudaBackend {
             )));
         };
         self.allocate_buffer(&TensorSpec::new(Shape::new(vec![len]), DType::F32, device))
+    }
+
+    /// Allocates an uninitialized dense `i32` buffer on the selected CUDA device.
+    pub fn i32_buffer(&mut self, len: usize) -> Result<CudaBuffer, RuntimeError> {
+        self.byte_buffer(&vec![0_u8; len.saturating_mul(size_of::<i32>())])
     }
 
     /// Returns whether the Mox-owned CUDA quantized text-generation kernels are built.
@@ -1940,6 +2044,47 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn mox_cuda_router_topk_softmax(
+            weights: *const c_void,
+            bias: *const c_void,
+            input: *const c_void,
+            expert_count: c_int,
+            input_size: c_int,
+            top_k: c_int,
+            selected_ids: *mut c_void,
+            selected_weights: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn mox_cuda_moe_gate_up_swiglu(
+            weights: *const c_void,
+            mode: c_int,
+            row_stride: c_int,
+            rows_per_expert: c_int,
+            columns: c_int,
+            gate_rows: c_int,
+            up_rows: c_int,
+            selected_ids: *const c_void,
+            selected_count: c_int,
+            input: *const c_void,
+            gate_bias: *const c_void,
+            up_bias: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn mox_cuda_moe_down_aggregate(
+            weights: *const c_void,
+            mode: c_int,
+            row_stride: c_int,
+            rows: c_int,
+            columns: c_int,
+            selected_ids: *const c_void,
+            selected_weights: *const c_void,
+            selected_count: c_int,
+            activated: *const c_void,
+            bias: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
     }
 
     pub(super) struct ConfiguredBackend {
@@ -2499,6 +2644,180 @@ mod platform {
             )
         }
 
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_router_topk_softmax(
+            &mut self,
+            weights: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
+            input: &PlatformBuffer,
+            expert_count: usize,
+            input_size: usize,
+            top_k: usize,
+            selected_ids: &PlatformBuffer,
+            selected_weights: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let expert_count = c_int::try_from(expert_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda router expert count exceeds c_int"))
+            })?;
+            let input_size = c_int::try_from(input_size).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda router input size exceeds c_int"))
+            })?;
+            let top_k = c_int::try_from(top_k).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda router top-k exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    mox_cuda_router_topk_softmax(
+                        weights.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        input.inner.device_ptr.cast(),
+                        expert_count,
+                        input_size,
+                        top_k,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_weights.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "mox_cuda_router_topk_softmax",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_gate_up_swiglu(
+            &mut self,
+            weights: &PlatformBuffer,
+            mode: QuantizationMode,
+            row_stride: usize,
+            rows_per_expert: usize,
+            columns: usize,
+            gate_rows: usize,
+            up_rows: usize,
+            selected_ids: &PlatformBuffer,
+            selected_count: usize,
+            input: &PlatformBuffer,
+            gate_bias: Option<&PlatformBuffer>,
+            up_bias: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let mode = match mode {
+                QuantizationMode::GgmlQ8_0 => 0,
+                QuantizationMode::GgmlMxfp4 => 1,
+                other => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda moe gate/up kernel does not support {other:?}"
+                    )));
+                }
+            };
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe gate/up row stride exceeds c_int"))
+            })?;
+            let rows_per_expert = c_int::try_from(rows_per_expert).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda moe gate/up rows per expert exceeds c_int",
+                ))
+            })?;
+            let columns = c_int::try_from(columns).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe gate/up columns exceeds c_int"))
+            })?;
+            let gate_rows = c_int::try_from(gate_rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe gate rows exceeds c_int"))
+            })?;
+            let up_rows = c_int::try_from(up_rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe up rows exceeds c_int"))
+            })?;
+            let selected_count = c_int::try_from(selected_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe selected count exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    mox_cuda_moe_gate_up_swiglu(
+                        weights.inner.device_ptr.cast(),
+                        mode,
+                        row_stride,
+                        rows_per_expert,
+                        columns,
+                        gate_rows,
+                        up_rows,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_count,
+                        input.inner.device_ptr.cast(),
+                        gate_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        up_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "mox_cuda_moe_gate_up_swiglu",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_aggregate(
+            &mut self,
+            weights: &PlatformBuffer,
+            mode: QuantizationMode,
+            row_stride: usize,
+            rows: usize,
+            columns: usize,
+            selected_ids: &PlatformBuffer,
+            selected_weights: &PlatformBuffer,
+            selected_count: usize,
+            activated: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let mode = match mode {
+                QuantizationMode::GgmlQ8_0 => 0,
+                QuantizationMode::GgmlMxfp4 => 1,
+                other => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda moe down kernel does not support {other:?}"
+                    )));
+                }
+            };
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe down row stride exceeds c_int"))
+            })?;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe down rows exceeds c_int"))
+            })?;
+            let columns = c_int::try_from(columns).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe down columns exceeds c_int"))
+            })?;
+            let selected_count = c_int::try_from(selected_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda moe selected count exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    mox_cuda_moe_down_aggregate(
+                        weights.inner.device_ptr.cast(),
+                        mode,
+                        row_stride,
+                        rows,
+                        columns,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_weights.inner.device_ptr.cast(),
+                        selected_count,
+                        activated.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "mox_cuda_moe_down_aggregate",
+            )
+        }
+
         pub(super) fn commit(
             mut self,
             wait: CudaCommandWait,
@@ -2876,6 +3195,65 @@ mod platform {
             _kv_head_count: usize,
             _head_dim: usize,
             _attention_sinks: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_router_topk_softmax(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
+            _input: &PlatformBuffer,
+            _expert_count: usize,
+            _input_size: usize,
+            _top_k: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_weights: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_gate_up_swiglu(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _mode: QuantizationMode,
+            _row_stride: usize,
+            _rows_per_expert: usize,
+            _columns: usize,
+            _gate_rows: usize,
+            _up_rows: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_count: usize,
+            _input: &PlatformBuffer,
+            _gate_bias: Option<&PlatformBuffer>,
+            _up_bias: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_aggregate(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _mode: QuantizationMode,
+            _row_stride: usize,
+            _rows: usize,
+            _columns: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_weights: &PlatformBuffer,
+            _selected_count: usize,
+            _activated: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
