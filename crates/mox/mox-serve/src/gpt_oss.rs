@@ -924,31 +924,17 @@ impl GptOssCudaModelInner {
                 .saturating_add(duration_ns(attention_norm_start));
 
             let qkv_start = Instant::now();
-            let mut q = Vec::new();
-            let q_stats = layer.attention_query_weight.matvec_profiled(
-                backend,
-                hidden_norm.as_slice(),
-                &mut q,
-            )?;
-            accumulate_cuda_matvec_stats(&mut perf, &q_stats);
+            let (mut qkv_outputs, qkv_stats) = layer
+                .attention_qkv_weight
+                .matvec_profiled(backend, hidden_norm.as_slice())?;
+            accumulate_cuda_matvec_stats(&mut perf, &qkv_stats);
+            let mut q = qkv_outputs.remove(0);
             add_bias_in_place(&mut q, layer.attention_query_bias.as_slice());
 
-            let mut k = Vec::new();
-            let k_stats = layer.attention_key_weight.matvec_profiled(
-                backend,
-                hidden_norm.as_slice(),
-                &mut k,
-            )?;
-            accumulate_cuda_matvec_stats(&mut perf, &k_stats);
+            let mut k = qkv_outputs.remove(0);
             add_bias_in_place(&mut k, layer.attention_key_bias.as_slice());
 
-            let mut v = Vec::new();
-            let v_stats = layer.attention_value_weight.matvec_profiled(
-                backend,
-                hidden_norm.as_slice(),
-                &mut v,
-            )?;
-            accumulate_cuda_matvec_stats(&mut perf, &v_stats);
+            let mut v = qkv_outputs.remove(0);
             add_bias_in_place(&mut v, layer.attention_value_bias.as_slice());
             perf.stage_timings.qkv_projection_ns = perf
                 .stage_timings
@@ -1046,37 +1032,27 @@ impl GptOssCudaModelInner {
             let mut moe_out = vec![0.0; hidden_size];
             for (selected_index, expert_index) in selected.iter().copied().enumerate() {
                 let expert_projection_start = Instant::now();
-                let mut gate = Vec::new();
-                let gate_stats = layer.feed_forward_gate_experts_weight.expert_matvec_profiled(
-                    backend,
-                    expert_index,
-                    ffn_input.as_slice(),
-                    &mut gate,
-                )?;
-                accumulate_cuda_matvec_stats(&mut perf, &gate_stats);
+                let (mut gate_up_outputs, gate_up_stats) = layer
+                    .feed_forward_gate_up_experts_weight
+                    .expert_matvec_profiled(backend, expert_index, ffn_input.as_slice())?;
+                accumulate_cuda_matvec_stats(&mut perf, &gate_up_stats);
+                let mut gate = gate_up_outputs.remove(0);
                 if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
                     add_expert_bias_in_place(
                         &mut gate,
                         bias.as_slice(),
                         expert_index,
-                        layer.feed_forward_gate_experts_weight.rows,
+                        layer.feed_forward_gate_up_experts_weight.rows_per_projection[0],
                     );
                 }
 
-                let mut up = Vec::new();
-                let up_stats = layer.feed_forward_up_experts_weight.expert_matvec_profiled(
-                    backend,
-                    expert_index,
-                    ffn_input.as_slice(),
-                    &mut up,
-                )?;
-                accumulate_cuda_matvec_stats(&mut perf, &up_stats);
+                let mut up = gate_up_outputs.remove(0);
                 if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
                     add_expert_bias_in_place(
                         &mut up,
                         bias.as_slice(),
                         expert_index,
-                        layer.feed_forward_up_experts_weight.rows,
+                        layer.feed_forward_gate_up_experts_weight.rows_per_projection[1],
                     );
                 }
                 perf.stage_timings.expert_projection_ns = perf
@@ -1126,14 +1102,11 @@ impl GptOssCudaModelInner {
             hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
 
             bytes_moved = bytes_moved
-                .saturating_add(layer.attention_query_weight.byte_length() as u64)
-                .saturating_add(layer.attention_key_weight.byte_length() as u64)
-                .saturating_add(layer.attention_value_weight.byte_length() as u64)
+                .saturating_add(layer.attention_qkv_weight.byte_length() as u64)
                 .saturating_add(layer.attention_output_weight.byte_length() as u64)
-                .saturating_add(layer.feed_forward_gate_experts_weight.byte_length() as u64)
-                .saturating_add(layer.feed_forward_up_experts_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_gate_up_experts_weight.byte_length() as u64)
                 .saturating_add(layer.feed_forward_down_experts_weight.byte_length() as u64);
-            kernel_count = kernel_count.saturating_add(7 + selected.len().saturating_mul(3));
+            kernel_count = kernel_count.saturating_add(5 + selected.len().saturating_mul(2));
         }
 
         let output_norm_start = Instant::now();
@@ -1174,11 +1147,9 @@ impl GptOssCudaModelInner {
 #[derive(Clone, Debug)]
 struct GptOssCudaLayer {
     attention_norm: Vec<f32>,
-    attention_query_weight: CudaQuantizedMatrix,
+    attention_qkv_weight: CudaQuantizedProjectionGroup,
     attention_query_bias: Vec<f32>,
-    attention_key_weight: CudaQuantizedMatrix,
     attention_key_bias: Vec<f32>,
-    attention_value_weight: CudaQuantizedMatrix,
     attention_value_bias: Vec<f32>,
     attention_output_weight: CudaQuantizedMatrix,
     attention_output_bias: Option<Vec<f32>>,
@@ -1186,9 +1157,8 @@ struct GptOssCudaLayer {
     feed_forward_norm: Vec<f32>,
     feed_forward_router_weight: DenseMatrix,
     feed_forward_router_bias: Option<Vec<f32>>,
-    feed_forward_gate_experts_weight: CudaQuantizedExpertTensor,
+    feed_forward_gate_up_experts_weight: CudaQuantizedExpertProjectionGroup,
     feed_forward_gate_experts_bias: Option<Vec<f32>>,
-    feed_forward_up_experts_weight: CudaQuantizedExpertTensor,
     feed_forward_up_experts_bias: Option<Vec<f32>>,
     feed_forward_down_experts_weight: CudaQuantizedExpertTensor,
     feed_forward_down_experts_bias: Option<Vec<f32>>,
@@ -1202,28 +1172,22 @@ impl GptOssCudaLayer {
     ) -> Result<Self, ModelLoadError> {
         Ok(Self {
             attention_norm: load_dense_vector(artifact, layout.attention_norm.as_str())?,
-            attention_query_weight: load_cuda_quantized_matrix(
+            attention_qkv_weight: load_cuda_quantized_projection_group(
                 backend,
                 artifact,
-                layout.attention_query_weight.as_str(),
+                &[
+                    layout.attention_query_weight.as_str(),
+                    layout.attention_key_weight.as_str(),
+                    layout.attention_value_weight.as_str(),
+                ],
             )?,
             attention_query_bias: load_dense_vector(
                 artifact,
                 required_tensor_name(layout.attention_query_bias.as_ref(), "attention_query_bias")?,
             )?,
-            attention_key_weight: load_cuda_quantized_matrix(
-                backend,
-                artifact,
-                layout.attention_key_weight.as_str(),
-            )?,
             attention_key_bias: load_dense_vector(
                 artifact,
                 required_tensor_name(layout.attention_key_bias.as_ref(), "attention_key_bias")?,
-            )?,
-            attention_value_weight: load_cuda_quantized_matrix(
-                backend,
-                artifact,
-                layout.attention_value_weight.as_str(),
             )?,
             attention_value_bias: load_dense_vector(
                 artifact,
@@ -1260,27 +1224,25 @@ impl GptOssCudaLayer {
                 .as_ref()
                 .map(|name| load_dense_vector(artifact, name.as_str()))
                 .transpose()?,
-            feed_forward_gate_experts_weight: load_cuda_quantized_expert_tensor(
+            feed_forward_gate_up_experts_weight: load_cuda_quantized_expert_projection_group(
                 backend,
                 artifact,
-                required_tensor_name(
-                    layout.feed_forward_gate_experts_weight.as_ref(),
-                    "feed_forward_gate_experts_weight",
-                )?,
+                &[
+                    required_tensor_name(
+                        layout.feed_forward_gate_experts_weight.as_ref(),
+                        "feed_forward_gate_experts_weight",
+                    )?,
+                    required_tensor_name(
+                        layout.feed_forward_up_experts_weight.as_ref(),
+                        "feed_forward_up_experts_weight",
+                    )?,
+                ],
             )?,
             feed_forward_gate_experts_bias: layout
                 .feed_forward_gate_experts_bias
                 .as_ref()
                 .map(|name| load_dense_rank2_flat(artifact, name.as_str()))
                 .transpose()?,
-            feed_forward_up_experts_weight: load_cuda_quantized_expert_tensor(
-                backend,
-                artifact,
-                required_tensor_name(
-                    layout.feed_forward_up_experts_weight.as_ref(),
-                    "feed_forward_up_experts_weight",
-                )?,
-            )?,
             feed_forward_up_experts_bias: layout
                 .feed_forward_up_experts_bias
                 .as_ref()
@@ -1882,6 +1844,88 @@ impl CudaQuantizedMatrix {
     }
 }
 
+fn split_projection_outputs(
+    rows_per_projection: &[usize],
+    values: Vec<f32>,
+) -> Result<Vec<Vec<f32>>, super::RuntimeError> {
+    let expected = rows_per_projection
+        .iter()
+        .copied()
+        .fold(0usize, usize::saturating_add);
+    if values.len() != expected {
+        return Err(super::RuntimeError::Backend(format!(
+            "packed cuda projection output mismatch: expected {expected} values, actual {}",
+            values.len()
+        )));
+    }
+    let mut offset = 0usize;
+    let mut outputs = Vec::with_capacity(rows_per_projection.len());
+    for rows in rows_per_projection {
+        let end = offset.saturating_add(*rows);
+        outputs.push(values[offset..end].to_vec());
+        offset = end;
+    }
+    Ok(outputs)
+}
+
+#[derive(Clone, Debug)]
+struct CudaQuantizedProjectionGroup {
+    storage: CudaBuffer,
+    mode: QuantizationMode,
+    rows_per_projection: Vec<usize>,
+    columns: usize,
+}
+
+impl CudaQuantizedProjectionGroup {
+    fn total_rows(&self) -> usize {
+        self.rows_per_projection
+            .iter()
+            .copied()
+            .fold(0usize, usize::saturating_add)
+    }
+
+    fn byte_length(&self) -> usize {
+        self.storage.byte_len()
+    }
+
+    fn matvec_profiled(
+        &self,
+        backend: &mut CudaBackend,
+        input: &[f32],
+    ) -> Result<(Vec<Vec<f32>>, CudaQuantizedMatvecStats), super::RuntimeError> {
+        if input.len() != self.columns {
+            return Err(super::RuntimeError::Backend(format!(
+                "cuda packed matvec width mismatch: expected {}, actual {}",
+                self.columns,
+                input.len()
+            )));
+        }
+        let result = backend.quantized_matvec_profiled(
+            &self.storage,
+            self.mode,
+            self.total_rows(),
+            self.columns,
+            input,
+        )?;
+        Ok((
+            split_projection_outputs(&self.rows_per_projection, result.values)?,
+            result.stats,
+        ))
+    }
+}
+
+fn pack_quantized_projection_bytes(projections: &[&[u8]]) -> Vec<u8> {
+    let total_bytes = projections
+        .iter()
+        .copied()
+        .fold(0usize, |sum, bytes| sum.saturating_add(bytes.len()));
+    let mut packed = Vec::with_capacity(total_bytes);
+    for projection in projections {
+        packed.extend_from_slice(projection);
+    }
+    packed
+}
+
 #[derive(Clone, Debug)]
 struct QuantizedExpertTensor {
     storage: PagedTensorStorage,
@@ -1981,6 +2025,92 @@ impl CudaQuantizedExpertTensor {
         )?;
         *output = result.values;
         Ok(result.stats)
+    }
+}
+
+fn pack_quantized_expert_projection_bytes(
+    row_byte_len: usize,
+    outer: usize,
+    rows_per_projection: &[usize],
+    projections: &[&[u8]],
+) -> Vec<u8> {
+    let rows_per_expert = rows_per_projection
+        .iter()
+        .copied()
+        .fold(0usize, usize::saturating_add);
+    let total_bytes = outer
+        .saturating_mul(rows_per_expert)
+        .saturating_mul(row_byte_len);
+    let mut packed = Vec::with_capacity(total_bytes);
+    for expert_index in 0..outer {
+        for (projection_rows, projection_bytes) in
+            rows_per_projection.iter().copied().zip(projections.iter().copied())
+        {
+            let expert_stride = projection_rows.saturating_mul(row_byte_len);
+            let start = expert_index.saturating_mul(expert_stride);
+            let end = start.saturating_add(expert_stride);
+            packed.extend_from_slice(&projection_bytes[start..end]);
+        }
+    }
+    packed
+}
+
+#[derive(Clone, Debug)]
+struct CudaQuantizedExpertProjectionGroup {
+    storage: CudaBuffer,
+    mode: QuantizationMode,
+    outer: usize,
+    rows_per_projection: Vec<usize>,
+    columns: usize,
+    row_byte_len: usize,
+}
+
+impl CudaQuantizedExpertProjectionGroup {
+    fn total_rows(&self) -> usize {
+        self.rows_per_projection
+            .iter()
+            .copied()
+            .fold(0usize, usize::saturating_add)
+    }
+
+    fn byte_length(&self) -> usize {
+        self.storage.byte_len()
+    }
+
+    fn expert_matvec_profiled(
+        &self,
+        backend: &mut CudaBackend,
+        expert_index: usize,
+        input: &[f32],
+    ) -> Result<(Vec<Vec<f32>>, CudaQuantizedMatvecStats), super::RuntimeError> {
+        if expert_index >= self.outer {
+            return Err(super::RuntimeError::Backend(format!(
+                "expert index {expert_index} exceeds expert count {}",
+                self.outer
+            )));
+        }
+        if input.len() != self.columns {
+            return Err(super::RuntimeError::Backend(format!(
+                "cuda expert packed matvec width mismatch: expected {}, actual {}",
+                self.columns,
+                input.len()
+            )));
+        }
+        let byte_offset = expert_index
+            .saturating_mul(self.total_rows())
+            .saturating_mul(self.row_byte_len);
+        let result = backend.quantized_matvec_with_offset_profiled(
+            &self.storage,
+            byte_offset,
+            self.mode,
+            self.total_rows(),
+            self.columns,
+            input,
+        )?;
+        Ok((
+            split_projection_outputs(&self.rows_per_projection, result.values)?,
+            result.stats,
+        ))
     }
 }
 
@@ -2149,6 +2279,248 @@ fn load_cuda_quantized_expert_tensor(
         outer: *outer,
         rows: *rows,
         columns: *columns,
+        row_byte_len,
+    })
+}
+
+fn load_cuda_quantized_projection_group(
+    backend: &mut CudaBackend,
+    artifact: &GgufBlobArtifact,
+    names: &[&str],
+) -> Result<CudaQuantizedProjectionGroup, ModelLoadError> {
+    let mut mode = None;
+    let mut columns = None;
+    let mut rows_per_projection = Vec::with_capacity(names.len());
+    let mut projection_bytes = Vec::with_capacity(names.len());
+    for name in names {
+        let storage = artifact.paged_tensor(name)?;
+        let metadata = storage.metadata();
+        let tensor_name = metadata.name.clone();
+        let dims = metadata.shape.dims().to_vec();
+        let quantization = metadata.quantization;
+        let layout = metadata.quantized_layout;
+        let [rows, projection_columns] = dims.as_slice() else {
+            return Err(ModelLoadError::InvalidTensorShape {
+                name: tensor_name,
+                expected: vec![0, 0],
+                actual: dims,
+            });
+        };
+        let layout = layout.ok_or_else(|| ModelLoadError::UnsupportedTensorDType {
+            name: tensor_name,
+            dtype: String::from("quantized"),
+        })?;
+        quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
+            ModelLoadError::InvalidQuantizedTensorShape {
+                quantization,
+                shape: dims.clone(),
+            }
+        })?;
+        if let Some(expected_mode) = mode {
+            if expected_mode != quantization {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed cuda projection group requires matching quantization, `{name}` had {quantization:?} but expected {expected_mode:?}"
+                    ),
+                });
+            }
+        } else {
+            mode = Some(quantization);
+        }
+        if let Some(expected_columns) = columns {
+            if expected_columns != *projection_columns {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed cuda projection group requires matching input width, `{name}` had {projection_columns} but expected {expected_columns}"
+                    ),
+                });
+            }
+        } else {
+            columns = Some(*projection_columns);
+        }
+        rows_per_projection.push(*rows);
+        projection_bytes.push(storage.bytes()?.to_vec());
+    }
+    let packed = pack_quantized_projection_bytes(
+        projection_bytes
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    let mode = mode.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed cuda projection group requires at least one tensor name, actual 0 for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let columns = columns.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed cuda projection group did not resolve an input width for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let storage = backend
+        .byte_buffer(packed.as_slice())
+        .map_err(|error| ModelLoadError::ArtifactFormat {
+            format: String::from("gguf"),
+            message: format!(
+                "failed to upload packed cuda projection group `{}`: {error}",
+                names.join(", ")
+            ),
+        })?;
+    Ok(CudaQuantizedProjectionGroup {
+        storage,
+        mode,
+        rows_per_projection,
+        columns,
+    })
+}
+
+fn load_cuda_quantized_expert_projection_group(
+    backend: &mut CudaBackend,
+    artifact: &GgufBlobArtifact,
+    names: &[&str],
+) -> Result<CudaQuantizedExpertProjectionGroup, ModelLoadError> {
+    let mut mode = None;
+    let mut outer = None;
+    let mut columns = None;
+    let mut row_byte_len = None;
+    let mut rows_per_projection = Vec::with_capacity(names.len());
+    let mut projection_bytes = Vec::with_capacity(names.len());
+    for name in names {
+        let storage = artifact.paged_tensor(name)?;
+        let metadata = storage.metadata();
+        let tensor_name = metadata.name.clone();
+        let dims = metadata.shape.dims().to_vec();
+        let quantization = metadata.quantization;
+        let layout = metadata.quantized_layout;
+        let [projection_outer, rows, projection_columns] = dims.as_slice() else {
+            return Err(ModelLoadError::InvalidTensorShape {
+                name: tensor_name,
+                expected: vec![0, 0, 0],
+                actual: dims,
+            });
+        };
+        let layout = layout.ok_or_else(|| ModelLoadError::UnsupportedTensorDType {
+            name: tensor_name,
+            dtype: String::from("quantized"),
+        })?;
+        let projection_row_byte_len =
+            quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
+                ModelLoadError::InvalidQuantizedTensorShape {
+                    quantization,
+                    shape: dims.clone(),
+                }
+            })?;
+        if let Some(expected_mode) = mode {
+            if expected_mode != quantization {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed cuda expert projection group requires matching quantization, `{name}` had {quantization:?} but expected {expected_mode:?}"
+                    ),
+                });
+            }
+        } else {
+            mode = Some(quantization);
+        }
+        if let Some(expected_outer) = outer {
+            if expected_outer != *projection_outer {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed cuda expert projection group requires matching expert count, `{name}` had {projection_outer} but expected {expected_outer}"
+                    ),
+                });
+            }
+        } else {
+            outer = Some(*projection_outer);
+        }
+        if let Some(expected_columns) = columns {
+            if expected_columns != *projection_columns {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed cuda expert projection group requires matching input width, `{name}` had {projection_columns} but expected {expected_columns}"
+                    ),
+                });
+            }
+        } else {
+            columns = Some(*projection_columns);
+        }
+        if let Some(expected_row_byte_len) = row_byte_len {
+            if expected_row_byte_len != projection_row_byte_len {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed cuda expert projection group requires matching row layout, `{name}` had row byte length {projection_row_byte_len} but expected {expected_row_byte_len}"
+                    ),
+                });
+            }
+        } else {
+            row_byte_len = Some(projection_row_byte_len);
+        }
+        rows_per_projection.push(*rows);
+        projection_bytes.push(storage.bytes()?.to_vec());
+    }
+    let row_byte_len = row_byte_len.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed cuda expert projection group did not resolve a row layout for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let outer = outer.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed cuda expert projection group did not resolve an expert count for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let columns = columns.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed cuda expert projection group did not resolve an input width for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let mode = mode.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed cuda expert projection group requires at least one tensor name, actual 0 for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let packed = pack_quantized_expert_projection_bytes(
+        row_byte_len,
+        outer,
+        rows_per_projection.as_slice(),
+        projection_bytes
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    let storage = backend
+        .byte_buffer(packed.as_slice())
+        .map_err(|error| ModelLoadError::ArtifactFormat {
+            format: String::from("gguf"),
+            message: format!(
+                "failed to upload packed cuda expert projection group `{}`: {error}",
+                names.join(", ")
+            ),
+        })?;
+    Ok(CudaQuantizedExpertProjectionGroup {
+        storage,
+        mode,
+        outer,
+        rows_per_projection,
+        columns,
         row_byte_len,
     })
 }
@@ -2398,4 +2770,39 @@ fn rope_yarn(
 fn rope_yarn_ramp(low: f32, high: f32, i0: usize) -> f32 {
     let y = ((i0 / 2) as f32 - low) / (high - low).max(0.001);
     1.0 - y.clamp(0.0, 1.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{
+        pack_quantized_expert_projection_bytes, pack_quantized_projection_bytes,
+        split_projection_outputs,
+    };
+
+    #[test]
+    fn packed_projection_bytes_preserve_projection_order() {
+        let packed = pack_quantized_projection_bytes(&[&[1, 2], &[3], &[4, 5, 6]]);
+        assert_eq!(packed, vec![1, 2, 3, 4, 5, 6]);
+    }
+
+    #[test]
+    fn packed_expert_projection_bytes_interleave_each_expert_group() {
+        let packed = pack_quantized_expert_projection_bytes(
+            1,
+            2,
+            &[2, 1],
+            &[&[10, 11, 20, 21], &[30, 40]],
+        );
+        assert_eq!(packed, vec![10, 11, 30, 20, 21, 40]);
+    }
+
+    #[test]
+    fn split_projection_outputs_respects_segment_rows() {
+        let outputs = split_projection_outputs(&[2, 1, 3], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
+            .expect("packed outputs split");
+        assert_eq!(
+            outputs,
+            vec![vec![1.0, 2.0], vec![3.0], vec![4.0, 5.0, 6.0]]
+        );
+    }
 }
