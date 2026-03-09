@@ -13,7 +13,9 @@
 > in `4821bf07c` for the Psionic-only GPT-OSS/NVIDIA host path, and after
 > confirming the follow-on GPT-OSS throughput track `#3242` through `#3249`
 > where `#3242` through `#3246` are closed and `#3249` / `#3247` / `#3248`
-> remain open, and after the latest live benchmark plus deeper
+> remain open, and after opening the native-Rust Apple Silicon Metal
+> completion queue `#3270`, `#3268`, `#3269`, `#3271`, `#3272`, `#3261`, and
+> `#3262` from the 2026-03-09 throughput audit, and after the latest live benchmark plus deeper
 > llama.cpp-alignment checkpoint showing that Psionic now runs the exact
 > GPT-OSS HTTP lane at about `101.32 tok/s` on this RTX 4080 host after
 > trimming the default OpenAI/Harmony hot path, with the MXFP4 correctness
@@ -61,10 +63,13 @@
 > truthfully execute the real GPT-OSS/NVIDIA path without external
 > `llama.cpp`, while remaining valid as compute-market substrate."
 >
-> Host execution note: on this computer, active backend execution and hardware
-> validation work is NVIDIA-only. The AMD follow-on issues `PSI-151` through
-> `PSI-154` were intentionally closed as not planned and are excluded from the
-> active dependency queue unless a future reprioritization reopens them.
+> Host execution note: the active accelerator execution queues now split across
+> two concrete host classes: the NVIDIA GPT-OSS throughput queue
+> `#3249` -> `#3247` -> `#3248`, and the Apple Silicon native-Rust Metal
+> completion queue `#3270` -> `#3268` -> `#3269` -> `#3271` -> `#3272` ->
+> `#3261` -> `#3262`. The AMD follow-on issues `PSI-151` through `PSI-154`
+> were intentionally closed as not planned and are excluded from the active
+> dependency queue unless a future reprioritization reopens them.
 >
 > GPT-OSS host note: the local
 > `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file has now
@@ -765,11 +770,22 @@ state:
 | 80 | `GPT-OSS-PERF-6A` | [#3249](https://github.com/OpenAgentsInc/openagents/issues/3249) | Open | This is the current next issue: the latest benchmark and audit show the remaining dominant gap is now the missing `llama.cpp`-style MMVQ/MMID and flash-attention dispatch architecture. The newest attention-output q8_1 fusion removed another helper kernel and lifted the exact HTTP path to `101.32 tok/s`, so the remaining work is no longer primarily prompt-cache or logits-readback cleanup. |
 | 81 | `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | After the graph/fusion alignment issue, the next work is direct `llama.cpp` CUDA kernel and dispatch parity for MMVQ, MMID, attention, and the real MXFP4 expert path. |
 | 82 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Keep this open until the exact benchmark contract reaches the required llama.cpp-adjacent throughput class on the real Psionic HTTP path. |
+| 83 | `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | This is the first Apple Silicon native-Rust Metal issue because the current benchmark still defaults to `llama.cpp` proxy mode on macOS, which makes any Metal throughput claim ambiguous before we even improve the native path. |
+| 84 | `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | After benchmark honesty is fixed, the next native Metal blocker is structural: `psionic-backend-metal` already has device KV, shared-prefix, and reserved attention runtime substrate, but `psionic-serve` still routes the shipped Metal GPT-OSS path through host KV and `attend_impl(...)`. |
+| 85 | `METAL-GPT-OSS-3` | [#3269](https://github.com/OpenAgentsInc/openagents/issues/3269) | Open | Once the serve path is using backend-owned KV and reserved attention runtime, the next gap is the remaining CPU-owned RMSNorm, RoPE, router, softmax, SwiGLU, and expert aggregation work in `GptOssMetalModelInner::forward_step(...)`. |
+| 86 | `METAL-GPT-OSS-4` | [#3271](https://github.com/OpenAgentsInc/openagents/issues/3271) | Open | After the decode math is truly device-owned, the next high-value work is removing the one-op-submit / wait / readback pattern and replacing it with reusable scratch buffers plus chained command submission. |
+| 87 | `METAL-GPT-OSS-5` | [#3272](https://github.com/OpenAgentsInc/openagents/issues/3272) | Open | Bounded logits output is the next cleanup after the native hot path stops round-tripping every intermediate value, because greedy and bounded-candidate requests should not read back full raw logits by default. |
+| 88 | `METAL-GPT-OSS-6` | [#3261](https://github.com/OpenAgentsInc/openagents/issues/3261) | Open | Keep the validation and benchmark-evidence issue open until the native Rust Metal path, not the proxy path, has seeded parity coverage plus warm and prompt-cache-hit receipts. |
+| 89 | `METAL-GPT-OSS-7` | [#3262](https://github.com/OpenAgentsInc/openagents/issues/3262) | Open | Keep the Apple throughput umbrella open until the same-host native Rust Metal path reaches the agreed llama.cpp-relative throughput band on the real benchmark contract. |
 
 The active roadmap issues on this host are now `#3249` then `#3247` then
 `#3248`. Do not
 restart from the GPT-OSS enablement issues; the remaining work is throughput
 parity on the already-working Psionic-owned NVIDIA path.
+
+The active Apple Silicon native-Rust Metal queue is now `#3270` then `#3268`
+then `#3269` then `#3271` then `#3272` then `#3261` then `#3262`. Do not use
+proxy-mode benchmark results to claim closure for any of those Metal issues.
 
 ## Current Reality
 
@@ -789,6 +805,12 @@ baseline on `main` is:
   `llama.cpp`, so the remaining open roadmap work is the throughput-alignment
   track in `#3249`, `#3247`, and `#3248`, not feature-completeness for basic
   GPT-OSS execution
+- the Apple Silicon Metal groundwork from `#3250` and `#3252` through `#3260`
+  is already landed in-tree, but the 2026-03-09 audit shows the native serve
+  path still does not consume that substrate end to end: the benchmark defaults
+  to proxy mode on macOS, and `GptOssMetalModelInner` still retains host-owned
+  KV, attention, and MoE control flow. The remaining native-Rust Metal queue is
+  `#3270` -> `#3268` -> `#3269` -> `#3271` -> `#3272` -> `#3261` -> `#3262`.
 - the measured benchmark gap is now split across two visible classes of work
   instead of one vague "CUDA is slower" bucket
   - `llama.cpp` serves the timed request from a live prompt cache and only
@@ -1213,6 +1235,30 @@ about `187.13 tok/s` on the exact benchmark contract. Do not claim `>190 tok/s`
 closure on this host until both Psionic and the `llama.cpp` control are rerun
 above that threshold on the same benchmark contract.
 
+### Epic I: Native Rust Metal GPT-OSS completion track
+
+The backend groundwork for Metal GPT-OSS already exists on `main`: `#3250` and
+`#3252` through `#3260` landed the quantized storage, grouped expert dispatch,
+device-KV/shared-prefix substrate, decode-attention reserve path, bounded
+output helpers, allocator/runtime-policy hooks, and the first
+`MetalGgufGptOssTextGenerationService`. The remaining work is not "bring up
+Metal from zero." It is the gap between those backend pieces and a truthful
+end-to-end native Rust Metal serve path that no longer hides behind
+`llama.cpp` proxy mode and no longer keeps the decode loop CPU-owned.
+
+Source audit for this remaining queue:
+[2026-03-09-metal-gpt-oss-throughput-audit.md](../../../docs/audits/2026-03-09-metal-gpt-oss-throughput-audit.md)
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `METAL-GPT-OSS-1` | [#3270](https://github.com/OpenAgentsInc/openagents/issues/3270) | Open | Make native Rust Metal versus llama.cpp proxy execution explicit | `psionic-serve`, docs/scripts | The current macOS benchmark silently enables proxy mode, so Psionic can publish Apple throughput numbers that are really `llama.cpp` unless this issue lands first. |
+| `METAL-GPT-OSS-2` | [#3268](https://github.com/OpenAgentsInc/openagents/issues/3268) | Open | Wire the native Metal GPT-OSS serve path into device KV, shared-prefix, and reserved attention runtime | `psionic-serve`, `psionic-backend-metal`, `psionic-runtime` | The backend already has this substrate, but the shipped Metal GPT-OSS path still uses host `InMemoryKvCache`, host K/V vectors, and CPU `attend_impl(...)`. |
+| `METAL-GPT-OSS-3` | [#3269](https://github.com/OpenAgentsInc/openagents/issues/3269) | Open | Move the remaining GPT-OSS decode math and MoE control path off the host on Metal | `psionic-serve`, `psionic-backend-metal` | Even after device-KV and attention are wired, the native Metal decode loop still leaves RMSNorm, RoPE, router selection, softmax, SwiGLU, and expert aggregation on the CPU. |
+| `METAL-GPT-OSS-4` | [#3271](https://github.com/OpenAgentsInc/openagents/issues/3271) | Open | Remove per-op waits, readbacks, and transient host vectors from the native Metal decode path | `psionic-serve`, `psionic-backend-metal` | The current `run_quantized_matvec`/`run_grouped_quantized_matvec` usage pattern is still one-op-submit, wait, and readback, which kills throughput even if the kernel math is otherwise correct. |
+| `METAL-GPT-OSS-5` | [#3272](https://github.com/OpenAgentsInc/openagents/issues/3272) | Open | Use bounded logits output modes in the native Metal GPT-OSS serve path | `psionic-serve`, `psionic-backend-metal` | The backend already supports bounded logits selection, but the native Metal service still materializes full logits on the host even for greedy and small-candidate requests. |
+| `METAL-GPT-OSS-6` | [#3261](https://github.com/OpenAgentsInc/openagents/issues/3261) | Open | Add CPU-vs-Metal GPT-OSS parity, validation, and benchmark evidence | docs/tests/benchmark path plus the serving stack | Keep this open until the native Rust Metal path has seeded correctness tests, explicit refusal tests, and warm plus prompt-cache-hit receipts. |
+| `METAL-GPT-OSS-7` | [#3262](https://github.com/OpenAgentsInc/openagents/issues/3262) | Open | Reach same-host llama.cpp-class GPT-OSS throughput on Apple Silicon | docs/tests/benchmark path plus the serving stack | Keep this open until the same-host native Rust Metal path reaches the agreed llama.cpp-relative throughput band on the real benchmark contract. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -1241,6 +1287,11 @@ The shortest honest path from today's `main` is:
 10. The active next work on this host is the GPT-OSS throughput track:
     `#3242` -> `#3243` -> `#3244` -> `#3245` -> `#3246` are closed, and the
     current execution order is `#3249` then `#3247` then `#3248`.
+11. The Apple Silicon native-Rust Metal track is now explicit too: keep the
+    landed groundwork from `#3250` and `#3252` through `#3260`, but execute the
+    remaining queue in order `#3270` -> `#3268` -> `#3269` -> `#3271` ->
+    `#3272` -> `#3261` -> `#3262`, and do not use proxy-mode receipts to close
+    any of those issues.
 
 ## Definition Of Done For "Replace Ollama"
 
