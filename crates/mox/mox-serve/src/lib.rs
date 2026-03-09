@@ -4166,10 +4166,12 @@ impl GenerationSampler {
         self.select_next_token_from_history(logits, &history)
     }
 
-    fn select_next_token_from_history(&mut self, logits: &[f32], history: &[u32]) -> Option<TokenId> {
-        self.sampler
-            .select_next_token(logits, history)
-            .map(TokenId)
+    fn select_next_token_from_history(
+        &mut self,
+        logits: &[f32],
+        history: &[u32],
+    ) -> Option<TokenId> {
+        self.sampler.select_next_token(logits, history).map(TokenId)
     }
 }
 

@@ -1,6 +1,6 @@
 # Mox Roadmap
 
-> Status: updated 2026-03-08 after verifying the current GitHub issue set with
+> Status: updated 2026-03-09 after verifying the current GitHub issue set with
 > `gh issue list --state all` / `gh issue view`, after confirming the generic
 > Mox replacement track through `MOX-178` and `OA-203` is landed on `main`,
 > after landing `MOX-179` / [#3239](https://github.com/OpenAgentsInc/openagents/issues/3239)
@@ -10,7 +10,9 @@
 > `MOX-181` / [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237),
 > `MOX-182` / [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238),
 > and `MOX-183` / [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241)
-> in `4821bf07c` for the Mox-only GPT-OSS/NVIDIA host path.
+> in `4821bf07c` for the Mox-only GPT-OSS/NVIDIA host path, and after
+> confirming the follow-on GPT-OSS throughput track `#3242` through `#3248`
+> where `#3242` through `#3246` are closed and `#3247` / `#3248` remain open.
 >
 > This is the live roadmap for `crates/mox/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -27,7 +29,9 @@
 > `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file has now
 > been verified to run on this machine both via `~/code/llama.cpp` as a
 > reference oracle and via Mox alone through the local
-> `mox-gpt-oss-server` HTTP surface on NVIDIA.
+> `mox-gpt-oss-server` HTTP surface on NVIDIA. The remaining open roadmap work
+> on this host is no longer "make GPT-OSS run at all"; it is the active
+> throughput-parity track against `llama.cpp`.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the
@@ -680,10 +684,17 @@ state:
 | 72 | `MOX-181` | [#3237](https://github.com/OpenAgentsInc/openagents/issues/3237) | Closed | The real GGUF-backed GPT-OSS decoder execution model is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 73 | `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Closed | NVIDIA text-generation kernel coverage for the real GPT-OSS decoder path is now landed on `main`; keep it in sequence but skip it when choosing the next issue. |
 | 74 | `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Closed | The Mox-only GPT-OSS 20B NVIDIA-host flow is now validated on `main`; keep it in sequence but skip it when choosing the next issue. |
+| 75 | `GPT-OSS-PERF-1` | [#3242](https://github.com/OpenAgentsInc/openagents/issues/3242) | Closed | Benchmark evidence, JSON summaries, and Mox-owned GPT-OSS perf receipts are now landed; keep this in sequence but skip it when choosing the next issue. |
+| 76 | `GPT-OSS-PERF-2` | [#3243](https://github.com/OpenAgentsInc/openagents/issues/3243) | Closed | Device-resident activation/scratch surfaces and removal of per-matvec round-trips are now landed; keep this in sequence but skip it when choosing the next issue. |
+| 77 | `GPT-OSS-PERF-3` | [#3244](https://github.com/OpenAgentsInc/openagents/issues/3244) | Closed | CUDA KV, RMSNorm, RoPE, and decode attention are now landed; keep this in sequence but skip it when choosing the next issue. |
+| 78 | `GPT-OSS-PERF-4` | [#3245](https://github.com/OpenAgentsInc/openagents/issues/3245) | Closed | CUDA router selection and MoE execution substrate are now landed; keep this in sequence but skip it when choosing the next issue. |
+| 79 | `GPT-OSS-PERF-5` | [#3246](https://github.com/OpenAgentsInc/openagents/issues/3246) | Closed | The reusable GPT-OSS CUDA step-plan/runtime substrate is now landed; keep this in sequence but skip it when choosing the next issue. |
+| 80 | `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | This is the current next issue: the Mox-only GPT-OSS HTTP path works, but the remaining major gap is kernel quality and logits readback shape versus `llama.cpp`. |
+| 81 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Keep this open until the exact benchmark contract reaches the required llama.cpp-adjacent throughput class on the real Mox HTTP path. |
 
-There is no remaining active roadmap issue on this host. The GPT-OSS
-completion track through `MOX-183` is now landed and `gh issue list --state open`
-is expected to return no open Mox roadmap issues.
+The active roadmap issues on this host are now `#3247` then `#3248`. Do not
+restart from the GPT-OSS enablement issues; the remaining work is throughput
+parity on the already-working Mox-owned NVIDIA path.
 
 ## Current Reality
 
@@ -698,6 +709,10 @@ baseline on `main` is:
   `/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf` file through
   both external `~/code/llama.cpp` as a reference oracle and Mox alone through
   the local OpenAI-compatible `mox-gpt-oss-server`
+- the active gap is now measured, not speculative: the current audited
+  benchmark is about `35.70 tok/s` for Mox versus `168.53 tok/s` for
+  `llama.cpp`, so the remaining open roadmap work is the performance track in
+  `#3247` and `#3248`, not feature-completeness for basic GPT-OSS execution
 - CPU model-backed embeddings and text generation exist and are tested
 - initial GGML quantized tensor storage and decode coverage now extends to
   CPU-native `Q4_0`, `Q4_1`, and `Q8_0` execution over preserved GGML block
@@ -1081,6 +1096,25 @@ execution path is Mox-owned end to end.
 | `MOX-182` | [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238) | Closed | Add NVIDIA text-generation kernel coverage for the real GPT-OSS decoder path | `mox-backend-cuda`, `mox-compiler`, `mox-runtime`, `mox-serve` | Landed in `4821bf07c`: `mox-backend-cuda` now ships Mox-owned `Q8_0` / `MXFP4` quantized matvec kernels plus backend-owned quantized byte uploads, and `mox-serve` now exposes a truthful CUDA GPT-OSS generation path instead of advertising embeddings-only CUDA support. |
 | `MOX-183` | [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241) | Closed | Ship and validate a Mox-only GPT-OSS 20B inference flow on the NVIDIA host | `mox-serve`, `mox-provider`, `mox-runtime`, docs/tests | Landed in `4821bf07c`: the local `gpt-oss-20b-mxfp4.gguf` now serves through the Mox-owned `mox-gpt-oss-server` OpenAI-compatible HTTP surface on NVIDIA, and the exact local `/v1/chat/completions` flow returns `323` for the `17 * 19` validation request without delegating inference to `llama.cpp`. |
 
+### Epic H: GPT-OSS throughput parity track
+
+This epic exists because "Mox can run GPT-OSS correctly" and "Mox can run
+GPT-OSS in the same speed class as `llama.cpp`" are different milestones. The
+functional Mox-only NVIDIA path is landed. The remaining work is to close the
+throughput gap honestly on the same OpenAI-compatible HTTP flow, without
+delegating execution to `llama.cpp` and without taking prompt/render/parser
+shortcuts.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `GPT-OSS-PERF-1` | [#3242](https://github.com/OpenAgentsInc/openagents/issues/3242) | Closed | Add GPT-OSS decode instrumentation and parity benchmark evidence | `mox-serve`, `mox-backend-cuda`, docs/scripts | Landed on `main`: benchmark JSON summaries, request-level perf receipts, and the current auditable benchmark contract now exist for the exact Mox-vs-llama.cpp GPT-OSS flow. |
+| `GPT-OSS-PERF-2` | [#3243](https://github.com/OpenAgentsInc/openagents/issues/3243) | Closed | Keep GPT-OSS CUDA activations resident and remove per-matvec round-trips | `mox-backend-cuda`, `mox-serve` | Landed on `main`: device-resident decode-step buffers exist, per-matvec host `Vec<f32>` round-trips are gone from the hot path, and decode now works over reusable CUDA buffers instead of isolated upload/compute/readback calls. |
+| `GPT-OSS-PERF-3` | [#3244](https://github.com/OpenAgentsInc/openagents/issues/3244) | Closed | Move GPT-OSS KV, RMSNorm, RoPE, and attention onto CUDA | `mox-backend-cuda`, `mox-serve` | Landed on `main`: the CUDA lane now owns KV mirrors, RMSNorm, RoPE, and decode attention instead of routing those stages through the old CPU hot path. |
+| `GPT-OSS-PERF-4` | [#3245](https://github.com/OpenAgentsInc/openagents/issues/3245) | Closed | Replace GPT-OSS host-side MoE routing with grouped GPU expert execution substrate | `mox-backend-cuda`, `mox-serve` | Landed on `main`: router selection and MoE execution now have a CUDA-backed substrate, though the current real-model MXFP4 expert path still needs kernel-quality work for full parity throughput. |
+| `GPT-OSS-PERF-5` | [#3246](https://github.com/OpenAgentsInc/openagents/issues/3246) | Closed | Add graph-based GPT-OSS prefill and decode runtime on CUDA | `mox-serve`, `mox-runtime`, `mox-backend-cuda` | Landed on `main`: Mox now has a reusable GPT-OSS CUDA step-plan/runtime substrate and one-submission-per-token decode shape, but it still does not match `llama.cpp` kernel quality or logits-readback posture. |
+| `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | Upgrade GPT-OSS CUDA kernels to llama.cpp-class quantized throughput | `mox-backend-cuda`, `mox-serve` | Current next issue. The measured gap after the landed groundwork is still dominated by kernel quality, especially the full-vocab logits projection and the remaining MXFP4 expert-path limitations. |
+| `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Reach llama.cpp-class GPT-OSS throughput on the real Mox HTTP path | docs/tests/benchmark path plus the serving stack | Keep this open until the exact benchmark contract reaches the promised speed class on the real Mox-only HTTP lane. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -1105,7 +1139,10 @@ The shortest honest path from today's `main` is:
    `MOX-176` through `MOX-178` for bounded `sandbox_execution`.
 9. The GPT-OSS completion track is now landed on this NVIDIA host:
    `MOX-179` -> `MOX-180` -> `MOX-181` -> `MOX-182` -> `MOX-183` are closed on
-   `main`, and there is no remaining open roadmap issue in this sequence.
+   `main`; do not reopen that enablement sequence.
+10. The active next work on this host is the GPT-OSS throughput track:
+    `#3242` -> `#3243` -> `#3244` -> `#3245` -> `#3246` are closed, and the
+    current execution order is `#3247` then `#3248`.
 
 ## Definition Of Done For "Replace Ollama"
 
