@@ -131,6 +131,41 @@ pub struct MetalTopKResult {
     pub values: Vec<f32>,
 }
 
+/// Output mode for logits selection on the Metal backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetalLogitsOutputMode {
+    /// Return only the greedy token ids.
+    GreedyToken,
+    /// Return only the bounded top-k candidates and logits.
+    TopKCandidates(usize),
+    /// Materialize the full raw logits vector.
+    RawLogits,
+}
+
+/// Observable token-selection metrics for one Metal logits output path.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalLogitsSelectionMetrics {
+    /// Output mode used for the selection path.
+    pub output_mode: MetalLogitsOutputMode,
+    /// Number of bytes returned to the caller on the host path.
+    pub readback_bytes: u64,
+    /// Whether full raw logits were materialized on the host.
+    pub raw_logits_materialized: bool,
+}
+
+/// Result of one backend-owned logits selection request.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalLogitsSelectionResult {
+    /// Selected token ids, one per row.
+    pub selected_tokens: Vec<u32>,
+    /// Bounded top-k candidates when requested.
+    pub candidates: Option<MetalTopKResult>,
+    /// Full raw logits when requested.
+    pub logits: Option<Vec<f32>>,
+    /// Observable output-mode metrics.
+    pub metrics: MetalLogitsSelectionMetrics,
+}
+
 /// Explicit grouped-expert execution evidence returned by Metal `mul_mv_id`.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MetalGroupedExpertStats {
@@ -788,27 +823,7 @@ impl MetalBackend {
         row_count: usize,
         column_count: usize,
     ) -> Result<Vec<u32>, RuntimeError> {
-        if column_count == 0 {
-            return Err(RuntimeError::Backend(String::from(
-                "metal argmax requires at least one column",
-            )));
-        }
-        let values = dense_row_major_values(input, row_count, column_count, "metal argmax")?;
-        let mut indices = Vec::with_capacity(row_count);
-        for row in values.chunks_exact(column_count) {
-            let mut best_index = 0usize;
-            let mut best_value = row[0];
-            for (index, value) in row.iter().copied().enumerate().skip(1) {
-                if value > best_value {
-                    best_value = value;
-                    best_index = index;
-                }
-            }
-            indices.push(u32::try_from(best_index).map_err(|_| {
-                RuntimeError::Backend(String::from("metal argmax index conversion overflow"))
-            })?);
-        }
-        Ok(indices)
+        argmax_dense_rows(input, row_count, column_count, "metal argmax")
     }
 
     /// Selects the top-k values from each contiguous `f32` row.
@@ -819,34 +834,88 @@ impl MetalBackend {
         column_count: usize,
         top_k: usize,
     ) -> Result<MetalTopKResult, RuntimeError> {
-        let values = dense_row_major_values(input, row_count, column_count, "metal top_k")?;
-        let top_k = top_k.min(column_count);
-        let mut indices = Vec::with_capacity(row_count.saturating_mul(top_k));
-        let mut selected_values = Vec::with_capacity(row_count.saturating_mul(top_k));
+        top_k_dense_rows(input, row_count, column_count, top_k, "metal top_k")
+    }
 
-        for row in values.chunks_exact(column_count) {
-            let mut row_indices = (0..row.len()).collect::<Vec<_>>();
-            row_indices.sort_by(|left, right| {
-                row[*right]
-                    .partial_cmp(&row[*left])
-                    .unwrap_or(Ordering::Equal)
-                    .then_with(|| left.cmp(right))
-            });
-            row_indices.truncate(top_k);
-            for index in row_indices {
-                indices.push(u32::try_from(index).map_err(|_| {
-                    RuntimeError::Backend(String::from("metal top_k index conversion overflow"))
-                })?);
-                selected_values.push(row[index]);
+    /// Selects the bounded output shape required for one logits buffer.
+    pub fn select_logits_output_f32(
+        &self,
+        input: &MetalBuffer,
+        row_count: usize,
+        column_count: usize,
+        output_mode: MetalLogitsOutputMode,
+    ) -> Result<MetalLogitsSelectionResult, RuntimeError> {
+        match output_mode {
+            MetalLogitsOutputMode::GreedyToken => {
+                let selected_tokens = self.argmax_f32(input, row_count, column_count)?;
+                Ok(MetalLogitsSelectionResult {
+                    selected_tokens,
+                    candidates: None,
+                    logits: None,
+                    metrics: MetalLogitsSelectionMetrics {
+                        output_mode,
+                        readback_bytes: row_count
+                            .saturating_mul(std::mem::size_of::<u32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                        raw_logits_materialized: false,
+                    },
+                })
+            }
+            MetalLogitsOutputMode::TopKCandidates(top_k) => {
+                let candidates = self.top_k_f32(input, row_count, column_count, top_k)?;
+                let selected_tokens = candidates
+                    .indices
+                    .chunks_exact(candidates.top_k.max(1))
+                    .map(|row| row[0])
+                    .collect::<Vec<_>>();
+                let readback_bytes = candidates
+                    .indices
+                    .len()
+                    .saturating_mul(std::mem::size_of::<u32>())
+                    .saturating_add(
+                        candidates
+                            .values
+                            .len()
+                            .saturating_mul(std::mem::size_of::<f32>()),
+                    )
+                    .try_into()
+                    .unwrap_or(u64::MAX);
+                Ok(MetalLogitsSelectionResult {
+                    selected_tokens,
+                    candidates: Some(candidates),
+                    logits: None,
+                    metrics: MetalLogitsSelectionMetrics {
+                        output_mode,
+                        readback_bytes,
+                        raw_logits_materialized: false,
+                    },
+                })
+            }
+            MetalLogitsOutputMode::RawLogits => {
+                let logits = input.read_f32()?;
+                let selected_tokens = argmax_values(
+                    logits.as_slice(),
+                    row_count,
+                    column_count,
+                    "metal raw logits",
+                )?;
+                Ok(MetalLogitsSelectionResult {
+                    selected_tokens,
+                    candidates: None,
+                    logits: Some(logits),
+                    metrics: MetalLogitsSelectionMetrics {
+                        output_mode,
+                        readback_bytes: row_count
+                            .saturating_mul(column_count)
+                            .saturating_mul(std::mem::size_of::<f32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                        raw_logits_materialized: true,
+                    },
+                })
             }
         }
-
-        Ok(MetalTopKResult {
-            row_count,
-            top_k,
-            indices,
-            values: selected_values,
-        })
     }
 
     /// Executes a llama.cpp-style grouped `mul_mv_id` expert dispatch over one
@@ -2297,6 +2366,181 @@ fn dense_row_major_values(
         )));
     }
     Ok(values)
+}
+
+fn argmax_dense_rows(
+    input: &MetalBuffer,
+    row_count: usize,
+    column_count: usize,
+    label: &str,
+) -> Result<Vec<u32>, RuntimeError> {
+    let mut indices = Vec::with_capacity(row_count);
+    for row_index in 0..row_count {
+        let row = read_dense_f32_row(input, row_index, column_count, label)?;
+        let mut best_index = 0usize;
+        let mut best_value = row[0];
+        for (index, value) in row.iter().copied().enumerate().skip(1) {
+            if value > best_value {
+                best_value = value;
+                best_index = index;
+            }
+        }
+        indices.push(u32::try_from(best_index).map_err(|_| {
+            RuntimeError::Backend(String::from("metal argmax index conversion overflow"))
+        })?);
+    }
+    Ok(indices)
+}
+
+fn top_k_dense_rows(
+    input: &MetalBuffer,
+    row_count: usize,
+    column_count: usize,
+    top_k: usize,
+    label: &str,
+) -> Result<MetalTopKResult, RuntimeError> {
+    validate_dense_row_selection(input, row_count, column_count, label)?;
+    let top_k = top_k.min(column_count);
+    let mut indices = Vec::with_capacity(row_count.saturating_mul(top_k));
+    let mut selected_values = Vec::with_capacity(row_count.saturating_mul(top_k));
+
+    for row_index in 0..row_count {
+        let row = read_dense_f32_row(input, row_index, column_count, label)?;
+        let mut row_indices = (0..row.len()).collect::<Vec<_>>();
+        row_indices.sort_by(|left, right| {
+            row[*right]
+                .partial_cmp(&row[*left])
+                .unwrap_or(Ordering::Equal)
+                .then_with(|| left.cmp(right))
+        });
+        row_indices.truncate(top_k);
+        for index in row_indices {
+            indices.push(u32::try_from(index).map_err(|_| {
+                RuntimeError::Backend(String::from("metal top_k index conversion overflow"))
+            })?);
+            selected_values.push(row[index]);
+        }
+    }
+
+    Ok(MetalTopKResult {
+        row_count,
+        top_k,
+        indices,
+        values: selected_values,
+    })
+}
+
+fn argmax_values(
+    values: &[f32],
+    row_count: usize,
+    column_count: usize,
+    label: &str,
+) -> Result<Vec<u32>, RuntimeError> {
+    if column_count == 0 {
+        return Err(RuntimeError::Backend(format!(
+            "{label} requires at least one column",
+        )));
+    }
+    let expected_len = row_count
+        .checked_mul(column_count)
+        .ok_or_else(|| RuntimeError::Backend(format!("{label} shape overflow")))?;
+    if values.len() != expected_len {
+        return Err(RuntimeError::Backend(format!(
+            "{label} shape mismatch: expected {expected_len} values, actual {}",
+            values.len()
+        )));
+    }
+
+    let mut indices = Vec::with_capacity(row_count);
+    for row in values.chunks_exact(column_count) {
+        let mut best_index = 0usize;
+        let mut best_value = row[0];
+        for (index, value) in row.iter().copied().enumerate().skip(1) {
+            if value > best_value {
+                best_value = value;
+                best_index = index;
+            }
+        }
+        indices.push(u32::try_from(best_index).map_err(|_| {
+            RuntimeError::Backend(String::from("metal raw logits index conversion overflow"))
+        })?);
+    }
+    Ok(indices)
+}
+
+fn validate_dense_row_selection(
+    input: &MetalBuffer,
+    row_count: usize,
+    column_count: usize,
+    label: &str,
+) -> Result<usize, RuntimeError> {
+    if column_count == 0 {
+        return Err(RuntimeError::Backend(format!(
+            "{label} requires at least one column",
+        )));
+    }
+    if input.storage_kind() != BufferStorageKind::DenseF32 {
+        return Err(RuntimeError::Backend(format!(
+            "{label} requires dense f32 storage, actual {:?}",
+            input.storage_kind()
+        )));
+    }
+    let expected_len = row_count
+        .checked_mul(column_count)
+        .ok_or_else(|| RuntimeError::Backend(format!("{label} shape overflow")))?;
+    if input.spec().storage_size() != expected_len {
+        return Err(RuntimeError::Backend(format!(
+            "{label} shape mismatch: expected {expected_len} values, actual {}",
+            input.spec().storage_size()
+        )));
+    }
+    column_count
+        .checked_mul(std::mem::size_of::<f32>())
+        .ok_or_else(|| RuntimeError::Backend(format!("{label} byte width overflow")))
+}
+
+fn read_dense_f32_row(
+    input: &MetalBuffer,
+    row_index: usize,
+    column_count: usize,
+    label: &str,
+) -> Result<Vec<f32>, RuntimeError> {
+    if column_count == 0 {
+        return Err(RuntimeError::Backend(format!(
+            "{label} requires at least one column",
+        )));
+    }
+    if input.storage_kind() != BufferStorageKind::DenseF32 {
+        return Err(RuntimeError::Backend(format!(
+            "{label} requires dense f32 storage, actual {:?}",
+            input.storage_kind()
+        )));
+    }
+    if input.spec().storage_size() % column_count != 0 {
+        return Err(RuntimeError::Backend(format!(
+            "{label} storage size {} is not divisible by row width {}",
+            input.spec().storage_size(),
+            column_count
+        )));
+    }
+    let row_count = input.spec().storage_size() / column_count;
+    if row_index >= row_count {
+        return Err(RuntimeError::Backend(format!(
+            "{label} row index {} exceeds row count {}",
+            row_index, row_count
+        )));
+    }
+    let row_byte_len = column_count
+        .checked_mul(std::mem::size_of::<f32>())
+        .ok_or_else(|| RuntimeError::Backend(format!("{label} byte width overflow")))?;
+    let byte_offset = row_index
+        .checked_mul(row_byte_len)
+        .ok_or_else(|| RuntimeError::Backend(format!("{label} byte offset overflow")))?;
+    bytes_to_f32_vec(
+        input
+            .read_bytes_at_offset(byte_offset, row_byte_len)?
+            .as_slice(),
+    )
 }
 
 fn apply_rotary_embedding_values(
@@ -4549,6 +4793,99 @@ mod tests {
         assert_eq!(result.top_k, 2);
         assert_eq!(result.indices, vec![2, 3, 0, 2]);
         assert_eq!(result.values, vec![4.25, 3.0, 9.5, 9.5]);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_selects_greedy_token_with_bounded_output_mode_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let logits = backend.input_buffer(Shape::new(vec![1, 4]), vec![1.0, -2.0, 4.25, 3.0])?;
+        let selection = backend.select_logits_output_f32(
+            &logits,
+            1,
+            4,
+            super::MetalLogitsOutputMode::GreedyToken,
+        )?;
+        assert_eq!(selection.selected_tokens, vec![2]);
+        assert!(selection.candidates.is_none());
+        assert!(selection.logits.is_none());
+        assert_eq!(
+            selection.metrics.output_mode,
+            super::MetalLogitsOutputMode::GreedyToken
+        );
+        assert_eq!(selection.metrics.readback_bytes, 4);
+        assert_eq!(selection.metrics.raw_logits_materialized, false);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_bounds_top_k_candidate_output_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let logits = backend.input_buffer(
+            Shape::new(vec![2, 4]),
+            vec![1.0, -2.0, 4.25, 3.0, 9.5, 0.0, 9.5, -1.0],
+        )?;
+        let selection = backend.select_logits_output_f32(
+            &logits,
+            2,
+            4,
+            super::MetalLogitsOutputMode::TopKCandidates(2),
+        )?;
+        assert_eq!(selection.selected_tokens, vec![2, 0]);
+        assert_eq!(
+            selection.candidates.as_ref().map(|value| value.top_k),
+            Some(2)
+        );
+        assert!(selection.logits.is_none());
+        assert_eq!(
+            selection.metrics.output_mode,
+            super::MetalLogitsOutputMode::TopKCandidates(2)
+        );
+        assert_eq!(selection.metrics.readback_bytes, 32);
+        assert_eq!(selection.metrics.raw_logits_materialized, false);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_materializes_raw_logits_only_when_requested_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let logits = backend.input_buffer(Shape::new(vec![1, 4]), vec![1.0, -2.0, 4.25, 3.0])?;
+        let selection = backend.select_logits_output_f32(
+            &logits,
+            1,
+            4,
+            super::MetalLogitsOutputMode::RawLogits,
+        )?;
+        assert_eq!(selection.selected_tokens, vec![2]);
+        assert!(selection.candidates.is_none());
+        assert_eq!(selection.logits, Some(vec![1.0, -2.0, 4.25, 3.0]));
+        assert_eq!(
+            selection.metrics.output_mode,
+            super::MetalLogitsOutputMode::RawLogits
+        );
+        assert_eq!(selection.metrics.readback_bytes, 16);
+        assert_eq!(selection.metrics.raw_logits_materialized, true);
         Ok(())
     }
 
