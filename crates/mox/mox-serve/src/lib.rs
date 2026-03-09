@@ -1042,13 +1042,9 @@ impl GptOssCudaRuntimeMetrics {
         self.device_to_host_bytes = self
             .device_to_host_bytes
             .saturating_add(other.device_to_host_bytes);
-        self.submission_count = self
-            .submission_count
-            .saturating_add(other.submission_count);
+        self.submission_count = self.submission_count.saturating_add(other.submission_count);
         self.sync_count = self.sync_count.saturating_add(other.sync_count);
-        self.kernel_launches = self
-            .kernel_launches
-            .saturating_add(other.kernel_launches);
+        self.kernel_launches = self.kernel_launches.saturating_add(other.kernel_launches);
     }
 }
 
