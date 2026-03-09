@@ -35,6 +35,7 @@ pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submissio
 const MODERN_FAMILY_FLAG: &str = "family_modern";
 #[cfg(target_os = "macos")]
 const LEGACY_FAMILY_FLAG: &str = "family_legacy";
+const FLASH_ATTENTION_FEATURE_FLAG: &str = "flash_attention";
 
 const METAL_POOL_MAX_CACHED_BUFFERS: usize = 128;
 const METAL_POOL_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
@@ -60,6 +61,7 @@ pub const TEXT_GENERATION_SUPPORTED_OPS: &[&str] = &[
     "add",
     "backend_extension:rms_norm",
     "backend_extension:rotary_embedding",
+    "backend_extension:scaled_dot_product_attention",
     "argmax_f32",
     "top_k_f32",
     "mul_mv_id_q8_0",
@@ -151,6 +153,36 @@ pub struct MetalGroupedExpertMatvecResult {
     pub values: Vec<f32>,
     /// Explicit grouped-path evidence.
     pub stats: MetalGroupedExpertStats,
+}
+
+/// Explicit decode-attention execution evidence returned by the Metal backend.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalDecodeAttentionStats {
+    /// Whether the flash-style online-softmax path was used.
+    pub flash_attention_path: bool,
+    /// Whether RoPE was applied inside the backend decode path.
+    pub rotary_applied: bool,
+    /// Whether device-resident KV state participated in the decode path.
+    pub used_device_kv: bool,
+    /// Zero-based write index used for the current KV append.
+    pub cache_write_index: usize,
+    /// Current cached token count after the append.
+    pub cached_tokens: usize,
+    /// Number of query heads.
+    pub query_head_count: usize,
+    /// Number of KV heads.
+    pub kv_head_count: usize,
+}
+
+/// Output of one backend-owned decode-attention step.
+#[derive(Clone)]
+pub struct MetalDecodeAttentionResult {
+    /// Attention output buffer with logical shape `[1, query_heads, 1, head_dim]`.
+    pub output: MetalBuffer,
+    /// Observable KV state after the current decode step.
+    pub cache_state: KvCacheState,
+    /// Explicit decode-attention execution evidence.
+    pub stats: MetalDecodeAttentionStats,
 }
 
 /// Device-resident GPT-OSS KV cache mirror for the Metal backend.
@@ -644,6 +676,13 @@ impl MetalBackend {
         }
     }
 
+    /// Returns whether the selected Metal device can use the flash-attention path.
+    #[must_use]
+    pub fn supports_flash_attention(&self) -> bool {
+        self.selected_device()
+            .is_some_and(device_supports_flash_attention)
+    }
+
     fn selected_backend_mut(&mut self) -> Option<&mut AvailableMetalBackend> {
         match &mut self.state {
             MetalBackendState::Available(backend) => Some(backend),
@@ -958,6 +997,135 @@ impl MetalBackend {
         )
     }
 
+    /// Executes one backend-owned decode-attention step using RoPE-applied query/key
+    /// vectors and a device-resident KV mirror.
+    pub fn decode_attention_f32(
+        &mut self,
+        query: &MetalBuffer,
+        key: &MetalBuffer,
+        value: &MetalBuffer,
+        cos: &MetalBuffer,
+        sin: &MetalBuffer,
+        cache: &mut MetalKvCacheMirror,
+        scale: f32,
+        causal: bool,
+        interleaved: bool,
+        flash_preferred: bool,
+    ) -> Result<MetalDecodeAttentionResult, RuntimeError> {
+        let query_dims = query.spec().shape().dims().to_vec();
+        let key_dims = key.spec().shape().dims().to_vec();
+        let value_dims = value.spec().shape().dims().to_vec();
+        if query_dims.len() != 4 || key_dims.len() != 4 || value_dims.len() != 4 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal decode attention requires rank-4 query/key/value tensors",
+            )));
+        }
+        if query_dims[0] != 1 || key_dims[0] != 1 || value_dims[0] != 1 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal decode attention currently requires batch size 1",
+            )));
+        }
+        if query_dims[2] != 1 || key_dims[2] != 1 || value_dims[2] != 1 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal decode attention currently requires a single decode token",
+            )));
+        }
+        if key_dims[1] != value_dims[1] || key_dims[3] != value_dims[3] {
+            return Err(RuntimeError::Backend(String::from(
+                "metal decode attention requires matching key/value head geometry",
+            )));
+        }
+        if query_dims[3] != key_dims[3] {
+            return Err(RuntimeError::Backend(String::from(
+                "metal decode attention requires matching query/key head dimensions",
+            )));
+        }
+
+        let query_head_count = query_dims[1];
+        let kv_head_count = key_dims[1];
+        let head_dim = query_dims[3];
+        if query_head_count == 0 || kv_head_count == 0 || head_dim == 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal decode attention requires non-zero head geometry",
+            )));
+        }
+        if query_head_count % kv_head_count != 0 {
+            return Err(RuntimeError::Backend(format!(
+                "metal decode attention requires query heads {} to be divisible by kv heads {}",
+                query_head_count, kv_head_count
+            )));
+        }
+
+        let required_cache_width = kv_head_count.saturating_mul(head_dim);
+        if cache.width() != required_cache_width {
+            return Err(RuntimeError::Backend(format!(
+                "metal decode attention cache width mismatch: expected {}, actual {}",
+                required_cache_width,
+                cache.width()
+            )));
+        }
+
+        let query_values = query.read_f32()?;
+        let key_values = key.read_f32()?;
+        let value_values = value.read_f32()?;
+        let cos_values = cos.read_f32()?;
+        let sin_values = sin.read_f32()?;
+        let cos_dims = cos.spec().shape().dims().to_vec();
+
+        let roped_query = apply_rotary_embedding_values(
+            query_values.as_slice(),
+            query_dims.as_slice(),
+            cos_values.as_slice(),
+            sin_values.as_slice(),
+            cos_dims.as_slice(),
+            interleaved,
+        )?;
+        let roped_key = apply_rotary_embedding_values(
+            key_values.as_slice(),
+            key_dims.as_slice(),
+            cos_values.as_slice(),
+            sin_values.as_slice(),
+            cos_dims.as_slice(),
+            interleaved,
+        )?;
+
+        let flattened_key = flatten_decode_heads(roped_key.as_slice(), kv_head_count, head_dim)?;
+        let flattened_value =
+            flatten_decode_heads(value_values.as_slice(), kv_head_count, head_dim)?;
+        let cache_write_index =
+            cache.append_entry(self, flattened_key.as_slice(), flattened_value.as_slice())?;
+
+        let (expanded_key, expanded_value) =
+            expand_kv_cache_for_attention(cache, query_head_count, kv_head_count, head_dim)?;
+        let flash_attention_path = flash_preferred && causal && self.supports_flash_attention();
+        let output_values = scaled_dot_product_attention_values(
+            roped_query.as_slice(),
+            expanded_key.as_slice(),
+            expanded_value.as_slice(),
+            query_dims.as_slice(),
+            &[1, query_head_count, cache.len(), head_dim],
+            &[1, query_head_count, cache.len(), head_dim],
+            scale,
+            false,
+            flash_attention_path,
+        )?;
+        let output = self.input_buffer(Shape::new(query_dims), output_values)?;
+
+        Ok(MetalDecodeAttentionResult {
+            output,
+            cache_state: cache.state(),
+            stats: MetalDecodeAttentionStats {
+                flash_attention_path,
+                rotary_applied: true,
+                used_device_kv: true,
+                cache_write_index,
+                cached_tokens: cache.len(),
+                query_head_count,
+                kv_head_count,
+            },
+        })
+    }
+
     /// Returns truthful backend-selection data for a supported Metal product path.
     pub fn backend_selection(
         &self,
@@ -1076,6 +1244,7 @@ impl DeviceDiscovery for MetalBackend {
             MetalBackendState::Available(_) => vec![
                 BackendExtensionSupport::reference(BackendExtensionKind::RmsNorm),
                 BackendExtensionSupport::reference(BackendExtensionKind::RotaryEmbedding),
+                BackendExtensionSupport::reference(BackendExtensionKind::ScaledDotProductAttention),
             ],
             MetalBackendState::Unavailable(_) => Vec::new(),
         }
@@ -1688,6 +1857,9 @@ impl AvailableMetalBackend {
             BackendExtensionOp::RotaryEmbedding { interleaved } => {
                 self.rotary_embedding(step, values, *interleaved)
             }
+            BackendExtensionOp::ScaledDotProductAttention { scale, causal } => {
+                self.scaled_dot_product_attention(step, values, scale.to_f32(), *causal)
+            }
             _ => Err(RuntimeError::UnsupportedStep(op.label().to_string())),
         }
     }
@@ -1740,54 +1912,41 @@ impl AvailableMetalBackend {
         let sin_buffer = input(step, values, 2)?;
         let cos_values = cos_buffer.read_f32()?;
         let sin_values = sin_buffer.read_f32()?;
-        let dims = step.spec.shape().dims();
-        if dims.len() != 4 {
-            return Err(RuntimeError::Backend(format!(
-                "metal rotary_embedding requires rank-4 tensors, actual rank {}",
-                dims.len()
-            )));
-        }
-        let batch = dims[0];
-        let heads = dims[1];
-        let seq_len = dims[2];
-        let head_dim = dims[3];
-        if head_dim % 2 != 0 {
-            return Err(RuntimeError::Backend(String::from(
-                "metal rotary_embedding requires an even head dimension",
-            )));
-        }
+        let output = apply_rotary_embedding_values(
+            input_values.as_slice(),
+            step.spec.shape().dims(),
+            cos_values.as_slice(),
+            sin_values.as_slice(),
+            cos_buffer.spec().shape().dims(),
+            interleaved,
+        )?;
 
-        let half_dim = head_dim / 2;
-        let cos_dims = cos_buffer.spec().shape().dims();
-        let batched_cos = cos_dims.len() == 3;
-        let mut output = input_values.clone();
+        let mut buffer = self.allocate(&step.spec)?;
+        buffer.write_f32(output.as_slice())?;
+        Ok(buffer)
+    }
 
-        for batch_index in 0..batch {
-            for head_index in 0..heads {
-                for position in 0..seq_len {
-                    let base = ((batch_index * heads + head_index) * seq_len + position) * head_dim;
-                    for pair in 0..half_dim {
-                        let cos_index = if batched_cos {
-                            (batch_index * seq_len + position) * half_dim + pair
-                        } else {
-                            position * half_dim + pair
-                        };
-                        let cosine = cos_values[cos_index];
-                        let sine = sin_values[cos_index];
-                        let (left_index, right_index) = if interleaved {
-                            (base + pair * 2, base + pair * 2 + 1)
-                        } else {
-                            (base + pair, base + half_dim + pair)
-                        };
-                        let left = input_values[left_index];
-                        let right = input_values[right_index];
-                        output[left_index] = left * cosine - right * sine;
-                        output[right_index] = left * sine + right * cosine;
-                    }
-                }
-            }
-        }
-
+    fn scaled_dot_product_attention(
+        &mut self,
+        step: &ExecutionStep,
+        values: &BTreeMap<TensorId, MetalBuffer>,
+        scale: f32,
+        causal: bool,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let query = input(step, values, 0)?;
+        let key = input(step, values, 1)?;
+        let value = input(step, values, 2)?;
+        let output = scaled_dot_product_attention_values(
+            query.read_f32()?.as_slice(),
+            key.read_f32()?.as_slice(),
+            value.read_f32()?.as_slice(),
+            query.spec().shape().dims(),
+            key.spec().shape().dims(),
+            value.spec().shape().dims(),
+            scale,
+            causal,
+            device_supports_flash_attention(&self.descriptor),
+        )?;
         let mut buffer = self.allocate(&step.spec)?;
         buffer.write_f32(output.as_slice())?;
         Ok(buffer)
@@ -2050,6 +2209,14 @@ fn validate_supported_step(step: &ExecutionStep) -> Result<(), RuntimeError> {
                     )));
                 }
             }
+            BackendExtensionOp::ScaledDotProductAttention { .. } => {
+                if step.inputs.len() != 3 {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal scaled_dot_product_attention step {} requires three inputs",
+                        step.output
+                    )));
+                }
+            }
             _ => {
                 return Err(RuntimeError::UnsupportedStep(op.label().to_string()));
             }
@@ -2130,6 +2297,300 @@ fn dense_row_major_values(
         )));
     }
     Ok(values)
+}
+
+fn apply_rotary_embedding_values(
+    input: &[f32],
+    dims: &[usize],
+    cos: &[f32],
+    sin: &[f32],
+    cos_dims: &[usize],
+    interleaved: bool,
+) -> Result<Vec<f32>, RuntimeError> {
+    if dims.len() != 4 {
+        return Err(RuntimeError::Backend(format!(
+            "metal rotary_embedding requires rank-4 tensors, actual rank {}",
+            dims.len()
+        )));
+    }
+    let batch = dims[0];
+    let heads = dims[1];
+    let seq_len = dims[2];
+    let head_dim = dims[3];
+    if head_dim % 2 != 0 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal rotary_embedding requires an even head dimension",
+        )));
+    }
+
+    let expected_input = batch
+        .saturating_mul(heads)
+        .saturating_mul(seq_len)
+        .saturating_mul(head_dim);
+    if input.len() != expected_input {
+        return Err(RuntimeError::Backend(String::from(
+            "metal rotary_embedding input length does not match tensor shape",
+        )));
+    }
+
+    let half_dim = head_dim / 2;
+    let batched_cos = cos_dims.len() == 3;
+    let expected_cos = if batched_cos {
+        batch.saturating_mul(seq_len).saturating_mul(half_dim)
+    } else {
+        seq_len.saturating_mul(half_dim)
+    };
+    if cos.len() != expected_cos || sin.len() != expected_cos {
+        return Err(RuntimeError::Backend(format!(
+            "metal rotary_embedding cos/sin length mismatch: expected {}, actual {} / {}",
+            expected_cos,
+            cos.len(),
+            sin.len()
+        )));
+    }
+
+    let mut output = input.to_vec();
+    for batch_index in 0..batch {
+        for head_index in 0..heads {
+            for position in 0..seq_len {
+                let base = ((batch_index * heads + head_index) * seq_len + position) * head_dim;
+                for pair in 0..half_dim {
+                    let cos_index = if batched_cos {
+                        (batch_index * seq_len + position) * half_dim + pair
+                    } else {
+                        position * half_dim + pair
+                    };
+                    let cosine = cos[cos_index];
+                    let sine = sin[cos_index];
+                    let (left_index, right_index) = if interleaved {
+                        (base + pair * 2, base + pair * 2 + 1)
+                    } else {
+                        (base + pair, base + half_dim + pair)
+                    };
+                    let left = input[left_index];
+                    let right = input[right_index];
+                    output[left_index] = left * cosine - right * sine;
+                    output[right_index] = left * sine + right * cosine;
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn scaled_dot_product_attention_values(
+    query: &[f32],
+    key: &[f32],
+    value: &[f32],
+    query_dims: &[usize],
+    key_dims: &[usize],
+    value_dims: &[usize],
+    scale: f32,
+    causal: bool,
+    flash_attention: bool,
+) -> Result<Vec<f32>, RuntimeError> {
+    if query_dims.len() != 4 || key_dims.len() != 4 || value_dims.len() != 4 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal scaled_dot_product_attention requires rank-4 tensors",
+        )));
+    }
+    let valid = query_dims[0] == key_dims[0]
+        && query_dims[0] == value_dims[0]
+        && query_dims[1] == key_dims[1]
+        && query_dims[1] == value_dims[1]
+        && key_dims[2] == value_dims[2]
+        && query_dims[3] == key_dims[3];
+    if !valid {
+        return Err(RuntimeError::Backend(format!(
+            "metal scaled_dot_product_attention shape mismatch: query={:?} key={:?} value={:?}",
+            query_dims, key_dims, value_dims
+        )));
+    }
+
+    let batch = query_dims[0];
+    let heads = query_dims[1];
+    let query_seq = query_dims[2];
+    let key_seq = key_dims[2];
+    let head_dim = query_dims[3];
+    let value_dim = value_dims[3];
+    let expected_query = batch
+        .saturating_mul(heads)
+        .saturating_mul(query_seq)
+        .saturating_mul(head_dim);
+    let expected_key = batch
+        .saturating_mul(heads)
+        .saturating_mul(key_seq)
+        .saturating_mul(head_dim);
+    let expected_value = batch
+        .saturating_mul(heads)
+        .saturating_mul(key_seq)
+        .saturating_mul(value_dim);
+    if query.len() != expected_query || key.len() != expected_key || value.len() != expected_value {
+        return Err(RuntimeError::Backend(String::from(
+            "metal scaled_dot_product_attention buffer length does not match tensor shapes",
+        )));
+    }
+
+    let mut output = vec![0.0; batch * heads * query_seq * value_dim];
+    if flash_attention {
+        for batch_index in 0..batch {
+            for head_index in 0..heads {
+                for query_index in 0..query_seq {
+                    let query_base =
+                        ((batch_index * heads + head_index) * query_seq + query_index) * head_dim;
+                    let output_base =
+                        ((batch_index * heads + head_index) * query_seq + query_index) * value_dim;
+                    let mut running_max = f32::NEG_INFINITY;
+                    let mut running_sum = 0.0;
+                    let mut running_output = vec![0.0; value_dim];
+                    for key_index in 0..key_seq {
+                        if causal && key_index > query_index {
+                            continue;
+                        }
+                        let key_base =
+                            ((batch_index * heads + head_index) * key_seq + key_index) * head_dim;
+                        let value_base =
+                            ((batch_index * heads + head_index) * key_seq + key_index) * value_dim;
+                        let mut score = 0.0;
+                        for dim in 0..head_dim {
+                            score += query[query_base + dim] * key[key_base + dim];
+                        }
+                        score *= scale;
+
+                        let next_max = running_max.max(score);
+                        let rescale = if running_sum == 0.0 {
+                            0.0
+                        } else {
+                            (running_max - next_max).exp()
+                        };
+                        let weight = (score - next_max).exp();
+                        for dim in 0..value_dim {
+                            running_output[dim] =
+                                running_output[dim] * rescale + value[value_base + dim] * weight;
+                        }
+                        running_sum = running_sum * rescale + weight;
+                        running_max = next_max;
+                    }
+                    if running_sum > 0.0 {
+                        for dim in 0..value_dim {
+                            output[output_base + dim] = running_output[dim] / running_sum;
+                        }
+                    }
+                }
+            }
+        }
+        return Ok(output);
+    }
+
+    let mut scores = vec![0.0; key_seq];
+    let mut weights = vec![0.0; key_seq];
+    for batch_index in 0..batch {
+        for head_index in 0..heads {
+            for query_index in 0..query_seq {
+                let query_base =
+                    ((batch_index * heads + head_index) * query_seq + query_index) * head_dim;
+                let mut max_score = f32::NEG_INFINITY;
+                let mut valid_scores = 0usize;
+                for key_index in 0..key_seq {
+                    if causal && key_index > query_index {
+                        scores[key_index] = f32::NEG_INFINITY;
+                        continue;
+                    }
+                    let key_base =
+                        ((batch_index * heads + head_index) * key_seq + key_index) * head_dim;
+                    let mut dot = 0.0;
+                    for dim in 0..head_dim {
+                        dot += query[query_base + dim] * key[key_base + dim];
+                    }
+                    let score = dot * scale;
+                    scores[key_index] = score;
+                    max_score = max_score.max(score);
+                    valid_scores += 1;
+                }
+
+                if valid_scores == 0 {
+                    continue;
+                }
+
+                let mut weight_sum = 0.0;
+                for key_index in 0..key_seq {
+                    if !scores[key_index].is_finite() {
+                        weights[key_index] = 0.0;
+                        continue;
+                    }
+                    let weight = (scores[key_index] - max_score).exp();
+                    weights[key_index] = weight;
+                    weight_sum += weight;
+                }
+                if weight_sum <= 0.0 {
+                    continue;
+                }
+
+                let output_base =
+                    ((batch_index * heads + head_index) * query_seq + query_index) * value_dim;
+                for key_index in 0..key_seq {
+                    let normalized = weights[key_index] / weight_sum;
+                    if normalized == 0.0 {
+                        continue;
+                    }
+                    let value_base =
+                        ((batch_index * heads + head_index) * key_seq + key_index) * value_dim;
+                    for dim in 0..value_dim {
+                        output[output_base + dim] += normalized * value[value_base + dim];
+                    }
+                }
+            }
+        }
+    }
+    Ok(output)
+}
+
+fn flatten_decode_heads(
+    values: &[f32],
+    head_count: usize,
+    head_dim: usize,
+) -> Result<Vec<f32>, RuntimeError> {
+    let expected_len = head_count.saturating_mul(head_dim);
+    if values.len() != expected_len {
+        return Err(RuntimeError::Backend(format!(
+            "metal decode attention head flatten length mismatch: expected {}, actual {}",
+            expected_len,
+            values.len()
+        )));
+    }
+    Ok(values.to_vec())
+}
+
+fn expand_kv_cache_for_attention(
+    cache: &MetalKvCacheMirror,
+    query_head_count: usize,
+    kv_head_count: usize,
+    head_dim: usize,
+) -> Result<(Vec<f32>, Vec<f32>), RuntimeError> {
+    let token_count = cache.len();
+    let mut keys = vec![0.0; query_head_count * token_count * head_dim];
+    let mut values = vec![0.0; query_head_count * token_count * head_dim];
+    let heads_per_kv = query_head_count / kv_head_count;
+    for token_index in 0..token_count {
+        let (token_keys, token_values) = cache.read_entry(token_index)?;
+        for query_head_index in 0..query_head_count {
+            let kv_head_index = query_head_index / heads_per_kv;
+            let src_start = kv_head_index * head_dim;
+            let src_end = src_start + head_dim;
+            let dst_start = (query_head_index * token_count + token_index) * head_dim;
+            let dst_end = dst_start + head_dim;
+            keys[dst_start..dst_end].copy_from_slice(&token_keys[src_start..src_end]);
+            values[dst_start..dst_end].copy_from_slice(&token_values[src_start..src_end]);
+        }
+    }
+    Ok((keys, values))
+}
+
+fn device_supports_flash_attention(descriptor: &DeviceDescriptor) -> bool {
+    descriptor
+        .feature_flags
+        .iter()
+        .any(|flag| flag == FLASH_ATTENTION_FEATURE_FLAG)
 }
 
 fn validate_grouped_expert_layout(
@@ -2420,9 +2881,9 @@ mod platform {
     };
 
     use super::{
-        DeviceSupportTier, FamilySupport, LEGACY_FAMILY_FLAG, MODERN_FAMILY_FLAG, MetalBuffer,
-        MetalCommandStatus, MetalCommandWait, MetalDiscoveryReport, MetalKernelCache,
-        MetalStorageMode, classify_support,
+        DeviceSupportTier, FLASH_ATTENTION_FEATURE_FLAG, FamilySupport, LEGACY_FAMILY_FLAG,
+        MODERN_FAMILY_FLAG, MetalBuffer, MetalCommandStatus, MetalCommandWait,
+        MetalDiscoveryReport, MetalKernelCache, MetalStorageMode, classify_support,
     };
 
     #[derive(Clone)]
@@ -2932,6 +3393,11 @@ mod platform {
             &mut feature_flags,
             matches!(tier, DeviceSupportTier::Modern),
             "submit_ready",
+        );
+        push_flag(
+            &mut feature_flags,
+            matches!(tier, DeviceSupportTier::Modern),
+            FLASH_ATTENTION_FEATURE_FLAG,
         );
         push_flag(
             &mut feature_flags,
@@ -3476,6 +3942,16 @@ mod tests {
         }
     }
 
+    fn assert_close(actual: &[f32], expected: &[f32], tolerance: f32) {
+        assert_eq!(actual.len(), expected.len());
+        for (actual, expected) in actual.iter().zip(expected.iter()) {
+            assert!(
+                (actual - expected).abs() <= tolerance,
+                "expected {expected}, actual {actual}, tolerance {tolerance}",
+            );
+        }
+    }
+
     #[test]
     fn apple_family_devices_classify_as_modern() {
         let family = FamilySupport {
@@ -3519,6 +3995,7 @@ mod tests {
                 "add",
                 "backend_extension:rms_norm",
                 "backend_extension:rotary_embedding",
+                "backend_extension:scaled_dot_product_attention",
                 "argmax_f32",
                 "top_k_f32",
                 "mul_mv_id_q8_0",
@@ -3812,6 +4289,9 @@ mod tests {
                         psionic_runtime::BackendExtensionSupport::reference(
                             BackendExtensionKind::RotaryEmbedding
                         ),
+                        psionic_runtime::BackendExtensionSupport::reference(
+                            BackendExtensionKind::ScaledDotProductAttention
+                        ),
                     ]
                 );
                 assert!(selection.selected_device.is_some());
@@ -4069,6 +4549,135 @@ mod tests {
         assert_eq!(result.top_k, 2);
         assert_eq!(result.indices, vec![2, 3, 0, 2]);
         assert_eq!(result.values, vec![4.25, 3.0, 9.5, 9.5]);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_executes_scaled_dot_product_attention_extension_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let query = builder.input("query", Shape::new(vec![1, 1, 2, 2]), DType::F32);
+        let key = builder.input("key", Shape::new(vec![1, 1, 2, 2]), DType::F32);
+        let value = builder.input("value", Shape::new(vec![1, 1, 2, 2]), DType::F32);
+        let attended = builder
+            .scaled_dot_product_attention(&query, &key, &value, 1.0, true)
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![attended.clone()]);
+
+        let mut inputs = std::collections::BTreeMap::new();
+        inputs.insert(
+            query.id(),
+            backend.input_buffer(Shape::new(vec![1, 1, 2, 2]), vec![1.0, 0.0, 0.0, 1.0])?,
+        );
+        inputs.insert(
+            key.id(),
+            backend.input_buffer(Shape::new(vec![1, 1, 2, 2]), vec![1.0, 0.0, 0.0, 1.0])?,
+        );
+        inputs.insert(
+            value.id(),
+            backend.input_buffer(Shape::new(vec![1, 1, 2, 2]), vec![2.0, 1.0, 4.0, 3.0])?,
+        );
+
+        let result = backend.compile_and_execute(&graph, &inputs)?;
+        let output = result
+            .outputs
+            .get(&attended.id())
+            .ok_or_else(|| RuntimeError::Backend(String::from("missing attention output")))?;
+        assert_close(
+            output.read_f32()?.as_slice(),
+            &[2.0, 1.0, 3.4621172, 2.4621172],
+            1.0e-5,
+        );
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_decode_attention_uses_device_kv_and_flash_path_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let mut cache = backend.kv_cache_mirror_from_host_rows(4, 8, 0, &[], &[], 4)?;
+        let cos = backend.input_buffer(Shape::new(vec![1, 2]), vec![1.0, 1.0])?;
+        let sin = backend.input_buffer(Shape::new(vec![1, 2]), vec![0.0, 0.0])?;
+        let query_shape = Shape::new(vec![1, 2, 1, 4]);
+        let kv_shape = Shape::new(vec![1, 1, 1, 4]);
+        let first_query = backend.input_buffer(
+            query_shape.clone(),
+            vec![1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        )?;
+        let first_key = backend.input_buffer(kv_shape.clone(), vec![1.0, 0.0, 0.0, 0.0])?;
+        let first_value = backend.input_buffer(kv_shape.clone(), vec![2.0, 4.0, 6.0, 8.0])?;
+
+        let first = backend.decode_attention_f32(
+            &first_query,
+            &first_key,
+            &first_value,
+            &cos,
+            &sin,
+            &mut cache,
+            1.0,
+            true,
+            false,
+            true,
+        )?;
+        assert_eq!(first.stats.used_device_kv, true);
+        assert_eq!(first.stats.rotary_applied, true);
+        assert_eq!(first.stats.cache_write_index, 0);
+        assert_eq!(first.cache_state.tokens, 1);
+        assert_eq!(cache.len(), 1);
+        assert_eq!(
+            first.stats.flash_attention_path,
+            backend.supports_flash_attention()
+        );
+        assert_close(
+            first.output.read_f32()?.as_slice(),
+            &[2.0, 4.0, 6.0, 8.0, 2.0, 4.0, 6.0, 8.0],
+            1.0e-5,
+        );
+
+        let second_query =
+            backend.input_buffer(query_shape, vec![1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0])?;
+        let second_key = backend.input_buffer(kv_shape.clone(), vec![0.0, 1.0, 0.0, 0.0])?;
+        let second_value = backend.input_buffer(kv_shape, vec![1.0, 3.0, 5.0, 7.0])?;
+        let second = backend.decode_attention_f32(
+            &second_query,
+            &second_key,
+            &second_value,
+            &cos,
+            &sin,
+            &mut cache,
+            1.0,
+            true,
+            false,
+            true,
+        )?;
+        assert_eq!(second.stats.cache_write_index, 1);
+        assert_eq!(second.stats.cached_tokens, 2);
+        assert_eq!(second.cache_state.tokens, 2);
+        assert_eq!(
+            second.stats.flash_attention_path,
+            backend.supports_flash_attention()
+        );
+        assert_close(
+            second.output.read_f32()?.as_slice(),
+            &[
+                1.7310586, 3.7310586, 5.7310586, 7.7310586, 1.2689414, 3.2689414, 5.2689414,
+                7.2689414,
+            ],
+            1.0e-5,
+        );
         Ok(())
     }
 
