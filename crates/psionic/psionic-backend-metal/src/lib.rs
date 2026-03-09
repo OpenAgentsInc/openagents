@@ -196,6 +196,13 @@ pub struct MetalGroupedExpertMatvecResult {
     pub stats: MetalGroupedExpertStats,
 }
 
+/// Output from one quantized row-wise matrix-vector request on Metal-owned storage.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalQuantizedMatvecResult {
+    /// Row-major output values with logical shape `[rows]`.
+    pub values: Vec<f32>,
+}
+
 /// Explicit decode-attention execution evidence returned by the Metal backend.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct MetalDecodeAttentionStats {
@@ -1007,6 +1014,86 @@ impl MetalBackend {
             )));
         };
         backend.buffer_from_tensor_data(&spec, &tensor_data)
+    }
+
+    /// Executes one quantized row-wise matrix-vector product over Metal-owned weights.
+    pub fn quantized_matvec(
+        &self,
+        weights: &MetalBuffer,
+        mode: psionic_core::QuantizationMode,
+        rows: usize,
+        columns: usize,
+        input: &[f32],
+    ) -> Result<Vec<f32>, RuntimeError> {
+        Ok(self
+            .quantized_matvec_with_offset(weights, 0, mode, rows, columns, input)?
+            .values)
+    }
+
+    /// Executes one quantized row-wise matrix-vector product from a byte offset.
+    pub fn quantized_matvec_with_offset(
+        &self,
+        weights: &MetalBuffer,
+        byte_offset: usize,
+        mode: psionic_core::QuantizationMode,
+        rows: usize,
+        columns: usize,
+        input: &[f32],
+    ) -> Result<MetalQuantizedMatvecResult, RuntimeError> {
+        let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec does not support mode {mode:?}",
+            )));
+        };
+        if columns == 0 || columns % elements_per_block != 0 {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec requires block-aligned width {columns} for {mode:?}",
+            )));
+        }
+        if input.len() != columns {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec input width mismatch: expected {columns}, actual {}",
+                input.len()
+            )));
+        }
+        let row_stride = (columns / elements_per_block)
+            .checked_mul(bytes_per_block)
+            .ok_or_else(|| {
+                RuntimeError::Backend(String::from("metal quantized matvec row stride overflow"))
+            })?;
+        let required_bytes = rows.saturating_mul(row_stride);
+        let end_offset = byte_offset.saturating_add(required_bytes);
+        match weights.storage_kind() {
+            BufferStorageKind::QuantizedBlocks {
+                mode: stored_mode, ..
+            } if stored_mode == mode => {}
+            BufferStorageKind::QuantizedBlocks {
+                mode: stored_mode, ..
+            } => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal quantized matvec mode mismatch: requested {mode:?}, stored {stored_mode:?}",
+                )));
+            }
+            storage_kind => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal quantized matvec requires quantized block storage, actual {:?}",
+                    storage_kind
+                )));
+            }
+        }
+        if weights.byte_len() < end_offset {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec byte length mismatch: required {end_offset}, actual {}",
+                weights.byte_len(),
+            )));
+        }
+
+        let bytes = weights.read_bytes_at_offset(byte_offset, required_bytes)?;
+        let mut output = vec![0.0; rows];
+        for (row_index, row_bytes) in bytes.chunks_exact(row_stride).enumerate() {
+            output[row_index] = quantized_row_dot(mode, input, row_bytes)?;
+        }
+        Ok(MetalQuantizedMatvecResult { values: output })
     }
 
     /// Compiles and executes a graph on the supported dense Metal surface.
@@ -5829,6 +5916,27 @@ mod tests {
             &[2.0, 4.0, 6.0, 8.0, 2.0, 4.0, 6.0, 8.0],
             1.0e-5,
         );
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_executes_q8_0_quantized_matvec_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let weights = backend.quantized_buffer(
+            Shape::new(vec![2, 32]),
+            QuantizationMode::GgmlQ8_0,
+            sample_repeated_q8_0_rows(2),
+        )?;
+        let values =
+            backend.quantized_matvec(&weights, QuantizationMode::GgmlQ8_0, 2, 32, &[1.0; 32])?;
+        assert_eq!(values, vec![0.0, 0.0]);
         Ok(())
     }
 

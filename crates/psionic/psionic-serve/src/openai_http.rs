@@ -38,8 +38,9 @@ use tokio_stream::iter;
 use crate::{
     CudaGgufGptOssTextGenerationService, CudaGptOssTextGenerationError, DecodeStrategy,
     DecoderModelDescriptor, GenerationMetrics, GenerationOptions, GenerationRequest,
-    GgufDecoderAdapterLoader, GptOssPerformanceMetrics, PromptRenderError, TerminationReason,
-    TextGenerationExecutor, TokenSequence,
+    GgufDecoderAdapterLoader, GptOssPerformanceMetrics, MetalGgufGptOssTextGenerationService,
+    MetalGptOssTextGenerationError, PromptRenderError, ReferenceTextGenerationError,
+    TerminationReason, TextGenerationExecutor, TokenSequence,
 };
 
 const DEFAULT_MAX_TOKENS: usize = 256;
@@ -50,11 +51,44 @@ const HARMONY_END_TOKEN: &str = "<|end|>";
 const HARMONY_MESSAGE_TOKEN: &str = "<|message|>";
 const HARMONY_CHANNEL_TOKEN: &str = "<|channel|>";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GptOssOpenAiCompatBackend {
+    Auto,
+    Cpu,
+    Cuda,
+    Metal,
+}
+
+impl GptOssOpenAiCompatBackend {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Cpu => "cpu",
+            Self::Cuda => "cuda",
+            Self::Metal => "metal",
+        }
+    }
+
+    fn resolve(self) -> Self {
+        match self {
+            Self::Auto => {
+                if cfg!(target_os = "macos") {
+                    Self::Metal
+                } else {
+                    Self::Cuda
+                }
+            }
+            backend => backend,
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GptOssOpenAiCompatConfig {
     pub model_path: PathBuf,
     pub host: String,
     pub port: u16,
+    pub backend: GptOssOpenAiCompatBackend,
     pub context_length: Option<usize>,
     pub gpu_layers: Option<i32>,
     pub reasoning_budget: u8,
@@ -68,6 +102,7 @@ impl GptOssOpenAiCompatConfig {
             model_path: model_path.into(),
             host: String::from("127.0.0.1"),
             port: 8080,
+            backend: GptOssOpenAiCompatBackend::Auto,
             context_length: None,
             gpu_layers: None,
             reasoning_budget: 0,
@@ -84,12 +119,18 @@ impl GptOssOpenAiCompatConfig {
 }
 
 #[derive(Clone)]
-pub struct GptOssCudaOpenAiCompatServer {
-    state: Arc<GptOssCudaOpenAiCompatState>,
+pub struct GptOssOpenAiCompatServer {
+    state: Arc<GptOssOpenAiCompatState>,
 }
 
-struct GptOssCudaOpenAiCompatState {
-    worker: GptOssCudaWorker,
+#[derive(Clone)]
+pub struct GptOssCudaOpenAiCompatServer {
+    inner: GptOssOpenAiCompatServer,
+}
+
+struct GptOssOpenAiCompatState {
+    worker: GptOssWorker,
+    backend_label: &'static str,
     descriptor: DecoderModelDescriptor,
     tokenizer: GptOssTokenizer,
     prompt_options: PromptRenderOptions,
@@ -151,7 +192,7 @@ impl PromptTokenCache {
     }
 }
 
-impl GptOssCudaOpenAiCompatServer {
+impl GptOssOpenAiCompatServer {
     pub fn from_config(config: &GptOssOpenAiCompatConfig) -> Result<Self, OpenAiCompatServerError> {
         let artifact =
             GgufBlobArtifact::open_path(&config.model_path, LocalBlobOpenOptions::default())
@@ -175,9 +216,11 @@ impl GptOssCudaOpenAiCompatServer {
             .ok()
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
+        let backend = config.backend.resolve();
         Ok(Self {
-            state: Arc::new(GptOssCudaOpenAiCompatState {
-                worker: GptOssCudaWorker::spawn(config.model_path.clone())?,
+            state: Arc::new(GptOssOpenAiCompatState {
+                worker: GptOssWorker::spawn(config.model_path.clone(), backend)?,
+                backend_label: backend.label(),
                 descriptor,
                 tokenizer,
                 prompt_options,
@@ -208,6 +251,25 @@ impl GptOssCudaOpenAiCompatServer {
     }
 }
 
+impl GptOssCudaOpenAiCompatServer {
+    pub fn from_config(config: &GptOssOpenAiCompatConfig) -> Result<Self, OpenAiCompatServerError> {
+        let mut config = config.clone();
+        config.backend = GptOssOpenAiCompatBackend::Cuda;
+        Ok(Self {
+            inner: GptOssOpenAiCompatServer::from_config(&config)?,
+        })
+    }
+
+    #[must_use]
+    pub fn router(&self) -> Router {
+        self.inner.router()
+    }
+
+    pub async fn serve(&self, listener: TcpListener) -> Result<(), OpenAiCompatServerError> {
+        self.inner.serve(listener).await
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum OpenAiCompatServerError {
     #[error(transparent)]
@@ -216,44 +278,121 @@ pub enum OpenAiCompatServerError {
     Config(String),
 }
 
-#[derive(Clone)]
-struct GptOssCudaWorker {
-    sender: mpsc::UnboundedSender<GptOssCudaWorkerCommand>,
+#[derive(Debug, thiserror::Error)]
+pub enum GptOssOpenAiCompatGenerationError {
+    #[error("{backend} backend unavailable ({status:?}): {message}")]
+    BackendUnavailable {
+        backend: &'static str,
+        status: psionic_runtime::HealthStatus,
+        message: String,
+    },
+    #[error(transparent)]
+    Generation(#[from] ReferenceTextGenerationError),
 }
 
-enum GptOssCudaWorkerCommand {
+impl From<CudaGptOssTextGenerationError> for GptOssOpenAiCompatGenerationError {
+    fn from(value: CudaGptOssTextGenerationError) -> Self {
+        match value {
+            CudaGptOssTextGenerationError::BackendUnavailable { status, message } => {
+                Self::BackendUnavailable {
+                    backend: "cuda",
+                    status,
+                    message,
+                }
+            }
+            CudaGptOssTextGenerationError::Generation(error) => Self::Generation(error),
+        }
+    }
+}
+
+impl From<MetalGptOssTextGenerationError> for GptOssOpenAiCompatGenerationError {
+    fn from(value: MetalGptOssTextGenerationError) -> Self {
+        match value {
+            MetalGptOssTextGenerationError::BackendUnavailable { status, message } => {
+                Self::BackendUnavailable {
+                    backend: "metal",
+                    status,
+                    message,
+                }
+            }
+            MetalGptOssTextGenerationError::Generation(error) => Self::Generation(error),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct GptOssWorker {
+    sender: mpsc::UnboundedSender<GptOssWorkerCommand>,
+}
+
+enum GptOssWorkerCommand {
     Generate {
         request: GenerationRequest,
-        reply: oneshot::Sender<Result<crate::GenerationResponse, CudaGptOssTextGenerationError>>,
+        reply:
+            oneshot::Sender<Result<crate::GenerationResponse, GptOssOpenAiCompatGenerationError>>,
     },
 }
 
-impl GptOssCudaWorker {
-    fn spawn(model_path: PathBuf) -> Result<Self, OpenAiCompatServerError> {
+impl GptOssWorker {
+    fn spawn(
+        model_path: PathBuf,
+        backend: GptOssOpenAiCompatBackend,
+    ) -> Result<Self, OpenAiCompatServerError> {
         let (sender, mut receiver) = mpsc::unbounded_channel();
         let (ready_tx, ready_rx) = std::sync::mpsc::sync_channel(1);
         std::thread::Builder::new()
-            .name(String::from("psionic-gpt-oss-cuda-worker"))
+            .name(format!("psionic-gpt-oss-{}-worker", backend.label()))
             .spawn(move || {
-                match CudaGgufGptOssTextGenerationService::from_gguf_path(&model_path) {
-                    Ok(mut service) => {
-                        let _ = ready_tx.send(Ok::<(), String>(()));
-                        while let Some(command) = receiver.blocking_recv() {
-                            match command {
-                                GptOssCudaWorkerCommand::Generate { request, reply } => {
-                                    let _ = reply.send(service.generate(&request));
+                let ready = match backend {
+                    GptOssOpenAiCompatBackend::Cpu => {
+                        Err(String::from("cpu GPT-OSS OpenAI server is not implemented"))
+                    }
+                    GptOssOpenAiCompatBackend::Cuda => {
+                        match CudaGgufGptOssTextGenerationService::from_gguf_path(&model_path) {
+                            Ok(mut service) => {
+                                let _ = ready_tx.send(Ok::<(), String>(()));
+                                while let Some(command) = receiver.blocking_recv() {
+                                    match command {
+                                        GptOssWorkerCommand::Generate { request, reply } => {
+                                            let _ = reply.send(
+                                                service.generate(&request).map_err(Into::into),
+                                            );
+                                        }
+                                    }
                                 }
+                                return;
                             }
+                            Err(error) => Err(error.to_string()),
                         }
                     }
-                    Err(error) => {
-                        let _ = ready_tx.send(Err(error.to_string()));
+                    GptOssOpenAiCompatBackend::Metal => {
+                        match MetalGgufGptOssTextGenerationService::from_gguf_path(&model_path) {
+                            Ok(mut service) => {
+                                let _ = ready_tx.send(Ok::<(), String>(()));
+                                while let Some(command) = receiver.blocking_recv() {
+                                    match command {
+                                        GptOssWorkerCommand::Generate { request, reply } => {
+                                            let _ = reply.send(
+                                                service.generate(&request).map_err(Into::into),
+                                            );
+                                        }
+                                    }
+                                }
+                                return;
+                            }
+                            Err(error) => Err(error.to_string()),
+                        }
                     }
-                }
+                    GptOssOpenAiCompatBackend::Auto => Err(String::from(
+                        "auto backend must be resolved before worker spawn",
+                    )),
+                };
+                let _ = ready_tx.send(ready);
             })?;
         match ready_rx.recv().map_err(|error| {
             OpenAiCompatServerError::Config(format!(
-                "failed to receive GPT-OSS CUDA worker readiness: {error}"
+                "failed to receive GPT-OSS {} worker readiness: {error}",
+                backend.label()
             ))
         })? {
             Ok(()) => Ok(Self { sender }),
@@ -264,22 +403,24 @@ impl GptOssCudaWorker {
     async fn generate(
         &self,
         request: GenerationRequest,
-    ) -> Result<crate::GenerationResponse, CudaGptOssTextGenerationError> {
+    ) -> Result<crate::GenerationResponse, GptOssOpenAiCompatGenerationError> {
         let (reply_tx, reply_rx) = oneshot::channel();
         self.sender
-            .send(GptOssCudaWorkerCommand::Generate {
+            .send(GptOssWorkerCommand::Generate {
                 request,
                 reply: reply_tx,
             })
-            .map_err(|_| CudaGptOssTextGenerationError::BackendUnavailable {
+            .map_err(|_| GptOssOpenAiCompatGenerationError::BackendUnavailable {
+                backend: "worker",
                 status: psionic_runtime::HealthStatus::Offline,
-                message: String::from("gpt-oss cuda worker is no longer available"),
+                message: String::from("gpt-oss worker is no longer available"),
             })?;
         reply_rx
             .await
-            .map_err(|_| CudaGptOssTextGenerationError::BackendUnavailable {
+            .map_err(|_| GptOssOpenAiCompatGenerationError::BackendUnavailable {
+                backend: "worker",
                 status: psionic_runtime::HealthStatus::Offline,
-                message: String::from("gpt-oss cuda worker dropped the response channel"),
+                message: String::from("gpt-oss worker dropped the response channel"),
             })?
     }
 }
@@ -291,7 +432,7 @@ enum OpenAiCompatHttpError {
     #[error(transparent)]
     PromptRender(#[from] PromptRenderError),
     #[error(transparent)]
-    Generation(#[from] CudaGptOssTextGenerationError),
+    Generation(#[from] GptOssOpenAiCompatGenerationError),
 }
 
 impl IntoResponse for OpenAiCompatHttpError {
@@ -299,10 +440,10 @@ impl IntoResponse for OpenAiCompatHttpError {
         let (status, kind) = match &self {
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
             Self::PromptRender(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
-            Self::Generation(CudaGptOssTextGenerationError::BackendUnavailable { .. }) => {
+            Self::Generation(GptOssOpenAiCompatGenerationError::BackendUnavailable { .. }) => {
                 (StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable")
             }
-            Self::Generation(CudaGptOssTextGenerationError::Generation(error)) => (
+            Self::Generation(GptOssOpenAiCompatGenerationError::Generation(error)) => (
                 StatusCode::from_u16(error.diagnostic().status)
                     .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
                 "generation_error",
@@ -328,10 +469,10 @@ struct HealthResponse {
     model: String,
 }
 
-async fn health(State(state): State<Arc<GptOssCudaOpenAiCompatState>>) -> Json<HealthResponse> {
+async fn health(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<HealthResponse> {
     Json(HealthResponse {
         status: "ok",
-        backend: "cuda",
+        backend: state.backend_label,
         model: state.default_model_name.clone(),
     })
 }
@@ -348,9 +489,7 @@ struct ModelCard {
     owned_by: &'static str,
 }
 
-async fn list_models(
-    State(state): State<Arc<GptOssCudaOpenAiCompatState>>,
-) -> Json<ModelsResponse> {
+async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<ModelsResponse> {
     Json(ModelsResponse {
         data: vec![ModelCard {
             id: state.default_model_name.clone(),
@@ -401,7 +540,7 @@ impl StopSequences {
 }
 
 async fn chat_completions(
-    State(state): State<Arc<GptOssCudaOpenAiCompatState>>,
+    State(state): State<Arc<GptOssOpenAiCompatState>>,
     Json(request): Json<ChatCompletionRequest>,
 ) -> Response {
     match handle_chat_completions(state, request).await {
@@ -411,7 +550,7 @@ async fn chat_completions(
 }
 
 async fn handle_chat_completions(
-    state: Arc<GptOssCudaOpenAiCompatState>,
+    state: Arc<GptOssOpenAiCompatState>,
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
     validate_requested_model(request.model.as_deref(), &state.accepted_model_names)?;
@@ -435,12 +574,10 @@ async fn handle_chat_completions(
     let options = generation_options_from_chat_request(&request);
     let prompt_tokens = {
         let mut cache = state.prompt_token_cache.lock().map_err(|_| {
-            OpenAiCompatHttpError::Generation(CudaGptOssTextGenerationError::Generation(
-                crate::ReferenceTextGenerationError::Runtime(
-                    psionic_runtime::RuntimeError::Backend(String::from(
-                        "openai prompt token cache is poisoned",
-                    )),
-                ),
+            OpenAiCompatHttpError::Generation(GptOssOpenAiCompatGenerationError::Generation(
+                ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
+                    String::from("openai prompt token cache is poisoned"),
+                )),
             ))
         })?;
         if let Some(tokens) = cache.lookup(rendered.as_str()) {
@@ -673,7 +810,7 @@ fn finish_reason(termination: TerminationReason) -> &'static str {
     }
 }
 
-fn next_request_id(state: &GptOssCudaOpenAiCompatState) -> String {
+fn next_request_id(state: &GptOssOpenAiCompatState) -> String {
     let next = state.request_counter.fetch_add(1, Ordering::Relaxed);
     format!("psionic-chatcmpl-{next}")
 }

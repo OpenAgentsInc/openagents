@@ -7,32 +7,37 @@ use std::{
 };
 
 use psionic_backend_cpu::{
-    decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot, CpuBackend,
+    CpuBackend, decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot,
 };
 use psionic_backend_cuda::{
-    ggml_q8_1_storage_bytes, CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer,
-    CudaQuantizedMatvecStats, CudaSubmission, CudaSubmissionReport,
-    TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS,
+    CudaBackend, CudaBuffer, CudaGraphExec, CudaHostBuffer, CudaQuantizedMatvecStats,
+    CudaSubmission, CudaSubmissionReport,
+    TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS, ggml_q8_1_storage_bytes,
+};
+use psionic_backend_metal::{
+    MetalBackend, MetalBuffer, MetalGroupedExpertMatvecResult,
+    TEXT_GENERATION_SUPPORTED_OPS as METAL_TEXT_GENERATION_SUPPORTED_OPS,
 };
 use psionic_catalog::LocalBlobOpenOptions;
+use psionic_core::Shape;
 use psionic_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
 use psionic_runtime::{
-    build_gpt_oss_decode_graph, CacheAction, CacheKind, CacheObservation, CompilePathEvidence,
-    CompilePathTemperature, DeviceDiscovery, GptOssDecodeGraph, HealthStatus,
+    CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
+    DeviceDiscovery, GptOssDecodeGraph, HealthStatus, build_gpt_oss_decode_graph,
 };
 use sha2::{Digest, Sha256};
 
 use super::{
-    current_time_millis, default_prefix_cache_policy, generation_runtime_observability,
-    prefix_compatibility, run_generation_request, BackendHealthTracker,
-    CompiledWordGenerationModel, DecodeStrategy, DecoderModelDescriptor, GenerationEventStream,
-    GenerationModelHandle, GenerationOptions, GenerationResponse, GenerationStreamEvent,
-    GenerationStreamStatus, GenerationStreamTerminal, GgufDecoderAdapterLoader, GgufDecoderFamily,
-    GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics,
-    InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore, LoadedModelRegistryError,
-    LoadedModelView, LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError,
-    QuantizationMode, ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor,
-    TokenId, TokenSequence, TokenizerBoundary,
+    BackendHealthTracker, CompiledWordGenerationModel, DecodeStrategy, DecoderModelDescriptor,
+    GenerationEventStream, GenerationModelHandle, GenerationOptions, GenerationResponse,
+    GenerationStreamEvent, GenerationStreamStatus, GenerationStreamTerminal,
+    GgufDecoderAdapterLoader, GgufDecoderFamily, GgufDecoderFamilyMetadata,
+    GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
+    InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
+    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
+    ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
+    TokenSequence, TokenizerBoundary, current_time_millis, default_prefix_cache_policy,
+    generation_runtime_observability, prefix_compatibility, run_generation_request,
 };
 use thiserror::Error;
 
@@ -42,6 +47,7 @@ const GPT_OSS_YARN_BETA_FAST: f32 = 32.0;
 const GPT_OSS_YARN_BETA_SLOW: f32 = 1.0;
 const GPT_OSS_CPU_BACKEND: &str = "cpu";
 const GPT_OSS_CUDA_BACKEND: &str = "cuda";
+const GPT_OSS_METAL_BACKEND: &str = "metal";
 
 fn decode_graph_fast_path_enabled() -> bool {
     env::var("PSIONIC_GPT_OSS_DISABLE_CUDA_GRAPHS")
@@ -372,6 +378,224 @@ impl GenerationEventStream for OneShotGenerationStream {
 
     fn disconnect(&mut self) -> Option<GenerationStreamTerminal> {
         self.terminal.take()
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum MetalGptOssTextGenerationError {
+    #[error("metal backend unavailable ({status:?}): {message}")]
+    BackendUnavailable {
+        status: HealthStatus,
+        message: String,
+    },
+    #[error(transparent)]
+    Generation(#[from] ReferenceTextGenerationError),
+}
+
+pub struct MetalGgufGptOssTextGenerationService {
+    backend: MetalBackend,
+    backend_selection: psionic_runtime::BackendSelection,
+    models: InMemoryGenerationModelRegistry<MetalGgufGptOssGenerationModel>,
+    sessions: InMemoryGenerationSessionStore,
+    shared_prefixes: SharedPrefixStore,
+    backend_health: BackendHealthTracker,
+    model_descriptor: DecoderModelDescriptor,
+}
+
+impl MetalGgufGptOssTextGenerationService {
+    pub fn from_gguf_path(path: impl AsRef<Path>) -> Result<Self, MetalGptOssTextGenerationError> {
+        let mut backend = MetalBackend::new();
+        let runtime = backend
+            .configure_text_generation_runtime(
+                psionic_backend_metal::MetalTextGenerationRuntimePolicy::gpt_oss_default(),
+            )
+            .map_err(|error| MetalGptOssTextGenerationError::BackendUnavailable {
+                status: backend.health().status,
+                message: error.to_string(),
+            })?;
+        if !runtime.admission.admitted {
+            return Err(MetalGptOssTextGenerationError::BackendUnavailable {
+                status: backend.health().status,
+                message: runtime.admission.refusal_reason.unwrap_or_else(|| {
+                    String::from("metal token-generation runtime admission refused")
+                }),
+            });
+        }
+        let backend_selection = backend
+            .backend_selection(METAL_TEXT_GENERATION_SUPPORTED_OPS)
+            .map_err(|error| MetalGptOssTextGenerationError::BackendUnavailable {
+                status: backend.health().status,
+                message: error.to_string(),
+            })?;
+        let model = MetalGgufGptOssGenerationModel::from_gguf_path(path, &mut backend)?;
+        let model_descriptor = model.descriptor().clone();
+        let mut models = InMemoryGenerationModelRegistry::new();
+        models.warm_with_metadata(
+            model,
+            current_time_millis(),
+            super::DEFAULT_MODEL_KEEPALIVE_MILLIS,
+            None,
+            Some(String::from(GPT_OSS_METAL_BACKEND)),
+            super::backend_selection_fallback_state(&backend_selection),
+        )?;
+        let mut backend_health = BackendHealthTracker::default();
+        backend_health.observe(
+            GPT_OSS_METAL_BACKEND,
+            backend.health(),
+            current_time_millis(),
+        );
+        Ok(Self {
+            backend,
+            backend_selection,
+            models,
+            sessions: InMemoryGenerationSessionStore::new(),
+            shared_prefixes: SharedPrefixStore::default(),
+            backend_health,
+            model_descriptor,
+        })
+    }
+
+    #[must_use]
+    pub fn model_descriptor(&self) -> &DecoderModelDescriptor {
+        &self.model_descriptor
+    }
+
+    #[must_use]
+    pub fn backend_selection(&self) -> &psionic_runtime::BackendSelection {
+        &self.backend_selection
+    }
+
+    #[must_use]
+    pub fn plan_digest(&self, model_id: &str) -> Option<&str> {
+        self.models
+            .active(model_id)
+            .map(MetalGgufGptOssGenerationModel::plan_digest)
+    }
+
+    pub fn create_session(
+        &mut self,
+        model_id: &str,
+    ) -> Result<super::GenerationSession, MetalGptOssTextGenerationError> {
+        let model = self
+            .models
+            .active(model_id)
+            .ok_or_else(|| ReferenceTextGenerationError::UnsupportedModel(model_id.to_string()))?;
+        let compiled_backend_features = self
+            .backend_selection
+            .selected_device
+            .as_ref()
+            .map(|device| device.feature_flags.clone())
+            .unwrap_or_default();
+        Ok(self.sessions.create(
+            model,
+            super::served_artifact_identity_for_decoder_backend(
+                model.descriptor(),
+                self.backend_selection.effective_backend.as_str(),
+                &compiled_backend_features,
+            )
+            .served_artifact_digest,
+        ))
+    }
+
+    pub fn loaded_models(&mut self) -> super::LoadedModelsObservation {
+        self.loaded_models_at(current_time_millis())
+    }
+
+    pub fn loaded_models_at(&mut self, now_millis: u64) -> super::LoadedModelsObservation {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_models_observation()
+    }
+
+    pub fn loaded_model_views(&mut self) -> Vec<LoadedModelView> {
+        self.loaded_model_views_at(current_time_millis())
+    }
+
+    pub fn loaded_model_views_at(&mut self, now_millis: u64) -> Vec<LoadedModelView> {
+        self.models.expire_idle(now_millis);
+        self.models.loaded_model_views()
+    }
+
+    pub fn observability(&mut self) -> LocalRuntimeObservability {
+        self.observability_at(current_time_millis())
+    }
+
+    pub fn observability_at(&mut self, now_millis: u64) -> LocalRuntimeObservability {
+        self.models.expire_idle(now_millis);
+        self.backend_health
+            .observe(GPT_OSS_METAL_BACKEND, self.backend.health(), now_millis);
+        generation_runtime_observability(&self.models, &self.sessions, &self.backend_health)
+    }
+
+    pub fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, MetalGptOssTextGenerationError> {
+        Ok(self
+            .models
+            .warm_loaded(model_id, current_time_millis(), keep_alive_millis)?)
+    }
+
+    pub fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, MetalGptOssTextGenerationError> {
+        Ok(self.models.unload_view(model_id, current_time_millis())?)
+    }
+}
+
+impl TextGenerationExecutor for MetalGgufGptOssTextGenerationService {
+    type Error = MetalGptOssTextGenerationError;
+
+    fn generate(
+        &mut self,
+        request: &super::GenerationRequest,
+    ) -> Result<super::GenerationResponse, Self::Error> {
+        run_generation_request(
+            &mut self.backend,
+            &mut self.models,
+            &mut self.sessions,
+            &mut self.shared_prefixes,
+            request,
+        )
+        .map_err(Into::into)
+    }
+}
+
+impl ManagedTextGenerationRuntime for MetalGgufGptOssTextGenerationService {
+    fn loaded_models(&mut self) -> super::LoadedModelsObservation {
+        MetalGgufGptOssTextGenerationService::loaded_models(self)
+    }
+
+    fn observability(&mut self) -> LocalRuntimeObservability {
+        MetalGgufGptOssTextGenerationService::observability(self)
+    }
+
+    fn warm_model(
+        &mut self,
+        model_id: &str,
+        keep_alive_millis: u64,
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
+        MetalGgufGptOssTextGenerationService::warm_model(self, model_id, keep_alive_millis)
+    }
+
+    fn unload_model(
+        &mut self,
+        model_id: &str,
+    ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
+        MetalGgufGptOssTextGenerationService::unload_model(self, model_id)
+    }
+}
+
+impl super::StreamingTextGenerationExecutor for MetalGgufGptOssTextGenerationService {
+    type Stream<'a> = Box<dyn super::GenerationEventStream + 'a>;
+
+    fn generate_stream<'a>(
+        &'a mut self,
+        request: &super::GenerationRequest,
+    ) -> Result<Self::Stream<'a>, <Self as TextGenerationExecutor>::Error> {
+        let response = self.generate(request)?;
+        Ok(Box::new(OneShotGenerationStream::new(response)))
     }
 }
 
@@ -1093,13 +1317,31 @@ impl From<ModelLoadError> for CudaGptOssTextGenerationError {
     }
 }
 
+impl From<ModelLoadError> for MetalGptOssTextGenerationError {
+    fn from(value: ModelLoadError) -> Self {
+        Self::Generation(ReferenceTextGenerationError::from(value))
+    }
+}
+
 impl From<LoadedModelRegistryError> for CudaGptOssTextGenerationError {
     fn from(value: LoadedModelRegistryError) -> Self {
         Self::Generation(ReferenceTextGenerationError::from(value))
     }
 }
 
+impl From<LoadedModelRegistryError> for MetalGptOssTextGenerationError {
+    fn from(value: LoadedModelRegistryError) -> Self {
+        Self::Generation(ReferenceTextGenerationError::from(value))
+    }
+}
+
 impl From<super::SessionStoreError> for CudaGptOssTextGenerationError {
+    fn from(value: super::SessionStoreError) -> Self {
+        Self::Generation(ReferenceTextGenerationError::from(value))
+    }
+}
+
+impl From<super::SessionStoreError> for MetalGptOssTextGenerationError {
     fn from(value: super::SessionStoreError) -> Self {
         Self::Generation(ReferenceTextGenerationError::from(value))
     }
@@ -1304,6 +1546,175 @@ impl CompiledWordGenerationModel for CpuGgufGptOssGenerationModel {
 
     fn backend_compatibility(&self) -> &'static str {
         GPT_OSS_CPU_BACKEND
+    }
+}
+
+#[derive(Clone, Debug)]
+pub struct MetalGgufGptOssGenerationModel {
+    inner: Arc<GptOssMetalModelInner>,
+}
+
+impl MetalGgufGptOssGenerationModel {
+    pub fn from_gguf_path(
+        path: impl AsRef<Path>,
+        backend: &mut MetalBackend,
+    ) -> Result<Self, MetalGptOssTextGenerationError> {
+        let artifact = GgufBlobArtifact::open_path(path, LocalBlobOpenOptions::default())?;
+        Self::from_blob_artifact(artifact, backend)
+    }
+
+    fn from_blob_artifact(
+        artifact: GgufBlobArtifact,
+        backend: &mut MetalBackend,
+    ) -> Result<Self, MetalGptOssTextGenerationError> {
+        let load_start = Instant::now();
+        let adapter = GgufDecoderAdapterLoader.load_blob_artifact(&artifact)?;
+        if adapter.family_metadata().family != GgufDecoderFamily::GptOss {
+            return Err(ModelLoadError::UnsupportedModel(
+                adapter.descriptor().model.model_id.clone(),
+            )
+            .into());
+        }
+
+        let tokenizer = GptOssTokenizer::from_gguf(adapter.tokenizer()).map_err(|error| {
+            ModelLoadError::ArtifactFormat {
+                format: String::from("gguf"),
+                message: format!("failed to build gpt-oss tokenizer: {error}"),
+            }
+        })?;
+        let output = if let Some(output) = adapter.tensor_layout().output.as_ref() {
+            load_metal_quantized_matrix(backend, &artifact, output)?
+        } else {
+            load_metal_quantized_matrix(
+                backend,
+                &artifact,
+                adapter.tensor_layout().token_embedding.as_str(),
+            )?
+        };
+        let layers = adapter
+            .tensor_layout()
+            .layers
+            .iter()
+            .map(|layer| GptOssMetalLayer::load(backend, &artifact, layer))
+            .collect::<Result<Vec<_>, _>>()?;
+        let inner = GptOssMetalModelInner {
+            descriptor: adapter.descriptor().clone(),
+            family_metadata: adapter.family_metadata().clone(),
+            tokenizer,
+            token_embedding: load_quantized_matrix(
+                &artifact,
+                adapter.tensor_layout().token_embedding.as_str(),
+            )?,
+            output_norm: load_dense_vector(
+                &artifact,
+                adapter.tensor_layout().output_norm.as_str(),
+            )?,
+            output,
+            layers,
+            plan_digest: digest_gpt_oss_plan(
+                adapter.descriptor(),
+                adapter.family_metadata(),
+                GPT_OSS_METAL_BACKEND,
+            ),
+            load_duration_ns: load_start
+                .elapsed()
+                .as_nanos()
+                .try_into()
+                .unwrap_or(u64::MAX),
+        };
+        Ok(Self {
+            inner: Arc::new(inner),
+        })
+    }
+
+    #[must_use]
+    pub fn plan_digest(&self) -> &str {
+        self.inner.plan_digest.as_str()
+    }
+}
+
+impl GenerationModelHandle for MetalGgufGptOssGenerationModel {
+    fn descriptor(&self) -> &DecoderModelDescriptor {
+        &self.inner.descriptor
+    }
+
+    fn cache_width(&self) -> usize {
+        self.inner.cache_width()
+    }
+}
+
+impl CompiledWordGenerationModel for MetalGgufGptOssGenerationModel {
+    type Backend = MetalBackend;
+
+    fn tokenizer(&self) -> &dyn TokenizerBoundary {
+        &self.inner.tokenizer
+    }
+
+    fn encode_prompt_input(
+        &self,
+        input: &super::GenerationInput,
+    ) -> Result<TokenSequence, ReferenceTextGenerationError> {
+        Ok(match input {
+            super::GenerationInput::Text(text) => self.inner.tokenizer.encode_with_defaults(text),
+            super::GenerationInput::Tokens(tokens) => tokens.clone(),
+        })
+    }
+
+    fn is_end_of_sequence(&self, token: TokenId) -> bool {
+        self.inner.tokenizer.is_end_of_sequence(token)
+    }
+
+    fn execute_step(
+        &self,
+        backend: &mut Self::Backend,
+        token: TokenId,
+        position: usize,
+        cache: &super::InMemoryKvCache,
+    ) -> Result<super::GenerationStepOutput, ReferenceTextGenerationError> {
+        if token.as_u32() as usize >= self.inner.descriptor.config.vocab_size {
+            return Err(ReferenceTextGenerationError::InvalidToken {
+                token: token.as_u32(),
+                vocab_size: self.inner.descriptor.config.vocab_size,
+            });
+        }
+        if position >= self.inner.descriptor.config.max_context {
+            return Err(ReferenceTextGenerationError::InvalidPosition {
+                position,
+                max_context: self.inner.descriptor.config.max_context,
+            });
+        }
+        if cache.width() != self.inner.cache_width() {
+            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                expected_kv_width: self.inner.cache_width(),
+                kv_width: cache.width(),
+            });
+        }
+
+        let step = self.inner.forward_step(backend, token, position, cache)?;
+        Ok(super::GenerationStepOutput {
+            key: step.key,
+            value: step.value,
+            logits: step.logits,
+            execution_plan_digest: Some(self.inner.plan_digest.clone()),
+            compile_path: None,
+            kernel_count: step.kernel_count,
+            bytes_moved: step.bytes_moved,
+            plan_cache_hits: 0,
+            plan_cache_misses: 0,
+            gpt_oss_perf: step.perf,
+        })
+    }
+
+    fn plan_digest(&self) -> &str {
+        self.inner.plan_digest.as_str()
+    }
+
+    fn load_duration_ns(&self) -> u64 {
+        self.inner.load_duration_ns
+    }
+
+    fn backend_compatibility(&self) -> &'static str {
+        GPT_OSS_METAL_BACKEND
     }
 }
 
@@ -2736,6 +3147,452 @@ impl GptOssCudaLayer {
     }
 }
 
+#[derive(Debug)]
+struct GptOssMetalModelInner {
+    descriptor: DecoderModelDescriptor,
+    family_metadata: GgufDecoderFamilyMetadata,
+    tokenizer: GptOssTokenizer,
+    token_embedding: QuantizedMatrix,
+    output_norm: Vec<f32>,
+    output: MetalQuantizedMatrix,
+    layers: Vec<GptOssMetalLayer>,
+    plan_digest: String,
+    load_duration_ns: u64,
+}
+
+impl GptOssMetalModelInner {
+    fn cache_width(&self) -> usize {
+        self.descriptor
+            .config
+            .layer_count
+            .saturating_mul(self.descriptor.config.kv_width())
+    }
+
+    fn forward_step(
+        &self,
+        backend: &mut MetalBackend,
+        token: TokenId,
+        position: usize,
+        cache: &super::InMemoryKvCache,
+    ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
+        let hidden_size = self.descriptor.config.hidden_size;
+        let kv_width = self.descriptor.config.kv_width();
+        let mut bytes_moved = 0_u64;
+        let mut kernel_count = 0_usize;
+        let mut perf = GptOssPerformanceMetrics {
+            step_count: 1,
+            layer_visit_count: self.layers.len(),
+            graph_node_count: 0,
+            graph_layer_node_count: 0,
+            ..GptOssPerformanceMetrics::default()
+        };
+
+        let token_embedding_start = Instant::now();
+        let mut hidden = self.token_embedding.decode_row(token.as_u32() as usize)?;
+        perf.stage_timings.token_embedding_ns = perf
+            .stage_timings
+            .token_embedding_ns
+            .saturating_add(duration_ns(token_embedding_start));
+        bytes_moved = bytes_moved.saturating_add(self.token_embedding.byte_length() as u64);
+
+        let mut cache_key = vec![0.0; self.cache_width()];
+        let mut cache_value = vec![0.0; self.cache_width()];
+
+        for (layer_index, layer) in self.layers.iter().enumerate() {
+            let residual = hidden.clone();
+            let attention_norm_start = Instant::now();
+            let hidden_norm = rms_norm(
+                hidden.as_slice(),
+                layer.attention_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.attention_norm_ns = perf
+                .stage_timings
+                .attention_norm_ns
+                .saturating_add(duration_ns(attention_norm_start));
+
+            let qkv_start = Instant::now();
+            let mut q = Vec::new();
+            layer
+                .attention_query_weight
+                .matvec(backend, hidden_norm.as_slice(), &mut q)?;
+            add_bias_in_place(&mut q, layer.attention_query_bias.as_slice());
+            let mut k = Vec::new();
+            layer
+                .attention_key_weight
+                .matvec(backend, hidden_norm.as_slice(), &mut k)?;
+            add_bias_in_place(&mut k, layer.attention_key_bias.as_slice());
+            let mut v = Vec::new();
+            layer
+                .attention_value_weight
+                .matvec(backend, hidden_norm.as_slice(), &mut v)?;
+            add_bias_in_place(&mut v, layer.attention_value_bias.as_slice());
+            perf.stage_timings.qkv_projection_ns = perf
+                .stage_timings
+                .qkv_projection_ns
+                .saturating_add(duration_ns(qkv_start));
+
+            let rope_start = Instant::now();
+            apply_rope_neox(
+                &mut q,
+                self.descriptor.config.block.attention.head_count,
+                self.descriptor.config.block.attention.head_dim,
+                self.descriptor.config.block.attention.rotary_dim,
+                position,
+                &self.family_metadata,
+            );
+            apply_rope_neox(
+                &mut k,
+                self.descriptor.config.block.attention.kv_head_count,
+                self.descriptor.config.block.attention.head_dim,
+                self.descriptor.config.block.attention.rotary_dim,
+                position,
+                &self.family_metadata,
+            );
+            perf.stage_timings.rope_ns = perf
+                .stage_timings
+                .rope_ns
+                .saturating_add(duration_ns(rope_start));
+
+            let cache_offset = layer_index.saturating_mul(kv_width);
+            cache_key[cache_offset..cache_offset + kv_width].copy_from_slice(k.as_slice());
+            cache_value[cache_offset..cache_offset + kv_width].copy_from_slice(v.as_slice());
+
+            let attention_start = Instant::now();
+            let attention = layer.attend(
+                layer_index,
+                q.as_slice(),
+                k.as_slice(),
+                v.as_slice(),
+                cache,
+                &self.descriptor,
+                self.family_metadata.sliding_window,
+            );
+            perf.stage_timings.attention_ns = perf
+                .stage_timings
+                .attention_ns
+                .saturating_add(duration_ns(attention_start));
+
+            let attention_output_start = Instant::now();
+            let mut attention_out = Vec::new();
+            layer.attention_output_weight.matvec(
+                backend,
+                attention.as_slice(),
+                &mut attention_out,
+            )?;
+            if let Some(bias) = layer.attention_output_bias.as_ref() {
+                add_bias_in_place(&mut attention_out, bias.as_slice());
+            }
+            perf.stage_timings.attention_output_projection_ns = perf
+                .stage_timings
+                .attention_output_projection_ns
+                .saturating_add(duration_ns(attention_output_start));
+            hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
+
+            let ffn_residual = hidden.clone();
+            let feed_forward_norm_start = Instant::now();
+            let ffn_input = rms_norm(
+                hidden.as_slice(),
+                layer.feed_forward_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.feed_forward_norm_ns = perf
+                .stage_timings
+                .feed_forward_norm_ns
+                .saturating_add(duration_ns(feed_forward_norm_start));
+
+            let router_start = Instant::now();
+            let mut router_logits = Vec::new();
+            layer
+                .feed_forward_router_weight
+                .matvec(ffn_input.as_slice(), &mut router_logits)?;
+            if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
+                add_bias_in_place(&mut router_logits, bias.as_slice());
+            }
+            let selected = top_k_indices(
+                router_logits.as_slice(),
+                self.family_metadata.expert_used_count.unwrap_or(0),
+            );
+            let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
+            perf.stage_timings.router_ns = perf
+                .stage_timings
+                .router_ns
+                .saturating_add(duration_ns(router_start));
+
+            let mut moe_out = vec![0.0; hidden_size];
+            if !selected.is_empty() {
+                let expert_projection_start = Instant::now();
+                let gate_up_outputs = layer.feed_forward_gate_up_experts_weight.selected_matvec(
+                    backend,
+                    selected.as_slice(),
+                    ffn_input.as_slice(),
+                )?;
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_projection_start));
+
+                for (selected_index, expert_index) in selected.iter().copied().enumerate() {
+                    let mut gate = gate_up_outputs[selected_index][0].clone();
+                    if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
+                        add_expert_bias_in_place(
+                            &mut gate,
+                            bias.as_slice(),
+                            expert_index,
+                            layer
+                                .feed_forward_gate_up_experts_weight
+                                .rows_per_projection[0],
+                        );
+                    }
+
+                    let mut up = gate_up_outputs[selected_index][1].clone();
+                    if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
+                        add_expert_bias_in_place(
+                            &mut up,
+                            bias.as_slice(),
+                            expert_index,
+                            layer
+                                .feed_forward_gate_up_experts_weight
+                                .rows_per_projection[1],
+                        );
+                    }
+
+                    let expert_activation_start = Instant::now();
+                    let activated = oai_swiglu(gate.as_slice(), up.as_slice());
+                    perf.stage_timings.expert_activation_ns = perf
+                        .stage_timings
+                        .expert_activation_ns
+                        .saturating_add(duration_ns(expert_activation_start));
+
+                    let expert_down_start = Instant::now();
+                    let mut expert = Vec::new();
+                    layer.feed_forward_down_experts_weight.expert_matvec(
+                        backend,
+                        expert_index,
+                        activated.as_slice(),
+                        &mut expert,
+                    )?;
+                    if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
+                        add_expert_bias_in_place(
+                            &mut expert,
+                            bias.as_slice(),
+                            expert_index,
+                            layer.feed_forward_down_experts_weight.rows,
+                        );
+                    }
+                    perf.stage_timings.expert_projection_ns = perf
+                        .stage_timings
+                        .expert_projection_ns
+                        .saturating_add(duration_ns(expert_down_start));
+
+                    let route = routing[selected_index];
+                    let expert_aggregation_start = Instant::now();
+                    for (dst, value) in moe_out.iter_mut().zip(expert.iter().copied()) {
+                        *dst += value * route;
+                    }
+                    perf.stage_timings.expert_aggregation_ns = perf
+                        .stage_timings
+                        .expert_aggregation_ns
+                        .saturating_add(duration_ns(expert_aggregation_start));
+                }
+            }
+            hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
+
+            bytes_moved = bytes_moved
+                .saturating_add(layer.attention_query_weight.byte_length() as u64)
+                .saturating_add(layer.attention_key_weight.byte_length() as u64)
+                .saturating_add(layer.attention_value_weight.byte_length() as u64)
+                .saturating_add(layer.attention_output_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_gate_up_experts_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_down_experts_weight.byte_length() as u64);
+            kernel_count = kernel_count.saturating_add(5 + selected.len().saturating_mul(2));
+        }
+
+        let output_norm_start = Instant::now();
+        let final_hidden = rms_norm(
+            hidden.as_slice(),
+            self.output_norm.as_slice(),
+            self.family_metadata.rms_norm_epsilon,
+        );
+        perf.stage_timings.output_norm_ns = perf
+            .stage_timings
+            .output_norm_ns
+            .saturating_add(duration_ns(output_norm_start));
+
+        let logits_projection_start = Instant::now();
+        let mut logits = Vec::new();
+        self.output
+            .matvec(backend, final_hidden.as_slice(), &mut logits)?;
+        perf.stage_timings.logits_projection_ns = perf
+            .stage_timings
+            .logits_projection_ns
+            .saturating_add(duration_ns(logits_projection_start));
+        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
+        kernel_count = kernel_count.saturating_add(1);
+
+        Ok(GptOssForwardStep {
+            key: cache_key,
+            value: cache_value,
+            logits,
+            selected_token: None,
+            kernel_count,
+            bytes_moved,
+            perf: Some(perf),
+        })
+    }
+}
+
+#[derive(Clone, Debug)]
+struct GptOssMetalLayer {
+    attention_norm: Vec<f32>,
+    attention_query_weight: MetalQuantizedMatrix,
+    attention_query_bias: Vec<f32>,
+    attention_key_weight: MetalQuantizedMatrix,
+    attention_key_bias: Vec<f32>,
+    attention_value_weight: MetalQuantizedMatrix,
+    attention_value_bias: Vec<f32>,
+    attention_output_weight: MetalQuantizedMatrix,
+    attention_output_bias: Option<Vec<f32>>,
+    attention_sinks: Option<Vec<f32>>,
+    feed_forward_norm: Vec<f32>,
+    feed_forward_router_weight: DenseMatrix,
+    feed_forward_router_bias: Option<Vec<f32>>,
+    feed_forward_gate_up_experts_weight: MetalQuantizedExpertProjectionGroup,
+    feed_forward_gate_experts_bias: Option<Vec<f32>>,
+    feed_forward_up_experts_bias: Option<Vec<f32>>,
+    feed_forward_down_experts_weight: MetalQuantizedExpertTensor,
+    feed_forward_down_experts_bias: Option<Vec<f32>>,
+}
+
+impl GptOssMetalLayer {
+    fn load(
+        backend: &mut MetalBackend,
+        artifact: &GgufBlobArtifact,
+        layout: &GgufDecoderLayerTensorLayout,
+    ) -> Result<Self, ModelLoadError> {
+        Ok(Self {
+            attention_norm: load_dense_vector(artifact, layout.attention_norm.as_str())?,
+            attention_query_weight: load_metal_quantized_matrix(
+                backend,
+                artifact,
+                layout.attention_query_weight.as_str(),
+            )?,
+            attention_query_bias: load_dense_vector(
+                artifact,
+                required_tensor_name(layout.attention_query_bias.as_ref(), "attention_query_bias")?,
+            )?,
+            attention_key_weight: load_metal_quantized_matrix(
+                backend,
+                artifact,
+                layout.attention_key_weight.as_str(),
+            )?,
+            attention_key_bias: load_dense_vector(
+                artifact,
+                required_tensor_name(layout.attention_key_bias.as_ref(), "attention_key_bias")?,
+            )?,
+            attention_value_weight: load_metal_quantized_matrix(
+                backend,
+                artifact,
+                layout.attention_value_weight.as_str(),
+            )?,
+            attention_value_bias: load_dense_vector(
+                artifact,
+                required_tensor_name(layout.attention_value_bias.as_ref(), "attention_value_bias")?,
+            )?,
+            attention_output_weight: load_metal_quantized_matrix(
+                backend,
+                artifact,
+                layout.attention_output_weight.as_str(),
+            )?,
+            attention_output_bias: layout
+                .attention_output_bias
+                .as_ref()
+                .map(|name| load_dense_vector(artifact, name.as_str()))
+                .transpose()?,
+            attention_sinks: layout
+                .attention_sinks_weight
+                .as_ref()
+                .map(|name| load_dense_vector(artifact, name.as_str()))
+                .transpose()?,
+            feed_forward_norm: load_dense_vector(
+                artifact,
+                required_tensor_name(layout.feed_forward_norm.as_ref(), "feed_forward_norm")?,
+            )?,
+            feed_forward_router_weight: load_dense_matrix(
+                artifact,
+                required_tensor_name(
+                    layout.feed_forward_router_weight.as_ref(),
+                    "feed_forward_router_weight",
+                )?,
+            )?,
+            feed_forward_router_bias: layout
+                .feed_forward_router_bias
+                .as_ref()
+                .map(|name| load_dense_vector(artifact, name.as_str()))
+                .transpose()?,
+            feed_forward_gate_up_experts_weight: load_metal_quantized_expert_projection_group(
+                backend,
+                artifact,
+                &[
+                    required_tensor_name(
+                        layout.feed_forward_gate_experts_weight.as_ref(),
+                        "feed_forward_gate_experts_weight",
+                    )?,
+                    required_tensor_name(
+                        layout.feed_forward_up_experts_weight.as_ref(),
+                        "feed_forward_up_experts_weight",
+                    )?,
+                ],
+            )?,
+            feed_forward_gate_experts_bias: layout
+                .feed_forward_gate_experts_bias
+                .as_ref()
+                .map(|name| load_dense_rank2_flat(artifact, name.as_str()))
+                .transpose()?,
+            feed_forward_up_experts_bias: layout
+                .feed_forward_up_experts_bias
+                .as_ref()
+                .map(|name| load_dense_rank2_flat(artifact, name.as_str()))
+                .transpose()?,
+            feed_forward_down_experts_weight: load_metal_quantized_expert_tensor(
+                backend,
+                artifact,
+                required_tensor_name(
+                    layout.feed_forward_down_experts_weight.as_ref(),
+                    "feed_forward_down_experts_weight",
+                )?,
+            )?,
+            feed_forward_down_experts_bias: layout
+                .feed_forward_down_experts_bias
+                .as_ref()
+                .map(|name| load_dense_rank2_flat(artifact, name.as_str()))
+                .transpose()?,
+        })
+    }
+
+    fn attend(
+        &self,
+        layer_index: usize,
+        query: &[f32],
+        key: &[f32],
+        value: &[f32],
+        cache: &super::InMemoryKvCache,
+        descriptor: &DecoderModelDescriptor,
+        sliding_window: Option<usize>,
+    ) -> Vec<f32> {
+        attend_impl(
+            self.attention_sinks.as_deref(),
+            layer_index,
+            query,
+            key,
+            value,
+            cache,
+            descriptor,
+            sliding_window,
+        )
+    }
+}
+
 #[derive(Clone, Debug)]
 struct GptOssCpuModelInner {
     descriptor: DecoderModelDescriptor,
@@ -3257,6 +4114,34 @@ impl QuantizedMatrix {
 }
 
 #[derive(Clone, Debug)]
+struct MetalQuantizedMatrix {
+    host: QuantizedMatrix,
+    storage: MetalBuffer,
+}
+
+impl MetalQuantizedMatrix {
+    fn byte_length(&self) -> usize {
+        self.storage.byte_len()
+    }
+
+    fn matvec(
+        &self,
+        backend: &mut MetalBackend,
+        input: &[f32],
+        output: &mut Vec<f32>,
+    ) -> Result<(), super::RuntimeError> {
+        *output = backend.quantized_matvec(
+            &self.storage,
+            self.host.mode,
+            self.host.rows,
+            self.host.columns,
+            input,
+        )?;
+        Ok(())
+    }
+}
+
+#[derive(Clone, Debug)]
 struct CudaQuantizedMatrix {
     storage: CudaBuffer,
     transposed_f16: Option<CudaBuffer>,
@@ -3292,6 +4177,58 @@ impl CudaQuantizedMatrix {
         )?;
         *output = result.values;
         Ok(result.stats)
+    }
+}
+
+#[derive(Clone, Debug)]
+struct MetalQuantizedExpertTensor {
+    storage: MetalBuffer,
+    mode: QuantizationMode,
+    outer: usize,
+    rows: usize,
+    columns: usize,
+    row_byte_len: usize,
+}
+
+impl MetalQuantizedExpertTensor {
+    fn byte_length(&self) -> usize {
+        self.storage.byte_len()
+    }
+
+    fn expert_matvec(
+        &self,
+        backend: &mut MetalBackend,
+        expert_index: usize,
+        input: &[f32],
+        output: &mut Vec<f32>,
+    ) -> Result<(), super::RuntimeError> {
+        if expert_index >= self.outer {
+            return Err(super::RuntimeError::Backend(format!(
+                "expert index {expert_index} exceeds expert count {}",
+                self.outer
+            )));
+        }
+        if input.len() != self.columns {
+            return Err(super::RuntimeError::Backend(format!(
+                "metal expert matvec width mismatch: expected {}, actual {}",
+                self.columns,
+                input.len()
+            )));
+        }
+        let byte_offset = expert_index
+            .saturating_mul(self.rows)
+            .saturating_mul(self.row_byte_len);
+        *output = backend
+            .quantized_matvec_with_offset(
+                &self.storage,
+                byte_offset,
+                self.mode,
+                self.rows,
+                self.columns,
+                input,
+            )?
+            .values;
+        Ok(())
     }
 }
 
@@ -3569,6 +4506,80 @@ impl CudaQuantizedExpertProjectionGroup {
 }
 
 #[derive(Clone, Debug)]
+struct MetalQuantizedExpertProjectionGroup {
+    storage: MetalBuffer,
+    mode: QuantizationMode,
+    outer: usize,
+    rows_per_projection: Vec<usize>,
+    columns: usize,
+    row_byte_len: usize,
+}
+
+impl MetalQuantizedExpertProjectionGroup {
+    fn total_rows(&self) -> usize {
+        self.rows_per_projection
+            .iter()
+            .copied()
+            .fold(0usize, usize::saturating_add)
+    }
+
+    fn byte_length(&self) -> usize {
+        self.storage.byte_len()
+    }
+
+    fn selected_matvec(
+        &self,
+        backend: &mut MetalBackend,
+        selected: &[usize],
+        input: &[f32],
+    ) -> Result<Vec<Vec<Vec<f32>>>, super::RuntimeError> {
+        if input.len() != self.columns {
+            return Err(super::RuntimeError::Backend(format!(
+                "metal expert packed matvec width mismatch: expected {}, actual {}",
+                self.columns,
+                input.len()
+            )));
+        }
+        if selected.is_empty() {
+            return Ok(Vec::new());
+        }
+        let selected_ids = selected
+            .iter()
+            .copied()
+            .map(|index| {
+                if index >= self.outer {
+                    return Err(super::RuntimeError::Backend(format!(
+                        "expert index {index} exceeds expert count {}",
+                        self.outer
+                    )));
+                }
+                i32::try_from(index).map_err(|_| {
+                    super::RuntimeError::Backend(format!(
+                        "expert index {index} exceeds i32 range for metal grouped dispatch",
+                    ))
+                })
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![self.columns]), input.to_vec())?;
+        let result: MetalGroupedExpertMatvecResult = backend.mul_mv_id(
+            &self.storage,
+            self.mode,
+            self.row_byte_len,
+            self.total_rows(),
+            self.columns,
+            selected_ids.as_slice(),
+            &input_buffer,
+        )?;
+        let per_selected = result
+            .values
+            .chunks_exact(self.total_rows())
+            .map(|values| split_projection_outputs(&self.rows_per_projection, values.to_vec()))
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(per_selected)
+    }
+}
+
+#[derive(Clone, Debug)]
 struct CudaKvCacheMirror {
     key_buffer: CudaBuffer,
     value_buffer: CudaBuffer,
@@ -3764,6 +4775,25 @@ fn load_quantized_matrix(
         columns: *columns,
         row_byte_len,
     })
+}
+
+fn load_metal_quantized_matrix(
+    backend: &mut MetalBackend,
+    artifact: &GgufBlobArtifact,
+    name: &str,
+) -> Result<MetalQuantizedMatrix, ModelLoadError> {
+    let host = load_quantized_matrix(artifact, name)?;
+    let storage = backend
+        .quantized_buffer(
+            host.storage.metadata().shape.clone(),
+            host.mode,
+            host.storage.bytes()?.to_vec(),
+        )
+        .map_err(|error| ModelLoadError::ArtifactFormat {
+            format: String::from("gguf"),
+            message: format!("failed to upload `{name}` to metal: {error}"),
+        })?;
+    Ok(MetalQuantizedMatrix { host, storage })
 }
 
 fn load_cuda_quantized_matrix(
@@ -3996,6 +5026,53 @@ fn load_quantized_expert_tensor(
     })
 }
 
+fn load_metal_quantized_expert_tensor(
+    backend: &mut MetalBackend,
+    artifact: &GgufBlobArtifact,
+    name: &str,
+) -> Result<MetalQuantizedExpertTensor, ModelLoadError> {
+    let storage = artifact.paged_tensor(name)?;
+    let metadata = storage.metadata();
+    let tensor_name = metadata.name.clone();
+    let dims = metadata.shape.dims().to_vec();
+    let quantization = metadata.quantization;
+    let layout = metadata.quantized_layout;
+    let [outer, rows, columns] = dims.as_slice() else {
+        return Err(ModelLoadError::InvalidTensorShape {
+            name: tensor_name,
+            expected: vec![0, 0, 0],
+            actual: dims,
+        });
+    };
+    let layout = layout.ok_or_else(|| ModelLoadError::UnsupportedTensorDType {
+        name: tensor_name,
+        dtype: String::from("quantized"),
+    })?;
+    let row_byte_len = quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
+        ModelLoadError::InvalidQuantizedTensorShape {
+            quantization,
+            shape: dims.clone(),
+        }
+    })?;
+    Ok(MetalQuantizedExpertTensor {
+        storage: backend
+            .quantized_buffer(
+                metadata.shape.clone(),
+                quantization,
+                storage.bytes()?.to_vec(),
+            )
+            .map_err(|error| ModelLoadError::ArtifactFormat {
+                format: String::from("gguf"),
+                message: format!("failed to upload `{name}` to metal: {error}"),
+            })?,
+        mode: quantization,
+        outer: *outer,
+        rows: *rows,
+        columns: *columns,
+        row_byte_len,
+    })
+}
+
 fn load_cuda_quantized_expert_tensor(
     backend: &mut CudaBackend,
     artifact: &GgufBlobArtifact,
@@ -4173,6 +5250,154 @@ fn load_cuda_quantized_projection_group(
         mode,
         rows_per_projection,
         columns,
+    })
+}
+
+fn load_metal_quantized_expert_projection_group(
+    backend: &mut MetalBackend,
+    artifact: &GgufBlobArtifact,
+    names: &[&str],
+) -> Result<MetalQuantizedExpertProjectionGroup, ModelLoadError> {
+    let mut mode = None;
+    let mut outer = None;
+    let mut columns = None;
+    let mut row_byte_len = None;
+    let mut rows_per_projection = Vec::with_capacity(names.len());
+    let mut projection_bytes = Vec::with_capacity(names.len());
+    for name in names {
+        let storage = artifact.paged_tensor(name)?;
+        let metadata = storage.metadata();
+        let tensor_name = metadata.name.clone();
+        let dims = metadata.shape.dims().to_vec();
+        let quantization = metadata.quantization;
+        let layout = metadata.quantized_layout;
+        let [projection_outer, rows, projection_columns] = dims.as_slice() else {
+            return Err(ModelLoadError::InvalidTensorShape {
+                name: tensor_name,
+                expected: vec![0, 0, 0],
+                actual: dims,
+            });
+        };
+        let layout = layout.ok_or_else(|| ModelLoadError::UnsupportedTensorDType {
+            name: tensor_name,
+            dtype: String::from("quantized"),
+        })?;
+        let projection_row_byte_len =
+            quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
+                ModelLoadError::InvalidQuantizedTensorShape {
+                    quantization,
+                    shape: dims.clone(),
+                }
+            })?;
+        if let Some(expected_mode) = mode {
+            if expected_mode != quantization {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed metal expert projection group requires matching quantization, `{name}` had {quantization:?} but expected {expected_mode:?}"
+                    ),
+                });
+            }
+        } else {
+            mode = Some(quantization);
+        }
+        if let Some(expected_outer) = outer {
+            if expected_outer != *projection_outer {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed metal expert projection group requires matching expert count, `{name}` had {projection_outer} but expected {expected_outer}"
+                    ),
+                });
+            }
+        } else {
+            outer = Some(*projection_outer);
+        }
+        if let Some(expected_columns) = columns {
+            if expected_columns != *projection_columns {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed metal expert projection group requires matching input width, `{name}` had {projection_columns} but expected {expected_columns}"
+                    ),
+                });
+            }
+        } else {
+            columns = Some(*projection_columns);
+        }
+        if let Some(expected_row_byte_len) = row_byte_len {
+            if expected_row_byte_len != projection_row_byte_len {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed metal expert projection group requires matching row layout, `{name}` had row byte length {projection_row_byte_len} but expected {expected_row_byte_len}"
+                    ),
+                });
+            }
+        } else {
+            row_byte_len = Some(projection_row_byte_len);
+        }
+        rows_per_projection.push(*rows);
+        projection_bytes.push(storage.bytes()?.to_vec());
+    }
+    let row_byte_len = row_byte_len.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed metal expert projection group did not resolve a row layout for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let outer = outer.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed metal expert projection group did not resolve an expert count for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let columns = columns.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed metal expert projection group did not resolve an input width for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let mode = mode.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed metal expert projection group requires at least one tensor name, actual 0 for `{}`",
+            names.join(", ")
+        ),
+    })?;
+    let packed = pack_quantized_expert_projection_bytes(
+        row_byte_len,
+        outer,
+        rows_per_projection.as_slice(),
+        projection_bytes
+            .iter()
+            .map(Vec::as_slice)
+            .collect::<Vec<_>>()
+            .as_slice(),
+    );
+    let total_rows = rows_per_projection
+        .iter()
+        .copied()
+        .fold(0usize, usize::saturating_add);
+    let storage = backend
+        .quantized_buffer(Shape::new(vec![outer, total_rows, columns]), mode, packed)
+        .map_err(|error| ModelLoadError::ArtifactFormat {
+            format: String::from("gguf"),
+            message: format!(
+                "failed to upload packed metal expert projection group `{}`: {error}",
+                names.join(", ")
+            ),
+        })?;
+    Ok(MetalQuantizedExpertProjectionGroup {
+        storage,
+        mode,
+        outer,
+        rows_per_projection,
+        columns,
+        row_byte_len,
     })
 }
 
@@ -4720,12 +5945,19 @@ fn rope_yarn_ramp(low: f32, high: f32, i0: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::{
+        CpuGgufGptOssTextGenerationService, MetalGgufGptOssTextGenerationService,
         build_gpt_oss_decode_graph, can_use_q8_1_mmvq,
         decode_quantized_matrix_bytes_transposed_f32, decode_quantized_row_into,
         digest_gpt_oss_cuda_step_plan, pack_quantized_expert_projection_bytes,
         pack_quantized_projection_bytes, split_projection_outputs,
     };
-    use crate::QuantizationMode;
+    use crate::{
+        GenerationOptions, GenerationRequest, QuantizationMode, TextGenerationExecutor, TokenId,
+        TokenSequence,
+    };
+    use psionic_models::{GgufMetadataValue, GgufTensorType};
+    use std::{fs, path::Path};
+    use tempfile::tempdir;
 
     #[test]
     fn packed_projection_bytes_preserve_projection_order() {
@@ -4802,6 +6034,450 @@ mod tests {
         for (column_index, expected) in decoded_row.iter().copied().enumerate() {
             assert_eq!(transposed[column_index * 2], expected);
             assert_eq!(transposed[column_index * 2 + 1], expected);
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn metal_gpt_oss_service_reports_backend_unavailable_off_platform() {
+        let error = MetalGgufGptOssTextGenerationService::from_gguf_path("missing.gguf")
+            .expect_err("off-platform metal service should refuse");
+        assert!(matches!(
+            error,
+            super::MetalGptOssTextGenerationError::BackendUnavailable { .. }
+        ));
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_gpt_oss_service_matches_cpu_reference_on_synthetic_fixture()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("tiny-gpt-oss.gguf");
+        write_test_gpt_oss_gguf(&path)?;
+
+        let mut cpu = CpuGgufGptOssTextGenerationService::from_gguf_path(&path)?;
+        let mut metal = MetalGgufGptOssTextGenerationService::from_gguf_path(&path)?;
+        assert_eq!(metal.backend_selection().requested_backend, "metal");
+        assert_eq!(metal.backend_selection().effective_backend, "metal");
+
+        let prompt_tokens = TokenSequence::new(vec![TokenId(2)]);
+        let cpu_request = GenerationRequest::new_tokens(
+            "tiny-gpt-oss-cpu",
+            cpu.model_descriptor().clone(),
+            None,
+            prompt_tokens.clone(),
+            GenerationOptions::greedy(1),
+        );
+        let metal_request = GenerationRequest::new_tokens(
+            "tiny-gpt-oss-metal",
+            metal.model_descriptor().clone(),
+            None,
+            prompt_tokens,
+            GenerationOptions::greedy(1),
+        );
+
+        let cpu_response = cpu.generate(&cpu_request)?;
+        let metal_response = metal.generate(&metal_request)?;
+        assert_eq!(metal_response.output.tokens, cpu_response.output.tokens);
+        assert_eq!(metal_response.output.text, cpu_response.output.text);
+        assert_eq!(metal_response.termination, cpu_response.termination);
+        Ok(())
+    }
+
+    #[derive(Clone, Debug)]
+    struct TestGgufTensor {
+        name: String,
+        shape: Vec<usize>,
+        tensor_type: GgufTensorType,
+        bytes: Vec<u8>,
+    }
+
+    impl TestGgufTensor {
+        fn new(
+            name: impl Into<String>,
+            shape: Vec<usize>,
+            tensor_type: GgufTensorType,
+            bytes: Vec<u8>,
+        ) -> Self {
+            Self {
+                name: name.into(),
+                shape,
+                tensor_type,
+                bytes,
+            }
+        }
+    }
+
+    fn write_test_gpt_oss_gguf(path: &Path) -> Result<(), Box<dyn std::error::Error>> {
+        fs::write(path, build_test_gpt_oss_gguf()?)?;
+        Ok(())
+    }
+
+    fn build_test_gpt_oss_gguf() -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        build_test_gguf(gpt_oss_metadata().as_slice(), gpt_oss_tensors().as_slice())
+    }
+
+    fn build_test_gguf(
+        metadata: &[(String, GgufMetadataValue)],
+        tensors: &[TestGgufTensor],
+    ) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
+        let alignment = metadata
+            .iter()
+            .find(|(key, _)| key == "general.alignment")
+            .and_then(|(_, value)| match value {
+                GgufMetadataValue::U64(value) => Some(*value as usize),
+                GgufMetadataValue::U32(value) => Some(*value as usize),
+                _ => None,
+            })
+            .unwrap_or(32)
+            .max(1);
+
+        let mut bytes = Vec::new();
+        bytes.extend(b"GGUF");
+        push_u32(&mut bytes, 3);
+        push_u64(&mut bytes, u64::try_from(tensors.len())?);
+        push_u64(&mut bytes, u64::try_from(metadata.len())?);
+
+        for (key, value) in metadata {
+            push_gguf_string(&mut bytes, key)?;
+            push_u32(&mut bytes, gguf_metadata_value_type(value));
+            push_gguf_value(&mut bytes, value)?;
+        }
+
+        let mut next_offset = 0usize;
+        let mut tensor_offsets = Vec::with_capacity(tensors.len());
+        for tensor in tensors {
+            tensor_offsets.push(next_offset);
+            next_offset = align_usize(next_offset + tensor.bytes.len(), alignment);
+        }
+
+        for (tensor, offset) in tensors.iter().zip(&tensor_offsets) {
+            push_gguf_string(&mut bytes, tensor.name.as_str())?;
+            push_u32(&mut bytes, u32::try_from(tensor.shape.len())?);
+            for dimension in tensor.shape.iter().rev() {
+                push_u64(&mut bytes, u64::try_from(*dimension)?);
+            }
+            push_u32(&mut bytes, gguf_tensor_type_code(tensor.tensor_type));
+            push_u64(&mut bytes, u64::try_from(*offset)?);
+        }
+
+        let tensor_data_offset = align_usize(bytes.len(), alignment);
+        bytes.resize(tensor_data_offset, 0);
+
+        for (tensor, offset) in tensors.iter().zip(&tensor_offsets) {
+            let start = tensor_data_offset + offset;
+            if bytes.len() < start {
+                bytes.resize(start, 0);
+            }
+            bytes.extend_from_slice(tensor.bytes.as_slice());
+            bytes.resize(align_usize(bytes.len(), alignment), 0);
+        }
+
+        Ok(bytes)
+    }
+
+    fn gpt_oss_metadata() -> Vec<(String, GgufMetadataValue)> {
+        vec![
+            (
+                String::from("general.architecture"),
+                GgufMetadataValue::String(String::from("gpt-oss")),
+            ),
+            (
+                String::from("general.name"),
+                GgufMetadataValue::String(String::from("tiny psionic gpt-oss")),
+            ),
+            (
+                String::from("general.alignment"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.context_length"),
+                GgufMetadataValue::U32(128),
+            ),
+            (
+                String::from("gpt-oss.embedding_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.feed_forward_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.expert_feed_forward_length"),
+                GgufMetadataValue::U32(32),
+            ),
+            (
+                String::from("gpt-oss.block_count"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("gpt-oss.attention.head_count"),
+                GgufMetadataValue::U32(4),
+            ),
+            (
+                String::from("gpt-oss.attention.head_count_kv"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("gpt-oss.attention.key_length"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.attention.value_length"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.attention.layer_norm_rms_epsilon"),
+                GgufMetadataValue::F32(1e-5),
+            ),
+            (
+                String::from("gpt-oss.rope.dimension_count"),
+                GgufMetadataValue::U32(16),
+            ),
+            (
+                String::from("gpt-oss.rope.freq_base"),
+                GgufMetadataValue::F32(10_000.0),
+            ),
+            (
+                String::from("gpt-oss.rope.scaling.factor"),
+                GgufMetadataValue::F32(32.0),
+            ),
+            (
+                String::from("gpt-oss.rope.scaling.original_context_length"),
+                GgufMetadataValue::U32(4096),
+            ),
+            (
+                String::from("gpt-oss.expert_count"),
+                GgufMetadataValue::U32(3),
+            ),
+            (
+                String::from("gpt-oss.expert_used_count"),
+                GgufMetadataValue::U32(2),
+            ),
+            (
+                String::from("tokenizer.ggml.model"),
+                GgufMetadataValue::String(String::from("gpt2")),
+            ),
+            (
+                String::from("tokenizer.ggml.pre"),
+                GgufMetadataValue::String(String::from("gpt-4o")),
+            ),
+            (
+                String::from("tokenizer.ggml.tokens"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("<|start|>")),
+                    GgufMetadataValue::String(String::from("<|end|>")),
+                    GgufMetadataValue::String(String::from("hello")),
+                    GgufMetadataValue::String(String::from("world")),
+                    GgufMetadataValue::String(String::from("psionic")),
+                    GgufMetadataValue::String(String::from("gpt-oss")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.merges"),
+                GgufMetadataValue::Array(vec![
+                    GgufMetadataValue::String(String::from("hello world")),
+                    GgufMetadataValue::String(String::from("psionic gpt-oss")),
+                ]),
+            ),
+            (
+                String::from("tokenizer.ggml.bos_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.eos_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.unknown_token_id"),
+                GgufMetadataValue::U32(0),
+            ),
+            (
+                String::from("tokenizer.ggml.padding_token_id"),
+                GgufMetadataValue::U32(1),
+            ),
+            (
+                String::from("tokenizer.ggml.add_bos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+            (
+                String::from("tokenizer.ggml.add_eos_token"),
+                GgufMetadataValue::Bool(false),
+            ),
+        ]
+    }
+
+    fn gpt_oss_tensors() -> Vec<TestGgufTensor> {
+        let expert_blocks = 3 * 32;
+        vec![
+            quantized_q8_0_tensor("token_embd.weight", vec![6, 32]),
+            dense_f32_tensor("output_norm.weight", vec![32]),
+            quantized_q8_0_tensor("output.weight", vec![6, 32]),
+            dense_f32_tensor("blk.0.attn_norm.weight", vec![32]),
+            quantized_q8_0_tensor("blk.0.attn_q.weight", vec![64, 32]),
+            dense_f32_tensor("blk.0.attn_q.bias", vec![64]),
+            quantized_q8_0_tensor("blk.0.attn_k.weight", vec![16, 32]),
+            dense_f32_tensor("blk.0.attn_k.bias", vec![16]),
+            quantized_q8_0_tensor("blk.0.attn_v.weight", vec![16, 32]),
+            dense_f32_tensor("blk.0.attn_v.bias", vec![16]),
+            quantized_q8_0_tensor("blk.0.attn_output.weight", vec![32, 64]),
+            dense_f32_tensor("blk.0.attn_output.bias", vec![32]),
+            dense_f32_tensor("blk.0.post_attention_norm.weight", vec![32]),
+            dense_f32_tensor("blk.0.attn_sinks.weight", vec![16]),
+            dense_f32_tensor("blk.0.ffn_gate_inp.weight", vec![3, 32]),
+            dense_f32_tensor("blk.0.ffn_gate_inp.bias", vec![3]),
+            quantized_mxfp4_tensor(
+                "blk.0.ffn_gate_exps.weight",
+                vec![3, 32, 32],
+                repeated_mxfp4_bytes(expert_blocks),
+            ),
+            dense_f32_tensor("blk.0.ffn_gate_exps.bias", vec![3, 32]),
+            quantized_mxfp4_tensor(
+                "blk.0.ffn_up_exps.weight",
+                vec![3, 32, 32],
+                repeated_mxfp4_bytes(expert_blocks),
+            ),
+            dense_f32_tensor("blk.0.ffn_up_exps.bias", vec![3, 32]),
+            quantized_mxfp4_tensor(
+                "blk.0.ffn_down_exps.weight",
+                vec![3, 32, 32],
+                repeated_mxfp4_bytes(expert_blocks),
+            ),
+            dense_f32_tensor("blk.0.ffn_down_exps.bias", vec![3, 32]),
+        ]
+    }
+
+    fn dense_f32_tensor(name: &str, shape: Vec<usize>) -> TestGgufTensor {
+        let elements = shape.iter().product::<usize>();
+        TestGgufTensor::new(
+            name,
+            shape,
+            GgufTensorType::F32,
+            encode_f32_bytes(&vec![0.0; elements]),
+        )
+    }
+
+    fn quantized_q8_0_tensor(name: &str, shape: Vec<usize>) -> TestGgufTensor {
+        let rows = shape
+            .iter()
+            .take(shape.len().saturating_sub(1))
+            .product::<usize>();
+        TestGgufTensor::new(name, shape, GgufTensorType::Q8_0, repeated_q8_0_bytes(rows))
+    }
+
+    fn quantized_mxfp4_tensor(name: &str, shape: Vec<usize>, bytes: Vec<u8>) -> TestGgufTensor {
+        TestGgufTensor::new(name, shape, GgufTensorType::MXFP4, bytes)
+    }
+
+    fn repeated_q8_0_bytes(row_count: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(row_count * 34);
+        for _ in 0..row_count {
+            bytes.extend([0x00, 0x3c]);
+            bytes.extend([0_u8; 32]);
+        }
+        bytes
+    }
+
+    fn repeated_mxfp4_bytes(block_count: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(block_count * 17);
+        for _ in 0..block_count {
+            bytes.push(128_u8);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+        }
+        bytes
+    }
+
+    fn encode_f32_bytes(values: &[f32]) -> Vec<u8> {
+        values
+            .iter()
+            .flat_map(|value| value.to_le_bytes())
+            .collect::<Vec<_>>()
+    }
+
+    fn gguf_metadata_value_type(value: &GgufMetadataValue) -> u32 {
+        match value {
+            GgufMetadataValue::U8(_) => 0,
+            GgufMetadataValue::I8(_) => 1,
+            GgufMetadataValue::U16(_) => 2,
+            GgufMetadataValue::I16(_) => 3,
+            GgufMetadataValue::U32(_) => 4,
+            GgufMetadataValue::I32(_) => 5,
+            GgufMetadataValue::F32(_) => 6,
+            GgufMetadataValue::Bool(_) => 7,
+            GgufMetadataValue::String(_) => 8,
+            GgufMetadataValue::Array(_) => 9,
+            GgufMetadataValue::U64(_) => 10,
+            GgufMetadataValue::I64(_) => 11,
+            GgufMetadataValue::F64(_) => 12,
+        }
+    }
+
+    fn gguf_tensor_type_code(tensor_type: GgufTensorType) -> u32 {
+        match tensor_type {
+            GgufTensorType::F32 => 0,
+            GgufTensorType::Q8_0 => 8,
+            GgufTensorType::MXFP4 => 39,
+            other => panic!("unsupported synthetic gguf tensor type: {other:?}"),
+        }
+    }
+
+    fn push_gguf_string(
+        bytes: &mut Vec<u8>,
+        value: &str,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        push_u64(bytes, u64::try_from(value.len())?);
+        bytes.extend_from_slice(value.as_bytes());
+        Ok(())
+    }
+
+    fn push_gguf_value(
+        bytes: &mut Vec<u8>,
+        value: &GgufMetadataValue,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        match value {
+            GgufMetadataValue::U8(value) => bytes.push(*value),
+            GgufMetadataValue::I8(value) => bytes.push(value.to_le_bytes()[0]),
+            GgufMetadataValue::U16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I16(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::U64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::I64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F32(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::F64(value) => bytes.extend(value.to_le_bytes()),
+            GgufMetadataValue::Bool(value) => bytes.push(u8::from(*value)),
+            GgufMetadataValue::String(value) => push_gguf_string(bytes, value)?,
+            GgufMetadataValue::Array(values) => {
+                let value_type = values.first().map_or(4, gguf_metadata_value_type);
+                push_u32(bytes, value_type);
+                push_u64(bytes, u64::try_from(values.len())?);
+                for value in values {
+                    push_gguf_value(bytes, value)?;
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn push_u32(bytes: &mut Vec<u8>, value: u32) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn push_u64(bytes: &mut Vec<u8>, value: u64) {
+        bytes.extend(value.to_le_bytes());
+    }
+
+    fn align_usize(value: usize, alignment: usize) -> usize {
+        if alignment == 0 {
+            return value;
+        }
+        let remainder = value % alignment;
+        if remainder == 0 {
+            value
+        } else {
+            value + alignment - remainder
         }
     }
 }
