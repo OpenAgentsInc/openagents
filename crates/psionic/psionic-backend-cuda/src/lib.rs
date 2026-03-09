@@ -384,6 +384,96 @@ impl CudaBuffer {
     }
 }
 
+/// Page-locked host buffer for stream-owned CUDA staging transfers.
+#[derive(Clone)]
+pub struct CudaHostBuffer {
+    byte_len: usize,
+    platform: platform::PlatformHostBuffer,
+}
+
+impl fmt::Debug for CudaHostBuffer {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CudaHostBuffer")
+            .field("byte_len", &self.byte_len)
+            .field("platform", &"<cuda pinned host buffer>")
+            .finish()
+    }
+}
+
+impl CudaHostBuffer {
+    /// Returns the allocation size in bytes.
+    #[must_use]
+    pub const fn byte_len(&self) -> usize {
+        self.byte_len
+    }
+
+    /// Writes raw bytes into the pinned host buffer.
+    pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), RuntimeError> {
+        if bytes.len() != self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda host buffer write length mismatch: expected {}, actual {}",
+                self.byte_len,
+                bytes.len()
+            )));
+        }
+        self.platform.write_bytes(bytes)
+    }
+
+    /// Reads raw bytes from the pinned host buffer.
+    pub fn read_bytes(&self) -> Result<Vec<u8>, RuntimeError> {
+        self.platform.read_bytes(self.byte_len)
+    }
+
+    /// Writes contiguous `f32` values into the pinned host buffer.
+    pub fn write_f32(&mut self, values: &[f32]) -> Result<(), RuntimeError> {
+        if values.len().saturating_mul(size_of_dtype(DType::F32)) != self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda host buffer f32 write length mismatch: expected {} bytes, actual {}",
+                self.byte_len,
+                values.len().saturating_mul(size_of_dtype(DType::F32))
+            )));
+        }
+        let mut bytes = Vec::with_capacity(self.byte_len);
+        for value in values {
+            bytes.extend_from_slice(&value.to_ne_bytes());
+        }
+        self.write_bytes(bytes.as_slice())
+    }
+
+    /// Writes contiguous `i32` values into the pinned host buffer.
+    pub fn write_i32(&mut self, values: &[i32]) -> Result<(), RuntimeError> {
+        if values.len().saturating_mul(size_of::<i32>()) != self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda host buffer i32 write length mismatch: expected {} bytes, actual {}",
+                self.byte_len,
+                values.len().saturating_mul(size_of::<i32>())
+            )));
+        }
+        let mut bytes = Vec::with_capacity(self.byte_len);
+        for value in values {
+            bytes.extend_from_slice(&value.to_ne_bytes());
+        }
+        self.write_bytes(bytes.as_slice())
+    }
+
+    /// Reads one `i32` from the pinned host buffer.
+    pub fn read_i32(&self) -> Result<i32, RuntimeError> {
+        if self.byte_len != size_of::<i32>() {
+            return Err(RuntimeError::Backend(format!(
+                "cuda host buffer i32 read requires {} bytes, actual {}",
+                size_of::<i32>(),
+                self.byte_len
+            )));
+        }
+        let bytes = self.read_bytes()?;
+        Ok(i32::from_ne_bytes(
+            bytes[..size_of::<i32>()].try_into().map_err(|_| {
+                RuntimeError::Backend(String::from("cuda host buffer returned invalid i32 bytes"))
+            })?,
+        ))
+    }
+}
+
 impl BufferHandle for CudaBuffer {
     fn spec(&self) -> &TensorSpec {
         &self.spec
@@ -420,6 +510,48 @@ impl CudaSubmission {
         }
         self.platform
             .copy_buffer(&source.platform, &destination.platform, source.byte_len)?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Copies a pinned host staging buffer into device memory on this stream.
+    pub fn copy_host_to_device(
+        &mut self,
+        source: &CudaHostBuffer,
+        destination: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        if source.byte_len != destination.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda host-to-device copy length mismatch: source {}, destination {}",
+                source.byte_len, destination.byte_len
+            )));
+        }
+        self.platform.copy_host_to_device(
+            &source.platform,
+            &destination.platform,
+            destination.byte_len,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Copies device memory back into a pinned host staging buffer on this stream.
+    pub fn copy_device_to_host(
+        &mut self,
+        source: &CudaBuffer,
+        destination: &CudaHostBuffer,
+    ) -> Result<(), RuntimeError> {
+        if source.byte_len != destination.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda device-to-host copy length mismatch: source {}, destination {}",
+                source.byte_len, destination.byte_len
+            )));
+        }
+        self.platform.copy_device_to_host(
+            &source.platform,
+            &destination.platform,
+            source.byte_len,
+        )?;
         self.encoded_operations += 1;
         Ok(())
     }
@@ -1268,6 +1400,17 @@ impl CudaBackend {
     /// Allocates an uninitialized dense `i32` buffer on the selected CUDA device.
     pub fn i32_buffer(&mut self, len: usize) -> Result<CudaBuffer, RuntimeError> {
         self.byte_buffer(&vec![0_u8; len.saturating_mul(size_of::<i32>())])
+    }
+
+    /// Allocates a page-locked host buffer for stream-owned staging transfers.
+    pub fn host_buffer(&mut self, byte_len: usize) -> Result<CudaHostBuffer, RuntimeError> {
+        let Some(backend) = self.selected_backend() else {
+            return Err(RuntimeError::Backend(self.health().message));
+        };
+        Ok(CudaHostBuffer {
+            byte_len,
+            platform: backend.platform.allocate_host(byte_len)?,
+        })
     }
 
     /// Returns whether the Psionic-owned CUDA quantized text-generation kernels are built.
@@ -2443,7 +2586,9 @@ mod platform {
     type CudaGetErrorString = unsafe extern "C" fn(CudaError) -> *const c_char;
     type CudaSetDevice = unsafe extern "C" fn(c_int) -> CudaError;
     type CudaMalloc = unsafe extern "C" fn(*mut *mut c_void, usize) -> CudaError;
+    type CudaMallocHost = unsafe extern "C" fn(*mut *mut c_void, usize) -> CudaError;
     type CudaFree = unsafe extern "C" fn(*mut c_void) -> CudaError;
+    type CudaFreeHost = unsafe extern "C" fn(*mut c_void) -> CudaError;
     type CudaMemcpy = unsafe extern "C" fn(*mut c_void, *const c_void, usize, c_int) -> CudaError;
     type CudaMemcpyAsync =
         unsafe extern "C" fn(*mut c_void, *const c_void, usize, c_int, CudaStream) -> CudaError;
@@ -2800,6 +2945,11 @@ mod platform {
         inner: Arc<PlatformBufferInner>,
     }
 
+    #[derive(Clone)]
+    pub(super) struct PlatformHostBuffer {
+        inner: Arc<PlatformHostBufferInner>,
+    }
+
     pub(super) struct PlatformGraphExec {
         runtime: Arc<CudaRuntime>,
         graph: CudaGraph,
@@ -2820,6 +2970,12 @@ mod platform {
         device_ptr: *mut c_void,
     }
 
+    struct PlatformHostBufferInner {
+        runtime: Arc<CudaRuntime>,
+        host_ptr: *mut c_void,
+        byte_len: usize,
+    }
+
     struct CudaRuntime {
         ordinal: u16,
         _cudart_library: Library,
@@ -2827,7 +2983,9 @@ mod platform {
         cuda_get_error_string: CudaGetErrorString,
         cuda_set_device: CudaSetDevice,
         cuda_malloc: CudaMalloc,
+        cuda_malloc_host: CudaMallocHost,
         cuda_free: CudaFree,
+        cuda_free_host: CudaFreeHost,
         cuda_memcpy: CudaMemcpy,
         cuda_memcpy_async: CudaMemcpyAsync,
         cuda_memset_async: CudaMemsetAsync,
@@ -2862,6 +3020,26 @@ mod platform {
                 inner: Arc::new(PlatformBufferInner {
                     runtime: Arc::clone(&self.runtime),
                     device_ptr,
+                }),
+            })
+        }
+
+        pub(super) fn allocate_host(
+            &self,
+            byte_len: usize,
+        ) -> Result<PlatformHostBuffer, RuntimeError> {
+            self.runtime.set_device()?;
+            let mut host_ptr = std::ptr::null_mut();
+            let allocation_len = byte_len.max(1);
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_malloc_host)(&mut host_ptr, allocation_len) },
+                "cudaMallocHost",
+            )?;
+            Ok(PlatformHostBuffer {
+                inner: Arc::new(PlatformHostBufferInner {
+                    runtime: Arc::clone(&self.runtime),
+                    host_ptr,
+                    byte_len: allocation_len,
                 }),
             })
         }
@@ -2992,6 +3170,50 @@ mod platform {
         }
     }
 
+    impl PlatformHostBuffer {
+        pub(super) fn write_bytes(&self, bytes: &[u8]) -> Result<(), RuntimeError> {
+            if bytes.len() != self.inner.byte_len {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda host buffer write length mismatch: expected {}, actual {}",
+                    self.inner.byte_len,
+                    bytes.len()
+                )));
+            }
+            if bytes.is_empty() {
+                return Ok(());
+            }
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    bytes.as_ptr(),
+                    self.inner.host_ptr.cast::<u8>(),
+                    bytes.len(),
+                );
+            }
+            Ok(())
+        }
+
+        pub(super) fn read_bytes(&self, byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+            if byte_len != self.inner.byte_len {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda host buffer read length mismatch: expected {}, actual {}",
+                    self.inner.byte_len, byte_len
+                )));
+            }
+            if byte_len == 0 {
+                return Ok(Vec::new());
+            }
+            let mut bytes = vec![0_u8; byte_len];
+            unsafe {
+                std::ptr::copy_nonoverlapping(
+                    self.inner.host_ptr.cast::<u8>(),
+                    bytes.as_mut_ptr(),
+                    byte_len,
+                );
+            }
+            Ok(bytes)
+        }
+    }
+
     impl PlatformSubmission {
         pub(super) fn fill_buffer(
             &mut self,
@@ -3037,6 +3259,54 @@ mod platform {
                     )
                 },
                 "cudaMemcpyAsync device_to_device",
+            )
+        }
+
+        pub(super) fn copy_host_to_device(
+            &mut self,
+            source: &PlatformHostBuffer,
+            destination: &PlatformBuffer,
+            byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            if byte_len == 0 {
+                return Ok(());
+            }
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    (self.runtime.cuda_memcpy_async)(
+                        destination.inner.device_ptr,
+                        source.inner.host_ptr,
+                        byte_len,
+                        CUDA_MEMCPY_HOST_TO_DEVICE,
+                        self.stream,
+                    )
+                },
+                "cudaMemcpyAsync host_to_device",
+            )
+        }
+
+        pub(super) fn copy_device_to_host(
+            &mut self,
+            source: &PlatformBuffer,
+            destination: &PlatformHostBuffer,
+            byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            if byte_len == 0 {
+                return Ok(());
+            }
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    (self.runtime.cuda_memcpy_async)(
+                        destination.inner.host_ptr,
+                        source.inner.device_ptr,
+                        byte_len,
+                        CUDA_MEMCPY_DEVICE_TO_HOST,
+                        self.stream,
+                    )
+                },
+                "cudaMemcpyAsync device_to_host",
             )
         }
 
@@ -4441,6 +4711,19 @@ mod platform {
         }
     }
 
+    impl Drop for PlatformHostBufferInner {
+        fn drop(&mut self) {
+            if !self.host_ptr.is_null() {
+                let _ = self.runtime.set_device();
+                let _ = self.runtime.check(
+                    unsafe { (self.runtime.cuda_free_host)(self.host_ptr) },
+                    "cudaFreeHost",
+                );
+                self.host_ptr = std::ptr::null_mut();
+            }
+        }
+    }
+
     impl CudaRuntime {
         fn load(ordinal: u16) -> Result<Arc<Self>, RuntimeError> {
             let cudart_library = load_cudart_library()?;
@@ -4452,7 +4735,9 @@ mod platform {
                 },
                 cuda_set_device: unsafe { load_symbol(&cudart_library, b"cudaSetDevice\0")? },
                 cuda_malloc: unsafe { load_symbol(&cudart_library, b"cudaMalloc\0")? },
+                cuda_malloc_host: unsafe { load_symbol(&cudart_library, b"cudaMallocHost\0")? },
                 cuda_free: unsafe { load_symbol(&cudart_library, b"cudaFree\0")? },
+                cuda_free_host: unsafe { load_symbol(&cudart_library, b"cudaFreeHost\0")? },
                 cuda_memcpy: unsafe { load_symbol(&cudart_library, b"cudaMemcpy\0")? },
                 cuda_memcpy_async: unsafe { load_symbol(&cudart_library, b"cudaMemcpyAsync\0")? },
                 cuda_memset_async: unsafe { load_symbol(&cudart_library, b"cudaMemsetAsync\0")? },
@@ -4625,6 +4910,9 @@ mod platform {
     #[derive(Clone)]
     pub(super) struct PlatformBuffer;
 
+    #[derive(Clone)]
+    pub(super) struct PlatformHostBuffer;
+
     pub(super) struct PlatformGraphExec;
 
     pub(super) struct PlatformSubmission;
@@ -4633,6 +4921,15 @@ mod platform {
 
     impl ConfiguredBackend {
         pub(super) fn allocate(&self, _byte_len: usize) -> Result<PlatformBuffer, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn allocate_host(
+            &self,
+            _byte_len: usize,
+        ) -> Result<PlatformHostBuffer, RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "cuda runtime substrate currently requires Linux libcudart",
             )))
@@ -4693,6 +4990,20 @@ mod platform {
         }
     }
 
+    impl PlatformHostBuffer {
+        pub(super) fn write_bytes(&self, _bytes: &[u8]) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn read_bytes(&self, _byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+    }
+
     impl PlatformSubmission {
         pub(super) fn fill_buffer(
             &mut self,
@@ -4709,6 +5020,28 @@ mod platform {
             &mut self,
             _source: &PlatformBuffer,
             _destination: &PlatformBuffer,
+            _byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn copy_host_to_device(
+            &mut self,
+            _source: &PlatformHostBuffer,
+            _destination: &PlatformBuffer,
+            _byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn copy_device_to_host(
+            &mut self,
+            _source: &PlatformBuffer,
+            _destination: &PlatformHostBuffer,
             _byte_len: usize,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -6159,6 +6492,71 @@ mod tests {
     }
 
     #[test]
+    fn cuda_submission_executes_mxfp4_moe_down_aggregate_q8_1_grouped_selected_path_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let selected_ids = [4_i32, 1_i32, 3_i32, 0_i32, 2_i32];
+        let selected_weights = [0.30_f32, 0.24_f32, 0.18_f32, 0.16_f32, 0.12_f32];
+        let activated = sample_selected_activated_vectors_for_count(selected_ids.len());
+        let weights_bytes = sample_mxfp4_expert_down_weights(selected_ids.len(), 32, 32);
+        let weights = backend.byte_buffer(&weights_bytes)?;
+        let activated_buffer =
+            backend.input_buffer(Shape::new(vec![activated.len()]), activated.clone())?;
+        let activated_q8_1 =
+            backend.byte_buffer(&vec![
+                0_u8;
+                crate::ggml_q8_1_storage_bytes(selected_ids.len(), 32)?
+            ])?;
+        let selected_ids_buffer = backend.byte_buffer(&i32_slice_to_bytes(&selected_ids))?;
+        let selected_weights_buffer = backend.input_buffer(
+            Shape::new(vec![selected_weights.len()]),
+            selected_weights.to_vec(),
+        )?;
+        let output = backend.f32_buffer(32)?;
+        let mut submission = backend.begin_submission()?;
+        submission.quantize_f32_to_q8_1(
+            &activated_buffer,
+            selected_ids.len(),
+            32,
+            &activated_q8_1,
+        )?;
+        submission.moe_down_aggregate_q8_1(
+            &weights,
+            QuantizationMode::GgmlMxfp4,
+            17,
+            32,
+            32,
+            &selected_ids_buffer,
+            &selected_weights_buffer,
+            selected_ids.len(),
+            &activated_q8_1,
+            None,
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 2);
+
+        let actual = output.read_f32()?;
+        let expected = expected_moe_down_outputs(
+            &activated,
+            &weights_bytes,
+            selected_ids.as_slice(),
+            selected_weights.as_slice(),
+            32,
+        )?;
+        assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
     fn cuda_backend_rejects_non_cuda_tensor_specs_when_available() {
         let mut backend = CudaBackend::new();
         let Some(_) = backend.selected_device() else {
@@ -6254,14 +6652,23 @@ mod tests {
     }
 
     fn sample_selected_activated_vectors() -> Vec<f32> {
-        sample_q8_1_exact_vector()
-            .into_iter()
-            .chain(
-                (0..31_i32)
-                    .map(|index| ((index * 13) % 37 - 18) as f32)
-                    .chain(std::iter::once(127.0)),
-            )
-            .collect()
+        sample_selected_activated_vectors_for_count(2)
+    }
+
+    fn sample_selected_activated_vectors_for_count(selected_count: usize) -> Vec<f32> {
+        let mut values = Vec::with_capacity(selected_count.saturating_mul(32));
+        for selected_index in 0..selected_count {
+            if selected_index == 0 {
+                values.extend(sample_q8_1_exact_vector());
+                continue;
+            }
+            values.extend((0..31_i32).map(|index| {
+                let step = (selected_index as i32 + 3) * 5;
+                ((index * step) % 37 - 18) as f32
+            }));
+            values.push(127.0 - selected_index as f32);
+        }
+        values
     }
 
     fn expected_moe_gate_up_outputs(

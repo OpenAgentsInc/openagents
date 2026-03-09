@@ -3233,48 +3233,146 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
     void *stream
 ) {
     const int activated_block_stride = columns / kQ81ElementsPerBlock;
-    cudaMemsetAsync(output, 0, static_cast<size_t>(rows) * sizeof(float), static_cast<cudaStream_t>(stream));
-    const dim3 atomic_blocks(static_cast<unsigned int>(rows), static_cast<unsigned int>(selected_count), 1);
-    if (mode == 0) {
-        expert_down_aggregate_q8_1_atomic_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
-            atomic_blocks,
-            dim3(kWarpSize, kMmvqWarps, 1),
-            0,
-            static_cast<cudaStream_t>(stream)
-        >>>(
-            static_cast<const uint8_t *>(weights),
-            row_stride,
-            rows,
-            rows,
-            static_cast<const int32_t *>(selected_ids),
-            static_cast<const float *>(selected_weights),
-            selected_count,
-            static_cast<const Q81Block *>(activated_q8_1),
-            activated_block_stride,
-            static_cast<const float *>(bias),
-            static_cast<float *>(output),
-            Q80Q81Dot{}
-        );
+    if (selected_count <= 8) {
+        if (selected_count <= 4) {
+            const size_t shared_input_bytes =
+                static_cast<size_t>(selected_count) *
+                static_cast<size_t>(activated_block_stride) *
+                sizeof(Q81Block);
+            if (mode == 0) {
+                moe_down_aggregate_q8_1_selected4_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
+                    static_cast<unsigned int>((rows + 1) / 2),
+                    dim3(kWarpSize, 4, 1),
+                    shared_input_bytes,
+                    static_cast<cudaStream_t>(stream)
+                >>>(
+                    static_cast<const uint8_t *>(weights),
+                    row_stride,
+                    rows,
+                    static_cast<const int32_t *>(selected_ids),
+                    static_cast<const float *>(selected_weights),
+                    selected_count,
+                    static_cast<const Q81Block *>(activated_q8_1),
+                    activated_block_stride,
+                    static_cast<const float *>(bias),
+                    static_cast<float *>(output),
+                    Q80Q81Dot{}
+                );
+            } else {
+                moe_down_aggregate_q8_1_selected4_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
+                    static_cast<unsigned int>((rows + 1) / 2),
+                    dim3(kWarpSize, 4, 1),
+                    shared_input_bytes,
+                    static_cast<cudaStream_t>(stream)
+                >>>(
+                    static_cast<const uint8_t *>(weights),
+                    row_stride,
+                    rows,
+                    static_cast<const int32_t *>(selected_ids),
+                    static_cast<const float *>(selected_weights),
+                    selected_count,
+                    static_cast<const Q81Block *>(activated_q8_1),
+                    activated_block_stride,
+                    static_cast<const float *>(bias),
+                    static_cast<float *>(output),
+                    Mxfp4Q81Dot{}
+                );
+            }
+        } else if (mode == 0) {
+            moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel<
+                Q80Q81Dot,
+                kQ80Q81MmvqVdr,
+                kQ80Qi,
+                8,
+                2
+            ><<<
+                static_cast<unsigned int>((rows + 1) / 2),
+                dim3(kWarpSize, kMmvqWarps, 1),
+                0,
+                static_cast<cudaStream_t>(stream)
+            >>>(
+                static_cast<const uint8_t *>(weights),
+                row_stride,
+                rows,
+                columns,
+                static_cast<const int32_t *>(selected_ids),
+                static_cast<const float *>(selected_weights),
+                selected_count,
+                static_cast<const Q81Block *>(activated_q8_1),
+                static_cast<const float *>(bias),
+                static_cast<float *>(output),
+                Q80Q81Dot{}
+            );
+        } else {
+            moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel<
+                Mxfp4Q81Dot,
+                kMxfp4Q81MmvqVdr,
+                kMxfp4Qi,
+                8,
+                2
+            ><<<
+                static_cast<unsigned int>((rows + 1) / 2),
+                dim3(kWarpSize, kMmvqWarps, 1),
+                0,
+                static_cast<cudaStream_t>(stream)
+            >>>(
+                static_cast<const uint8_t *>(weights),
+                row_stride,
+                rows,
+                columns,
+                static_cast<const int32_t *>(selected_ids),
+                static_cast<const float *>(selected_weights),
+                selected_count,
+                static_cast<const Q81Block *>(activated_q8_1),
+                static_cast<const float *>(bias),
+                static_cast<float *>(output),
+                Mxfp4Q81Dot{}
+            );
+        }
     } else {
-        expert_down_aggregate_q8_1_atomic_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
-            atomic_blocks,
-            dim3(kWarpSize, kMmvqWarps, 1),
-            0,
-            static_cast<cudaStream_t>(stream)
-        >>>(
-            static_cast<const uint8_t *>(weights),
-            row_stride,
-            rows,
-            rows,
-            static_cast<const int32_t *>(selected_ids),
-            static_cast<const float *>(selected_weights),
-            selected_count,
-            static_cast<const Q81Block *>(activated_q8_1),
-            activated_block_stride,
-            static_cast<const float *>(bias),
-            static_cast<float *>(output),
-            Mxfp4Q81Dot{}
-        );
+        cudaMemsetAsync(output, 0, static_cast<size_t>(rows) * sizeof(float), static_cast<cudaStream_t>(stream));
+        const dim3 atomic_blocks(static_cast<unsigned int>(rows), static_cast<unsigned int>(selected_count), 1);
+        if (mode == 0) {
+            expert_down_aggregate_q8_1_atomic_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
+                atomic_blocks,
+                dim3(kWarpSize, kMmvqWarps, 1),
+                0,
+                static_cast<cudaStream_t>(stream)
+            >>>(
+                static_cast<const uint8_t *>(weights),
+                row_stride,
+                rows,
+                rows,
+                static_cast<const int32_t *>(selected_ids),
+                static_cast<const float *>(selected_weights),
+                selected_count,
+                static_cast<const Q81Block *>(activated_q8_1),
+                activated_block_stride,
+                static_cast<const float *>(bias),
+                static_cast<float *>(output),
+                Q80Q81Dot{}
+            );
+        } else {
+            expert_down_aggregate_q8_1_atomic_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
+                atomic_blocks,
+                dim3(kWarpSize, kMmvqWarps, 1),
+                0,
+                static_cast<cudaStream_t>(stream)
+            >>>(
+                static_cast<const uint8_t *>(weights),
+                row_stride,
+                rows,
+                rows,
+                static_cast<const int32_t *>(selected_ids),
+                static_cast<const float *>(selected_weights),
+                selected_count,
+                static_cast<const Q81Block *>(activated_q8_1),
+                activated_block_stride,
+                static_cast<const float *>(bias),
+                static_cast<float *>(output),
+                Mxfp4Q81Dot{}
+            );
+        }
     }
     return static_cast<int>(cudaGetLastError());
 }

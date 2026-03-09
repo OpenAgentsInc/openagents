@@ -614,6 +614,41 @@ The important change in direction is this:
 - the next work should be "make Psionic's GPT-OSS CUDA/runtime architecture look
   like `llama.cpp` on purpose"
 
+## 2026-03-09 Checkpoint: Pinned Host Staging Did Not Move The Benchmark
+
+This checkpoint tightened one real architectural mismatch with `llama.cpp`:
+
+- Psionic's GPT-OSS decode-step plan now uses pinned host staging buffers for
+  the per-step hidden input, decode parameters, and greedy-token readback
+- the captured CUDA decode graph now owns the host-to-device and
+  device-to-host stream copies for that state instead of relying on repeated
+  synchronous `cudaMemcpy(...)` calls outside the graph
+- the grouped-selected `moe_down_aggregate_q8_1` dispatch gap was also closed
+  so `expert_used_count = 4` no longer falls back to the generic atomic path
+
+That alignment matters because it removes one obvious divergence from
+`llama.cpp`'s graph-owned decode path. It just did not move the measured
+throughput on this exact benchmark.
+
+Measured after the checkpoint, with the same exact one-sentence HTTP request:
+
+- `run=1` `90.55 tok/s`
+- `run=2` `90.25 tok/s`
+- `run=3` `88.72 tok/s`
+
+That is statistically the same speed class as the prior `~92 tok/s` checkpoint.
+The practical conclusion is that repeated synchronous host copies were not the
+primary limiter on this prompt. The remaining gap is still dominated by the
+device-side decode kernels themselves:
+
+- attention remains on the Psionic-owned scalar-ish fused kernel, not
+  `llama.cpp`'s flash-attention family
+- grouped expert execution is still only semantically aligned, not kernel-shape
+  aligned, with `ggml_mul_mat_id(...)`
+- the remaining work should favor direct ports of `fattn.cu`, `mmvq.cu`, and
+  the `mul_mat_id` execution path before more request-path or transfer-path
+  cleanup
+
 ## Honest Status
 
 Psionic is no longer "nowhere close." The current checkpoint is a real improvement:
