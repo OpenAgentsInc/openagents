@@ -54,6 +54,25 @@ correct plan is:
 The current CUDA GPT-OSS path can remain a correctness baseline and shipped
 NVIDIA path. It should not dictate the Metal architecture.
 
+Reviewing the live GitHub issue track for the NVIDIA work changes one concrete
+thing in this audit: the implementation order should mirror the staged sequence
+already being used to dismantle the old host-loop design. The active CUDA track
+is:
+
+- `#3243` device-resident activations and submission reuse on CUDA (already
+  closed)
+- `#3244` device KV, RMSNorm, RoPE, and attention
+- `#3245` grouped GPU MoE routing and expert execution
+- `#3246` graph-based prefill and decode runtime
+- `#3247` kernel tuning toward `llama.cpp`-class throughput
+- `#3248` parity closure on the real HTTP path
+
+That issue sequence is materially aligned with the `llama.cpp` reference. So
+the Metal track should not only copy the destination architecture; it should
+also copy the broad order of operations: device residency first, then hot-path
+ops, then MoE, then compiled graph runtime, then kernel tuning, and only then
+ship/claim the Apple lane.
+
 ## Reference Findings From `llama.cpp`
 
 ### 1. GPT-OSS / OpenAI-MoE is assembled as a backend graph
@@ -203,6 +222,30 @@ That is truthful for the current first Metal text-generation lane, but not for
 GPT-OSS/OpenAI-MoE. A proper Apple GPT-OSS path needs its own validation story,
 not a silent reuse of the existing dense claim.
 
+## Cross-Check Against The Active CUDA Issue Track
+
+The open NVIDIA issues make it clear that the CUDA effort is no longer arguing
+for the original host-owned GPT-OSS design. It is actively replacing that
+design with the same class of architecture this audit recommends for Metal.
+
+That means the Metal plan should change in one important way: the ordering
+should be more explicit and should track the proven dependency chain already
+being used on CUDA.
+
+The useful mapping is:
+
+1. device-resident activations, quantized storage, KV ownership, and submission
+   reuse
+2. backend RMSNorm, RoPE, softmax, and attention
+3. backend MoE routing, grouped expert execution, and aggregation
+4. compiled graph/plan execution for prefill and decode
+5. backend kernel tuning toward `llama.cpp`-class throughput
+6. real HTTP-path validation, hardware claims, and closure
+
+That is a better implementation order than the earlier version of this audit,
+which separated "graph surface" and "backend coverage" too broadly and did not
+make the device-residency and hot-path staging explicit enough.
+
 ## What A Proper Metal GPT-OSS Track Actually Needs
 
 ### 1. Stop using the current CUDA serve loop as the Metal template
@@ -317,48 +360,73 @@ the real gap.
 
 ## Recommended Implementation Order
 
-### Phase 1: Graph Surface
-
-- add the missing IR/compiler ops needed to model GPT-OSS/OpenAI-MoE more like
-  `llama.cpp`: quantized `get_rows`, softmax, top-k selection, expert-indexed
-  grouped matmul, indexed add, and any missing MoE helper ops
-- move GPT-OSS execution planning out of the current `mox-serve` manual loop
-  into reusable `crates/mox/*` graph/lowering code
-- keep a CPU graph-backed reference path only as a correctness oracle, not as
-  the target Apple architecture
-
-### Phase 2: Metal Backend Coverage
+### Phase 1: Device-Resident Metal Substrate And Graph Seam
 
 - add backend-owned quantized GGUF storage on Metal
-- add quantized `get_rows` coverage for at least `Q8_0` and `MXFP4`
-- add backend-specialized support for the existing extension ops already in
-  `mox-ir`
-- add grouped expert execution analogous to `mul_mat_id`
-- add backend softmax and attention execution, with a flash-attention-style
-  path as the intended target
-- add truthful `extension_support()` and capability gating in
-  `mox-backend-metal`
+- add device-destination activation APIs and reusable scratch / submission
+  ownership so decode is not forced through host vectors
+- make KV-cache state backend-owned on Metal rather than host-owned
+- start the missing IR/compiler surface for the ops Metal will need, but use
+  that work to define a reusable execution seam rather than to justify keeping
+  host orchestration as the end state
 
-### Phase 3: GPT-OSS Apple Path
+### Phase 2: Attention Stack On Metal
 
-- build a Metal GPT-OSS execution service on top of the reusable compiled path
-- add backend-selectable GPT-OSS OpenAI server wiring
-- ensure no silent CPU fallback while claiming Metal
+- add backend-specialized support and truthful `extension_support()` for the
+  attention-adjacent ops Mox already models
+- move RMSNorm, RoPE, softmax, and scaled dot-product attention onto Metal
+- add capability-gated attention selection, with a flash-attention-style path
+  as the intended fast lane
+- remove CPU attention and host-owned KV handling from the claimed Metal hot
+  path
 
-### Phase 4: Validation And Claims
+### Phase 3: MoE Routing And Expert Execution On Metal
 
+- add the missing graph/backend ops needed for GPT-OSS/OpenAI-MoE:
+  quantized `get_rows`, top-k selection, expert-indexed grouped matmul,
+  indexed add, and any missing MoE helper/fusion surface
+- move router scoring, route normalization, expert dispatch, and aggregation
+  onto Metal
+- remove the host-side per-expert loop from the intended Apple architecture
+
+### Phase 4: Graph-Based Prefill And Decode Runtime
+
+- build a reusable GPT-OSS compiled graph/plan for stable decode shapes
+- batch prompt prefill through that compiled path rather than stepping every
+  token through a handwritten Rust loop
+- minimize per-token serve-layer orchestration and keep `mox-serve` as the
+  consumer of compiled execution rather than the owner of model math
+
+### Phase 5: Kernel Tuning And Apple Throughput Parity
+
+- tune the real Metal kernels for the execution shape above instead of tuning
+  isolated micro-kernels first
+- target the same class of coverage `llama.cpp` has on Metal for quantized
+  gather, expert matmul, RMSNorm, RoPE, softmax, and attention
+- benchmark against `llama.cpp` on the same Apple host/model using the real
+  GPT-OSS HTTP path
+
+### Phase 6: Apple GPT-OSS Serve, Validation, And Claims
+
+- build the Metal GPT-OSS execution service and backend-selectable OpenAI
+  server wiring on top of the reusable compiled path
 - add Apple Silicon end-to-end GPT-OSS tests using the real local GGUF
 - update `mox-runtime` validation mapping
 - update `crates/mox/docs/HARDWARE_VALIDATION_MATRIX.md`
 - add a new roadmap track after `MOX-183` for proper Metal GPT-OSS execution
+- do not advertise the Apple GPT-OSS lane as shipped until the real HTTP path
+  is validated and the claim row is justified
 
 ## Suggested Issue Split
 
 If this becomes the next active track, the cleanest split is:
 
-1. GPT-OSS/OpenAI-MoE graph-surface expansion in `mox-ir` / `mox-compiler`
-2. Metal backend kernel and capability expansion for that graph
-3. Apple GPT-OSS serve path, validation matrix, and end-to-end proof
+1. Metal device-resident storage / activations / KV / submission substrate
+2. Metal RMSNorm, RoPE, softmax, attention, and capability gating
+3. Metal GPT-OSS MoE routing and grouped expert execution
+4. Graph/plan-based GPT-OSS prefill and decode runtime
+5. Metal kernel tuning toward `llama.cpp`-class throughput
+6. Apple GPT-OSS real HTTP-path validation, claim row, and parity closure
 
 That keeps the work aligned with current ownership boundaries:
 
@@ -375,5 +443,8 @@ loop would be faster to land. That is not the goal stated here.
 If the goal is a proper Metal integration that follows leading practice more
 closely, then Mox should treat `llama.cpp` as the architectural reference:
 graph-first GPT-OSS execution, backend-owned state, broad Metal kernel
-coverage, and capability-gated dispatch. The current CUDA GPT-OSS path should
-inform correctness and product truth, not the Metal architecture.
+coverage, and capability-gated dispatch. The active CUDA issue track reinforces
+that direction now; it no longer supports copying the old host loop. The
+current CUDA GPT-OSS implementation should inform correctness and product truth,
+while the staged CUDA issue ordering should inform how the Metal bring-up is
+sequenced.
