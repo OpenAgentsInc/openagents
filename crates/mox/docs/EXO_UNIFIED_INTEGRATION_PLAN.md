@@ -53,13 +53,64 @@ The integration must preserve these boundaries:
 - Mox-owned execution must remain the shipped path for inference and evidence
 - Exo may inform semantics, but it must not become the hidden backend
 - clustered execution must be as machine-checkable as today's local Mox runtime
-- security posture must be stronger than Exo's current "fast local cluster"
-  assumptions
+- security posture must be explicit and tiered: ship the first cluster path
+  under the same-network, operator-controlled local-cluster assumption Exo is
+  optimized for, then add stronger membership/authentication requirements
+  before widening any cluster claim toward compute-market or adversarial
+  environments
 
 In plain terms:
 
 - port the ideas
 - do not bind the runtime to Exo
+
+## Trust Model And Discovery Scope
+
+This plan should be read with an explicit scope ladder, not as one giant
+"internet-wide cluster" plan.
+
+### Scope 1: Local trusted LAN cluster
+
+This is the first target and the one closest to Exo's current value:
+
+- machines on the same network
+- one operator or one cooperating household/lab
+- cluster membership scoped by explicit namespace/admission configuration
+- goal is faster-than-single-machine inference that can be sold honestly as a
+  faster local cluster
+
+For this scope, the immediate requirement is not full adversarial security. The
+requirement is:
+
+- explicit cluster admission
+- explicit cluster identity
+- explicit topology and execution evidence
+- no accidental cross-cluster joining
+
+### Scope 2: Operator-configured multi-subnet cluster
+
+This is a later widening step:
+
+- no reliance on mDNS alone
+- configured peers or relays
+- stronger membership and replay protection
+- more explicit operational policy
+
+### Scope 3: Future compute-market distributed cluster
+
+This is not the initial shipping target.
+
+Before Mox makes this claim, it will need:
+
+- authenticated node identity
+- signed control-plane messages
+- tamper-evident catchup and replay
+- stronger command authorization and provenance policy
+
+The important rule is:
+
+- design the cluster APIs so Scope 3 is possible later
+- optimize the first shipped implementation for Scope 1
 
 ## What This Plan Includes
 
@@ -81,6 +132,11 @@ The starting point on `main` is:
 - Mox already has provider-visible capability and receipt surfaces for
   topology, batching, cache state, and delivery-proof inputs
 - Mox already has the local GPT-OSS/NVIDIA path landed
+- Mox already has substantial loader and artifact substrate landed in
+  `mox-models` and `mox-catalog`, including GGUF metadata/tensor loading,
+  tokenizer loading, Harmony/GPT-OSS prompt/output handling, paged blob access,
+  OCI ingestion into the local model store, artifact identity, provenance, and
+  license facts
 - OpenAgents no longer depends on the external Ollama daemon for the default
   local path
 
@@ -91,6 +147,119 @@ real model." It is now:
 - add cluster-aware scheduling and execution
 - keep evidence, capability, and policy truth explicit as those features widen
 
+## What Cluster Work Should Reuse From Existing Mox Loader And Artifact Work
+
+Cluster integration should build on the loader/artifact work that is already
+shipped, not rebuild it.
+
+Already-landed Mox substrate that cluster work should reuse directly:
+
+- GGUF metadata and tensor loading
+- tokenizer reconstruction and chat-template handling
+- GPT-OSS/Harmony tokenizer and parser surfaces
+- paged blob access and mmap-or-buffered local blob reads
+- local model-store integrity and OCI ingestion
+- served-artifact identity tuples
+- artifact provenance and license gating
+- cache invalidation and artifact-drift refusal behavior
+
+That means cluster planning must treat these as inputs:
+
+- artifact digest and identity
+- local residency state
+- provenance and license policy
+- backend/toolchain compatibility
+
+It should not re-open "how to load the model" as a cluster concern.
+
+## Architectural Clarifications To Make Explicit
+
+These items were implicit across the two earlier Exo docs and should now be
+first-class requirements.
+
+### Cluster identity
+
+Define:
+
+- `ClusterId`
+- `ClusterNodeId`
+- `NodeEpoch`
+- `ClusterNamespace`
+
+Use them directly in:
+
+- leader election
+- event-log ownership
+- catchup and replay
+- placement provenance
+- provider receipts
+
+### Node roles
+
+Support explicit roles from the start:
+
+- control-plane-only node
+- execution-capable node
+- mixed node
+
+This is the Mox equivalent of Exo's coordinator-only or `--no-worker` mode and
+prevents cluster control and cluster execution from being accidentally coupled.
+It should also be explicit which roles may:
+
+- lead
+- place
+- cache
+- execute
+
+### Artifact logistics
+
+Separate placement from residency.
+
+For every node and artifact, model explicit states such as:
+
+- `already_present`
+- `needs_copy`
+- `needs_pull`
+- `refused`
+
+And make receipts able to say whether execution used:
+
+- pre-existing local artifacts
+- cluster-staged artifacts
+- OCI-pulled artifacts
+
+### Serving policy risks
+
+Make these cluster-serving behaviors explicit instead of burying them in
+runtime defaults:
+
+- prefill-vs-decode fairness
+- continuous batching admission policy
+- cluster-wide cancellation behavior
+- backpressure when a slow or overloaded node holds a shard
+
+### State durability
+
+The event log must have explicit lifecycle policy:
+
+- indexed ordered log
+- snapshot frequency
+- replay-from-snapshot rules
+- schema/version migration rules
+- maximum catchup window before full resync is required
+
+### Evidence mapping
+
+Clustered execution should emit explicit machine-checkable digests for:
+
+- cluster plan digest
+- node-set digest
+- shard-map digest
+- per-node artifact digest
+- per-node backend/toolchain digest
+- per-node warm/cold state
+- aggregate degraded/fallback reason
+
 ## Desired End State
 
 Full integration of the Exo recommendations is complete only when all of the
@@ -98,14 +267,21 @@ following are true:
 
 - Exo's useful semantics are represented by Mox-owned types, tests, and docs
 - Mox has a Rust-native cluster transport, membership, and ordered state model
+- Mox has explicit persistent cluster identity, node identity, node epoch, and
+  node role modeling
 - Mox can build a truthful cluster-wide placement plan from live topology and
   resource facts
+- Mox separates placement from artifact residency and can state whether an
+  artifact was already present, copied, pulled, or refused on each node
 - Mox can schedule work across nodes without hiding where execution happened
 - Mox can support replicated cluster serving
 - Mox can support at least one truthful sharded execution path, or explicitly
   refuse unsupported cluster sharding with stable diagnostics
 - provider capabilities and receipts expose cluster topology, node selection,
   delivered execution shape, and degraded/refused reasons
+- clustered serving policy is explicit about fairness, batching, cancellation,
+  and backpressure
+- the event log has explicit snapshot, replay, compaction, and resync rules
 - cluster networking, event ordering, and catchup are fault tested
 - the team has made an explicit keep-or-discard decision on optional Exo
   interoperability
@@ -193,7 +369,11 @@ Recommended crate structure:
 
 Core types to add:
 
+- `ClusterId`
 - `ClusterNodeId`
+- `NodeEpoch`
+- `NodeRole`
+- `ClusterTrustMode`
 - `ClusterNamespace`
 - `ClusterMembershipRecord`
 - `ClusterLink`
@@ -212,9 +392,13 @@ Steps:
    commands, local facts, ordered global facts, election traffic, connection
    traffic.
 3. Define a contiguous indexed-event apply discipline like Exo's event model.
-4. Define snapshot and compaction hooks up front so the log does not grow
+4. Define persistent cluster and node identity rules instead of relying on
+   session-local IDs.
+5. Define node roles and admission rules up front so control-plane-only nodes
+   are a first-class shape.
+6. Define snapshot and compaction hooks up front so the log does not grow
    unbounded by accident.
-5. Define a stable digest for cluster state snapshots and topology plans so
+7. Define a stable digest for cluster state snapshots and topology plans so
    receipts can refer to them.
 
 Deliverables:
@@ -233,8 +417,8 @@ Definition of done:
 
 Goal:
 
-- build a real transport and discovery substrate, informed by Exo but hardened
-  for Mox's threat model
+- build a real transport and discovery substrate, informed by Exo and scoped
+  first for same-network local clusters
 
 Steps:
 
@@ -245,12 +429,12 @@ Steps:
    ping-based durable connectivity,
    namespace isolation,
    private network scoping.
-2. Replace Exo's relaxed local-cluster security posture with a Mox-appropriate
-   one:
-   authenticated peers,
-   signed/verified control-plane messages,
-   tamper-resistant catchup responses,
-   explicit trust domain configuration.
+2. For the first shipped cluster path, implement explicit local-cluster
+   admission policy:
+   namespace scoping,
+   cluster join policy,
+   operator-configured admission secret or equivalent,
+   explicit no-cross-cluster joining behavior.
 3. Support at least two discovery modes:
    zero-config LAN discovery,
    explicit configured peers for non-mDNS environments.
@@ -258,6 +442,8 @@ Steps:
    environment-only magic.
 5. Add durable node identity rather than Exo's current effectively-ephemeral
    generated identity path.
+6. Reserve message schema fields for later signed/authenticated membership
+   expansion before any future compute-market-wide cluster claim.
 
 Deliverables:
 
@@ -268,7 +454,8 @@ Deliverables:
 
 Definition of done:
 
-- a Mox cluster can form and identify its members truthfully and securely
+- a Mox local cluster can form and identify its members truthfully under the
+  same-network operator-controlled trust assumption
 
 ## Phase 4: Ordered Log, Catchup, And Leader Election
 
@@ -289,8 +476,10 @@ Steps:
    explicit catchup request,
    exponential-backoff retry.
 4. Add persisted event log storage with replay tests.
-5. Add snapshot and compaction policy with deterministic restore tests.
-6. Define split-brain and stale-leader behavior explicitly and test it.
+5. Add snapshot frequency, replay-from-snapshot, and compaction policy with
+   deterministic restore tests.
+6. Define a maximum catchup window before full resync is required.
+7. Define split-brain and stale-leader behavior explicitly and test it.
 
 Deliverables:
 
@@ -317,7 +506,8 @@ Steps:
    memory budget,
    storage budget,
    health state,
-   load state.
+   load state,
+   node role.
 2. Add link-fact events for:
    connection up/down,
    transport class,
@@ -340,7 +530,44 @@ Definition of done:
 
 - cluster placement can be justified from explicit shared state
 
-## Phase 6: Placement Planner To Mox-Native ExecutionTopologyPlan
+## Phase 6: Artifact Residency And Logistics
+
+Goal:
+
+- make artifact presence and staging explicit before placement and execution
+
+Steps:
+
+1. Add per-node artifact residency state keyed by served-artifact identity.
+2. Separate placement feasibility from residency feasibility.
+3. Model at least these residency outcomes:
+   already present,
+   needs copy,
+   needs pull,
+   refused.
+4. Decide the first transport for staging:
+   local peer-to-peer copy,
+   OCI pull,
+   or explicit refusal when neither is allowed.
+5. Require digest checking for any staged artifact path.
+6. Extend receipts so they can say whether execution used:
+   pre-existing local artifacts,
+   cluster-staged artifacts,
+   freshly pulled artifacts.
+
+Deliverables:
+
+- residency state model
+- artifact logistics policy
+- digest-checked staging path or explicit refusal
+- receipt integration
+
+Definition of done:
+
+- cluster planning and execution can talk honestly about where model bytes came
+  from
+
+## Phase 7: Placement Planner To Mox-Native ExecutionTopologyPlan
 
 Goal:
 
@@ -360,6 +587,7 @@ Steps:
 4. Integrate Mox constraints into planning:
    backend readiness,
    artifact identity,
+   artifact residency,
    provenance/license gating,
    memory admission,
    policy refusals,
@@ -379,7 +607,7 @@ Definition of done:
 
 - cluster placement results are Mox-native, stable, and explainable
 
-## Phase 7: Cluster-Aware Scheduling With Single-Node Execution First
+## Phase 8: Cluster-Aware Scheduling With Single-Node Execution First
 
 Goal:
 
@@ -397,7 +625,10 @@ Steps:
    promised vs delivered execution location.
 4. Add cluster-aware warm/load/unload and keepalive policy.
 5. Add cluster admission control and queue policy.
-6. Add cancellation, retry, and degraded/fallback semantics at cluster scope.
+6. Make prefill-vs-decode fairness explicit.
+7. Define continuous batching admission policy explicitly.
+8. Add cluster-wide cancellation, retry, and degraded/fallback semantics.
+9. Add backpressure behavior for slow coordinator or slow execution nodes.
 
 Deliverables:
 
@@ -411,7 +642,7 @@ Definition of done:
 - Mox can use a cluster to pick the best execution node without pretending it is
   already doing sharded execution
 
-## Phase 8: Replicated Cluster Serving
+## Phase 9: Replicated Cluster Serving
 
 Goal:
 
@@ -441,7 +672,7 @@ Definition of done:
 
 - Mox can truthfully serve the same model from multiple nodes in one cluster
 
-## Phase 9: True Sharded Cluster Execution
+## Phase 10: True Sharded Cluster Execution
 
 Goal:
 
@@ -486,7 +717,7 @@ Definition of done:
 - Mox can truthfully execute at least one real sharded cluster path, or truthfully
   refuse unsupported ones
 
-## Phase 10: Provider, Capability, Receipt, And Evidence Expansion
+## Phase 11: Provider, Capability, Receipt, And Evidence Expansion
 
 Goal:
 
@@ -508,7 +739,11 @@ Steps:
    delivered nodes,
    topology digest,
    placement digest,
+   node-set digest,
+   shard-map digest,
    per-node artifact identity,
+   per-node artifact digest,
+   per-node backend/toolchain digest,
    per-node load state,
    per-node degraded/refusal data,
    promised-vs-delivered topology comparison.
@@ -527,7 +762,7 @@ Definition of done:
 - clustered execution truth is visible to downstream consumers without needing
   app-local reconstruction
 
-## Phase 11: Optional Exo Interoperability Spike
+## Phase 12: Optional Exo Interoperability Spike
 
 Goal:
 
@@ -564,7 +799,7 @@ Definition of done:
 - the team makes an explicit decision rather than drifting into accidental Exo
   dependency
 
-## Phase 12: Security Hardening, Fault Injection, And Rollout
+## Phase 13: Security Hardening, Fault Injection, And Rollout
 
 Goal:
 
@@ -585,20 +820,25 @@ Steps:
    namespace mismatch,
    tampered cluster messages,
    replayed cluster commands/events.
-3. Add a hardware and network validation matrix for:
+3. Before widening beyond the local trusted LAN assumption, add:
+   authenticated node identity,
+   signed control-plane messages,
+   tamper-evident catchup and replay protection,
+   stronger cluster admission policy.
+4. Add a hardware and network validation matrix for:
    single host,
    two-node LAN,
    multi-node LAN,
    RDMA-capable cluster if supported,
    refusal paths when transport/backend claims are not met.
-4. Add operational runbooks:
+5. Add operational runbooks:
    cluster bring-up,
    namespace configuration,
    membership debugging,
    catchup recovery,
    cluster placement debugging,
    degraded/refused execution diagnosis.
-5. Add performance gates before widening cluster claims.
+6. Add performance gates before widening cluster claims.
 
 Deliverables:
 
@@ -621,13 +861,15 @@ From today's `main`, the shortest honest order is:
 4. Phase 3: transport and membership
 5. Phase 4: ordered log and election
 6. Phase 5: topology and telemetry
-7. Phase 6: placement planner
-8. Phase 7: cluster-aware single-node scheduling
-9. Phase 8: replicated serving
-10. Phase 10: provider/evidence expansion in parallel with phases 7-9
-11. Phase 9: true sharded execution
-12. Phase 12: hardening and rollout
-13. Phase 11: optional Exo interoperability spike only when the Rust-native
+7. Phase 6: artifact residency and logistics
+8. Phase 7: placement planner
+9. Phase 8: cluster-aware single-node scheduling
+10. Phase 9: replicated serving
+11. Phase 10: true sharded execution
+12. Phase 11: provider/evidence expansion in parallel with phases 8-10, with
+    the required schema work landing before any public claim widening
+13. Phase 13: hardening and rollout
+14. Phase 12: optional Exo interoperability spike only when the Rust-native
     substrate is already credible
 
 ## What Not To Do
@@ -638,6 +880,8 @@ Do not:
 - proxy Mox execution through Exo and call that integration complete
 - widen cluster capability claims before the corresponding evidence surfaces
   exist
+- treat the first local-cluster shipping path as if it already solved
+  adversarial compute-market cluster security
 - claim sharded cluster execution when the system is only doing remote
   scheduling
 - copy Exo's relaxed transport-security posture into a compute-market-facing
@@ -656,6 +900,7 @@ Full integration of the Exo recommendations requires all of these deliverables:
 - ordered event log and catchup
 - leader ordering or equivalent ordering authority
 - topology and telemetry facts
+- artifact residency/logistics
 - Mox-native planner to `ExecutionTopologyPlan`
 - remote scheduling path
 - replicated serving path
