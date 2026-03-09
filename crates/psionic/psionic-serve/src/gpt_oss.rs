@@ -142,6 +142,20 @@ fn can_use_q8_1_mmvq(mode: QuantizationMode) -> bool {
     )
 }
 
+fn can_use_q8_1_norm_fusion(element_count: usize) -> bool {
+    element_count % 32 == 0
+}
+
+fn can_use_q8_1_attention_output_fusion(
+    attention_output_columns: usize,
+    head_count: usize,
+    head_dim: usize,
+) -> bool {
+    head_dim % 32 == 0
+        && attention_output_columns == head_count.saturating_mul(head_dim)
+        && attention_output_columns % 32 == 0
+}
+
 fn gpt_oss_layer_decode_graph_nodes() -> Vec<GptOssDecodeGraphNode> {
     vec![
         GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnNorm, "attn_norm"),
@@ -1811,14 +1825,22 @@ impl GptOssCudaModelInner {
             }
 
             let layer_start = Instant::now();
-            submission.rms_norm(
-                current_hidden,
-                &layer.attention_norm_device,
-                &layer_plan.hidden_norm_buffer,
-                hidden_size,
-                self.family_metadata.rms_norm_epsilon,
-            )?;
+            let use_q8_1_attention_output_fusion =
+                layer.attention_output_weight.transposed_f16.is_none()
+                    && can_use_q8_1_mmvq(layer.attention_output_weight.mode)
+                    && can_use_q8_1_attention_output_fusion(
+                        layer.attention_output_weight.columns,
+                        head_count,
+                        head_dim,
+                    );
             if let Some(transposed_f16) = layer.attention_qkv_weight.transposed_f16.as_ref() {
+                submission.rms_norm(
+                    current_hidden,
+                    &layer.attention_norm_device,
+                    &layer_plan.hidden_norm_buffer,
+                    hidden_size,
+                    self.family_metadata.rms_norm_epsilon,
+                )?;
                 submission.cast_f32_to_f16(
                     &layer_plan.hidden_norm_buffer,
                     &plan.vector_f16_buffer,
@@ -1832,7 +1854,34 @@ impl GptOssCudaModelInner {
                     layer.attention_qkv_weight.columns,
                     layer.attention_qkv_weight.total_rows(),
                 )?;
+            } else if can_use_q8_1_mmvq(layer.attention_qkv_weight.mode)
+                && can_use_q8_1_norm_fusion(hidden_size)
+            {
+                submission.rms_norm_q8_1(
+                    current_hidden,
+                    &layer.attention_norm_device,
+                    &plan.vector_q8_1_buffer,
+                    hidden_size,
+                    self.family_metadata.rms_norm_epsilon,
+                )?;
+                submission.quantized_matvec_q8_1(
+                    &layer.attention_qkv_weight.storage,
+                    0,
+                    layer.attention_qkv_weight.mode,
+                    layer.attention_qkv_weight.total_rows(),
+                    layer.attention_qkv_weight.columns,
+                    &plan.vector_q8_1_buffer,
+                    Some(&layer.attention_qkv_bias_device),
+                    &layer_plan.qkv_buffer,
+                )?;
             } else if can_use_q8_1_mmvq(layer.attention_qkv_weight.mode) {
+                submission.rms_norm(
+                    current_hidden,
+                    &layer.attention_norm_device,
+                    &layer_plan.hidden_norm_buffer,
+                    hidden_size,
+                    self.family_metadata.rms_norm_epsilon,
+                )?;
                 submission.quantize_f32_to_q8_1(
                     &layer_plan.hidden_norm_buffer,
                     1,
@@ -1850,6 +1899,13 @@ impl GptOssCudaModelInner {
                     &layer_plan.qkv_buffer,
                 )?;
             } else {
+                submission.rms_norm(
+                    current_hidden,
+                    &layer.attention_norm_device,
+                    &layer_plan.hidden_norm_buffer,
+                    hidden_size,
+                    self.family_metadata.rms_norm_epsilon,
+                )?;
                 submission.quantized_matvec(
                     &layer.attention_qkv_weight.storage,
                     0,
@@ -1867,52 +1923,103 @@ impl GptOssCudaModelInner {
                 )?;
             }
             if use_graph_attention {
-                submission.attention_decode_rope_cache_f16_kv_graph(
-                    &layer_plan.qkv_buffer,
-                    0,
-                    q_rows,
-                    q_rows.saturating_add(k_rows),
-                    &cuda_cache.key_buffer,
-                    &cuda_cache.value_buffer,
-                    cuda_cache.width,
-                    layer_offset,
-                    &plan.decode_params_buffer,
-                    self.family_metadata.sliding_window.unwrap_or(0),
-                    head_count,
-                    kv_head_count,
-                    head_dim,
-                    rotary_dim,
-                    freq_scale,
-                    ext_factor,
-                    corr_dims,
-                    theta_scale,
-                    layer.attention_sinks_device.as_ref(),
-                    &layer_plan.attention_buffer,
-                )?;
+                if use_q8_1_attention_output_fusion {
+                    submission.attention_decode_rope_cache_f16_kv_graph_q8_1(
+                        &layer_plan.qkv_buffer,
+                        0,
+                        q_rows,
+                        q_rows.saturating_add(k_rows),
+                        &cuda_cache.key_buffer,
+                        &cuda_cache.value_buffer,
+                        cuda_cache.width,
+                        layer_offset,
+                        &plan.decode_params_buffer,
+                        self.family_metadata.sliding_window.unwrap_or(0),
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims,
+                        theta_scale,
+                        layer.attention_sinks_device.as_ref(),
+                        &plan.vector_q8_1_buffer,
+                    )?;
+                } else {
+                    submission.attention_decode_rope_cache_f16_kv_graph(
+                        &layer_plan.qkv_buffer,
+                        0,
+                        q_rows,
+                        q_rows.saturating_add(k_rows),
+                        &cuda_cache.key_buffer,
+                        &cuda_cache.value_buffer,
+                        cuda_cache.width,
+                        layer_offset,
+                        &plan.decode_params_buffer,
+                        self.family_metadata.sliding_window.unwrap_or(0),
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims,
+                        theta_scale,
+                        layer.attention_sinks_device.as_ref(),
+                        &layer_plan.attention_buffer,
+                    )?;
+                }
             } else {
-                submission.attention_decode_rope_cache_f16_kv(
-                    &layer_plan.qkv_buffer,
-                    0,
-                    q_rows,
-                    q_rows.saturating_add(k_rows),
-                    &cuda_cache.key_buffer,
-                    &cuda_cache.value_buffer,
-                    cuda_cache.width,
-                    layer_offset,
-                    cache_write_index,
-                    self.family_metadata.sliding_window.unwrap_or(0),
-                    head_count,
-                    kv_head_count,
-                    head_dim,
-                    rotary_dim,
-                    position,
-                    freq_scale,
-                    ext_factor,
-                    corr_dims,
-                    theta_scale,
-                    layer.attention_sinks_device.as_ref(),
-                    &layer_plan.attention_buffer,
-                )?;
+                if use_q8_1_attention_output_fusion {
+                    submission.attention_decode_rope_cache_f16_kv_q8_1(
+                        &layer_plan.qkv_buffer,
+                        0,
+                        q_rows,
+                        q_rows.saturating_add(k_rows),
+                        &cuda_cache.key_buffer,
+                        &cuda_cache.value_buffer,
+                        cuda_cache.width,
+                        layer_offset,
+                        cache_write_index,
+                        self.family_metadata.sliding_window.unwrap_or(0),
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        position,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims,
+                        theta_scale,
+                        layer.attention_sinks_device.as_ref(),
+                        &plan.vector_q8_1_buffer,
+                    )?;
+                } else {
+                    submission.attention_decode_rope_cache_f16_kv(
+                        &layer_plan.qkv_buffer,
+                        0,
+                        q_rows,
+                        q_rows.saturating_add(k_rows),
+                        &cuda_cache.key_buffer,
+                        &cuda_cache.value_buffer,
+                        cuda_cache.width,
+                        layer_offset,
+                        cache_write_index,
+                        self.family_metadata.sliding_window.unwrap_or(0),
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        position,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims,
+                        theta_scale,
+                        layer.attention_sinks_device.as_ref(),
+                        &layer_plan.attention_buffer,
+                    )?;
+                }
             }
             if let Some(transposed_f16) = layer.attention_output_weight.transposed_f16.as_ref() {
                 submission.cast_f32_to_f16(
@@ -1927,6 +2034,17 @@ impl GptOssCudaModelInner {
                     1,
                     layer.attention_output_weight.columns,
                     layer.attention_output_weight.rows,
+                )?;
+            } else if use_q8_1_attention_output_fusion {
+                submission.quantized_matvec_q8_1(
+                    &layer.attention_output_weight.storage,
+                    0,
+                    layer.attention_output_weight.mode,
+                    layer.attention_output_weight.rows,
+                    layer.attention_output_weight.columns,
+                    &plan.vector_q8_1_buffer,
+                    None,
+                    &layer_plan.projected_buffer,
                 )?;
             } else if can_use_q8_1_mmvq(layer.attention_output_weight.mode) {
                 submission.quantize_f32_to_q8_1(
@@ -1956,34 +2074,48 @@ impl GptOssCudaModelInner {
                     &layer_plan.projected_buffer,
                 )?;
             }
-            submission.add_residual_rms_norm(
-                &layer_plan.projected_buffer,
-                current_hidden,
-                layer.attention_output_bias_device.as_ref(),
-                &layer.feed_forward_norm_device,
-                &layer_plan.projected_buffer,
-                &layer_plan.ffn_norm_buffer,
-                hidden_size,
-                self.family_metadata.rms_norm_epsilon,
-            )?;
-            submission.router_topk_softmax(
-                &layer.feed_forward_router_weight_device,
-                layer.feed_forward_router_bias_device.as_ref(),
-                &layer_plan.ffn_norm_buffer,
-                layer.feed_forward_router_weight.rows,
-                layer.feed_forward_router_weight.columns,
-                selected_count,
-                &layer_plan.selected_ids_buffer,
-                &layer_plan.selected_weights_buffer,
-            )?;
             if can_use_q8_1_mmvq(layer.feed_forward_gate_up_experts_weight.mode)
                 && can_use_q8_1_mmvq(layer.feed_forward_down_experts_weight.mode)
             {
-                submission.quantize_f32_to_q8_1(
+                if can_use_q8_1_norm_fusion(layer.feed_forward_gate_up_experts_weight.columns) {
+                    submission.add_residual_rms_norm_q8_1(
+                        &layer_plan.projected_buffer,
+                        current_hidden,
+                        layer.attention_output_bias_device.as_ref(),
+                        &layer.feed_forward_norm_device,
+                        &layer_plan.projected_buffer,
+                        &layer_plan.ffn_norm_buffer,
+                        &plan.vector_q8_1_buffer,
+                        hidden_size,
+                        self.family_metadata.rms_norm_epsilon,
+                    )?;
+                } else {
+                    submission.add_residual_rms_norm(
+                        &layer_plan.projected_buffer,
+                        current_hidden,
+                        layer.attention_output_bias_device.as_ref(),
+                        &layer.feed_forward_norm_device,
+                        &layer_plan.projected_buffer,
+                        &layer_plan.ffn_norm_buffer,
+                        hidden_size,
+                        self.family_metadata.rms_norm_epsilon,
+                    )?;
+                    submission.quantize_f32_to_q8_1(
+                        &layer_plan.ffn_norm_buffer,
+                        1,
+                        layer.feed_forward_gate_up_experts_weight.columns,
+                        &plan.vector_q8_1_buffer,
+                    )?;
+                }
+                submission.router_topk_softmax(
+                    &layer.feed_forward_router_weight_device,
+                    layer.feed_forward_router_bias_device.as_ref(),
                     &layer_plan.ffn_norm_buffer,
-                    1,
-                    layer.feed_forward_gate_up_experts_weight.columns,
-                    &plan.vector_q8_1_buffer,
+                    layer.feed_forward_router_weight.rows,
+                    layer.feed_forward_router_weight.columns,
+                    selected_count,
+                    &layer_plan.selected_ids_buffer,
+                    &layer_plan.selected_weights_buffer,
                 )?;
                 submission.moe_gate_up_swiglu_q8_1(
                     &layer.feed_forward_gate_up_experts_weight.storage,
@@ -2038,6 +2170,26 @@ impl GptOssCudaModelInner {
                     )?;
                 }
             } else {
+                submission.add_residual_rms_norm(
+                    &layer_plan.projected_buffer,
+                    current_hidden,
+                    layer.attention_output_bias_device.as_ref(),
+                    &layer.feed_forward_norm_device,
+                    &layer_plan.projected_buffer,
+                    &layer_plan.ffn_norm_buffer,
+                    hidden_size,
+                    self.family_metadata.rms_norm_epsilon,
+                )?;
+                submission.router_topk_softmax(
+                    &layer.feed_forward_router_weight_device,
+                    layer.feed_forward_router_bias_device.as_ref(),
+                    &layer_plan.ffn_norm_buffer,
+                    layer.feed_forward_router_weight.rows,
+                    layer.feed_forward_router_weight.columns,
+                    selected_count,
+                    &layer_plan.selected_ids_buffer,
+                    &layer_plan.selected_weights_buffer,
+                )?;
                 submission.moe_gate_up_swiglu(
                     &layer.feed_forward_gate_up_experts_weight.storage,
                     layer.feed_forward_gate_up_experts_weight.mode,
@@ -2099,14 +2251,14 @@ impl GptOssCudaModelInner {
         } else {
             &plan.layers[self.layers.len().saturating_sub(1)].moe_buffer
         };
-        submission.rms_norm(
-            final_hidden,
-            &self.output_norm_device,
-            &plan.final_norm_buffer,
-            hidden_size,
-            self.family_metadata.rms_norm_epsilon,
-        )?;
         if let Some(transposed_f16) = self.output.transposed_f16.as_ref() {
+            submission.rms_norm(
+                final_hidden,
+                &self.output_norm_device,
+                &plan.final_norm_buffer,
+                hidden_size,
+                self.family_metadata.rms_norm_epsilon,
+            )?;
             submission.cast_f32_to_f16(
                 &plan.final_norm_buffer,
                 &plan.vector_f16_buffer,
@@ -2120,7 +2272,55 @@ impl GptOssCudaModelInner {
                 self.output.columns,
                 self.output.rows,
             )?;
+        } else if can_use_q8_1_mmvq(self.output.mode)
+            && can_use_q8_1_norm_fusion(self.output.columns)
+        {
+            submission.rms_norm_q8_1(
+                final_hidden,
+                &self.output_norm_device,
+                &plan.vector_q8_1_buffer,
+                self.output.columns,
+                self.family_metadata.rms_norm_epsilon,
+            )?;
+            if output_mode == CudaStepOutputMode::DeviceArgmax {
+                submission.copy_host_to_device(
+                    &plan.argmax_state_host_buffer,
+                    &plan.argmax_state_buffer,
+                )?;
+                submission.quantized_matvec_q8_1_argmax(
+                    &self.output.storage,
+                    0,
+                    self.output.mode,
+                    self.output.rows,
+                    self.output.columns,
+                    &plan.vector_q8_1_buffer,
+                    None,
+                    &plan.argmax_state_buffer,
+                )?;
+                submission.copy_device_to_host(
+                    &plan.argmax_state_buffer,
+                    &plan.argmax_state_host_buffer,
+                )?;
+            } else {
+                submission.quantized_matvec_q8_1(
+                    &self.output.storage,
+                    0,
+                    self.output.mode,
+                    self.output.rows,
+                    self.output.columns,
+                    &plan.vector_q8_1_buffer,
+                    None,
+                    &plan.logits_buffer,
+                )?;
+            }
         } else if can_use_q8_1_mmvq(self.output.mode) {
+            submission.rms_norm(
+                final_hidden,
+                &self.output_norm_device,
+                &plan.final_norm_buffer,
+                hidden_size,
+                self.family_metadata.rms_norm_epsilon,
+            )?;
             submission.quantize_f32_to_q8_1(
                 &plan.final_norm_buffer,
                 1,
@@ -2159,6 +2359,13 @@ impl GptOssCudaModelInner {
                 )?;
             }
         } else {
+            submission.rms_norm(
+                final_hidden,
+                &self.output_norm_device,
+                &plan.final_norm_buffer,
+                hidden_size,
+                self.family_metadata.rms_norm_epsilon,
+            )?;
             submission.quantized_matvec(
                 &self.output.storage,
                 0,
