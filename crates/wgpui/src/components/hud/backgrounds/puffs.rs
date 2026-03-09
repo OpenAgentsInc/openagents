@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::animation::{AnimatorState, AnimatorTiming, Easing};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad, Size};
+use crate::{Bounds, Hsla, InputEvent, Quad, Size, theme};
 
 use super::BackgroundAnimator;
 
@@ -34,7 +34,7 @@ impl PuffsBackground {
     pub fn new() -> Self {
         Self {
             id: None,
-            color: Hsla::new(180.0, 0.5, 0.7, 0.2),
+            color: theme::theme().colors.glow.with_alpha(0.2),
             quantity: 10,
             padding: 50.0,
             grid_distance: None,

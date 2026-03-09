@@ -11,7 +11,7 @@ use openagents_cad::drafting::{
 use openagents_cad::kernel_math::Point3;
 use openagents_cad::mesh::CadMeshPayload;
 use wgpui::{
-    Bounds, Hsla, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive,
+    Bounds, MESH_EDGE_FLAG_SELECTED, MESH_EDGE_FLAG_SILHOUETTE, MeshEdge, MeshPrimitive,
     MeshVertex, PaintContext, Point, Quad, theme,
 };
 
@@ -912,7 +912,7 @@ pub fn paint_cad_demo_placeholder_pane(
             }
             paint.scene.draw_quad(
                 Quad::new(row_bounds)
-                    .with_background(Hsla::new(0.0, 0.0, 0.14, 0.55))
+                    .with_background(theme::theme().colors.overlay_subtle)
                     .with_corner_radius(3.0),
             );
             paint.scene.draw_text(paint.text.layout(
@@ -1052,15 +1052,11 @@ fn paint_cad_demo_basic_pane(
             .with_border(theme::border::SUBTLE, 1.0),
     );
 
-    let mut status = format!(
-        "{} | rev {}",
-        pane_state.active_variant_id, pane_state.document_revision
-    );
-    if pane_state.drawing_view_mode == CadDrawingViewMode::TwoD {
-        status = paint_drawing_mode_viewport(viewport_bounds, pane_state, paint);
+    let status = if pane_state.drawing_view_mode == CadDrawingViewMode::TwoD {
+        paint_drawing_mode_viewport(viewport_bounds, pane_state, paint)
     } else {
-        status = paint_basic_3d_viewport(viewport_bounds, pane_state, paint);
-    }
+        paint_basic_3d_viewport(viewport_bounds, pane_state, paint)
+    };
 
     paint.scene.draw_text(paint.text.layout(
         if pane_state.drawing_view_mode == CadDrawingViewMode::TwoD {
@@ -1572,7 +1568,7 @@ fn paint_engineering_overlay(
     let lines = engineering_overlay_lines(pane_state);
     paint.scene.draw_quad(
         Quad::new(overlay_bounds)
-            .with_background(Hsla::new(0.0, 0.0, 0.10, 0.92))
+            .with_background(theme::bg::SURFACE.with_alpha(0.92))
             .with_corner_radius(6.0)
             .with_border(theme::border::SUBTLE, 1.0),
     );
@@ -1671,7 +1667,7 @@ fn paint_sensor_feedback_overlay(
     }
     paint.scene.draw_quad(
         Quad::new(overlay_bounds)
-            .with_background(Hsla::new(0.57, 0.42, 0.11, 0.90))
+            .with_background(theme::theme().colors.overlay.with_alpha(0.90))
             .with_corner_radius(4.0)
             .with_border(theme::border::SUBTLE, 1.0),
     );

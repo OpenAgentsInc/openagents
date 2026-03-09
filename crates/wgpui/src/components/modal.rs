@@ -28,7 +28,7 @@ impl Modal {
             open: false,
             width: 400.0,
             height: None,
-            backdrop_color: Hsla::new(0.0, 0.0, 0.0, 0.5),
+            backdrop_color: theme::theme().colors.overlay_scrim,
             background: theme::bg::SURFACE,
             border_color: theme::border::DEFAULT,
             close_on_backdrop: true,

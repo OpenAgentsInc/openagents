@@ -1,6 +1,6 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad};
+use crate::{Bounds, Hsla, InputEvent, Quad, theme};
 
 pub struct Scanlines {
     id: Option<ComponentId>,
@@ -17,8 +17,8 @@ impl Scanlines {
     pub fn new() -> Self {
         Self {
             id: None,
-            line_color: Hsla::new(190.0, 0.35, 0.55, 0.2),
-            scan_color: Hsla::new(190.0, 0.7, 0.7, 0.35),
+            line_color: theme::accent::PRIMARY.with_alpha(0.2),
+            scan_color: theme::theme().colors.glow.with_alpha(0.35),
             line_width: 1.0,
             spacing: 12.0,
             scan_width: 24.0,

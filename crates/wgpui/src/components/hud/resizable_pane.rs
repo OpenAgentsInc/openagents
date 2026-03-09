@@ -5,7 +5,7 @@
 
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, Size};
+use crate::{Bounds, Hsla, InputEvent, MouseButton, Point, Quad, Size, theme};
 
 /// Which edge or corner is being resized
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -113,8 +113,8 @@ impl ResizablePane {
             resizable: true,
             handle_size: 8.0,
             show_handles: false,
-            handle_color: Hsla::new(0.0, 0.0, 0.5, 0.3),
-            handle_hover_color: Hsla::new(180.0, 0.6, 0.5, 0.6),
+            handle_color: theme::border::DEFAULT.with_alpha(0.3),
+            handle_hover_color: theme::accent::PRIMARY.with_alpha(0.6),
             min_width: 50.0,
             min_height: 50.0,
             max_width: None,
