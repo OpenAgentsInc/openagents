@@ -51,7 +51,7 @@ use psionic_runtime::{
     ModelResidencyPolicy, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
     RuntimeError, RuntimeTransitionEvent, RuntimeTransitionKind, RuntimeTransitionLog,
     SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler,
-    default_cache_invalidation_policy, plan_model_admission,
+    default_cache_invalidation_policy, plan_model_admission, select_argmax_token,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -2580,6 +2580,7 @@ struct SharedPrefixEntry {
     prompt_tokens: TokenSequence,
     prompt_logits: Vec<Vec<f32>>,
     last_prompt_logits: Vec<f32>,
+    greedy_prompt_token: Option<u32>,
     cache: InMemoryKvCache,
 }
 
@@ -2602,6 +2603,7 @@ struct PrefixLookupResult {
 struct ExactPrefixLookupResult {
     identity: PrefixCacheIdentity,
     last_logits: Vec<f32>,
+    greedy_token: Option<u32>,
 }
 
 impl SharedPrefixStore {
@@ -2621,6 +2623,7 @@ impl SharedPrefixStore {
             .map(|entry| ExactPrefixLookupResult {
                 identity: prefix_identity(compatibility, prompt_tokens.as_slice()),
                 last_logits: entry.last_prompt_logits.clone(),
+                greedy_token: entry.greedy_prompt_token,
             })
     }
 
@@ -2729,12 +2732,16 @@ impl SharedPrefixStore {
         cache: &InMemoryKvCache,
     ) -> PrefixCacheIdentity {
         let identity = prefix_identity(&compatibility, prompt_tokens.as_slice());
+        let greedy_prompt_token = prompt_logits
+            .last()
+            .and_then(|logits| select_argmax_token(logits.as_slice()));
         if let Some(existing) = self.entries.iter_mut().find(|entry| {
             entry.compatibility == compatibility
                 && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
         }) {
             existing.prompt_logits = prompt_logits.to_vec();
             existing.last_prompt_logits = prompt_logits.last().cloned().unwrap_or_default();
+            existing.greedy_prompt_token = greedy_prompt_token;
             existing.cache = cache.clone();
         } else {
             self.entries.push(SharedPrefixEntry {
@@ -2742,6 +2749,7 @@ impl SharedPrefixStore {
                 prompt_tokens: prompt_tokens.clone(),
                 prompt_logits: prompt_logits.to_vec(),
                 last_prompt_logits: prompt_logits.last().cloned().unwrap_or_default(),
+                greedy_prompt_token,
                 cache: cache.clone(),
             });
         }
@@ -7261,7 +7269,11 @@ mod tests {
         let prompt_logits = hello_world
             .as_slice()
             .iter()
-            .map(|token| vec![token.as_u32() as f32; vocab_size])
+            .map(|token| {
+                let mut logits = vec![-1.0_f32; vocab_size];
+                logits[token.as_u32() as usize] = token.as_u32() as f32;
+                logits
+            })
             .collect::<Vec<_>>();
 
         let mut store = SharedPrefixStore::default();
@@ -7279,18 +7291,36 @@ mod tests {
             Some(hello.len())
         );
         assert_eq!(hit.prompt_logits.len(), hello.len());
-        assert_eq!(
-            hit.last_logits,
-            vec![hello.as_slice()[hello.len() - 1].as_u32() as f32; vocab_size]
-        );
+        assert_eq!(hit.last_logits, {
+            let mut logits = vec![-1.0_f32; vocab_size];
+            logits[hello.as_slice()[hello.len() - 1].as_u32() as usize] =
+                hello.as_slice()[hello.len() - 1].as_u32() as f32;
+            logits
+        });
 
         let exact_hit = store.lookup(&compatibility, &hello_world);
         assert_eq!(exact_hit.state, PrefixCacheState::Hit);
         assert_eq!(exact_hit.reused_tokens, hello_world.len());
         assert!(exact_hit.prompt_logits.is_empty());
+        assert_eq!(exact_hit.last_logits, {
+            let mut logits = vec![-1.0_f32; vocab_size];
+            logits[hello_world.as_slice()[hello_world.len() - 1].as_u32() as usize] =
+                hello_world.as_slice()[hello_world.len() - 1].as_u32() as f32;
+            logits
+        });
+
+        let exact_prompt = store
+            .lookup_exact_prompt(&compatibility, &hello_world)
+            .expect("exact prompt lookup should hit");
+        assert_eq!(exact_prompt.last_logits, {
+            let mut logits = vec![-1.0_f32; vocab_size];
+            logits[hello_world.as_slice()[hello_world.len() - 1].as_u32() as usize] =
+                hello_world.as_slice()[hello_world.len() - 1].as_u32() as f32;
+            logits
+        });
         assert_eq!(
-            exact_hit.last_logits,
-            vec![hello_world.as_slice()[hello_world.len() - 1].as_u32() as f32; vocab_size]
+            exact_prompt.greedy_token,
+            Some(hello_world.as_slice()[hello_world.len() - 1].as_u32())
         );
 
         let miss = store.lookup(&compatibility, &rusty);

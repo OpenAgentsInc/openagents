@@ -910,3 +910,48 @@ The correct summary is:
 - the remaining gap is now mostly backend-resident prompt-cache reuse,
   graph/fusion architecture, grouped-expert execution quality,
   attention-kernel quality, and direct CUDA kernel parity
+
+## 2026-03-09 Exact Prefix CUDA Alignment Checkpoint
+
+The newest checkpoint moved the tracked HTTP benchmark back above the current
+issue baseline while also fixing a real prompt-cache correctness bug.
+
+What changed:
+
+- exact host-side prompt hits now require and prefer an exact CUDA KV-prefix hit
+  instead of falling back to the generic "best shared prefix" CUDA lookup
+- exact prompt hits now also cache the greedy next-token selection derived from
+  the stored prompt logits, so the exact-hit lane does not pay an extra CPU
+  argmax scan before decode begins
+
+Why it mattered:
+
+- before this change, the exact host prompt cache could pair with the wrong
+  device KV entry when two prompts shared a long prefix
+- that was visible on the benchmark contract itself: the third exact `HTTPS ...`
+  request could incorrectly return the warm `TLS ...` sentence
+- it also meant the benchmarked exact-hit lane was not truly using the best
+  exact CUDA prefix reuse available
+
+Measured after the checkpoint, with the same exact one-sentence HTTP request:
+
+- Psionic `cold`: `21.08 tok/s`
+- Psionic `warm_non_hit`: `57.38 tok/s`
+- Psionic `prompt_cache_hit`: `125.12 tok/s`
+- `llama.cpp` `prompt_cache_hit`: `168.53 tok/s`
+
+Interpretation:
+
+- this is a real improvement over the issue baseline of `123.42 tok/s`
+- the win is modest, which means exact-prefix correctness and first-token cache
+  reuse were worth fixing but are not the main remaining limiter
+- the benchmark is now more honest because the exact-hit lane no longer mixes an
+  exact host prefix with a merely shared CUDA prefix
+
+What should happen next remains the same:
+
+- treat `125.12 tok/s` as the new floor to beat on `#3276`
+- keep pressure on the decode kernels and dispatch policy, not request-path
+  bookkeeping
+- continue aligning grouped expert execution and attention with
+  `llama.cpp`'s `mul_mat_id` / `mmvq` / `fattn` families
