@@ -76,6 +76,12 @@ enum CudaStepOutputMode {
     DeviceArgmax,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum MetalStepOutputMode {
+    SkipLogits,
+    Logits(MetalLogitsOutputMode),
+}
+
 fn duration_ns(start: Instant) -> u64 {
     start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX)
 }
@@ -1762,23 +1768,48 @@ fn run_metal_generation_request(
         let mut plan_cache_misses = 0usize;
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let mut decode_step_plan = None;
+        let mut exact_prompt_token = None;
+        let prompt_token_ids = metal_prompt_token_ids(&prompt_tokens);
+        let exact_prefix_hit = if shared_prefix_eligible && request.session_id.is_none() {
+            shared_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens)
+        } else {
+            None
+        };
+        let exact_metal_lookup = if exact_prefix_hit.is_some() {
+            let lookup =
+                metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count);
+            (lookup.state == super::PrefixCacheState::Hit && lookup.caches.is_some())
+                .then_some(lookup)
+        } else {
+            None
+        };
+        let exact_prompt_cache_hit = exact_prefix_hit.is_some() && exact_metal_lookup.is_some();
         let mut cache = if shared_prefix_eligible {
-            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
-            prefix_state = lookup.state;
-            prefix_tokens_reused = lookup.reused_tokens;
-            prefix_identity = lookup.identity;
-            prompt_logits = lookup.prompt_logits;
-            last_logits = if lookup.last_logits.is_empty() {
-                prompt_logits.last().cloned().unwrap_or_default()
+            if let Some(hit) = exact_prefix_hit.filter(|_| exact_prompt_cache_hit) {
+                prefix_state = super::PrefixCacheState::Hit;
+                prefix_tokens_reused = prompt_tokens.len();
+                prefix_identity = Some(hit.identity);
+                last_logits = hit.last_logits;
+                exact_prompt_token = hit.greedy_token.map(TokenId);
+                hit.cache
             } else {
-                lookup.last_logits
-            };
-            lookup.cache.unwrap_or_else(|| {
-                super::InMemoryKvCache::new(
-                    loaded_model.descriptor().config.max_context,
-                    expected_kv_width,
-                )
-            })
+                let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+                prefix_state = lookup.state;
+                prefix_tokens_reused = lookup.reused_tokens;
+                prefix_identity = lookup.identity;
+                prompt_logits = lookup.prompt_logits;
+                last_logits = if lookup.last_logits.is_empty() {
+                    prompt_logits.last().cloned().unwrap_or_default()
+                } else {
+                    lookup.last_logits
+                };
+                lookup.cache.unwrap_or_else(|| {
+                    super::InMemoryKvCache::new(
+                        loaded_model.descriptor().config.max_context,
+                        expected_kv_width,
+                    )
+                })
+            }
         } else if let Some(session_id) = &request.session_id {
             sessions.state(session_id)?.cache().clone()
         } else {
@@ -1794,10 +1825,13 @@ fn run_metal_generation_request(
             });
         }
 
-        let prompt_token_ids = metal_prompt_token_ids(&prompt_tokens);
-        let metal_lookup = (shared_prefix_eligible && prefix_tokens_reused > 0).then(|| {
-            metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
-        });
+        let metal_lookup = if exact_prompt_cache_hit {
+            exact_metal_lookup.clone()
+        } else {
+            (shared_prefix_eligible && prefix_tokens_reused > 0).then(|| {
+                metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
+            })
+        };
         let mut layer_caches = if let Some(lookup) = metal_lookup.as_ref() {
             if let Some(caches) = lookup.caches.as_ref() {
                 caches.clone()
@@ -1859,7 +1893,9 @@ fn run_metal_generation_request(
             .reserve_decode_attention_runtime(backend)?;
         let decode_output_mode = metal_decode_logits_output_mode(&request.options);
 
-        for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
+        let prompt_suffix = &prompt_tokens.as_slice()[prefix_tokens_reused..];
+        for (prompt_index, token) in prompt_suffix.iter().enumerate() {
+            let is_last_prompt_token = prompt_index + 1 == prompt_suffix.len();
             ensure_metal_decode_step_plan(
                 &loaded_model,
                 backend,
@@ -1884,7 +1920,11 @@ fn run_metal_generation_request(
                         String::from("missing metal gpt-oss decode-step plan"),
                     ))
                 })?,
-                MetalLogitsOutputMode::RawLogits,
+                if is_last_prompt_token {
+                    MetalStepOutputMode::Logits(MetalLogitsOutputMode::RawLogits)
+                } else {
+                    MetalStepOutputMode::SkipLogits
+                },
                 false,
             )?;
             if execution_plan_digest.is_none() {
@@ -1906,8 +1946,10 @@ fn run_metal_generation_request(
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
             cache.append(*token, step.key.clone(), step.value.clone())?;
-            last_logits = step.logits;
-            prompt_logits.push(last_logits.clone());
+            if is_last_prompt_token {
+                last_logits = step.logits;
+                prompt_logits.push(last_logits.clone());
+            }
         }
         let should_record_prompt_prefix =
             shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
@@ -1916,7 +1958,20 @@ fn run_metal_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
-        let mut pending_token = None;
+        let mut pending_token = if exact_prompt_cache_hit
+            && can_use_cached_prompt_argmax(&request.options)
+        {
+            Some(
+                exact_prompt_token
+                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
+            )
+        } else {
+            Some(
+                sampler
+                    .select_next_token(&last_logits, &cache)
+                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
+            )
+        };
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
@@ -1960,7 +2015,7 @@ fn run_metal_generation_request(
                         String::from("missing metal gpt-oss decode-step plan"),
                     ))
                 })?,
-                decode_output_mode,
+                MetalStepOutputMode::Logits(decode_output_mode),
                 true,
             )?;
             if execution_plan_digest.is_none() {
@@ -5226,7 +5281,7 @@ impl GptOssMetalModelInner {
         layer_caches: &mut [MetalKvCacheMirror],
         attention_runtime: &mut MetalAttentionGraphRuntime,
         plan: &mut GptOssMetalStepPlan,
-        logits_output_mode: MetalLogitsOutputMode,
+        output_mode: MetalStepOutputMode,
         record_decode_logits_metrics: bool,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
         if layer_caches.len() != self.layers.len() {
@@ -5639,81 +5694,81 @@ impl GptOssMetalModelInner {
             .output_norm_ns
             .saturating_add(duration_ns(output_norm_start));
 
-        let logits_projection_start = Instant::now();
-        write_metal_buffer_prefix(
-            &mut plan.final_hidden_buffer,
-            final_hidden.as_slice(),
-            &mut perf,
-        )?;
-        let mut logits_submission = backend.begin_submission("psionic.gpt_oss.logits")?;
-        backend.encode_quantized_matvec_submission(
-            &mut logits_submission,
-            &self.output.storage,
-            0,
-            self.output.host.mode,
-            self.output.host.rows,
-            self.output.host.columns,
-            &plan.final_hidden_buffer,
-            &plan.logits_buffer,
-        )?;
-        logits_submission.synchronize_buffer(&plan.logits_buffer)?;
-        let logits_report = logits_submission
-            .commit(psionic_backend_metal::MetalCommandWait::Completed)
-            .map_err(ReferenceTextGenerationError::Runtime)?;
-        accumulate_metal_submission_report(&mut perf, &logits_report);
-        kernel_count = kernel_count.saturating_add(logits_report.encoded_operations);
-        let selection = backend
-            .select_logits_output_f32(
-                &plan.logits_buffer,
-                1,
-                self.output.host.rows,
-                logits_output_mode,
-            )
-            .map_err(ReferenceTextGenerationError::Runtime)?;
-        perf.stage_timings.logits_projection_ns = perf
-            .stage_timings
-            .logits_projection_ns
-            .saturating_add(duration_ns(logits_projection_start));
-        perf.metal.device_to_host_bytes = perf
-            .metal
-            .device_to_host_bytes
-            .saturating_add(selection.metrics.readback_bytes);
-        if record_decode_logits_metrics {
-            accumulate_metal_decode_logits_metrics(
+        let mut logits = Vec::new();
+        let mut selected_token = None;
+        if let MetalStepOutputMode::Logits(logits_output_mode) = output_mode {
+            let logits_projection_start = Instant::now();
+            write_metal_buffer_prefix(
+                &mut plan.final_hidden_buffer,
+                final_hidden.as_slice(),
                 &mut perf,
-                selection.metrics.output_mode,
-                selection.metrics.readback_bytes,
-                selection.metrics.raw_logits_materialized,
-            );
-        }
-        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
-
-        let (logits, selected_token) = match logits_output_mode {
-            MetalLogitsOutputMode::GreedyToken => {
-                let token = selection.selected_tokens.first().copied().ok_or_else(|| {
-                    ReferenceTextGenerationError::MissingOutput("metal greedy token")
-                })?;
-                (Vec::new(), Some(TokenId(token)))
+            )?;
+            let mut logits_submission = backend.begin_submission("psionic.gpt_oss.logits")?;
+            backend.encode_quantized_matvec_submission(
+                &mut logits_submission,
+                &self.output.storage,
+                0,
+                self.output.host.mode,
+                self.output.host.rows,
+                self.output.host.columns,
+                &plan.final_hidden_buffer,
+                &plan.logits_buffer,
+            )?;
+            logits_submission.synchronize_buffer(&plan.logits_buffer)?;
+            let logits_report = logits_submission
+                .commit(psionic_backend_metal::MetalCommandWait::Completed)
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            accumulate_metal_submission_report(&mut perf, &logits_report);
+            kernel_count = kernel_count.saturating_add(logits_report.encoded_operations);
+            let selection = backend
+                .select_logits_output_f32(
+                    &plan.logits_buffer,
+                    1,
+                    self.output.host.rows,
+                    logits_output_mode,
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            perf.stage_timings.logits_projection_ns = perf
+                .stage_timings
+                .logits_projection_ns
+                .saturating_add(duration_ns(logits_projection_start));
+            perf.metal.device_to_host_bytes = perf
+                .metal
+                .device_to_host_bytes
+                .saturating_add(selection.metrics.readback_bytes);
+            if record_decode_logits_metrics {
+                accumulate_metal_decode_logits_metrics(
+                    &mut perf,
+                    selection.metrics.output_mode,
+                    selection.metrics.readback_bytes,
+                    selection.metrics.raw_logits_materialized,
+                );
             }
-            MetalLogitsOutputMode::TopKCandidates(_) => {
-                let candidates = selection.candidates.as_ref().ok_or_else(|| {
-                    ReferenceTextGenerationError::MissingOutput("metal logits top_k candidates")
-                })?;
-                (
-                    expand_metal_top_k_candidates_to_logits(
+            bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
+
+            match logits_output_mode {
+                MetalLogitsOutputMode::GreedyToken => {
+                    let token = selection.selected_tokens.first().copied().ok_or_else(|| {
+                        ReferenceTextGenerationError::MissingOutput("metal greedy token")
+                    })?;
+                    selected_token = Some(TokenId(token));
+                }
+                MetalLogitsOutputMode::TopKCandidates(_) => {
+                    let candidates = selection.candidates.as_ref().ok_or_else(|| {
+                        ReferenceTextGenerationError::MissingOutput("metal logits top_k candidates")
+                    })?;
+                    logits = expand_metal_top_k_candidates_to_logits(
                         self.descriptor.config.vocab_size,
                         candidates,
-                    )?,
-                    None,
-                )
+                    )?;
+                }
+                MetalLogitsOutputMode::RawLogits => {
+                    logits = selection.logits.ok_or(
+                        ReferenceTextGenerationError::MissingOutput("metal raw logits"),
+                    )?;
+                }
             }
-            MetalLogitsOutputMode::RawLogits => (
-                selection
-                    .logits
-                    .ok_or(ReferenceTextGenerationError::MissingOutput("metal raw logits"))?,
-                None,
-            ),
-        };
+        }
 
         Ok(GptOssForwardStep {
             key: plan.cache_key.clone(),

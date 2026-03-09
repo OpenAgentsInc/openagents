@@ -2698,6 +2698,7 @@ struct PrefixLookupResult {
 #[derive(Clone, Debug, PartialEq)]
 struct ExactPrefixLookupResult {
     identity: PrefixCacheIdentity,
+    cache: InMemoryKvCache,
     last_logits: Vec<f32>,
     greedy_token: Option<u32>,
 }
@@ -2714,12 +2715,17 @@ impl SharedPrefixStore {
                 &entry.compatibility == compatibility
                     && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
                     && entry.cache.len() >= prompt_tokens.len()
-                    && entry.prompt_logits.len() >= prompt_tokens.len()
+                    && !entry.last_prompt_logits.is_empty()
             })
-            .map(|entry| ExactPrefixLookupResult {
-                identity: prefix_identity(compatibility, prompt_tokens.as_slice()),
-                last_logits: entry.last_prompt_logits.clone(),
-                greedy_token: entry.greedy_prompt_token,
+            .map(|entry| {
+                let mut cache = entry.cache.clone();
+                cache.entries.truncate(prompt_tokens.len());
+                ExactPrefixLookupResult {
+                    identity: prefix_identity(compatibility, prompt_tokens.as_slice()),
+                    cache,
+                    last_logits: entry.last_prompt_logits.clone(),
+                    greedy_token: entry.greedy_prompt_token,
+                }
             })
     }
 
@@ -2754,7 +2760,7 @@ impl SharedPrefixStore {
             if shared == 0 {
                 continue;
             }
-            if entry.cache.len() < shared || entry.prompt_logits.len() < shared {
+            if entry.cache.len() < shared {
                 stale_prefix = true;
                 continue;
             }
@@ -2769,6 +2775,7 @@ impl SharedPrefixStore {
             let mut cache = entry.cache.clone();
             cache.entries.truncate(shared);
             let exact_prompt_hit = entry.prompt_tokens.as_slice() == prompt_tokens.as_slice();
+            let can_return_prefix_logits = entry.prompt_logits.len() >= shared;
             return PrefixLookupResult {
                 state: PrefixCacheState::Hit,
                 reused_tokens: shared,
@@ -2779,17 +2786,21 @@ impl SharedPrefixStore {
                 cache: Some(cache),
                 prompt_logits: if exact_prompt_hit {
                     Vec::new()
-                } else {
+                } else if can_return_prefix_logits {
                     entry.prompt_logits[..shared].to_vec()
+                } else {
+                    Vec::new()
                 },
                 last_logits: if exact_prompt_hit {
                     entry.last_prompt_logits.clone()
-                } else {
+                } else if can_return_prefix_logits {
                     entry
                         .prompt_logits
                         .get(shared.saturating_sub(1))
                         .cloned()
                         .unwrap_or_default()
+                } else {
+                    Vec::new()
                 },
             };
         }
@@ -6777,7 +6788,7 @@ mod tests {
         InMemoryGenerationSessionStore, InMemoryKvCache, KvCacheError, ListModelsObservation,
         LoadedModelRegistryError, LocalModelCatalog, ModelDescriptor, ModelSummary,
         PsionicLocalRuntime, ReferenceTextGenerationError, ReferenceWordDecoder, SessionId,
-        SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
+        SharedPrefixCompatibility, SharedPrefixStore, ShowObservation, SmokeByteEmbedder, SmokeEmbeddingsService,
         StreamingTextGenerationExecutor, TerminationReason, TextGenerationExecutor, TokenId,
         WeightBundleMetadata, WeightFormat, WeightSource, WeightTensorMetadata,
         WordDecoderExecutionModel, current_time_millis, default_generation_streaming_policy,
@@ -7408,6 +7419,7 @@ mod tests {
         let exact_prompt = store
             .lookup_exact_prompt(&compatibility, &hello_world)
             .expect("exact prompt lookup should hit");
+        assert_eq!(exact_prompt.cache.len(), hello_world.len());
         assert_eq!(exact_prompt.last_logits, {
             let mut logits = vec![-1.0_f32; vocab_size];
             logits[hello_world.as_slice()[hello_world.len() - 1].as_u32() as usize] =
@@ -7427,6 +7439,55 @@ mod tests {
         let rebuilt = store.lookup(&compatibility, &hello_world);
         assert_eq!(rebuilt.state, PrefixCacheState::Rebuilt);
         assert!(store.entries.is_empty());
+        Ok(())
+    }
+
+    #[test]
+    fn shared_prefix_store_preserves_exact_hit_for_exact_only_logit_receipts() -> Result<(), Box<dyn std::error::Error>> {
+        let decoder = ReferenceWordDecoder::new();
+        let compatibility = SharedPrefixCompatibility {
+            served_artifact_digest: String::from("artifact"),
+            model_id: String::from("reference-word-decoder"),
+            model_revision: String::from("rev"),
+            weight_bundle_digest: String::from("weights"),
+            tokenizer_family: String::from("fixture-word"),
+            tokenizer_digest: Some(String::from("tokenizer")),
+            chat_template_digest: Some(String::from("chat-template")),
+            generation_defaults_digest: Some(String::from("defaults")),
+            backend_compatibility: String::from("cpu"),
+        };
+        let hello_world = decoder.encode_prompt_text("hello world");
+        let hello = decoder.encode_prompt_text("hello");
+        let vocab_size = decoder.tokenizer().vocabulary().tokens().len();
+        let width = decoder.descriptor().config.kv_width();
+        let mut cache = InMemoryKvCache::new(decoder.descriptor().config.max_context, width);
+        for token in hello_world.as_slice() {
+            cache.append(*token, vec![0.0; width], vec![1.0; width])?;
+        }
+        let mut last_logits = vec![-1.0_f32; vocab_size];
+        last_logits[hello_world.as_slice()[hello_world.len() - 1].as_u32() as usize] =
+            hello_world.as_slice()[hello_world.len() - 1].as_u32() as f32;
+
+        let mut store = SharedPrefixStore::default();
+        store.record(
+            compatibility.clone(),
+            &hello_world,
+            &[last_logits.clone()],
+            &cache,
+        );
+
+        let partial = store.lookup(&compatibility, &hello);
+        assert_eq!(partial.state, PrefixCacheState::Hit);
+        assert_eq!(partial.reused_tokens, hello.len());
+        assert_eq!(partial.cache.as_ref().map(InMemoryKvCache::len), Some(hello.len()));
+        assert!(partial.prompt_logits.is_empty());
+        assert!(partial.last_logits.is_empty());
+
+        let exact = store
+            .lookup_exact_prompt(&compatibility, &hello_world)
+            .expect("exact-only receipt should still support exact hits");
+        assert_eq!(exact.cache.len(), hello_world.len());
+        assert_eq!(exact.last_logits, last_logits);
         Ok(())
     }
 
