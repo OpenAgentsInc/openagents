@@ -48,6 +48,7 @@ fn cpu_reference_text_generation_flow_returns_response_and_receipt()
     Ok(())
 }
 
-fn cpu_backend_selection() -> Result<psionic_runtime::BackendSelection, psionic_runtime::RuntimeError> {
+fn cpu_backend_selection()
+-> Result<psionic_runtime::BackendSelection, psionic_runtime::RuntimeError> {
     CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }

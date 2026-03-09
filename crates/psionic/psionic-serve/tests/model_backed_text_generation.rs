@@ -184,7 +184,8 @@ fn model_backed_text_generation_rejects_reference_descriptor_without_fallback()
     Ok(())
 }
 
-fn cpu_backend_selection() -> Result<psionic_runtime::BackendSelection, psionic_runtime::RuntimeError> {
+fn cpu_backend_selection()
+-> Result<psionic_runtime::BackendSelection, psionic_runtime::RuntimeError> {
     CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }
 

@@ -11,8 +11,12 @@
 > `PSI-182` / [#3238](https://github.com/OpenAgentsInc/openagents/issues/3238),
 > and `PSI-183` / [#3241](https://github.com/OpenAgentsInc/openagents/issues/3241)
 > in `4821bf07c` for the Psionic-only GPT-OSS/NVIDIA host path, and after
-> confirming the follow-on GPT-OSS throughput track `#3242` through `#3248`
-> where `#3242` through `#3246` are closed and `#3247` / `#3248` remain open.
+> confirming the follow-on GPT-OSS throughput track `#3242` through `#3249`
+> where `#3242` through `#3246` are closed and `#3249` / `#3247` / `#3248`
+> remain open, and after the latest live benchmark plus llama.cpp-alignment
+> audit checkpoint showing that Psionic now runs the exact GPT-OSS HTTP lane at
+> about `35.26 tok/s` versus `167.27 tok/s` for `llama.cpp` on this RTX 4080
+> host.
 >
 > This is the live roadmap for `crates/psionic/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -93,6 +97,16 @@ ordering, layout, shape, or fallback rules, encode those semantics in tests in
 the same issue. If multiple references disagree, follow the source of truth for
 the layer being implemented and say which reference won and why in the issue
 comment when closing the work.
+
+Performance-parity rule: when the open work is throughput parity against an
+existing deployed runtime such as `llama.cpp`, do not inspect only isolated
+kernels. Inspect the whole relevant reference path first: model graph builder,
+scheduler/runtime, fusion decisions, kernel dispatch policy, and the concrete
+CUDA kernels used on the target host/model. If the reference code is already the
+proved production path for the exact workload, prefer direct ports or
+line-for-line-equivalent implementations of the relevant CUDA pieces over
+"clean-room but probably similar" rewrites unless there is a clear ownership or
+portability reason not to.
 
 ## Objective
 
@@ -689,10 +703,12 @@ state:
 | 77 | `GPT-OSS-PERF-3` | [#3244](https://github.com/OpenAgentsInc/openagents/issues/3244) | Closed | CUDA KV, RMSNorm, RoPE, and decode attention are now landed; keep this in sequence but skip it when choosing the next issue. |
 | 78 | `GPT-OSS-PERF-4` | [#3245](https://github.com/OpenAgentsInc/openagents/issues/3245) | Closed | CUDA router selection and MoE execution substrate are now landed; keep this in sequence but skip it when choosing the next issue. |
 | 79 | `GPT-OSS-PERF-5` | [#3246](https://github.com/OpenAgentsInc/openagents/issues/3246) | Closed | The reusable GPT-OSS CUDA step-plan/runtime substrate is now landed; keep this in sequence but skip it when choosing the next issue. |
-| 80 | `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | This is the current next issue: the Psionic-only GPT-OSS HTTP path works, but the remaining major gap is kernel quality and logits readback shape versus `llama.cpp`. |
-| 81 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Keep this open until the exact benchmark contract reaches the required llama.cpp-adjacent throughput class on the real Psionic HTTP path. |
+| 80 | `GPT-OSS-PERF-6A` | [#3249](https://github.com/OpenAgentsInc/openagents/issues/3249) | Open | This is the current next issue: the latest benchmark and audit show the remaining dominant gap is the missing `llama.cpp`-style graph/fusion/dispatch architecture, not GGUF/Harmony semantics and no longer primarily logits readback. |
+| 81 | `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | After the graph/fusion alignment issue, the next work is direct `llama.cpp` CUDA kernel and dispatch parity for MMVQ, MMID, attention, and the real MXFP4 expert path. |
+| 82 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Keep this open until the exact benchmark contract reaches the required llama.cpp-adjacent throughput class on the real Psionic HTTP path. |
 
-The active roadmap issues on this host are now `#3247` then `#3248`. Do not
+The active roadmap issues on this host are now `#3249` then `#3247` then
+`#3248`. Do not
 restart from the GPT-OSS enablement issues; the remaining work is throughput
 parity on the already-working Psionic-owned NVIDIA path.
 
@@ -710,9 +726,10 @@ baseline on `main` is:
   both external `~/code/llama.cpp` as a reference oracle and Psionic alone through
   the local OpenAI-compatible `psionic-gpt-oss-server`
 - the active gap is now measured, not speculative: the current audited
-  benchmark is about `35.70 tok/s` for Psionic versus `168.53 tok/s` for
-  `llama.cpp`, so the remaining open roadmap work is the performance track in
-  `#3247` and `#3248`, not feature-completeness for basic GPT-OSS execution
+  benchmark is about `35.26 tok/s` for Psionic versus `167.27 tok/s` for
+  `llama.cpp`, so the remaining open roadmap work is the throughput-alignment
+  track in `#3249`, `#3247`, and `#3248`, not feature-completeness for basic
+  GPT-OSS execution
 - CPU model-backed embeddings and text generation exist and are tested
 - initial GGML quantized tensor storage and decode coverage now extends to
   CPU-native `Q4_0`, `Q4_1`, and `Q8_0` execution over preserved GGML block
@@ -1111,8 +1128,9 @@ shortcuts.
 | `GPT-OSS-PERF-2` | [#3243](https://github.com/OpenAgentsInc/openagents/issues/3243) | Closed | Keep GPT-OSS CUDA activations resident and remove per-matvec round-trips | `psionic-backend-cuda`, `psionic-serve` | Landed on `main`: device-resident decode-step buffers exist, per-matvec host `Vec<f32>` round-trips are gone from the hot path, and decode now works over reusable CUDA buffers instead of isolated upload/compute/readback calls. |
 | `GPT-OSS-PERF-3` | [#3244](https://github.com/OpenAgentsInc/openagents/issues/3244) | Closed | Move GPT-OSS KV, RMSNorm, RoPE, and attention onto CUDA | `psionic-backend-cuda`, `psionic-serve` | Landed on `main`: the CUDA lane now owns KV mirrors, RMSNorm, RoPE, and decode attention instead of routing those stages through the old CPU hot path. |
 | `GPT-OSS-PERF-4` | [#3245](https://github.com/OpenAgentsInc/openagents/issues/3245) | Closed | Replace GPT-OSS host-side MoE routing with grouped GPU expert execution substrate | `psionic-backend-cuda`, `psionic-serve` | Landed on `main`: router selection and MoE execution now have a CUDA-backed substrate, though the current real-model MXFP4 expert path still needs kernel-quality work for full parity throughput. |
-| `GPT-OSS-PERF-5` | [#3246](https://github.com/OpenAgentsInc/openagents/issues/3246) | Closed | Add graph-based GPT-OSS prefill and decode runtime on CUDA | `psionic-serve`, `psionic-runtime`, `psionic-backend-cuda` | Landed on `main`: Psionic now has a reusable GPT-OSS CUDA step-plan/runtime substrate and one-submission-per-token decode shape, but it still does not match `llama.cpp` kernel quality or logits-readback posture. |
-| `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | Upgrade GPT-OSS CUDA kernels to llama.cpp-class quantized throughput | `psionic-backend-cuda`, `psionic-serve` | Current next issue. The measured gap after the landed groundwork is still dominated by kernel quality, especially the full-vocab logits projection and the remaining MXFP4 expert-path limitations. |
+| `GPT-OSS-PERF-5` | [#3246](https://github.com/OpenAgentsInc/openagents/issues/3246) | Closed | Add graph-based GPT-OSS prefill and decode runtime on CUDA | `psionic-serve`, `psionic-runtime`, `psionic-backend-cuda` | Landed on `main`: Psionic now has a reusable GPT-OSS CUDA step-plan/runtime substrate and one-submission-per-token decode shape, but it still does not match `llama.cpp` graph/fusion architecture or CUDA kernel quality. |
+| `GPT-OSS-PERF-6A` | [#3249](https://github.com/OpenAgentsInc/openagents/issues/3249) | Open | Mirror llama.cpp GPT-OSS graph and CUDA fusion architecture | `psionic-serve`, `psionic-runtime`, `psionic-backend-cuda` | Current next issue. The latest benchmark plus audit show that the dominant remaining gap is the missing `llama.cpp`-style graph, fusion, dispatch, and graph-reuse architecture, even after eliminating almost all greedy-lane logits readback. |
+| `GPT-OSS-PERF-6` | [#3247](https://github.com/OpenAgentsInc/openagents/issues/3247) | Open | Port llama.cpp GPT-OSS CUDA kernels and dispatch policy | `psionic-backend-cuda`, `psionic-serve` | After `#3249`, the next work is direct `llama.cpp` CUDA kernel parity for MMVQ, MMID, attention, and the real-model MXFP4 expert path on this exact GPT-OSS lane. |
 | `GPT-OSS-PERF-7` | [#3248](https://github.com/OpenAgentsInc/openagents/issues/3248) | Open | Reach llama.cpp-class GPT-OSS throughput on the real Psionic HTTP path | docs/tests/benchmark path plus the serving stack | Keep this open until the exact benchmark contract reaches the promised speed class on the real Psionic-only HTTP lane. |
 
 ## Recommended Order
@@ -1142,7 +1160,7 @@ The shortest honest path from today's `main` is:
    `main`; do not reopen that enablement sequence.
 10. The active next work on this host is the GPT-OSS throughput track:
     `#3242` -> `#3243` -> `#3244` -> `#3245` -> `#3246` are closed, and the
-    current execution order is `#3247` then `#3248`.
+    current execution order is `#3249` then `#3247` then `#3248`.
 
 ## Definition Of Done For "Replace Ollama"
 

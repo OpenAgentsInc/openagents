@@ -372,8 +372,10 @@ mod tests {
         );
         assert_eq!(cpu_text.claim_id, "cpu.text_generation.reference");
 
-        let metal_embeddings =
-            validation_reference_for_served_product(&direct_selection("metal"), "psionic.embeddings");
+        let metal_embeddings = validation_reference_for_served_product(
+            &direct_selection("metal"),
+            "psionic.embeddings",
+        );
         assert_eq!(metal_embeddings.claim_id, "metal.embeddings.apple_silicon");
 
         let metal_refusal = validation_reference_for_served_product(
@@ -383,12 +385,16 @@ mod tests {
         assert_eq!(metal_refusal.claim_id, "metal.refusal.off_platform");
         assert_eq!(metal_refusal.coverage, ValidationCoverage::ExplicitRefusal);
 
-        let cuda_embeddings =
-            validation_reference_for_served_product(&direct_selection("cuda"), "psionic.embeddings");
+        let cuda_embeddings = validation_reference_for_served_product(
+            &direct_selection("cuda"),
+            "psionic.embeddings",
+        );
         assert_eq!(cuda_embeddings.claim_id, "cuda.embeddings.nvidia");
 
-        let cuda_refusal =
-            validation_reference_for_served_product(&fallback_selection("cuda"), "psionic.embeddings");
+        let cuda_refusal = validation_reference_for_served_product(
+            &fallback_selection("cuda"),
+            "psionic.embeddings",
+        );
         assert_eq!(cuda_refusal.claim_id, "cuda.refusal.unavailable");
         assert_eq!(cuda_refusal.coverage, ValidationCoverage::ExplicitRefusal);
     }
