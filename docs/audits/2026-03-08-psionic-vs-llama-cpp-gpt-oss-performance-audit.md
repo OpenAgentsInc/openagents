@@ -1,11 +1,10 @@
 # 2026-03-08 Psionic vs llama.cpp GPT-OSS Performance Audit
 
-> Updated 2026-03-09 after the CUDA/runtime checkpoint that landed the perf
-> groundwork through GitHub issues `#3242` through `#3246`, and after the
-> direct `llama.cpp` alignment checkpoint that ported the first graph-driven
-> CUDA fusion ideas into Psionic and produced a new live benchmark on the local
-> RTX 4080 host. This file is the current audit for the GPT-OSS throughput gap;
-> later product truth still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
+> Updated 2026-03-09 after re-running the live repo benchmark script against
+> the current Psionic `main` worktree on the local RTX 4080 host, and after
+> comparing the exact timed-request flow with `llama.cpp`'s prompt-cache
+> behavior on the same machine. This file is the current audit for the GPT-OSS
+> throughput gap; later product truth still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
 > `crates/psionic/docs/ROADMAP.md`, and the referenced issues.
 
 ## Scope
@@ -85,6 +84,21 @@
 - Psionic improvement over the prior checkpoint:
   - `1.02x`
 
+### Current stable checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.541s`
+  - `68.43 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.249s`
+  - `168.72 tok/s`
+- Gap:
+  - `2.47x`
+- Psionic improvement over the original baseline:
+  - `4.09x`
+- Psionic improvement over the last audited checkpoint:
+  - `1.90x`
+
 The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
@@ -141,6 +155,59 @@ The direct-alignment checkpoint then added the first explicit ports of
 That work materially reduced kernel count but did not materially change
 end-to-end throughput. That is important evidence, not a failure to record.
 
+The newer stable checkpoint on `main` added the changes that actually moved the
+live number from the mid-30s into the high-60s:
+
+- fixed `MXFP4` decode/execution correctness in both CPU and CUDA paths
+  - the `E8M0` scale decode now matches `llama.cpp`
+  - the missing `* 0.5f` factor in the `MXFP4 x Q8_1` dot path is restored
+- switched the live GPT-OSS CUDA decode lane to use the `Q8_1` fast path for
+  all eligible `Q8_0` and `MXFP4` projections
+  - QKV
+  - attention output
+  - MoE gate/up
+  - MoE down
+  - final output
+- added a real CUDA graph replay path for greedy decode and then fixed the
+  request-bound graph lifetime bug
+  - the first graph replay attempt reused captures across request-local KV
+    allocations and caused illegal memory access on the second HTTP request
+  - the current code resets the cached graph exec when the reusable decode-step
+    plan is pulled from the per-model cache, so each request recaptures against
+    its own KV allocations and then reuses that capture for the rest of the
+    decode lane
+- re-ran the benchmark through
+  `crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh` to confirm the stable
+  HTTP result instead of relying on intermediate local probes
+
+Two later experiments were useful but did not move the real benchmark enough to
+keep them as the main story:
+
+- a more `llama.cpp`-shaped grouped-selected MMVQ rewrite for the MoE kernels
+  was benchmark-neutral on this host/model
+- an `f16` dense-transposed mirror for the final vocabulary projection slowed
+  the real HTTP benchmark and was backed back out
+
+The latest exact-flow comparison also exposed a concrete request-to-request gap
+that is not just "CUDA kernels are slower":
+
+- `llama.cpp` serves the timed request from a live prompt cache
+  - warmup request:
+    - `prompt eval time = 80.41 ms / 160 tokens`
+    - `eval time = 266.75 ms / 42 tokens`
+  - timed request:
+    - `prompt eval time = 0.30 ms / 1 token`
+    - `eval time = 235.74 ms / 42 tokens`
+- Psionic already has truthful shared prefix reuse, but it still rebuilds a
+  fresh `CudaKvCacheMirror` from host-owned prefix state on each HTTP request
+  - the current request path clones host KV entries and uploads them back into
+    new CUDA buffers before decode continues
+  - that means Psionic is still missing `llama.cpp`'s backend-resident
+    prompt-cache behavior, even when the visible prompt is identical
+
+That prompt-cache difference does not explain the whole remaining gap by
+itself, but it is now proven to be part of the measured benchmark delta.
+
 ## Current Hard Evidence From The Psionic Benchmark
 
 The latest Psionic benchmark receipt for the timed request reports:
@@ -149,11 +216,11 @@ The latest Psionic benchmark receipt for the timed request reports:
 - `layer_visit_count = 888`
 - `graph_node_count = 266`
 - `graph_layer_node_count = 11`
-- `host_to_device_bytes = 426240`
+- `host_to_device_bytes = 426536`
 - `device_to_host_bytes = 148`
 - `submission_count = 37`
 - `sync_count = 37`
-- `kernel_launches = 11692`
+- `kernel_launches = 13468`
 
 Important interpretation:
 
@@ -163,28 +230,32 @@ Important interpretation:
   - about `11.5 KB` per token in the timed lane
 - full-logits readback is no longer the dominant problem either
   - the greedy lane now reads back only one token ID per step
-- kernel launch count is lower than the previous checkpoint, but still very high
-  - about `316` launched operations per generated token
-- the direct `llama.cpp`-style fusion slice cut kernel launches by about `27.5%`
-  - from `16132` to `11692`
-- despite that launch reduction, tok/s moved only from about `35.5` to `36.0`
-  - that is strong evidence that the remaining gap is now mostly inside the
-    heavyweight attention/MoE kernels and the graph scheduler, not in small
-    per-op overhead alone
-- throughput barely changed after removing almost all logits readback
-  - that is the strongest evidence that the remaining gap is now mostly
-    compute-shape, fusion, and dispatch architecture
-- the first explicit decode-graph alignment step did not materially change
-  throughput by itself
-  - the latest rerun stayed at about `35.50 tok/s`
-  - that is expected because the change made the graph shape explicit and
-    testable, but did not yet add new fusion or kernel families
-- the first direct CUDA fusion ports also did not materially change throughput
-  by themselves
-  - the latest rerun stayed at about `35.99 tok/s`
-  - that means further parity work has to target `llama.cpp`'s bigger wins:
-    flash attention, grouped `mul_mat_id`, CUDA graph capture/reuse, and the
-    backend scheduler's fusion/dispatch policy
+- kernel launch count is still very high
+  - about `364` launched operations per generated token
+- one submission and one sync per generated token is no longer the limiting
+  story by itself
+  - that boundary cleanup is already in place, yet Psionic is still `2.47x`
+    slower than `llama.cpp`
+- the largest remaining gap is now clearly inside the kernel family and graph
+  scheduler rather than in host/device readback
+  - the timed lane reads back only one token id per step
+  - the timed lane uploads only about `11.5 KB` per token
+- `llama.cpp` still has a request-to-request advantage before decode even starts
+  - its timed request re-evaluates only one prompt token because prompt cache
+    state stays live in the backend
+  - Psionic still reconstructs CUDA KV state from host-owned prefix entries, so
+    prompt reuse is truthful but not yet backend-resident
+- the direct `llama.cpp` alignment work that did matter was the correctness +
+  fast-path routing work
+  - once the `MXFP4` math bug was fixed and the `Q8_1` fast path was used
+    across the actual GPT-OSS projection set, Psionic moved from the mid-30s
+    to the high-60s
+- the next parity work has to target `llama.cpp`'s bigger wins directly
+  - backend-resident prompt-cache reuse
+  - graph scheduler/update behavior
+  - grouped `mul_mat_id`
+  - flash attention
+  - exact CUDA kernel family / dispatch policy ports for GPT-OSS
 
 Timing caveat:
 
@@ -404,6 +475,10 @@ The remaining sequence should be executed in this order:
    - mirror `openai-moe-iswa.cpp`, `llama-graph.cpp`, `llama-context.cpp`, and
      the relevant `ggml-cuda.cu` fusion/dispatch rules in the Psionic-owned
      runtime architecture
+   - stop rebuilding fresh CUDA KV mirrors from host-owned prefix cache state
+     on identical requests
+   - add `llama.cpp`-class prompt-cache residency and graph-update behavior to
+     the exact HTTP benchmark lane
 2. Land `#3247`
    - port the relevant `llama.cpp` CUDA kernels and dispatch policy directly,
      especially `vecdotq.cuh`, `mmvq.cu`, `mmid.cu`, and `fattn.cu`
@@ -426,7 +501,7 @@ Psionic is no longer "nowhere close." The current checkpoint is a real improveme
 
 - the exact Psionic-owned GPT-OSS HTTP flow works
 - the visible benchmark output matches `llama.cpp`
-- Psionic is about `2.11x` faster than it was at the start of the perf track
+- Psionic is about `4.09x` faster than it was at the start of the perf track
 - eliminating logits readback for the greedy lane proved that readback was no
   longer the primary limiter
 
@@ -437,5 +512,6 @@ The current measured gap is still large enough that `#3249`, `#3247`, and
 The correct summary is:
 
 - the format, prompt, and execution-boundary issues are mostly solved
-- the remaining gap is now mostly graph/fusion architecture, grouped-expert
-  execution quality, attention-kernel quality, and direct CUDA kernel parity
+- the remaining gap is now mostly backend-resident prompt-cache reuse,
+  graph/fusion architecture, grouped-expert execution quality,
+  attention-kernel quality, and direct CUDA kernel parity

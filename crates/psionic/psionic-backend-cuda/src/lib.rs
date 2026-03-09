@@ -123,6 +123,32 @@ pub struct CudaSubmissionReport {
     pub encoded_operations: usize,
 }
 
+/// Reusable captured CUDA graph executable for one fixed submission shape.
+pub struct CudaGraphExec {
+    encoded_operations: usize,
+    platform: platform::PlatformGraphExec,
+}
+
+impl fmt::Debug for CudaGraphExec {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("CudaGraphExec")
+            .field("encoded_operations", &self.encoded_operations)
+            .field("platform", &"<cuda graph exec>")
+            .finish()
+    }
+}
+
+impl CudaGraphExec {
+    /// Launches the captured CUDA graph and optionally waits for completion.
+    pub fn launch(&self, wait: CudaCommandWait) -> Result<CudaSubmissionReport, RuntimeError> {
+        let status = self.platform.launch(wait)?;
+        Ok(CudaSubmissionReport {
+            status,
+            encoded_operations: self.encoded_operations,
+        })
+    }
+}
+
 /// Explicit per-call counters for one quantized CUDA matvec request.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct CudaQuantizedMatvecStats {
@@ -361,6 +387,7 @@ impl BufferHandle for CudaBuffer {
 /// CUDA stream submission that keeps fill/copy operations explicit.
 pub struct CudaSubmission {
     encoded_operations: usize,
+    capturing: bool,
     platform: platform::PlatformSubmission,
 }
 
@@ -489,6 +516,64 @@ impl CudaSubmission {
             &input_q8_1.platform,
             &output.platform,
         )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Launches one dense row-major matrix multiply using cuBLAS.
+    pub fn matmul(
+        &mut self,
+        left: &CudaBuffer,
+        right: &CudaBuffer,
+        output: &CudaBuffer,
+        rows: usize,
+        inner: usize,
+        cols: usize,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_matmul(
+            &left.platform,
+            &right.platform,
+            &output.platform,
+            rows,
+            inner,
+            cols,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Launches one dense row-major matrix multiply with an `f16` rhs and
+    /// `f32` accumulate/output.
+    pub fn matmul_f16_to_f32(
+        &mut self,
+        left: &CudaBuffer,
+        right: &CudaBuffer,
+        output: &CudaBuffer,
+        rows: usize,
+        inner: usize,
+        cols: usize,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_matmul_f16_to_f32(
+            &left.platform,
+            &right.platform,
+            &output.platform,
+            rows,
+            inner,
+            cols,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Casts contiguous `f32` values to contiguous `f16` values on CUDA.
+    pub fn cast_f32_to_f16(
+        &mut self,
+        input: &CudaBuffer,
+        output: &CudaBuffer,
+        element_count: usize,
+    ) -> Result<(), RuntimeError> {
+        self.platform
+            .encode_cast_f32_to_f16(&input.platform, &output.platform, element_count)?;
         self.encoded_operations += 1;
         Ok(())
     }
@@ -700,6 +785,58 @@ impl CudaSubmission {
             head_dim,
             rotary_dim,
             position,
+            freq_scale,
+            ext_factor,
+            corr_dims,
+            theta_scale,
+            attention_sinks.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Graph-capture-friendly variant of fused GPT-OSS decode attention that
+    /// reads the dynamic `past_tokens` and `position` values from device memory.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attention_decode_rope_cache_f16_kv_graph(
+        &mut self,
+        qkv: &CudaBuffer,
+        query_offset: usize,
+        key_offset: usize,
+        value_offset: usize,
+        cache_keys: &CudaBuffer,
+        cache_values: &CudaBuffer,
+        cache_width: usize,
+        layer_offset: usize,
+        decode_params: &CudaBuffer,
+        sliding_window: usize,
+        head_count: usize,
+        kv_head_count: usize,
+        head_dim: usize,
+        rotary_dim: usize,
+        freq_scale: f32,
+        ext_factor: f32,
+        corr_dims: [f32; 2],
+        theta_scale: f32,
+        attention_sinks: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_attention_decode_rope_cache_f16_kv_graph(
+            &qkv.platform,
+            query_offset,
+            key_offset,
+            value_offset,
+            &cache_keys.platform,
+            &cache_values.platform,
+            cache_width,
+            layer_offset,
+            &decode_params.platform,
+            sliding_window,
+            head_count,
+            kv_head_count,
+            head_dim,
+            rotary_dim,
             freq_scale,
             ext_factor,
             corr_dims,
@@ -929,11 +1066,40 @@ impl CudaSubmission {
 
     /// Synchronizes the CUDA stream and returns explicit submission metadata.
     pub fn commit(self, wait: CudaCommandWait) -> Result<CudaSubmissionReport, RuntimeError> {
+        if self.capturing {
+            return Err(RuntimeError::Backend(String::from(
+                "captured cuda submissions must use commit_captured",
+            )));
+        }
         let status = self.platform.commit(wait)?;
         Ok(CudaSubmissionReport {
             status,
             encoded_operations: self.encoded_operations,
         })
+    }
+
+    /// Finalizes stream capture, instantiates a reusable CUDA graph, launches it
+    /// once for the current step, and returns the executable for later replays.
+    pub fn commit_captured(
+        self,
+        wait: CudaCommandWait,
+    ) -> Result<(CudaSubmissionReport, CudaGraphExec), RuntimeError> {
+        if !self.capturing {
+            return Err(RuntimeError::Backend(String::from(
+                "ordinary cuda submissions must use commit",
+            )));
+        }
+        let (status, graph_exec) = self.platform.commit_captured(wait)?;
+        Ok((
+            CudaSubmissionReport {
+                status,
+                encoded_operations: self.encoded_operations,
+            },
+            CudaGraphExec {
+                encoded_operations: self.encoded_operations,
+                platform: graph_exec,
+            },
+        ))
     }
 }
 
@@ -1077,6 +1243,19 @@ impl CudaBackend {
             )));
         };
         self.allocate_buffer(&TensorSpec::new(Shape::new(vec![len]), DType::F32, device))
+    }
+
+    /// Allocates an uninitialized dense `f16` buffer on the selected CUDA device.
+    pub fn f16_buffer(&mut self, len: usize) -> Result<CudaBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda backend unavailable: no selected execution device",
+            )));
+        };
+        self.allocate_buffer(&TensorSpec::new(Shape::new(vec![len]), DType::F16, device))
     }
 
     /// Allocates an uninitialized dense `i32` buffer on the selected CUDA device.
@@ -1356,9 +1535,9 @@ impl CudaBackend {
             };
             return Err(RuntimeError::Backend(message));
         };
-        if spec.dtype() != DType::F32 {
+        if spec.dtype() != DType::F32 && spec.dtype() != DType::F16 {
             return Err(RuntimeError::Backend(format!(
-                "cuda dense surface only supports F32 buffers, actual {:?}",
+                "cuda dense surface only supports F32/F16 buffers, actual {:?}",
                 spec.dtype()
             )));
         }
@@ -1401,7 +1580,20 @@ impl CudaBackend {
         };
         Ok(CudaSubmission {
             encoded_operations: 0,
+            capturing: false,
             platform: backend.platform.begin_submission()?,
+        })
+    }
+
+    /// Begins recording a CUDA submission into a reusable captured graph.
+    pub fn begin_captured_submission(&self) -> Result<CudaSubmission, RuntimeError> {
+        let Some(backend) = self.selected_backend() else {
+            return Err(RuntimeError::Backend(self.health().message));
+        };
+        Ok(CudaSubmission {
+            encoded_operations: 0,
+            capturing: true,
+            platform: backend.platform.begin_capture_submission()?,
         })
     }
 
@@ -1568,6 +1760,7 @@ impl AvailableCudaBackend {
     ) -> Result<ExecutionResult<CudaBuffer>, RuntimeError> {
         let mut submission = CudaSubmission {
             encoded_operations: 0,
+            capturing: false,
             platform: self.platform.begin_submission()?,
         };
         let mut values = BTreeMap::new();
@@ -2223,6 +2416,8 @@ mod platform {
 
     type CudaError = i32;
     type CudaStream = *mut c_void;
+    type CudaGraph = *mut c_void;
+    type CudaGraphExec = *mut c_void;
     type CublasStatus = i32;
     type CublasHandle = *mut c_void;
 
@@ -2232,6 +2427,11 @@ mod platform {
     const CUDA_MEMCPY_DEVICE_TO_HOST: c_int = 2;
     const CUDA_MEMCPY_DEVICE_TO_DEVICE: c_int = 3;
     const CUBLAS_OP_N: c_int = 0;
+    const CUDA_R_32F: c_int = 0;
+    const CUDA_R_16F: c_int = 2;
+    const CUDA_STREAM_CAPTURE_MODE_RELAXED: c_int = 2;
+    const CUBLAS_COMPUTE_32F_FAST_16F: c_int = 74;
+    const CUBLAS_GEMM_DEFAULT_TENSOR_OP: c_int = 99;
 
     type CudaGetErrorString = unsafe extern "C" fn(CudaError) -> *const c_char;
     type CudaSetDevice = unsafe extern "C" fn(c_int) -> CudaError;
@@ -2244,6 +2444,12 @@ mod platform {
     type CudaStreamCreate = unsafe extern "C" fn(*mut CudaStream) -> CudaError;
     type CudaStreamDestroy = unsafe extern "C" fn(CudaStream) -> CudaError;
     type CudaStreamSynchronize = unsafe extern "C" fn(CudaStream) -> CudaError;
+    type CudaStreamBeginCapture = unsafe extern "C" fn(CudaStream, c_int) -> CudaError;
+    type CudaStreamEndCapture = unsafe extern "C" fn(CudaStream, *mut CudaGraph) -> CudaError;
+    type CudaGraphInstantiate = unsafe extern "C" fn(*mut CudaGraphExec, CudaGraph, u64) -> CudaError;
+    type CudaGraphLaunch = unsafe extern "C" fn(CudaGraphExec, CudaStream) -> CudaError;
+    type CudaGraphExecDestroy = unsafe extern "C" fn(CudaGraphExec) -> CudaError;
+    type CudaGraphDestroy = unsafe extern "C" fn(CudaGraph) -> CudaError;
     type CublasCreate = unsafe extern "C" fn(*mut CublasHandle) -> CublasStatus;
     type CublasDestroy = unsafe extern "C" fn(CublasHandle) -> CublasStatus;
     type CublasSetStream = unsafe extern "C" fn(CublasHandle, CudaStream) -> CublasStatus;
@@ -2276,6 +2482,27 @@ mod platform {
         *const f32,
         c_int,
         *mut f32,
+        c_int,
+    ) -> CublasStatus;
+    type CublasGemmEx = unsafe extern "C" fn(
+        CublasHandle,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        c_int,
+        *const c_void,
+        *const c_void,
+        c_int,
+        c_int,
+        *const c_void,
+        c_int,
+        c_int,
+        *const c_void,
+        *mut c_void,
+        c_int,
+        c_int,
+        c_int,
         c_int,
     ) -> CublasStatus;
 
@@ -2315,6 +2542,12 @@ mod platform {
             input: *const c_void,
             rows: c_int,
             cols: c_int,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_cast_f32_to_f16(
+            input: *const c_void,
+            element_count: c_int,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -2452,6 +2685,30 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_attention_decode_rope_cache_f16_kv_graph(
+            qkv: *const c_void,
+            query_offset: c_int,
+            key_offset: c_int,
+            value_offset: c_int,
+            cache_keys: *mut c_void,
+            cache_values: *mut c_void,
+            cache_width: c_int,
+            layer_offset: c_int,
+            decode_params: *const c_void,
+            sliding_window: c_int,
+            head_count: c_int,
+            kv_head_count: c_int,
+            head_dim: c_int,
+            rotary_dim: c_int,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_low: f32,
+            corr_high: f32,
+            theta_scale: f32,
+            attention_sinks: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_router_topk_softmax(
             weights: *const c_void,
             bias: *const c_void,
@@ -2527,6 +2784,7 @@ mod platform {
 
     pub(super) struct ConfiguredBackend {
         runtime: Arc<CudaRuntime>,
+        stream: CudaStream,
     }
 
     #[derive(Clone)]
@@ -2534,10 +2792,19 @@ mod platform {
         inner: Arc<PlatformBufferInner>,
     }
 
+    pub(super) struct PlatformGraphExec {
+        runtime: Arc<CudaRuntime>,
+        graph: CudaGraph,
+        instance: CudaGraphExec,
+        stream: CudaStream,
+    }
+
     pub(super) struct PlatformSubmission {
         runtime: Arc<CudaRuntime>,
         stream: CudaStream,
         status: CudaCommandStatus,
+        owned_stream: bool,
+        capturing: bool,
     }
 
     struct PlatformBufferInner {
@@ -2559,12 +2826,19 @@ mod platform {
         cuda_stream_create: CudaStreamCreate,
         cuda_stream_destroy: CudaStreamDestroy,
         cuda_stream_synchronize: CudaStreamSynchronize,
+        cuda_stream_begin_capture: CudaStreamBeginCapture,
+        cuda_stream_end_capture: CudaStreamEndCapture,
+        cuda_graph_instantiate: CudaGraphInstantiate,
+        cuda_graph_launch: CudaGraphLaunch,
+        cuda_graph_exec_destroy: CudaGraphExecDestroy,
+        cuda_graph_destroy: CudaGraphDestroy,
         cublas_handle: CublasHandle,
         cublas_create: CublasCreate,
         cublas_destroy: CublasDestroy,
         cublas_set_stream: CublasSetStream,
         cublas_sgemm: CublasSgemm,
         cublas_sgeam: CublasSgeam,
+        cublas_gemm_ex: CublasGemmEx,
     }
 
     impl ConfiguredBackend {
@@ -2586,15 +2860,32 @@ mod platform {
 
         pub(super) fn begin_submission(&self) -> Result<PlatformSubmission, RuntimeError> {
             self.runtime.set_device()?;
-            let mut stream = std::ptr::null_mut();
+            Ok(PlatformSubmission {
+                runtime: Arc::clone(&self.runtime),
+                stream: self.stream,
+                status: CudaCommandStatus::Submitted,
+                owned_stream: false,
+                capturing: false,
+            })
+        }
+
+        pub(super) fn begin_capture_submission(&self) -> Result<PlatformSubmission, RuntimeError> {
+            self.runtime.set_device()?;
             self.runtime.check(
-                unsafe { (self.runtime.cuda_stream_create)(&mut stream) },
-                "cudaStreamCreate",
+                unsafe {
+                    (self.runtime.cuda_stream_begin_capture)(
+                        self.stream,
+                        CUDA_STREAM_CAPTURE_MODE_RELAXED,
+                    )
+                },
+                "cudaStreamBeginCapture",
             )?;
             Ok(PlatformSubmission {
                 runtime: Arc::clone(&self.runtime),
-                stream,
+                stream: self.stream,
                 status: CudaCommandStatus::Submitted,
+                owned_stream: false,
+                capturing: true,
             })
         }
     }
@@ -2859,6 +3150,87 @@ mod platform {
                     )
                 },
                 "cublasSgemm_v2",
+            )
+        }
+
+        pub(super) fn encode_matmul_f16_to_f32(
+            &mut self,
+            left: &PlatformBuffer,
+            right: &PlatformBuffer,
+            output: &PlatformBuffer,
+            rows: usize,
+            inner: usize,
+            cols: usize,
+        ) -> Result<(), RuntimeError> {
+            if rows == 0 || inner == 0 || cols == 0 {
+                return Ok(());
+            }
+            let m = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda mixed matmul column count exceeds cublas limits",
+                ))
+            })?;
+            let n = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda mixed matmul row count exceeds cublas limits",
+                ))
+            })?;
+            let k = c_int::try_from(inner).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda mixed matmul inner dimension exceeds cublas limits",
+                ))
+            })?;
+            let alpha = 1.0_f32;
+            let beta = 0.0_f32;
+            self.runtime.bind_stream(self.stream)?;
+            self.runtime.check_cublas(
+                unsafe {
+                    (self.runtime.cublas_gemm_ex)(
+                        self.runtime.cublas_handle,
+                        CUBLAS_OP_N,
+                        CUBLAS_OP_N,
+                        m,
+                        n,
+                        k,
+                        (&alpha as *const f32).cast(),
+                        right.inner.device_ptr,
+                        CUDA_R_16F,
+                        m,
+                        left.inner.device_ptr,
+                        CUDA_R_16F,
+                        k,
+                        (&beta as *const f32).cast(),
+                        output.inner.device_ptr,
+                        CUDA_R_32F,
+                        m,
+                        CUBLAS_COMPUTE_32F_FAST_16F,
+                        CUBLAS_GEMM_DEFAULT_TENSOR_OP,
+                    )
+                },
+                "cublasGemmEx",
+            )
+        }
+
+        pub(super) fn encode_cast_f32_to_f16(
+            &mut self,
+            input: &PlatformBuffer,
+            output: &PlatformBuffer,
+            element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            let element_count = c_int::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda f32->f16 cast length exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_cast_f32_to_f16(
+                        input.inner.device_ptr.cast(),
+                        element_count,
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_cast_f32_to_f16",
             )
         }
 
@@ -3424,6 +3796,114 @@ mod platform {
         }
 
         #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode_rope_cache_f16_kv_graph(
+            &mut self,
+            qkv: &PlatformBuffer,
+            query_offset: usize,
+            key_offset: usize,
+            value_offset: usize,
+            cache_keys: &PlatformBuffer,
+            cache_values: &PlatformBuffer,
+            cache_width: usize,
+            layer_offset: usize,
+            decode_params: &PlatformBuffer,
+            sliding_window: usize,
+            head_count: usize,
+            kv_head_count: usize,
+            head_dim: usize,
+            rotary_dim: usize,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_dims: [f32; 2],
+            theta_scale: f32,
+            attention_sinks: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let query_offset = c_int::try_from(query_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) query offset exceeds c_int",
+                ))
+            })?;
+            let key_offset = c_int::try_from(key_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) key offset exceeds c_int",
+                ))
+            })?;
+            let value_offset = c_int::try_from(value_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) value offset exceeds c_int",
+                ))
+            })?;
+            let cache_width = c_int::try_from(cache_width).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) cache width exceeds c_int",
+                ))
+            })?;
+            let layer_offset = c_int::try_from(layer_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) layer offset exceeds c_int",
+                ))
+            })?;
+            let sliding_window = c_int::try_from(sliding_window).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) sliding window exceeds c_int",
+                ))
+            })?;
+            let head_count = c_int::try_from(head_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) head count exceeds c_int",
+                ))
+            })?;
+            let kv_head_count = c_int::try_from(kv_head_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) kv head count exceeds c_int",
+                ))
+            })?;
+            let head_dim = c_int::try_from(head_dim).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) head dim exceeds c_int",
+                ))
+            })?;
+            let rotary_dim = c_int::try_from(rotary_dim).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv) rotary dim exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_attention_decode_rope_cache_f16_kv_graph(
+                        qkv.inner.device_ptr.cast(),
+                        query_offset,
+                        key_offset,
+                        value_offset,
+                        cache_keys.inner.device_ptr.cast(),
+                        cache_values.inner.device_ptr.cast(),
+                        cache_width,
+                        layer_offset,
+                        decode_params.inner.device_ptr.cast(),
+                        sliding_window,
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims[0],
+                        corr_dims[1],
+                        theta_scale,
+                        attention_sinks
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_attention_decode_rope_cache_f16_kv_graph",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_attention_decode(
             &mut self,
             query: &PlatformBuffer,
@@ -3817,6 +4297,11 @@ mod platform {
             mut self,
             wait: CudaCommandWait,
         ) -> Result<CudaCommandStatus, RuntimeError> {
+            if self.capturing {
+                return Err(RuntimeError::Backend(String::from(
+                    "captured platform submissions must use commit_captured",
+                )));
+            }
             match wait {
                 CudaCommandWait::Completed => {
                     self.runtime.set_device()?;
@@ -3829,17 +4314,101 @@ mod platform {
             }
             Ok(self.status)
         }
+
+        pub(super) fn commit_captured(
+            mut self,
+            wait: CudaCommandWait,
+        ) -> Result<(CudaCommandStatus, PlatformGraphExec), RuntimeError> {
+            if !self.capturing {
+                return Err(RuntimeError::Backend(String::from(
+                    "ordinary platform submissions must use commit",
+                )));
+            }
+            self.runtime.set_device()?;
+            let mut graph = std::ptr::null_mut();
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_stream_end_capture)(self.stream, &mut graph) },
+                "cudaStreamEndCapture",
+            )?;
+            let mut instance = std::ptr::null_mut();
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_graph_instantiate)(&mut instance, graph, 0) },
+                "cudaGraphInstantiate",
+            )?;
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_graph_launch)(instance, self.stream) },
+                "cudaGraphLaunch",
+            )?;
+            match wait {
+                CudaCommandWait::Completed => {
+                    self.runtime.check(
+                        unsafe { (self.runtime.cuda_stream_synchronize)(self.stream) },
+                        "cudaStreamSynchronize",
+                    )?;
+                    self.status = CudaCommandStatus::Completed;
+                }
+            }
+            self.capturing = false;
+            Ok((
+                self.status,
+                PlatformGraphExec {
+                    runtime: Arc::clone(&self.runtime),
+                    graph,
+                    instance,
+                    stream: self.stream,
+                },
+            ))
+        }
+    }
+
+    impl PlatformGraphExec {
+        pub(super) fn launch(&self, wait: CudaCommandWait) -> Result<CudaCommandStatus, RuntimeError> {
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe { (self.runtime.cuda_graph_launch)(self.instance, self.stream) },
+                "cudaGraphLaunch",
+            )?;
+            match wait {
+                CudaCommandWait::Completed => {
+                    self.runtime.check(
+                        unsafe { (self.runtime.cuda_stream_synchronize)(self.stream) },
+                        "cudaStreamSynchronize",
+                    )?;
+                    Ok(CudaCommandStatus::Completed)
+                }
+            }
+        }
     }
 
     impl Drop for PlatformSubmission {
         fn drop(&mut self) {
-            if !self.stream.is_null() {
+            if self.owned_stream && !self.stream.is_null() {
                 let _ = self.runtime.set_device();
                 let _ = self.runtime.check(
                     unsafe { (self.runtime.cuda_stream_destroy)(self.stream) },
                     "cudaStreamDestroy",
                 );
                 self.stream = std::ptr::null_mut();
+            }
+        }
+    }
+
+    impl Drop for PlatformGraphExec {
+        fn drop(&mut self) {
+            let _ = self.runtime.set_device();
+            if !self.instance.is_null() {
+                let _ = self.runtime.check(
+                    unsafe { (self.runtime.cuda_graph_exec_destroy)(self.instance) },
+                    "cudaGraphExecDestroy",
+                );
+                self.instance = std::ptr::null_mut();
+            }
+            if !self.graph.is_null() {
+                let _ = self.runtime.check(
+                    unsafe { (self.runtime.cuda_graph_destroy)(self.graph) },
+                    "cudaGraphDestroy",
+                );
+                self.graph = std::ptr::null_mut();
             }
         }
     }
@@ -3879,6 +4448,20 @@ mod platform {
                 cuda_stream_synchronize: unsafe {
                     load_symbol(&cudart_library, b"cudaStreamSynchronize\0")?
                 },
+                cuda_stream_begin_capture: unsafe {
+                    load_symbol(&cudart_library, b"cudaStreamBeginCapture\0")?
+                },
+                cuda_stream_end_capture: unsafe {
+                    load_symbol(&cudart_library, b"cudaStreamEndCapture\0")?
+                },
+                cuda_graph_instantiate: unsafe {
+                    load_symbol(&cudart_library, b"cudaGraphInstantiate\0")?
+                },
+                cuda_graph_launch: unsafe { load_symbol(&cudart_library, b"cudaGraphLaunch\0")? },
+                cuda_graph_exec_destroy: unsafe {
+                    load_symbol(&cudart_library, b"cudaGraphExecDestroy\0")?
+                },
+                cuda_graph_destroy: unsafe { load_symbol(&cudart_library, b"cudaGraphDestroy\0")? },
                 cublas_handle: std::ptr::null_mut(),
                 cublas_create: unsafe { load_symbol(&cublas_library, b"cublasCreate_v2\0")? },
                 cublas_destroy: unsafe { load_symbol(&cublas_library, b"cublasDestroy_v2\0")? },
@@ -3887,6 +4470,7 @@ mod platform {
                 },
                 cublas_sgemm: unsafe { load_symbol(&cublas_library, b"cublasSgemm_v2\0")? },
                 cublas_sgeam: unsafe { load_symbol(&cublas_library, b"cublasSgeam\0")? },
+                cublas_gemm_ex: unsafe { load_symbol(&cublas_library, b"cublasGemmEx\0")? },
                 _cudart_library: cudart_library,
                 _cublas_library: cublas_library,
             };
@@ -3960,7 +4544,26 @@ mod platform {
         descriptor: super::DeviceDescriptor,
     ) -> Result<ConfiguredBackend, RuntimeError> {
         let runtime = CudaRuntime::load(descriptor.device.ordinal())?;
-        Ok(ConfiguredBackend { runtime })
+        runtime.set_device()?;
+        let mut stream = std::ptr::null_mut();
+        runtime.check(
+            unsafe { (runtime.cuda_stream_create)(&mut stream) },
+            "cudaStreamCreate",
+        )?;
+        Ok(ConfiguredBackend { runtime, stream })
+    }
+
+    impl Drop for ConfiguredBackend {
+        fn drop(&mut self) {
+            if !self.stream.is_null() {
+                let _ = self.runtime.set_device();
+                let _ = self.runtime.check(
+                    unsafe { (self.runtime.cuda_stream_destroy)(self.stream) },
+                    "cudaStreamDestroy",
+                );
+                self.stream = std::ptr::null_mut();
+            }
+        }
     }
 
     unsafe fn load_symbol<T: Copy>(library: &Library, name: &[u8]) -> Result<T, RuntimeError> {
@@ -4007,6 +4610,8 @@ mod platform {
     #[derive(Clone)]
     pub(super) struct PlatformBuffer;
 
+    pub(super) struct PlatformGraphExec;
+
     pub(super) struct PlatformSubmission;
 
     pub(super) struct ConfiguredBackend;
@@ -4019,6 +4624,12 @@ mod platform {
         }
 
         pub(super) fn begin_submission(&self) -> Result<PlatformSubmission, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn begin_capture_submission(&self) -> Result<PlatformSubmission, RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "cuda runtime substrate currently requires Linux libcudart",
             )))
@@ -4125,6 +4736,20 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_matmul_f16_to_f32(
+            &mut self,
+            _left: &PlatformBuffer,
+            _right: &PlatformBuffer,
+            _output: &PlatformBuffer,
+            _rows: usize,
+            _inner: usize,
+            _cols: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
         pub(super) fn encode_quantized_matvec(
             &mut self,
             _weights: &PlatformBuffer,
@@ -4146,6 +4771,17 @@ mod platform {
             _rows: usize,
             _cols: usize,
             _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        pub(super) fn encode_cast_f32_to_f16(
+            &mut self,
+            _input: &PlatformBuffer,
+            _output: &PlatformBuffer,
+            _element_count: usize,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "cuda quantized text-generation kernels require Linux CUDA support",
@@ -4299,6 +4935,35 @@ mod platform {
         }
 
         #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode_rope_cache_f16_kv_graph(
+            &mut self,
+            _qkv: &PlatformBuffer,
+            _query_offset: usize,
+            _key_offset: usize,
+            _value_offset: usize,
+            _cache_keys: &PlatformBuffer,
+            _cache_values: &PlatformBuffer,
+            _cache_width: usize,
+            _layer_offset: usize,
+            _decode_params: &PlatformBuffer,
+            _sliding_window: usize,
+            _head_count: usize,
+            _kv_head_count: usize,
+            _head_dim: usize,
+            _rotary_dim: usize,
+            _freq_scale: f32,
+            _ext_factor: f32,
+            _corr_dims: [f32; 2],
+            _theta_scale: f32,
+            _attention_sinks: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_attention_decode(
             &mut self,
             _query: &PlatformBuffer,
@@ -4427,6 +5092,26 @@ mod platform {
 
         pub(super) fn commit(
             self,
+            _wait: CudaCommandWait,
+        ) -> Result<CudaCommandStatus, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn commit_captured(
+            self,
+            _wait: CudaCommandWait,
+        ) -> Result<(CudaCommandStatus, PlatformGraphExec), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+    }
+
+    impl PlatformGraphExec {
+        pub(super) fn launch(
+            &self,
             _wait: CudaCommandWait,
         ) -> Result<CudaCommandStatus, RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -4738,6 +5423,37 @@ mod tests {
             .ok_or("missing cuda dense output")?;
         assert_eq!(output.read_f32()?, vec![1.5, 2.5]);
         assert_eq!(result.metrics.steps_executed, 5);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_f16_rhs_matmul_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+
+        let mut left = backend.f16_buffer(2)?;
+        let mut left_bytes = Vec::new();
+        for value in [1.0_f32, 2.0] {
+            left_bytes.extend_from_slice(&f32_to_f16_bits(value).to_le_bytes());
+        }
+        left.write_bytes(left_bytes.as_slice())?;
+        let mut right = backend.f16_buffer(4)?;
+        let mut right_bytes = Vec::new();
+        for value in [1.0_f32, 2.0, 3.0, 4.0] {
+            right_bytes.extend_from_slice(&f32_to_f16_bits(value).to_le_bytes());
+        }
+        right.write_bytes(right_bytes.as_slice())?;
+        let output = backend.f32_buffer(2)?;
+
+        let mut submission = backend.begin_submission()?;
+        submission.matmul_f16_to_f32(&left, &right, &output, 1, 2, 2)?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.status, CudaCommandStatus::Completed);
+        assert_eq!(output.read_f32()?, vec![7.0, 10.0]);
         Ok(())
     }
 
