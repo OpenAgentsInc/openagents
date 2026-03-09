@@ -15,19 +15,28 @@
 > where `#3242` through `#3246` are closed and `#3249` / `#3247` / `#3248`
 > remain open, and after the latest live benchmark plus deeper
 > llama.cpp-alignment checkpoint showing that Psionic now runs the exact
-> GPT-OSS HTTP lane in the low-90s tok/s on this RTX 4080 host after
+> GPT-OSS HTTP lane at about `92.32 tok/s` on this RTX 4080 host after
 > trimming the default OpenAI/Harmony hot path, with the MXFP4 correctness
 > fixes, expanded `Q8_1` fast-path routing, per-request CUDA graph replay, the
 > new CUDA-side shared-prefix residency, prompt-token reuse on the HTTP lane,
 > safe cross-request decode-graph reuse keyed to the actual shared KV device
 > allocations, default opt-in-only debug-field serialization, and the newer
 > exact-prompt shared-prefix fast paths that avoid cloning full prompt-logit
-> ladders and unchanged prompt caches on repeated requests landed; the
-> last clean same-machine `llama.cpp` oracle remains about `167 tok/s`, while a
-> newer control rerun was invalidated because an
-> external `dota2` process consumed enough GPU memory to force `llama.cpp` into
-> a `0`-layer CUDA offload path. The remaining gap is still concentrated in
-> `llama.cpp`-class graph update, flash attention, and MMQ/MMID kernel quality.
+> ladders and unchanged prompt caches on repeated requests landed, and after
+> explicitly ruling out two plausible but losing follow-ups: q8_0 projection
+> `f16` mirrors routed through cuBLAS tensor-op GEMV regressed into the
+> mid-80s tok/s, and swapping the GPT-OSS `selected_count = 4` custom MoE path
+> for the simpler direct per-expert MMVQ/atomic route also failed to beat the
+> current decode lane. The current same-moment `llama.cpp` oracle on this host
+> is about `166.46 tok/s`. The external `dota2` process is still resident on
+> the GPU with about `2.1 GiB`, so the requested `>190 tok/s` target cannot be
+> honestly validated on this host state until that competing workload is gone.
+> The remaining gap is now concentrated even more tightly in the exact
+> llama.cpp CUDA kernels and dispatch policy Psionic still does not match:
+> ids-enabled `mul_mat_vec_q` behavior for GPT-OSS MoE decode, greedy logits
+> selection without unnecessary full-logit materialization, and any relevant
+> backend-side layout transforms implied by llama.cpp's reported `REPACK = 1`
+> state.
 >
 > This is the live roadmap for `crates/psionic/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -52,15 +61,13 @@
 > contract still shows a large remaining gap. `llama.cpp` serves the timed
 > request with a live prompt cache hit (`prompt eval time = 0.30 ms / 1 token`)
 > and Psionic now keeps a reusable CUDA shared-prefix mirror too, but the last
-> clean direct comparison still sits at roughly `86.95 tok/s` for Psionic
-> versus `167.11 tok/s` for `llama.cpp`. The latest request-path follow-up moves
-> the current Psionic checkpoint to about `92 tok/s`, but that is still only
-> a marginal gain and does not change the core diagnosis. A newer `llama.cpp`
-> rerun on this host
-> was invalid because an external `dota2` process consumed enough VRAM to force
-> `0` repeating layers onto CUDA. The next work should still bias toward
-> `llama.cpp`'s MMQ/MMID execution path, graph update, and flash attention
-> rather than only more small local kernel fusions.
+> direct comparison now sits at about `92.32 tok/s` for Psionic versus
+> `166.46 tok/s` for `llama.cpp` on this machine state. Two more follow-up
+> experiments are now explicitly ruled out on this exact workload: q8_0
+> projection `f16` mirrors through cuBLAS and a direct per-expert replacement
+> for the `selected_count = 4` custom MoE kernels. The next work should now
+> bias toward a more literal port of llama.cpp's ids-enabled MMVQ path and
+> greedy-logits decode behavior, not more speculative local substitutions.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the

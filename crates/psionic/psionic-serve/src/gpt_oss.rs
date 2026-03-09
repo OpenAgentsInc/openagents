@@ -1,5 +1,6 @@
 use std::{
     cmp::Ordering,
+    env,
     path::Path,
     sync::{Arc, Mutex},
     time::Instant,
@@ -41,6 +42,12 @@ const GPT_OSS_YARN_BETA_FAST: f32 = 32.0;
 const GPT_OSS_YARN_BETA_SLOW: f32 = 1.0;
 const GPT_OSS_CPU_BACKEND: &str = "cpu";
 const GPT_OSS_CUDA_BACKEND: &str = "cuda";
+
+fn decode_graph_fast_path_enabled() -> bool {
+    env::var("PSIONIC_GPT_OSS_DISABLE_CUDA_GRAPHS")
+        .map(|value| value != "1")
+        .unwrap_or(true)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CudaStepOutputMode {
@@ -2186,8 +2193,9 @@ impl GptOssCudaModelInner {
         plan.decode_params_host_buffer.write_i32(&decode_params)?;
         perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(8);
 
-        let use_decode_graph_fast_path =
-            output_mode == CudaStepOutputMode::DeviceArgmax && !materialize_host_kv;
+        let use_decode_graph_fast_path = decode_graph_fast_path_enabled()
+            && output_mode == CudaStepOutputMode::DeviceArgmax
+            && !materialize_host_kv;
         let decode_graph_cache_identity = Some((
             cuda_cache.key_buffer.allocation_identity(),
             cuda_cache.value_buffer.allocation_identity(),
