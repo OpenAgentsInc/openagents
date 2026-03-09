@@ -143,7 +143,7 @@ impl Button {
 
         let text = self.style.text_color.unwrap_or_else(|| match self.variant {
             ButtonVariant::Primary => theme::text::PRIMARY,
-            ButtonVariant::Danger => Hsla::new(0.0, 0.0, 1.0, 1.0),
+            ButtonVariant::Danger => theme::theme().colors.text_on_accent,
             ButtonVariant::Secondary | ButtonVariant::Ghost => theme::text::PRIMARY,
         });
 

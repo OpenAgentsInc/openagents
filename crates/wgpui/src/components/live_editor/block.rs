@@ -327,14 +327,14 @@ pub fn header_font_scale(level: u8) -> f32 {
 }
 
 /// Get color for code background
-#[allow(dead_code)] // Will be used for code block backgrounds
+#[allow(dead_code)]
 pub fn code_background_color() -> Hsla {
-    Hsla::new(0.0, 0.0, 0.15, 1.0)
+    crate::theme::theme().colors.code
 }
 
 /// Get color for inline code background
 pub fn inline_code_background() -> Hsla {
-    Hsla::new(0.0, 0.0, 0.2, 1.0)
+    crate::theme::theme().colors.overlay
 }
 
 /// Strip markdown header prefix (# symbols and space)

@@ -1,7 +1,7 @@
 use crate::animation::{AnimatorState, AnimatorTiming, Easing};
 use crate::components::context::PaintContext;
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad};
+use crate::{Bounds, Hsla, InputEvent, Quad, theme};
 
 use super::backgrounds::BackgroundAnimator;
 
@@ -53,7 +53,7 @@ impl DotsGrid {
     pub fn new() -> Self {
         Self {
             id: None,
-            color: Hsla::new(0.0, 0.0, 0.4, 1.0),
+            color: theme::text::MUTED,
             shape: DotShape::Box,
             distance: 30.0,
             size: 2.0,

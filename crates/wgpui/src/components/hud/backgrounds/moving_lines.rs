@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::animation::{AnimatorState, AnimatorTiming, Easing};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad, Size};
+use crate::{Bounds, Hsla, InputEvent, Quad, Size, theme};
 
 use super::BackgroundAnimator;
 
@@ -43,7 +43,7 @@ impl MovingLinesBackground {
             id: None,
             spacing: 80.0,
             line_width: 1.0,
-            color: Hsla::new(0.0, 0.0, 1.0, 0.08),
+            color: theme::accent::PRIMARY.with_alpha(0.08),
             sets: 5,
             seed: 1,
             direction: LineDirection::Up,

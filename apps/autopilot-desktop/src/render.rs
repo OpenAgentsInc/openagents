@@ -7,7 +7,7 @@ use wgpui::components::Text;
 use wgpui::components::hud::{Command, CommandPalette, DotShape, DotsGrid, DotsOrigin};
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, Component, Easing, Hsla, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem,
+    Bounds, Component, Easing, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem,
     theme,
 };
 use winit::event_loop::ActiveEventLoop;
@@ -695,10 +695,13 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         SIDEBAR_HANDLE_ICON_SIZE,
         SIDEBAR_HANDLE_ICON_SIZE,
     );
-    scene.draw_svg(SvgQuad::new(
-        handle_bounds,
-        std::sync::Arc::<[u8]>::from(SIDEBAR_HANDLE_SVG_RAW.as_bytes()),
-    ));
+    scene.draw_svg(
+        SvgQuad::new(
+            handle_bounds,
+            std::sync::Arc::<[u8]>::from(SIDEBAR_HANDLE_SVG_RAW.as_bytes()),
+        )
+        .with_tint(theme::accent::PRIMARY),
+    );
 
     // Animate tooltip: quick fade-in, immediate disappear on mouse-out.
     if state.sidebar.settings_hover {
@@ -712,7 +715,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         let mut paint = PaintContext::new(&mut scene, &mut state.text_system, state.scale_factor);
 
         let mut dots_grid = DotsGrid::new()
-            .color(Hsla::new(0.0, 0.0, 0.30, 0.26))
+            .color(theme::text::MUTED.with_alpha(0.26))
             .shape(DotShape::Cross)
             .distance(GRID_DOT_DISTANCE)
             .size(5.0)
@@ -1075,10 +1078,13 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             OPENAGENTS_BRAND_ICON_SIZE,
             OPENAGENTS_BRAND_ICON_SIZE,
         );
-        paint.scene.draw_svg(SvgQuad::new(
-            wallet_icon_bounds,
-            std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
-        ));
+        paint.scene.draw_svg(
+            SvgQuad::new(
+                wallet_icon_bounds,
+                std::sync::Arc::<[u8]>::from(OPENAGENTS_LOGO_SVG_RAW.as_bytes()),
+            )
+            .with_tint(theme::accent::PRIMARY),
+        );
         paint.scene.draw_text(paint.text.layout_mono(
             &wallet_chip_label,
             Point::new(wallet_icon_bounds.max_x() + icon_text_gap, center_y - 7.0),
@@ -1137,7 +1143,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
 
             // Downward caret at bottom-right of tooltip
             let caret_svg = format!(
-                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{s}" height="{h}" viewBox="0 0 {s} {h}"><polygon points="0,0 {s},0 {mid},{h}" fill="#1A1A1A"/></svg>"##,
+                r##"<svg xmlns="http://www.w3.org/2000/svg" width="{s}" height="{h}" viewBox="0 0 {s} {h}"><polygon points="0,0 {s},0 {mid},{h}" fill="#FFFFFF"/></svg>"##,
                 s = (caret_size * 2.0) as i32,
                 h = caret_size as i32,
                 mid = caret_size as i32,

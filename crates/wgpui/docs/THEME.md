@@ -1,6 +1,6 @@
 # wgpui Theme System
 
-Last verified: 2026-02-26  
+Last verified: 2026-03-09  
 Owner lane: `owner:runtime`
 
 The theme system provides centralized color management for the entire UI. All colors must go through the theme system to ensure consistency and enable future theme switching.
@@ -16,7 +16,7 @@ fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
     // Use semantic colors
     let bg = colors.background;      // Main app background
     let text = colors.text;          // Primary text
-    let accent = colors.accent;      // Primary accent (yellow)
+    let accent = colors.accent;      // Primary accent (Arcade cyan)
 
     // Draw with theme colors
     cx.scene.draw_quad(
@@ -32,27 +32,27 @@ fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
 
 | Color | Purpose | Midnight Theme |
 |-------|---------|----------------|
-| `background` | Main app background | Pure black (#000000) |
-| `surface` | Cards, panels | Dark gray (#0d0d0d) |
-| `elevated` | Modals, popovers | Slightly lighter (#141414) |
-| `hover` | Hover states | (#1f1f1f) |
-| `selected` | Selected items | (#262626) |
+| `background` | Main app background | Arcade almost-black (#030303) |
+| `surface` | Cards, panels | True black (#000000) |
+| `elevated` | Elevated panels | Deep cyan-black (#083344) |
+| `hover` | Hover states | Cyan dark (#164e63) |
+| `selected` | Selected items | Cyan mid-dark (#155e75) |
 
 ### Text
 
 | Color | Purpose | Midnight Theme |
 |-------|---------|----------------|
 | `text` | Primary text | Pure white (#ffffff) |
-| `text_muted` | Secondary/muted text | Light gray (#b3b3b3) |
-| `text_disabled` | Disabled text | Medium gray (#666666) |
-| `text_accent` | Accent text, links | Yellow |
+| `text_muted` | Secondary/muted text | Arcade gray (#7B7C7F) |
+| `text_disabled` | Disabled text | Cyan dark (#155e75) |
+| `text_accent` | Accent text, links | Cyan (#22d3ee) |
 
 ### Borders
 
 | Color | Purpose | Midnight Theme |
 |-------|---------|----------------|
-| `border` | Default borders | (#333333) |
-| `border_focused` | Focused element borders | Yellow 50% |
+| `border` | Default borders | Cyan dark (#164e63) |
+| `border_focused` | Focused element borders | Cyan (#22d3ee) |
 | `border_transparent` | Subtle separators | Very subtle |
 
 ### Status
@@ -62,14 +62,14 @@ fn paint(&mut self, bounds: Bounds, cx: &mut PaintContext) {
 | `success` | Success states | Green |
 | `warning` | Warning states | Yellow |
 | `error` | Error states | Red |
-| `info` | Info states | Blue |
+| `info` | Info states | Cyan |
 
 ### Accents
 
 | Color | Purpose | Midnight Theme |
 |-------|---------|----------------|
-| `accent` | Primary accent | Bloomberg yellow (#FFB400) |
-| `accent_hover` | Accent hover state | Slightly lighter yellow |
+| `accent` | Primary accent | Arcade cyan (#22d3ee) |
+| `accent_hover` | Accent hover state | Strong cyan (#06b6d4) |
 
 ## Color Modifiers
 
@@ -113,10 +113,10 @@ Hardcoded colors are only allowed in:
 ### Midnight (Default)
 
 The "Midnight" theme features:
-- Pure black background for maximum contrast
+- Arcade-style black foundations
 - Pure white text for readability
-- Bloomberg-style yellow accents
-- Semantic status colors (green/yellow/red/blue)
+- Cyan borders, fills, and focus states
+- Semantic success/warning/error colors preserved for truthful UI state
 
 ### Adding a New Theme
 

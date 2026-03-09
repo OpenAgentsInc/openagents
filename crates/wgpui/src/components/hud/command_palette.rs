@@ -2,14 +2,10 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult, TextInput};
 use crate::input::{Key, NamedKey};
 use crate::text::FontStyle;
-use crate::{Bounds, Hsla, InputEvent, Point, Quad, theme};
+use crate::{Bounds, InputEvent, Point, Quad, theme};
 
 type CommandSelectHandler = Box<dyn FnMut(&Command) + 'static>;
 type CommandCloseHandler = Box<dyn FnMut() + 'static>;
-
-const COMMAND_PALETTE_BG: Hsla = Hsla::new(0.0, 0.0, 0.102, 0.98);
-const COMMAND_PALETTE_INPUT_BG: Hsla = Hsla::new(0.0, 0.0, 0.063, 1.0);
-const COMMAND_PALETTE_SELECTION_BG: Hsla = Hsla::new(0.0, 0.0, 0.16, 1.0);
 
 #[derive(Clone, Debug)]
 pub struct Command {
@@ -70,7 +66,9 @@ impl CommandPalette {
             filtered_commands: Vec::new(),
             search_input: TextInput::new()
                 .placeholder("Type a command...")
-                .background(COMMAND_PALETTE_INPUT_BG),
+                .background(theme::theme().colors.overlay)
+                .border_color(theme::border::DEFAULT)
+                .border_color_focused(theme::border::FOCUS),
             selected_index: 0,
             is_open: false,
             max_visible_items: 8,
@@ -253,7 +251,7 @@ impl Component for CommandPalette {
 
         // Semi-transparent backdrop
         cx.scene
-            .draw_quad(Quad::new(bounds).with_background(Hsla::new(0.0, 0.0, 0.0, 0.7)));
+            .draw_quad(Quad::new(bounds).with_background(theme::theme().colors.overlay_scrim));
 
         let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
         let input_height = 48.0;
@@ -271,7 +269,7 @@ impl Component for CommandPalette {
 
         cx.scene.draw_quad(
             Quad::new(palette_bounds)
-                .with_background(COMMAND_PALETTE_BG)
+                .with_background(theme::bg::SURFACE)
                 .with_border(theme::border::DEFAULT, 1.0),
         );
 
@@ -295,7 +293,7 @@ impl Component for CommandPalette {
                 if is_selected {
                     cx.scene.draw_quad(
                         Quad::new(item_bounds)
-                            .with_background(COMMAND_PALETTE_SELECTION_BG)
+                            .with_background(theme::bg::HOVER)
                             .with_border(theme::border::DEFAULT, 1.0),
                     );
                 }

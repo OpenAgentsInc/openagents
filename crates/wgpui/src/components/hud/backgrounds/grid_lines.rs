@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::animation::{AnimatorState, AnimatorTiming, Easing};
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad};
+use crate::{Bounds, Hsla, InputEvent, Quad, theme};
 
 use super::BackgroundAnimator;
 
@@ -26,7 +26,7 @@ impl GridLinesBackground {
             id: None,
             spacing: 50.0,
             line_width: 1.0,
-            color: Hsla::new(0.0, 0.0, 1.0, 0.1),
+            color: theme::accent::PRIMARY.with_alpha(0.1),
             horizontal: true,
             vertical: true,
             horizontal_dash: vec![4.0],

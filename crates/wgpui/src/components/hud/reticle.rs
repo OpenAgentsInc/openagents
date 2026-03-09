@@ -1,6 +1,6 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad};
+use crate::{Bounds, Hsla, InputEvent, Quad, theme};
 
 pub struct Reticle {
     id: Option<ComponentId>,
@@ -17,7 +17,7 @@ impl Reticle {
     pub fn new() -> Self {
         Self {
             id: None,
-            color: Hsla::new(190.0, 0.6, 0.6, 0.85),
+            color: theme::theme().colors.glow.with_alpha(0.85),
             thickness: 2.0,
             gap: 6.0,
             line_length: 28.0,

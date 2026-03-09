@@ -1,6 +1,6 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad};
+use crate::{Bounds, Hsla, InputEvent, Quad, theme};
 
 /// A multi-bar vertical level indicator (like WiFi strength).
 ///
@@ -23,8 +23,8 @@ impl SignalMeter {
             gap: 4.0,
             level: 0.6,
             min_bar_height: 0.2,
-            active_color: Hsla::new(190.0, 0.8, 0.6, 0.9),
-            inactive_color: Hsla::new(190.0, 0.3, 0.3, 0.4),
+            active_color: theme::accent::PRIMARY.with_alpha(0.9),
+            inactive_color: theme::bg::ELEVATED.with_alpha(0.7),
         }
     }
 

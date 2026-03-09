@@ -1,7 +1,7 @@
 use crate::animation::{Animation, AnimationController, AnimatorState, AnimatorTiming, Easing};
 use crate::components::context::PaintContext;
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad};
+use crate::{Bounds, Hsla, InputEvent, Quad, theme};
 use std::time::Duration;
 
 /// Frame style variants inspired by Arwes sci-fi UI framework
@@ -102,9 +102,9 @@ impl Frame {
         Self {
             id: None,
             style: FrameStyle::Corners,
-            line_color: Hsla::new(180.0, 0.8, 0.6, 1.0),
-            bg_color: Hsla::new(180.0, 0.3, 0.1, 0.3),
-            glow_color: None,
+            line_color: theme::accent::PRIMARY,
+            bg_color: theme::theme().colors.overlay,
+            glow_color: Some(theme::theme().colors.glow.with_alpha(0.45)),
             border_color: None,
             stroke_width: 2.0,
             corner_length: 20.0,
