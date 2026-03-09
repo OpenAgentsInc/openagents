@@ -4190,7 +4190,8 @@ mod tests {
         let generation_digest = digest_generation_request(&generation_request);
 
         embedding_request.model.weights.digest = String::from("different-embedding-bundle");
-        generation_request.model.weights.quantization = psionic_serve::QuantizationMode::Int8Symmetric;
+        generation_request.model.weights.quantization =
+            psionic_serve::QuantizationMode::Int8Symmetric;
 
         assert_ne!(
             digest_embedding_request(&embedding_request),

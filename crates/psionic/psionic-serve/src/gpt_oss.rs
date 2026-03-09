@@ -21,14 +21,15 @@ use psionic_runtime::{
 use sha2::{Digest, Sha256};
 
 use super::{
-    BackendHealthTracker, CompiledWordGenerationModel, DecoderModelDescriptor,
-    GenerationEventStream, GenerationModelHandle, GenerationResponse, GenerationStreamEvent,
-    GenerationStreamStatus, GenerationStreamTerminal, GgufDecoderAdapterLoader, GgufDecoderFamily,
-    GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics,
-    InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore, LoadedModelRegistryError,
-    LoadedModelView, LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError,
-    QuantizationMode, ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor,
-    TokenId, TokenSequence, TokenizerBoundary, current_time_millis, default_prefix_cache_policy,
+    BackendHealthTracker, CompiledWordGenerationModel, DecodeStrategy, DecoderModelDescriptor,
+    GenerationEventStream, GenerationModelHandle, GenerationOptions, GenerationResponse,
+    GenerationStreamEvent, GenerationStreamStatus, GenerationStreamTerminal,
+    GgufDecoderAdapterLoader, GgufDecoderFamily, GgufDecoderFamilyMetadata,
+    GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
+    InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
+    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
+    ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
+    TokenSequence, TokenizerBoundary, current_time_millis, default_prefix_cache_policy,
     generation_runtime_observability, prefix_compatibility, run_generation_request,
 };
 use thiserror::Error;
@@ -40,8 +41,21 @@ const GPT_OSS_YARN_BETA_SLOW: f32 = 1.0;
 const GPT_OSS_CPU_BACKEND: &str = "cpu";
 const GPT_OSS_CUDA_BACKEND: &str = "cuda";
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CudaStepOutputMode {
+    FullLogits,
+    DeviceArgmax,
+}
+
 fn duration_ns(start: Instant) -> u64 {
     start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX)
+}
+
+fn can_use_cuda_argmax_fast_path(options: &GenerationOptions) -> bool {
+    options.decode_strategy == DecodeStrategy::Greedy
+        && options.repeat_penalty.is_none()
+        && options.presence_penalty.is_none()
+        && options.frequency_penalty.is_none()
 }
 
 fn accumulate_cuda_matvec_stats(
@@ -631,6 +645,7 @@ fn run_cuda_generation_request(
         let mut plan_cache_misses = 0usize;
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let mut decode_step_plan = None;
+        let use_cuda_argmax_fast_path = can_use_cuda_argmax_fast_path(&request.options);
         let mut cache = if shared_prefix_eligible {
             let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
             prefix_state = lookup.state;
@@ -688,6 +703,7 @@ fn run_cuda_generation_request(
                         String::from("missing cuda gpt-oss decode-step plan"),
                     ))
                 })?,
+                CudaStepOutputMode::FullLogits,
                 shared_prefix_eligible || request.session_id.is_some(),
             );
             let step = step?;
@@ -739,6 +755,11 @@ fn run_cuda_generation_request(
                         String::from("missing cuda gpt-oss decode-step plan"),
                     ))
                 })?,
+                if use_cuda_argmax_fast_path {
+                    CudaStepOutputMode::DeviceArgmax
+                } else {
+                    CudaStepOutputMode::FullLogits
+                },
                 request.session_id.is_some(),
             );
             let step = step?;
@@ -760,10 +781,14 @@ fn run_cuda_generation_request(
                 break super::TerminationReason::EndOfSequence;
             }
 
-            last_logits = step.logits;
-            pending_token = sampler
-                .select_next_token_from_history(&last_logits, &token_history)
-                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            if let Some(token) = step.selected_token {
+                pending_token = token;
+            } else {
+                last_logits = step.logits;
+                pending_token = sampler
+                    .select_next_token_from_history(&last_logits, &token_history)
+                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            }
         };
 
         if shared_prefix_eligible {
@@ -1291,7 +1316,6 @@ struct GptOssCudaModelInner {
 
 #[derive(Clone, Debug)]
 struct GptOssCudaStepPlanLayer {
-    residual_buffer: CudaBuffer,
     hidden_norm_buffer: CudaBuffer,
     qkv_buffer: CudaBuffer,
     attention_buffer: CudaBuffer,
@@ -1312,6 +1336,7 @@ struct GptOssCudaStepPlan {
     layers: Vec<GptOssCudaStepPlanLayer>,
     final_norm_buffer: CudaBuffer,
     logits_buffer: CudaBuffer,
+    next_token_buffer: CudaBuffer,
 }
 
 impl GptOssCudaModelInner {
@@ -1384,7 +1409,6 @@ impl GptOssCudaModelInner {
             let activated_q8_1_bytes = ggml_q8_1_storage_bytes(selected_count, gate_rows)
                 .map_err(ReferenceTextGenerationError::Runtime)?;
             layers.push(GptOssCudaStepPlanLayer {
-                residual_buffer: backend.f32_buffer(hidden_size)?,
                 hidden_norm_buffer: backend.f32_buffer(hidden_size)?,
                 qkv_buffer: backend.f32_buffer(layer.attention_qkv_weight.total_rows())?,
                 attention_buffer: backend.f32_buffer(layer.attention_output_weight.columns)?,
@@ -1406,6 +1430,7 @@ impl GptOssCudaModelInner {
             layers,
             final_norm_buffer: backend.f32_buffer(hidden_size)?,
             logits_buffer: backend.f32_buffer(self.output.rows)?,
+            next_token_buffer: backend.byte_buffer(&vec![0_u8; std::mem::size_of::<i32>()])?,
         })
     }
 
@@ -1416,6 +1441,7 @@ impl GptOssCudaModelInner {
         position: usize,
         cuda_cache: &mut CudaKvCacheMirror,
         plan: &mut GptOssCudaStepPlan,
+        output_mode: CudaStepOutputMode,
         materialize_host_kv: bool,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
         let hidden_size = self.descriptor.config.hidden_size;
@@ -1484,7 +1510,6 @@ impl GptOssCudaModelInner {
             }
 
             let layer_start = Instant::now();
-            submission.copy_buffer(current_hidden, &layer_plan.residual_buffer)?;
             submission.rms_norm(
                 current_hidden,
                 &layer.attention_norm_device,
@@ -1628,10 +1653,9 @@ impl GptOssCudaModelInner {
             submission.add_f32_in_place(
                 &layer_plan.projected_buffer,
                 0,
-                &layer_plan.residual_buffer,
+                current_hidden,
                 hidden_size,
             )?;
-            submission.copy_buffer(&layer_plan.projected_buffer, &layer_plan.residual_buffer)?;
             submission.rms_norm(
                 &layer_plan.projected_buffer,
                 &layer.feed_forward_norm_device,
@@ -1725,7 +1749,7 @@ impl GptOssCudaModelInner {
             submission.add_f32_in_place(
                 &layer_plan.moe_buffer,
                 0,
-                &layer_plan.residual_buffer,
+                &layer_plan.projected_buffer,
                 hidden_size,
             )?;
             let layer_ns = duration_ns(layer_start);
@@ -1793,14 +1817,45 @@ impl GptOssCudaModelInner {
                 &plan.logits_buffer,
             )?;
         }
-        let submission_report = submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
-        let logits_values = plan.logits_buffer.read_f32()?;
-        let logits_readback_bytes = self
-            .output
-            .rows
-            .saturating_mul(std::mem::size_of::<f32>())
-            .try_into()
-            .unwrap_or(u64::MAX);
+        if output_mode == CudaStepOutputMode::DeviceArgmax {
+            submission.argmax_f32(
+                &plan.logits_buffer,
+                1,
+                self.output.rows,
+                &plan.next_token_buffer,
+            )?;
+        }
+        let submission_report =
+            submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+        let (logits_values, selected_token, logits_readback_bytes) = match output_mode {
+            CudaStepOutputMode::FullLogits => (
+                plan.logits_buffer.read_f32()?,
+                None,
+                self.output
+                    .rows
+                    .saturating_mul(std::mem::size_of::<f32>())
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            CudaStepOutputMode::DeviceArgmax => {
+                let bytes = plan.next_token_buffer.read_bytes()?;
+                let token = i32::from_ne_bytes(bytes[..4].try_into().map_err(|_| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                        String::from("cuda argmax returned an invalid token buffer"),
+                    ))
+                })?);
+                let token = u32::try_from(token).map(TokenId).map_err(|_| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                        "cuda argmax returned a negative token id {token}",
+                    )))
+                })?;
+                (
+                    Vec::new(),
+                    Some(token),
+                    std::mem::size_of::<i32>().try_into().unwrap_or(u64::MAX),
+                )
+            }
+        };
         cuda_cache.len = cache_write_index.saturating_add(1);
         accumulate_cuda_submission_report(&mut perf, &submission_report, 0, logits_readback_bytes);
         perf.stage_timings.logits_projection_ns = perf
@@ -1826,6 +1881,7 @@ impl GptOssCudaModelInner {
             key: cache_key,
             value: cache_value,
             logits: logits_values,
+            selected_token,
             kernel_count,
             bytes_moved,
             perf: Some(perf),
@@ -2093,6 +2149,7 @@ impl GptOssCudaModelInner {
             key: cache_key,
             value: cache_value,
             logits,
+            selected_token: None,
             kernel_count,
             bytes_moved,
             perf: Some(perf),
@@ -2536,6 +2593,7 @@ impl GptOssCpuModelInner {
             key: cache_key,
             value: cache_value,
             logits,
+            selected_token: None,
             kernel_count,
             bytes_moved,
             perf: None,
@@ -3270,6 +3328,7 @@ struct GptOssForwardStep {
     key: Vec<f32>,
     value: Vec<f32>,
     logits: Vec<f32>,
+    selected_token: Option<TokenId>,
     kernel_count: usize,
     bytes_moved: u64,
     perf: Option<GptOssPerformanceMetrics>,

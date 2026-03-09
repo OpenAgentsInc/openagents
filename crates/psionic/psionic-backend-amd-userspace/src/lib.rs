@@ -860,7 +860,8 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[test]
-    fn amd_userspace_report_is_self_consistent_on_linux() -> Result<(), psionic_runtime::RuntimeError> {
+    fn amd_userspace_report_is_self_consistent_on_linux()
+    -> Result<(), psionic_runtime::RuntimeError> {
         let backend = AmdUserspaceBackend::new();
         let report = backend.discovery_report()?;
         let validation = validation_reference_for_backend_probe(backend.backend_name());

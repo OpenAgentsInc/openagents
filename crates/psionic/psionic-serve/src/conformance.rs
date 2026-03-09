@@ -2484,7 +2484,9 @@ fn compare_list_models(
 
 fn compare_show(baseline: &ShowObservation, candidate: &ShowObservation) -> Result<(), String> {
     let mut candidate = candidate.clone();
-    candidate.facts.retain(|key, _| !key.starts_with("psionic."));
+    candidate
+        .facts
+        .retain(|key, _| !key.starts_with("psionic."));
     if baseline == &candidate {
         Ok(())
     } else {
@@ -3602,7 +3604,9 @@ mod tests {
                     Some("151645")
                 );
                 assert_eq!(
-                    show.facts.get("psionic.catalog_surface").map(String::as_str),
+                    show.facts
+                        .get("psionic.catalog_surface")
+                        .map(String::as_str),
                     Some("ollama_compat_migration")
                 );
                 assert_eq!(
@@ -3612,11 +3616,15 @@ mod tests {
                     Some("ollama_compat_manifest_import")
                 );
                 assert_eq!(
-                    show.facts.get("psionic.serving_surface").map(String::as_str),
+                    show.facts
+                        .get("psionic.serving_surface")
+                        .map(String::as_str),
                     Some("ollama_compat_migration")
                 );
                 assert_eq!(
-                    show.facts.get("psionic.runtime_surface").map(String::as_str),
+                    show.facts
+                        .get("psionic.runtime_surface")
+                        .map(String::as_str),
                     Some("psionic_native")
                 );
                 assert!(!show.facts.contains_key("general.name"));
@@ -3691,11 +3699,15 @@ mod tests {
             Some("fixture")
         );
         assert_eq!(
-            show.facts.get("psionic.serving_surface").map(String::as_str),
+            show.facts
+                .get("psionic.serving_surface")
+                .map(String::as_str),
             Some("psionic_native")
         );
         assert_eq!(
-            show.facts.get("psionic.runtime_surface").map(String::as_str),
+            show.facts
+                .get("psionic.runtime_surface")
+                .map(String::as_str),
             Some("psionic_native")
         );
         assert!(!show.facts.contains_key("psionic.catalog_surface"));

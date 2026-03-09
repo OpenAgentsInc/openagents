@@ -2290,11 +2290,9 @@ impl GgufBlobArtifact {
                     message: String::from("ollama manifest does not carry a primary model layer"),
                 })?;
         let integrity = manifest.verify_integrity(options.clone());
-        if let Some(diagnostic) = integrity
-            .diagnostics
-            .iter()
-            .find(|diagnostic| diagnostic.layer_kind == Some(psionic_catalog::OllamaLayerKind::Model))
-        {
+        if let Some(diagnostic) = integrity.diagnostics.iter().find(|diagnostic| {
+            diagnostic.layer_kind == Some(psionic_catalog::OllamaLayerKind::Model)
+        }) {
             return Err(ModelLoadError::ArtifactRead {
                 path: layer.blob_path.display().to_string(),
                 message: format!(

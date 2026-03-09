@@ -11,9 +11,14 @@ use std::{
 
 pub use conformance::*;
 pub use gpt_oss::*;
+pub use openai_http::*;
 use psionic_backend_cpu::CpuBackend;
-use psionic_backend_cuda::{CudaBackend, EMBEDDINGS_SUPPORTED_OPS as CUDA_EMBEDDINGS_SUPPORTED_OPS};
-use psionic_backend_metal::{EMBEDDINGS_SUPPORTED_OPS, MetalBackend, TEXT_GENERATION_SUPPORTED_OPS};
+use psionic_backend_cuda::{
+    CudaBackend, EMBEDDINGS_SUPPORTED_OPS as CUDA_EMBEDDINGS_SUPPORTED_OPS,
+};
+use psionic_backend_metal::{
+    EMBEDDINGS_SUPPORTED_OPS, MetalBackend, TEXT_GENERATION_SUPPORTED_OPS,
+};
 use psionic_compiler::{CompileError, compile_graph};
 pub use psionic_core::QuantizationMode;
 use psionic_core::{DType, Device, Shape, TensorId};
@@ -48,7 +53,6 @@ use psionic_runtime::{
     SamplingPolicy, SamplingStrategy, ServedArtifactIdentity, TokenSampler,
     default_cache_invalidation_policy, plan_model_admission,
 };
-pub use openai_http::*;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;

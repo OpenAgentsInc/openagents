@@ -93,6 +93,7 @@ fn smoke_embeddings_empty_batch_returns_empty_success() -> Result<(), Box<dyn st
     Ok(())
 }
 
-fn cpu_backend_selection() -> Result<psionic_runtime::BackendSelection, psionic_runtime::RuntimeError> {
+fn cpu_backend_selection()
+-> Result<psionic_runtime::BackendSelection, psionic_runtime::RuntimeError> {
     CpuBackend::new().backend_selection(&["input", "constant", "matmul", "add"])
 }

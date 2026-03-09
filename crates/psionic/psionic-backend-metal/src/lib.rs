@@ -1725,9 +1725,11 @@ mod platform {
         let add = library
             .get_function("psionic_add", None)
             .map_err(|error| RuntimeError::Backend(format!("missing Metal add kernel: {error}")))?;
-        let matmul = library.get_function("psionic_matmul", None).map_err(|error| {
-            RuntimeError::Backend(format!("missing Metal matmul kernel: {error}"))
-        })?;
+        let matmul = library
+            .get_function("psionic_matmul", None)
+            .map_err(|error| {
+                RuntimeError::Backend(format!("missing Metal matmul kernel: {error}"))
+            })?;
 
         Ok(DensePipelines {
             add: device
@@ -1985,7 +1987,8 @@ mod platform {
         })
     }
 
-    pub(super) fn discovery_report() -> Result<MetalDiscoveryReport, psionic_runtime::RuntimeError> {
+    pub(super) fn discovery_report() -> Result<MetalDiscoveryReport, psionic_runtime::RuntimeError>
+    {
         Ok(MetalDiscoveryReport {
             devices: Vec::new(),
             health: RuntimeHealth {

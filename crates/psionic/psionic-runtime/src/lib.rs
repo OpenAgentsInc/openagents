@@ -5,12 +5,12 @@ mod validation;
 
 use std::collections::{BTreeMap, VecDeque};
 
+pub use parity::*;
 use psionic_core::{
     BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
     TensorId, TensorSpec,
 };
 use psionic_ir::ExecutionPlan;
-pub use parity::*;
 use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -5804,7 +5804,11 @@ mod tests {
     -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("cuda"),
-            device: Device::new(psionic_core::DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device: Device::new(
+                psionic_core::DeviceKind::Cuda,
+                0,
+                Some(String::from("cuda:0")),
+            ),
             device_name: Some(String::from("NVIDIA GeForce RTX 4080")),
             supported_dtypes: vec![DType::F32],
             supported_quantization: Vec::new(),

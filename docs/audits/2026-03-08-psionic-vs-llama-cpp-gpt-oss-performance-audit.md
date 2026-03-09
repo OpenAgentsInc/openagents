@@ -60,15 +60,15 @@
 ### Current checkpoint
 
 - Psionic:
-  - `37` completion tokens in `1.037s`
-  - `35.70 tok/s`
+  - `37` completion tokens in `1.049s`
+  - `35.26 tok/s`
 - `llama.cpp`:
-  - `42` completion tokens in `0.249s`
-  - `168.53 tok/s`
+  - `42` completion tokens in `0.251s`
+  - `167.27 tok/s`
 - Gap:
-  - `4.72x`
+  - `4.74x`
 - Psionic improvement over original baseline:
-  - `2.13x`
+  - `2.11x`
 
 The visible output text matched exactly in the current benchmark:
 
@@ -87,227 +87,286 @@ The current Psionic checkpoint added:
 - a single CUDA submission per generated token instead of one submission per
   layer plus a separate logits submission
 - `Q8_1` scratch quantization plus `Q8_0 x Q8_1` fast-path kernels
+- a direct MMVQ-style warp-scheduled matvec port for the `Q8_0` and `MXFP4`
+  logits/projection path
+- a CUDA argmax fast path for the greedy decode lane
+- removal of two explicit residual-buffer copies from the steady-state decode
+  token path
 - CUDA build tuning in `psionic-backend-cuda/build.rs`:
   - `-O3`
   - `--use_fast_math`
   - architecture detection from `CUDAARCHS`, `PSI_CUDA_ARCH`, or `nvidia-smi`
 
-Two correctness fixes were also necessary before the faster path was usable:
+Three correctness fixes were also necessary before the faster path was usable:
 
 - GGML `Q8_1` block size had to be corrected to `36` bytes, not `34`
 - `Q8_1` scratch sizing had to be widened to the maximum actual projection
   width, not just hidden size
+- CUDA argmax shared scratch had to be sized for the maximum possible warp count
+  per block, not only the original narrow-row case
 
-That work is why Psionic moved from `16.74 tok/s` to `35.70 tok/s` without changing
+That work is why Psionic moved from `16.74 tok/s` to `35.26 tok/s` without changing
 the benchmark contract or delegating execution to `llama.cpp`.
 
 ## Current Hard Evidence From The Psionic Benchmark
 
-The Psionic benchmark receipt for the timed request currently reports:
+The latest Psionic benchmark receipt for the timed request reports:
 
 - `step_count = 37`
 - `layer_visit_count = 888`
 - `host_to_device_bytes = 426240`
-- `device_to_host_bytes = 29761024`
+- `device_to_host_bytes = 148`
 - `submission_count = 37`
 - `sync_count = 37`
-- `kernel_launches = 17871`
+- `kernel_launches = 16132`
 
 Important interpretation:
 
 - the execution-boundary work helped a lot
   - decode is down to one submission and one sync per generated token
 - host-to-device traffic is no longer the main problem
-  - only about `11.5 KB` per token in the timed lane
-- device-to-host traffic is still dominated by full logits readback
-  - about `804 KB` per token
+  - about `11.5 KB` per token in the timed lane
+- full-logits readback is no longer the dominant problem either
+  - the greedy lane now reads back only one token ID per step
 - kernel launch count is still very high
-  - about `483` launched operations per generated token
+  - about `436` launched operations per generated token
+- throughput barely changed after removing almost all logits readback
+  - that is the strongest evidence that the remaining gap is now mostly
+    compute-shape, fusion, and dispatch architecture
 
 Timing caveat:
 
 - the current stage timing fields are trustworthy for broad direction but not
   for precise per-stage attribution after the single-submission rewrite
-- the byte counters, submission count, sync count, and end-to-end benchmark
-  numbers are the solid evidence to use for optimization decisions right now
+- the byte counters, submission count, sync count, kernel-launch count, and
+  end-to-end benchmark numbers are the solid evidence to use for optimization
+  decisions right now
+
+## What `llama.cpp` Actually Does For GPT-OSS
+
+The most important thing about `llama.cpp` is not one individual CUDA kernel.
+It is the way the GPT-OSS path is represented and scheduled end to end.
+
+### 1. The GPT-OSS model path is built as one explicit graph
+
+`~/code/llama.cpp/src/models/openai-moe-iswa.cpp` builds the model in the exact
+decode order that matters for throughput:
+
+- input embedding
+- RMSNorm
+- Q / K / V projection
+- RoPE on Q and K
+- attention through `build_attn(...)`
+- residual add
+- post-attention RMSNorm
+- MoE through `build_moe_ffn(...)`
+- residual add
+- output RMSNorm
+- final lm-head projection
+
+That graph is not just descriptive. It is the input to the scheduler and the
+backend fusion logic.
+
+### 2. Attention and MoE are graph-level constructs, not ad-hoc side paths
+
+`~/code/llama.cpp/src/llama-graph.cpp` does three throughput-critical things
+that Psionic still does only partially:
+
+- `build_attn(...)` routes eligible shapes through `ggml_flash_attn_ext(...)`
+  instead of keeping attention as a simple hand-authored decode kernel
+- `build_moe_ffn(...)` builds the full gating path, top-k expert selection,
+  expert weights, grouped expert projections, OAI SWIGLU, and expert
+  aggregation as graph nodes that the CUDA backend can reason about
+- the grouped-expert path uses `ggml_mul_mat_id(...)` and expert views so the
+  backend sees the routed-expert structure directly instead of reconstructing it
+  from Rust-side imperative sequencing
+
+### 3. The context and scheduler are designed around graph reserve, reuse, and capture
+
+`~/code/llama.cpp/src/llama-context.cpp` reserves graphs, computes them through
+`ggml_backend_sched_graph_compute_async(...)`, reports graph-node and graph-split
+counts, and maintains reuse-oriented graph/result state. On this host the live
+server reported:
+
+- `graph nodes = 1352`
+- `graph splits = 2`
+- `USE_GRAPHS = 1`
+
+That is materially different from Psionic's current "encode every token's ops
+from Rust into one submission" design.
+
+### 4. CUDA fusion and dispatch are driven by the graph, not by isolated call sites
+
+`~/code/llama.cpp/ggml/src/ggml-cuda/ggml-cuda.cu` is where the bigger
+throughput story lives:
+
+- `ggml_cuda_should_fuse_mul_mat_vec_q(...)` decides when MMVQ is the right
+  quantized path
+- `ggml_cuda_mul_mat_id(...)` chooses grouped-expert fast paths and only falls
+  back when the graph shape or hardware disqualifies them
+- the backend fuses top-k MoE selection, `mul_mat(+id)` plus bias plus GLU,
+  RMSNorm patterns, and RoPE-plus-KV write patterns when the graph layout
+  permits it
+- CUDA graph execution and concurrent-event scheduling are part of the backend
+  machinery, not a product-layer afterthought
+
+That is the architecture Psionic still lacks.
 
 ## Exact Reason Psionic Is Still Slower
 
-This is no longer a generic "CPU vs GPU" story. The current gap is now mostly a
-kernel-shape and execution-shape story.
+This is no longer a generic "CPU vs GPU" story. The current gap is now mostly an
+execution-architecture story.
 
-### 1. Psionic still uses much weaker quantized CUDA kernels than `llama.cpp`
+### 1. Psionic still encodes decode as Rust-owned imperative work, not as a true backend graph
 
-This is now the largest remaining reason for the gap.
+Psionic now has a reusable CUDA step plan and only one submission per token.
+That part is real progress.
 
-Psionic's core quantized decode kernel in
-`crates/psionic/psionic-backend-cuda/src/kernels/quantized_matvec.cu` still launches one
-CUDA block per output row in `quantized_matvec_q8_1_kernel(...)`. Each block is
-just `128` threads reducing over the block count for that row, then writing one
-`f32` result.
+But the hot path in `crates/psionic/psionic-serve/src/gpt_oss.rs` still manually
+walks every layer and explicitly emits the sequence of kernels from Rust each
+token. `llama.cpp` instead builds the OpenAI-MoE path as a graph and lets the
+backend decide:
 
-That is simple and correct, but it is not a high-throughput shape for GPT-OSS,
-especially for the final logits projection where:
+- which nodes can fuse
+- which kernels to dispatch
+- when CUDA graphs are reusable
+- how concurrent regions are scheduled
 
-- output rows are the whole vocabulary: `201088`
-- input width is `2880`
-- each token requires a full-vocab projection
+One submission per token is not the same thing as `llama.cpp`'s graph-driven
+decode architecture.
 
-By contrast, `llama.cpp` does not use a one-block-per-row reduction for this
-class of work. Its quantized matvec path in `ggml-cuda/mmvq.cu` and
-`ggml-cuda/vecdotq.cuh` is warp-specialized and type-specialized:
+### 2. The current MMVQ port is only a slice of the real `llama.cpp` kernel story
 
-- `mul_mat_vec_q(...)` chooses `nwarps` and `rows_per_cuda_block` from the
-  destination shape
-- `vec_dot_q8_0_q8_1(...)` and `vec_dot_mxfp4_q8_1(...)` use higher VDR
-  settings and tighter warp-level packing
-- the kernels are built to cooperate with fused bias / gate / GLU paths instead
-  of only serving as isolated row reducers
+The recent Psionic MMVQ-style port was correct and worthwhile, but it is still
+only a partial analogue of `mmvq.cu` plus `vecdotq.cuh`.
 
-That difference alone explains why Psionic can now run the full GPT-OSS pipeline on
-GPU and still remain far behind `llama.cpp`.
+What `llama.cpp` has that Psionic still does not:
 
-### 2. Psionic still reads the full logits vector back to the host every token
+- full dispatch policy around MMVQ vs MMQ, not just one replacement kernel
+- fusion-aware matvec use inside bias and GLU subgraphs
+- grouped-expert `mul_mat_id` integration
+- broader architecture-aware parameter selection
 
-The current timed request moved `29761024` bytes from device to host over
-`37` generated tokens. That is almost exactly the full vocabulary logits tensor
-every step:
+Psionic improved the row kernel. `llama.cpp` improves the whole graph around that
+kernel.
 
-- `201088` logits
-- `4` bytes each
-- `804352` bytes per token
+### 3. Psionic does not yet mirror `llama.cpp`'s grouped-expert execution model
 
-This comes directly from `plan.logits_buffer.read_f32()?` in
-`crates/psionic/psionic-serve/src/gpt_oss.rs`.
+`llama.cpp`'s `build_moe_ffn(...)` plus `ggml_mul_mat_id(...)` and
+`ggml-cuda/mmid.cu` compact work by expert and keep the grouped-expert structure
+visible to the backend.
 
-That means Psionic still pays:
+Psionic's current MoE path is still more imperative and less compact:
 
-- full-vocab device-to-host copy
-- sync before readback
-- host-side sampling over the returned `Vec<f32>`
+- routing and execution are CUDA-backed, but not yet driven by the same grouped
+  expert graph shape
+- the real-model `MXFP4` fast path is still not trustworthy enough to be the
+  universal live path
+- the remaining kernel-launch count strongly suggests too much small-grain work
+  is still being emitted
 
-`llama.cpp` keeps the decode execution far tighter around the ggml backend and
-does not expose a "copy the full logits tensor back to Rust every step" seam in
-the way Psionic currently does.
+This is a major reason Psionic remains far behind on the exact GPT-OSS 20B model,
+whose expert lane is where `MXFP4` matters most.
 
-Even if the final sampler still needs host involvement, Psionic should not need to
-materialize the entire logits vector on the CPU every token.
+### 4. Psionic attention is CUDA-backed, but not `fattn.cu`-class
 
-### 3. Psionic now has one submission per token, but `llama.cpp` still has the stronger execution shape
+The current Psionic attention path is much better than the old CPU fallback, but
+it is still a simpler decode kernel than the `llama.cpp` flash-attention path.
 
-Moving from per-layer submissions to one submission per token was correct and
-worth it. The current `submission_count = 37` and `sync_count = 37` prove that.
+`llama.cpp` does not just have "a faster attention kernel." It has:
 
-But Psionic still manually encodes every op into that submission from Rust each
-token. `llama.cpp` builds the OpenAI-MoE decode as a graph in
-`src/models/openai-moe-iswa.cpp` and `src/llama-graph.cpp`, then lets the ggml
-backend scheduler execute that graph shape.
+- graph-level `build_attn(...)` integration
+- `ggml_flash_attn_ext(...)` eligibility and dispatch
+- architecture-specific kernel families inside `fattn.cu`
 
-That gives `llama.cpp` three advantages Psionic still lacks:
+Psionic is still missing that full stack.
 
-- less Rust-side per-token orchestration
-- better opportunities for backend-level fusion and scheduling
-- a much more natural route to CUDA graph capture and reuse
+### 5. CUDA graph capture and fusion reuse are still a `llama.cpp` advantage
 
-Psionic has a reusable decode-step plan. It does not yet have a `llama.cpp`-class
-backend execution shape.
+The live `llama.cpp` run on this host reported `USE_GRAPHS = 1`, and the backend
+code clearly separates capture/update logic from ordinary graph execution.
 
-### 4. Psionic attention is CUDA-backed now, but it is not flash-attention-class
+Psionic currently has:
 
-The current Psionic attention kernel is a straightforward decode kernel:
+- reusable buffers
+- reusable step-plan structures
+- one submission per token
 
-- one block per head
-- shared-memory logits and weights
-- scalar loops over head dimension and active KV window
-- explicit sliding-window cap logic in the kernel itself
+Psionic does not yet have the same class of:
 
-That is a huge improvement over the old CPU `attend_impl(...)`, but it is still
-much simpler than `llama.cpp`'s flash-attention path in `ggml_flash_attn_ext(...)`
-and the CUDA `fattn` kernels.
+- decode-graph identity
+- capture/update/reuse contract
+- graph-driven fusion regions
+- concurrent stream/event scheduling
 
-On this exact benchmark, attention is no longer the single biggest bottleneck,
-but it still leaves performance on the table and blocks parity on longer or
-less cache-friendly prompt shapes.
+That missing layer is why the remaining work should start with a graph/fusion
+alignment issue before more micro-kernel tweaking.
 
-### 5. The MXFP4 expert fast path is still not fully trustworthy at real-model scale
+### 6. This is not a GGUF or Harmony semantics problem
 
-This GPT-OSS model is mixed:
+The current gap is not caused by prompt rendering or GPT-OSS parsing semantics.
+Those have already been aligned well enough that:
 
-- many tensors are `Q8_0`
-- expert tensors are `MXFP4`
+- the exact visible benchmark output matches
+- the model loads and runs through the Psionic-owned GGUF path
+- Harmony structure survives the real HTTP flow
 
-Psionic now has `Q8_1` fast paths for:
+That matters because it narrows the refactor target: the remaining gap is in the
+CUDA/runtime architecture, not the GPT-OSS format semantics.
 
-- `Q8_0 x Q8_1` projection
-- `MXFP4 x Q8_1` projection
-- fused MoE gate/up and down aggregation variants
+## What Should Be Ported Directly
 
-But the full real-model MXFP4 expert `Q8_1` fast path was still producing wrong
-text in live generation. The current stable runtime therefore keeps a hybrid
-policy:
+If the goal is to bring Psionic exactly in line with `llama.cpp`, these are the
+right direct-port candidates:
 
-- use the fast `Q8_1` path when both expert tensors are `Q8_0`
-- keep the slower path for the real MXFP4 expert lane so output stays correct
+- `ggml-cuda/vecdotq.cuh`
+  - the quantized vector-dot implementations and VDR choices for GPT-OSS-relevant
+    types
+- `ggml-cuda/mmvq.cu`
+  - warp/row scheduling and MMVQ dispatch shape
+- `ggml-cuda/mmid.cu`
+  - expert-ID compaction and grouped-expert execution helpers
+- `ggml-cuda/fattn.cu`
+  - the attention-kernel families and their eligibility rules for the supported
+    GPT-OSS dimensions
+- relevant subgraph-fusion decisions in `ggml-cuda/ggml-cuda.cu`
+  - top-k MoE fusion
+  - `mul_mat(+id)` plus bias / GLU fusion
+  - RMSNorm fusion
+  - RoPE / KV-write fusion
 
-That is the right product decision today, but it means the benchmark is still
-paying for a slower expert path than `llama.cpp`, whose OpenAI-MoE graph uses
-`build_moe_ffn(...)`, `ggml_mul_mat_id(...)`, and the CUDA grouped-expert
-machinery in `ggml-cuda/mmid.cu`.
+What should remain Psionic-owned in Rust:
 
-### 6. `llama.cpp` is tuned for this GPU class; Psionic is only beginning to be
-
-`llama.cpp`'s CUDA quantized code has explicit architecture-aware tuning,
-multiple kernel families, and extensive type coverage. Psionic only recently gained
-basic build-time tuning via:
-
-- `-O3`
-- `--use_fast_math`
-- selected `sm_` architecture
-
-That helps, but it is the beginning of GPU tuning, not the end of it.
-
-## The Single Biggest Remaining Bottleneck
-
-The current checkpoint strongly suggests that the first optimization target for
-`#3247` should be the final logits path, not another orchestration rewrite.
-
-Why:
-
-- the current benchmark is already at one submission per token
-- host-to-device traffic is already small
-- the remaining device-to-host traffic maps almost exactly to full-vocab logits
-- the final projection is the widest matvec in the decode step
-- Psionic's current kernel for that projection is still the simplest possible
-  one-block-per-row reduction
-
-If Psionic does not fix the logits projection kernel shape and the logits readback
-contract, it will stay far behind even if smaller kernels improve.
+- the product-facing HTTP surface
+- GGUF model loading and truth metadata
+- Harmony prompt/render/parse behavior
+- observability, receipts, and benchmark evidence
+- a Rust graph/runtime representation that mirrors `llama.cpp` semantically
+  without making `llama.cpp` a runtime dependency
 
 ## Clear Path To llama.cpp-Class Speed
 
 The remaining sequence should be executed in this order:
 
-1. Upgrade the quantized CUDA kernels for the real GPT-OSS shapes
-   - replace the current one-block-per-row `Q8_0` and `MXFP4` kernels with
-     warp-specialized, tiled MMVQ/MMQ-style kernels
-   - tune for Ada / RTX 4080 specifically
-   - target the output projection first because it dominates the timed lane
-2. Stop reading the full logits tensor back to host every token
-   - do on-device top-k / argmax selection or another truthful reduced-readback
-     path
-   - keep full-logits readback only when the API or diagnostics actually need it
-3. Make the MXFP4 expert fast path numerically trustworthy
-   - fix the real-model MXFP4 `Q8_1` expert path until it matches current text
-     outputs
-   - then switch the live GPT-OSS expert lane onto it
-4. Add grouped expert execution that is closer to `ggml_mul_mat_id(...)`
-   - compact and run work by expert instead of treating each selected expert as
-     an isolated path
-5. Strengthen the attention path toward flash-attention-class execution
-   - keep the current kernel as the floor, not the ceiling
-6. Move from "manual per-token encoded submission" to a true backend-captured
-   decode execution shape
-   - reuse graphs or CUDA graph capture for the stable decode lane
+1. Land `#3249`
+   - mirror `openai-moe-iswa.cpp`, `llama-graph.cpp`, `llama-context.cpp`, and
+     the relevant `ggml-cuda.cu` fusion/dispatch rules in the Psionic-owned
+     runtime architecture
+2. Land `#3247`
+   - port the relevant `llama.cpp` CUDA kernels and dispatch policy directly,
+     especially `vecdotq.cuh`, `mmvq.cu`, `mmid.cu`, and `fattn.cu`
+3. Keep `#3248` open until the benchmark contract is actually met
+   - same model
+   - same host
+   - same HTTP flow
+   - same visible output
+   - within `20%` of `llama.cpp`
+
+The important change in direction is this:
+
+- the next work should not be "find another isolated hotspot"
+- the next work should be "make Psionic's GPT-OSS CUDA/runtime architecture look
+  like `llama.cpp` on purpose"
 
 ## Honest Status
 
@@ -315,14 +374,16 @@ Psionic is no longer "nowhere close." The current checkpoint is a real improveme
 
 - the exact Psionic-owned GPT-OSS HTTP flow works
 - the visible benchmark output matches `llama.cpp`
-- Psionic is about `2.13x` faster than it was at the start of the perf track
+- Psionic is about `2.11x` faster than it was at the start of the perf track
+- eliminating logits readback for the greedy lane proved that readback was no
+  longer the primary limiter
 
-But Psionic is still not in the same speed class as `llama.cpp` on this host. The
-current measured gap is still large enough that `#3247` and `#3248` must remain
-open.
+But Psionic is still not in the same speed class as `llama.cpp` on this host.
+The current measured gap is still large enough that `#3249`, `#3247`, and
+`#3248` must remain open.
 
 The correct summary is:
 
-- the execution-boundary issues are mostly solved
-- the remaining gap is now mostly kernel quality, logits readback policy, and
-  grouped/fused GPU execution quality
+- the format, prompt, and execution-boundary issues are mostly solved
+- the remaining gap is now mostly graph/fusion architecture, grouped-expert
+  execution quality, attention-kernel quality, and direct CUDA kernel parity

@@ -853,8 +853,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_kfd_allocates_and_submits_copy_when_available() -> Result<(), psionic_runtime::RuntimeError>
-    {
+    fn amd_kfd_allocates_and_submits_copy_when_available()
+    -> Result<(), psionic_runtime::RuntimeError> {
         let mut backend = AmdKfdBackend::new();
         let Some(device) = backend.selected_device().cloned() else {
             assert_ne!(backend.health().status, HealthStatus::Ready);

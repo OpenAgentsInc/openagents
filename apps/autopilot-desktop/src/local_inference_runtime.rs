@@ -2,11 +2,11 @@ use std::collections::VecDeque;
 use std::time::Instant;
 
 use crate::state::job_inbox::JobExecutionParam;
+use openagents_kernel_core::ids::sha256_prefixed_text;
 use psionic_serve::{
     CpuReferenceTextGenerationService, GenerationLoadState, GenerationOptions, GenerationRequest,
     TextGenerationExecutor,
 };
-use openagents_kernel_core::ids::sha256_prefixed_text;
 use serde_json::{Map, Value, json};
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -157,8 +157,9 @@ pub struct PsionicRuntimeAdapter {
 impl PsionicRuntimeAdapter {
     pub fn new_reference() -> Result<Self, String> {
         let mut adapter = Self {
-            service: CpuReferenceTextGenerationService::new()
-                .map_err(|error| format!("failed to initialize Psionic reference runtime: {error}"))?,
+            service: CpuReferenceTextGenerationService::new().map_err(|error| {
+                format!("failed to initialize Psionic reference runtime: {error}")
+            })?,
             snapshot: LocalInferenceRuntimeSnapshot {
                 base_url: String::from("in-process://psionic"),
                 ..LocalInferenceRuntimeSnapshot::default()
@@ -240,7 +241,8 @@ impl PsionicRuntimeAdapter {
         let model = configured_model;
         self.snapshot.last_request_id = Some(job.request_id.clone());
         self.snapshot.last_error = None;
-        self.snapshot.last_action = Some(format!("Psionic generation queued for {}", job.request_id));
+        self.snapshot.last_action =
+            Some(format!("Psionic generation queued for {}", job.request_id));
         self.snapshot.refreshed_at = Some(Instant::now());
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Snapshot(Box::new(
@@ -322,11 +324,15 @@ impl PsionicRuntimeAdapter {
             eval_duration_ns: response.metrics.eval_duration_ns,
         };
         self.snapshot.last_metrics = Some(metrics.clone());
-        self.snapshot.last_action =
-            Some(format!("Psionic generation completed for {}", job.request_id));
+        self.snapshot.last_action = Some(format!(
+            "Psionic generation completed for {}",
+            job.request_id
+        ));
         self.snapshot.last_error = None;
         self.snapshot.refreshed_at = Some(Instant::now());
-        self.refresh_snapshot(String::from("Psionic local runtime refreshed after generation"));
+        self.refresh_snapshot(String::from(
+            "Psionic local runtime refreshed after generation",
+        ));
         self.pending_updates
             .push_back(LocalInferenceRuntimeUpdate::Completed(
                 LocalInferenceExecutionCompleted {
@@ -351,7 +357,9 @@ impl LocalInferenceRuntime for PsionicRuntimeAdapter {
                 let model_id = self.configured_model_id();
                 self.service
                     .warm_model(model_id.as_str(), 300_000)
-                    .map_err(|error| format!("failed to warm Psionic model '{model_id}': {error}"))?;
+                    .map_err(|error| {
+                        format!("failed to warm Psionic model '{model_id}': {error}")
+                    })?;
                 self.refresh_snapshot(format!("Psionic model '{}' warmed", model_id));
                 Ok(())
             }
@@ -359,7 +367,9 @@ impl LocalInferenceRuntime for PsionicRuntimeAdapter {
                 let model_id = self.configured_model_id();
                 self.service
                     .unload_model(model_id.as_str())
-                    .map_err(|error| format!("failed to unload Psionic model '{model_id}': {error}"))?;
+                    .map_err(|error| {
+                        format!("failed to unload Psionic model '{model_id}': {error}")
+                    })?;
                 self.refresh_snapshot(format!("Psionic model '{}' unloaded", model_id));
                 Ok(())
             }

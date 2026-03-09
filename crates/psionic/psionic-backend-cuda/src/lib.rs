@@ -493,6 +493,24 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Reduces each contiguous `f32` row to its argmax index on CUDA.
+    pub fn argmax_f32(
+        &mut self,
+        input: &CudaBuffer,
+        row_count: usize,
+        column_count: usize,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_argmax_f32(
+            &input.platform,
+            row_count,
+            column_count,
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Launches one RMSNorm kernel.
     pub fn rms_norm(
         &mut self,
@@ -2186,6 +2204,13 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_argmax_f32(
+            input: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_rms_norm(
             input: *const c_void,
             weight: *const c_void,
@@ -2796,6 +2821,34 @@ mod platform {
                     )
                 },
                 "psionic_cuda_quantized_matvec_q8_1",
+            )
+        }
+
+        pub(super) fn encode_argmax_f32(
+            &mut self,
+            input: &PlatformBuffer,
+            rows: usize,
+            cols: usize,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda argmax rows exceed c_int"))
+            })?;
+            let cols = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda argmax cols exceed c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_argmax_f32(
+                        input.inner.device_ptr.cast(),
+                        rows,
+                        cols,
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_argmax_f32",
             )
         }
 
@@ -3653,6 +3706,18 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_argmax_f32(
+            &mut self,
+            _input: &PlatformBuffer,
+            _rows: usize,
+            _cols: usize,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
         pub(super) fn encode_rms_norm(
             &mut self,
             _input: &PlatformBuffer,
@@ -4264,6 +4329,60 @@ mod tests {
         let actual =
             backend.quantized_matvec(&weights, QuantizationMode::GgmlMxfp4, 2, 32, &input)?;
         assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_argmax_when_available() -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = backend.input_buffer(
+            Shape::new(vec![6]),
+            vec![1.0_f32, -2.0, 4.25, 3.0, 9.5, 0.0],
+        )?;
+        let output = backend.byte_buffer(&vec![0_u8; std::mem::size_of::<i32>()])?;
+        let mut submission = backend.begin_submission()?;
+        submission.argmax_f32(&input, 1, 6, &output)?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 1);
+
+        let bytes = output.read_bytes()?;
+        let argmax = i32::from_ne_bytes(bytes[..4].try_into().expect("argmax bytes"));
+        assert_eq!(argmax, 4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_argmax_for_wide_rows_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let mut values = vec![-1.0_f32; 2049];
+        values[1733] = 42.0;
+        let input = backend.input_buffer(Shape::new(vec![values.len()]), values)?;
+        let output = backend.byte_buffer(&vec![0_u8; std::mem::size_of::<i32>()])?;
+        let mut submission = backend.begin_submission()?;
+        submission.argmax_f32(&input, 1, 2049, &output)?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 1);
+
+        let bytes = output.read_bytes()?;
+        let argmax = i32::from_ne_bytes(bytes[..4].try_into().expect("argmax bytes"));
+        assert_eq!(argmax, 1733);
         Ok(())
     }
 
