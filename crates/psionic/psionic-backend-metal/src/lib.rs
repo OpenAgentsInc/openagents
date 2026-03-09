@@ -218,6 +218,108 @@ pub struct MetalDecodeAttentionResult {
     pub cache_state: KvCacheState,
     /// Explicit decode-attention execution evidence.
     pub stats: MetalDecodeAttentionStats,
+    /// Reserved graph reuse evidence when the step used a steady-state runtime.
+    pub graph_metrics: Option<MetalGraphReuseMetrics>,
+}
+
+/// Reserved graph family for steady-state Metal GPT-OSS execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum MetalGraphReserveKind {
+    /// Prompt/prefill graph shape.
+    Prompt,
+    /// Decode-step graph shape.
+    Decode,
+}
+
+impl MetalGraphReserveKind {
+    const fn label(self) -> &'static str {
+        match self {
+            Self::Prompt => "prompt",
+            Self::Decode => "decode",
+        }
+    }
+}
+
+/// Explicit shape reservation for one Metal attention graph family.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalAttentionGraphReserve {
+    /// Reserved graph family.
+    pub kind: MetalGraphReserveKind,
+    /// Reserved batch size.
+    pub batch_size: usize,
+    /// Reserved sequence length.
+    pub sequence_len: usize,
+    /// Reserved query head count.
+    pub query_head_count: usize,
+    /// Reserved KV head count.
+    pub kv_head_count: usize,
+    /// Reserved head dimension.
+    pub head_dim: usize,
+    /// Reserved max context tokens.
+    pub max_context_tokens: usize,
+    /// Whether the reserved shape is causal.
+    pub causal: bool,
+    /// Whether RoPE pairs are interleaved.
+    pub interleaved: bool,
+    /// Whether the reserved shape can use the flash-attention path.
+    pub flash_attention: bool,
+}
+
+/// Stable identity for one reserved Metal attention graph shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalGraphIdentity {
+    /// Reserved graph family.
+    pub kind: MetalGraphReserveKind,
+    /// Reserved batch size.
+    pub batch_size: usize,
+    /// Reserved sequence length.
+    pub sequence_len: usize,
+    /// Reserved query head count.
+    pub query_head_count: usize,
+    /// Reserved KV head count.
+    pub kv_head_count: usize,
+    /// Reserved head dimension.
+    pub head_dim: usize,
+    /// Reserved max context tokens.
+    pub max_context_tokens: usize,
+    /// Whether the reserved shape is causal.
+    pub causal: bool,
+    /// Whether RoPE pairs are interleaved.
+    pub interleaved: bool,
+    /// Whether the reserved shape can use the flash-attention path.
+    pub flash_attention: bool,
+    /// Stable string identity for reuse comparison and reporting.
+    pub stable_digest: String,
+}
+
+/// Observable reserve/reuse evidence for one reserved Metal graph shape.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalGraphReuseMetrics {
+    /// Stable identity for the reserved graph shape.
+    pub identity: MetalGraphIdentity,
+    /// Explicit rebuild-versus-reuse evidence for this prepare step.
+    pub compile_path: CompilePathEvidence,
+    /// Stable command label used for the reserved runtime.
+    pub command_label: String,
+    /// Whether the reserved command/runtime state was reused.
+    pub command_state_reused: bool,
+    /// Bytes reserved for the output buffer of the shape.
+    pub reserved_output_bytes: u64,
+    /// Number of times the runtime reused the same shape.
+    pub reuse_count: usize,
+    /// Number of times the runtime was rebuilt for a new shape.
+    pub rebuild_count: usize,
+}
+
+/// Reserved prompt or decode graph runtime for steady-state Metal execution.
+#[derive(Clone)]
+pub struct MetalAttentionGraphRuntime {
+    identity: MetalGraphIdentity,
+    output_buffer: MetalBuffer,
+    command_label: String,
+    reuse_count: usize,
+    rebuild_count: usize,
+    last_metrics: MetalGraphReuseMetrics,
 }
 
 /// Device-resident GPT-OSS KV cache mirror for the Metal backend.
@@ -1066,6 +1168,14 @@ impl MetalBackend {
         )
     }
 
+    /// Reserves a prompt or decode graph shape for steady-state Metal execution.
+    pub fn reserve_attention_graph(
+        &mut self,
+        reserve: MetalAttentionGraphReserve,
+    ) -> Result<MetalAttentionGraphRuntime, RuntimeError> {
+        MetalAttentionGraphRuntime::new(self, reserve)
+    }
+
     /// Executes one backend-owned decode-attention step using RoPE-applied query/key
     /// vectors and a device-resident KV mirror.
     pub fn decode_attention_f32(
@@ -1081,58 +1191,107 @@ impl MetalBackend {
         interleaved: bool,
         flash_preferred: bool,
     ) -> Result<MetalDecodeAttentionResult, RuntimeError> {
+        let (query_dims, output_values, cache_state, stats) = self.compute_decode_attention_f32(
+            query,
+            key,
+            value,
+            cos,
+            sin,
+            cache,
+            scale,
+            causal,
+            interleaved,
+            flash_preferred,
+        )?;
+        let output = self.input_buffer(Shape::new(query_dims), output_values)?;
+
+        Ok(MetalDecodeAttentionResult {
+            output,
+            cache_state,
+            stats,
+            graph_metrics: None,
+        })
+    }
+
+    /// Executes one decode-attention step through a reserved steady-state runtime.
+    pub fn decode_attention_f32_reserved(
+        &mut self,
+        runtime: &mut MetalAttentionGraphRuntime,
+        query: &MetalBuffer,
+        key: &MetalBuffer,
+        value: &MetalBuffer,
+        cos: &MetalBuffer,
+        sin: &MetalBuffer,
+        cache: &mut MetalKvCacheMirror,
+        scale: f32,
+        causal: bool,
+        interleaved: bool,
+        flash_preferred: bool,
+    ) -> Result<MetalDecodeAttentionResult, RuntimeError> {
+        let reserve = reserve_from_decode_inputs(
+            query.spec().shape().dims(),
+            key.spec().shape().dims(),
+            cache.max_context_tokens,
+            causal,
+            interleaved,
+            flash_preferred && self.supports_flash_attention(),
+        )?;
+        let graph_metrics = runtime.ensure_reserved(self, reserve)?;
+        let (_query_dims, output_values, cache_state, stats) = self.compute_decode_attention_f32(
+            query,
+            key,
+            value,
+            cos,
+            sin,
+            cache,
+            scale,
+            causal,
+            interleaved,
+            flash_preferred,
+        )?;
+        runtime.output_buffer.write_f32(output_values.as_slice())?;
+        Ok(MetalDecodeAttentionResult {
+            output: runtime.output_buffer.clone(),
+            cache_state,
+            stats,
+            graph_metrics: Some(graph_metrics),
+        })
+    }
+
+    fn compute_decode_attention_f32(
+        &mut self,
+        query: &MetalBuffer,
+        key: &MetalBuffer,
+        value: &MetalBuffer,
+        cos: &MetalBuffer,
+        sin: &MetalBuffer,
+        cache: &mut MetalKvCacheMirror,
+        scale: f32,
+        causal: bool,
+        interleaved: bool,
+        flash_preferred: bool,
+    ) -> Result<
+        (
+            Vec<usize>,
+            Vec<f32>,
+            KvCacheState,
+            MetalDecodeAttentionStats,
+        ),
+        RuntimeError,
+    > {
         let query_dims = query.spec().shape().dims().to_vec();
         let key_dims = key.spec().shape().dims().to_vec();
         let value_dims = value.spec().shape().dims().to_vec();
-        if query_dims.len() != 4 || key_dims.len() != 4 || value_dims.len() != 4 {
-            return Err(RuntimeError::Backend(String::from(
-                "metal decode attention requires rank-4 query/key/value tensors",
-            )));
-        }
-        if query_dims[0] != 1 || key_dims[0] != 1 || value_dims[0] != 1 {
-            return Err(RuntimeError::Backend(String::from(
-                "metal decode attention currently requires batch size 1",
-            )));
-        }
-        if query_dims[2] != 1 || key_dims[2] != 1 || value_dims[2] != 1 {
-            return Err(RuntimeError::Backend(String::from(
-                "metal decode attention currently requires a single decode token",
-            )));
-        }
-        if key_dims[1] != value_dims[1] || key_dims[3] != value_dims[3] {
-            return Err(RuntimeError::Backend(String::from(
-                "metal decode attention requires matching key/value head geometry",
-            )));
-        }
-        if query_dims[3] != key_dims[3] {
-            return Err(RuntimeError::Backend(String::from(
-                "metal decode attention requires matching query/key head dimensions",
-            )));
-        }
+        validate_decode_attention_shapes(
+            query_dims.as_slice(),
+            key_dims.as_slice(),
+            value_dims.as_slice(),
+            cache.width(),
+        )?;
 
         let query_head_count = query_dims[1];
         let kv_head_count = key_dims[1];
         let head_dim = query_dims[3];
-        if query_head_count == 0 || kv_head_count == 0 || head_dim == 0 {
-            return Err(RuntimeError::Backend(String::from(
-                "metal decode attention requires non-zero head geometry",
-            )));
-        }
-        if query_head_count % kv_head_count != 0 {
-            return Err(RuntimeError::Backend(format!(
-                "metal decode attention requires query heads {} to be divisible by kv heads {}",
-                query_head_count, kv_head_count
-            )));
-        }
-
-        let required_cache_width = kv_head_count.saturating_mul(head_dim);
-        if cache.width() != required_cache_width {
-            return Err(RuntimeError::Backend(format!(
-                "metal decode attention cache width mismatch: expected {}, actual {}",
-                required_cache_width,
-                cache.width()
-            )));
-        }
 
         let query_values = query.read_f32()?;
         let key_values = key.read_f32()?;
@@ -1178,12 +1337,11 @@ impl MetalBackend {
             false,
             flash_attention_path,
         )?;
-        let output = self.input_buffer(Shape::new(query_dims), output_values)?;
-
-        Ok(MetalDecodeAttentionResult {
-            output,
-            cache_state: cache.state(),
-            stats: MetalDecodeAttentionStats {
+        Ok((
+            query_dims,
+            output_values,
+            cache.state(),
+            MetalDecodeAttentionStats {
                 flash_attention_path,
                 rotary_applied: true,
                 used_device_kv: true,
@@ -1192,7 +1350,7 @@ impl MetalBackend {
                 query_head_count,
                 kv_head_count,
             },
-        })
+        ))
     }
 
     /// Returns truthful backend-selection data for a supported Metal product path.
@@ -1671,6 +1829,79 @@ impl MetalPromptResidencyMetrics {
     }
 }
 
+impl MetalAttentionGraphRuntime {
+    fn new(
+        backend: &mut MetalBackend,
+        reserve: MetalAttentionGraphReserve,
+    ) -> Result<Self, RuntimeError> {
+        let identity = graph_identity(&reserve);
+        let output_buffer = backend.input_buffer(
+            graph_output_shape(&identity),
+            graph_zeroed_output(&identity),
+        )?;
+        let command_label = graph_command_label(&identity);
+        let last_metrics = MetalGraphReuseMetrics {
+            identity: identity.clone(),
+            compile_path: metal_graph_reserve_evidence(identity.kind, false),
+            command_label: command_label.clone(),
+            command_state_reused: false,
+            reserved_output_bytes: graph_output_bytes(&identity),
+            reuse_count: 0,
+            rebuild_count: 1,
+        };
+        Ok(Self {
+            identity,
+            output_buffer,
+            command_label,
+            reuse_count: 0,
+            rebuild_count: 1,
+            last_metrics,
+        })
+    }
+
+    /// Returns the current reserved graph identity.
+    #[must_use]
+    pub fn identity(&self) -> &MetalGraphIdentity {
+        &self.identity
+    }
+
+    /// Returns the latest reserve/reuse evidence for this runtime.
+    #[must_use]
+    pub fn metrics(&self) -> &MetalGraphReuseMetrics {
+        &self.last_metrics
+    }
+
+    fn ensure_reserved(
+        &mut self,
+        backend: &mut MetalBackend,
+        reserve: MetalAttentionGraphReserve,
+    ) -> Result<MetalGraphReuseMetrics, RuntimeError> {
+        let identity = graph_identity(&reserve);
+        let reused = self.identity == identity;
+        if reused {
+            self.reuse_count = self.reuse_count.saturating_add(1);
+        } else {
+            self.identity = identity.clone();
+            self.output_buffer = backend.input_buffer(
+                graph_output_shape(&identity),
+                graph_zeroed_output(&identity),
+            )?;
+            self.command_label = graph_command_label(&identity);
+            self.rebuild_count = self.rebuild_count.saturating_add(1);
+        }
+        self.last_metrics = MetalGraphReuseMetrics {
+            identity,
+            compile_path: metal_graph_reserve_evidence(self.identity.kind, reused),
+            command_label: self.command_label.clone(),
+            command_state_reused: reused,
+            reserved_output_bytes: graph_output_bytes(&self.identity),
+            reuse_count: self.reuse_count,
+            rebuild_count: self.rebuild_count,
+        };
+        Ok(self.last_metrics.clone())
+    }
+}
+
 impl Allocator for MetalBackend {
     type Buffer = MetalBuffer;
 
@@ -2143,6 +2374,35 @@ fn metal_compile_path_evidence(
     }
 }
 
+fn metal_graph_reserve_evidence(kind: MetalGraphReserveKind, reused: bool) -> CompilePathEvidence {
+    let label = kind.label();
+    CompilePathEvidence {
+        temperature: if reused {
+            CompilePathTemperature::WarmReuse
+        } else {
+            CompilePathTemperature::ColdCompile
+        },
+        execution_plan_cache: CacheObservation::new(
+            CacheKind::ExecutionPlan,
+            if reused {
+                CacheAction::Reuse
+            } else {
+                CacheAction::Rebuild
+            },
+            if reused {
+                format!("reused reserved metal {label} graph identity")
+            } else {
+                format!("rebuilt reserved metal {label} graph identity")
+            },
+        ),
+        kernel_cache: CacheObservation::new(
+            CacheKind::KernelCache,
+            CacheAction::Reuse,
+            format!("reused the configured metal kernel cache for the {label} graph"),
+        ),
+    }
+}
+
 fn estimate_execution_plan_bytes(plan: &ExecutionPlan, plan_digest: &str) -> u64 {
     plan.stable_debug()
         .len()
@@ -2166,6 +2426,157 @@ fn plan_output_bytes(plan: &ExecutionPlan) -> u64 {
 
 fn size_of_dtype(dtype: DType) -> usize {
     dtype.element_size_bytes()
+}
+
+fn graph_identity(reserve: &MetalAttentionGraphReserve) -> MetalGraphIdentity {
+    MetalGraphIdentity {
+        kind: reserve.kind,
+        batch_size: reserve.batch_size,
+        sequence_len: reserve.sequence_len,
+        query_head_count: reserve.query_head_count,
+        kv_head_count: reserve.kv_head_count,
+        head_dim: reserve.head_dim,
+        max_context_tokens: reserve.max_context_tokens,
+        causal: reserve.causal,
+        interleaved: reserve.interleaved,
+        flash_attention: reserve.flash_attention,
+        stable_digest: format!(
+            "metal:{}:b{}:s{}:q{}:kv{}:d{}:ctx{}:causal{}:rope{}:flash{}",
+            reserve.kind.label(),
+            reserve.batch_size,
+            reserve.sequence_len,
+            reserve.query_head_count,
+            reserve.kv_head_count,
+            reserve.head_dim,
+            reserve.max_context_tokens,
+            reserve.causal,
+            reserve.interleaved,
+            reserve.flash_attention
+        ),
+    }
+}
+
+fn graph_output_shape(identity: &MetalGraphIdentity) -> Shape {
+    Shape::new(vec![
+        identity.batch_size,
+        identity.query_head_count,
+        identity.sequence_len,
+        identity.head_dim,
+    ])
+}
+
+fn graph_output_bytes(identity: &MetalGraphIdentity) -> u64 {
+    identity
+        .batch_size
+        .saturating_mul(identity.query_head_count)
+        .saturating_mul(identity.sequence_len)
+        .saturating_mul(identity.head_dim)
+        .saturating_mul(std::mem::size_of::<f32>())
+        .try_into()
+        .unwrap_or(u64::MAX)
+}
+
+fn graph_zeroed_output(identity: &MetalGraphIdentity) -> Vec<f32> {
+    vec![
+        0.0;
+        identity
+            .batch_size
+            .saturating_mul(identity.query_head_count)
+            .saturating_mul(identity.sequence_len)
+            .saturating_mul(identity.head_dim)
+    ]
+}
+
+fn graph_command_label(identity: &MetalGraphIdentity) -> String {
+    format!(
+        "psionic.metal.{}.{}",
+        identity.kind.label(),
+        identity.stable_digest
+    )
+}
+
+fn reserve_from_decode_inputs(
+    query_dims: &[usize],
+    key_dims: &[usize],
+    max_context_tokens: usize,
+    causal: bool,
+    interleaved: bool,
+    flash_attention: bool,
+) -> Result<MetalAttentionGraphReserve, RuntimeError> {
+    if query_dims.len() != 4 || key_dims.len() != 4 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal decode graph reserve requires rank-4 query/key tensors",
+        )));
+    }
+    Ok(MetalAttentionGraphReserve {
+        kind: MetalGraphReserveKind::Decode,
+        batch_size: query_dims[0],
+        sequence_len: query_dims[2],
+        query_head_count: query_dims[1],
+        kv_head_count: key_dims[1],
+        head_dim: query_dims[3],
+        max_context_tokens,
+        causal,
+        interleaved,
+        flash_attention,
+    })
+}
+
+fn validate_decode_attention_shapes(
+    query_dims: &[usize],
+    key_dims: &[usize],
+    value_dims: &[usize],
+    cache_width: usize,
+) -> Result<(), RuntimeError> {
+    if query_dims.len() != 4 || key_dims.len() != 4 || value_dims.len() != 4 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal decode attention requires rank-4 query/key/value tensors",
+        )));
+    }
+    if query_dims[0] != 1 || key_dims[0] != 1 || value_dims[0] != 1 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal decode attention currently requires batch size 1",
+        )));
+    }
+    if query_dims[2] != 1 || key_dims[2] != 1 || value_dims[2] != 1 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal decode attention currently requires a single decode token",
+        )));
+    }
+    if key_dims[1] != value_dims[1] || key_dims[3] != value_dims[3] {
+        return Err(RuntimeError::Backend(String::from(
+            "metal decode attention requires matching key/value head geometry",
+        )));
+    }
+    if query_dims[3] != key_dims[3] {
+        return Err(RuntimeError::Backend(String::from(
+            "metal decode attention requires matching query/key head dimensions",
+        )));
+    }
+
+    let query_head_count = query_dims[1];
+    let kv_head_count = key_dims[1];
+    let head_dim = query_dims[3];
+    if query_head_count == 0 || kv_head_count == 0 || head_dim == 0 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal decode attention requires non-zero head geometry",
+        )));
+    }
+    if query_head_count % kv_head_count != 0 {
+        return Err(RuntimeError::Backend(format!(
+            "metal decode attention requires query heads {} to be divisible by kv heads {}",
+            query_head_count, kv_head_count
+        )));
+    }
+
+    let required_cache_width = kv_head_count.saturating_mul(head_dim);
+    if cache_width != required_cache_width {
+        return Err(RuntimeError::Backend(format!(
+            "metal decode attention cache width mismatch: expected {}, actual {}",
+            required_cache_width, cache_width
+        )));
+    }
+    Ok(())
 }
 
 fn validate_quantized_storage(
@@ -4057,17 +4468,17 @@ mod tests {
     use psionic_ir::GraphBuilder;
     use psionic_runtime::{
         Allocator, BackendDegradedPolicy, BackendParityPolicy, BackendSelectionState, BufferHandle,
-        BufferResidency, BufferStorageKind, CacheAction, CacheKind, DeviceDiscovery, HealthStatus,
-        KvCacheAccounting, KvCachePageLayout, KvCacheState, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeError,
-        ServedProductBackendPolicy,
+        BufferResidency, BufferStorageKind, CacheAction, CacheKind, CompilePathTemperature,
+        DeviceDiscovery, HealthStatus, KvCacheAccounting, KvCachePageLayout, KvCacheState,
+        PrefixCacheState, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeError, ServedProductBackendPolicy,
     };
 
     use super::{
-        DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend,
-        MetalPromptResidencyMetrics, MetalSharedPrefixCompatibility, MetalSharedPrefixStore,
-        TEXT_GENERATION_SUPPORTED_OPS, classify_support, validate_quantized_storage,
-        validate_supported_plan,
+        DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalAttentionGraphReserve,
+        MetalBackend, MetalGraphReserveKind, MetalPromptResidencyMetrics,
+        MetalSharedPrefixCompatibility, MetalSharedPrefixStore, TEXT_GENERATION_SUPPORTED_OPS,
+        classify_support, validate_quantized_storage, validate_supported_plan,
     };
 
     fn sample_repeated_mxfp4_rows(rows: usize) -> Vec<u8> {
@@ -5013,6 +5424,139 @@ mod tests {
                 1.7310586, 3.7310586, 5.7310586, 7.7310586, 1.2689414, 3.2689414, 5.2689414,
                 7.2689414,
             ],
+            1.0e-5,
+        );
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_attention_graph_runtime_reports_reserve_reuse_and_rebuild_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let decode_reserve = MetalAttentionGraphReserve {
+            kind: MetalGraphReserveKind::Decode,
+            batch_size: 1,
+            sequence_len: 1,
+            query_head_count: 2,
+            kv_head_count: 1,
+            head_dim: 4,
+            max_context_tokens: 8,
+            causal: true,
+            interleaved: false,
+            flash_attention: backend.supports_flash_attention(),
+        };
+        let mut runtime = backend.reserve_attention_graph(decode_reserve.clone())?;
+        assert_eq!(
+            runtime.metrics().compile_path.temperature,
+            CompilePathTemperature::ColdCompile
+        );
+        assert_eq!(runtime.metrics().command_state_reused, false);
+        assert_eq!(
+            runtime.metrics().identity.kind,
+            MetalGraphReserveKind::Decode
+        );
+
+        let reused = runtime.ensure_reserved(&mut backend, decode_reserve)?;
+        assert_eq!(
+            reused.compile_path.temperature,
+            CompilePathTemperature::WarmReuse
+        );
+        assert_eq!(reused.command_state_reused, true);
+        assert_eq!(reused.reuse_count, 1);
+
+        let prompt_reserve = MetalAttentionGraphReserve {
+            kind: MetalGraphReserveKind::Prompt,
+            batch_size: 1,
+            sequence_len: 16,
+            query_head_count: 2,
+            kv_head_count: 1,
+            head_dim: 4,
+            max_context_tokens: 8,
+            causal: true,
+            interleaved: false,
+            flash_attention: backend.supports_flash_attention(),
+        };
+        let rebuilt = runtime.ensure_reserved(&mut backend, prompt_reserve)?;
+        assert_eq!(
+            rebuilt.compile_path.temperature,
+            CompilePathTemperature::ColdCompile
+        );
+        assert_eq!(rebuilt.command_state_reused, false);
+        assert_eq!(rebuilt.identity.kind, MetalGraphReserveKind::Prompt);
+        assert!(rebuilt.rebuild_count >= 2);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_decode_attention_reuses_reserved_runtime_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let reserve = MetalAttentionGraphReserve {
+            kind: MetalGraphReserveKind::Decode,
+            batch_size: 1,
+            sequence_len: 1,
+            query_head_count: 2,
+            kv_head_count: 1,
+            head_dim: 4,
+            max_context_tokens: 8,
+            causal: true,
+            interleaved: false,
+            flash_attention: backend.supports_flash_attention(),
+        };
+        let mut runtime = backend.reserve_attention_graph(reserve)?;
+        let mut cache = backend.kv_cache_mirror_from_host_rows(4, 8, 0, &[], &[], 4)?;
+        let cos = backend.input_buffer(Shape::new(vec![1, 2]), vec![1.0, 1.0])?;
+        let sin = backend.input_buffer(Shape::new(vec![1, 2]), vec![0.0, 0.0])?;
+        let query = backend.input_buffer(
+            Shape::new(vec![1, 2, 1, 4]),
+            vec![1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+        )?;
+        let key = backend.input_buffer(Shape::new(vec![1, 1, 1, 4]), vec![1.0, 0.0, 0.0, 0.0])?;
+        let value = backend.input_buffer(Shape::new(vec![1, 1, 1, 4]), vec![2.0, 4.0, 6.0, 8.0])?;
+
+        let result = backend.decode_attention_f32_reserved(
+            &mut runtime,
+            &query,
+            &key,
+            &value,
+            &cos,
+            &sin,
+            &mut cache,
+            1.0,
+            true,
+            false,
+            true,
+        )?;
+        assert_eq!(
+            result
+                .graph_metrics
+                .as_ref()
+                .map(|value| value.command_state_reused),
+            Some(true)
+        );
+        assert_eq!(
+            result
+                .graph_metrics
+                .as_ref()
+                .map(|value| value.compile_path.temperature),
+            Some(CompilePathTemperature::WarmReuse)
+        );
+        assert_eq!(result.cache_state.tokens, 1);
+        assert_close(
+            result.output.read_f32()?.as_slice(),
+            &[2.0, 4.0, 6.0, 8.0, 2.0, 4.0, 6.0, 8.0],
             1.0e-5,
         );
         Ok(())
