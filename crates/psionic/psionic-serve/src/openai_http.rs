@@ -17,7 +17,7 @@ use std::{
 use axum::{
     Json, Router,
     extract::State,
-    http::StatusCode,
+    http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{
         IntoResponse, Response,
         sse::{Event, Sse},
@@ -90,6 +90,104 @@ impl GptOssOpenAiCompatBackend {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum GptOssMetalExecutionMode {
+    Auto,
+    Native,
+    ProxyLlamaCpp,
+}
+
+impl GptOssMetalExecutionMode {
+    #[must_use]
+    pub const fn label(self) -> &'static str {
+        match self {
+            Self::Auto => "auto",
+            Self::Native => "native",
+            Self::ProxyLlamaCpp => "proxy",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GptOssOpenAiCompatExecutionSummary {
+    backend_label: &'static str,
+    execution_mode_label: &'static str,
+    execution_engine_label: &'static str,
+}
+
+impl GptOssOpenAiCompatExecutionSummary {
+    const fn native(backend_label: &'static str) -> Self {
+        Self {
+            backend_label,
+            execution_mode_label: "native",
+            execution_engine_label: "psionic",
+        }
+    }
+
+    const fn metal_proxy() -> Self {
+        Self {
+            backend_label: "metal",
+            execution_mode_label: "proxy",
+            execution_engine_label: "llama.cpp",
+        }
+    }
+
+    fn uses_proxy(self) -> bool {
+        matches!(self.execution_engine_label, "llama.cpp")
+    }
+}
+
+fn resolve_execution_summary(
+    backend: GptOssOpenAiCompatBackend,
+    metal_mode: GptOssMetalExecutionMode,
+    legacy_proxy_enabled: bool,
+) -> Result<GptOssOpenAiCompatExecutionSummary, OpenAiCompatServerError> {
+    match backend {
+        GptOssOpenAiCompatBackend::Metal => match metal_mode {
+            GptOssMetalExecutionMode::Auto => Ok(if legacy_proxy_enabled {
+                GptOssOpenAiCompatExecutionSummary::metal_proxy()
+            } else {
+                GptOssOpenAiCompatExecutionSummary::native("metal")
+            }),
+            GptOssMetalExecutionMode::Native => {
+                if legacy_proxy_enabled {
+                    Err(OpenAiCompatServerError::Config(String::from(
+                        "requested `--metal-mode native` while legacy PSIONIC_METAL_PROXY_LLAMA_CPP is enabled",
+                    )))
+                } else {
+                    Ok(GptOssOpenAiCompatExecutionSummary::native("metal"))
+                }
+            }
+            GptOssMetalExecutionMode::ProxyLlamaCpp => {
+                Ok(GptOssOpenAiCompatExecutionSummary::metal_proxy())
+            }
+        },
+        GptOssOpenAiCompatBackend::Cpu => {
+            if matches!(metal_mode, GptOssMetalExecutionMode::Auto) {
+                Ok(GptOssOpenAiCompatExecutionSummary::native("cpu"))
+            } else {
+                Err(OpenAiCompatServerError::Config(format!(
+                    "requested `--metal-mode {}` but resolved backend is cpu",
+                    metal_mode.label()
+                )))
+            }
+        }
+        GptOssOpenAiCompatBackend::Cuda => {
+            if matches!(metal_mode, GptOssMetalExecutionMode::Auto) {
+                Ok(GptOssOpenAiCompatExecutionSummary::native("cuda"))
+            } else {
+                Err(OpenAiCompatServerError::Config(format!(
+                    "requested `--metal-mode {}` but resolved backend is cuda",
+                    metal_mode.label()
+                )))
+            }
+        }
+        GptOssOpenAiCompatBackend::Auto => Err(OpenAiCompatServerError::Config(String::from(
+            "auto backend must be resolved before execution mode selection",
+        ))),
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct GptOssOpenAiCompatConfig {
     pub model_path: PathBuf,
@@ -98,6 +196,7 @@ pub struct GptOssOpenAiCompatConfig {
     pub backend: GptOssOpenAiCompatBackend,
     pub context_length: Option<usize>,
     pub gpu_layers: Option<i32>,
+    pub metal_mode: GptOssMetalExecutionMode,
     pub reasoning_budget: u8,
     pub webui_enabled: bool,
 }
@@ -112,6 +211,7 @@ impl GptOssOpenAiCompatConfig {
             backend: GptOssOpenAiCompatBackend::Auto,
             context_length: None,
             gpu_layers: None,
+            metal_mode: GptOssMetalExecutionMode::Auto,
             reasoning_budget: 0,
             webui_enabled: false,
         }
@@ -139,6 +239,8 @@ struct GptOssOpenAiCompatState {
     worker: Option<GptOssWorker>,
     proxy: Option<Arc<LlamaCppProxyState>>,
     backend_label: &'static str,
+    execution_mode_label: &'static str,
+    execution_engine_label: &'static str,
     descriptor: DecoderModelDescriptor,
     tokenizer: GptOssTokenizer,
     prompt_options: PromptRenderOptions,
@@ -242,12 +344,13 @@ impl GptOssOpenAiCompatServer {
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
         let backend = config.backend.resolve();
-        let proxy =
-            if backend == GptOssOpenAiCompatBackend::Metal && metal_proxy_llama_cpp_enabled() {
-                Some(Arc::new(LlamaCppProxyState::spawn(config)?))
-            } else {
-                None
-            };
+        let execution_summary =
+            resolve_execution_summary(backend, config.metal_mode, metal_proxy_llama_cpp_enabled())?;
+        let proxy = if execution_summary.uses_proxy() {
+            Some(Arc::new(LlamaCppProxyState::spawn(config)?))
+        } else {
+            None
+        };
         Ok(Self {
             state: Arc::new(GptOssOpenAiCompatState {
                 worker: if proxy.is_some() {
@@ -256,7 +359,9 @@ impl GptOssOpenAiCompatServer {
                     Some(GptOssWorker::spawn(config.model_path.clone(), backend)?)
                 },
                 proxy,
-                backend_label: backend.label(),
+                backend_label: execution_summary.backend_label,
+                execution_mode_label: execution_summary.execution_mode_label,
+                execution_engine_label: execution_summary.execution_engine_label,
                 descriptor,
                 tokenizer,
                 prompt_options,
@@ -269,6 +374,21 @@ impl GptOssOpenAiCompatServer {
                 request_counter: AtomicU64::new(1),
             }),
         })
+    }
+
+    #[must_use]
+    pub fn backend_label(&self) -> &'static str {
+        self.state.backend_label
+    }
+
+    #[must_use]
+    pub fn execution_mode_label(&self) -> &'static str {
+        self.state.execution_mode_label
+    }
+
+    #[must_use]
+    pub fn execution_engine_label(&self) -> &'static str {
+        self.state.execution_engine_label
     }
 
     #[must_use]
@@ -663,6 +783,8 @@ impl IntoResponse for OpenAiCompatHttpError {
 struct HealthResponse {
     status: &'static str,
     backend: &'static str,
+    execution_mode: &'static str,
+    execution_engine: &'static str,
     model: String,
 }
 
@@ -670,6 +792,8 @@ async fn health(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<Healt
     Json(HealthResponse {
         status: "ok",
         backend: state.backend_label,
+        execution_mode: state.execution_mode_label,
+        execution_engine: state.execution_engine_label,
         model: state.default_model_name.clone(),
     })
 }
@@ -751,7 +875,7 @@ async fn handle_chat_completions(
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
     if let Some(proxy) = state.proxy.as_ref() {
-        return proxy_chat_completions(proxy, &request).await;
+        return proxy_chat_completions(state.as_ref(), proxy, &request).await;
     }
     validate_requested_model(request.model.as_deref(), &state.accepted_model_names)?;
     let prompt_messages = chat_messages_to_prompt_messages(&request.messages)?;
@@ -839,7 +963,9 @@ async fn handle_chat_completions(
             ),
             Ok::<_, Infallible>(Event::default().data("[DONE]")),
         ];
-        return Ok(Sse::new(iter(events)).into_response());
+        let mut response = Sse::new(iter(events)).into_response();
+        insert_execution_headers(response.headers_mut(), state.as_ref());
+        return Ok(response);
     }
 
     let psionic_harmony = if state.include_psionic_fields {
@@ -848,7 +974,7 @@ async fn handle_chat_completions(
         None
     };
     let full_choice = choice.into_full_choice();
-    Ok(Json(ChatCompletionResponse {
+    let mut response = Json(ChatCompletionResponse {
         id: request_id,
         object: "chat.completion",
         created: unix_timestamp_secs(),
@@ -868,10 +994,13 @@ async fn handle_chat_completions(
             .then(|| response.metrics.gpt_oss_perf.clone())
             .flatten(),
     })
-    .into_response())
+    .into_response();
+    insert_execution_headers(response.headers_mut(), state.as_ref());
+    Ok(response)
 }
 
 async fn proxy_chat_completions(
+    state: &GptOssOpenAiCompatState,
     proxy: &LlamaCppProxyState,
     request: &ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
@@ -906,9 +1035,26 @@ async fn proxy_chat_completions(
     if let Some(content_type) = content_type {
         response = response.header(axum::http::header::CONTENT_TYPE, content_type);
     }
-    response
+    let mut response = response
         .body(axum::body::Body::from(body))
-        .map_err(|error| OpenAiCompatHttpError::BadRequest(error.to_string()))
+        .map_err(|error| OpenAiCompatHttpError::BadRequest(error.to_string()))?;
+    insert_execution_headers(response.headers_mut(), state);
+    Ok(response)
+}
+
+fn insert_execution_headers(headers: &mut HeaderMap, state: &GptOssOpenAiCompatState) {
+    headers.insert(
+        HeaderName::from_static("x-psionic-backend"),
+        HeaderValue::from_static(state.backend_label),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-execution-mode"),
+        HeaderValue::from_static(state.execution_mode_label),
+    );
+    headers.insert(
+        HeaderName::from_static("x-psionic-execution-engine"),
+        HeaderValue::from_static(state.execution_engine_label),
+    );
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -1228,10 +1374,11 @@ struct OpenAiErrorBody {
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatCompletionMessage, ChatCompletionRequest, HARMONY_CALL_STOP, HARMONY_RETURN_STOP,
-        PromptTokenCache, chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
+        ChatCompletionMessage, ChatCompletionRequest, GptOssMetalExecutionMode,
+        GptOssOpenAiCompatBackend, HARMONY_CALL_STOP, HARMONY_RETURN_STOP, PromptTokenCache,
+        chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
         fast_final_assistant_content, final_assistant_content,
-        generation_options_from_chat_request,
+        generation_options_from_chat_request, resolve_execution_summary,
     };
     use psionic_models::{
         GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, PromptMessage, PromptMessageRole,
@@ -1289,6 +1436,44 @@ mod tests {
                 .iter()
                 .any(|value| value == HARMONY_CALL_STOP)
         );
+    }
+
+    #[test]
+    fn auto_metal_mode_resolves_to_native_without_legacy_proxy() {
+        let summary = resolve_execution_summary(
+            GptOssOpenAiCompatBackend::Metal,
+            GptOssMetalExecutionMode::Auto,
+            false,
+        )
+        .expect("metal summary");
+
+        assert_eq!(summary.backend_label, "metal");
+        assert_eq!(summary.execution_mode_label, "native");
+        assert_eq!(summary.execution_engine_label, "psionic");
+    }
+
+    #[test]
+    fn explicit_native_metal_mode_rejects_legacy_proxy_env() {
+        let error = resolve_execution_summary(
+            GptOssOpenAiCompatBackend::Metal,
+            GptOssMetalExecutionMode::Native,
+            true,
+        )
+        .expect_err("native metal should reject legacy proxy env");
+
+        assert!(error.to_string().contains("PSIONIC_METAL_PROXY_LLAMA_CPP"));
+    }
+
+    #[test]
+    fn explicit_metal_mode_is_rejected_when_backend_is_not_metal() {
+        let error = resolve_execution_summary(
+            GptOssOpenAiCompatBackend::Cuda,
+            GptOssMetalExecutionMode::ProxyLlamaCpp,
+            false,
+        )
+        .expect_err("non-metal backend should reject explicit metal mode");
+
+        assert!(error.to_string().contains("resolved backend is cuda"));
     }
 
     #[test]

@@ -5,7 +5,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh [--model PATH] [--psionic-bin PATH] [--psionic-backend BACKEND] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N] [--max-tokens N] [--startup-timeout-seconds N] [--request-timeout-seconds N] [--json-out DIR]
+  crates/psionic/scripts/benchmark-gpt-oss-vs-llama.sh [--model PATH] [--psionic-bin PATH] [--psionic-backend BACKEND] [--psionic-metal-mode MODE] [--llama-bin PATH] [--host HOST] [--port PORT] [--ctx N] [--ngl N] [--max-tokens N] [--startup-timeout-seconds N] [--request-timeout-seconds N] [--json-out DIR]
 
 Defaults:
   macOS model:           /Users/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
@@ -14,6 +14,7 @@ Defaults:
   Linux llama-bin:       /home/christopherdavid/code/llama.cpp/build/bin/llama-server
   macOS psionic backend: metal
   Linux psionic backend: cuda
+  psionic metal mode:    native
   host:                  127.0.0.1
   port:                  8099
   ctx:                   4096
@@ -24,6 +25,7 @@ Defaults:
 
 Notes:
   - The script prefers ./target/release/psionic-gpt-oss-server, then ./target/debug/psionic-gpt-oss-server.
+  - On macOS Metal, Psionic defaults to the native Rust/Metal path. Use `--psionic-metal-mode proxy` only for explicit `llama.cpp` oracle/debug runs.
   - Each server is measured on three same-host cases:
       1. cold request
       2. warm non-hit request
@@ -57,6 +59,8 @@ STARTUP_TIMEOUT_SECONDS=60
 REQUEST_TIMEOUT_SECONDS=60
 PSI_BIN=
 JSON_OUT=
+PSIONIC_METAL_MODE=
+PSIONIC_METAL_MODE_SET=0
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -74,6 +78,11 @@ while [[ $# -gt 0 ]]; do
       ;;
     --llama-bin)
       LLAMA_BIN=${2:?missing value for --llama-bin}
+      shift 2
+      ;;
+    --psionic-metal-mode)
+      PSIONIC_METAL_MODE=${2:?missing value for --psionic-metal-mode}
+      PSIONIC_METAL_MODE_SET=1
       shift 2
       ;;
     --host)
@@ -119,6 +128,37 @@ while [[ $# -gt 0 ]]; do
       ;;
   esac
 done
+
+is_truthy() {
+  local value=${1:-}
+  [[ "$value" == "1" || "$value" == "true" || "$value" == "TRUE" || "$value" == "yes" || "$value" == "YES" ]]
+}
+
+if [[ "$PSI_BACKEND" == "metal" ]]; then
+  if [[ -z "$PSIONIC_METAL_MODE" ]]; then
+    PSIONIC_METAL_MODE=native
+  fi
+  case "$PSIONIC_METAL_MODE" in
+    native|proxy)
+      ;;
+    *)
+      echo "invalid --psionic-metal-mode value: $PSIONIC_METAL_MODE (expected native or proxy)" >&2
+      exit 1
+      ;;
+  esac
+else
+  if (( PSIONIC_METAL_MODE_SET )); then
+    echo "--psionic-metal-mode is only valid when --psionic-backend metal" >&2
+    exit 1
+  fi
+  PSIONIC_METAL_MODE=not_applicable
+fi
+
+if [[ "$PSI_BACKEND" == "metal" && "$PSIONIC_METAL_MODE" == "native" ]] && is_truthy "${PSIONIC_METAL_PROXY_LLAMA_CPP:-}"; then
+  echo "native Metal benchmark requested, but legacy PSIONIC_METAL_PROXY_LLAMA_CPP is still enabled" >&2
+  echo "unset PSIONIC_METAL_PROXY_LLAMA_CPP or rerun with --psionic-metal-mode proxy" >&2
+  exit 1
+fi
 
 if [[ -z "$PSI_BIN" ]]; then
   if [[ -x "$REPO_ROOT/target/release/psionic-gpt-oss-server" ]]; then
@@ -227,6 +267,25 @@ run_request() {
     -d "$request_json" | tee "$output_file" | jq -r '.choices[0].message.content'
 }
 
+capture_health_json() {
+  local server_name=$1
+  local output_file=$2
+
+  if [[ "$server_name" == "psionic" ]]; then
+    curl --max-time 2 -fsS "http://$HOST:$PORT/health" > "$output_file"
+  else
+    jq -cn \
+      --arg model "$(basename "$MODEL_PATH")" \
+      '{
+        status: "ok",
+        backend: "reference",
+        execution_mode: "direct",
+        execution_engine: "llama.cpp",
+        model: $model
+      }' > "$output_file"
+  fi
+}
+
 write_summary_json() {
   local server_name=$1
   local case_name=$2
@@ -238,6 +297,7 @@ write_summary_json() {
   [[ -n "$JSON_OUT" ]] || return 0
 
   cp "$response_file" "$JSON_OUT/$server_name.$case_name.response.json"
+  cp "$TMP_DIR/$server_name.health.json" "$JSON_OUT/$server_name.health.json"
   jq -n \
     --arg server "$server_name" \
     --arg case_name "$case_name" \
@@ -248,6 +308,7 @@ write_summary_json() {
     --arg completion_tokens "$tokens" \
     --arg tokens_per_second "$tokps" \
     --slurpfile response "$response_file" \
+    --slurpfile health "$TMP_DIR/$server_name.health.json" \
     '{
       server: $server,
       case: $case_name,
@@ -257,6 +318,9 @@ write_summary_json() {
       elapsed_seconds: ($elapsed_seconds | tonumber),
       completion_tokens: ($completion_tokens | tonumber),
       tokens_per_second: ($tokens_per_second | tonumber),
+      execution_mode: ($health[0].execution_mode // "unknown"),
+      execution_engine: ($health[0].execution_engine // "unknown"),
+      server_health: $health[0],
       response: $response[0]
     }' > "$JSON_OUT/$server_name.$case_name.summary.json"
 }
@@ -294,6 +358,8 @@ bench() {
   SERVER_PID=$!
 
   wait_for_server "http://$HOST:$PORT/health"
+  capture_health_json "$server_name" "$TMP_DIR/$server_name.health.json"
+  echo "health=$(tr -d '\n' < "$TMP_DIR/$server_name.health.json")"
   run_case "$server_name" "cold" "$REQUEST_COLD" "$TMP_DIR/$server_name.cold.json"
   run_case "$server_name" "warm_non_hit" "$REQUEST_WARM" "$TMP_DIR/$server_name.warm_non_hit.json"
   run_case "$server_name" "prompt_cache_hit" "$REQUEST_CACHE_HIT" "$TMP_DIR/$server_name.prompt_cache_hit.json"
@@ -313,6 +379,7 @@ echo "platform=$PLATFORM"
 echo "model=$MODEL_PATH"
 echo "psionic_bin=$PSI_BIN"
 echo "psionic_backend=$PSI_BACKEND"
+echo "psionic_metal_mode=$PSIONIC_METAL_MODE"
 echo "llama_bin=$LLAMA_BIN"
 echo "max_tokens=$MAX_TOKENS"
 echo "startup_timeout_seconds=$STARTUP_TIMEOUT_SECONDS"
@@ -331,10 +398,13 @@ PSIONIC_CMD=(
   --no-webui
 )
 
-if [[ "$PLATFORM" == "Darwin" && "$PSI_BACKEND" == "metal" ]]; then
+if [[ "$PSI_BACKEND" == "metal" ]]; then
+  PSIONIC_CMD+=(--metal-mode "$PSIONIC_METAL_MODE")
+fi
+
+if [[ "$PSI_BACKEND" == "metal" && "$PSIONIC_METAL_MODE" == "proxy" ]]; then
   PSIONIC_CMD=(
     env
-    PSIONIC_METAL_PROXY_LLAMA_CPP=1
     PSIONIC_LLAMA_SERVER_BIN="$LLAMA_BIN"
     PSIONIC_LLAMA_BATCH_SIZE=64
     PSIONIC_LLAMA_UBATCH_SIZE=64
