@@ -1594,7 +1594,7 @@ impl GptOssCudaModelInner {
             let layer_offset = layer_index.saturating_mul(kv_width);
             let q_rows = layer.attention_qkv_weight.rows_per_projection[0];
             let k_rows = layer.attention_qkv_weight.rows_per_projection[1];
-            let v_rows = layer.attention_qkv_weight.rows_per_projection[2];
+            let _v_rows = layer.attention_qkv_weight.rows_per_projection[2];
             let gate_rows = layer
                 .feed_forward_gate_up_experts_weight
                 .rows_per_projection[0];
@@ -1651,36 +1651,10 @@ impl GptOssCudaModelInner {
                 &layer.attention_qkv_bias_device,
                 layer.attention_qkv_weight.total_rows(),
             )?;
-            submission.rope_neox_in_place(
+            submission.attention_decode_rope_cache_f16_kv(
                 &layer_plan.qkv_buffer,
                 0,
-                head_count,
-                head_dim,
-                rotary_dim,
-                position,
-                freq_scale,
-                ext_factor,
-                corr_dims,
-                theta_scale,
-            )?;
-            submission.rope_neox_in_place(
-                &layer_plan.qkv_buffer,
                 q_rows,
-                kv_head_count,
-                head_dim,
-                rotary_dim,
-                position,
-                freq_scale,
-                ext_factor,
-                corr_dims,
-                theta_scale,
-            )?;
-            submission.attention_decode(
-                &layer_plan.qkv_buffer,
-                0,
-                &layer_plan.qkv_buffer,
-                q_rows,
-                &layer_plan.qkv_buffer,
                 q_rows.saturating_add(k_rows),
                 &cuda_cache.key_buffer,
                 &cuda_cache.value_buffer,
@@ -1691,30 +1665,14 @@ impl GptOssCudaModelInner {
                 head_count,
                 kv_head_count,
                 head_dim,
+                rotary_dim,
+                position,
+                freq_scale,
+                ext_factor,
+                corr_dims,
+                theta_scale,
                 layer.attention_sinks_device.as_ref(),
                 &layer_plan.attention_buffer,
-            )?;
-            submission.copy_buffer_region(
-                &layer_plan.qkv_buffer,
-                q_rows.saturating_mul(std::mem::size_of::<f32>()),
-                &cuda_cache.key_buffer,
-                cache_write_index
-                    .saturating_mul(cuda_cache.width)
-                    .saturating_add(layer_offset)
-                    .saturating_mul(std::mem::size_of::<f32>()),
-                k_rows.saturating_mul(std::mem::size_of::<f32>()),
-            )?;
-            submission.copy_buffer_region(
-                &layer_plan.qkv_buffer,
-                q_rows
-                    .saturating_add(k_rows)
-                    .saturating_mul(std::mem::size_of::<f32>()),
-                &cuda_cache.value_buffer,
-                cache_write_index
-                    .saturating_mul(cuda_cache.width)
-                    .saturating_add(layer_offset)
-                    .saturating_mul(std::mem::size_of::<f32>()),
-                v_rows.saturating_mul(std::mem::size_of::<f32>()),
             )?;
             if layer.attention_output_weight.mode == QuantizationMode::GgmlQ8_0 {
                 submission.quantize_f32_to_q8_1(
@@ -1751,15 +1709,11 @@ impl GptOssCudaModelInner {
                     layer.attention_output_weight.rows,
                 )?;
             }
-            submission.add_f32_in_place(
+            submission.add_residual_rms_norm(
                 &layer_plan.projected_buffer,
-                0,
                 current_hidden,
-                hidden_size,
-            )?;
-            submission.rms_norm(
-                &layer_plan.projected_buffer,
                 &layer.feed_forward_norm_device,
+                &layer_plan.projected_buffer,
                 &layer_plan.ffn_norm_buffer,
                 hidden_size,
                 self.family_metadata.rms_norm_epsilon,
@@ -3354,8 +3308,20 @@ impl CudaKvCacheMirror {
     ) -> Result<Self, super::RuntimeError> {
         let capacity_tokens =
             Self::capacity_for_request(cache.len(), reserve_tokens, cache.max_context());
-        let mut key_buffer = backend.f32_buffer(capacity_tokens.saturating_mul(cache.width()))?;
-        let mut value_buffer = backend.f32_buffer(capacity_tokens.saturating_mul(cache.width()))?;
+        let mut key_buffer =
+            backend.byte_buffer(&vec![
+                0_u8;
+                capacity_tokens
+                    .saturating_mul(cache.width())
+                    .saturating_mul(std::mem::size_of::<u16>())
+            ])?;
+        let mut value_buffer =
+            backend.byte_buffer(&vec![
+                0_u8;
+                capacity_tokens
+                    .saturating_mul(cache.width())
+                    .saturating_mul(std::mem::size_of::<u16>())
+            ])?;
         if !cache.is_empty() {
             let mut keys = Vec::with_capacity(cache.len().saturating_mul(cache.width()));
             let mut values = Vec::with_capacity(cache.len().saturating_mul(cache.width()));
@@ -3363,8 +3329,10 @@ impl CudaKvCacheMirror {
                 keys.extend_from_slice(entry.key.as_slice());
                 values.extend_from_slice(entry.value.as_slice());
             }
-            key_buffer.write_f32_at_offset(0, keys.as_slice())?;
-            value_buffer.write_f32_at_offset(0, values.as_slice())?;
+            key_buffer
+                .write_bytes_at_offset(0, f32_slice_to_f16_bytes(keys.as_slice()).as_slice())?;
+            value_buffer
+                .write_bytes_at_offset(0, f32_slice_to_f16_bytes(values.as_slice()).as_slice())?;
         }
         Ok(Self {
             key_buffer,
@@ -3387,17 +3355,35 @@ impl CudaKvCacheMirror {
             .max(self.capacity_tokens.saturating_mul(2))
             .checked_next_power_of_two()
             .unwrap_or(required_tokens);
-        let mut new_keys = backend.f32_buffer(new_capacity.saturating_mul(self.width))?;
-        let mut new_values = backend.f32_buffer(new_capacity.saturating_mul(self.width))?;
+        let mut new_keys =
+            backend.byte_buffer(&vec![
+                0_u8;
+                new_capacity
+                    .saturating_mul(self.width)
+                    .saturating_mul(std::mem::size_of::<u16>())
+            ])?;
+        let mut new_values =
+            backend.byte_buffer(&vec![
+                0_u8;
+                new_capacity
+                    .saturating_mul(self.width)
+                    .saturating_mul(std::mem::size_of::<u16>())
+            ])?;
         if self.len > 0 {
-            let existing_keys = self
-                .key_buffer
-                .read_f32_at_offset(0, self.len.saturating_mul(self.width))?;
-            let existing_values = self
-                .value_buffer
-                .read_f32_at_offset(0, self.len.saturating_mul(self.width))?;
-            new_keys.write_f32_at_offset(0, existing_keys.as_slice())?;
-            new_values.write_f32_at_offset(0, existing_values.as_slice())?;
+            let existing_keys = self.key_buffer.read_bytes_at_offset(
+                0,
+                self.len
+                    .saturating_mul(self.width)
+                    .saturating_mul(std::mem::size_of::<u16>()),
+            )?;
+            let existing_values = self.value_buffer.read_bytes_at_offset(
+                0,
+                self.len
+                    .saturating_mul(self.width)
+                    .saturating_mul(std::mem::size_of::<u16>()),
+            )?;
+            new_keys.write_bytes_at_offset(0, existing_keys.as_slice())?;
+            new_values.write_bytes_at_offset(0, existing_values.as_slice())?;
         }
         self.key_buffer = new_keys;
         self.value_buffer = new_values;
@@ -3412,12 +3398,21 @@ impl CudaKvCacheMirror {
                 token_index, self.len
             )));
         }
-        let element_offset = token_index.saturating_mul(self.width);
+        let byte_offset = token_index
+            .saturating_mul(self.width)
+            .saturating_mul(std::mem::size_of::<u16>());
+        let byte_len = self.width.saturating_mul(std::mem::size_of::<u16>());
         Ok((
-            self.key_buffer
-                .read_f32_at_offset(element_offset, self.width)?,
-            self.value_buffer
-                .read_f32_at_offset(element_offset, self.width)?,
+            f16_bytes_to_f32_vec(
+                self.key_buffer
+                    .read_bytes_at_offset(byte_offset, byte_len)?
+                    .as_slice(),
+            )?,
+            f16_bytes_to_f32_vec(
+                self.value_buffer
+                    .read_bytes_at_offset(byte_offset, byte_len)?
+                    .as_slice(),
+            )?,
         ))
     }
 
@@ -3962,9 +3957,71 @@ fn decode_step_plan_compile_path(plan_cache_hit: bool) -> CompilePathEvidence {
 fn cache_key_value_byte_len(width: usize) -> u64 {
     width
         .saturating_mul(2)
-        .saturating_mul(std::mem::size_of::<f32>())
+        .saturating_mul(std::mem::size_of::<u16>())
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn f32_slice_to_f16_bytes(values: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len().saturating_mul(std::mem::size_of::<u16>()));
+    for value in values {
+        bytes.extend_from_slice(&f32_to_f16_bits(*value).to_le_bytes());
+    }
+    bytes
+}
+
+fn f16_bytes_to_f32_vec(bytes: &[u8]) -> Result<Vec<f32>, super::RuntimeError> {
+    if bytes.len() % std::mem::size_of::<u16>() != 0 {
+        return Err(super::RuntimeError::Backend(format!(
+            "f16 byte buffer length must be divisible by 2, actual {}",
+            bytes.len()
+        )));
+    }
+    let mut values = Vec::with_capacity(bytes.len() / std::mem::size_of::<u16>());
+    for chunk in bytes.chunks_exact(std::mem::size_of::<u16>()) {
+        values.push(f16_bits_to_f32(u16::from_le_bytes([chunk[0], chunk[1]])));
+    }
+    Ok(values)
+}
+
+fn f32_to_f16_bits(value: f32) -> u16 {
+    let bits = value.to_bits();
+    let sign = ((bits >> 16) & 0x8000) as u16;
+    let exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
+    let mantissa = bits & 0x007f_ffff;
+    if exponent <= 0 {
+        return sign;
+    }
+    if exponent >= 0x1f {
+        return sign | 0x7c00;
+    }
+    sign | ((exponent as u16) << 10) | ((mantissa >> 13) as u16)
+}
+
+fn f16_bits_to_f32(bits: u16) -> f32 {
+    let sign = (u32::from(bits & 0x8000)) << 16;
+    let exponent = (bits >> 10) & 0x1f;
+    let mantissa = bits & 0x03ff;
+
+    let value = if exponent == 0 {
+        if mantissa == 0 {
+            sign
+        } else {
+            let mut normalized = u32::from(mantissa);
+            let mut shift = 0_u32;
+            while (normalized & 0x0400) == 0 {
+                normalized <<= 1;
+                shift = shift.saturating_add(1);
+            }
+            normalized &= 0x03ff;
+            sign | ((113_u32.saturating_sub(shift)) << 23) | (normalized << 13)
+        }
+    } else if exponent == 0x1f {
+        sign | 0x7f80_0000 | (u32::from(mantissa) << 13)
+    } else {
+        sign | ((u32::from(exponent) + 112) << 23) | (u32::from(mantissa) << 13)
+    };
+    f32::from_bits(value)
 }
 
 fn digest_gpt_oss_cuda_step_plan(model_plan_digest: &str, graph_signature: &str) -> String {

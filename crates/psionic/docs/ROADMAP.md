@@ -13,10 +13,12 @@
 > in `4821bf07c` for the Psionic-only GPT-OSS/NVIDIA host path, and after
 > confirming the follow-on GPT-OSS throughput track `#3242` through `#3249`
 > where `#3242` through `#3246` are closed and `#3249` / `#3247` / `#3248`
-> remain open, and after the latest live benchmark plus llama.cpp-alignment
-> audit checkpoint showing that Psionic now runs the exact GPT-OSS HTTP lane at
-> about `35.26 tok/s` versus `167.27 tok/s` for `llama.cpp` on this RTX 4080
-> host.
+> remain open, and after the latest live benchmark plus deeper
+> llama.cpp-alignment checkpoint showing that Psionic now runs the exact
+> GPT-OSS HTTP lane at about `35.99 tok/s` versus `166.74 tok/s` for
+> `llama.cpp` on this RTX 4080 host, with the first direct ports of the
+> rope/KV/attention and residual/norm fusion ideas landed but not yet moving
+> the parity gap materially.
 >
 > This is the live roadmap for `crates/psionic/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -35,7 +37,12 @@
 > reference oracle and via Psionic alone through the local
 > `psionic-gpt-oss-server` HTTP surface on NVIDIA. The remaining open roadmap work
 > on this host is no longer "make GPT-OSS run at all"; it is the active
-> throughput-parity track against `llama.cpp`.
+> throughput-parity track against `llama.cpp`. The latest direct-port
+> checkpoint reduced timed-request kernel launches from about `16132` to
+> `11692` but only moved throughput from about `35.5 tok/s` to `36.0 tok/s`,
+> so the next work should bias toward `llama.cpp`'s graph scheduler, flash
+> attention, and grouped-expert execution rather than only more small local
+> kernel fusions.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the

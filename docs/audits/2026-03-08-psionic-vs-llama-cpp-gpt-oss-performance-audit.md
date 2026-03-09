@@ -1,10 +1,12 @@
 # 2026-03-08 Psionic vs llama.cpp GPT-OSS Performance Audit
 
 > Updated 2026-03-09 after the CUDA/runtime checkpoint that landed the perf
-> groundwork through GitHub issues `#3242` through `#3246` and produced a new
-> live benchmark on the local RTX 4080 host. This file is the current audit for
-> the GPT-OSS throughput gap; later product truth still lives in `docs/MVP.md`,
-> `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and the referenced issues.
+> groundwork through GitHub issues `#3242` through `#3246`, and after the
+> direct `llama.cpp` alignment checkpoint that ported the first graph-driven
+> CUDA fusion ideas into Psionic and produced a new live benchmark on the local
+> RTX 4080 host. This file is the current audit for the GPT-OSS throughput gap;
+> later product truth still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
+> `crates/psionic/docs/ROADMAP.md`, and the referenced issues.
 
 ## Scope
 
@@ -70,6 +72,19 @@
 - Psionic improvement over original baseline:
   - `2.11x`
 
+### Direct-alignment checkpoint
+
+- Psionic:
+  - `37` completion tokens in `1.028s`
+  - `35.99 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.252s`
+  - `166.74 tok/s`
+- Gap:
+  - `4.63x`
+- Psionic improvement over the prior checkpoint:
+  - `1.02x`
+
 The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
@@ -110,6 +125,22 @@ Three correctness fixes were also necessary before the faster path was usable:
 That work is why Psionic moved from `16.74 tok/s` to `35.26 tok/s` without changing
 the benchmark contract or delegating execution to `llama.cpp`.
 
+The direct-alignment checkpoint then added the first explicit ports of
+`llama.cpp` CUDA fusion ideas:
+
+- a fused RoPE + KV-write + decode-attention kernel for the GPT-OSS single-token
+  path, mirroring the role of `ggml_cuda_should_fuse_rope_set_rows(...)` and the
+  backend-owned attention/KV write path in `ggml-cuda.cu`
+- a fused residual-add + post-attention RMSNorm kernel that preserves the
+  intermediate `ffn_inp` surface instead of only normalizing it
+- an `f16` device KV mirror for the Psionic CUDA GPT-OSS path, closer to the
+  `llama.cpp` KV cache representation
+- backend CUDA tests that check the fused attention path against the separate
+  Psionic RoPE + attention + cache-write path before using it in the live model
+
+That work materially reduced kernel count but did not materially change
+end-to-end throughput. That is important evidence, not a failure to record.
+
 ## Current Hard Evidence From The Psionic Benchmark
 
 The latest Psionic benchmark receipt for the timed request reports:
@@ -122,7 +153,7 @@ The latest Psionic benchmark receipt for the timed request reports:
 - `device_to_host_bytes = 148`
 - `submission_count = 37`
 - `sync_count = 37`
-- `kernel_launches = 16132`
+- `kernel_launches = 11692`
 
 Important interpretation:
 
@@ -132,8 +163,14 @@ Important interpretation:
   - about `11.5 KB` per token in the timed lane
 - full-logits readback is no longer the dominant problem either
   - the greedy lane now reads back only one token ID per step
-- kernel launch count is still very high
-  - about `436` launched operations per generated token
+- kernel launch count is lower than the previous checkpoint, but still very high
+  - about `316` launched operations per generated token
+- the direct `llama.cpp`-style fusion slice cut kernel launches by about `27.5%`
+  - from `16132` to `11692`
+- despite that launch reduction, tok/s moved only from about `35.5` to `36.0`
+  - that is strong evidence that the remaining gap is now mostly inside the
+    heavyweight attention/MoE kernels and the graph scheduler, not in small
+    per-op overhead alone
 - throughput barely changed after removing almost all logits readback
   - that is the strongest evidence that the remaining gap is now mostly
     compute-shape, fusion, and dispatch architecture
@@ -142,6 +179,12 @@ Important interpretation:
   - the latest rerun stayed at about `35.50 tok/s`
   - that is expected because the change made the graph shape explicit and
     testable, but did not yet add new fusion or kernel families
+- the first direct CUDA fusion ports also did not materially change throughput
+  by themselves
+  - the latest rerun stayed at about `35.99 tok/s`
+  - that means further parity work has to target `llama.cpp`'s bigger wins:
+    flash attention, grouped `mul_mat_id`, CUDA graph capture/reuse, and the
+    backend scheduler's fusion/dispatch policy
 
 Timing caveat:
 
