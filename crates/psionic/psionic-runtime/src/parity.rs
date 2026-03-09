@@ -299,11 +299,7 @@ fn compare_numeric_vectors(
 
         let abs_delta = (expected_value - actual_value).abs();
         let rel_delta = if *expected_value == 0.0 {
-            if abs_delta == 0.0 {
-                0.0
-            } else {
-                f32::INFINITY
-            }
+            if abs_delta == 0.0 { 0.0 } else { f32::INFINITY }
         } else {
             abs_delta / expected_value.abs()
         };
@@ -437,8 +433,8 @@ mod tests {
     }
 
     #[test]
-    fn embedding_comparison_uses_budget_and_cosine_similarity(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn embedding_comparison_uses_budget_and_cosine_similarity()
+    -> Result<(), Box<dyn std::error::Error>> {
         let budget = BackendParityPolicy::default().embedding_budget(QuantizationMode::None);
         let summary = compare_embedding_vectors(&[1.0, 0.0], &[1.0 - 5.0e-6, 5.0e-6], budget)?;
         assert!(summary.within_budget);
@@ -447,8 +443,8 @@ mod tests {
     }
 
     #[test]
-    fn logits_comparison_allows_one_rank_drift_for_quantized_paths(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn logits_comparison_allows_one_rank_drift_for_quantized_paths()
+    -> Result<(), Box<dyn std::error::Error>> {
         let budget = BackendParityPolicy::default().logit_budget(QuantizationMode::GgmlQ4_0);
         let summary = compare_logits(&[0.502, 0.5, 0.1], &[0.5, 0.502, 0.1], budget)?;
         assert!(summary.within_budget);
