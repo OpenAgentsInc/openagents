@@ -109,12 +109,12 @@ A single pane on the right (roughly two-thirds of the right column) used only fo
 
 ## Summary of Copy and Labels
 
-- **Title:** MISSION CONTROL  
-- **Status label:** STATUS: OFFLINE  
-- **Section labels:** // SELL COMPUTE, // EARNINGS, // WALLET, // ACTIVE JOBS, // LOG STREAM  
-- **CTAs:** GO ONLINE, DOWNLOAD GPT-1234, DOCUMENTATION  
-- **Empty state:** Go Online to Start Jobs.  
-- **Right pane:** LOG STREAM — single pane for log/status stream only (no job table).  
+- **Title:** MISSION CONTROL
+- **Status label:** STATUS: OFFLINE
+- **Section labels:** // SELL COMPUTE, // EARNINGS, // WALLET, // ACTIVE JOBS, // LOG STREAM
+- **CTAs:** GO ONLINE, DOWNLOAD GPT-1234, DOCUMENTATION
+- **Empty state:** Go Online to Start Jobs.
+- **Right pane:** LOG STREAM — single pane for log/status stream only (no job table).
 - **Amount display:** BIP 177 integer (₿) by default; one-click toggle to Legacy (BTC).
 
 ---
