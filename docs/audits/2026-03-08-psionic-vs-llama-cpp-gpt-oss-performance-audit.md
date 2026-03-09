@@ -649,6 +649,44 @@ device-side decode kernels themselves:
   the `mul_mat_id` execution path before more request-path or transfer-path
   cleanup
 
+## 2026-03-09 Host Ceiling Note: The Active GPU Workload Is Also Limiting Control Throughput
+
+After the staging checkpoint, the local `llama.cpp` control was rerun on the
+same exact benchmark to establish the live ceiling on this host under the
+current workload mix.
+
+Measured `llama.cpp` control throughput on the same one-sentence HTTP request:
+
+- `run=1` `166.31 tok/s`
+- `run=2` `169.03 tok/s`
+- `run=3` `164.63 tok/s`
+
+At the same time, `nvidia-smi` still reported:
+
+- `steamwebhelper` resident on the GPU
+- `dota2` resident on the GPU with roughly `2100 MiB`
+
+That matters for planning. It means the current machine state is not just
+holding Psionic below `180 tok/s`; it is holding the local `llama.cpp`
+reference below `180 tok/s` as well. So:
+
+- algorithm work in Psionic is still required
+- but honest verification of a `>180 tok/s` target on this host now also
+  requires an exclusive-or-near-exclusive GPU run
+
+This should not change the code direction. The next code work is still the same:
+
+- direct `fattn.cu` alignment for decode attention
+- direct `mmvq.cu` / MMQ alignment for the MXFP4 expert path
+- closer `mul_mat_id` scheduling alignment for the grouped expert lane
+
+It does change the benchmark contract for future checkpoints:
+
+- if the control stays under `180 tok/s`, do not claim Psionic cleared the
+  target on this machine
+- first clear the external GPU contention, then rerun both Psionic and
+  `llama.cpp`
+
 ## Honest Status
 
 Psionic is no longer "nowhere close." The current checkpoint is a real improvement:

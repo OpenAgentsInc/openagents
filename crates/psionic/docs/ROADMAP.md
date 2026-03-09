@@ -1171,6 +1171,13 @@ materially move the exact benchmark (`~88.7` to `90.6 tok/s`, still in the same
 `~92 tok/s` class as before). Treat that as evidence that the remaining work is
 still kernel- and graph-algorithm parity, not more host-transfer cleanup.
 
+Live host-ceiling note:
+On this same machine state, with `dota2` still resident on the NVIDIA GPU, the
+local `llama.cpp` control rerun is also only landing around `164` to `169 tok/s`
+ on the exact benchmark contract. Do not claim `>180 tok/s` closure on this host
+ until the competing GPU workload is cleared and both Psionic and the
+ `llama.cpp` control are rerun.
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
