@@ -15,7 +15,9 @@ use psionic_backend_cuda::{
     TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS, ggml_q8_1_storage_bytes,
 };
 use psionic_backend_metal::{
-    MetalBackend, MetalBuffer, MetalGroupedExpertMatvecResult,
+    MetalAttentionGraphReserve, MetalAttentionGraphRuntime, MetalBackend, MetalBuffer,
+    MetalGraphReserveKind, MetalGroupedExpertMatvecResult, MetalKvCacheMirror,
+    MetalPromptResidencyMetrics, MetalSharedPrefixCompatibility, MetalSharedPrefixStore,
     TEXT_GENERATION_SUPPORTED_OPS as METAL_TEXT_GENERATION_SUPPORTED_OPS,
 };
 use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
@@ -23,7 +25,8 @@ use psionic_core::Shape;
 use psionic_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
 use psionic_runtime::{
     CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
-    DeviceDiscovery, GptOssDecodeGraph, HealthStatus, build_gpt_oss_decode_graph,
+    DeviceDiscovery, GptOssDecodeGraph, HealthStatus, KvCachePageLayout, PrefixCacheIdentity,
+    build_gpt_oss_decode_graph,
 };
 use sha2::{Digest, Sha256};
 
@@ -420,12 +423,124 @@ pub enum MetalGptOssTextGenerationError {
     Generation(#[from] ReferenceTextGenerationError),
 }
 
+#[derive(Clone, Debug)]
+struct MetalLayerPrefixLookup {
+    state: super::PrefixCacheState,
+    identity: Option<PrefixCacheIdentity>,
+    caches: Option<Vec<MetalKvCacheMirror>>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct MetalLayerSharedPrefixStore {
+    stores: Vec<MetalSharedPrefixStore>,
+}
+
+impl MetalLayerSharedPrefixStore {
+    fn ensure_layer_count(&mut self, layer_count: usize) {
+        if self.stores.len() < layer_count {
+            self.stores
+                .resize_with(layer_count, MetalSharedPrefixStore::default);
+        }
+    }
+
+    fn lookup(
+        &mut self,
+        compatibility: &MetalSharedPrefixCompatibility,
+        prompt_tokens: &[u32],
+        layer_count: usize,
+    ) -> MetalLayerPrefixLookup {
+        self.ensure_layer_count(layer_count);
+        if layer_count == 0 {
+            return MetalLayerPrefixLookup {
+                state: super::PrefixCacheState::None,
+                identity: None,
+                caches: Some(Vec::new()),
+            };
+        }
+
+        let lookups = self
+            .stores
+            .iter_mut()
+            .take(layer_count)
+            .map(|store| store.lookup(compatibility, prompt_tokens))
+            .collect::<Vec<_>>();
+        if lookups
+            .iter()
+            .all(|lookup| lookup.state == super::PrefixCacheState::Hit)
+        {
+            let identity = lookups.iter().find_map(|lookup| lookup.identity.clone());
+            let caches = lookups
+                .into_iter()
+                .map(|lookup| {
+                    lookup.cache.ok_or_else(|| {
+                        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                            String::from(
+                                "metal shared-prefix lookup reported a hit without a cache",
+                            ),
+                        ))
+                    })
+                })
+                .collect::<Result<Vec<_>, _>>();
+            return match caches {
+                Ok(caches) => MetalLayerPrefixLookup {
+                    state: super::PrefixCacheState::Hit,
+                    identity,
+                    caches: Some(caches),
+                },
+                Err(_) => MetalLayerPrefixLookup {
+                    state: super::PrefixCacheState::Rebuilt,
+                    identity: None,
+                    caches: None,
+                },
+            };
+        }
+
+        let state = if lookups
+            .iter()
+            .any(|lookup| lookup.state == super::PrefixCacheState::Rebuilt)
+        {
+            super::PrefixCacheState::Rebuilt
+        } else if lookups
+            .iter()
+            .any(|lookup| lookup.state == super::PrefixCacheState::Miss)
+        {
+            super::PrefixCacheState::Miss
+        } else {
+            super::PrefixCacheState::None
+        };
+        MetalLayerPrefixLookup {
+            state,
+            identity: None,
+            caches: None,
+        }
+    }
+
+    fn record(
+        &mut self,
+        compatibility: &MetalSharedPrefixCompatibility,
+        prompt_tokens: &[u32],
+        caches: &[MetalKvCacheMirror],
+    ) {
+        self.ensure_layer_count(caches.len());
+        for (store, cache) in self.stores.iter_mut().zip(caches.iter()) {
+            store.record(compatibility.clone(), prompt_tokens, cache);
+        }
+    }
+
+    fn clear(&mut self) {
+        for store in &mut self.stores {
+            store.clear();
+        }
+    }
+}
+
 pub struct MetalGgufGptOssTextGenerationService {
     backend: MetalBackend,
     backend_selection: psionic_runtime::BackendSelection,
     models: InMemoryGenerationModelRegistry<MetalGgufGptOssGenerationModel>,
     sessions: InMemoryGenerationSessionStore,
     shared_prefixes: SharedPrefixStore,
+    metal_shared_prefixes: MetalLayerSharedPrefixStore,
     backend_health: BackendHealthTracker,
     model_descriptor: DecoderModelDescriptor,
 }
@@ -478,6 +593,7 @@ impl MetalGgufGptOssTextGenerationService {
             models,
             sessions: InMemoryGenerationSessionStore::new(),
             shared_prefixes: SharedPrefixStore::default(),
+            metal_shared_prefixes: MetalLayerSharedPrefixStore::default(),
             backend_health,
             model_descriptor,
         })
@@ -568,6 +684,7 @@ impl MetalGgufGptOssTextGenerationService {
         &mut self,
         model_id: &str,
     ) -> Result<LoadedModelView, MetalGptOssTextGenerationError> {
+        self.metal_shared_prefixes.clear();
         Ok(self.models.unload_view(model_id, current_time_millis())?)
     }
 }
@@ -579,11 +696,12 @@ impl TextGenerationExecutor for MetalGgufGptOssTextGenerationService {
         &mut self,
         request: &super::GenerationRequest,
     ) -> Result<super::GenerationResponse, Self::Error> {
-        run_generation_request(
+        run_metal_generation_request(
             &mut self.backend,
             &mut self.models,
             &mut self.sessions,
             &mut self.shared_prefixes,
+            &mut self.metal_shared_prefixes,
             request,
         )
         .map_err(Into::into)
@@ -611,6 +729,7 @@ impl ManagedTextGenerationRuntime for MetalGgufGptOssTextGenerationService {
         &mut self,
         model_id: &str,
     ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
+        self.metal_shared_prefixes.clear();
         MetalGgufGptOssTextGenerationService::unload_model(self, model_id)
     }
 }
@@ -1339,6 +1458,521 @@ fn run_cuda_generation_request(
     result
 }
 
+fn run_metal_generation_request(
+    backend: &mut MetalBackend,
+    models: &mut InMemoryGenerationModelRegistry<MetalGgufGptOssGenerationModel>,
+    sessions: &mut InMemoryGenerationSessionStore,
+    shared_prefixes: &mut SharedPrefixStore,
+    metal_shared_prefixes: &mut MetalLayerSharedPrefixStore,
+    request: &super::GenerationRequest,
+) -> Result<GenerationResponse, ReferenceTextGenerationError> {
+    if request.product_id != super::TEXT_GENERATION_PRODUCT_ID {
+        return Err(ReferenceTextGenerationError::UnsupportedProduct(
+            request.product_id.clone(),
+        ));
+    }
+
+    let loaded_model = models
+        .active(request.model.model.model_id.as_str())
+        .ok_or_else(|| {
+            ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
+        })?
+        .clone();
+    if loaded_model.descriptor() != &request.model {
+        return Err(ReferenceTextGenerationError::UnsupportedModel(
+            request.model.model.model_id.clone(),
+        ));
+    }
+
+    let model_id = request.model.model.model_id.as_str();
+    let load_state = models
+        .load_state(model_id)
+        .unwrap_or(super::GenerationLoadState::Warm);
+    let request_start = current_time_millis();
+    let generation_start = Instant::now();
+    models.begin_request(model_id, request_start)?;
+    let memory_plan = models.memory_plan(model_id).cloned();
+    let residency_policy = Some(models.residency_policy().clone());
+    let residency_snapshot = Some(models.memory_snapshot());
+    let served_artifact = super::served_artifact_identity_for_decoder_backend(
+        loaded_model.descriptor(),
+        loaded_model.backend_compatibility(),
+        &[],
+    );
+
+    let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
+        let prompt_eval_start = Instant::now();
+        let tokenizer = loaded_model.tokenizer();
+        let prompt_tokens = loaded_model.encode_prompt_input(&request.prompt)?;
+        if prompt_tokens.is_empty() {
+            return Err(ReferenceTextGenerationError::EmptyPrompt);
+        }
+
+        let expected_kv_width = loaded_model.cache_width();
+        let layer_count = loaded_model.inner.layer_count();
+        let layer_kv_width = loaded_model.inner.layer_kv_width();
+        let mut session_tokens = Vec::new();
+        let compatibility = prefix_compatibility(&loaded_model);
+        let metal_compatibility = metal_prefix_compatibility(
+            &compatibility,
+            layer_kv_width,
+            loaded_model.descriptor().config.max_context,
+        );
+        let prefix_policy = default_prefix_cache_policy();
+        let mut prefix_state = super::PrefixCacheState::None;
+        let mut prefix_tokens_reused = 0usize;
+        let mut prefix_identity = None;
+        let mut shared_prefix_eligible = false;
+        let previous_kv_state = if let Some(session_id) = &request.session_id {
+            if request.reset_session {
+                sessions.reset(session_id)?;
+            }
+            let state = sessions.state(session_id)?;
+            super::validate_session_model(
+                state,
+                session_id,
+                loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
+            )?;
+            session_tokens = state.tokens().to_vec();
+            if state.cache().is_empty() {
+                shared_prefix_eligible = true;
+            } else {
+                prefix_state = super::PrefixCacheState::Bypassed;
+            }
+            state.cache().state()
+        } else {
+            shared_prefix_eligible = true;
+            psionic_runtime::KvCacheState::default()
+        };
+        let preserve_prefix_tokens = usize::from(
+            prompt_tokens.as_slice().first().copied() == Some(tokenizer.vocabulary().bos_id()),
+        );
+        let (prompt_tokens, context_window) = super::apply_context_window(
+            &prompt_tokens,
+            loaded_model.descriptor().config.max_context,
+            previous_kv_state.tokens,
+            request.options.max_output_tokens,
+            request.options.context_overflow_policy,
+            preserve_prefix_tokens,
+        )?;
+        let mut prompt_logits = Vec::new();
+        let mut last_logits = Vec::new();
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
+        let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
+        let mut cache = if shared_prefix_eligible {
+            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            prefix_state = lookup.state;
+            prefix_tokens_reused = lookup.reused_tokens;
+            prefix_identity = lookup.identity;
+            prompt_logits = lookup.prompt_logits;
+            last_logits = if lookup.last_logits.is_empty() {
+                prompt_logits.last().cloned().unwrap_or_default()
+            } else {
+                lookup.last_logits
+            };
+            lookup.cache.unwrap_or_else(|| {
+                super::InMemoryKvCache::new(
+                    loaded_model.descriptor().config.max_context,
+                    expected_kv_width,
+                )
+            })
+        } else if let Some(session_id) = &request.session_id {
+            sessions.state(session_id)?.cache().clone()
+        } else {
+            super::InMemoryKvCache::new(
+                loaded_model.descriptor().config.max_context,
+                expected_kv_width,
+            )
+        };
+        if cache.width() != expected_kv_width {
+            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                expected_kv_width,
+                kv_width: cache.width(),
+            });
+        }
+
+        let prompt_token_ids = metal_prompt_token_ids(&prompt_tokens);
+        let metal_lookup = (shared_prefix_eligible && prefix_tokens_reused > 0).then(|| {
+            metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
+        });
+        let mut layer_caches = if let Some(lookup) = metal_lookup.as_ref() {
+            if let Some(caches) = lookup.caches.as_ref() {
+                caches.clone()
+            } else {
+                build_metal_layer_caches_from_host_cache(
+                    backend,
+                    &cache,
+                    layer_count,
+                    layer_kv_width,
+                    request.options.max_output_tokens.saturating_add(1),
+                )?
+            }
+        } else {
+            build_metal_layer_caches_from_host_cache(
+                backend,
+                &cache,
+                layer_count,
+                layer_kv_width,
+                request.options.max_output_tokens.saturating_add(1),
+            )?
+        };
+        let metal_prefix_identity = prefix_identity.clone().or_else(|| {
+            metal_lookup
+                .as_ref()
+                .and_then(|lookup| lookup.identity.clone())
+        });
+        let metal_prefix_metrics = {
+            let current_state = metal_layer_cache_state(layer_caches.as_slice());
+            let action = if let Some(lookup) = metal_lookup.as_ref() {
+                if lookup.state == super::PrefixCacheState::Hit && lookup.caches.is_some() {
+                    CacheAction::Reuse
+                } else if prefix_tokens_reused > 0 {
+                    CacheAction::Rebuild
+                } else if lookup.state == super::PrefixCacheState::Rebuilt {
+                    CacheAction::Invalidate
+                } else {
+                    CacheAction::Bypass
+                }
+            } else if !shared_prefix_eligible && !cache.is_empty() {
+                CacheAction::Restore
+            } else {
+                CacheAction::Bypass
+            };
+            let residency_prefix_state = if shared_prefix_eligible {
+                prefix_state
+            } else {
+                super::PrefixCacheState::Bypassed
+            };
+            MetalPromptResidencyMetrics::new(
+                &psionic_runtime::KvCacheState::default(),
+                current_state,
+                residency_prefix_state,
+                metal_prefix_identity,
+                action,
+            )
+        };
+        let mut attention_runtime = loaded_model
+            .inner
+            .reserve_decode_attention_runtime(backend)?;
+
+        for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
+            let position = layer_caches
+                .first()
+                .map(MetalKvCacheMirror::len)
+                .unwrap_or(cache.len());
+            let step = loaded_model.inner.forward_step_with_device_attention(
+                backend,
+                *token,
+                position,
+                layer_caches.as_mut_slice(),
+                &mut attention_runtime,
+            )?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = Some(loaded_model.plan_digest().to_string());
+            }
+            if compile_path.is_none() {
+                let runtime_compile_path = attention_runtime.metrics().compile_path.clone();
+                match runtime_compile_path.temperature {
+                    CompilePathTemperature::WarmReuse => {
+                        plan_cache_hits = plan_cache_hits.saturating_add(1);
+                    }
+                    CompilePathTemperature::ColdCompile => {
+                        plan_cache_misses = plan_cache_misses.saturating_add(1);
+                    }
+                }
+                compile_path = Some(runtime_compile_path);
+            }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
+            cache.append(*token, step.key.clone(), step.value.clone())?;
+            last_logits = step.logits;
+            prompt_logits.push(last_logits.clone());
+        }
+        let should_record_prompt_prefix =
+            shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
+        let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
+        let prompt_layer_caches = should_record_prompt_prefix.then(|| layer_caches.clone());
+
+        let mut sampler = super::GenerationSampler::new(&request.options);
+        let mut generated_tokens = Vec::new();
+        let termination = loop {
+            if generated_tokens.len() >= request.options.max_output_tokens {
+                break super::TerminationReason::MaxOutputTokens;
+            }
+            if cache.len() >= cache.max_context() {
+                break super::TerminationReason::ContextLimit;
+            }
+
+            let next_token = sampler
+                .select_next_token(&last_logits, &cache)
+                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            if loaded_model.is_end_of_sequence(next_token) {
+                break super::TerminationReason::EndOfSequence;
+            }
+
+            generated_tokens.push(next_token);
+            let position = layer_caches
+                .first()
+                .map(MetalKvCacheMirror::len)
+                .unwrap_or(cache.len());
+            let step = loaded_model.inner.forward_step_with_device_attention(
+                backend,
+                next_token,
+                position,
+                layer_caches.as_mut_slice(),
+                &mut attention_runtime,
+            )?;
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = Some(loaded_model.plan_digest().to_string());
+            }
+            if compile_path.is_none() {
+                let runtime_compile_path = attention_runtime.metrics().compile_path.clone();
+                match runtime_compile_path.temperature {
+                    CompilePathTemperature::WarmReuse => {
+                        plan_cache_hits = plan_cache_hits.saturating_add(1);
+                    }
+                    CompilePathTemperature::ColdCompile => {
+                        plan_cache_misses = plan_cache_misses.saturating_add(1);
+                    }
+                }
+                compile_path = Some(runtime_compile_path);
+            }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
+            cache.append(next_token, step.key.clone(), step.value.clone())?;
+            last_logits = step.logits;
+
+            if super::truncate_generated_text(
+                loaded_model.tokenizer(),
+                &mut generated_tokens,
+                &request.options.stop_sequences,
+            )
+            .is_some()
+            {
+                break super::TerminationReason::EndOfSequence;
+            }
+        };
+
+        if should_record_prompt_prefix {
+            if let (Some(prompt_cache), Some(prompt_layer_caches)) =
+                (prompt_cache.as_ref(), prompt_layer_caches.as_ref())
+            {
+                let recorded_identity = shared_prefixes.record(
+                    compatibility,
+                    &prompt_tokens,
+                    &prompt_logits,
+                    prompt_cache,
+                );
+                metal_shared_prefixes.record(
+                    &metal_compatibility,
+                    &prompt_token_ids,
+                    prompt_layer_caches,
+                );
+                if prefix_state != super::PrefixCacheState::Hit || prefix_identity.is_none() {
+                    prefix_identity = Some(recorded_identity);
+                }
+            }
+        }
+
+        let prompt_eval_duration_ns = prompt_eval_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+
+        let generated = TokenSequence::new(generated_tokens);
+        if let Some(session_id) = &request.session_id {
+            session_tokens.extend_from_slice(prompt_tokens.as_slice());
+            session_tokens.extend_from_slice(generated.as_slice());
+            sessions.replace_cache(
+                session_id,
+                loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
+                cache.clone(),
+                TokenSequence::new(session_tokens),
+            )?;
+        }
+        let text = loaded_model.tokenizer().decode(generated.as_slice());
+        let usage = super::GenerationUsage {
+            input_tokens: prompt_tokens.len(),
+            output_tokens: generated.len(),
+            cache_tokens: cache.len(),
+        };
+        let kv_cache =
+            psionic_runtime::KvCacheAccounting::from_states(&previous_kv_state, cache.state());
+        let total_duration_ns = generation_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        let metrics = super::GenerationMetrics {
+            total_duration_ns: Some(total_duration_ns),
+            load_duration_ns: Some(match load_state {
+                super::GenerationLoadState::Cold => loaded_model.load_duration_ns(),
+                super::GenerationLoadState::Warm => 0,
+            }),
+            prompt_eval_count: Some(usage.input_tokens),
+            prompt_eval_duration_ns: Some(prompt_eval_duration_ns),
+            context_window: Some(context_window),
+            eval_count: Some(usage.output_tokens),
+            eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
+            kv_cache: Some(kv_cache),
+            prefix_tokens_reused: Some(prefix_tokens_reused),
+            gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
+        };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| loaded_model.plan_digest().to_string());
+        let mut cache_observations = super::generation_cache_observations(
+            loaded_model.descriptor(),
+            compile_path.as_ref(),
+            load_state,
+            request.session_id.as_ref(),
+            request.reset_session,
+            &previous_kv_state,
+            prefix_state,
+        );
+        extend_unique_cache_observations(
+            &mut cache_observations,
+            metal_prefix_metrics.observations.as_slice(),
+        );
+        let provenance = super::GenerationProvenance {
+            served_artifact,
+            execution_plan_digest: delivery_plan_digest.clone(),
+            load_state,
+            isolation_policy: super::LocalServingIsolationPolicy::in_process_runtime(),
+            streaming_policy: None,
+            memory_plan,
+            residency_policy,
+            residency_snapshot,
+            kv_cache_policy: Some(cache.policy().clone()),
+            prefix_cache_state: Some(prefix_state),
+            prefix_cache_policy: Some(prefix_policy),
+            prefix_cache_identity: prefix_identity,
+            compile_path: compile_path.clone(),
+            delivery_proof: super::build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+            ),
+            cache_observations,
+        };
+        Ok(GenerationResponse::new(
+            request,
+            request.session_id.clone(),
+            generated,
+            text,
+            usage.input_tokens,
+            usage.cache_tokens,
+            termination,
+        )
+        .with_metrics_and_provenance(metrics, provenance))
+    })();
+
+    let _ = models.finish_request(model_id, current_time_millis());
+    result
+}
+
+fn metal_prefix_compatibility(
+    compatibility: &super::SharedPrefixCompatibility,
+    kv_width: usize,
+    max_context_tokens: usize,
+) -> MetalSharedPrefixCompatibility {
+    MetalSharedPrefixCompatibility {
+        served_artifact_digest: compatibility.served_artifact_digest.clone(),
+        model_id: compatibility.model_id.clone(),
+        model_revision: compatibility.model_revision.clone(),
+        weight_bundle_digest: compatibility.weight_bundle_digest.clone(),
+        tokenizer_family: compatibility.tokenizer_family.clone(),
+        backend_compatibility: compatibility.backend_compatibility.clone(),
+        kv_width,
+        page_layout: KvCachePageLayout::new(max_context_tokens, 4, kv_width * 4 * 2),
+    }
+}
+
+fn metal_prompt_token_ids(tokens: &TokenSequence) -> Vec<u32> {
+    tokens
+        .as_slice()
+        .iter()
+        .map(|token| token.as_u32())
+        .collect()
+}
+
+fn build_metal_layer_caches_from_host_cache(
+    backend: &mut MetalBackend,
+    cache: &super::InMemoryKvCache,
+    layer_count: usize,
+    layer_kv_width: usize,
+    reserve_tokens: usize,
+) -> Result<Vec<MetalKvCacheMirror>, ReferenceTextGenerationError> {
+    if cache.width() != layer_count.saturating_mul(layer_kv_width) {
+        return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+            expected_kv_width: layer_count.saturating_mul(layer_kv_width),
+            kv_width: cache.width(),
+        });
+    }
+
+    let mut layer_keys =
+        vec![Vec::with_capacity(cache.len().saturating_mul(layer_kv_width)); layer_count];
+    let mut layer_values =
+        vec![Vec::with_capacity(cache.len().saturating_mul(layer_kv_width)); layer_count];
+    for entry in cache.entries() {
+        for layer_index in 0..layer_count {
+            let layer_offset = layer_index.saturating_mul(layer_kv_width);
+            layer_keys[layer_index]
+                .extend_from_slice(&entry.key[layer_offset..layer_offset + layer_kv_width]);
+            layer_values[layer_index]
+                .extend_from_slice(&entry.value[layer_offset..layer_offset + layer_kv_width]);
+        }
+    }
+
+    layer_keys
+        .into_iter()
+        .zip(layer_values.into_iter())
+        .map(|(keys, values)| {
+            backend
+                .kv_cache_mirror_from_host_rows(
+                    layer_kv_width,
+                    cache.max_context(),
+                    cache.len(),
+                    keys.as_slice(),
+                    values.as_slice(),
+                    reserve_tokens,
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)
+        })
+        .collect()
+}
+
+fn metal_layer_cache_state(layer_caches: &[MetalKvCacheMirror]) -> psionic_runtime::KvCacheState {
+    layer_caches
+        .first()
+        .map(MetalKvCacheMirror::state)
+        .unwrap_or_default()
+}
+
+fn extend_unique_cache_observations(
+    cache_observations: &mut Vec<CacheObservation>,
+    extra: &[CacheObservation],
+) {
+    for observation in extra {
+        if !cache_observations.contains(observation) {
+            cache_observations.push(observation.clone());
+        }
+    }
+}
+
 impl From<ModelLoadError> for CudaGptOssTextGenerationError {
     fn from(value: ModelLoadError) -> Self {
         Self::Generation(ReferenceTextGenerationError::from(value))
@@ -1629,6 +2263,7 @@ impl MetalGgufGptOssGenerationModel {
             descriptor: adapter.descriptor().clone(),
             family_metadata: adapter.family_metadata().clone(),
             tokenizer,
+            decode_graph: build_gpt_oss_decode_graph(adapter.tensor_layout().layers.len()),
             token_embedding: load_quantized_matrix(
                 &artifact,
                 adapter.tensor_layout().token_embedding.as_str(),
@@ -3441,6 +4076,7 @@ struct GptOssMetalModelInner {
     descriptor: DecoderModelDescriptor,
     family_metadata: GgufDecoderFamilyMetadata,
     tokenizer: GptOssTokenizer,
+    decode_graph: GptOssDecodeGraph,
     token_embedding: QuantizedMatrix,
     output_norm: Vec<f32>,
     output: MetalQuantizedMatrix,
@@ -3457,6 +4093,42 @@ impl GptOssMetalModelInner {
             .saturating_mul(self.descriptor.config.kv_width())
     }
 
+    fn layer_count(&self) -> usize {
+        self.layers.len()
+    }
+
+    fn layer_kv_width(&self) -> usize {
+        self.descriptor.config.kv_width()
+    }
+
+    fn graph_node_count(&self) -> usize {
+        self.decode_graph.node_count()
+    }
+
+    fn graph_layer_node_count(&self) -> usize {
+        self.decode_graph.layer_node_count()
+    }
+
+    fn reserve_decode_attention_runtime(
+        &self,
+        backend: &mut MetalBackend,
+    ) -> Result<MetalAttentionGraphRuntime, ReferenceTextGenerationError> {
+        backend
+            .reserve_attention_graph(MetalAttentionGraphReserve {
+                kind: MetalGraphReserveKind::Decode,
+                batch_size: 1,
+                sequence_len: 1,
+                query_head_count: self.descriptor.config.block.attention.head_count,
+                kv_head_count: self.descriptor.config.block.attention.kv_head_count,
+                head_dim: self.descriptor.config.block.attention.head_dim,
+                max_context_tokens: self.descriptor.config.max_context,
+                causal: true,
+                interleaved: false,
+                flash_attention: backend.supports_flash_attention(),
+            })
+            .map_err(ReferenceTextGenerationError::Runtime)
+    }
+
     fn forward_step(
         &self,
         backend: &mut MetalBackend,
@@ -3471,8 +4143,8 @@ impl GptOssMetalModelInner {
         let mut perf = GptOssPerformanceMetrics {
             step_count: 1,
             layer_visit_count: self.layers.len(),
-            graph_node_count: 0,
-            graph_layer_node_count: 0,
+            graph_node_count: self.graph_node_count(),
+            graph_layer_node_count: self.graph_layer_node_count(),
             ..GptOssPerformanceMetrics::default()
         };
 
@@ -3567,6 +4239,327 @@ impl GptOssMetalModelInner {
             layer.attention_output_weight.matvec(
                 backend,
                 attention.as_slice(),
+                &mut attention_out,
+            )?;
+            if let Some(bias) = layer.attention_output_bias.as_ref() {
+                add_bias_in_place(&mut attention_out, bias.as_slice());
+            }
+            perf.stage_timings.attention_output_projection_ns = perf
+                .stage_timings
+                .attention_output_projection_ns
+                .saturating_add(duration_ns(attention_output_start));
+            hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
+
+            let ffn_residual = hidden.clone();
+            let feed_forward_norm_start = Instant::now();
+            let ffn_input = rms_norm(
+                hidden.as_slice(),
+                layer.feed_forward_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.feed_forward_norm_ns = perf
+                .stage_timings
+                .feed_forward_norm_ns
+                .saturating_add(duration_ns(feed_forward_norm_start));
+
+            let router_start = Instant::now();
+            let mut router_logits = Vec::new();
+            layer
+                .feed_forward_router_weight
+                .matvec(ffn_input.as_slice(), &mut router_logits)?;
+            if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
+                add_bias_in_place(&mut router_logits, bias.as_slice());
+            }
+            let selected = top_k_indices(
+                router_logits.as_slice(),
+                self.family_metadata.expert_used_count.unwrap_or(0),
+            );
+            let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
+            perf.stage_timings.router_ns = perf
+                .stage_timings
+                .router_ns
+                .saturating_add(duration_ns(router_start));
+
+            let mut moe_out = vec![0.0; hidden_size];
+            if !selected.is_empty() {
+                let expert_projection_start = Instant::now();
+                let gate_up_outputs = layer.feed_forward_gate_up_experts_weight.selected_matvec(
+                    backend,
+                    selected.as_slice(),
+                    ffn_input.as_slice(),
+                )?;
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_projection_start));
+
+                for (selected_index, expert_index) in selected.iter().copied().enumerate() {
+                    let mut gate = gate_up_outputs[selected_index][0].clone();
+                    if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
+                        add_expert_bias_in_place(
+                            &mut gate,
+                            bias.as_slice(),
+                            expert_index,
+                            layer
+                                .feed_forward_gate_up_experts_weight
+                                .rows_per_projection[0],
+                        );
+                    }
+
+                    let mut up = gate_up_outputs[selected_index][1].clone();
+                    if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
+                        add_expert_bias_in_place(
+                            &mut up,
+                            bias.as_slice(),
+                            expert_index,
+                            layer
+                                .feed_forward_gate_up_experts_weight
+                                .rows_per_projection[1],
+                        );
+                    }
+
+                    let expert_activation_start = Instant::now();
+                    let activated = oai_swiglu(gate.as_slice(), up.as_slice());
+                    perf.stage_timings.expert_activation_ns = perf
+                        .stage_timings
+                        .expert_activation_ns
+                        .saturating_add(duration_ns(expert_activation_start));
+
+                    let expert_down_start = Instant::now();
+                    let mut expert = Vec::new();
+                    layer.feed_forward_down_experts_weight.expert_matvec(
+                        backend,
+                        expert_index,
+                        activated.as_slice(),
+                        &mut expert,
+                    )?;
+                    if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
+                        add_expert_bias_in_place(
+                            &mut expert,
+                            bias.as_slice(),
+                            expert_index,
+                            layer.feed_forward_down_experts_weight.rows,
+                        );
+                    }
+                    perf.stage_timings.expert_projection_ns = perf
+                        .stage_timings
+                        .expert_projection_ns
+                        .saturating_add(duration_ns(expert_down_start));
+
+                    let route = routing[selected_index];
+                    let expert_aggregation_start = Instant::now();
+                    for (dst, value) in moe_out.iter_mut().zip(expert.iter().copied()) {
+                        *dst += value * route;
+                    }
+                    perf.stage_timings.expert_aggregation_ns = perf
+                        .stage_timings
+                        .expert_aggregation_ns
+                        .saturating_add(duration_ns(expert_aggregation_start));
+                }
+            }
+            hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
+
+            bytes_moved = bytes_moved
+                .saturating_add(layer.attention_query_weight.byte_length() as u64)
+                .saturating_add(layer.attention_key_weight.byte_length() as u64)
+                .saturating_add(layer.attention_value_weight.byte_length() as u64)
+                .saturating_add(layer.attention_output_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_gate_up_experts_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_down_experts_weight.byte_length() as u64);
+            kernel_count = kernel_count.saturating_add(5 + selected.len().saturating_mul(2));
+        }
+
+        let output_norm_start = Instant::now();
+        let final_hidden = rms_norm(
+            hidden.as_slice(),
+            self.output_norm.as_slice(),
+            self.family_metadata.rms_norm_epsilon,
+        );
+        perf.stage_timings.output_norm_ns = perf
+            .stage_timings
+            .output_norm_ns
+            .saturating_add(duration_ns(output_norm_start));
+
+        let logits_projection_start = Instant::now();
+        let mut logits = Vec::new();
+        self.output
+            .matvec(backend, final_hidden.as_slice(), &mut logits)?;
+        perf.stage_timings.logits_projection_ns = perf
+            .stage_timings
+            .logits_projection_ns
+            .saturating_add(duration_ns(logits_projection_start));
+        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
+        kernel_count = kernel_count.saturating_add(1);
+
+        Ok(GptOssForwardStep {
+            key: cache_key,
+            value: cache_value,
+            logits,
+            selected_token: None,
+            kernel_count,
+            bytes_moved,
+            perf: Some(perf),
+        })
+    }
+
+    fn forward_step_with_device_attention(
+        &self,
+        backend: &mut MetalBackend,
+        token: TokenId,
+        position: usize,
+        layer_caches: &mut [MetalKvCacheMirror],
+        attention_runtime: &mut MetalAttentionGraphRuntime,
+    ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
+        if layer_caches.len() != self.layers.len() {
+            return Err(ReferenceTextGenerationError::Runtime(
+                super::RuntimeError::Backend(format!(
+                    "metal layer cache count mismatch: expected {}, actual {}",
+                    self.layers.len(),
+                    layer_caches.len()
+                )),
+            ));
+        }
+
+        let hidden_size = self.descriptor.config.hidden_size;
+        let kv_width = self.descriptor.config.kv_width();
+        let head_count = self.descriptor.config.block.attention.head_count;
+        let kv_head_count = self.descriptor.config.block.attention.kv_head_count;
+        let head_dim = self.descriptor.config.block.attention.head_dim;
+        let rotary_dim = self.descriptor.config.block.attention.rotary_dim;
+        let mut bytes_moved = 0_u64;
+        let mut kernel_count = 0_usize;
+        let mut perf = GptOssPerformanceMetrics {
+            step_count: 1,
+            layer_visit_count: self.layers.len(),
+            graph_node_count: self.graph_node_count(),
+            graph_layer_node_count: self.graph_layer_node_count(),
+            ..GptOssPerformanceMetrics::default()
+        };
+
+        let token_embedding_start = Instant::now();
+        let mut hidden = self.token_embedding.decode_row(token.as_u32() as usize)?;
+        perf.stage_timings.token_embedding_ns = perf
+            .stage_timings
+            .token_embedding_ns
+            .saturating_add(duration_ns(token_embedding_start));
+        bytes_moved = bytes_moved.saturating_add(self.token_embedding.byte_length() as u64);
+
+        let (cos_values, sin_values) =
+            metal_rope_cos_sin_values(position, head_dim, rotary_dim, &self.family_metadata);
+        let cos = backend
+            .input_buffer(Shape::new(vec![1, head_dim / 2]), cos_values)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let sin = backend
+            .input_buffer(Shape::new(vec![1, head_dim / 2]), sin_values)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+
+        let mut cache_key = vec![0.0; self.cache_width()];
+        let mut cache_value = vec![0.0; self.cache_width()];
+
+        for (layer_index, (layer, layer_cache)) in
+            self.layers.iter().zip(layer_caches.iter_mut()).enumerate()
+        {
+            if layer_cache.width() != kv_width {
+                return Err(ReferenceTextGenerationError::Runtime(
+                    super::RuntimeError::Backend(format!(
+                        "metal layer cache width mismatch: expected {}, actual {}",
+                        kv_width,
+                        layer_cache.width()
+                    )),
+                ));
+            }
+            let residual = hidden.clone();
+            let attention_norm_start = Instant::now();
+            let hidden_norm = rms_norm(
+                hidden.as_slice(),
+                layer.attention_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.attention_norm_ns = perf
+                .stage_timings
+                .attention_norm_ns
+                .saturating_add(duration_ns(attention_norm_start));
+
+            let qkv_start = Instant::now();
+            let mut q = Vec::new();
+            layer
+                .attention_query_weight
+                .matvec(backend, hidden_norm.as_slice(), &mut q)?;
+            add_bias_in_place(&mut q, layer.attention_query_bias.as_slice());
+            let mut k = Vec::new();
+            layer
+                .attention_key_weight
+                .matvec(backend, hidden_norm.as_slice(), &mut k)?;
+            add_bias_in_place(&mut k, layer.attention_key_bias.as_slice());
+            let mut v = Vec::new();
+            layer
+                .attention_value_weight
+                .matvec(backend, hidden_norm.as_slice(), &mut v)?;
+            add_bias_in_place(&mut v, layer.attention_value_bias.as_slice());
+            perf.stage_timings.qkv_projection_ns = perf
+                .stage_timings
+                .qkv_projection_ns
+                .saturating_add(duration_ns(qkv_start));
+
+            let rope_start = Instant::now();
+            let mut cache_layer_key = k.clone();
+            apply_rope_neox(
+                &mut cache_layer_key,
+                kv_head_count,
+                head_dim,
+                rotary_dim,
+                position,
+                &self.family_metadata,
+            );
+            perf.stage_timings.rope_ns = perf
+                .stage_timings
+                .rope_ns
+                .saturating_add(duration_ns(rope_start));
+
+            let cache_offset = layer_index.saturating_mul(kv_width);
+            cache_key[cache_offset..cache_offset + kv_width]
+                .copy_from_slice(cache_layer_key.as_slice());
+            cache_value[cache_offset..cache_offset + kv_width].copy_from_slice(v.as_slice());
+
+            let attention_start = Instant::now();
+            let query = backend
+                .input_buffer(Shape::new(vec![1, head_count, 1, head_dim]), q)
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            let key = backend
+                .input_buffer(Shape::new(vec![1, kv_head_count, 1, head_dim]), k)
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            let value = backend
+                .input_buffer(Shape::new(vec![1, kv_head_count, 1, head_dim]), v.clone())
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            let attention = backend
+                .decode_attention_f32_reserved(
+                    attention_runtime,
+                    &query,
+                    &key,
+                    &value,
+                    &cos,
+                    &sin,
+                    layer_cache,
+                    1.0 / (head_dim as f32).sqrt(),
+                    true,
+                    false,
+                    true,
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            let attention_values = attention
+                .output
+                .read_f32()
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            perf.stage_timings.attention_ns = perf
+                .stage_timings
+                .attention_ns
+                .saturating_add(duration_ns(attention_start));
+
+            let attention_output_start = Instant::now();
+            let mut attention_out = Vec::new();
+            layer.attention_output_weight.matvec(
+                backend,
+                attention_values.as_slice(),
                 &mut attention_out,
             )?;
             if let Some(bias) = layer.attention_output_bias.as_ref() {
@@ -6213,6 +7206,41 @@ fn apply_rope_neox(
     }
 }
 
+fn metal_rope_cos_sin_values(
+    position: usize,
+    head_dim: usize,
+    rotary_dim: usize,
+    metadata: &GgufDecoderFamilyMetadata,
+) -> (Vec<f32>, Vec<f32>) {
+    let rotary_dim = rotary_dim.min(head_dim).max(2);
+    let half_dim = head_dim / 2;
+    let freq_scale = metadata
+        .rope_scaling_factor
+        .filter(|value| *value > 0.0)
+        .map_or(1.0, |value| 1.0 / value);
+    let ext_factor = metadata
+        .rope_scaling_factor
+        .zip(metadata.rope_original_context_length)
+        .filter(|(factor, original)| *factor > 1.0 && *original > 0)
+        .map_or(0.0, |_| 1.0);
+    let corr_dims = metadata
+        .rope_original_context_length
+        .map(|original| rope_yarn_corr_dims(rotary_dim, original, metadata.rope_theta))
+        .unwrap_or([0.0, rotary_dim as f32 - 1.0]);
+    let theta_scale = metadata.rope_theta.powf(-2.0 / rotary_dim as f32);
+    let mut cos = vec![1.0; half_dim];
+    let mut sin = vec![0.0; half_dim];
+    for pair in 0..(rotary_dim / 2) {
+        let i0 = pair * 2;
+        let theta_base = position as f32 * theta_scale.powf(pair as f32);
+        let (cos_theta, sin_theta) =
+            rope_yarn(theta_base, freq_scale, corr_dims, i0, ext_factor, 1.0);
+        cos[pair] = cos_theta;
+        sin[pair] = sin_theta;
+    }
+    (cos, sin)
+}
+
 fn rope_yarn_corr_dims(n_dims: usize, n_ctx_orig: usize, freq_base: f32) -> [f32; 2] {
     let corr_dim = |n_rot: f32| {
         n_dims as f32
@@ -6264,6 +7292,7 @@ mod tests {
         TokenSequence,
     };
     use psionic_models::{GgufMetadataValue, GgufTensorType};
+    use psionic_runtime::{CacheAction, CacheKind, CompilePathTemperature, PrefixCacheState};
     use std::{fs, path::Path};
     use tempfile::tempdir;
 
@@ -6390,6 +7419,85 @@ mod tests {
         assert_eq!(metal_response.output.tokens, cpu_response.output.tokens);
         assert_eq!(metal_response.output.text, cpu_response.output.text);
         assert_eq!(metal_response.termination, cpu_response.termination);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_gpt_oss_service_reuses_device_prefix_and_reports_graph_metrics()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join("tiny-gpt-oss-device-kv.gguf");
+        write_test_gpt_oss_gguf(&path)?;
+
+        let mut metal = MetalGgufGptOssTextGenerationService::from_gguf_path(&path)?;
+        let prompt_tokens = TokenSequence::new(vec![TokenId(2)]);
+        let request = GenerationRequest::new_tokens(
+            "tiny-gpt-oss-metal-device-kv",
+            metal.model_descriptor().clone(),
+            None,
+            prompt_tokens,
+            GenerationOptions::greedy(1),
+        );
+
+        let first = metal.generate(&request)?;
+        let first_perf = first
+            .metrics
+            .gpt_oss_perf
+            .as_ref()
+            .ok_or("missing first gpt-oss perf")?;
+        assert!(first_perf.graph_node_count > 0);
+        assert!(first_perf.graph_layer_node_count > 0);
+        assert_eq!(
+            first
+                .provenance
+                .as_ref()
+                .and_then(|value| value.compile_path.as_ref())
+                .map(|value| value.temperature),
+            Some(CompilePathTemperature::WarmReuse)
+        );
+        assert!(
+            first
+                .provenance
+                .as_ref()
+                .map(|value| {
+                    value.cache_observations.iter().any(|observation| {
+                        observation.kind == CacheKind::KvState
+                            && observation.detail.contains("device-resident kv state")
+                    })
+                })
+                .unwrap_or(false)
+        );
+
+        let second = metal.generate(&request)?;
+        assert_eq!(
+            second
+                .provenance
+                .as_ref()
+                .and_then(|value| value.prefix_cache_state),
+            Some(PrefixCacheState::Hit)
+        );
+        assert_eq!(second.metrics.prefix_tokens_reused, Some(1));
+        let second_perf = second
+            .metrics
+            .gpt_oss_perf
+            .as_ref()
+            .ok_or("missing second gpt-oss perf")?;
+        assert!(second_perf.graph_node_count > 0);
+        assert!(second_perf.graph_layer_node_count > 0);
+        assert!(
+            second
+                .provenance
+                .as_ref()
+                .map(|value| {
+                    value.cache_observations.iter().any(|observation| {
+                        observation.kind == CacheKind::KvState
+                            && observation.action == CacheAction::Reuse
+                            && observation.detail == "device-resident kv state was reused"
+                    })
+                })
+                .unwrap_or(false)
+        );
         Ok(())
     }
 
