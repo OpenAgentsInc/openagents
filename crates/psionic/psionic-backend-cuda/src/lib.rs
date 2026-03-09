@@ -660,6 +660,33 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Launches one quantized row-wise matrix-vector product using a device
+    /// `Q8_1` activation buffer and writes the greedy argmax directly.
+    pub fn quantized_matvec_q8_1_argmax(
+        &mut self,
+        weights: &CudaBuffer,
+        byte_offset: usize,
+        mode: QuantizationMode,
+        rows: usize,
+        cols: usize,
+        input_q8_1: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_quantized_matvec_q8_1_argmax(
+            &weights.platform,
+            byte_offset,
+            mode,
+            rows,
+            cols,
+            &input_q8_1.platform,
+            bias.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Launches one dense row-major matrix multiply using cuBLAS.
     pub fn matmul(
         &mut self,
@@ -2686,6 +2713,16 @@ mod platform {
         *mut c_void,
         CudaStream,
     ) -> CudaError;
+    type QuantizedMatvecQ81ArgmaxKernel = unsafe extern "C" fn(
+        *const c_void,
+        c_int,
+        c_int,
+        c_int,
+        *const c_void,
+        *const c_void,
+        *mut c_void,
+        CudaStream,
+    ) -> CudaError;
     type QuantizeQ81Kernel =
         unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void, CudaStream) -> CudaError;
 
@@ -2733,6 +2770,26 @@ mod platform {
             stream: CudaStream,
         ) -> CudaError;
         fn psionic_cuda_mxfp4_matvec_q8_1(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            input_q8_1: *const c_void,
+            bias: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_q8_0_matvec_q8_1_argmax(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            input_q8_1: *const c_void,
+            bias: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_mxfp4_matvec_q8_1_argmax(
             weights: *const c_void,
             rows: c_int,
             cols: c_int,
@@ -3693,6 +3750,76 @@ mod platform {
                     )
                 },
                 "psionic_cuda_quantized_matvec_q8_1",
+            )
+        }
+
+        pub(super) fn encode_quantized_matvec_q8_1_argmax(
+            &mut self,
+            weights: &PlatformBuffer,
+            byte_offset: usize,
+            mode: QuantizationMode,
+            rows: usize,
+            cols: usize,
+            input_q8_1: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if !quantized_kernels_compiled() {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda quantized text-generation kernels are not available in this build",
+                )));
+            }
+            let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda quantized matvec argmax does not support mode {mode:?}"
+                )));
+            };
+            let row_stride = (cols / elements_per_block) * bytes_per_block;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized matvec argmax rows exceed c_int",
+                ))
+            })?;
+            let cols = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized matvec argmax cols exceed c_int",
+                ))
+            })?;
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized matvec argmax row stride exceeds c_int",
+                ))
+            })?;
+            let kernel: QuantizedMatvecQ81ArgmaxKernel = match mode {
+                QuantizationMode::GgmlQ8_0 => psionic_cuda_q8_0_matvec_q8_1_argmax,
+                QuantizationMode::GgmlMxfp4 => psionic_cuda_mxfp4_matvec_q8_1_argmax,
+                _ => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda quantized matvec argmax does not support mode {mode:?}"
+                    )));
+                }
+            };
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    kernel(
+                        weights
+                            .inner
+                            .device_ptr
+                            .cast::<u8>()
+                            .add(byte_offset)
+                            .cast(),
+                        rows,
+                        cols,
+                        row_stride,
+                        input_q8_1.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_quantized_matvec_q8_1_argmax",
             )
         }
 
@@ -5194,6 +5321,22 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_quantized_matvec_q8_1_argmax(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _byte_offset: usize,
+            _mode: QuantizationMode,
+            _rows: usize,
+            _cols: usize,
+            _input_q8_1: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
         pub(super) fn encode_argmax_f32(
             &mut self,
             _input: &PlatformBuffer,
@@ -6315,6 +6458,65 @@ mod tests {
         let report = submission.commit(CudaCommandWait::Completed)?;
         assert_eq!(report.encoded_operations, 2);
         assert_close(&output.read_f32()?, &expected, 5e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_q8_0_quantized_matvec_q8_1_argmax_fast_path_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = sample_q8_1_exact_vector();
+        let row_a = sample_q8_0_row(0.25, 1);
+        let row_b = sample_q8_0_row(0.5, -1);
+        let bias = vec![0.75_f32, -1.25_f32];
+        let expected = [
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_a)? + bias[0],
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_b)? + bias[1],
+        ];
+        let mut bytes = row_a.clone();
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![input.len()]), input)?;
+        let bias_buffer = backend.input_buffer(Shape::new(vec![bias.len()]), bias)?;
+        let q8_1_buffer =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, 32)?])?;
+        let mut argmax_output = backend.byte_buffer(&vec![0_u8; std::mem::size_of::<u64>()])?;
+        let mut submission = backend.begin_submission()?;
+        submission.quantize_f32_to_q8_1(&input_buffer, 1, 32, &q8_1_buffer)?;
+        argmax_output.write_bytes(
+            &(((u64::from(i32::MAX as u32)) << 32) | u64::from(f32::NEG_INFINITY.to_bits()))
+                .to_ne_bytes(),
+        )?;
+        submission.quantized_matvec_q8_1_argmax(
+            &weights,
+            0,
+            QuantizationMode::GgmlQ8_0,
+            2,
+            32,
+            &q8_1_buffer,
+            Some(&bias_buffer),
+            &argmax_output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 2);
+
+        let packed_bytes = argmax_output.read_bytes()?;
+        let packed = u64::from_ne_bytes(
+            packed_bytes[..std::mem::size_of::<u64>()]
+                .try_into()
+                .expect("packed argmax buffer should be eight bytes"),
+        );
+        let actual_index = (packed >> 32) as usize;
+        let expected_index = if expected[0] >= expected[1] { 0 } else { 1 };
+        assert_eq!(actual_index, expected_index);
         Ok(())
     }
 

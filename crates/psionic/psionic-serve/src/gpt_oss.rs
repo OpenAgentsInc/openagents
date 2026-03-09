@@ -117,6 +117,11 @@ fn duration_ns(start: Instant) -> u64 {
     start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX)
 }
 
+fn initial_cuda_argmax_pair_bytes() -> [u8; std::mem::size_of::<u64>()] {
+    let packed = (u64::from(i32::MAX as u32) << 32) | u64::from(f32::NEG_INFINITY.to_bits());
+    packed.to_ne_bytes()
+}
+
 fn can_use_cuda_argmax_fast_path(options: &GenerationOptions) -> bool {
     options.decode_strategy == DecodeStrategy::Greedy
         && options.repeat_penalty.is_none()
@@ -1621,6 +1626,8 @@ struct GptOssCudaStepPlan {
     logits_buffer: CudaBuffer,
     next_token_host_buffer: CudaHostBuffer,
     next_token_buffer: CudaBuffer,
+    argmax_state_host_buffer: CudaHostBuffer,
+    argmax_state_buffer: CudaBuffer,
     decode_graph_exec: Option<CudaGraphExec>,
     decode_graph_cache_identity: Option<(usize, usize)>,
 }
@@ -1734,6 +1741,8 @@ impl GptOssCudaModelInner {
             logits_buffer: backend.f32_buffer(self.output.rows)?,
             next_token_host_buffer: backend.host_buffer(std::mem::size_of::<i32>())?,
             next_token_buffer: backend.byte_buffer(&vec![0_u8; std::mem::size_of::<i32>()])?,
+            argmax_state_host_buffer: backend.host_buffer(std::mem::size_of::<u64>())?,
+            argmax_state_buffer: backend.byte_buffer(&vec![0_u8; std::mem::size_of::<u64>()])?,
             decode_graph_exec: None,
             decode_graph_cache_identity: None,
         })
@@ -2095,16 +2104,37 @@ impl GptOssCudaModelInner {
                 self.output.columns,
                 &plan.vector_q8_1_buffer,
             )?;
-            submission.quantized_matvec_q8_1(
-                &self.output.storage,
-                0,
-                self.output.mode,
-                self.output.rows,
-                self.output.columns,
-                &plan.vector_q8_1_buffer,
-                None,
-                &plan.logits_buffer,
-            )?;
+            if output_mode == CudaStepOutputMode::DeviceArgmax {
+                submission.copy_host_to_device(
+                    &plan.argmax_state_host_buffer,
+                    &plan.argmax_state_buffer,
+                )?;
+                submission.quantized_matvec_q8_1_argmax(
+                    &self.output.storage,
+                    0,
+                    self.output.mode,
+                    self.output.rows,
+                    self.output.columns,
+                    &plan.vector_q8_1_buffer,
+                    None,
+                    &plan.argmax_state_buffer,
+                )?;
+                submission.copy_device_to_host(
+                    &plan.argmax_state_buffer,
+                    &plan.argmax_state_host_buffer,
+                )?;
+            } else {
+                submission.quantized_matvec_q8_1(
+                    &self.output.storage,
+                    0,
+                    self.output.mode,
+                    self.output.rows,
+                    self.output.columns,
+                    &plan.vector_q8_1_buffer,
+                    None,
+                    &plan.logits_buffer,
+                )?;
+            }
         } else {
             submission.quantized_matvec(
                 &self.output.storage,
@@ -2116,7 +2146,7 @@ impl GptOssCudaModelInner {
                 &plan.logits_buffer,
             )?;
         }
-        if output_mode == CudaStepOutputMode::DeviceArgmax {
+        if output_mode == CudaStepOutputMode::DeviceArgmax && !can_use_q8_1_mmvq(self.output.mode) {
             submission.argmax_f32(
                 &plan.logits_buffer,
                 1,
@@ -2184,6 +2214,14 @@ impl GptOssCudaModelInner {
         ];
         plan.decode_params_host_buffer.write_i32(&decode_params)?;
         perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(8);
+        if output_mode == CudaStepOutputMode::DeviceArgmax {
+            plan.argmax_state_host_buffer
+                .write_bytes(initial_cuda_argmax_pair_bytes().as_slice())?;
+            perf.cuda.host_to_device_bytes = perf
+                .cuda
+                .host_to_device_bytes
+                .saturating_add(std::mem::size_of::<u64>().try_into().unwrap_or(u64::MAX));
+        }
 
         let use_decode_graph_fast_path = decode_graph_fast_path_enabled()
             && output_mode == CudaStepOutputMode::DeviceArgmax
@@ -2251,34 +2289,60 @@ impl GptOssCudaModelInner {
             )?;
             submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?
         };
-        let (logits_values, selected_token, logits_readback_bytes) = match output_mode {
-            CudaStepOutputMode::FullLogits => (
-                plan.logits_buffer.read_f32()?,
-                None,
-                self.output
-                    .rows
-                    .saturating_mul(std::mem::size_of::<f32>())
-                    .try_into()
-                    .unwrap_or(u64::MAX),
-            ),
-            CudaStepOutputMode::DeviceArgmax => {
-                let token = plan.next_token_host_buffer.read_i32().map_err(|error| {
-                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
-                        "cuda argmax returned an invalid host token buffer: {error}",
-                    )))
-                })?;
-                let token = u32::try_from(token).map(TokenId).map_err(|_| {
-                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
-                        "cuda argmax returned a negative token id {token}",
-                    )))
-                })?;
-                (
-                    Vec::new(),
-                    Some(token),
-                    std::mem::size_of::<i32>().try_into().unwrap_or(u64::MAX),
-                )
-            }
-        };
+        let (logits_values, selected_token, logits_readback_bytes) =
+            match output_mode {
+                CudaStepOutputMode::FullLogits => (
+                    plan.logits_buffer.read_f32()?,
+                    None,
+                    self.output
+                        .rows
+                        .saturating_mul(std::mem::size_of::<f32>())
+                        .try_into()
+                        .unwrap_or(u64::MAX),
+                ),
+                CudaStepOutputMode::DeviceArgmax => {
+                    let token =
+                        if can_use_q8_1_mmvq(self.output.mode) {
+                            let bytes = plan.argmax_state_host_buffer.read_bytes().map_err(|error| {
+                        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                            format!("cuda argmax returned an invalid packed host buffer: {error}"),
+                        ))
+                    })?;
+                            let packed = u64::from_ne_bytes(
+                                bytes[..std::mem::size_of::<u64>()]
+                                    .try_into()
+                                    .map_err(|_| {
+                                        ReferenceTextGenerationError::Runtime(
+                                            super::RuntimeError::Backend(String::from(
+                                                "cuda argmax returned invalid packed argmax bytes",
+                                            )),
+                                        )
+                                    })?,
+                            );
+                            (packed >> 32) as i32
+                        } else {
+                            plan.next_token_host_buffer.read_i32().map_err(|error| {
+                        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                            "cuda argmax returned an invalid host token buffer: {error}",
+                        )))
+                    })?
+                        };
+                    let token = u32::try_from(token).map(TokenId).map_err(|_| {
+                        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                            format!("cuda argmax returned a negative token id {token}",),
+                        ))
+                    })?;
+                    (
+                        Vec::new(),
+                        Some(token),
+                        if can_use_q8_1_mmvq(self.output.mode) {
+                            std::mem::size_of::<u64>().try_into().unwrap_or(u64::MAX)
+                        } else {
+                            std::mem::size_of::<i32>().try_into().unwrap_or(u64::MAX)
+                        },
+                    )
+                }
+            };
         cuda_cache.len = cache_write_index.saturating_add(1);
         accumulate_cuda_submission_report(&mut perf, &submission_report, 0, logits_readback_bytes);
         kernel_count = kernel_count.saturating_add(submission_report.encoded_operations);

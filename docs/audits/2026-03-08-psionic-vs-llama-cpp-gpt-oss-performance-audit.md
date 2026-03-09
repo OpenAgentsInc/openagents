@@ -9,21 +9,24 @@
 > identities, after the newer exact-prompt shared-prefix fast paths that stop
 > cloning full prompt-logit histories and avoid re-recording or host-cloning
 > unchanged prompt caches on repeated GPT-OSS HTTP requests, and after the
-> latest decode-kernel checkpoint that confirmed two plausible llama.cpp-aligned
-> ideas did not improve this workload: q8_0 `f16` projection mirrors feeding
-> cuBLAS tensor-op GEMV regressed into the mid-80s tok/s, and replacing the
-> GPT-OSS `selected_count = 4` custom MoE kernels with simpler per-expert MMVQ
-> routing also stayed below the best prior checkpoint. This file is the current
-> audit for the GPT-OSS throughput gap; later product truth still lives in
-> `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and the
-> referenced issues. The current benchmark script now explicitly unsets
-> `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS` before launching Psionic so perf
-> receipts and extra JSON serialization cannot silently contaminate the
-> benchmark, and this update also records one more ruled-out direct port:
+> latest decode-kernel checkpoints that confirmed several plausible
+> llama.cpp-aligned ideas still do not win this workload: q8_0 `f16`
+> projection mirrors feeding cuBLAS tensor-op GEMV regressed into the mid-80s
+> tok/s, replacing the GPT-OSS `selected_count = 4` custom MoE kernels with
+> simpler per-expert MMVQ routing also stayed below the best prior checkpoint,
 > a grouped-query decode-attention kernel specialized for the exact GPT-OSS
 > geometry on this host (`64` query heads, `8` KV heads, `64` head dim)
 > regressed the live HTTP benchmark into the low `70 tok/s` range and was
-> removed.
+> removed, and forcing an `f16` mirror onto the final q8_0 output head alone
+> also lost at `82.33 tok/s`. This update also records one small real win:
+> folding the greedy output-head argmax into the quantized q8_1 logits
+> projection lifted the exact HTTP benchmark to `92.45 tok/s`. This file is
+> the current audit for the GPT-OSS throughput gap; later product truth still
+> lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
+> `crates/psionic/docs/ROADMAP.md`, and the referenced issues. The current
+> benchmark script now explicitly unsets `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS`
+> before launching Psionic so perf receipts and extra JSON serialization cannot
+> silently contaminate the benchmark.
 
 ## Scope
 
@@ -210,6 +213,29 @@
     CUDA unit coverage but regressed the exact HTTP benchmark to about
     `73.32 tok/s`, so it was removed rather than left in the runtime hot path
 
+### Current fused-greedy-output checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.400s`
+  - `92.45 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.247s`
+  - `170.23 tok/s`
+- Gap:
+  - `1.84x`
+- Psionic improvement over the original baseline:
+  - `5.52x`
+- Psionic improvement over the prior clean checkpoint:
+  - `1.04x`
+- What changed:
+  - the greedy GPT-OSS output head now folds argmax into the `Q8_0/MXFP4 x Q8_1`
+    CUDA logits projection, so Psionic no longer materializes and rescans the
+    full logits vector on the common greedy decode path
+- Newly ruled-out branch:
+  - building an `f16` mirror for the final q8_0 output head alone loaded and
+    ran correctly on this host, but the exact same benchmark regressed to
+    `82.33 tok/s`, so the mirror was removed again
+
 The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
@@ -230,14 +256,16 @@ The visible output text matched exactly in the current benchmark:
     projection `f16` mirror path and the direct per-expert MoE route were both
     plausible from code inspection and both lost to the current path in live
     benchmark runs
+- the output head did have one small avoidable waste on the greedy path.
+  - folding argmax into the quantized q8_1 logits projection recovered a few
+    tok/s without changing model semantics, but the gain was incremental rather
+    than transformational
 - the remaining gap is now concentrated even more tightly in the kernels that
   Psionic still does not match line-for-line with llama.cpp.
   - the next real alignment targets are the ids-enabled `mul_mat_vec_q` / MMVQ
-    path for the GPT-OSS MoE decode lane, the final-logits greedy path
-    (preferably avoiding a full logits materialization when only argmax is
-    needed), and a deeper audit of whether llama.cpp's reported `REPACK = 1`
-    state implies a useful backend-side weight layout transform for this exact
-    model family on CUDA
+    path for the GPT-OSS MoE decode lane and the flash-attention / dispatch
+    behavior in `fattn.cu`; the greedy-logits materialization waste is now
+    partially addressed and no longer the biggest obvious local inefficiency
 - the latest ruled-out branch sharpened that further.
   - even for the exact GPT-OSS grouped-query geometry (`64/8/64`), simply
     reusing K/V across eight query-head warps in a larger shared-memory block

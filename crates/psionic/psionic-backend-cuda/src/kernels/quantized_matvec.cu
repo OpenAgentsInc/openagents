@@ -479,6 +479,91 @@ __global__ void quantized_matvec_q8_1_mmvq_kernel(
     }
 }
 
+__device__ __forceinline__ unsigned long long pack_argmax_pair(float value, int index) {
+    return (static_cast<unsigned long long>(static_cast<uint32_t>(index)) << 32) |
+        static_cast<unsigned long long>(__float_as_uint(value));
+}
+
+__device__ __forceinline__ void unpack_argmax_pair(
+    unsigned long long packed,
+    float & value,
+    int & index
+) {
+    value = __uint_as_float(static_cast<uint32_t>(packed & 0xffffffffu));
+    index = static_cast<int>(packed >> 32);
+}
+
+__device__ __forceinline__ void atomic_update_argmax_pair(
+    unsigned long long *state,
+    float value,
+    int index
+) {
+    unsigned long long observed = *state;
+    while (true) {
+        float observed_value = 0.0f;
+        int observed_index = 0;
+        unpack_argmax_pair(observed, observed_value, observed_index);
+        if (value < observed_value || (value == observed_value && index >= observed_index)) {
+            return;
+        }
+        const unsigned long long desired = pack_argmax_pair(value, index);
+        const unsigned long long previous = atomicCAS(state, observed, desired);
+        if (previous == observed) {
+            return;
+        }
+        observed = previous;
+    }
+}
+
+template <typename DotFn, int Vdr, int Qi>
+__launch_bounds__(kMmvqWarps * kWarpSize, 1)
+__global__ void quantized_matvec_q8_1_mmvq_argmax_kernel(
+    const uint8_t *weights,
+    int row_stride,
+    int rows,
+    int block_count,
+    const Q81Block *input,
+    const float *bias,
+    unsigned long long *argmax_state,
+    DotFn dot_fn
+) {
+    const int row = static_cast<int>(blockIdx.x);
+    if (row >= rows) {
+        return;
+    }
+
+    constexpr int blocks_per_iter = Vdr * kMmvqWarps * kWarpSize / Qi;
+    const int tid = kWarpSize * static_cast<int>(threadIdx.y) + static_cast<int>(threadIdx.x);
+    const uint8_t *row_weights = weights + static_cast<size_t>(row) * static_cast<size_t>(row_stride);
+
+    float sum = 0.0f;
+    for (int block_index = tid / (Qi / Vdr); block_index < block_count; block_index += blocks_per_iter) {
+        const int quant_index = Vdr * (tid % (Qi / Vdr));
+        sum += dot_fn(row_weights, input, block_index, block_index, quant_index);
+    }
+
+    __shared__ float partials[kMmvqWarps - 1 > 0 ? kMmvqWarps - 1 : 1][kWarpSize];
+    if (threadIdx.y > 0) {
+        partials[threadIdx.y - 1][threadIdx.x] = sum;
+    }
+    __syncthreads();
+
+    if (threadIdx.y > 0) {
+        return;
+    }
+
+#pragma unroll
+    for (int warp_index = 0; warp_index < kMmvqWarps - 1; ++warp_index) {
+        sum += partials[warp_index][threadIdx.x];
+    }
+
+    sum = warp_reduce_sum(sum);
+    if (threadIdx.x == 0) {
+        const float value = sum + (bias != nullptr ? bias[row] : 0.0f);
+        atomic_update_argmax_pair(argmax_state, value, row);
+    }
+}
+
 template <typename DotFn, int RowsPerBlock>
 __launch_bounds__(RowsPerBlock * kWarpSize, 1)
 __global__ void quantized_matvec_q8_1_shared_input_kernel(
@@ -2614,6 +2699,62 @@ extern "C" int psionic_cuda_mxfp4_matvec_q8_1(
         static_cast<const Q81Block *>(input_q8_1),
         static_cast<const float *>(bias),
         static_cast<float *>(output),
+        Mxfp4Q81Dot{}
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_q8_0_matvec_q8_1_argmax(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *input_q8_1,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    quantized_matvec_q8_1_mmvq_argmax_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
+        rows,
+        dim3(kWarpSize, kMmvqWarps, 1),
+        0,
+        static_cast<cudaStream_t>(stream)
+    >>>(
+        static_cast<const uint8_t *>(weights),
+        row_stride,
+        rows,
+        cols / kQ81ElementsPerBlock,
+        static_cast<const Q81Block *>(input_q8_1),
+        static_cast<const float *>(bias),
+        static_cast<unsigned long long *>(output),
+        Q80Q81Dot{}
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_mxfp4_matvec_q8_1_argmax(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *input_q8_1,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    quantized_matvec_q8_1_mmvq_argmax_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
+        rows,
+        dim3(kWarpSize, kMmvqWarps, 1),
+        0,
+        static_cast<cudaStream_t>(stream)
+    >>>(
+        static_cast<const uint8_t *>(weights),
+        row_stride,
+        rows,
+        cols / kQ81ElementsPerBlock,
+        static_cast<const Q81Block *>(input_q8_1),
+        static_cast<const float *>(bias),
+        static_cast<unsigned long long *>(output),
         Mxfp4Q81Dot{}
     );
     return static_cast<int>(cudaGetLastError());

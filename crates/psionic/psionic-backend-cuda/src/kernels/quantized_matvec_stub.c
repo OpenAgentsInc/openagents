@@ -97,6 +97,48 @@ int psionic_cuda_mxfp4_matvec_q8_1(
     return 1;
 }
 
+int psionic_cuda_q8_0_matvec_q8_1_argmax(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *input_q8_1,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)rows;
+    (void)cols;
+    (void)row_stride;
+    (void)input_q8_1;
+    (void)bias;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_mxfp4_matvec_q8_1_argmax(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *input_q8_1,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)rows;
+    (void)cols;
+    (void)row_stride;
+    (void)input_q8_1;
+    (void)bias;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
 int psionic_cuda_rms_norm(
     const void *input,
     const void *weight,
