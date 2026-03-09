@@ -1285,8 +1285,8 @@ The shortest honest path from today's `main` is:
    `PSI-179` -> `PSI-180` -> `PSI-181` -> `PSI-182` -> `PSI-183` are closed on
    `main`; do not reopen that enablement sequence.
 10. The active next work on this host is the GPT-OSS throughput track:
-    `#3242` -> `#3243` -> `#3244` -> `#3245` -> `#3246` are closed, and the
-    current execution order is `#3249` then `#3247` then `#3248`.
+    `#3242` -> `#3243` -> `#3244` -> `#3245` -> `#3246` are closed, `#3249`
+    is complete, and the current execution order is `#3276` then `#3248`.
 11. The Apple Silicon native-Rust Metal track is now explicit too: keep the
     landed groundwork from `#3250` and `#3252` through `#3260`, but execute the
     remaining queue in order `#3270` -> `#3268` -> `#3269` -> `#3271` ->
@@ -1385,3 +1385,14 @@ The right near-term target is smaller:
 - one honest model catalog
 - one honest text-generation product path
 - explicit Metal, NVIDIA, and AMD backend truth
+
+## 2026-03-09 GPT-OSS Perf Checkpoint
+
+- Current exact benchmark floor on this NVIDIA host:
+  Psionic `prompt_cache_hit = 125.12 tok/s`
+- Current same-run control:
+  `llama.cpp prompt_cache_hit = 168.53 tok/s`
+- This checkpoint fixed an exact-prefix CUDA reuse bug that could pair the
+  third exact `HTTPS ...` request with the warm `TLS ...` device KV entry.
+- This means the tracked throughput number is now both slightly better and more
+  trustworthy than the previous `123.42 tok/s` baseline on `#3276`.

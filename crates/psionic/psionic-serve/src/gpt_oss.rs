@@ -90,6 +90,10 @@ fn can_use_cuda_argmax_fast_path(options: &GenerationOptions) -> bool {
         && options.frequency_penalty.is_none()
 }
 
+fn can_use_cached_prompt_argmax(options: &GenerationOptions) -> bool {
+    can_use_cuda_argmax_fast_path(options)
+}
+
 fn can_use_q8_1_mmvq(mode: QuantizationMode) -> bool {
     matches!(
         mode,
@@ -770,6 +774,21 @@ struct CudaSharedPrefixStore {
 }
 
 impl CudaSharedPrefixStore {
+    fn lookup_exact_prompt(
+        &self,
+        compatibility: &super::SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+    ) -> Option<CudaKvCacheMirror> {
+        self.entries
+            .iter()
+            .find(|entry| {
+                &entry.compatibility == compatibility
+                    && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
+                    && entry.cache.len() >= prompt_tokens.len()
+            })
+            .map(|entry| entry.cache.truncated(prompt_tokens.len()))
+    }
+
     fn lookup(
         &mut self,
         compatibility: &super::SharedPrefixCompatibility,
@@ -1121,17 +1140,24 @@ fn run_cuda_generation_request(
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let mut decode_step_plan = None;
         let use_cuda_argmax_fast_path = can_use_cuda_argmax_fast_path(&request.options);
+        let mut exact_prompt_token = None;
         let exact_prefix_hit = if shared_prefix_eligible && request.session_id.is_none() {
             shared_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens)
         } else {
             None
         };
-        let exact_prompt_cache_hit = exact_prefix_hit.is_some();
-        let mut cache = if let Some(hit) = exact_prefix_hit {
+        let exact_cuda_cache = if exact_prefix_hit.is_some() {
+            cuda_shared_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens)
+        } else {
+            None
+        };
+        let exact_prompt_cache_hit = exact_prefix_hit.is_some() && exact_cuda_cache.is_some();
+        let mut cache = if let Some(hit) = exact_prefix_hit.filter(|_| exact_prompt_cache_hit) {
             prefix_state = super::PrefixCacheState::Hit;
             prefix_tokens_reused = prompt_tokens.len();
             prefix_identity = Some(hit.identity);
             last_logits = hit.last_logits;
+            exact_prompt_token = hit.greedy_token.map(TokenId);
             super::InMemoryKvCache::new(
                 loaded_model.descriptor().config.max_context,
                 expected_kv_width,
@@ -1182,7 +1208,10 @@ fn run_cuda_generation_request(
             });
         }
         let mut cuda_cache = if shared_prefix_eligible && prefix_tokens_reused > 0 {
-            if let Some(cache) = cuda_shared_prefixes.lookup(&compatibility, &prompt_tokens) {
+            if let Some(cache) = exact_cuda_cache {
+                cache
+            } else if let Some(cache) = cuda_shared_prefixes.lookup(&compatibility, &prompt_tokens)
+            {
                 cache
             } else {
                 CudaKvCacheMirror::from_host_cache(
@@ -1245,15 +1274,22 @@ fn run_cuda_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
-        let sampling_start = Instant::now();
-        let mut pending_token = sampler
-            .select_next_token_from_history(&last_logits, &token_history)
-            .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
-        let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
-        perf.stage_timings.sampling_ns = perf
-            .stage_timings
-            .sampling_ns
-            .saturating_add(duration_ns(sampling_start));
+        let mut pending_token = if exact_prompt_cache_hit
+            && can_use_cached_prompt_argmax(&request.options)
+        {
+            exact_prompt_token.ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?
+        } else {
+            let sampling_start = Instant::now();
+            let token = sampler
+                .select_next_token_from_history(&last_logits, &token_history)
+                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+            perf.stage_timings.sampling_ns = perf
+                .stage_timings
+                .sampling_ns
+                .saturating_add(duration_ns(sampling_start));
+            token
+        };
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
