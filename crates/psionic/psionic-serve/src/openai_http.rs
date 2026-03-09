@@ -21,7 +21,7 @@ use axum::{
     },
     routing::{get, post},
 };
-use psionic_catalog::LocalBlobOpenOptions;
+use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
 use psionic_models::{
     GgufBlobArtifact, GptOssHarmonyParseOptions, GptOssHarmonyParsedOutput,
     GptOssHarmonyRenderContext, GptOssTokenizer, PromptChannelConfig, PromptMessage,
@@ -50,6 +50,10 @@ const HARMONY_START_TOKEN: &str = "<|start|>";
 const HARMONY_END_TOKEN: &str = "<|end|>";
 const HARMONY_MESSAGE_TOKEN: &str = "<|message|>";
 const HARMONY_CHANNEL_TOKEN: &str = "<|channel|>";
+
+fn gpt_oss_local_blob_open_options() -> LocalBlobOpenOptions {
+    LocalBlobOpenOptions::default().with_integrity_policy(BlobIntegrityPolicy::LocalUnverifiedLabel)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum GptOssOpenAiCompatBackend {
@@ -195,7 +199,7 @@ impl PromptTokenCache {
 impl GptOssOpenAiCompatServer {
     pub fn from_config(config: &GptOssOpenAiCompatConfig) -> Result<Self, OpenAiCompatServerError> {
         let artifact =
-            GgufBlobArtifact::open_path(&config.model_path, LocalBlobOpenOptions::default())
+            GgufBlobArtifact::open_path(&config.model_path, gpt_oss_local_blob_open_options())
                 .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
         let adapter = GgufDecoderAdapterLoader
             .load_blob_artifact(&artifact)

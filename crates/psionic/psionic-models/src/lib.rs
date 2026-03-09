@@ -897,6 +897,14 @@ impl WeightArtifactMetadata {
             }),
         }
     }
+
+    fn integrity_label(&self) -> Cow<'_, str> {
+        if self.sha256.contains(':') {
+            Cow::Borrowed(self.sha256.as_str())
+        } else {
+            Cow::Owned(format!("sha256:{}", self.sha256))
+        }
+    }
 }
 
 /// Stable metadata for a single tensor in a weight bundle.
@@ -3608,6 +3616,45 @@ impl LocalWeightBundleLoader for SafeTensorsWeightBundleLoader {
 pub struct GgufWeightBundleLoader;
 
 impl GgufWeightBundleLoader {
+    fn describe_artifact(
+        &self,
+        artifact: &GgufBlobArtifact,
+    ) -> Result<WeightBundleMetadata, ModelLoadError> {
+        let content = artifact.content();
+        let mut metadata = Vec::with_capacity(content.tensor_infos.len());
+        let mut quantized_bytes = Vec::new();
+        let mut hasher = Sha256::new();
+        hasher.update(artifact.artifact_metadata().integrity_label().as_bytes());
+        hasher.update(b"\n");
+
+        for tensor_info in content.tensor_infos() {
+            let tensor_metadata = tensor_info.weight_metadata()?;
+            let (_, byte_length) = content.tensor_byte_range(&tensor_info.name)?;
+            if tensor_metadata.quantization != QuantizationMode::None {
+                track_quantized_bytes(
+                    &mut quantized_bytes,
+                    tensor_metadata.quantization,
+                    byte_length,
+                );
+            }
+            digest_tensor_metadata(&mut hasher, &tensor_metadata);
+            metadata.push(tensor_metadata);
+        }
+
+        Ok(WeightBundleMetadata {
+            format: WeightFormat::Gguf,
+            source: WeightSource::ExternalArtifact,
+            quantization: dominant_quantization_mode(&quantized_bytes),
+            quantization_modes: quantized_bytes
+                .iter()
+                .filter_map(|(mode, _)| (*mode != QuantizationMode::None).then_some(*mode))
+                .collect(),
+            digest: hex::encode(hasher.finalize()),
+            tensors: metadata,
+            artifacts: vec![artifact.artifact_metadata().clone()],
+        })
+    }
+
     fn load_artifact(
         &self,
         artifact: &GgufBlobArtifact,
@@ -3811,12 +3858,12 @@ impl GgufEmbeddingAdapterLoader {
         validate_supported_embedding_family_features(metadata, family, architecture.as_str())?;
 
         let tokenizer = content.load_tokenizer()?;
-        let bundle = GgufWeightBundleLoader.load_blob_artifact(artifact)?;
+        let bundle = GgufWeightBundleLoader.describe_artifact(artifact)?;
         let family_metadata =
             build_gguf_embedding_family_metadata(metadata, content, family, architecture)?;
         let descriptor = build_gguf_embedding_descriptor(
             artifact.artifact_metadata(),
-            &bundle.metadata,
+            &bundle,
             &family_metadata,
             &tokenizer,
             content,
@@ -3995,12 +4042,12 @@ impl GgufDecoderAdapterLoader {
 
         let tokenizer = content.load_tokenizer()?;
         let chat_templates = content.load_chat_templates()?;
-        let bundle = GgufWeightBundleLoader.load_blob_artifact(artifact)?;
+        let bundle = GgufWeightBundleLoader.describe_artifact(artifact)?;
         let family_metadata =
             build_gguf_decoder_family_metadata(metadata, content, &family, architecture)?;
         let descriptor = build_gguf_decoder_descriptor(
             artifact.artifact_metadata(),
-            &bundle.metadata,
+            &bundle,
             &family_metadata,
             &tokenizer,
             &chat_templates,
@@ -4283,7 +4330,7 @@ fn build_gguf_embedding_descriptor(
         family_metadata.display_name.as_deref(),
         family_metadata.family.as_str(),
     );
-    let revision = format!("sha256:{}", artifact.sha256);
+    let revision = artifact.integrity_label().into_owned();
     Ok(EmbeddingModelDescriptor::new(
         ModelDescriptor::new(model_id, family_metadata.family.as_str(), revision),
         hidden_size,
@@ -4291,7 +4338,7 @@ fn build_gguf_embedding_descriptor(
         bundle.clone(),
     )
     .with_artifact_identity(ServedModelArtifactMetadata::new(
-        Some(artifact.sha256.clone()),
+        Some(artifact.integrity_label().into_owned()),
         Some(tokenizer.digest().to_string()),
         None,
         digest_generation_defaults(tokenizer.add_bos, tokenizer.add_eos, &[]),
@@ -4785,7 +4832,7 @@ fn build_gguf_decoder_descriptor(
         family_metadata.display_name.as_deref(),
         family_metadata.family.as_str(),
     );
-    let revision = format!("sha256:{}", artifact.sha256);
+    let revision = artifact.integrity_label().into_owned();
 
     let stop_sequences = default_chat_template_stop_sequences(chat_templates);
     Ok(DecoderModelDescriptor::new(
@@ -4795,7 +4842,7 @@ fn build_gguf_decoder_descriptor(
         bundle.clone(),
     )
     .with_artifact_identity(ServedModelArtifactMetadata::new(
-        Some(artifact.sha256.clone()),
+        Some(artifact.integrity_label().into_owned()),
         Some(tokenizer.digest().to_string()),
         (!chat_templates.is_empty()).then(|| chat_templates.digest().to_string()),
         digest_generation_defaults(tokenizer.add_bos, tokenizer.add_eos, &stop_sequences),
@@ -5169,7 +5216,7 @@ fn build_gguf_model_id(
         .or_else(|| artifact.name.strip_suffix(".gguf"))
         .unwrap_or(family_label);
     let normalized = normalize_model_id_component(base);
-    format!("{normalized}@sha256:{}", artifact.sha256)
+    format!("{normalized}@{}", artifact.integrity_label())
 }
 
 fn normalize_model_id_component(value: &str) -> String {
@@ -6250,6 +6297,26 @@ fn digest_quantized_tensor(
     hasher.update((layout.block_count as u64).to_be_bytes());
     hasher.update(b"|");
     hasher.update(storage.bytes());
+    hasher.update(b"\n");
+}
+
+fn digest_tensor_metadata(hasher: &mut Sha256, metadata: &WeightTensorMetadata) {
+    hasher.update(metadata.name.as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", metadata.dtype).as_bytes());
+    hasher.update(b"|");
+    hasher.update(format!("{:?}", metadata.quantization).as_bytes());
+    hasher.update(b"|");
+    for dim in metadata.shape.dims() {
+        hasher.update(dim.to_string().as_bytes());
+        hasher.update(b",");
+    }
+    hasher.update(b"|");
+    if let Some(layout) = metadata.quantized_layout {
+        hasher.update((layout.elements_per_block as u64).to_be_bytes());
+        hasher.update((layout.bytes_per_block as u64).to_be_bytes());
+        hasher.update((layout.block_count as u64).to_be_bytes());
+    }
     hasher.update(b"\n");
 }
 

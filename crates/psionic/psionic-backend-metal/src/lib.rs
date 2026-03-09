@@ -4,9 +4,11 @@
 #![allow(clippy::result_large_err)]
 
 use std::{
+    any::Any,
     cmp::Ordering,
     collections::{BTreeMap, BTreeSet, HashMap},
     fmt,
+    sync::Arc,
 };
 
 use psionic_compiler::compile_graph;
@@ -467,6 +469,8 @@ pub struct MetalBuffer {
     storage_kind: BufferStorageKind,
     storage_mode: MetalStorageMode,
     host_visible: bool,
+    host_writable: bool,
+    _keepalive: Option<Arc<dyn Any>>,
     platform: platform::PlatformBuffer,
 }
 
@@ -478,6 +482,7 @@ impl fmt::Debug for MetalBuffer {
             .field("storage_kind", &self.storage_kind)
             .field("storage_mode", &self.storage_mode)
             .field("host_visible", &self.host_visible)
+            .field("host_writable", &self.host_writable)
             .field("platform", &"<metal platform buffer>")
             .finish()
     }
@@ -511,6 +516,11 @@ impl MetalBuffer {
                 bytes.len()
             )));
         }
+        if !self.host_writable {
+            return Err(RuntimeError::Backend(String::from(
+                "metal buffer is not host writable",
+            )));
+        }
         self.platform.write_bytes(bytes, self.storage_mode)
     }
 
@@ -526,6 +536,11 @@ impl MetalBuffer {
                 byte_offset,
                 bytes.len(),
                 self.byte_len
+            )));
+        }
+        if !self.host_writable {
+            return Err(RuntimeError::Backend(String::from(
+                "metal buffer is not host writable",
             )));
         }
         self.platform
@@ -1014,6 +1029,36 @@ impl MetalBackend {
             )));
         };
         backend.buffer_from_tensor_data(&spec, &tensor_data)
+    }
+
+    /// Creates a backend-owned quantized GGML/GGUF buffer from a caller-owned byte slice.
+    pub fn quantized_buffer_from_slice(
+        &mut self,
+        shape: Shape,
+        mode: psionic_core::QuantizationMode,
+        bytes: &[u8],
+        keepalive: Option<Arc<dyn Any>>,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        let spec = TensorSpec::new(shape.clone(), DType::F32, device);
+        let layout = mode.ggml_block_layout(&shape).ok_or_else(|| {
+            RuntimeError::Backend(format!(
+                "shape {shape} is invalid for quantized mode {mode:?}"
+            ))
+        })?;
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        backend.buffer_from_quantized_slice(&spec, mode, layout, bytes, keepalive)
     }
 
     /// Executes one quantized row-wise matrix-vector product over Metal-owned weights.
@@ -2227,6 +2272,8 @@ impl AvailableMetalBackend {
                 storage_mode,
                 MetalStorageMode::Shared | MetalStorageMode::Managed
             ),
+            host_writable: true,
+            _keepalive: None,
             platform: self.platform.allocate_buffer(byte_len)?,
         })
     }
@@ -2271,12 +2318,64 @@ impl AvailableMetalBackend {
                         storage_mode,
                         MetalStorageMode::Shared | MetalStorageMode::Managed
                     ),
+                    host_writable: true,
+                    _keepalive: None,
                     platform: self.platform.allocate_buffer(data.bytes.len())?,
                 };
                 buffer.write_bytes(data.bytes.as_slice())?;
                 Ok(buffer)
             }
         }
+    }
+
+    fn buffer_from_quantized_slice(
+        &mut self,
+        spec: &TensorSpec,
+        mode: psionic_core::QuantizationMode,
+        layout: psionic_core::QuantizedBlockLayout,
+        bytes: &[u8],
+        keepalive: Option<Arc<dyn Any>>,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let storage_mode = self.platform.storage_mode();
+        if matches!(storage_mode, MetalStorageMode::Shared) {
+            if let Some(keepalive) = keepalive {
+                return Ok(MetalBuffer {
+                    spec: spec.clone(),
+                    byte_len: bytes.len(),
+                    storage_kind: BufferStorageKind::QuantizedBlocks {
+                        mode,
+                        layout,
+                        residency: BufferResidency::Backend,
+                    },
+                    storage_mode,
+                    host_visible: true,
+                    host_writable: false,
+                    _keepalive: Some(keepalive),
+                    platform: self
+                        .platform
+                        .buffer_from_bytes_no_copy(bytes, storage_mode)?,
+                });
+            }
+        }
+        let mut buffer = MetalBuffer {
+            spec: spec.clone(),
+            byte_len: bytes.len(),
+            storage_kind: BufferStorageKind::QuantizedBlocks {
+                mode,
+                layout,
+                residency: BufferResidency::Backend,
+            },
+            storage_mode,
+            host_visible: matches!(
+                storage_mode,
+                MetalStorageMode::Shared | MetalStorageMode::Managed
+            ),
+            host_writable: true,
+            _keepalive: None,
+            platform: self.platform.allocate_buffer(bytes.len())?,
+        };
+        buffer.write_bytes(bytes)?;
+        Ok(buffer)
     }
 
     fn execute(
@@ -4104,6 +4203,20 @@ mod platform {
             Ok(PlatformBuffer { raw })
         }
 
+        pub(super) fn buffer_from_bytes_no_copy(
+            &self,
+            bytes: &[u8],
+            storage_mode: MetalStorageMode,
+        ) -> Result<PlatformBuffer, RuntimeError> {
+            let raw = self.device.new_buffer_with_bytes_no_copy(
+                bytes.as_ptr().cast(),
+                to_metal_size(bytes.len())?,
+                resource_options(storage_mode),
+                None,
+            );
+            Ok(PlatformBuffer { raw })
+        }
+
         pub(super) fn begin_submission(
             &self,
             label: String,
@@ -4661,6 +4774,16 @@ mod platform {
         pub(super) fn allocate_buffer(
             &self,
             _byte_len: usize,
+        ) -> Result<PlatformBuffer, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
+
+        pub(super) fn buffer_from_bytes_no_copy(
+            &self,
+            _bytes: &[u8],
+            _storage_mode: MetalStorageMode,
         ) -> Result<PlatformBuffer, RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "metal backend is only available on macOS",

@@ -18,7 +18,7 @@ use psionic_backend_metal::{
     MetalBackend, MetalBuffer, MetalGroupedExpertMatvecResult,
     TEXT_GENERATION_SUPPORTED_OPS as METAL_TEXT_GENERATION_SUPPORTED_OPS,
 };
-use psionic_catalog::LocalBlobOpenOptions;
+use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
 use psionic_core::Shape;
 use psionic_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
 use psionic_runtime::{
@@ -48,6 +48,10 @@ const GPT_OSS_YARN_BETA_SLOW: f32 = 1.0;
 const GPT_OSS_CPU_BACKEND: &str = "cpu";
 const GPT_OSS_CUDA_BACKEND: &str = "cuda";
 const GPT_OSS_METAL_BACKEND: &str = "metal";
+
+fn gpt_oss_local_blob_open_options() -> LocalBlobOpenOptions {
+    LocalBlobOpenOptions::default().with_integrity_policy(BlobIntegrityPolicy::LocalUnverifiedLabel)
+}
 
 fn decode_graph_fast_path_enabled() -> bool {
     env::var("PSIONIC_GPT_OSS_DISABLE_CUDA_GRAPHS")
@@ -1395,7 +1399,7 @@ pub struct CpuGgufGptOssGenerationModel {
 impl CpuGgufGptOssGenerationModel {
     /// Loads a CPU GPT-OSS execution model from a GGUF artifact path.
     pub fn from_gguf_path(path: impl AsRef<Path>) -> Result<Self, ReferenceTextGenerationError> {
-        let artifact = GgufBlobArtifact::open_path(path, LocalBlobOpenOptions::default())?;
+        let artifact = GgufBlobArtifact::open_path(path, gpt_oss_local_blob_open_options())?;
         Self::from_blob_artifact(artifact)
     }
 
@@ -1559,7 +1563,7 @@ impl MetalGgufGptOssGenerationModel {
         path: impl AsRef<Path>,
         backend: &mut MetalBackend,
     ) -> Result<Self, MetalGptOssTextGenerationError> {
-        let artifact = GgufBlobArtifact::open_path(path, LocalBlobOpenOptions::default())?;
+        let artifact = GgufBlobArtifact::open_path(path, gpt_oss_local_blob_open_options())?;
         Self::from_blob_artifact(artifact, backend)
     }
 
@@ -1733,7 +1737,7 @@ impl CudaGgufGptOssGenerationModel {
         path: impl AsRef<Path>,
         backend: &mut CudaBackend,
     ) -> Result<Self, CudaGptOssTextGenerationError> {
-        let artifact = GgufBlobArtifact::open_path(path, LocalBlobOpenOptions::default())?;
+        let artifact = GgufBlobArtifact::open_path(path, gpt_oss_local_blob_open_options())?;
         Self::from_blob_artifact(artifact, backend)
     }
 
@@ -4783,11 +4787,16 @@ fn load_metal_quantized_matrix(
     name: &str,
 ) -> Result<MetalQuantizedMatrix, ModelLoadError> {
     let host = load_quantized_matrix(artifact, name)?;
+    let keepalive: Arc<PagedTensorStorage> = Arc::new(host.storage.clone());
+    let bytes_owner = Arc::clone(&keepalive);
+    let bytes = bytes_owner.bytes()?;
+    let keepalive: Arc<dyn std::any::Any> = keepalive;
     let storage = backend
-        .quantized_buffer(
+        .quantized_buffer_from_slice(
             host.storage.metadata().shape.clone(),
             host.mode,
-            host.storage.bytes()?.to_vec(),
+            bytes,
+            Some(keepalive),
         )
         .map_err(|error| ModelLoadError::ArtifactFormat {
             format: String::from("gguf"),
@@ -5054,12 +5063,17 @@ fn load_metal_quantized_expert_tensor(
             shape: dims.clone(),
         }
     })?;
+    let keepalive: Arc<PagedTensorStorage> = Arc::new(storage.clone());
+    let bytes_owner = Arc::clone(&keepalive);
+    let bytes = bytes_owner.bytes()?;
+    let keepalive: Arc<dyn std::any::Any> = keepalive;
     Ok(MetalQuantizedExpertTensor {
         storage: backend
-            .quantized_buffer(
+            .quantized_buffer_from_slice(
                 metadata.shape.clone(),
                 quantization,
-                storage.bytes()?.to_vec(),
+                bytes,
+                Some(keepalive),
             )
             .map_err(|error| ModelLoadError::ArtifactFormat {
                 format: String::from("gguf"),
@@ -5382,8 +5396,17 @@ fn load_metal_quantized_expert_projection_group(
         .iter()
         .copied()
         .fold(0usize, usize::saturating_add);
+    let packed = Arc::new(packed);
+    let bytes_owner = Arc::clone(&packed);
+    let bytes = bytes_owner.as_slice();
+    let keepalive: Arc<dyn std::any::Any> = packed;
     let storage = backend
-        .quantized_buffer(Shape::new(vec![outer, total_rows, columns]), mode, packed)
+        .quantized_buffer_from_slice(
+            Shape::new(vec![outer, total_rows, columns]),
+            mode,
+            bytes,
+            Some(keepalive),
+        )
         .map_err(|error| ModelLoadError::ArtifactFormat {
             format: String::from("gguf"),
             message: format!(
