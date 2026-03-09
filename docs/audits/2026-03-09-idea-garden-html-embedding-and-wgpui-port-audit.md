@@ -1,19 +1,19 @@
-# 2026-03-09 TouchDesigner HTML Embedding And WGPUI Port Audit
+# 2026-03-09 Idea Garden HTML Embedding And WGPUI Port Audit
 
 > Historical note: This audit is a point-in-time snapshot from its date. Current product and architecture authority lives in `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/wgpui/README.md`, and current code in this repo.
 
 - Author: Codex
 - Status: complete
-- Scope: audit `~/Downloads/idea-garden-v1/`, compare it to retained WGPUI/browser/desktop surfaces in this repo, and recommend how to embed TouchDesigner-like visuals into the Rust app without violating MVP or ownership boundaries
+- Scope: audit `~/Downloads/idea-garden-v1/`, compare it to retained WGPUI/browser/desktop surfaces in this repo, and recommend how to embed this class of interactive browser visualization into the Rust app without violating MVP or ownership boundaries
 
 ## Objective
 
 Answer five questions:
 
 1. What is `idea-garden-v1` actually built from?
-2. What does the current repo already retain that is relevant to TouchDesigner-like visuals?
+2. What does the current repo already retain that is relevant to this kind of interactive visualization?
 3. Can that HTML page be embedded directly into the current Rust/WGPUI desktop app?
-4. What is the lowest-regret path to ship TouchDesigner-like visuals in this repo?
+4. What is the lowest-regret path to ship this kind of visualization in this repo?
 5. Where should each layer live under the current MVP and ownership rules?
 
 ## Sources Reviewed
@@ -53,7 +53,7 @@ Do not try to embed `garden.html` directly "inside WGPUI." The current WGPUI sta
 
 The lowest-regret order is:
 
-1. **Best fit for the MVP desktop app:** build our own TouchDesigner-like native scene in `apps/autopilot-desktop`, using WGPUI as the renderer and keeping product behavior in the app crate.
+1. **Best fit for the MVP desktop app:** build our own native scene in `apps/autopilot-desktop`, using WGPUI as the renderer and keeping product behavior in the app crate.
 2. **Best fit if browser parity matters:** build a new small wasm visualization app using the retained `wgpui` web lane, following the `apps/deck` pattern, and only later consider embedding that in a desktop webview.
 3. **Fastest way to reuse the existing HTML bundle:** add an app-owned embedded webview lane beside WGPUI, but treat that as a separate surface, not as a WGPUI feature.
 
@@ -73,7 +73,7 @@ It is **not** currently set up for:
 - hosting a desktop webview inside `apps/autopilot-desktop`,
 - drawing foreign textures or canvases into WGPUI as a first-class public API.
 
-So the real choice is not "can WGPUI embed TouchDesigner HTML right now?" It is:
+So the real choice is not "can WGPUI embed this HTML app right now?" It is:
 
 - build a native WGPUI version,
 - or add a separate embedded browser lane,
@@ -81,7 +81,7 @@ So the real choice is not "can WGPUI embed TouchDesigner HTML right now?" It is:
 
 ## What `idea-garden-v1` Actually Is
 
-`idea-garden-v1` is not a TouchDesigner project file. It is a standalone browser app in one HTML file.
+`idea-garden-v1` is a standalone browser app in one HTML file.
 
 ### Structure
 
@@ -154,7 +154,7 @@ The retained WGPUI stack is more capable than a simple 2D HUD:
 - layered scene composition
 - platform adapters for desktop and web
 
-The mesh pipeline in `crates/wgpui-core/src/scene.rs` plus `crates/wgpui/docs/rendering-pipelines.md` means we can already submit generic triangle meshes and edge overlays through the native renderer. That is the main retained primitive needed for "TouchDesigner-like" custom geometry and motion.
+The mesh pipeline in `crates/wgpui-core/src/scene.rs` plus `crates/wgpui/docs/rendering-pipelines.md` means we can already submit generic triangle meshes and edge overlays through the native renderer. That is the main retained primitive needed for custom animated geometry and motion.
 
 That makes a native version of:
 
@@ -175,7 +175,7 @@ This repo still has a wasm/browser WGPUI path:
 - `crates/wgpui/src/platform/web.rs` provides `WebPlatform`
 - `apps/deck` is a live example of a browser app built on that lane
 
-That means the repo can support "our own version of TouchDesigner-like visuals in Rust, running in browser" today as a proper app-owned lane.
+That means the repo can support "our own version of this visualization in Rust, running in browser" today as a proper app-owned lane.
 
 This is important because it creates a third option between:
 
@@ -211,7 +211,7 @@ Today, WGPUI is not yet a ready-made host for:
 
 - a live Three.js canvas,
 - a browser `canvas` copied into the scene,
-- a TouchDesigner frame stream,
+- a foreign frame stream,
 - a WebView texture composited inline with app widgets.
 
 That gap is architectural, not cosmetic.
@@ -287,7 +287,7 @@ Those would need to be recreated or simplified in our own scene implementation.
 
 ### Recommendation
 
-This is the best choice if the goal is "our own version of TouchDesigner-like stuff" that feels first-class inside Autopilot.
+This is the best choice if the goal is "our own version of this kind of interactive scene" that feels first-class inside Autopilot.
 
 ## Option B: New WGPUI Web App, Following `apps/deck`
 
@@ -309,7 +309,7 @@ This gives us a Rust-owned browser visualization lane without committing to:
 - native desktop port first, or
 - keeping the existing raw JS bundle.
 
-It is the cleanest way to prototype "TouchDesigner-like visuals, but ours" while staying within the repo's architecture.
+It is the cleanest way to prototype "this style of visualization, but ours" while staying within the repo's architecture.
 
 ### When to choose it
 
@@ -360,9 +360,9 @@ WGPUI can frame or orchestrate a region for the view, but the HTML content would
 
 Only choose this if speed of reusing the existing HTML is more important than desktop-native integration quality.
 
-## Option D: True TouchDesigner Runtime Integration
+## Option D: True External Visual Runtime Integration
 
-If by "embed TouchDesigner" you literally mean integrating TouchDesigner output, that is a different problem from `idea-garden-v1`.
+If by "embed" you literally mean integrating output from an external visual runtime, that is a different problem from `idea-garden-v1`.
 
 That path would usually involve:
 
@@ -372,11 +372,11 @@ That path would usually involve:
 
 The current repo does not retain:
 
-- TouchDesigner integration code,
+- external visual runtime integration code,
 - shared-texture bridges,
 - or a public arbitrary-texture scene primitive in WGPUI.
 
-So true TouchDesigner integration is feasible only as new work, and it is a worse fit than a native WGPUI implementation unless TouchDesigner itself is the source of truth you need to keep.
+So true external-runtime integration is feasible only as new work, and it is a worse fit than a native WGPUI implementation unless that external runtime is the source of truth you need to keep.
 
 ## What Not To Do
 
@@ -425,7 +425,7 @@ The MVP spec is desktop-first and performance-sensitive. If the visual system is
    - camera helper utilities
    - optional postprocess hooks
 
-This gives the app a desktop-native "our own TouchDesigner-like scene" without dragging in a webview.
+This gives the app a desktop-native version of this scene class without dragging in a webview.
 
 ## Path 2: Recommended If Browser Iteration Comes First
 
@@ -462,7 +462,7 @@ Use this only as a prototype or research surface.
 
 If the real question is:
 
-> "How do we get TouchDesigner-like visual systems into our Rust app through WGPUI?"
+> "How do we get this kind of interactive visual system into our Rust app through WGPUI?"
 
 the answer is:
 
