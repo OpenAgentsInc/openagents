@@ -54,9 +54,10 @@ use crate::pane_system::{
     CodexAccountPaneAction, CodexAppsPaneAction, CodexConfigPaneAction, CodexDiagnosticsPaneAction,
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
     EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
-    PaneInput, ProviderStatusPaneAction, ReciprocalLoopPaneAction, RelayConnectionsPaneAction,
-    SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction, SyncHealthPaneAction,
-    cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
+    PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
+    RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction,
+    StarterJobsPaneAction, SyncHealthPaneAction, cad_demo_context_menu_bounds,
+    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
     dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
     dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
     dispatch_credentials_input_event, dispatch_job_history_input_event,
@@ -326,12 +327,14 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                     }
                 }
                 PhysicalKey::Code(KeyCode::BracketRight) => {
-                    state.sidebar.is_open = !state.sidebar.is_open;
-                    if state.sidebar.is_open && state.sidebar.width < 50.0 {
-                        state.sidebar.width = SIDEBAR_DEFAULT_WIDTH;
+                    if RIGHT_SIDEBAR_ENABLED {
+                        state.sidebar.is_open = !state.sidebar.is_open;
+                        if state.sidebar.is_open && state.sidebar.width < 50.0 {
+                            state.sidebar.width = SIDEBAR_DEFAULT_WIDTH;
+                        }
+                        clamp_all_panes_to_window(state);
+                        state.window.request_redraw();
                     }
-                    clamp_all_panes_to_window(state);
-                    state.window.request_redraw();
                 }
                 key => {
                     if let Some(slot) = hotbar_slot_for_key(key) {
@@ -2355,6 +2358,10 @@ fn dispatch_pane_actions(state: &mut crate::app_state::RenderState, point: Point
 }
 
 fn sidebar_settings_icon_bounds(state: &crate::app_state::RenderState) -> Bounds {
+    if !RIGHT_SIDEBAR_ENABLED {
+        return Bounds::new(-1000.0, -1000.0, 0.0, 0.0);
+    }
+
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
     let height = logical.height;
@@ -2385,6 +2392,10 @@ fn handle_sidebar_mouse_down(
     point: Point,
     button: MouseButton,
 ) -> bool {
+    if !RIGHT_SIDEBAR_ENABLED {
+        return false;
+    }
+
     if button != MouseButton::Left {
         return false;
     }
@@ -2408,6 +2419,11 @@ fn handle_sidebar_mouse_down(
 }
 
 fn handle_sidebar_mouse_move(state: &mut crate::app_state::RenderState, point: Point) -> bool {
+    if !RIGHT_SIDEBAR_ENABLED {
+        state.sidebar.settings_hover = false;
+        return false;
+    }
+
     let icon_bounds = sidebar_settings_icon_bounds(state);
     let hover = icon_bounds.contains(point);
     let mut handled = false;
@@ -2424,6 +2440,12 @@ fn handle_sidebar_mouse_up(
     point: Point,
     _event: &InputEvent,
 ) -> bool {
+    if !RIGHT_SIDEBAR_ENABLED {
+        state.sidebar.is_pressed = false;
+        state.sidebar.is_dragging = false;
+        return false;
+    }
+
     if !state.sidebar.is_pressed {
         return false;
     }

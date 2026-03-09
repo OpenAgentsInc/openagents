@@ -22,6 +22,7 @@ pub const PANE_MIN_WIDTH: f32 = 220.0;
 pub const PANE_MIN_HEIGHT: f32 = 140.0;
 /// Default target width for the global sidebar when open.
 pub const SIDEBAR_DEFAULT_WIDTH: f32 = 300.0;
+pub const RIGHT_SIDEBAR_ENABLED: bool = false;
 const PANE_MARGIN: f32 = 18.0;
 const PANE_CASCADE_X: f32 = 26.0;
 const PANE_CASCADE_Y: f32 = 22.0;
@@ -96,6 +97,19 @@ use helpers::*;
 pub struct PaneController;
 
 pub struct PaneInput;
+
+pub fn sidebar_reserved_width(state: &RenderState) -> f32 {
+    if !RIGHT_SIDEBAR_ENABLED {
+        return 0.0;
+    }
+
+    let logical = logical_size(&state.config, state.scale_factor);
+    if state.sidebar.is_open {
+        state.sidebar.width.min(logical.width.max(0.0))
+    } else {
+        0.0
+    }
+}
 
 fn focus_chat_composer_for_pane_open(state: &mut RenderState) {
     state.spark_inputs.invoice_amount.blur();
@@ -803,11 +817,7 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     state.next_pane_id = state.next_pane_id.saturating_add(1);
 
     let logical = logical_size(&state.config, state.scale_factor);
-    let sidebar_width = if state.sidebar.is_open {
-        state.sidebar.width.min(logical.width.max(0.0))
-    } else {
-        0.0
-    };
+    let sidebar_width = sidebar_reserved_width(state);
     let tier = (id as usize - 1) % 10;
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
     let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
@@ -994,11 +1004,7 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
     };
 
     let logical = logical_size(&state.config, state.scale_factor);
-    let sidebar_width = if state.sidebar.is_open {
-        state.sidebar.width.min(logical.width.max(0.0))
-    } else {
-        0.0
-    };
+    let sidebar_width = sidebar_reserved_width(state);
 
     match mode {
         PaneDragMode::Moving {
@@ -4713,11 +4719,7 @@ fn pane_title(kind: PaneKind, pane_id: u64) -> String {
 /// Call this when the sidebar width or window size changes (e.g. during sidebar drag).
 pub fn clamp_all_panes_to_window(state: &mut RenderState) {
     let logical = logical_size(&state.config, state.scale_factor);
-    let sidebar_width = if state.sidebar.is_open {
-        state.sidebar.width.min(logical.width.max(0.0))
-    } else {
-        0.0
-    };
+    let sidebar_width = sidebar_reserved_width(state);
     for pane in state.panes.iter_mut() {
         pane.bounds = clamp_bounds_to_window(pane.bounds, logical, sidebar_width);
     }

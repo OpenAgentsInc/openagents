@@ -28,7 +28,8 @@ use crate::nip_sa_wallet_bridge::spark_total_balance_sats;
 use crate::pane_registry::{enabled_pane_specs, startup_pane_kinds};
 use crate::pane_renderer::PaneRenderer;
 use crate::pane_system::{
-    PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, cad_palette_command_specs,
+    PANE_MIN_HEIGHT, PANE_MIN_WIDTH, PaneController, RIGHT_SIDEBAR_ENABLED,
+    cad_palette_command_specs, sidebar_reserved_width,
 };
 use crate::provider_nip90_lane::{ProviderNip90LaneSnapshot, ProviderNip90LaneWorker};
 use crate::runtime_lanes::{
@@ -635,22 +636,11 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
     scene
         .draw_quad(Quad::new(Bounds::new(0.0, 0.0, width, height)).with_background(theme::bg::APP));
 
-    // Sidebar: when open, reserve a right-hand panel; when closed, only a slim handle remains.
-    let min_sidebar_width = 220.0;
-    let max_sidebar_width = (width * 0.5).max(min_sidebar_width);
-    let configured_width = state
-        .sidebar
-        .width
-        .max(min_sidebar_width)
-        .min(max_sidebar_width);
-    let panel_width = if state.sidebar.is_open {
-        configured_width
-    } else {
-        0.0
-    };
+    // Sidebar UI is intentionally disabled for now; keep the underlying code path intact.
+    let panel_width = sidebar_reserved_width(state);
     let sidebar_x = (width - panel_width).max(0.0);
 
-    if panel_width > 0.0 {
+    if RIGHT_SIDEBAR_ENABLED && panel_width > 0.0 {
         let sidebar_color = theme::bg::ELEVATED;
         scene.draw_quad(
             Quad::new(Bounds::new(sidebar_x, 0.0, panel_width, height))
@@ -670,43 +660,35 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         )
         .with_tint(icon_tint);
         scene.draw_svg(svg);
-    } else {
-        // Keep a visible collapsed rail so users can discover the sidebar.
-        scene.draw_quad(
-            Quad::new(Bounds::new(
-                (width - SIDEBAR_COLLAPSED_RAIL_WIDTH).max(0.0),
-                0.0,
-                SIDEBAR_COLLAPSED_RAIL_WIDTH.min(width.max(0.0)),
-                height,
-            ))
-            .with_background(theme::bg::ELEVATED),
+    }
+
+    if RIGHT_SIDEBAR_ENABLED {
+        // Top-right panel handle icon for resize/collapse/expand affordance.
+        let panel_left_x = if state.sidebar.is_open {
+            sidebar_x
+        } else {
+            (width - SIDEBAR_COLLAPSED_RAIL_WIDTH).max(0.0)
+        };
+        let handle_bounds = Bounds::new(
+            (panel_left_x + SIDEBAR_HANDLE_ICON_LEFT_INSET).max(0.0),
+            SIDEBAR_HANDLE_ICON_TOP_PAD,
+            SIDEBAR_HANDLE_ICON_SIZE,
+            SIDEBAR_HANDLE_ICON_SIZE,
+        );
+        scene.draw_svg(
+            SvgQuad::new(
+                handle_bounds,
+                std::sync::Arc::<[u8]>::from(SIDEBAR_HANDLE_SVG_RAW.as_bytes()),
+            )
+            .with_tint(theme::accent::PRIMARY),
         );
     }
 
-    // Top-right panel handle icon for resize/collapse/expand affordance.
-    let panel_left_x = if state.sidebar.is_open {
-        sidebar_x
-    } else {
-        (width - SIDEBAR_COLLAPSED_RAIL_WIDTH).max(0.0)
-    };
-    let handle_bounds = Bounds::new(
-        (panel_left_x + SIDEBAR_HANDLE_ICON_LEFT_INSET).max(0.0),
-        SIDEBAR_HANDLE_ICON_TOP_PAD,
-        SIDEBAR_HANDLE_ICON_SIZE,
-        SIDEBAR_HANDLE_ICON_SIZE,
-    );
-    scene.draw_svg(
-        SvgQuad::new(
-            handle_bounds,
-            std::sync::Arc::<[u8]>::from(SIDEBAR_HANDLE_SVG_RAW.as_bytes()),
-        )
-        .with_tint(theme::accent::PRIMARY),
-    );
-
     // Animate tooltip: quick fade-in, immediate disappear on mouse-out.
-    if state.sidebar.settings_hover {
+    if RIGHT_SIDEBAR_ENABLED && state.sidebar.settings_hover {
         state.sidebar.settings_tooltip_t = (state.sidebar.settings_tooltip_t + 0.25).min(1.0);
     } else {
+        state.sidebar.settings_hover = false;
         state.sidebar.settings_tooltip_t = 0.0;
     }
 
@@ -731,7 +713,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
         dots_grid.paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
         paint.scene.pop_clip();
 
-        if panel_width > 0.0 {
+        if RIGHT_SIDEBAR_ENABLED && panel_width > 0.0 {
             let left = sidebar_x + 12.0;
             let right = sidebar_x + panel_width - 12.0;
             let mut y = 16.0;
@@ -1102,7 +1084,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             .paint(Bounds::new(0.0, 0.0, width, height), &mut paint);
 
         // Sidebar tooltip for the settings icon.
-        if state.sidebar.settings_tooltip_t > 0.01 && panel_width > 0.0 {
+        if RIGHT_SIDEBAR_ENABLED && state.sidebar.settings_tooltip_t > 0.01 && panel_width > 0.0 {
             let _tooltip_alpha = state.sidebar.settings_tooltip_t;
             let icon_size = 16.0;
             let padding = 12.0;
@@ -1267,6 +1249,10 @@ pub fn wallet_balance_sats_label_bounds(state: &RenderState) -> Bounds {
 
 /// Bounds of the sidebar resize handle in logical coordinates. Used for hit-testing and cursor.
 pub fn sidebar_handle_bounds(state: &RenderState) -> Bounds {
+    if !RIGHT_SIDEBAR_ENABLED {
+        return Bounds::new(-1000.0, -1000.0, 0.0, 0.0);
+    }
+
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
     let min_sidebar_width = 220.0;
@@ -1297,6 +1283,10 @@ pub fn sidebar_handle_bounds(state: &RenderState) -> Bounds {
 
 /// Bounds of the "Go Online" mission-control button in the sidebar (when panel is open).
 pub fn sidebar_go_online_button_bounds(state: &RenderState) -> Bounds {
+    if !RIGHT_SIDEBAR_ENABLED {
+        return Bounds::new(-1000.0, -1000.0, 0.0, 0.0);
+    }
+
     let logical = logical_size(&state.config, state.scale_factor);
     let width = logical.width;
     let min_sidebar_width = 220.0;
