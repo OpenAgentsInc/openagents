@@ -1,11 +1,11 @@
 use std::{
-    collections::BTreeSet,
+    collections::{BTreeSet, VecDeque},
     convert::Infallible,
     env,
     net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     sync::{
-        Arc,
+        Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
     time::{SystemTime, UNIX_EPOCH},
@@ -24,7 +24,8 @@ use axum::{
 use psionic_catalog::LocalBlobOpenOptions;
 use psionic_models::{
     GgufBlobArtifact, GptOssHarmonyParseOptions, GptOssHarmonyParsedOutput,
-    GptOssHarmonyRenderContext, PromptChannelConfig, PromptMessage, PromptMessageRole,
+    GptOssHarmonyRenderContext, GptOssTokenizer, PromptChannelConfig, PromptMessage,
+    PromptMessageRole,
     PromptReasoningEffort, PromptRenderOptions, parse_gpt_oss_harmony_tokens,
     render_gpt_oss_harmony_prompt,
 };
@@ -37,7 +38,7 @@ use tokio_stream::iter;
 
 use crate::{
     CudaGgufGptOssTextGenerationService, CudaGptOssTextGenerationError, DecodeStrategy,
-    DecoderModelDescriptor, GenerationMetrics, GenerationOptions, GenerationRequest,
+    DecoderModelDescriptor, GenerationMetrics, GenerationOptions, GenerationRequest, TokenSequence,
     GgufDecoderAdapterLoader, GptOssPerformanceMetrics, PromptRenderError, TerminationReason,
     TextGenerationExecutor,
 };
@@ -91,11 +92,64 @@ pub struct GptOssCudaOpenAiCompatServer {
 struct GptOssCudaOpenAiCompatState {
     worker: GptOssCudaWorker,
     descriptor: DecoderModelDescriptor,
+    tokenizer: GptOssTokenizer,
     prompt_options: PromptRenderOptions,
+    prompt_token_cache: Mutex<PromptTokenCache>,
     default_model_name: String,
     accepted_model_names: BTreeSet<String>,
     include_psionic_fields: bool,
     request_counter: AtomicU64,
+}
+
+#[derive(Clone, Debug)]
+struct PromptTokenCacheEntry {
+    rendered_prompt: String,
+    tokens: TokenSequence,
+}
+
+#[derive(Clone, Debug)]
+struct PromptTokenCache {
+    entries: VecDeque<PromptTokenCacheEntry>,
+    capacity: usize,
+}
+
+impl PromptTokenCache {
+    const DEFAULT_CAPACITY: usize = 16;
+
+    fn new(capacity: usize) -> Self {
+        Self {
+            entries: VecDeque::new(),
+            capacity: capacity.max(1),
+        }
+    }
+
+    fn lookup(&mut self, rendered_prompt: &str) -> Option<TokenSequence> {
+        let index = self
+            .entries
+            .iter()
+            .position(|entry| entry.rendered_prompt == rendered_prompt)?;
+        let entry = self.entries.remove(index)?;
+        let tokens = entry.tokens.clone();
+        self.entries.push_front(entry);
+        Some(tokens)
+    }
+
+    fn record(&mut self, rendered_prompt: String, tokens: TokenSequence) {
+        if let Some(index) = self
+            .entries
+            .iter()
+            .position(|entry| entry.rendered_prompt == rendered_prompt)
+        {
+            self.entries.remove(index);
+        }
+        self.entries.push_front(PromptTokenCacheEntry {
+            rendered_prompt,
+            tokens,
+        });
+        while self.entries.len() > self.capacity {
+            self.entries.pop_back();
+        }
+    }
 }
 
 impl GptOssCudaOpenAiCompatServer {
@@ -103,11 +157,12 @@ impl GptOssCudaOpenAiCompatServer {
         let artifact =
             GgufBlobArtifact::open_path(&config.model_path, LocalBlobOpenOptions::default())
                 .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
-        let descriptor = GgufDecoderAdapterLoader
+        let adapter = GgufDecoderAdapterLoader
             .load_blob_artifact(&artifact)
-            .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?
-            .descriptor()
-            .clone();
+            .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
+        let descriptor = adapter.descriptor().clone();
+        let tokenizer = GptOssTokenizer::from_gguf(adapter.tokenizer())
+            .map_err(|error| OpenAiCompatServerError::Config(error.to_string()))?;
         let default_model_name = default_model_name(&config.model_path, &descriptor);
         let accepted_model_names = accepted_model_names(&config.model_path, &descriptor);
         let prompt_options = PromptRenderOptions {
@@ -125,7 +180,11 @@ impl GptOssCudaOpenAiCompatServer {
             state: Arc::new(GptOssCudaOpenAiCompatState {
                 worker: GptOssCudaWorker::spawn(config.model_path.clone())?,
                 descriptor,
+                tokenizer,
                 prompt_options,
+                prompt_token_cache: Mutex::new(PromptTokenCache::new(
+                    PromptTokenCache::DEFAULT_CAPACITY,
+                )),
                 default_model_name,
                 accepted_model_names,
                 include_psionic_fields,
@@ -374,12 +433,29 @@ async fn handle_chat_completions(
         .model
         .clone()
         .unwrap_or_else(|| state.default_model_name.clone());
-    let generation_request = GenerationRequest::new_text(
+    let options = generation_options_from_chat_request(&request);
+    let prompt_tokens = {
+        let mut cache = state.prompt_token_cache.lock().map_err(|_| {
+            OpenAiCompatHttpError::Generation(CudaGptOssTextGenerationError::Generation(
+                crate::ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
+                    String::from("openai prompt token cache is poisoned"),
+                )),
+            ))
+        })?;
+        if let Some(tokens) = cache.lookup(rendered.as_str()) {
+            tokens
+        } else {
+            let tokens = state.tokenizer.encode_with_defaults(rendered.as_str());
+            cache.record(rendered, tokens.clone());
+            tokens
+        }
+    };
+    let generation_request = GenerationRequest::new_tokens(
         request_id.clone(),
         state.descriptor.clone(),
         None,
-        rendered,
-        generation_options_from_chat_request(&request),
+        prompt_tokens,
+        options,
     );
 
     let response = state.worker.generate(generation_request).await?;
@@ -770,11 +846,12 @@ struct OpenAiErrorBody {
 mod tests {
     use super::{
         ChatCompletionMessage, ChatCompletionRequest, HARMONY_CALL_STOP, HARMONY_RETURN_STOP,
-        chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
+        PromptTokenCache, chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
         fast_final_assistant_content, final_assistant_content, generation_options_from_chat_request,
     };
     use psionic_models::{
         GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, PromptMessage, PromptMessageRole,
+        TokenId, TokenSequence,
     };
 
     #[test]
@@ -875,6 +952,29 @@ mod tests {
                 .filter(|value| value.as_str() == HARMONY_CALL_STOP)
                 .count(),
             1
+        );
+    }
+
+    #[test]
+    fn prompt_token_cache_is_lru() {
+        let mut cache = PromptTokenCache::new(2);
+        cache.record(
+            String::from("one"),
+            TokenSequence::new(vec![TokenId(1), TokenId(2)]),
+        );
+        cache.record(String::from("two"), TokenSequence::new(vec![TokenId(3)]));
+
+        assert_eq!(
+            cache.lookup("one").expect("cached prompt").as_slice(),
+            &[TokenId(1), TokenId(2)]
+        );
+
+        cache.record(String::from("three"), TokenSequence::new(vec![TokenId(4)]));
+
+        assert!(cache.lookup("two").is_none());
+        assert_eq!(
+            cache.lookup("three").expect("cached prompt").as_slice(),
+            &[TokenId(4)]
         );
     }
 }

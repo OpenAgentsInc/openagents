@@ -1592,6 +1592,7 @@ struct GptOssCudaStepPlan {
     logits_buffer: CudaBuffer,
     next_token_buffer: CudaBuffer,
     decode_graph_exec: Option<CudaGraphExec>,
+    decode_graph_cache_identity: Option<(usize, usize)>,
 }
 
 impl GptOssCudaModelInner {
@@ -1623,11 +1624,7 @@ impl GptOssCudaModelInner {
                 )))
             })?
             .take();
-        if let Some(mut plan) = cache_hit {
-            // The step plan buffers are reusable across requests, but any
-            // captured CUDA graph is tied to the request-local KV cache
-            // allocations it was recorded against.
-            plan.decode_graph_exec = None;
+        if let Some(plan) = cache_hit {
             return Ok((plan, decode_step_plan_compile_path(true), true));
         }
         Ok((
@@ -1704,6 +1701,7 @@ impl GptOssCudaModelInner {
             logits_buffer: backend.f32_buffer(self.output.rows)?,
             next_token_buffer: backend.byte_buffer(&vec![0_u8; std::mem::size_of::<i32>()])?,
             decode_graph_exec: None,
+            decode_graph_cache_identity: None,
         })
     }
 
@@ -2142,10 +2140,36 @@ impl GptOssCudaModelInner {
 
         let use_decode_graph_fast_path =
             output_mode == CudaStepOutputMode::DeviceArgmax && !materialize_host_kv;
+        let decode_graph_cache_identity = Some((
+            cuda_cache.key_buffer.allocation_identity(),
+            cuda_cache.value_buffer.allocation_identity(),
+        ));
         let submission_report = if use_decode_graph_fast_path {
-            if let Some(graph_exec) = plan.decode_graph_exec.as_ref() {
-                graph_exec.launch(psionic_backend_cuda::CudaCommandWait::Completed)?
+            if plan.decode_graph_cache_identity == decode_graph_cache_identity {
+                if let Some(graph_exec) = plan.decode_graph_exec.as_ref() {
+                    graph_exec.launch(psionic_backend_cuda::CudaCommandWait::Completed)?
+                } else {
+                    let mut submission = backend.begin_captured_submission()?;
+                    self.encode_cuda_forward_step_submission(
+                        &mut submission,
+                        position,
+                        cache_write_index,
+                        cuda_cache,
+                        plan,
+                        output_mode,
+                        &mut perf,
+                        &mut bytes_moved,
+                        true,
+                    )?;
+                    let (report, graph_exec) =
+                        submission.commit_captured(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                    plan.decode_graph_exec = Some(graph_exec);
+                    plan.decode_graph_cache_identity = decode_graph_cache_identity;
+                    report
+                }
             } else {
+                plan.decode_graph_exec = None;
+                plan.decode_graph_cache_identity = None;
                 let mut submission = backend.begin_captured_submission()?;
                 self.encode_cuda_forward_step_submission(
                     &mut submission,
@@ -2161,6 +2185,7 @@ impl GptOssCudaModelInner {
                 let (report, graph_exec) =
                     submission.commit_captured(psionic_backend_cuda::CudaCommandWait::Completed)?;
                 plan.decode_graph_exec = Some(graph_exec);
+                plan.decode_graph_cache_identity = decode_graph_cache_identity;
                 report
             }
         } else {
