@@ -1072,6 +1072,50 @@ impl GptOssCudaRuntimeMetrics {
     }
 }
 
+/// Metal logits-output mode used by GPT-OSS decode steps.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum GptOssMetalLogitsOutputMode {
+    /// The decode step returned only the greedy token id.
+    GreedyToken,
+    /// The decode step returned a bounded top-k candidate set.
+    TopKCandidates { top_k: usize },
+    /// The decode step materialized the dense raw logits vector.
+    RawLogits,
+}
+
+/// Request-level decode-step logits-selection evidence for Metal GPT-OSS.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GptOssMetalDecodeLogitsMetrics {
+    /// Number of decode steps that recorded logits-selection evidence.
+    pub step_count: usize,
+    /// Unique output modes observed across those decode steps.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_modes: Vec<GptOssMetalLogitsOutputMode>,
+    /// Total bytes read back to the host for decode-step logits selection.
+    pub readback_bytes: u64,
+    /// Whether any decode step materialized dense raw logits on the host.
+    pub raw_logits_materialized: bool,
+}
+
+impl GptOssMetalDecodeLogitsMetrics {
+    fn accumulate(&mut self, other: &Self) {
+        self.step_count = self.step_count.saturating_add(other.step_count);
+        self.readback_bytes = self.readback_bytes.saturating_add(other.readback_bytes);
+        self.raw_logits_materialized |= other.raw_logits_materialized;
+        self.output_modes.extend(other.output_modes.iter().cloned());
+        self.output_modes.sort();
+        self.output_modes.dedup();
+    }
+
+    fn is_zero(&self) -> bool {
+        self.step_count == 0
+            && self.output_modes.is_empty()
+            && self.readback_bytes == 0
+            && !self.raw_logits_materialized
+    }
+}
+
 /// Psionic-owned GPT-OSS performance summary attached to one request.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub struct GptOssPerformanceMetrics {
@@ -1087,6 +1131,9 @@ pub struct GptOssPerformanceMetrics {
     pub stage_timings: GptOssStageTimingMetrics,
     /// Accumulated CUDA transfer and synchronization counters.
     pub cuda: GptOssCudaRuntimeMetrics,
+    /// Decode-step logits-selection evidence for Metal GPT-OSS requests.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metal_decode_logits: Option<GptOssMetalDecodeLogitsMetrics>,
 }
 
 impl GptOssPerformanceMetrics {
@@ -1101,6 +1148,18 @@ impl GptOssPerformanceMetrics {
             .max(other.graph_layer_node_count);
         self.stage_timings.accumulate(&other.stage_timings);
         self.cuda.accumulate(&other.cuda);
+        if let Some(other_metal_decode_logits) = &other.metal_decode_logits {
+            self.metal_decode_logits
+                .get_or_insert_with(GptOssMetalDecodeLogitsMetrics::default)
+                .accumulate(other_metal_decode_logits);
+            if self
+                .metal_decode_logits
+                .as_ref()
+                .map_or(false, GptOssMetalDecodeLogitsMetrics::is_zero)
+            {
+                self.metal_decode_logits = None;
+            }
+        }
     }
 
     fn is_zero(&self) -> bool {
@@ -1108,6 +1167,10 @@ impl GptOssPerformanceMetrics {
             && self.layer_visit_count == 0
             && self.graph_node_count == 0
             && self.graph_layer_node_count == 0
+            && self
+                .metal_decode_logits
+                .as_ref()
+                .map_or(true, GptOssMetalDecodeLogitsMetrics::is_zero)
     }
 }
 
