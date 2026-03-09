@@ -139,6 +139,37 @@ int psionic_cuda_mxfp4_matvec_q8_1_argmax(
     return 1;
 }
 
+int psionic_cuda_moe_down_aggregate_q8_1_f32(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows,
+    int columns,
+    const void *selected_ids,
+    const void *selected_weights,
+    int selected_count,
+    const void *activated,
+    const void *bias,
+    const void *residual,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)mode;
+    (void)row_stride;
+    (void)rows;
+    (void)columns;
+    (void)selected_ids;
+    (void)selected_weights;
+    (void)selected_count;
+    (void)activated;
+    (void)bias;
+    (void)residual;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
 int psionic_cuda_rms_norm(
     const void *input,
     const void *weight,

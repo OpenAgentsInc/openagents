@@ -18,7 +18,15 @@
 > geometry on this host (`64` query heads, `8` KV heads, `64` head dim)
 > regressed the live HTTP benchmark into the low `70 tok/s` range and was
 > removed, and forcing an `f16` mirror onto the final q8_0 output head alone
-> also lost at `82.33 tok/s`. This update also records one small real win:
+> also lost at `82.33 tok/s`. The newest iteration adds two more ruled-out
+> branches on the exact same HTTP benchmark: quantizing the selected-4 MoE down
+> activation from `f32` into shared `Q8_1` blocks inside the down kernel
+> regressed to `79.03 tok/s`, and widening the selected-4 gate/down kernels to
+> four rows per CUDA block regressed to `88.98 tok/s` and was reverted. The
+> shared-quantize branch remains available only behind
+> `PSIONIC_GPT_OSS_EXPERIMENTAL_FUSED_SELECTED4_MOE_DOWN=1` for profiling, but
+> it is off by default because it loses on this host. This update also records
+> one small real win:
 > folding the greedy output-head argmax into the quantized q8_1 logits
 > projection lifted the exact HTTP benchmark to `92.45 tok/s`. This file is
 > the current audit for the GPT-OSS throughput gap; later product truth still
@@ -240,6 +248,29 @@ The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
 
+### Current restored-default checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.403s`
+  - `91.79 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.253s`
+  - `165.87 tok/s`
+- Gap:
+  - `1.81x`
+- Psionic improvement over the original baseline:
+  - `5.48x`
+- What changed in this iteration:
+  - an experimental selected-4 MoE-down kernel that quantizes the activated
+    expert rows from `f32` into shared `Q8_1` storage landed in the CUDA
+    backend, but it is guarded off by default because the exact benchmark fell
+    to `79.03 tok/s` when enabled
+- Newly ruled-out branch:
+  - widening the selected-4 gate/up and down kernels from two rows per block
+    to four rows per block looked promising as a launch-count reduction, but
+    the exact benchmark regressed to `88.98 tok/s`, so that kernel shape was
+    reverted
+
 ## New Findings From The Latest Iteration
 
 - CUDA decode-graph replay is still useful plumbing, but it is no longer the
@@ -256,6 +287,11 @@ The visible output text matched exactly in the current benchmark:
     projection `f16` mirror path and the direct per-expert MoE route were both
     plausible from code inspection and both lost to the current path in live
     benchmark runs
+- the selected-4 MoE lane is still sensitive to local fusion choices that look
+  obviously cheaper on paper.
+  - both "quantize selected expert activations inside the down kernel" and
+    "process four rows per block instead of two" reduced one visible kind of
+    overhead, and both still lost end-to-end on the real HTTP benchmark
 - the output head did have one small avoidable waste on the greedy path.
   - folding argmax into the quantized q8_1 logits projection recovered a few
     tok/s without changing model semantics, but the gain was incremental rather
