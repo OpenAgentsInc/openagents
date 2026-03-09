@@ -9,14 +9,40 @@
 > identities, after the newer exact-prompt shared-prefix fast paths that stop
 > cloning full prompt-logit histories and avoid re-recording or host-cloning
 > unchanged prompt caches on repeated GPT-OSS HTTP requests, and after the
-> latest decode-kernel checkpoint that confirmed two plausible llama.cpp-aligned
-> ideas did not improve this workload: q8_0 `f16` projection mirrors feeding
-> cuBLAS tensor-op GEMV regressed into the mid-80s tok/s, and replacing the
-> GPT-OSS `selected_count = 4` custom MoE kernels with simpler per-expert MMVQ
-> routing also stayed below the best prior checkpoint. This file is the current
-> audit for the GPT-OSS throughput gap; later product truth still lives in
-> `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and the
-> referenced issues.
+> latest decode-kernel checkpoints that confirmed several plausible
+> llama.cpp-aligned ideas still do not win this workload: q8_0 `f16`
+> projection mirrors feeding cuBLAS tensor-op GEMV regressed into the mid-80s
+> tok/s, replacing the GPT-OSS `selected_count = 4` custom MoE kernels with
+> simpler per-expert MMVQ routing also stayed below the best prior checkpoint,
+> a grouped-query decode-attention kernel specialized for the exact GPT-OSS
+> geometry on this host (`64` query heads, `8` KV heads, `64` head dim)
+> regressed the live HTTP benchmark into the low `70 tok/s` range and was
+> removed, and forcing an `f16` mirror onto the final q8_0 output head alone
+> also lost at `82.33 tok/s`. The newest iteration adds two more ruled-out
+> branches on the exact same HTTP benchmark: quantizing the selected-4 MoE down
+> activation from `f32` into shared `Q8_1` blocks inside the down kernel
+> regressed to `79.03 tok/s`, and widening the selected-4 gate/down kernels to
+> four rows per CUDA block regressed to `88.98 tok/s` and was reverted. The
+> shared-quantize branch remains available only behind
+> `PSIONIC_GPT_OSS_EXPERIMENTAL_FUSED_SELECTED4_MOE_DOWN=1` for profiling, but
+> it is off by default because it loses on this host. This update also records
+> two small but real wins:
+> folding the greedy output-head argmax into the quantized q8_1 logits
+> projection lifted the exact HTTP benchmark to `92.45 tok/s`, and the newest
+> direct-attention-output checkpoint fused the f16-KV decode-attention output
+> directly into contiguous `Q8_1` blocks for the q8_1 attention-output
+> projection path. That moved the exact HTTP benchmark to `101.32 tok/s` and
+> cut the warm timed-request kernel-launch count from `9102` to `8214`, but
+> left step-wall time effectively flat at about `295.5 ms` for the `37`
+> generated tokens, which is strong evidence that the remaining gap is now in
+> the heavy projection, MoE, and attention dispatch itself rather than in
+> standalone quantize helpers. This file is
+> the current audit for the GPT-OSS throughput gap; later product truth still
+> lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
+> `crates/psionic/docs/ROADMAP.md`, and the referenced issues. The current
+> benchmark script now explicitly unsets `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS`
+> before launching Psionic so perf receipts and extra JSON serialization cannot
+> silently contaminate the benchmark.
 
 ## Scope
 
@@ -181,12 +207,120 @@
     `190 tok/s` target on this machine state, so Psionic cannot honestly prove
     `>190 tok/s` here until that competing workload is cleared
 
+### Current clean benchmark-hygiene checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.415s`
+  - `89.16 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.250s`
+  - `167.98 tok/s`
+- Gap:
+  - `1.88x`
+- Psionic improvement over the original baseline:
+  - `5.33x`
+- New benchmark-hygiene truth:
+  - the repo benchmark script now launches Psionic with
+    `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS` explicitly unset so request-debug
+    receipts cannot distort perf numbers
+- Newly ruled-out direct port:
+  - a grouped-query attention kernel specialized for the real GPT-OSS decode
+    geometry (`n_head = 64`, `n_head_kv = 8`, `head_dim = 64`) was correct in
+    CUDA unit coverage but regressed the exact HTTP benchmark to about
+    `73.32 tok/s`, so it was removed rather than left in the runtime hot path
+
+### Current fused-greedy-output checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.400s`
+  - `92.45 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.247s`
+  - `170.23 tok/s`
+- Gap:
+  - `1.84x`
+- Psionic improvement over the original baseline:
+  - `5.52x`
+- Psionic improvement over the prior clean checkpoint:
+  - `1.04x`
+- What changed:
+  - the greedy GPT-OSS output head now folds argmax into the `Q8_0/MXFP4 x Q8_1`
+    CUDA logits projection, so Psionic no longer materializes and rescans the
+    full logits vector on the common greedy decode path
+- Newly ruled-out branch:
+  - building an `f16` mirror for the final q8_0 output head alone loaded and
+    ran correctly on this host, but the exact same benchmark regressed to
+    `82.33 tok/s`, so the mirror was removed again
+
 The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
 
+### Current restored-default checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.403s`
+  - `91.79 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.253s`
+  - `165.87 tok/s`
+- Gap:
+  - `1.81x`
+- Psionic improvement over the original baseline:
+  - `5.48x`
+- What changed in this iteration:
+  - an experimental selected-4 MoE-down kernel that quantizes the activated
+    expert rows from `f32` into shared `Q8_1` storage landed in the CUDA
+    backend, but it is guarded off by default because the exact benchmark fell
+    to `79.03 tok/s` when enabled
+- Newly ruled-out branch:
+  - widening the selected-4 gate/up and down kernels from two rows per block
+    to four rows per block looked promising as a launch-count reduction, but
+    the exact benchmark regressed to `88.98 tok/s`, so that kernel shape was
+    reverted
+
+### Current attention-output-q8_1 checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.365s`
+  - `101.32 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.224s`
+  - `187.13 tok/s`
+- Gap:
+  - `1.85x`
+- Psionic improvement over the original baseline:
+  - `6.05x`
+- Psionic improvement over the prior restored-default checkpoint:
+  - `1.10x`
+- What changed in this iteration:
+  - the f16-KV fused decode-attention kernels now have q8_1 output variants,
+    and the GPT-OSS CUDA path uses them whenever the attention-output
+    projection can consume a contiguous q8_1 activation buffer directly
+  - that removes the standalone `quantize_f32_to_q8_1(attention_buffer ->
+    vector_q8_1_buffer)` kernel from the attention-output lane on both the
+    regular and decode-graph paths
+- Warm timed-request receipt on the exact benchmark:
+  - `prefix_tokens_reused = 158`
+  - `step_count = 37`
+  - `kernel_launches = 8214`
+  - `host_to_device_bytes = 426832`
+  - `device_to_host_bytes = 296`
+  - `stage_timings.step_wall_ns = 295535840`
+- Interpretation:
+  - the launch count dropped materially from the prior `9102`, but decode-step
+    wall time stayed roughly flat, so the next real wins still need to come
+    from deeper `llama.cpp`-class dispatch and kernel parity rather than from
+    shaving more helper kernels around the edges
+
 ## New Findings From The Latest Iteration
 
+- another helper-kernel shave is no longer enough to explain the remaining
+  throughput gap.
+  - fusing decode-attention output directly into q8_1 storage removed another
+    `888` kernel launches from the warm timed request, but step-wall time held
+    near `295 ms` and the exact HTTP benchmark only moved into the
+    `~101 tok/s` range
 - CUDA decode-graph replay is still useful plumbing, but it is no longer the
   dominant limiter on this exact prompt.
   - disabling the graph fast path on warm repeated requests left per-token wall
@@ -201,14 +335,26 @@ The visible output text matched exactly in the current benchmark:
     projection `f16` mirror path and the direct per-expert MoE route were both
     plausible from code inspection and both lost to the current path in live
     benchmark runs
+- the selected-4 MoE lane is still sensitive to local fusion choices that look
+  obviously cheaper on paper.
+  - both "quantize selected expert activations inside the down kernel" and
+    "process four rows per block instead of two" reduced one visible kind of
+    overhead, and both still lost end-to-end on the real HTTP benchmark
+- the output head did have one small avoidable waste on the greedy path.
+  - folding argmax into the quantized q8_1 logits projection recovered a few
+    tok/s without changing model semantics, but the gain was incremental rather
+    than transformational
 - the remaining gap is now concentrated even more tightly in the kernels that
   Psionic still does not match line-for-line with llama.cpp.
   - the next real alignment targets are the ids-enabled `mul_mat_vec_q` / MMVQ
-    path for the GPT-OSS MoE decode lane, the final-logits greedy path
-    (preferably avoiding a full logits materialization when only argmax is
-    needed), and a deeper audit of whether llama.cpp's reported `REPACK = 1`
-    state implies a useful backend-side weight layout transform for this exact
-    model family on CUDA
+    path for the GPT-OSS MoE decode lane and the flash-attention / dispatch
+    behavior in `fattn.cu`; the greedy-logits materialization waste is now
+    partially addressed and no longer the biggest obvious local inefficiency
+- the latest ruled-out branch sharpened that further.
+  - even for the exact GPT-OSS grouped-query geometry (`64/8/64`), simply
+    reusing K/V across eight query-head warps in a larger shared-memory block
+    did not help on this RTX 4080 prompt shape; the occupancy/shared-memory
+    tradeoff lost to the prior smaller kernel
 
 ## What Landed Between The Two Measurements
 

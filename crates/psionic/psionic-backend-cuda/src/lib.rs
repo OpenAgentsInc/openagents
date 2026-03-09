@@ -643,6 +643,7 @@ impl CudaSubmission {
         rows: usize,
         cols: usize,
         input_q8_1: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
         output: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
         self.platform.encode_quantized_matvec_q8_1(
@@ -652,6 +653,34 @@ impl CudaSubmission {
             rows,
             cols,
             &input_q8_1.platform,
+            bias.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Launches one quantized row-wise matrix-vector product using a device
+    /// `Q8_1` activation buffer and writes the greedy argmax directly.
+    pub fn quantized_matvec_q8_1_argmax(
+        &mut self,
+        weights: &CudaBuffer,
+        byte_offset: usize,
+        mode: QuantizationMode,
+        rows: usize,
+        cols: usize,
+        input_q8_1: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_quantized_matvec_q8_1_argmax(
+            &weights.platform,
+            byte_offset,
+            mode,
+            rows,
+            cols,
+            &input_q8_1.platform,
+            bias.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
         self.encoded_operations += 1;
@@ -754,11 +783,39 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Applies RMSNorm and quantizes the normalized output into GGML `Q8_1`.
+    pub fn rms_norm_q8_1(
+        &mut self,
+        input: &CudaBuffer,
+        weight: &CudaBuffer,
+        output_q8_1: &CudaBuffer,
+        element_count: usize,
+        epsilon: f32,
+    ) -> Result<(), RuntimeError> {
+        let required_bytes = ggml_q8_1_storage_bytes(1, element_count)?;
+        if output_q8_1.byte_len() < required_bytes {
+            return Err(RuntimeError::Backend(format!(
+                "cuda q8_1 norm buffer too small: need {required_bytes} bytes for 1x{element_count}, have {}",
+                output_q8_1.byte_len()
+            )));
+        }
+        self.platform.encode_rms_norm_q8_1(
+            &input.platform,
+            &weight.platform,
+            &output_q8_1.platform,
+            element_count,
+            epsilon,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Adds a residual vector and applies RMSNorm in one CUDA kernel.
     pub fn add_residual_rms_norm(
         &mut self,
         input: &CudaBuffer,
         residual: &CudaBuffer,
+        input_bias: Option<&CudaBuffer>,
         weight: &CudaBuffer,
         summed_output: &CudaBuffer,
         normalized_output: &CudaBuffer,
@@ -768,9 +825,46 @@ impl CudaSubmission {
         self.platform.encode_add_residual_rms_norm(
             &input.platform,
             &residual.platform,
+            input_bias.map(|buffer| &buffer.platform),
             &weight.platform,
             &summed_output.platform,
             &normalized_output.platform,
+            element_count,
+            epsilon,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Adds a residual vector, applies RMSNorm, and quantizes the normalized
+    /// output into GGML `Q8_1` in one CUDA kernel.
+    pub fn add_residual_rms_norm_q8_1(
+        &mut self,
+        input: &CudaBuffer,
+        residual: &CudaBuffer,
+        input_bias: Option<&CudaBuffer>,
+        weight: &CudaBuffer,
+        summed_output: &CudaBuffer,
+        normalized_output: &CudaBuffer,
+        quantized_output: &CudaBuffer,
+        element_count: usize,
+        epsilon: f32,
+    ) -> Result<(), RuntimeError> {
+        let required_bytes = ggml_q8_1_storage_bytes(1, element_count)?;
+        if quantized_output.byte_len() < required_bytes {
+            return Err(RuntimeError::Backend(format!(
+                "cuda q8_1 norm buffer too small: need {required_bytes} bytes for 1x{element_count}, have {}",
+                quantized_output.byte_len()
+            )));
+        }
+        self.platform.encode_add_residual_rms_norm_q8_1(
+            &input.platform,
+            &residual.platform,
+            input_bias.map(|buffer| &buffer.platform),
+            &weight.platform,
+            &summed_output.platform,
+            &normalized_output.platform,
+            &quantized_output.platform,
             element_count,
             epsilon,
         )?;
@@ -934,6 +1028,73 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Variant of fused GPT-OSS decode attention that writes the attention
+    /// output directly into contiguous GGML `Q8_1` blocks.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attention_decode_rope_cache_f16_kv_q8_1(
+        &mut self,
+        qkv: &CudaBuffer,
+        query_offset: usize,
+        key_offset: usize,
+        value_offset: usize,
+        cache_keys: &CudaBuffer,
+        cache_values: &CudaBuffer,
+        cache_width: usize,
+        layer_offset: usize,
+        past_tokens: usize,
+        sliding_window: usize,
+        head_count: usize,
+        kv_head_count: usize,
+        head_dim: usize,
+        rotary_dim: usize,
+        position: usize,
+        freq_scale: f32,
+        ext_factor: f32,
+        corr_dims: [f32; 2],
+        theta_scale: f32,
+        attention_sinks: Option<&CudaBuffer>,
+        output_q8_1: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        let element_count = head_count.checked_mul(head_dim).ok_or_else(|| {
+            RuntimeError::Backend(String::from(
+                "cuda q8_1 attention output element count overflow",
+            ))
+        })?;
+        let required_bytes = ggml_q8_1_storage_bytes(1, element_count)?;
+        if output_q8_1.byte_len() < required_bytes {
+            return Err(RuntimeError::Backend(format!(
+                "cuda q8_1 attention output buffer too small: need {required_bytes} bytes for 1x{element_count}, have {}",
+                output_q8_1.byte_len()
+            )));
+        }
+        self.platform
+            .encode_attention_decode_rope_cache_f16_kv_q8_1(
+                &qkv.platform,
+                query_offset,
+                key_offset,
+                value_offset,
+                &cache_keys.platform,
+                &cache_values.platform,
+                cache_width,
+                layer_offset,
+                past_tokens,
+                sliding_window,
+                head_count,
+                kv_head_count,
+                head_dim,
+                rotary_dim,
+                position,
+                freq_scale,
+                ext_factor,
+                corr_dims,
+                theta_scale,
+                attention_sinks.map(|buffer| &buffer.platform),
+                &output_q8_1.platform,
+            )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Graph-capture-friendly variant of fused GPT-OSS decode attention that
     /// reads the dynamic `past_tokens` and `position` values from device memory.
     #[allow(clippy::too_many_arguments)]
@@ -982,6 +1143,71 @@ impl CudaSubmission {
                 theta_scale,
                 attention_sinks.map(|buffer| &buffer.platform),
                 &output.platform,
+            )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Graph-capture-friendly variant of fused GPT-OSS decode attention that
+    /// writes the attention output directly into contiguous GGML `Q8_1` blocks.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attention_decode_rope_cache_f16_kv_graph_q8_1(
+        &mut self,
+        qkv: &CudaBuffer,
+        query_offset: usize,
+        key_offset: usize,
+        value_offset: usize,
+        cache_keys: &CudaBuffer,
+        cache_values: &CudaBuffer,
+        cache_width: usize,
+        layer_offset: usize,
+        decode_params: &CudaBuffer,
+        sliding_window: usize,
+        head_count: usize,
+        kv_head_count: usize,
+        head_dim: usize,
+        rotary_dim: usize,
+        freq_scale: f32,
+        ext_factor: f32,
+        corr_dims: [f32; 2],
+        theta_scale: f32,
+        attention_sinks: Option<&CudaBuffer>,
+        output_q8_1: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        let element_count = head_count.checked_mul(head_dim).ok_or_else(|| {
+            RuntimeError::Backend(String::from(
+                "cuda q8_1 attention output element count overflow",
+            ))
+        })?;
+        let required_bytes = ggml_q8_1_storage_bytes(1, element_count)?;
+        if output_q8_1.byte_len() < required_bytes {
+            return Err(RuntimeError::Backend(format!(
+                "cuda q8_1 attention output buffer too small: need {required_bytes} bytes for 1x{element_count}, have {}",
+                output_q8_1.byte_len()
+            )));
+        }
+        self.platform
+            .encode_attention_decode_rope_cache_f16_kv_graph_q8_1(
+                &qkv.platform,
+                query_offset,
+                key_offset,
+                value_offset,
+                &cache_keys.platform,
+                &cache_values.platform,
+                cache_width,
+                layer_offset,
+                &decode_params.platform,
+                sliding_window,
+                head_count,
+                kv_head_count,
+                head_dim,
+                rotary_dim,
+                freq_scale,
+                ext_factor,
+                corr_dims,
+                theta_scale,
+                attention_sinks.map(|buffer| &buffer.platform),
+                &output_q8_1.platform,
             )?;
         self.encoded_operations += 1;
         Ok(())
@@ -1150,6 +1376,7 @@ impl CudaSubmission {
         selected_count: usize,
         activated: &CudaBuffer,
         bias: Option<&CudaBuffer>,
+        residual: Option<&CudaBuffer>,
         output: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
         self.platform.encode_moe_down_aggregate(
@@ -1163,6 +1390,7 @@ impl CudaSubmission {
             selected_count,
             &activated.platform,
             bias.map(|buffer| &buffer.platform),
+            residual.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
         self.encoded_operations += 1;
@@ -1184,6 +1412,7 @@ impl CudaSubmission {
         selected_count: usize,
         activated_q8_1: &CudaBuffer,
         bias: Option<&CudaBuffer>,
+        residual: Option<&CudaBuffer>,
         output: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
         self.platform.encode_moe_down_aggregate_q8_1(
@@ -1197,6 +1426,44 @@ impl CudaSubmission {
             selected_count,
             &activated_q8_1.platform,
             bias.map(|buffer| &buffer.platform),
+            residual.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Executes the GPT-OSS down projection and route-weighted expert
+    /// aggregation on device by quantizing selected expert activations from
+    /// `f32` into shared `Q8_1` blocks inside the selected-4 fast path.
+    #[allow(clippy::too_many_arguments)]
+    pub fn moe_down_aggregate_q8_1_f32(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows: usize,
+        columns: usize,
+        selected_ids: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+        selected_count: usize,
+        activated: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        residual: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_moe_down_aggregate_q8_1_f32(
+            &weights.platform,
+            mode,
+            row_stride,
+            rows,
+            columns,
+            &selected_ids.platform,
+            &selected_weights.platform,
+            selected_count,
+            &activated.platform,
+            bias.map(|buffer| &buffer.platform),
+            residual.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
         self.encoded_operations += 1;
@@ -2668,6 +2935,26 @@ mod platform {
         *mut c_void,
         CudaStream,
     ) -> CudaError;
+    type QuantizedMatvecQ81Kernel = unsafe extern "C" fn(
+        *const c_void,
+        c_int,
+        c_int,
+        c_int,
+        *const c_void,
+        *const c_void,
+        *mut c_void,
+        CudaStream,
+    ) -> CudaError;
+    type QuantizedMatvecQ81ArgmaxKernel = unsafe extern "C" fn(
+        *const c_void,
+        c_int,
+        c_int,
+        c_int,
+        *const c_void,
+        *const c_void,
+        *mut c_void,
+        CudaStream,
+    ) -> CudaError;
     type QuantizeQ81Kernel =
         unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void, CudaStream) -> CudaError;
 
@@ -2710,6 +2997,7 @@ mod platform {
             cols: c_int,
             row_stride: c_int,
             input_q8_1: *const c_void,
+            bias: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -2719,6 +3007,27 @@ mod platform {
             cols: c_int,
             row_stride: c_int,
             input_q8_1: *const c_void,
+            bias: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_q8_0_matvec_q8_1_argmax(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            input_q8_1: *const c_void,
+            bias: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_mxfp4_matvec_q8_1_argmax(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            input_q8_1: *const c_void,
+            bias: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -2737,14 +3046,35 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_rms_norm_q8_1(
+            input: *const c_void,
+            weight: *const c_void,
+            element_count: c_int,
+            epsilon: f32,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_add_residual_rms_norm(
             input: *const c_void,
             residual: *const c_void,
+            input_bias: *const c_void,
             weight: *const c_void,
             element_count: c_int,
             epsilon: f32,
             summed_output: *mut c_void,
             normalized_output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_add_residual_rms_norm_q8_1(
+            input: *const c_void,
+            residual: *const c_void,
+            input_bias: *const c_void,
+            weight: *const c_void,
+            element_count: c_int,
+            epsilon: f32,
+            summed_output: *mut c_void,
+            normalized_output: *mut c_void,
+            quantized_output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
         fn psionic_cuda_add_f32_offset_in_place(
@@ -2838,6 +3168,31 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_attention_decode_rope_cache_f16_kv_q8_1(
+            qkv: *const c_void,
+            query_offset: c_int,
+            key_offset: c_int,
+            value_offset: c_int,
+            cache_keys: *mut c_void,
+            cache_values: *mut c_void,
+            cache_width: c_int,
+            layer_offset: c_int,
+            past_tokens: c_int,
+            sliding_window: c_int,
+            head_count: c_int,
+            kv_head_count: c_int,
+            head_dim: c_int,
+            rotary_dim: c_int,
+            position: c_int,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_low: f32,
+            corr_high: f32,
+            theta_scale: f32,
+            attention_sinks: *const c_void,
+            output_q8_1: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_attention_decode_rope_cache_f16_kv_graph(
             qkv: *const c_void,
             query_offset: c_int,
@@ -2860,6 +3215,30 @@ mod platform {
             theta_scale: f32,
             attention_sinks: *const c_void,
             output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_attention_decode_rope_cache_f16_kv_graph_q8_1(
+            qkv: *const c_void,
+            query_offset: c_int,
+            key_offset: c_int,
+            value_offset: c_int,
+            cache_keys: *mut c_void,
+            cache_values: *mut c_void,
+            cache_width: c_int,
+            layer_offset: c_int,
+            decode_params: *const c_void,
+            sliding_window: c_int,
+            head_count: c_int,
+            kv_head_count: c_int,
+            head_dim: c_int,
+            rotary_dim: c_int,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_low: f32,
+            corr_high: f32,
+            theta_scale: f32,
+            attention_sinks: *const c_void,
+            output_q8_1: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
         fn psionic_cuda_router_topk_softmax(
@@ -2916,6 +3295,7 @@ mod platform {
             selected_count: c_int,
             activated: *const c_void,
             bias: *const c_void,
+            residual: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -2930,6 +3310,22 @@ mod platform {
             selected_count: c_int,
             activated_q8_1: *const c_void,
             bias: *const c_void,
+            residual: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_moe_down_aggregate_q8_1_f32(
+            weights: *const c_void,
+            mode: c_int,
+            row_stride: c_int,
+            rows: c_int,
+            columns: c_int,
+            selected_ids: *const c_void,
+            selected_weights: *const c_void,
+            selected_count: c_int,
+            activated: *const c_void,
+            bias: *const c_void,
+            residual: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -3615,6 +4011,7 @@ mod platform {
             rows: usize,
             cols: usize,
             input_q8_1: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
             output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             if !quantized_kernels_compiled() {
@@ -3639,7 +4036,7 @@ mod platform {
                     "cuda quantized matvec row stride exceeds c_int",
                 ))
             })?;
-            let kernel: QuantizedMatvecKernel = match mode {
+            let kernel: QuantizedMatvecQ81Kernel = match mode {
                 QuantizationMode::GgmlQ8_0 => psionic_cuda_q8_0_matvec_q8_1,
                 QuantizationMode::GgmlMxfp4 => psionic_cuda_mxfp4_matvec_q8_1,
                 _ => {
@@ -3662,11 +4059,83 @@ mod platform {
                         cols,
                         row_stride,
                         input_q8_1.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
                         output.inner.device_ptr.cast(),
                         self.stream,
                     )
                 },
                 "psionic_cuda_quantized_matvec_q8_1",
+            )
+        }
+
+        pub(super) fn encode_quantized_matvec_q8_1_argmax(
+            &mut self,
+            weights: &PlatformBuffer,
+            byte_offset: usize,
+            mode: QuantizationMode,
+            rows: usize,
+            cols: usize,
+            input_q8_1: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if !quantized_kernels_compiled() {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda quantized text-generation kernels are not available in this build",
+                )));
+            }
+            let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+                return Err(RuntimeError::Backend(format!(
+                    "cuda quantized matvec argmax does not support mode {mode:?}"
+                )));
+            };
+            let row_stride = (cols / elements_per_block) * bytes_per_block;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized matvec argmax rows exceed c_int",
+                ))
+            })?;
+            let cols = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized matvec argmax cols exceed c_int",
+                ))
+            })?;
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized matvec argmax row stride exceeds c_int",
+                ))
+            })?;
+            let kernel: QuantizedMatvecQ81ArgmaxKernel = match mode {
+                QuantizationMode::GgmlQ8_0 => psionic_cuda_q8_0_matvec_q8_1_argmax,
+                QuantizationMode::GgmlMxfp4 => psionic_cuda_mxfp4_matvec_q8_1_argmax,
+                _ => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda quantized matvec argmax does not support mode {mode:?}"
+                    )));
+                }
+            };
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    kernel(
+                        weights
+                            .inner
+                            .device_ptr
+                            .cast::<u8>()
+                            .add(byte_offset)
+                            .cast(),
+                        rows,
+                        cols,
+                        row_stride,
+                        input_q8_1.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_quantized_matvec_q8_1_argmax",
             )
         }
 
@@ -3725,10 +4194,40 @@ mod platform {
             )
         }
 
+        pub(super) fn encode_rms_norm_q8_1(
+            &mut self,
+            input: &PlatformBuffer,
+            weight: &PlatformBuffer,
+            output_q8_1: &PlatformBuffer,
+            element_count: usize,
+            epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            let element_count = c_int::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda rms_norm_q8_1 element count exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_rms_norm_q8_1(
+                        input.inner.device_ptr.cast(),
+                        weight.inner.device_ptr.cast(),
+                        element_count,
+                        epsilon,
+                        output_q8_1.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_rms_norm_q8_1",
+            )
+        }
+
         pub(super) fn encode_add_residual_rms_norm(
             &mut self,
             input: &PlatformBuffer,
             residual: &PlatformBuffer,
+            input_bias: Option<&PlatformBuffer>,
             weight: &PlatformBuffer,
             summed_output: &PlatformBuffer,
             normalized_output: &PlatformBuffer,
@@ -3746,6 +4245,9 @@ mod platform {
                     psionic_cuda_add_residual_rms_norm(
                         input.inner.device_ptr.cast(),
                         residual.inner.device_ptr.cast(),
+                        input_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
                         weight.inner.device_ptr.cast(),
                         element_count,
                         epsilon,
@@ -3755,6 +4257,45 @@ mod platform {
                     )
                 },
                 "psionic_cuda_add_residual_rms_norm",
+            )
+        }
+
+        pub(super) fn encode_add_residual_rms_norm_q8_1(
+            &mut self,
+            input: &PlatformBuffer,
+            residual: &PlatformBuffer,
+            input_bias: Option<&PlatformBuffer>,
+            weight: &PlatformBuffer,
+            summed_output: &PlatformBuffer,
+            normalized_output: &PlatformBuffer,
+            quantized_output: &PlatformBuffer,
+            element_count: usize,
+            epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            let element_count = c_int::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda add_residual_rms_norm_q8_1 element count exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_add_residual_rms_norm_q8_1(
+                        input.inner.device_ptr.cast(),
+                        residual.inner.device_ptr.cast(),
+                        input_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        weight.inner.device_ptr.cast(),
+                        element_count,
+                        epsilon,
+                        summed_output.inner.device_ptr.cast(),
+                        normalized_output.inner.device_ptr.cast(),
+                        quantized_output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_add_residual_rms_norm_q8_1",
             )
         }
 
@@ -4078,6 +4619,126 @@ mod platform {
         }
 
         #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode_rope_cache_f16_kv_q8_1(
+            &mut self,
+            qkv: &PlatformBuffer,
+            query_offset: usize,
+            key_offset: usize,
+            value_offset: usize,
+            cache_keys: &PlatformBuffer,
+            cache_values: &PlatformBuffer,
+            cache_width: usize,
+            layer_offset: usize,
+            past_tokens: usize,
+            sliding_window: usize,
+            head_count: usize,
+            kv_head_count: usize,
+            head_dim: usize,
+            rotary_dim: usize,
+            position: usize,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_dims: [f32; 2],
+            theta_scale: f32,
+            attention_sinks: Option<&PlatformBuffer>,
+            output_q8_1: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let query_offset = c_int::try_from(query_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) query offset exceeds c_int",
+                ))
+            })?;
+            let key_offset = c_int::try_from(key_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) key offset exceeds c_int",
+                ))
+            })?;
+            let value_offset = c_int::try_from(value_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) value offset exceeds c_int",
+                ))
+            })?;
+            let cache_width = c_int::try_from(cache_width).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) cache width exceeds c_int",
+                ))
+            })?;
+            let layer_offset = c_int::try_from(layer_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) layer offset exceeds c_int",
+                ))
+            })?;
+            let past_tokens = c_int::try_from(past_tokens).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) past token count exceeds c_int",
+                ))
+            })?;
+            let sliding_window = c_int::try_from(sliding_window).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) sliding window exceeds c_int",
+                ))
+            })?;
+            let head_count = c_int::try_from(head_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) head count exceeds c_int",
+                ))
+            })?;
+            let kv_head_count = c_int::try_from(kv_head_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) kv head count exceeds c_int",
+                ))
+            })?;
+            let head_dim = c_int::try_from(head_dim).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) head dim exceeds c_int",
+                ))
+            })?;
+            let rotary_dim = c_int::try_from(rotary_dim).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) rotary dim exceeds c_int",
+                ))
+            })?;
+            let position = c_int::try_from(position).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(f16 kv, q8_1) position exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_attention_decode_rope_cache_f16_kv_q8_1(
+                        qkv.inner.device_ptr.cast(),
+                        query_offset,
+                        key_offset,
+                        value_offset,
+                        cache_keys.inner.device_ptr.cast(),
+                        cache_values.inner.device_ptr.cast(),
+                        cache_width,
+                        layer_offset,
+                        past_tokens,
+                        sliding_window,
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        position,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims[0],
+                        corr_dims[1],
+                        theta_scale,
+                        attention_sinks
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output_q8_1.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_attention_decode_rope_cache_f16_kv_q8_1",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_attention_decode_rope_cache_f16_kv_graph(
             &mut self,
             qkv: &PlatformBuffer,
@@ -4182,6 +4843,114 @@ mod platform {
                     )
                 },
                 "psionic_cuda_attention_decode_rope_cache_f16_kv_graph",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode_rope_cache_f16_kv_graph_q8_1(
+            &mut self,
+            qkv: &PlatformBuffer,
+            query_offset: usize,
+            key_offset: usize,
+            value_offset: usize,
+            cache_keys: &PlatformBuffer,
+            cache_values: &PlatformBuffer,
+            cache_width: usize,
+            layer_offset: usize,
+            decode_params: &PlatformBuffer,
+            sliding_window: usize,
+            head_count: usize,
+            kv_head_count: usize,
+            head_dim: usize,
+            rotary_dim: usize,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_dims: [f32; 2],
+            theta_scale: f32,
+            attention_sinks: Option<&PlatformBuffer>,
+            output_q8_1: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let query_offset = c_int::try_from(query_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) query offset exceeds c_int",
+                ))
+            })?;
+            let key_offset = c_int::try_from(key_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) key offset exceeds c_int",
+                ))
+            })?;
+            let value_offset = c_int::try_from(value_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) value offset exceeds c_int",
+                ))
+            })?;
+            let cache_width = c_int::try_from(cache_width).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) cache width exceeds c_int",
+                ))
+            })?;
+            let layer_offset = c_int::try_from(layer_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) layer offset exceeds c_int",
+                ))
+            })?;
+            let sliding_window = c_int::try_from(sliding_window).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) sliding window exceeds c_int",
+                ))
+            })?;
+            let head_count = c_int::try_from(head_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) head count exceeds c_int",
+                ))
+            })?;
+            let kv_head_count = c_int::try_from(kv_head_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) kv head count exceeds c_int",
+                ))
+            })?;
+            let head_dim = c_int::try_from(head_dim).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) head dim exceeds c_int",
+                ))
+            })?;
+            let rotary_dim = c_int::try_from(rotary_dim).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda fused attention(graph, f16 kv, q8_1) rotary dim exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_attention_decode_rope_cache_f16_kv_graph_q8_1(
+                        qkv.inner.device_ptr.cast(),
+                        query_offset,
+                        key_offset,
+                        value_offset,
+                        cache_keys.inner.device_ptr.cast(),
+                        cache_values.inner.device_ptr.cast(),
+                        cache_width,
+                        layer_offset,
+                        decode_params.inner.device_ptr.cast(),
+                        sliding_window,
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims[0],
+                        corr_dims[1],
+                        theta_scale,
+                        attention_sinks
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output_q8_1.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_attention_decode_rope_cache_f16_kv_graph_q8_1",
             )
         }
 
@@ -4470,6 +5239,7 @@ mod platform {
             selected_count: usize,
             activated: &PlatformBuffer,
             bias: Option<&PlatformBuffer>,
+            residual: Option<&PlatformBuffer>,
             output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             let mode = match mode {
@@ -4508,6 +5278,9 @@ mod platform {
                         activated.inner.device_ptr.cast(),
                         bias.map(|buffer| buffer.inner.device_ptr.cast())
                             .unwrap_or(std::ptr::null_mut()),
+                        residual
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
                         output.inner.device_ptr.cast(),
                         self.stream,
                     )
@@ -4529,6 +5302,7 @@ mod platform {
             selected_count: usize,
             activated_q8_1: &PlatformBuffer,
             bias: Option<&PlatformBuffer>,
+            residual: Option<&PlatformBuffer>,
             output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             let mode = match mode {
@@ -4567,11 +5341,82 @@ mod platform {
                         activated_q8_1.inner.device_ptr.cast(),
                         bias.map(|buffer| buffer.inner.device_ptr.cast())
                             .unwrap_or(std::ptr::null_mut()),
+                        residual
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
                         output.inner.device_ptr.cast(),
                         self.stream,
                     )
                 },
                 "psionic_cuda_moe_down_aggregate_q8_1",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_aggregate_q8_1_f32(
+            &mut self,
+            weights: &PlatformBuffer,
+            mode: QuantizationMode,
+            row_stride: usize,
+            rows: usize,
+            columns: usize,
+            selected_ids: &PlatformBuffer,
+            selected_weights: &PlatformBuffer,
+            selected_count: usize,
+            activated: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
+            residual: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if selected_count > 4 {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda fused moe down f32->q8_1 path requires selected_count <= 4",
+                )));
+            }
+            let mode = match mode {
+                QuantizationMode::GgmlQ8_0 => 0,
+                QuantizationMode::GgmlMxfp4 => 1,
+                other => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda fused moe down kernel does not support {other:?}"
+                    )));
+                }
+            };
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe down row stride exceeds c_int"))
+            })?;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe down rows exceeds c_int"))
+            })?;
+            let columns = c_int::try_from(columns).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe down columns exceeds c_int"))
+            })?;
+            let selected_count = c_int::try_from(selected_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe selected count exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_moe_down_aggregate_q8_1_f32(
+                        weights.inner.device_ptr.cast(),
+                        mode,
+                        row_stride,
+                        rows,
+                        columns,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_weights.inner.device_ptr.cast(),
+                        selected_count,
+                        activated.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        residual
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_moe_down_aggregate_q8_1_f32",
             )
         }
 
@@ -5148,6 +5993,23 @@ mod platform {
             _rows: usize,
             _cols: usize,
             _input_q8_1: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        pub(super) fn encode_quantized_matvec_q8_1_argmax(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _byte_offset: usize,
+            _mode: QuantizationMode,
+            _rows: usize,
+            _cols: usize,
+            _input_q8_1: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -5180,13 +6042,44 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_rms_norm_q8_1(
+            &mut self,
+            _input: &PlatformBuffer,
+            _weight: &PlatformBuffer,
+            _output_q8_1: &PlatformBuffer,
+            _element_count: usize,
+            _epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
         pub(super) fn encode_add_residual_rms_norm(
             &mut self,
             _input: &PlatformBuffer,
             _residual: &PlatformBuffer,
+            _input_bias: Option<&PlatformBuffer>,
             _weight: &PlatformBuffer,
             _summed_output: &PlatformBuffer,
             _normalized_output: &PlatformBuffer,
+            _element_count: usize,
+            _epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        pub(super) fn encode_add_residual_rms_norm_q8_1(
+            &mut self,
+            _input: &PlatformBuffer,
+            _residual: &PlatformBuffer,
+            _input_bias: Option<&PlatformBuffer>,
+            _weight: &PlatformBuffer,
+            _summed_output: &PlatformBuffer,
+            _normalized_output: &PlatformBuffer,
+            _quantized_output: &PlatformBuffer,
             _element_count: usize,
             _epsilon: f32,
         ) -> Result<(), RuntimeError> {
@@ -5287,6 +6180,36 @@ mod platform {
         }
 
         #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode_rope_cache_f16_kv_q8_1(
+            &mut self,
+            _qkv: &PlatformBuffer,
+            _query_offset: usize,
+            _key_offset: usize,
+            _value_offset: usize,
+            _cache_keys: &PlatformBuffer,
+            _cache_values: &PlatformBuffer,
+            _cache_width: usize,
+            _layer_offset: usize,
+            _past_tokens: usize,
+            _sliding_window: usize,
+            _head_count: usize,
+            _kv_head_count: usize,
+            _head_dim: usize,
+            _rotary_dim: usize,
+            _position: usize,
+            _freq_scale: f32,
+            _ext_factor: f32,
+            _corr_dims: [f32; 2],
+            _theta_scale: f32,
+            _attention_sinks: Option<&PlatformBuffer>,
+            _output_q8_1: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_attention_decode_rope_cache_f16_kv_graph(
             &mut self,
             _qkv: &PlatformBuffer,
@@ -5309,6 +6232,35 @@ mod platform {
             _theta_scale: f32,
             _attention_sinks: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode_rope_cache_f16_kv_graph_q8_1(
+            &mut self,
+            _qkv: &PlatformBuffer,
+            _query_offset: usize,
+            _key_offset: usize,
+            _value_offset: usize,
+            _cache_keys: &PlatformBuffer,
+            _cache_values: &PlatformBuffer,
+            _cache_width: usize,
+            _layer_offset: usize,
+            _decode_params: &PlatformBuffer,
+            _sliding_window: usize,
+            _head_count: usize,
+            _kv_head_count: usize,
+            _head_dim: usize,
+            _rotary_dim: usize,
+            _freq_scale: f32,
+            _ext_factor: f32,
+            _corr_dims: [f32; 2],
+            _theta_scale: f32,
+            _attention_sinks: Option<&PlatformBuffer>,
+            _output_q8_1: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "cuda quantized text-generation kernels require Linux CUDA support",
@@ -5415,6 +6367,7 @@ mod platform {
             _selected_count: usize,
             _activated: &PlatformBuffer,
             _bias: Option<&PlatformBuffer>,
+            _residual: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -5435,6 +6388,28 @@ mod platform {
             _selected_count: usize,
             _activated_q8_1: &PlatformBuffer,
             _bias: Option<&PlatformBuffer>,
+            _residual: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_aggregate_q8_1_f32(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _mode: QuantizationMode,
+            _row_stride: usize,
+            _rows: usize,
+            _columns: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_weights: &PlatformBuffer,
+            _selected_count: usize,
+            _activated: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
+            _residual: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -6029,6 +7004,7 @@ mod tests {
         submission.add_residual_rms_norm(
             &input_buffer,
             &residual_buffer,
+            None,
             &weight_buffer,
             &summed_output,
             &normalized_output,
@@ -6186,6 +7162,253 @@ mod tests {
     }
 
     #[test]
+    fn cuda_submission_fused_attention_f16_kv_q8_1_matches_separate_attention_and_quantize_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let head_count = 2usize;
+        let kv_head_count = 1usize;
+        let head_dim = 32usize;
+        let rotary_dim = 32usize;
+        let q_rows = head_count * head_dim;
+        let k_rows = kv_head_count * head_dim;
+        let v_rows = kv_head_count * head_dim;
+        let qkv = (0..(q_rows + k_rows + v_rows))
+            .map(|index| ((index as f32 % 19.0) - 9.0) * 0.125)
+            .collect::<Vec<_>>();
+        let previous_keys = (0..k_rows)
+            .map(|index| ((index as f32 % 13.0) - 6.0) * 0.2)
+            .collect::<Vec<_>>();
+        let previous_values = (0..v_rows)
+            .map(|index| ((index as f32 % 11.0) - 5.0) * 0.15)
+            .collect::<Vec<_>>();
+        let cache_token_capacity = 2usize;
+        let mut cache_keys_bytes =
+            vec![0_u8; cache_token_capacity * k_rows * std::mem::size_of::<u16>()];
+        let mut cache_values_bytes =
+            vec![0_u8; cache_token_capacity * v_rows * std::mem::size_of::<u16>()];
+        let previous_key_bytes = f32_slice_to_f16_le_bytes(&previous_keys);
+        let previous_value_bytes = f32_slice_to_f16_le_bytes(&previous_values);
+        cache_keys_bytes[..previous_key_bytes.len()].copy_from_slice(&previous_key_bytes);
+        cache_values_bytes[..previous_value_bytes.len()].copy_from_slice(&previous_value_bytes);
+
+        let qkv_separate = backend.input_buffer(Shape::new(vec![qkv.len()]), qkv.clone())?;
+        let qkv_fused = backend.input_buffer(Shape::new(vec![qkv.len()]), qkv)?;
+        let cache_keys_separate = backend.byte_buffer(&cache_keys_bytes)?;
+        let cache_values_separate = backend.byte_buffer(&cache_values_bytes)?;
+        let cache_keys_fused = backend.byte_buffer(&cache_keys_bytes)?;
+        let cache_values_fused = backend.byte_buffer(&cache_values_bytes)?;
+        let output_separate = backend.f32_buffer(q_rows)?;
+        let output_q8_1_separate =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, q_rows)?])?;
+        let output_q8_1_fused =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, q_rows)?])?;
+        let freq_scale = 1.0_f32;
+        let ext_factor = 0.0_f32;
+        let corr_dims = [0.0_f32, 0.0_f32];
+        let theta_scale = 0.5_f32;
+
+        let mut separate = backend.begin_submission()?;
+        separate.attention_decode_rope_cache_f16_kv(
+            &qkv_separate,
+            0,
+            q_rows,
+            q_rows + k_rows,
+            &cache_keys_separate,
+            &cache_values_separate,
+            k_rows,
+            0,
+            1,
+            0,
+            head_count,
+            kv_head_count,
+            head_dim,
+            rotary_dim,
+            5,
+            freq_scale,
+            ext_factor,
+            corr_dims,
+            theta_scale,
+            None,
+            &output_separate,
+        )?;
+        separate.quantize_f32_to_q8_1(&output_separate, 1, q_rows, &output_q8_1_separate)?;
+        let separate_report = separate.commit(CudaCommandWait::Completed)?;
+        assert_eq!(separate_report.encoded_operations, 2);
+
+        let mut fused = backend.begin_submission()?;
+        fused.attention_decode_rope_cache_f16_kv_q8_1(
+            &qkv_fused,
+            0,
+            q_rows,
+            q_rows + k_rows,
+            &cache_keys_fused,
+            &cache_values_fused,
+            k_rows,
+            0,
+            1,
+            0,
+            head_count,
+            kv_head_count,
+            head_dim,
+            rotary_dim,
+            5,
+            freq_scale,
+            ext_factor,
+            corr_dims,
+            theta_scale,
+            None,
+            &output_q8_1_fused,
+        )?;
+        let fused_report = fused.commit(CudaCommandWait::Completed)?;
+        assert_eq!(fused_report.encoded_operations, 1);
+
+        assert_eq!(
+            output_q8_1_fused.read_bytes()?,
+            output_q8_1_separate.read_bytes()?
+        );
+        assert_eq!(
+            cache_keys_fused.read_bytes()?,
+            cache_keys_separate.read_bytes()?
+        );
+        assert_eq!(
+            cache_values_fused.read_bytes()?,
+            cache_values_separate.read_bytes()?
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_fused_attention_graph_f16_kv_q8_1_matches_separate_attention_and_quantize_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let head_count = 2usize;
+        let kv_head_count = 1usize;
+        let head_dim = 32usize;
+        let rotary_dim = 32usize;
+        let q_rows = head_count * head_dim;
+        let k_rows = kv_head_count * head_dim;
+        let v_rows = kv_head_count * head_dim;
+        let qkv = (0..(q_rows + k_rows + v_rows))
+            .map(|index| ((index as f32 % 23.0) - 11.0) * 0.11)
+            .collect::<Vec<_>>();
+        let previous_keys = (0..k_rows)
+            .map(|index| ((index as f32 % 17.0) - 8.0) * 0.14)
+            .collect::<Vec<_>>();
+        let previous_values = (0..v_rows)
+            .map(|index| ((index as f32 % 7.0) - 3.0) * 0.21)
+            .collect::<Vec<_>>();
+        let cache_token_capacity = 2usize;
+        let mut cache_keys_bytes =
+            vec![0_u8; cache_token_capacity * k_rows * std::mem::size_of::<u16>()];
+        let mut cache_values_bytes =
+            vec![0_u8; cache_token_capacity * v_rows * std::mem::size_of::<u16>()];
+        let previous_key_bytes = f32_slice_to_f16_le_bytes(&previous_keys);
+        let previous_value_bytes = f32_slice_to_f16_le_bytes(&previous_values);
+        cache_keys_bytes[..previous_key_bytes.len()].copy_from_slice(&previous_key_bytes);
+        cache_values_bytes[..previous_value_bytes.len()].copy_from_slice(&previous_value_bytes);
+
+        let qkv_separate = backend.input_buffer(Shape::new(vec![qkv.len()]), qkv.clone())?;
+        let qkv_fused = backend.input_buffer(Shape::new(vec![qkv.len()]), qkv)?;
+        let cache_keys_separate = backend.byte_buffer(&cache_keys_bytes)?;
+        let cache_values_separate = backend.byte_buffer(&cache_values_bytes)?;
+        let cache_keys_fused = backend.byte_buffer(&cache_keys_bytes)?;
+        let cache_values_fused = backend.byte_buffer(&cache_values_bytes)?;
+        let decode_params = backend.byte_buffer(&i32_slice_to_bytes(&[1_i32, 6_i32]))?;
+        let output_separate = backend.f32_buffer(q_rows)?;
+        let output_q8_1_separate =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, q_rows)?])?;
+        let output_q8_1_fused =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, q_rows)?])?;
+        let freq_scale = 1.0_f32;
+        let ext_factor = 0.0_f32;
+        let corr_dims = [0.0_f32, 0.0_f32];
+        let theta_scale = 0.5_f32;
+
+        let mut separate = backend.begin_submission()?;
+        separate.attention_decode_rope_cache_f16_kv_graph(
+            &qkv_separate,
+            0,
+            q_rows,
+            q_rows + k_rows,
+            &cache_keys_separate,
+            &cache_values_separate,
+            k_rows,
+            0,
+            &decode_params,
+            0,
+            head_count,
+            kv_head_count,
+            head_dim,
+            rotary_dim,
+            freq_scale,
+            ext_factor,
+            corr_dims,
+            theta_scale,
+            None,
+            &output_separate,
+        )?;
+        separate.quantize_f32_to_q8_1(&output_separate, 1, q_rows, &output_q8_1_separate)?;
+        let separate_report = separate.commit(CudaCommandWait::Completed)?;
+        assert_eq!(separate_report.encoded_operations, 2);
+
+        let mut fused = backend.begin_submission()?;
+        fused.attention_decode_rope_cache_f16_kv_graph_q8_1(
+            &qkv_fused,
+            0,
+            q_rows,
+            q_rows + k_rows,
+            &cache_keys_fused,
+            &cache_values_fused,
+            k_rows,
+            0,
+            &decode_params,
+            0,
+            head_count,
+            kv_head_count,
+            head_dim,
+            rotary_dim,
+            freq_scale,
+            ext_factor,
+            corr_dims,
+            theta_scale,
+            None,
+            &output_q8_1_fused,
+        )?;
+        let fused_report = fused.commit(CudaCommandWait::Completed)?;
+        assert_eq!(fused_report.encoded_operations, 1);
+
+        assert_eq!(
+            output_q8_1_fused.read_bytes()?,
+            output_q8_1_separate.read_bytes()?
+        );
+        assert_eq!(
+            cache_keys_fused.read_bytes()?,
+            cache_keys_separate.read_bytes()?
+        );
+        assert_eq!(
+            cache_values_fused.read_bytes()?,
+            cache_values_separate.read_bytes()?
+        );
+        Ok(())
+    }
+
+    #[test]
     fn cuda_submission_executes_q8_0_quantized_matvec_q8_1_fast_path_when_available()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = CudaBackend::new();
@@ -6220,11 +7443,117 @@ mod tests {
             2,
             32,
             &q8_1_buffer,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
         assert_eq!(report.encoded_operations, 2);
         assert_close(&output.read_f32()?, &expected, 5e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_q8_0_quantized_matvec_q8_1_fast_path_with_bias_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = sample_q8_1_exact_vector();
+        let row_a = sample_q8_0_row(0.25, 1);
+        let row_b = sample_q8_0_row(0.5, -1);
+        let bias = vec![0.75_f32, -1.25_f32];
+        let expected = vec![
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_a)? + bias[0],
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_b)? + bias[1],
+        ];
+        let mut bytes = row_a.clone();
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![input.len()]), input)?;
+        let bias_buffer = backend.input_buffer(Shape::new(vec![bias.len()]), bias)?;
+        let q8_1_buffer =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, 32)?])?;
+        let output = backend.f32_buffer(2)?;
+        let mut submission = backend.begin_submission()?;
+        submission.quantize_f32_to_q8_1(&input_buffer, 1, 32, &q8_1_buffer)?;
+        submission.quantized_matvec_q8_1(
+            &weights,
+            0,
+            QuantizationMode::GgmlQ8_0,
+            2,
+            32,
+            &q8_1_buffer,
+            Some(&bias_buffer),
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 2);
+        assert_close(&output.read_f32()?, &expected, 5e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_q8_0_quantized_matvec_q8_1_argmax_fast_path_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = sample_q8_1_exact_vector();
+        let row_a = sample_q8_0_row(0.25, 1);
+        let row_b = sample_q8_0_row(0.5, -1);
+        let bias = vec![0.75_f32, -1.25_f32];
+        let expected = [
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_a)? + bias[0],
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_b)? + bias[1],
+        ];
+        let mut bytes = row_a.clone();
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![input.len()]), input)?;
+        let bias_buffer = backend.input_buffer(Shape::new(vec![bias.len()]), bias)?;
+        let q8_1_buffer =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, 32)?])?;
+        let mut argmax_output = backend.byte_buffer(&vec![0_u8; std::mem::size_of::<u64>()])?;
+        let mut submission = backend.begin_submission()?;
+        submission.quantize_f32_to_q8_1(&input_buffer, 1, 32, &q8_1_buffer)?;
+        argmax_output.write_bytes(
+            &(((u64::from(i32::MAX as u32)) << 32) | u64::from(f32::NEG_INFINITY.to_bits()))
+                .to_ne_bytes(),
+        )?;
+        submission.quantized_matvec_q8_1_argmax(
+            &weights,
+            0,
+            QuantizationMode::GgmlQ8_0,
+            2,
+            32,
+            &q8_1_buffer,
+            Some(&bias_buffer),
+            &argmax_output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 2);
+
+        let packed_bytes = argmax_output.read_bytes()?;
+        let packed = u64::from_ne_bytes(
+            packed_bytes[..std::mem::size_of::<u64>()]
+                .try_into()
+                .expect("packed argmax buffer should be eight bytes"),
+        );
+        let actual_index = (packed >> 32) as usize;
+        let expected_index = if expected[0] >= expected[1] { 0 } else { 1 };
+        assert_eq!(actual_index, expected_index);
         Ok(())
     }
 
@@ -6263,6 +7592,7 @@ mod tests {
             2,
             32,
             &q8_1_buffer,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6312,6 +7642,7 @@ mod tests {
             2,
             64,
             &q8_1_buffer,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6361,6 +7692,7 @@ mod tests {
             2,
             64,
             &q8_1_buffer,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6474,10 +7806,66 @@ mod tests {
             selected_ids.len(),
             &activated_q8_1,
             None,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
         assert_eq!(report.encoded_operations, 2);
+
+        let actual = output.read_f32()?;
+        let expected = expected_moe_down_outputs(
+            &activated,
+            &weights_bytes,
+            selected_ids.as_slice(),
+            selected_weights.as_slice(),
+            32,
+        )?;
+        assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_mxfp4_moe_down_aggregate_q8_1_f32_selected4_path_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let selected_ids = [3_i32, 1_i32, 0_i32, 2_i32];
+        let selected_weights = [0.40_f32, 0.27_f32, 0.19_f32, 0.14_f32];
+        let activated = sample_selected_activated_vectors_for_count(selected_ids.len());
+        let weights_bytes = sample_mxfp4_expert_down_weights(selected_ids.len(), 32, 32);
+        let weights = backend.byte_buffer(&weights_bytes)?;
+        let activated_buffer =
+            backend.input_buffer(Shape::new(vec![activated.len()]), activated.clone())?;
+        let selected_ids_buffer = backend.byte_buffer(&i32_slice_to_bytes(&selected_ids))?;
+        let selected_weights_buffer = backend.input_buffer(
+            Shape::new(vec![selected_weights.len()]),
+            selected_weights.to_vec(),
+        )?;
+        let output = backend.f32_buffer(32)?;
+        let mut submission = backend.begin_submission()?;
+        submission.moe_down_aggregate_q8_1_f32(
+            &weights,
+            QuantizationMode::GgmlMxfp4,
+            17,
+            32,
+            32,
+            &selected_ids_buffer,
+            &selected_weights_buffer,
+            selected_ids.len(),
+            &activated_buffer,
+            None,
+            None,
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 1);
 
         let actual = output.read_f32()?;
         let expected = expected_moe_down_outputs(
@@ -6538,6 +7926,7 @@ mod tests {
             &selected_weights_buffer,
             selected_ids.len(),
             &activated_q8_1,
+            None,
             None,
             &output,
         )?;
@@ -6734,6 +8123,14 @@ mod tests {
         let mut bytes = Vec::with_capacity(values.len() * size_of::<i32>());
         for value in values {
             bytes.extend_from_slice(&value.to_le_bytes());
+        }
+        bytes
+    }
+
+    fn f32_slice_to_f16_le_bytes(values: &[f32]) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(values.len() * size_of::<u16>());
+        for &value in values {
+            bytes.extend_from_slice(&f32_to_f16_bits(value).to_le_bytes());
         }
         bytes
     }
