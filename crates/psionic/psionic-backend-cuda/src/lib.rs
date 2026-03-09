@@ -643,6 +643,7 @@ impl CudaSubmission {
         rows: usize,
         cols: usize,
         input_q8_1: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
         output: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
         self.platform.encode_quantized_matvec_q8_1(
@@ -652,6 +653,7 @@ impl CudaSubmission {
             rows,
             cols,
             &input_q8_1.platform,
+            bias.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
         self.encoded_operations += 1;
@@ -759,6 +761,7 @@ impl CudaSubmission {
         &mut self,
         input: &CudaBuffer,
         residual: &CudaBuffer,
+        input_bias: Option<&CudaBuffer>,
         weight: &CudaBuffer,
         summed_output: &CudaBuffer,
         normalized_output: &CudaBuffer,
@@ -768,6 +771,7 @@ impl CudaSubmission {
         self.platform.encode_add_residual_rms_norm(
             &input.platform,
             &residual.platform,
+            input_bias.map(|buffer| &buffer.platform),
             &weight.platform,
             &summed_output.platform,
             &normalized_output.platform,
@@ -1150,6 +1154,7 @@ impl CudaSubmission {
         selected_count: usize,
         activated: &CudaBuffer,
         bias: Option<&CudaBuffer>,
+        residual: Option<&CudaBuffer>,
         output: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
         self.platform.encode_moe_down_aggregate(
@@ -1163,6 +1168,7 @@ impl CudaSubmission {
             selected_count,
             &activated.platform,
             bias.map(|buffer| &buffer.platform),
+            residual.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
         self.encoded_operations += 1;
@@ -1184,6 +1190,7 @@ impl CudaSubmission {
         selected_count: usize,
         activated_q8_1: &CudaBuffer,
         bias: Option<&CudaBuffer>,
+        residual: Option<&CudaBuffer>,
         output: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
         self.platform.encode_moe_down_aggregate_q8_1(
@@ -1197,6 +1204,7 @@ impl CudaSubmission {
             selected_count,
             &activated_q8_1.platform,
             bias.map(|buffer| &buffer.platform),
+            residual.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
         self.encoded_operations += 1;
@@ -2668,6 +2676,16 @@ mod platform {
         *mut c_void,
         CudaStream,
     ) -> CudaError;
+    type QuantizedMatvecQ81Kernel = unsafe extern "C" fn(
+        *const c_void,
+        c_int,
+        c_int,
+        c_int,
+        *const c_void,
+        *const c_void,
+        *mut c_void,
+        CudaStream,
+    ) -> CudaError;
     type QuantizeQ81Kernel =
         unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void, CudaStream) -> CudaError;
 
@@ -2710,6 +2728,7 @@ mod platform {
             cols: c_int,
             row_stride: c_int,
             input_q8_1: *const c_void,
+            bias: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -2719,6 +2738,7 @@ mod platform {
             cols: c_int,
             row_stride: c_int,
             input_q8_1: *const c_void,
+            bias: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -2740,6 +2760,7 @@ mod platform {
         fn psionic_cuda_add_residual_rms_norm(
             input: *const c_void,
             residual: *const c_void,
+            input_bias: *const c_void,
             weight: *const c_void,
             element_count: c_int,
             epsilon: f32,
@@ -2916,6 +2937,7 @@ mod platform {
             selected_count: c_int,
             activated: *const c_void,
             bias: *const c_void,
+            residual: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -2930,6 +2952,7 @@ mod platform {
             selected_count: c_int,
             activated_q8_1: *const c_void,
             bias: *const c_void,
+            residual: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -3615,6 +3638,7 @@ mod platform {
             rows: usize,
             cols: usize,
             input_q8_1: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
             output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             if !quantized_kernels_compiled() {
@@ -3639,7 +3663,7 @@ mod platform {
                     "cuda quantized matvec row stride exceeds c_int",
                 ))
             })?;
-            let kernel: QuantizedMatvecKernel = match mode {
+            let kernel: QuantizedMatvecQ81Kernel = match mode {
                 QuantizationMode::GgmlQ8_0 => psionic_cuda_q8_0_matvec_q8_1,
                 QuantizationMode::GgmlMxfp4 => psionic_cuda_mxfp4_matvec_q8_1,
                 _ => {
@@ -3662,6 +3686,8 @@ mod platform {
                         cols,
                         row_stride,
                         input_q8_1.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
                         output.inner.device_ptr.cast(),
                         self.stream,
                     )
@@ -3729,6 +3755,7 @@ mod platform {
             &mut self,
             input: &PlatformBuffer,
             residual: &PlatformBuffer,
+            input_bias: Option<&PlatformBuffer>,
             weight: &PlatformBuffer,
             summed_output: &PlatformBuffer,
             normalized_output: &PlatformBuffer,
@@ -3746,6 +3773,9 @@ mod platform {
                     psionic_cuda_add_residual_rms_norm(
                         input.inner.device_ptr.cast(),
                         residual.inner.device_ptr.cast(),
+                        input_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
                         weight.inner.device_ptr.cast(),
                         element_count,
                         epsilon,
@@ -4470,6 +4500,7 @@ mod platform {
             selected_count: usize,
             activated: &PlatformBuffer,
             bias: Option<&PlatformBuffer>,
+            residual: Option<&PlatformBuffer>,
             output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             let mode = match mode {
@@ -4508,6 +4539,9 @@ mod platform {
                         activated.inner.device_ptr.cast(),
                         bias.map(|buffer| buffer.inner.device_ptr.cast())
                             .unwrap_or(std::ptr::null_mut()),
+                        residual
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
                         output.inner.device_ptr.cast(),
                         self.stream,
                     )
@@ -4529,6 +4563,7 @@ mod platform {
             selected_count: usize,
             activated_q8_1: &PlatformBuffer,
             bias: Option<&PlatformBuffer>,
+            residual: Option<&PlatformBuffer>,
             output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             let mode = match mode {
@@ -4566,6 +4601,9 @@ mod platform {
                         selected_count,
                         activated_q8_1.inner.device_ptr.cast(),
                         bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        residual
+                            .map(|buffer| buffer.inner.device_ptr.cast())
                             .unwrap_or(std::ptr::null_mut()),
                         output.inner.device_ptr.cast(),
                         self.stream,
@@ -5148,6 +5186,7 @@ mod platform {
             _rows: usize,
             _cols: usize,
             _input_q8_1: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -5184,6 +5223,7 @@ mod platform {
             &mut self,
             _input: &PlatformBuffer,
             _residual: &PlatformBuffer,
+            _input_bias: Option<&PlatformBuffer>,
             _weight: &PlatformBuffer,
             _summed_output: &PlatformBuffer,
             _normalized_output: &PlatformBuffer,
@@ -5415,6 +5455,7 @@ mod platform {
             _selected_count: usize,
             _activated: &PlatformBuffer,
             _bias: Option<&PlatformBuffer>,
+            _residual: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -5435,6 +5476,7 @@ mod platform {
             _selected_count: usize,
             _activated_q8_1: &PlatformBuffer,
             _bias: Option<&PlatformBuffer>,
+            _residual: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
@@ -6029,6 +6071,7 @@ mod tests {
         submission.add_residual_rms_norm(
             &input_buffer,
             &residual_buffer,
+            None,
             &weight_buffer,
             &summed_output,
             &normalized_output,
@@ -6220,6 +6263,53 @@ mod tests {
             2,
             32,
             &q8_1_buffer,
+            None,
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 2);
+        assert_close(&output.read_f32()?, &expected, 5e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_q8_0_quantized_matvec_q8_1_fast_path_with_bias_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = sample_q8_1_exact_vector();
+        let row_a = sample_q8_0_row(0.25, 1);
+        let row_b = sample_q8_0_row(0.5, -1);
+        let bias = vec![0.75_f32, -1.25_f32];
+        let expected = vec![
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_a)? + bias[0],
+            quantized_row_dot(&input, QuantizationMode::GgmlQ8_0, &row_b)? + bias[1],
+        ];
+        let mut bytes = row_a.clone();
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![input.len()]), input)?;
+        let bias_buffer = backend.input_buffer(Shape::new(vec![bias.len()]), bias)?;
+        let q8_1_buffer =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, 32)?])?;
+        let output = backend.f32_buffer(2)?;
+        let mut submission = backend.begin_submission()?;
+        submission.quantize_f32_to_q8_1(&input_buffer, 1, 32, &q8_1_buffer)?;
+        submission.quantized_matvec_q8_1(
+            &weights,
+            0,
+            QuantizationMode::GgmlQ8_0,
+            2,
+            32,
+            &q8_1_buffer,
+            Some(&bias_buffer),
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6263,6 +6353,7 @@ mod tests {
             2,
             32,
             &q8_1_buffer,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6312,6 +6403,7 @@ mod tests {
             2,
             64,
             &q8_1_buffer,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6361,6 +6453,7 @@ mod tests {
             2,
             64,
             &q8_1_buffer,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6474,6 +6567,7 @@ mod tests {
             selected_ids.len(),
             &activated_q8_1,
             None,
+            None,
             &output,
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
@@ -6538,6 +6632,7 @@ mod tests {
             &selected_weights_buffer,
             selected_ids.len(),
             &activated_q8_1,
+            None,
             None,
             &output,
         )?;

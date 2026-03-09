@@ -1831,6 +1831,7 @@ impl GptOssCudaModelInner {
                     layer.attention_qkv_weight.total_rows(),
                     layer.attention_qkv_weight.columns,
                     &plan.vector_q8_1_buffer,
+                    Some(&layer.attention_qkv_bias_device),
                     &layer_plan.qkv_buffer,
                 )?;
             } else {
@@ -1843,13 +1844,13 @@ impl GptOssCudaModelInner {
                     &layer_plan.hidden_norm_buffer,
                     &layer_plan.qkv_buffer,
                 )?;
+                submission.add_f32_in_place(
+                    &layer_plan.qkv_buffer,
+                    0,
+                    &layer.attention_qkv_bias_device,
+                    layer.attention_qkv_weight.total_rows(),
+                )?;
             }
-            submission.add_f32_in_place(
-                &layer_plan.qkv_buffer,
-                0,
-                &layer.attention_qkv_bias_device,
-                layer.attention_qkv_weight.total_rows(),
-            )?;
             if use_graph_attention {
                 submission.attention_decode_rope_cache_f16_kv_graph(
                     &layer_plan.qkv_buffer,
@@ -1926,6 +1927,7 @@ impl GptOssCudaModelInner {
                     layer.attention_output_weight.rows,
                     layer.attention_output_weight.columns,
                     &plan.vector_q8_1_buffer,
+                    None,
                     &layer_plan.projected_buffer,
                 )?;
             } else {
@@ -1939,17 +1941,10 @@ impl GptOssCudaModelInner {
                     &layer_plan.projected_buffer,
                 )?;
             }
-            if let Some(bias) = layer.attention_output_bias_device.as_ref() {
-                submission.add_f32_in_place(
-                    &layer_plan.projected_buffer,
-                    0,
-                    bias,
-                    layer.attention_output_weight.rows,
-                )?;
-            }
             submission.add_residual_rms_norm(
                 &layer_plan.projected_buffer,
                 current_hidden,
+                layer.attention_output_bias_device.as_ref(),
                 &layer.feed_forward_norm_device,
                 &layer_plan.projected_buffer,
                 &layer_plan.ffn_norm_buffer,
@@ -2007,6 +2002,7 @@ impl GptOssCudaModelInner {
                     selected_count,
                     &layer_plan.activated_q8_1_buffer,
                     layer.feed_forward_down_experts_bias_device.as_ref(),
+                    Some(&layer_plan.projected_buffer),
                     &layer_plan.moe_buffer,
                 )?;
             } else {
@@ -2036,15 +2032,10 @@ impl GptOssCudaModelInner {
                     selected_count,
                     &layer_plan.activated_buffer,
                     layer.feed_forward_down_experts_bias_device.as_ref(),
+                    Some(&layer_plan.projected_buffer),
                     &layer_plan.moe_buffer,
                 )?;
             }
-            submission.add_f32_in_place(
-                &layer_plan.moe_buffer,
-                0,
-                &layer_plan.projected_buffer,
-                hidden_size,
-            )?;
             let layer_ns = duration_ns(layer_start);
             let stage_ns = layer_ns / 3;
             perf.stage_timings.feed_forward_norm_ns = perf
@@ -2111,6 +2102,7 @@ impl GptOssCudaModelInner {
                 self.output.rows,
                 self.output.columns,
                 &plan.vector_q8_1_buffer,
+                None,
                 &plan.logits_buffer,
             )?;
         } else {

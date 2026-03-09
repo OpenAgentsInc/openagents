@@ -191,7 +191,11 @@ bench() {
 
   echo
   echo "=== $name ==="
-  "$@" &
+  if [[ "$name" == "psionic" ]]; then
+    env -u PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS "$@" &
+  else
+    "$@" &
+  fi
   SERVER_PID=$!
 
   wait_for_server "http://$HOST:$PORT/health"
