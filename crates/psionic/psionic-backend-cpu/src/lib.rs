@@ -1113,7 +1113,7 @@ fn dot_mxfp4_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
             "mxfp4 block dot requires 32 lhs values and 17 bytes",
         )));
     }
-    let scale = decode_e8m0_to_fp32_half(bytes[0]);
+    let scale = decode_e8m0_to_fp32_half(bytes[0]) * 0.5;
     let quants = &bytes[1..];
     let mut sum = 0.0;
     for (pair_index, quant) in quants.iter().copied().enumerate() {
@@ -1185,7 +1185,7 @@ fn decode_mxfp4_block_into(bytes: &[u8], output: &mut Vec<f32>) -> Result<(), Ru
             "mxfp4 block decode requires 17 bytes",
         )));
     }
-    let scale = decode_e8m0_to_fp32_half(bytes[0]);
+    let scale = decode_e8m0_to_fp32_half(bytes[0]) * 0.5;
     let quants = &bytes[1..];
     let start = output.len();
     output.resize(start + 32, 0.0);
@@ -1253,10 +1253,10 @@ fn decode_f16_le(low: u8, high: u8) -> f32 {
 }
 
 fn decode_e8m0_to_fp32_half(value: u8) -> f32 {
-    let bits = if value < 2 {
-        0x0020_0000_u32 << u32::from(value)
+    let bits = if value == 0 {
+        0x0040_0000_u32
     } else {
-        u32::from(value - 1) << 23
+        u32::from(value) << 23
     };
     f32::from_bits(bits)
 }

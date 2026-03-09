@@ -6955,7 +6955,7 @@ fn decode_mxfp4_blocks(
     const KVALUES: [i8; 16] = [0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12];
     let half_block = layout.elements_per_block / 2;
     decode_fixed_width_blocks(layout, bytes, 17, |block, output| {
-        let scale = decode_e8m0_to_fp32_half(block[0]);
+        let scale = decode_e8m0_to_fp32_half(block[0]) * 0.5;
         let start = output.len();
         output.resize(start + (half_block * 2), 0.0);
         for (j, packed) in block[1..17].iter().enumerate() {
@@ -7048,10 +7048,10 @@ fn quantization_from_block_bytes(bytes_per_block: usize) -> QuantizationMode {
 }
 
 fn decode_e8m0_to_fp32_half(value: u8) -> f32 {
-    let bits = if value < 2 {
-        0x0020_0000_u32 << u32::from(value)
+    let bits = if value == 0 {
+        0x0040_0000_u32
     } else {
-        u32::from(value - 1) << 23
+        u32::from(value) << 23
     };
     f32::from_bits(bits)
 }
