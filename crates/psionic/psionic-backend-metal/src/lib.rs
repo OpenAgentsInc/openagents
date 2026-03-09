@@ -20,13 +20,12 @@ use psionic_runtime::{
     BackendDegradedPolicy, BackendExtensionSupport, BackendName, BackendRuntimeResources,
     BackendSelection, BufferHandle, BufferResidency, BufferStorageKind, CacheAction, CacheKind,
     CacheObservation, CompilePathEvidence, CompilePathTemperature, DeviceDescriptor,
-    DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy,
-    ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, HealthStatus,
-    KvCacheAccounting, KvCachePageLayout, KvCacheState, PrefixCacheIdentity, PrefixCacheState,
-    RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
+    DeviceDiscovery, DeviceMemoryBudget, ExecutionBackend, ExecutionMetrics,
+    ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult,
+    HealthStatus, KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+    KvCachePageLayout, KvCacheState, PrefixCacheIdentity, PrefixCacheState, RuntimeError,
+    RuntimeHealth, ServedProductBackendPolicy,
 };
-#[cfg(target_os = "macos")]
-use psionic_runtime::{KernelCachePolicy, KernelCacheReport, KernelCacheState};
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "Metal backend discovery, allocation, and submission";
@@ -47,6 +46,13 @@ const METAL_KERNEL_CACHE_MAX_ENTRIES: usize = 1;
 const METAL_KERNEL_CACHE_MAX_CACHED_BYTES: u64 = 1 * 1024 * 1024;
 #[cfg(target_os = "macos")]
 const METAL_DENSE_PIPELINE_ESTIMATED_BYTES: u64 = 1 * 1024 * 1024;
+const METAL_TEXT_GENERATION_POOL_MAX_CACHED_BUFFERS: usize = 512;
+const METAL_TEXT_GENERATION_POOL_MAX_CACHED_BYTES: u64 = 512 * 1024 * 1024;
+#[cfg(target_os = "macos")]
+const METAL_TEXT_GENERATION_KERNEL_CACHE_MAX_ENTRIES: usize = 8;
+#[cfg(target_os = "macos")]
+const METAL_TEXT_GENERATION_KERNEL_CACHE_MAX_CACHED_BYTES: u64 = 64 * 1024 * 1024;
+const METAL_TEXT_GENERATION_MIN_AVAILABLE_BYTES: u64 = 128 * 1024 * 1024;
 
 /// Exact plan surface currently supported for the first accelerated
 /// `psionic.embeddings` milestone.
@@ -320,6 +326,59 @@ pub struct MetalAttentionGraphRuntime {
     reuse_count: usize,
     rebuild_count: usize,
     last_metrics: MetalGraphReuseMetrics,
+}
+
+/// Explicit allocator and kernel-cache policy for Metal token generation.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalTextGenerationRuntimePolicy {
+    /// Allocator-pool policy for token-generation workloads.
+    pub allocator_pool: AllocatorPoolPolicy,
+    /// Kernel-cache policy for token-generation workloads.
+    pub kernel_cache: KernelCachePolicy,
+    /// Minimum execution bytes required after reserved budgets, when known.
+    pub minimum_available_bytes: Option<u64>,
+}
+
+impl MetalTextGenerationRuntimePolicy {
+    /// Returns the default GPT-OSS-oriented Metal runtime policy.
+    #[must_use]
+    pub fn gpt_oss_default() -> Self {
+        Self {
+            allocator_pool: AllocatorPoolPolicy::exact_tensor_spec(
+                METAL_TEXT_GENERATION_POOL_MAX_CACHED_BUFFERS,
+                METAL_TEXT_GENERATION_POOL_MAX_CACHED_BYTES,
+            ),
+            kernel_cache: KernelCachePolicy::bounded(
+                METAL_TEXT_GENERATION_KERNEL_CACHE_MAX_ENTRIES,
+                Some(METAL_TEXT_GENERATION_KERNEL_CACHE_MAX_CACHED_BYTES),
+            ),
+            minimum_available_bytes: Some(METAL_TEXT_GENERATION_MIN_AVAILABLE_BYTES),
+        }
+    }
+}
+
+/// Observable admission decision for Metal token-generation runtime configuration.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalTextGenerationAdmission {
+    /// Whether the current runtime budgets admit token generation.
+    pub admitted: bool,
+    /// Memory-related refusal reason when admission failed.
+    pub refusal_reason: Option<String>,
+}
+
+/// Observable Metal token-generation runtime state.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalTextGenerationRuntimeResources {
+    /// Applied token-generation runtime policy.
+    pub policy: MetalTextGenerationRuntimePolicy,
+    /// Current allocator-pool report.
+    pub allocator_pool: AllocatorPoolReport,
+    /// Current kernel-cache report.
+    pub kernel_cache: KernelCacheReport,
+    /// Device-visible memory budget after applying runtime policies.
+    pub device_memory_budget: DeviceMemoryBudget,
+    /// Admission decision for the configured runtime.
+    pub admission: MetalTextGenerationAdmission,
 }
 
 /// Device-resident GPT-OSS KV cache mirror for the Metal backend.
@@ -725,6 +784,43 @@ impl MetalAllocatorPool {
             state: self.state.clone(),
         }
     }
+
+    fn set_policy(&mut self, policy: AllocatorPoolPolicy) {
+        self.policy = policy;
+        self.trim_to_policy();
+    }
+
+    fn trim_to_policy(&mut self) {
+        if self.policy.mode == AllocatorPoolMode::Disabled {
+            self.cached.clear();
+            self.state = AllocatorPoolState::default();
+            return;
+        }
+
+        let mut ordered_specs = self.cached.keys().cloned().collect::<Vec<_>>();
+        ordered_specs.sort_by_key(|spec| spec.storage_size());
+        while self.state.cached_buffers > self.policy.max_cached_buffers
+            || self.state.cached_bytes > self.policy.max_cached_bytes
+        {
+            let Some(spec) = ordered_specs.pop() else {
+                break;
+            };
+            let mut should_remove = false;
+            if let Some(entries) = self.cached.get_mut(&spec) {
+                if let Some(buffer) = entries.pop() {
+                    self.state.cached_buffers = self.state.cached_buffers.saturating_sub(1);
+                    self.state.cached_bytes = self
+                        .state
+                        .cached_bytes
+                        .saturating_sub(buffer_bytes(buffer.byte_len()));
+                }
+                should_remove = entries.is_empty();
+            }
+            if should_remove {
+                self.cached.remove(&spec);
+            }
+        }
+    }
 }
 
 #[cfg(target_os = "macos")]
@@ -759,6 +855,22 @@ impl MetalKernelCache {
             policy: self.policy.clone(),
             state: self.state.clone(),
         }
+    }
+
+    fn set_policy(&mut self, policy: KernelCachePolicy) {
+        self.policy = policy;
+        if !self.policy.enabled {
+            self.state = KernelCacheState::default();
+            return;
+        }
+        self.state.cached_entries = self
+            .state
+            .cached_entries
+            .min(self.policy.max_cached_entries);
+        self.state.cached_bytes = self
+            .state
+            .cached_bytes
+            .min(self.policy.max_cached_bytes.unwrap_or(u64::MAX));
     }
 }
 
@@ -818,6 +930,19 @@ impl MetalBackend {
     pub fn supports_flash_attention(&self) -> bool {
         self.selected_device()
             .is_some_and(device_supports_flash_attention)
+    }
+
+    /// Applies an explicit token-generation allocator and kernel-cache policy.
+    pub fn configure_text_generation_runtime(
+        &mut self,
+        policy: MetalTextGenerationRuntimePolicy,
+    ) -> Result<MetalTextGenerationRuntimeResources, RuntimeError> {
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        backend.configure_text_generation_runtime(policy)
     }
 
     fn selected_backend_mut(&mut self) -> Option<&mut AvailableMetalBackend> {
@@ -1173,6 +1298,9 @@ impl MetalBackend {
         &mut self,
         reserve: MetalAttentionGraphReserve,
     ) -> Result<MetalAttentionGraphRuntime, RuntimeError> {
+        let _ = self.configure_text_generation_runtime(
+            MetalTextGenerationRuntimePolicy::gpt_oss_default(),
+        )?;
         MetalAttentionGraphRuntime::new(self, reserve)
     }
 
@@ -1951,6 +2079,33 @@ impl AvailableMetalBackend {
         ))
     }
 
+    fn configure_text_generation_runtime(
+        &mut self,
+        policy: MetalTextGenerationRuntimePolicy,
+    ) -> Result<MetalTextGenerationRuntimeResources, RuntimeError> {
+        self.pool.set_policy(policy.allocator_pool.clone());
+        self.platform
+            .configure_kernel_cache_policy(policy.kernel_cache.clone());
+        let allocator_pool = self.pool.report();
+        let kernel_cache = self.platform.kernel_cache_report();
+        let device_memory_budget = self
+            .platform
+            .device_memory_budget(allocator_pool.policy.max_cached_bytes);
+        let admission = metal_text_generation_admission(
+            &policy,
+            &device_memory_budget,
+            &allocator_pool,
+            &kernel_cache,
+        );
+        Ok(MetalTextGenerationRuntimeResources {
+            policy,
+            allocator_pool,
+            kernel_cache,
+            device_memory_budget,
+            admission,
+        })
+    }
+
     fn allocate(&mut self, spec: &TensorSpec) -> Result<MetalBuffer, RuntimeError> {
         if spec.device().kind() != DeviceKind::Metal {
             return Err(RuntimeError::Backend(format!(
@@ -2577,6 +2732,49 @@ fn validate_decode_attention_shapes(
         )));
     }
     Ok(())
+}
+
+fn metal_text_generation_admission(
+    policy: &MetalTextGenerationRuntimePolicy,
+    device_memory_budget: &DeviceMemoryBudget,
+    allocator_pool: &AllocatorPoolReport,
+    kernel_cache: &KernelCacheReport,
+) -> MetalTextGenerationAdmission {
+    let reserved_bytes = allocator_pool.policy.max_cached_bytes.saturating_add(
+        kernel_cache
+            .policy
+            .max_cached_bytes
+            .unwrap_or(kernel_cache.state.cached_bytes),
+    );
+    let refusal_reason = if let Some(total_bytes) = device_memory_budget.total_bytes {
+        if reserved_bytes > total_bytes {
+            Some(format!(
+                "metal text-generation runtime reserves {} bytes, exceeding total device budget {}",
+                reserved_bytes, total_bytes
+            ))
+        } else {
+            policy.minimum_available_bytes.and_then(|minimum_available_bytes| {
+                device_memory_budget
+                    .available_execution_bytes
+                    .filter(|available| *available < minimum_available_bytes)
+                    .map(|available| {
+                        format!(
+                            "metal text-generation runtime reserves {} allocator bytes and {} kernel-cache bytes, leaving {} execution bytes below required {}",
+                            allocator_pool.policy.max_cached_bytes,
+                            kernel_cache.policy.max_cached_bytes.unwrap_or(kernel_cache.state.cached_bytes),
+                            available,
+                            minimum_available_bytes
+                        )
+                    })
+            })
+        }
+    } else {
+        None
+    };
+    MetalTextGenerationAdmission {
+        admitted: refusal_reason.is_none(),
+        refusal_reason,
+    }
 }
 
 fn validate_quantized_storage(
@@ -3530,9 +3728,9 @@ mod platform {
     };
     use psionic_core::{DType, Device, DeviceKind, QuantizationMode};
     use psionic_runtime::{
-        BufferHandle, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCacheReport,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeError,
-        RuntimeHealth,
+        BufferHandle, DeviceDescriptor, DeviceMemoryBudget, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, QuantizationExecution, QuantizationLoadPath, QuantizationSupport,
+        RuntimeError, RuntimeHealth,
     };
 
     use super::{
@@ -3845,6 +4043,13 @@ mod platform {
 
         pub(super) fn kernel_cache_report(&self) -> KernelCacheReport {
             self.kernel_cache.report()
+        }
+
+        pub(super) fn configure_kernel_cache_policy(&mut self, policy: KernelCachePolicy) {
+            if !policy.enabled {
+                self.pipelines = None;
+            }
+            self.kernel_cache.set_policy(policy);
         }
 
         pub(super) fn device_memory_budget(
@@ -4426,6 +4631,8 @@ mod platform {
             }
         }
 
+        pub(super) fn configure_kernel_cache_policy(&mut self, _policy: KernelCachePolicy) {}
+
         pub(super) fn device_memory_budget(
             &self,
             allocator_pool_budget_bytes: u64,
@@ -4969,6 +5176,69 @@ mod tests {
                 assert!(fallback.fallback_reason.is_some());
                 assert!(fallback.runtime_resources.is_some());
             }
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_configures_text_generation_runtime_policy_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let policy = super::MetalTextGenerationRuntimePolicy::gpt_oss_default();
+        let resources = backend.configure_text_generation_runtime(policy.clone())?;
+        assert_eq!(resources.policy, policy);
+        assert_eq!(resources.allocator_pool.policy, policy.allocator_pool);
+        assert_eq!(resources.kernel_cache.policy, policy.kernel_cache);
+        assert_eq!(
+            backend
+                .runtime_resources()
+                .expect("runtime resources")
+                .allocator_pool
+                .policy,
+            policy.allocator_pool
+        );
+        assert_eq!(
+            backend
+                .runtime_resources()
+                .expect("runtime resources")
+                .kernel_cache
+                .policy,
+            policy.kernel_cache
+        );
+        if let (Some(available), Some(required)) = (
+            resources.device_memory_budget.available_execution_bytes,
+            policy.minimum_available_bytes,
+        ) {
+            assert_eq!(resources.admission.admitted, available >= required);
+        }
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_reports_memory_refusal_when_text_generation_policy_exceeds_budget_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let policy = super::MetalTextGenerationRuntimePolicy {
+            allocator_pool: psionic_runtime::AllocatorPoolPolicy::exact_tensor_spec(1, u64::MAX),
+            kernel_cache: psionic_runtime::KernelCachePolicy::bounded(1, Some(u64::MAX)),
+            minimum_available_bytes: Some(u64::MAX),
+        };
+        let resources = backend.configure_text_generation_runtime(policy)?;
+        if resources.device_memory_budget.total_bytes.is_some() {
+            assert_eq!(resources.admission.admitted, false);
+            assert!(resources.admission.refusal_reason.is_some());
         }
         Ok(())
     }
