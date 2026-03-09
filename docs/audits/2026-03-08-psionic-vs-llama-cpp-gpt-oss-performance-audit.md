@@ -26,9 +26,17 @@
 > shared-quantize branch remains available only behind
 > `PSIONIC_GPT_OSS_EXPERIMENTAL_FUSED_SELECTED4_MOE_DOWN=1` for profiling, but
 > it is off by default because it loses on this host. This update also records
-> one small real win:
+> two small but real wins:
 > folding the greedy output-head argmax into the quantized q8_1 logits
-> projection lifted the exact HTTP benchmark to `92.45 tok/s`. This file is
+> projection lifted the exact HTTP benchmark to `92.45 tok/s`, and the newest
+> direct-attention-output checkpoint fused the f16-KV decode-attention output
+> directly into contiguous `Q8_1` blocks for the q8_1 attention-output
+> projection path. That moved the exact HTTP benchmark to `101.32 tok/s` and
+> cut the warm timed-request kernel-launch count from `9102` to `8214`, but
+> left step-wall time effectively flat at about `295.5 ms` for the `37`
+> generated tokens, which is strong evidence that the remaining gap is now in
+> the heavy projection, MoE, and attention dispatch itself rather than in
+> standalone quantize helpers. This file is
 > the current audit for the GPT-OSS throughput gap; later product truth still
 > lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
 > `crates/psionic/docs/ROADMAP.md`, and the referenced issues. The current
@@ -271,8 +279,48 @@ The visible output text matched exactly in the current benchmark:
     the exact benchmark regressed to `88.98 tok/s`, so that kernel shape was
     reverted
 
+### Current attention-output-q8_1 checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.365s`
+  - `101.32 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.224s`
+  - `187.13 tok/s`
+- Gap:
+  - `1.85x`
+- Psionic improvement over the original baseline:
+  - `6.05x`
+- Psionic improvement over the prior restored-default checkpoint:
+  - `1.10x`
+- What changed in this iteration:
+  - the f16-KV fused decode-attention kernels now have q8_1 output variants,
+    and the GPT-OSS CUDA path uses them whenever the attention-output
+    projection can consume a contiguous q8_1 activation buffer directly
+  - that removes the standalone `quantize_f32_to_q8_1(attention_buffer ->
+    vector_q8_1_buffer)` kernel from the attention-output lane on both the
+    regular and decode-graph paths
+- Warm timed-request receipt on the exact benchmark:
+  - `prefix_tokens_reused = 158`
+  - `step_count = 37`
+  - `kernel_launches = 8214`
+  - `host_to_device_bytes = 426832`
+  - `device_to_host_bytes = 296`
+  - `stage_timings.step_wall_ns = 295535840`
+- Interpretation:
+  - the launch count dropped materially from the prior `9102`, but decode-step
+    wall time stayed roughly flat, so the next real wins still need to come
+    from deeper `llama.cpp`-class dispatch and kernel parity rather than from
+    shaving more helper kernels around the edges
+
 ## New Findings From The Latest Iteration
 
+- another helper-kernel shave is no longer enough to explain the remaining
+  throughput gap.
+  - fusing decode-attention output directly into q8_1 storage removed another
+    `888` kernel launches from the warm timed request, but step-wall time held
+    near `295 ms` and the exact HTTP benchmark only moved into the
+    `~101 tok/s` range
 - CUDA decode-graph replay is still useful plumbing, but it is no longer the
   dominant limiter on this exact prompt.
   - disabling the graph fast path on warm repeated requests left per-token wall
