@@ -15,12 +15,15 @@
 > where `#3242` through `#3246` are closed and `#3249` / `#3247` / `#3248`
 > remain open, and after the latest live benchmark plus deeper
 > llama.cpp-alignment checkpoint showing that Psionic now runs the exact
-> GPT-OSS HTTP lane at about `68.43 tok/s` versus `168.72 tok/s` for
-> `llama.cpp` on this RTX 4080 host, with the MXFP4 correctness fixes,
-> expanded `Q8_1` fast-path routing, per-request CUDA graph replay, and the
-> new CUDA-side shared-prefix residency landed, but with the remaining gap now
-> concentrated in `llama.cpp`-class graph update, flash attention, and
-> MMQ/MMID kernel quality.
+> GPT-OSS HTTP lane in the mid/high-80s tok/s on this RTX 4080 host after
+> trimming the default OpenAI/Harmony hot path, with the MXFP4 correctness
+> fixes, expanded `Q8_1` fast-path routing, per-request CUDA graph replay, the
+> new CUDA-side shared-prefix residency, and default opt-in-only debug-field
+> serialization landed; the last clean same-machine `llama.cpp` oracle remains
+> about `167 tok/s`, while a newer control rerun was invalidated because an
+> external `dota2` process consumed enough GPU memory to force `llama.cpp` into
+> a `0`-layer CUDA offload path. The remaining gap is still concentrated in
+> `llama.cpp`-class graph update, flash attention, and MMQ/MMID kernel quality.
 >
 > This is the live roadmap for `crates/psionic/`. The generic phase-2/3/4 and
 > desktop-cutover baseline is now merged. The remaining work below is the gap
@@ -40,15 +43,17 @@
 > `psionic-gpt-oss-server` HTTP surface on NVIDIA. The remaining open roadmap work
 > on this host is no longer "make GPT-OSS run at all"; it is the active
 > throughput-parity track against `llama.cpp`. The latest direct-port
-> checkpoint plus the newer MXFP4 and fast-path fixes moved Psionic from the
-> mid-30s into the high-60s tok/s, but the benchmark contract still shows a
-> large remaining gap. `llama.cpp` serves the timed request with a live prompt
-> cache hit (`prompt eval time = 0.30 ms / 1 token`) and Psionic now keeps a
-> reusable CUDA shared-prefix mirror too, but the exact benchmark still only
-> reaches about `68.65 tok/s` versus `167.11 tok/s` for `llama.cpp`, so the
-> next work should bias toward `llama.cpp`'s MMQ/MMID execution path, graph
-> update, and flash attention rather than only more small local kernel
-> fusions.
+> checkpoint plus the newer MXFP4, fast-path, and OpenAI hot-path fixes moved
+> Psionic from the mid-30s into the mid/high-80s tok/s, but the benchmark
+> contract still shows a large remaining gap. `llama.cpp` serves the timed
+> request with a live prompt cache hit (`prompt eval time = 0.30 ms / 1 token`)
+> and Psionic now keeps a reusable CUDA shared-prefix mirror too, but the last
+> clean direct comparison still sits at roughly `86.95 tok/s` for Psionic
+> versus `167.11 tok/s` for `llama.cpp`. A newer `llama.cpp` rerun on this host
+> was invalid because an external `dota2` process consumed enough VRAM to force
+> `0` repeating layers onto CUDA. The next work should still bias toward
+> `llama.cpp`'s MMQ/MMID execution path, graph update, and flash attention
+> rather than only more small local kernel fusions.
 
 Agent execution instruction: implement this roadmap one issue at a time in the
 recommended dependency order listed here. Determine the next item from the

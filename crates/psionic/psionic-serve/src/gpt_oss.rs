@@ -902,6 +902,7 @@ fn run_cuda_generation_request(
                 &mut plan_cache_hits,
                 &mut plan_cache_misses,
             )?;
+            let step_start = Instant::now();
             let step = loaded_model.inner.forward_step_with_cuda_plan(
                 backend,
                 *token,
@@ -916,6 +917,11 @@ fn run_cuda_generation_request(
                 shared_prefix_eligible || request.session_id.is_some(),
             );
             let step = step?;
+            let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+            perf.stage_timings.step_wall_ns = perf
+                .stage_timings
+                .step_wall_ns
+                .saturating_add(duration_ns(step_start));
             kernel_count = kernel_count.saturating_add(step.kernel_count);
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
@@ -931,9 +937,15 @@ fn run_cuda_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
+        let sampling_start = Instant::now();
         let mut pending_token = sampler
             .select_next_token_from_history(&last_logits, &token_history)
             .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+        let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+        perf.stage_timings.sampling_ns = perf
+            .stage_timings
+            .sampling_ns
+            .saturating_add(duration_ns(sampling_start));
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
@@ -955,6 +967,7 @@ fn run_cuda_generation_request(
                 &mut plan_cache_hits,
                 &mut plan_cache_misses,
             )?;
+            let step_start = Instant::now();
             let step = loaded_model.inner.forward_step_with_cuda_plan(
                 backend,
                 pending_token,
@@ -973,6 +986,11 @@ fn run_cuda_generation_request(
                 request.session_id.is_some(),
             );
             let step = step?;
+            let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+            perf.stage_timings.step_wall_ns = perf
+                .stage_timings
+                .step_wall_ns
+                .saturating_add(duration_ns(step_start));
             kernel_count = kernel_count.saturating_add(step.kernel_count);
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
@@ -981,13 +999,19 @@ fn run_cuda_generation_request(
             }
             token_history.push(pending_token.as_u32());
 
-            if super::truncate_generated_text(
+            let stop_check_start = Instant::now();
+            let stop_hit = super::truncate_generated_text(
                 loaded_model.tokenizer(),
                 &mut generated_tokens,
                 &request.options.stop_sequences,
             )
-            .is_some()
-            {
+            .is_some();
+            let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+            perf.stage_timings.stop_check_ns = perf
+                .stage_timings
+                .stop_check_ns
+                .saturating_add(duration_ns(stop_check_start));
+            if stop_hit {
                 break super::TerminationReason::EndOfSequence;
             }
 
@@ -995,9 +1019,15 @@ fn run_cuda_generation_request(
                 pending_token = token;
             } else {
                 last_logits = step.logits;
+                let sampling_start = Instant::now();
                 pending_token = sampler
                     .select_next_token_from_history(&last_logits, &token_history)
                     .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+                let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+                perf.stage_timings.sampling_ns = perf
+                    .stage_timings
+                    .sampling_ns
+                    .saturating_add(duration_ns(sampling_start));
             }
         };
 
@@ -1341,6 +1371,11 @@ pub struct CudaGgufGptOssGenerationModel {
     inner: Arc<GptOssCudaModelInner>,
 }
 
+#[derive(Debug, Default)]
+struct CudaF16MirrorState {
+    disabled: bool,
+}
+
 impl CudaGgufGptOssGenerationModel {
     pub fn from_gguf_path(
         path: impl AsRef<Path>,
@@ -1369,20 +1404,23 @@ impl CudaGgufGptOssGenerationModel {
                 message: format!("failed to build gpt-oss tokenizer: {error}"),
             }
         })?;
+        let mut f16_mirror_state = CudaF16MirrorState::default();
         let output = if let Some(output) = adapter.tensor_layout().output.as_ref() {
-            load_cuda_quantized_matrix(backend, &artifact, output)?
+            load_cuda_quantized_matrix(backend, &artifact, output, false, &mut f16_mirror_state)?
         } else {
             load_cuda_quantized_matrix(
                 backend,
                 &artifact,
                 adapter.tensor_layout().token_embedding.as_str(),
+                false,
+                &mut f16_mirror_state,
             )?
         };
         let layers = adapter
             .tensor_layout()
             .layers
             .iter()
-            .map(|layer| GptOssCudaLayer::load(backend, &artifact, layer))
+            .map(|layer| GptOssCudaLayer::load(backend, &artifact, layer, &mut f16_mirror_state))
             .collect::<Result<Vec<_>, _>>()?;
         let output_norm =
             load_dense_vector(&artifact, adapter.tensor_layout().output_norm.as_str())?;
@@ -1548,6 +1586,7 @@ struct GptOssCudaStepPlan {
     hidden_buffer: CudaBuffer,
     decode_params_buffer: CudaBuffer,
     vector_q8_1_buffer: CudaBuffer,
+    vector_f16_buffer: CudaBuffer,
     layers: Vec<GptOssCudaStepPlanLayer>,
     final_norm_buffer: CudaBuffer,
     logits_buffer: CudaBuffer,
@@ -1659,6 +1698,7 @@ impl GptOssCudaModelInner {
             hidden_buffer: backend.f32_buffer(hidden_size)?,
             decode_params_buffer: backend.i32_buffer(2)?,
             vector_q8_1_buffer: backend.byte_buffer(&vec![0_u8; vector_q8_1_bytes])?,
+            vector_f16_buffer: backend.f16_buffer(vector_q8_1_columns)?,
             layers,
             final_norm_buffer: backend.f32_buffer(hidden_size)?,
             logits_buffer: backend.f32_buffer(self.output.rows)?,
@@ -1727,7 +1767,21 @@ impl GptOssCudaModelInner {
                 hidden_size,
                 self.family_metadata.rms_norm_epsilon,
             )?;
-            if can_use_q8_1_mmvq(layer.attention_qkv_weight.mode) {
+            if let Some(transposed_f16) = layer.attention_qkv_weight.transposed_f16.as_ref() {
+                submission.cast_f32_to_f16(
+                    &layer_plan.hidden_norm_buffer,
+                    &plan.vector_f16_buffer,
+                    hidden_size,
+                )?;
+                submission.matmul_f16_to_f32(
+                    &plan.vector_f16_buffer,
+                    transposed_f16,
+                    &layer_plan.qkv_buffer,
+                    1,
+                    layer.attention_qkv_weight.columns,
+                    layer.attention_qkv_weight.total_rows(),
+                )?;
+            } else if can_use_q8_1_mmvq(layer.attention_qkv_weight.mode) {
                 submission.quantize_f32_to_q8_1(
                     &layer_plan.hidden_norm_buffer,
                     1,
@@ -1808,7 +1862,21 @@ impl GptOssCudaModelInner {
                     &layer_plan.attention_buffer,
                 )?;
             }
-            if can_use_q8_1_mmvq(layer.attention_output_weight.mode) {
+            if let Some(transposed_f16) = layer.attention_output_weight.transposed_f16.as_ref() {
+                submission.cast_f32_to_f16(
+                    &layer_plan.attention_buffer,
+                    &plan.vector_f16_buffer,
+                    layer.attention_output_weight.columns,
+                )?;
+                submission.matmul_f16_to_f32(
+                    &plan.vector_f16_buffer,
+                    transposed_f16,
+                    &layer_plan.projected_buffer,
+                    1,
+                    layer.attention_output_weight.columns,
+                    layer.attention_output_weight.rows,
+                )?;
+            } else if can_use_q8_1_mmvq(layer.attention_output_weight.mode) {
                 submission.quantize_f32_to_q8_1(
                     &layer_plan.attention_buffer,
                     1,
@@ -1979,7 +2047,21 @@ impl GptOssCudaModelInner {
             hidden_size,
             self.family_metadata.rms_norm_epsilon,
         )?;
-        if can_use_q8_1_mmvq(self.output.mode) {
+        if let Some(transposed_f16) = self.output.transposed_f16.as_ref() {
+            submission.cast_f32_to_f16(
+                &plan.final_norm_buffer,
+                &plan.vector_f16_buffer,
+                self.output.columns,
+            )?;
+            submission.matmul_f16_to_f32(
+                &plan.vector_f16_buffer,
+                transposed_f16,
+                &plan.logits_buffer,
+                1,
+                self.output.columns,
+                self.output.rows,
+            )?;
+        } else if can_use_q8_1_mmvq(self.output.mode) {
             submission.quantize_f32_to_q8_1(
                 &plan.final_norm_buffer,
                 1,
@@ -2458,6 +2540,7 @@ impl GptOssCudaLayer {
         backend: &mut CudaBackend,
         artifact: &GgufBlobArtifact,
         layout: &GgufDecoderLayerTensorLayout,
+        f16_mirror_state: &mut CudaF16MirrorState,
     ) -> Result<Self, ModelLoadError> {
         let attention_norm = load_dense_vector(artifact, layout.attention_norm.as_str())?;
         let attention_norm_device = upload_cuda_f32_buffer(
@@ -2581,6 +2664,8 @@ impl GptOssCudaLayer {
                     layout.attention_key_weight.as_str(),
                     layout.attention_value_weight.as_str(),
                 ],
+                false,
+                f16_mirror_state,
             )?,
             attention_qkv_bias_device,
             attention_query_bias,
@@ -2590,6 +2675,8 @@ impl GptOssCudaLayer {
                 backend,
                 artifact,
                 layout.attention_output_weight.as_str(),
+                false,
+                f16_mirror_state,
             )?,
             attention_output_bias,
             attention_output_bias_device,
@@ -3178,6 +3265,7 @@ impl QuantizedMatrix {
 #[derive(Clone, Debug)]
 struct CudaQuantizedMatrix {
     storage: CudaBuffer,
+    transposed_f16: Option<CudaBuffer>,
     mode: QuantizationMode,
     rows: usize,
     columns: usize,
@@ -3240,6 +3328,7 @@ fn split_projection_outputs(
 #[derive(Clone, Debug)]
 struct CudaQuantizedProjectionGroup {
     storage: CudaBuffer,
+    transposed_f16: Option<CudaBuffer>,
     mode: QuantizationMode,
     rows_per_projection: Vec<usize>,
     columns: usize,
@@ -3687,6 +3776,8 @@ fn load_cuda_quantized_matrix(
     backend: &mut CudaBackend,
     artifact: &GgufBlobArtifact,
     name: &str,
+    build_f16_mirror: bool,
+    f16_mirror_state: &mut CudaF16MirrorState,
 ) -> Result<CudaQuantizedMatrix, ModelLoadError> {
     let storage = artifact.paged_tensor(name)?;
     let metadata = storage.metadata();
@@ -3705,13 +3796,24 @@ fn load_cuda_quantized_matrix(
         name: tensor_name,
         dtype: String::from("quantized"),
     })?;
-    quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
+    let row_byte_len = quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
         ModelLoadError::InvalidQuantizedTensorShape {
             quantization,
             shape: dims.clone(),
         }
     })?;
     let bytes = storage.bytes()?;
+    let transposed_f16 = try_build_cuda_transposed_f16_mirror(
+        backend,
+        name,
+        quantization,
+        *rows,
+        *columns,
+        row_byte_len,
+        bytes,
+        build_f16_mirror,
+        f16_mirror_state,
+    )?;
     Ok(CudaQuantizedMatrix {
         storage: backend
             .byte_buffer(bytes)
@@ -3719,10 +3821,66 @@ fn load_cuda_quantized_matrix(
                 format: String::from("gguf"),
                 message: format!("failed to upload `{name}` to cuda: {error}"),
             })?,
+        transposed_f16,
         mode: quantization,
         rows: *rows,
         columns: *columns,
     })
+}
+
+fn decode_quantized_matrix_bytes_transposed_f16(
+    mode: QuantizationMode,
+    rows: usize,
+    columns: usize,
+    row_byte_len: usize,
+    bytes: &[u8],
+    name: &str,
+) -> Result<Vec<u8>, ModelLoadError> {
+    let expected_bytes = rows.saturating_mul(row_byte_len);
+    if bytes.len() != expected_bytes {
+        return Err(ModelLoadError::ArtifactFormat {
+            format: String::from("gguf"),
+            message: format!(
+                "quantized tensor `{name}` byte length mismatch while building f16 transpose: expected {expected_bytes}, actual {}",
+                bytes.len()
+            ),
+        });
+    }
+    let mut transposed = vec![
+        0_u8;
+        rows.saturating_mul(columns)
+            .saturating_mul(std::mem::size_of::<u16>())
+    ];
+    let mut decoded_row = Vec::with_capacity(columns);
+    for (row_index, row_bytes) in bytes.chunks_exact(row_byte_len).enumerate() {
+        decoded_row.clear();
+        decode_quantized_row_into(mode, row_bytes, &mut decoded_row).map_err(|error| {
+            ModelLoadError::ArtifactFormat {
+                format: String::from("gguf"),
+                message: format!(
+                    "failed to decode quantized tensor `{name}` while building f16 transpose: {error}"
+                ),
+            }
+        })?;
+        if decoded_row.len() != columns {
+            return Err(ModelLoadError::ArtifactFormat {
+                format: String::from("gguf"),
+                message: format!(
+                    "quantized tensor `{name}` decode width mismatch while building f16 transpose: expected {columns}, actual {}",
+                    decoded_row.len()
+                ),
+            });
+        }
+        for (column_index, value) in decoded_row.iter().copied().enumerate() {
+            let offset = column_index
+                .saturating_mul(rows)
+                .saturating_add(row_index)
+                .saturating_mul(std::mem::size_of::<u16>());
+            transposed[offset..offset + std::mem::size_of::<u16>()]
+                .copy_from_slice(&f32_to_f16_bits(value).to_le_bytes());
+        }
+    }
+    Ok(transposed)
 }
 
 #[cfg(test)]
@@ -3770,6 +3928,44 @@ fn decode_quantized_matrix_bytes_transposed_f32(
         }
     }
     Ok(transposed)
+}
+
+fn try_build_cuda_transposed_f16_mirror(
+    backend: &mut CudaBackend,
+    name: &str,
+    mode: QuantizationMode,
+    rows: usize,
+    columns: usize,
+    row_byte_len: usize,
+    bytes: &[u8],
+    build_f16_mirror: bool,
+    f16_mirror_state: &mut CudaF16MirrorState,
+) -> Result<Option<CudaBuffer>, ModelLoadError> {
+    if !build_f16_mirror
+        || f16_mirror_state.disabled
+        || mode != QuantizationMode::GgmlQ8_0
+    {
+        return Ok(None);
+    }
+    let transposed = decode_quantized_matrix_bytes_transposed_f16(
+        mode,
+        rows,
+        columns,
+        row_byte_len,
+        bytes,
+        name,
+    )?;
+    match backend.byte_buffer(transposed.as_slice()) {
+        Ok(buffer) => Ok(Some(buffer)),
+        Err(error) if error.to_string().contains("out of memory") => {
+            f16_mirror_state.disabled = true;
+            Ok(None)
+        }
+        Err(error) => Err(ModelLoadError::ArtifactFormat {
+            format: String::from("gguf"),
+            message: format!("failed to upload f16 transpose mirror for `{name}` to cuda: {error}"),
+        }),
+    }
 }
 
 fn load_quantized_expert_tensor(
@@ -3857,9 +4053,12 @@ fn load_cuda_quantized_projection_group(
     backend: &mut CudaBackend,
     artifact: &GgufBlobArtifact,
     names: &[&str],
+    build_f16_mirror: bool,
+    f16_mirror_state: &mut CudaF16MirrorState,
 ) -> Result<CudaQuantizedProjectionGroup, ModelLoadError> {
     let mut mode = None;
     let mut columns = None;
+    let mut row_byte_len = None;
     let mut rows_per_projection = Vec::with_capacity(names.len());
     let mut projection_bytes = Vec::with_capacity(names.len());
     for name in names {
@@ -3880,7 +4079,7 @@ fn load_cuda_quantized_projection_group(
             name: tensor_name,
             dtype: String::from("quantized"),
         })?;
-        quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
+        let projection_row_byte_len = quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
             ModelLoadError::InvalidQuantizedTensorShape {
                 quantization,
                 shape: dims.clone(),
@@ -3910,6 +4109,18 @@ fn load_cuda_quantized_projection_group(
         } else {
             columns = Some(*projection_columns);
         }
+        if let Some(expected_row_byte_len) = row_byte_len {
+            if expected_row_byte_len != projection_row_byte_len {
+                return Err(ModelLoadError::ArtifactFormat {
+                    format: String::from("gguf"),
+                    message: format!(
+                        "packed cuda projection group requires matching row layout, `{name}` had row byte length {projection_row_byte_len} but expected {expected_row_byte_len}"
+                    ),
+                });
+            }
+        } else {
+            row_byte_len = Some(projection_row_byte_len);
+        }
         rows_per_projection.push(*rows);
         projection_bytes.push(storage.bytes()?.to_vec());
     }
@@ -3934,6 +4145,13 @@ fn load_cuda_quantized_projection_group(
             names.join(", ")
         ),
     })?;
+    let row_byte_len = row_byte_len.ok_or_else(|| ModelLoadError::ArtifactFormat {
+        format: String::from("gguf"),
+        message: format!(
+            "packed cuda projection group did not resolve a row layout for `{}`",
+            names.join(", ")
+        ),
+    })?;
     let storage =
         backend
             .byte_buffer(packed.as_slice())
@@ -3945,6 +4163,20 @@ fn load_cuda_quantized_projection_group(
                 ),
             })?;
     Ok(CudaQuantizedProjectionGroup {
+        transposed_f16: try_build_cuda_transposed_f16_mirror(
+            backend,
+            names.join(", ").as_str(),
+            mode,
+            rows_per_projection
+                .iter()
+                .copied()
+                .fold(0usize, usize::saturating_add),
+            columns,
+            row_byte_len,
+            packed.as_slice(),
+            build_f16_mirror,
+            f16_mirror_state,
+        )?,
         storage,
         mode,
         rows_per_projection,

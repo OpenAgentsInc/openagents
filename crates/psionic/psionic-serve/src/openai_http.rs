@@ -1,6 +1,7 @@
 use std::{
     collections::BTreeSet,
     convert::Infallible,
+    env,
     net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
     sync::{
@@ -36,13 +37,18 @@ use tokio_stream::iter;
 
 use crate::{
     CudaGgufGptOssTextGenerationService, CudaGptOssTextGenerationError, DecodeStrategy,
-    DecoderModelDescriptor, GenerationOptions, GenerationRequest, GgufDecoderAdapterLoader,
-    GptOssPerformanceMetrics, PromptRenderError, TerminationReason, TextGenerationExecutor,
+    DecoderModelDescriptor, GenerationMetrics, GenerationOptions, GenerationRequest,
+    GgufDecoderAdapterLoader, GptOssPerformanceMetrics, PromptRenderError, TerminationReason,
+    TextGenerationExecutor,
 };
 
 const DEFAULT_MAX_TOKENS: usize = 256;
 const HARMONY_RETURN_STOP: &str = "<|return|>";
 const HARMONY_CALL_STOP: &str = "<|call|>";
+const HARMONY_START_TOKEN: &str = "<|start|>";
+const HARMONY_END_TOKEN: &str = "<|end|>";
+const HARMONY_MESSAGE_TOKEN: &str = "<|message|>";
+const HARMONY_CHANNEL_TOKEN: &str = "<|channel|>";
 
 #[derive(Clone, Debug)]
 pub struct GptOssOpenAiCompatConfig {
@@ -88,6 +94,7 @@ struct GptOssCudaOpenAiCompatState {
     prompt_options: PromptRenderOptions,
     default_model_name: String,
     accepted_model_names: BTreeSet<String>,
+    include_psionic_fields: bool,
     request_counter: AtomicU64,
 }
 
@@ -110,6 +117,10 @@ impl GptOssCudaOpenAiCompatServer {
                 ..Default::default()
             }),
         };
+        let include_psionic_fields = env::var("PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS")
+            .ok()
+            .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+            .unwrap_or(false);
         Ok(Self {
             state: Arc::new(GptOssCudaOpenAiCompatState {
                 worker: GptOssCudaWorker::spawn(config.model_path.clone())?,
@@ -117,6 +128,7 @@ impl GptOssCudaOpenAiCompatServer {
                 prompt_options,
                 default_model_name,
                 accepted_model_names,
+                include_psionic_fields,
                 request_counter: AtomicU64::new(1),
             }),
         })
@@ -371,14 +383,18 @@ async fn handle_chat_completions(
     );
 
     let response = state.worker.generate(generation_request).await?;
-    let parsed = parse_gpt_oss_harmony_tokens(
-        response.output.tokens.as_slice(),
-        GptOssHarmonyParseOptions {
-            role_hint: Some(PromptMessageRole::Assistant),
-            strict: false,
-        },
-    )
-    .ok();
+    let parsed = if state.include_psionic_fields {
+        parse_gpt_oss_harmony_tokens(
+            response.output.tokens.as_slice(),
+            GptOssHarmonyParseOptions {
+                role_hint: Some(PromptMessageRole::Assistant),
+                strict: false,
+            },
+        )
+        .ok()
+    } else {
+        None
+    };
     let choice = completion_choice(&response, parsed.clone());
     if request.stream {
         let terminal_chunk = completion_terminal_chunk(
@@ -407,7 +423,11 @@ async fn handle_chat_completions(
         return Ok(Sse::new(iter(events)).into_response());
     }
 
-    let psionic_harmony = parsed;
+    let psionic_harmony = if state.include_psionic_fields {
+        parsed
+    } else {
+        None
+    };
     let full_choice = choice.into_full_choice();
     Ok(Json(ChatCompletionResponse {
         id: request_id,
@@ -420,8 +440,14 @@ async fn handle_chat_completions(
             completion_tokens: response.usage.output_tokens,
             total_tokens: response.usage.input_tokens + response.usage.output_tokens,
         },
+        psionic_metrics: state
+            .include_psionic_fields
+            .then(|| response.metrics.clone()),
         psionic_harmony,
-        psionic_perf: response.metrics.gpt_oss_perf.clone(),
+        psionic_perf: state
+            .include_psionic_fields
+            .then(|| response.metrics.gpt_oss_perf.clone())
+            .flatten(),
     })
     .into_response())
 }
@@ -434,6 +460,8 @@ struct ChatCompletionResponse {
     model: String,
     choices: Vec<ChatCompletionChoice>,
     usage: ChatCompletionUsage,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_metrics: Option<GenerationMetrics>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_harmony: Option<GptOssHarmonyParsedOutput>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -508,9 +536,8 @@ fn completion_choice(
     response: &crate::GenerationResponse,
     parsed: Option<GptOssHarmonyParsedOutput>,
 ) -> ParsedCompletionChoice {
-    let content = parsed
-        .as_ref()
-        .and_then(final_assistant_content)
+    let content = fast_final_assistant_content(response.output.text.as_str())
+        .or_else(|| parsed.as_ref().and_then(final_assistant_content))
         .unwrap_or_else(|| response.output.text.clone());
     ParsedCompletionChoice {
         content,
@@ -660,6 +687,30 @@ fn final_assistant_content(parsed: &GptOssHarmonyParsedOutput) -> Option<String>
         .map(|message| message.content.clone())
 }
 
+fn fast_final_assistant_content(text: &str) -> Option<String> {
+    let assistant_start = text.rfind(HARMONY_START_TOKEN)?;
+    let assistant_header = &text[assistant_start..];
+    if !assistant_header.starts_with("<|start|>assistant") {
+        return None;
+    }
+    let message_offset = assistant_header.find(HARMONY_MESSAGE_TOKEN)?;
+    let header = &assistant_header[..message_offset];
+    if let Some(channel_offset) = header.find(HARMONY_CHANNEL_TOKEN) {
+        let channel = &header[channel_offset + HARMONY_CHANNEL_TOKEN.len()..];
+        if channel.trim() != "final" {
+            return None;
+        }
+    }
+    let content_start = assistant_start + message_offset + HARMONY_MESSAGE_TOKEN.len();
+    let content_tail = &text[content_start..];
+    let content_end = [HARMONY_END_TOKEN, HARMONY_RETURN_STOP, HARMONY_CALL_STOP]
+        .iter()
+        .filter_map(|marker| content_tail.find(marker))
+        .min()
+        .unwrap_or(content_tail.len());
+    Some(content_tail[..content_end].to_string())
+}
+
 fn validate_requested_model(
     requested: Option<&str>,
     accepted_model_names: &BTreeSet<String>,
@@ -719,8 +770,8 @@ struct OpenAiErrorBody {
 mod tests {
     use super::{
         ChatCompletionMessage, ChatCompletionRequest, HARMONY_CALL_STOP, HARMONY_RETURN_STOP,
-        chat_messages_to_prompt_messages, ensure_harmony_stop_sequences, final_assistant_content,
-        generation_options_from_chat_request,
+        chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
+        fast_final_assistant_content, final_assistant_content, generation_options_from_chat_request,
     };
     use psionic_models::{
         GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, PromptMessage, PromptMessageRole,
@@ -791,6 +842,18 @@ mod tests {
         };
 
         assert_eq!(final_assistant_content(&parsed).as_deref(), Some("323"));
+    }
+
+    #[test]
+    fn fast_final_assistant_content_extracts_final_channel() {
+        let text = "<|start|>assistant<|channel|>analysis<|message|>thinking<|end|><|start|>assistant<|channel|>final<|message|>323<|end|>";
+        assert_eq!(fast_final_assistant_content(text).as_deref(), Some("323"));
+    }
+
+    #[test]
+    fn fast_final_assistant_content_ignores_non_final_channel() {
+        let text = "<|start|>assistant<|channel|>analysis<|message|>thinking<|end|>";
+        assert_eq!(fast_final_assistant_content(text), None);
     }
 
     #[test]
