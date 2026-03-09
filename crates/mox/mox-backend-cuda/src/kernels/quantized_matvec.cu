@@ -6,6 +6,8 @@ namespace {
 
 constexpr int kBlockSize = 256;
 constexpr int kAttentionMaxPositions = 513;
+constexpr int kMoeMaxExperts = 128;
+constexpr int kMoeMaxSelected = 32;
 
 __device__ __forceinline__ float half_to_float(uint16_t bits) {
     const uint32_t sign = static_cast<uint32_t>(bits & 0x8000u) << 16;
@@ -63,6 +65,20 @@ __device__ __forceinline__ float mxfp4_value(uint8_t nibble) {
         case 0xf: return -12.0f;
         default: return 0.0f;
     }
+}
+
+__device__ __forceinline__ float reduce_block_sum(float value, float *scratch) {
+    scratch[threadIdx.x] = value;
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+        if (threadIdx.x < offset) {
+            scratch[threadIdx.x] += scratch[threadIdx.x + offset];
+        }
+        __syncthreads();
+    }
+
+    return scratch[0];
 }
 
 template <typename DotFn>
@@ -331,6 +347,212 @@ __global__ void attention_decode_kernel(
     }
 }
 
+__global__ void router_topk_softmax_kernel(
+    const float *weights,
+    const float *bias,
+    const float *input,
+    int expert_count,
+    int input_size,
+    int top_k,
+    int32_t *selected_ids,
+    float *selected_weights
+) {
+    __shared__ float scratch[kBlockSize];
+    __shared__ float logits[kMoeMaxExperts];
+
+    expert_count = min(expert_count, kMoeMaxExperts);
+    top_k = min(top_k, min(expert_count, kMoeMaxSelected));
+
+    for (int expert = 0; expert < expert_count; ++expert) {
+        const float *row = weights + static_cast<size_t>(expert) * static_cast<size_t>(input_size);
+        float partial = 0.0f;
+        for (int index = threadIdx.x; index < input_size; index += blockDim.x) {
+            partial += row[index] * input[index];
+        }
+        const float reduced = reduce_block_sum(partial, scratch);
+        if (threadIdx.x == 0) {
+            logits[expert] = reduced + (bias != nullptr ? bias[expert] : 0.0f);
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    float top_values[kMoeMaxSelected];
+    int top_indices[kMoeMaxSelected];
+    for (int index = 0; index < top_k; ++index) {
+        top_values[index] = -INFINITY;
+        top_indices[index] = -1;
+    }
+
+    for (int expert = 0; expert < expert_count; ++expert) {
+        const float value = logits[expert];
+        int insert_at = top_k;
+        for (int slot = 0; slot < top_k; ++slot) {
+            if (value > top_values[slot] ||
+                (value == top_values[slot] && (top_indices[slot] < 0 || expert < top_indices[slot]))) {
+                insert_at = slot;
+                break;
+            }
+        }
+        if (insert_at >= top_k) {
+            continue;
+        }
+        for (int slot = top_k - 1; slot > insert_at; --slot) {
+            top_values[slot] = top_values[slot - 1];
+            top_indices[slot] = top_indices[slot - 1];
+        }
+        top_values[insert_at] = value;
+        top_indices[insert_at] = expert;
+    }
+
+    float max_value = -INFINITY;
+    for (int slot = 0; slot < top_k; ++slot) {
+        max_value = fmaxf(max_value, top_values[slot]);
+    }
+
+    float denom = 0.0f;
+    for (int slot = 0; slot < top_k; ++slot) {
+        const float weight = expf(top_values[slot] - max_value);
+        selected_weights[slot] = weight;
+        denom += weight;
+    }
+    if (denom != 0.0f) {
+        for (int slot = 0; slot < top_k; ++slot) {
+            selected_weights[slot] /= denom;
+        }
+    }
+    for (int slot = 0; slot < top_k; ++slot) {
+        selected_ids[slot] = top_indices[slot];
+    }
+}
+
+__global__ void moe_gate_up_swiglu_kernel(
+    const uint8_t *weights,
+    int mode,
+    int row_stride,
+    int rows_per_expert,
+    int columns,
+    int gate_rows,
+    int up_rows,
+    const int32_t *selected_ids,
+    int selected_count,
+    const float *input,
+    const float *gate_bias,
+    const float *up_bias,
+    float *output
+) {
+    const int row = static_cast<int>(blockIdx.x);
+    const int selected_slot = static_cast<int>(blockIdx.y);
+    if (selected_slot >= selected_count || row >= gate_rows || row >= up_rows) {
+        return;
+    }
+
+    const int expert_id = selected_ids[selected_slot];
+    const size_t gate_row_offset =
+        (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) + static_cast<size_t>(row)) *
+        static_cast<size_t>(row_stride);
+    const size_t up_row_offset =
+        (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) + static_cast<size_t>(gate_rows + row)) *
+        static_cast<size_t>(row_stride);
+    const uint8_t *gate_row = weights + gate_row_offset;
+    const uint8_t *up_row = weights + up_row_offset;
+
+    float gate_partial = 0.0f;
+    float up_partial = 0.0f;
+    if (mode == 0) {
+        const Q80Dot dot{};
+        for (int index = threadIdx.x; index < columns; index += blockDim.x) {
+            const float in = input[index];
+            gate_partial += dot(gate_row, index, in);
+            up_partial += dot(up_row, index, in);
+        }
+    } else {
+        const Mxfp4Dot dot{};
+        for (int index = threadIdx.x; index < columns; index += blockDim.x) {
+            const float in = input[index];
+            gate_partial += dot(gate_row, index, in);
+            up_partial += dot(up_row, index, in);
+        }
+    }
+
+    __shared__ float scratch_gate[kBlockSize];
+    __shared__ float scratch_up[kBlockSize];
+    const float gate_sum = reduce_block_sum(gate_partial, scratch_gate);
+    const float up_sum = reduce_block_sum(up_partial, scratch_up);
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    const float gate = gate_sum + (gate_bias != nullptr ? gate_bias[expert_id * gate_rows + row] : 0.0f);
+    const float up = up_sum + (up_bias != nullptr ? up_bias[expert_id * up_rows + row] : 0.0f);
+    const float x = fminf(gate, 7.0f);
+    const float y = fminf(fmaxf(up, -7.0f), 7.0f);
+    const float out_glu = x / (1.0f + expf(1.702f * -x));
+    output[selected_slot * gate_rows + row] = out_glu * (y + 1.0f);
+}
+
+__global__ void moe_down_aggregate_kernel(
+    const uint8_t *weights,
+    int mode,
+    int row_stride,
+    int rows,
+    int columns,
+    const int32_t *selected_ids,
+    const float *selected_weights,
+    int selected_count,
+    const float *activated,
+    const float *bias,
+    float *output
+) {
+    const int row = static_cast<int>(blockIdx.x);
+    if (row >= rows) {
+        return;
+    }
+
+    __shared__ float scratch[kBlockSize];
+    __shared__ float total;
+    if (threadIdx.x == 0) {
+        total = 0.0f;
+    }
+    __syncthreads();
+
+    for (int selected_slot = 0; selected_slot < selected_count; ++selected_slot) {
+        const int expert_id = selected_ids[selected_slot];
+        const uint8_t *row_weights = weights + (
+            static_cast<size_t>(expert_id) * static_cast<size_t>(rows) + static_cast<size_t>(row)
+        ) * static_cast<size_t>(row_stride);
+        const float *expert_input = activated + static_cast<size_t>(selected_slot) * static_cast<size_t>(columns);
+
+        float partial = 0.0f;
+        if (mode == 0) {
+            const Q80Dot dot{};
+            for (int index = threadIdx.x; index < columns; index += blockDim.x) {
+                partial += dot(row_weights, index, expert_input[index]);
+            }
+        } else {
+            const Mxfp4Dot dot{};
+            for (int index = threadIdx.x; index < columns; index += blockDim.x) {
+                partial += dot(row_weights, index, expert_input[index]);
+            }
+        }
+
+        const float reduced = reduce_block_sum(partial, scratch);
+        if (threadIdx.x == 0) {
+            const float expert_value =
+                reduced + (bias != nullptr ? bias[expert_id * rows + row] : 0.0f);
+            total += expert_value * selected_weights[selected_slot];
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x == 0) {
+        output[row] = total;
+    }
+}
+
 }  // namespace
 
 extern "C" int mox_cuda_quantized_kernels_compiled(void) {
@@ -481,6 +703,95 @@ extern "C" int mox_cuda_attention_decode(
         kv_head_count,
         head_dim,
         static_cast<const float *>(attention_sinks),
+        static_cast<float *>(output)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int mox_cuda_router_topk_softmax(
+    const void *weights,
+    const void *bias,
+    const void *input,
+    int expert_count,
+    int input_size,
+    int top_k,
+    void *selected_ids,
+    void *selected_weights,
+    void *stream
+) {
+    router_topk_softmax_kernel<<<1, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const float *>(weights),
+        static_cast<const float *>(bias),
+        static_cast<const float *>(input),
+        expert_count,
+        input_size,
+        top_k,
+        static_cast<int32_t *>(selected_ids),
+        static_cast<float *>(selected_weights)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int mox_cuda_moe_gate_up_swiglu(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows_per_expert,
+    int columns,
+    int gate_rows,
+    int up_rows,
+    const void *selected_ids,
+    int selected_count,
+    const void *input,
+    const void *gate_bias,
+    const void *up_bias,
+    void *output,
+    void *stream
+) {
+    const dim3 blocks(static_cast<unsigned int>(gate_rows), static_cast<unsigned int>(selected_count), 1);
+    moe_gate_up_swiglu_kernel<<<blocks, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const uint8_t *>(weights),
+        mode,
+        row_stride,
+        rows_per_expert,
+        columns,
+        gate_rows,
+        up_rows,
+        static_cast<const int32_t *>(selected_ids),
+        selected_count,
+        static_cast<const float *>(input),
+        static_cast<const float *>(gate_bias),
+        static_cast<const float *>(up_bias),
+        static_cast<float *>(output)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int mox_cuda_moe_down_aggregate(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows,
+    int columns,
+    const void *selected_ids,
+    const void *selected_weights,
+    int selected_count,
+    const void *activated,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    moe_down_aggregate_kernel<<<rows, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const uint8_t *>(weights),
+        mode,
+        row_stride,
+        rows,
+        columns,
+        static_cast<const int32_t *>(selected_ids),
+        static_cast<const float *>(selected_weights),
+        selected_count,
+        static_cast<const float *>(activated),
+        static_cast<const float *>(bias),
         static_cast<float *>(output)
     );
     return static_cast<int>(cudaGetLastError());
