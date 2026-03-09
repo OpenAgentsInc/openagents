@@ -265,6 +265,35 @@ fn accumulate_cuda_submission_report(
         .saturating_add(report.encoded_operations);
 }
 
+fn accumulate_metal_submission_report(
+    perf: &mut GptOssPerformanceMetrics,
+    report: &psionic_backend_metal::MetalSubmissionReport,
+) {
+    perf.metal.submission_count = perf.metal.submission_count.saturating_add(1);
+    perf.metal.sync_count = perf
+        .metal
+        .sync_count
+        .saturating_add(report.synchronized_buffers);
+    perf.metal.kernel_launches = perf
+        .metal
+        .kernel_launches
+        .saturating_add(report.encoded_operations);
+}
+
+fn accumulate_metal_host_to_device_bytes(perf: &mut GptOssPerformanceMetrics, byte_len: usize) {
+    perf.metal.host_to_device_bytes = perf
+        .metal
+        .host_to_device_bytes
+        .saturating_add(byte_len.try_into().unwrap_or(u64::MAX));
+}
+
+fn accumulate_metal_device_to_host_bytes(perf: &mut GptOssPerformanceMetrics, byte_len: usize) {
+    perf.metal.device_to_host_bytes = perf
+        .metal
+        .device_to_host_bytes
+        .saturating_add(byte_len.try_into().unwrap_or(u64::MAX));
+}
+
 /// CPU-backed real GGUF GPT-OSS text-generation service.
 #[derive(Clone, Debug)]
 pub struct CpuGgufGptOssTextGenerationService {
@@ -1132,6 +1161,34 @@ fn ensure_cuda_decode_step_plan(
     if execution_plan_digest.is_none() {
         *execution_plan_digest = Some(plan.digest.clone());
     }
+    let _ = compile_path;
+    let _ = plan_compile_path;
+    if cache_hit {
+        *plan_cache_hits = plan_cache_hits.saturating_add(1);
+    } else {
+        *plan_cache_misses = plan_cache_misses.saturating_add(1);
+    }
+    *decode_step_plan = Some(plan);
+    Ok(())
+}
+
+fn ensure_metal_decode_step_plan(
+    loaded_model: &MetalGgufGptOssGenerationModel,
+    backend: &mut MetalBackend,
+    decode_step_plan: &mut Option<GptOssMetalStepPlan>,
+    execution_plan_digest: &mut Option<String>,
+    compile_path: &mut Option<CompilePathEvidence>,
+    plan_cache_hits: &mut usize,
+    plan_cache_misses: &mut usize,
+) -> Result<(), ReferenceTextGenerationError> {
+    if decode_step_plan.is_some() {
+        return Ok(());
+    }
+    let (plan, plan_compile_path, cache_hit) =
+        loaded_model.inner.acquire_decode_step_plan(backend)?;
+    if execution_plan_digest.is_none() {
+        *execution_plan_digest = Some(plan.digest.clone());
+    }
     if compile_path.is_none() {
         *compile_path = Some(plan_compile_path);
     }
@@ -1704,6 +1761,7 @@ fn run_metal_generation_request(
         let mut plan_cache_hits = 0usize;
         let mut plan_cache_misses = 0usize;
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
+        let mut decode_step_plan = None;
         let mut cache = if shared_prefix_eligible {
             let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
             prefix_state = lookup.state;
@@ -1802,16 +1860,30 @@ fn run_metal_generation_request(
         let decode_output_mode = metal_decode_logits_output_mode(&request.options);
 
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
+            ensure_metal_decode_step_plan(
+                &loaded_model,
+                backend,
+                &mut decode_step_plan,
+                &mut execution_plan_digest,
+                &mut compile_path,
+                &mut plan_cache_hits,
+                &mut plan_cache_misses,
+            )?;
             let position = layer_caches
                 .first()
                 .map(MetalKvCacheMirror::len)
                 .unwrap_or(cache.len());
-            let step = loaded_model.inner.forward_step_with_device_attention(
+            let step = loaded_model.inner.forward_step_with_device_attention_plan(
                 backend,
                 *token,
                 position,
                 layer_caches.as_mut_slice(),
                 &mut attention_runtime,
+                decode_step_plan.as_mut().ok_or_else(|| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                        String::from("missing metal gpt-oss decode-step plan"),
+                    ))
+                })?,
                 MetalLogitsOutputMode::RawLogits,
                 false,
             )?;
@@ -1864,16 +1936,30 @@ fn run_metal_generation_request(
             }
 
             generated_tokens.push(next_token);
+            ensure_metal_decode_step_plan(
+                &loaded_model,
+                backend,
+                &mut decode_step_plan,
+                &mut execution_plan_digest,
+                &mut compile_path,
+                &mut plan_cache_hits,
+                &mut plan_cache_misses,
+            )?;
             let position = layer_caches
                 .first()
                 .map(MetalKvCacheMirror::len)
                 .unwrap_or(cache.len());
-            let step = loaded_model.inner.forward_step_with_device_attention(
+            let step = loaded_model.inner.forward_step_with_device_attention_plan(
                 backend,
                 next_token,
                 position,
                 layer_caches.as_mut_slice(),
                 &mut attention_runtime,
+                decode_step_plan.as_mut().ok_or_else(|| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                        String::from("missing metal gpt-oss decode-step plan"),
+                    ))
+                })?,
                 decode_output_mode,
                 true,
             )?;
@@ -1945,6 +2031,10 @@ fn run_metal_generation_request(
             .as_nanos()
             .try_into()
             .unwrap_or(u64::MAX);
+
+        if let Some(plan) = decode_step_plan.take() {
+            loaded_model.inner.release_decode_step_plan(plan);
+        }
 
         let generated = TokenSequence::new(generated_tokens);
         if let Some(session_id) = &request.session_id {
@@ -2437,6 +2527,7 @@ impl MetalGgufGptOssGenerationModel {
                 adapter.family_metadata(),
                 GPT_OSS_METAL_BACKEND,
             ),
+            decode_step_plan: Mutex::new(None),
             load_duration_ns: load_start
                 .elapsed()
                 .as_nanos()
@@ -4253,6 +4344,31 @@ impl GptOssCudaLayer {
 }
 
 #[derive(Debug)]
+struct GptOssMetalStepPlan {
+    digest: String,
+    hidden_norm_buffer: MetalBuffer,
+    q_buffer: MetalBuffer,
+    k_buffer: MetalBuffer,
+    v_buffer: MetalBuffer,
+    query_buffer: MetalBuffer,
+    key_buffer: MetalBuffer,
+    value_buffer: MetalBuffer,
+    gate_up_output_buffer: MetalBuffer,
+    expert_input_buffer: MetalBuffer,
+    expert_output_buffer: MetalBuffer,
+    final_hidden_buffer: MetalBuffer,
+    logits_buffer: MetalBuffer,
+    q_values: Vec<f32>,
+    k_values: Vec<f32>,
+    v_values: Vec<f32>,
+    attention_values: Vec<f32>,
+    gate_up_values: Vec<f32>,
+    expert_values: Vec<f32>,
+    cache_key: Vec<f32>,
+    cache_value: Vec<f32>,
+}
+
+#[derive(Debug)]
 struct GptOssMetalModelInner {
     descriptor: DecoderModelDescriptor,
     family_metadata: GgufDecoderFamilyMetadata,
@@ -4263,6 +4379,7 @@ struct GptOssMetalModelInner {
     output: MetalQuantizedMatrix,
     layers: Vec<GptOssMetalLayer>,
     plan_digest: String,
+    decode_step_plan: Mutex<Option<GptOssMetalStepPlan>>,
     load_duration_ns: u64,
 }
 
@@ -4288,6 +4405,136 @@ impl GptOssMetalModelInner {
 
     fn graph_layer_node_count(&self) -> usize {
         self.decode_graph.layer_node_count()
+    }
+
+    fn acquire_decode_step_plan(
+        &self,
+        backend: &mut MetalBackend,
+    ) -> Result<(GptOssMetalStepPlan, CompilePathEvidence, bool), ReferenceTextGenerationError> {
+        let cache_hit = self
+            .decode_step_plan
+            .lock()
+            .map_err(|_| {
+                ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(String::from(
+                    "metal gpt-oss decode-step plan cache is poisoned",
+                )))
+            })?
+            .take();
+        if let Some(plan) = cache_hit {
+            return Ok((plan, metal_decode_step_plan_compile_path(true), true));
+        }
+        Ok((
+            self.build_decode_step_plan(backend)?,
+            metal_decode_step_plan_compile_path(false),
+            false,
+        ))
+    }
+
+    fn release_decode_step_plan(&self, plan: GptOssMetalStepPlan) {
+        if let Ok(mut cached_plan) = self.decode_step_plan.lock() {
+            *cached_plan = Some(plan);
+        }
+    }
+
+    fn build_decode_step_plan(
+        &self,
+        backend: &mut MetalBackend,
+    ) -> Result<GptOssMetalStepPlan, ReferenceTextGenerationError> {
+        let hidden_size = self.descriptor.config.hidden_size;
+        let head_count = self.descriptor.config.block.attention.head_count;
+        let kv_head_count = self.descriptor.config.block.attention.kv_head_count;
+        let head_dim = self.descriptor.config.block.attention.head_dim;
+        let q_rows = head_count.saturating_mul(head_dim);
+        let kv_rows = kv_head_count.saturating_mul(head_dim);
+        let selected_count = self.family_metadata.expert_used_count.ok_or_else(|| {
+            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(String::from(
+                "metal gpt-oss path requires expert_used_count metadata",
+            )))
+        })?;
+        let max_gate_up_rows = self
+            .layers
+            .iter()
+            .map(|layer| layer.feed_forward_gate_up_experts_weight.total_rows())
+            .max()
+            .unwrap_or(hidden_size);
+        let max_down_columns = self
+            .layers
+            .iter()
+            .map(|layer| layer.feed_forward_down_experts_weight.columns)
+            .max()
+            .unwrap_or(hidden_size);
+        let max_down_rows = self
+            .layers
+            .iter()
+            .map(|layer| layer.feed_forward_down_experts_weight.rows)
+            .max()
+            .unwrap_or(hidden_size);
+
+        Ok(GptOssMetalStepPlan {
+            digest: format!("{}:metal-decode-step", self.plan_digest),
+            hidden_norm_buffer: backend
+                .input_buffer(Shape::new(vec![hidden_size]), vec![0.0; hidden_size])
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            q_buffer: backend
+                .input_buffer(Shape::new(vec![q_rows]), vec![0.0; q_rows])
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            k_buffer: backend
+                .input_buffer(Shape::new(vec![kv_rows]), vec![0.0; kv_rows])
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            v_buffer: backend
+                .input_buffer(Shape::new(vec![kv_rows]), vec![0.0; kv_rows])
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            query_buffer: backend
+                .input_buffer(
+                    Shape::new(vec![1, head_count, 1, head_dim]),
+                    vec![0.0; q_rows],
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            key_buffer: backend
+                .input_buffer(
+                    Shape::new(vec![1, kv_head_count, 1, head_dim]),
+                    vec![0.0; kv_rows],
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            value_buffer: backend
+                .input_buffer(
+                    Shape::new(vec![1, kv_head_count, 1, head_dim]),
+                    vec![0.0; kv_rows],
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            gate_up_output_buffer: backend
+                .input_buffer(
+                    Shape::new(vec![selected_count.saturating_mul(max_gate_up_rows)]),
+                    vec![0.0; selected_count.saturating_mul(max_gate_up_rows)],
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            expert_input_buffer: backend
+                .input_buffer(
+                    Shape::new(vec![max_down_columns]),
+                    vec![0.0; max_down_columns],
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            expert_output_buffer: backend
+                .input_buffer(Shape::new(vec![max_down_rows]), vec![0.0; max_down_rows])
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            final_hidden_buffer: backend
+                .input_buffer(Shape::new(vec![hidden_size]), vec![0.0; hidden_size])
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            logits_buffer: backend
+                .input_buffer(
+                    Shape::new(vec![self.output.host.rows]),
+                    vec![0.0; self.output.host.rows],
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?,
+            q_values: vec![0.0; q_rows],
+            k_values: vec![0.0; kv_rows],
+            v_values: vec![0.0; kv_rows],
+            attention_values: vec![0.0; q_rows],
+            gate_up_values: vec![0.0; selected_count.saturating_mul(max_gate_up_rows)],
+            expert_values: vec![0.0; max_down_rows],
+            cache_key: vec![0.0; self.cache_width()],
+            cache_value: vec![0.0; self.cache_width()],
+        })
     }
 
     fn reserve_decode_attention_runtime(
@@ -4337,6 +4584,10 @@ impl GptOssMetalModelInner {
                 selection.metrics.raw_logits_materialized,
             );
         }
+        perf.metal.device_to_host_bytes = perf
+            .metal
+            .device_to_host_bytes
+            .saturating_add(selection.metrics.readback_bytes);
         *bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
         *kernel_count = kernel_count.saturating_add(1);
 
@@ -4644,6 +4895,7 @@ impl GptOssMetalModelInner {
         })
     }
 
+    #[allow(dead_code)]
     fn forward_step_with_device_attention(
         &self,
         backend: &mut MetalBackend,
@@ -4958,6 +5210,514 @@ impl GptOssMetalModelInner {
         Ok(GptOssForwardStep {
             key: cache_key,
             value: cache_value,
+            logits,
+            selected_token,
+            kernel_count,
+            bytes_moved,
+            perf: Some(perf),
+        })
+    }
+
+    fn forward_step_with_device_attention_plan(
+        &self,
+        backend: &mut MetalBackend,
+        token: TokenId,
+        position: usize,
+        layer_caches: &mut [MetalKvCacheMirror],
+        attention_runtime: &mut MetalAttentionGraphRuntime,
+        plan: &mut GptOssMetalStepPlan,
+        logits_output_mode: MetalLogitsOutputMode,
+        record_decode_logits_metrics: bool,
+    ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
+        if layer_caches.len() != self.layers.len() {
+            return Err(ReferenceTextGenerationError::Runtime(
+                super::RuntimeError::Backend(format!(
+                    "metal layer cache count mismatch: expected {}, actual {}",
+                    self.layers.len(),
+                    layer_caches.len()
+                )),
+            ));
+        }
+
+        let hidden_size = self.descriptor.config.hidden_size;
+        let kv_width = self.descriptor.config.kv_width();
+        let head_count = self.descriptor.config.block.attention.head_count;
+        let kv_head_count = self.descriptor.config.block.attention.kv_head_count;
+        let head_dim = self.descriptor.config.block.attention.head_dim;
+        let rotary_dim = self.descriptor.config.block.attention.rotary_dim;
+        let mut bytes_moved = 0_u64;
+        let mut perf = GptOssPerformanceMetrics {
+            step_count: 1,
+            layer_visit_count: self.layers.len(),
+            graph_node_count: self.graph_node_count(),
+            graph_layer_node_count: self.graph_layer_node_count(),
+            ..GptOssPerformanceMetrics::default()
+        };
+
+        let token_embedding_start = Instant::now();
+        let mut hidden = self.token_embedding.decode_row(token.as_u32() as usize)?;
+        perf.stage_timings.token_embedding_ns = perf
+            .stage_timings
+            .token_embedding_ns
+            .saturating_add(duration_ns(token_embedding_start));
+        bytes_moved = bytes_moved.saturating_add(self.token_embedding.byte_length() as u64);
+
+        let (cos_values, sin_values) =
+            metal_rope_cos_sin_values(position, head_dim, rotary_dim, &self.family_metadata);
+        plan.cache_key.fill(0.0);
+        plan.cache_value.fill(0.0);
+
+        let mut kernel_count = 0usize;
+
+        let mut cos = backend
+            .input_buffer(Shape::new(vec![1, head_dim / 2]), vec![0.0; head_dim / 2])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let mut sin = backend
+            .input_buffer(Shape::new(vec![1, head_dim / 2]), vec![0.0; head_dim / 2])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        write_metal_buffer_prefix(&mut cos, cos_values.as_slice(), &mut perf)?;
+        write_metal_buffer_prefix(&mut sin, sin_values.as_slice(), &mut perf)?;
+
+        for (layer_index, (layer, layer_cache)) in
+            self.layers.iter().zip(layer_caches.iter_mut()).enumerate()
+        {
+            if layer_cache.width() != kv_width {
+                return Err(ReferenceTextGenerationError::Runtime(
+                    super::RuntimeError::Backend(format!(
+                        "metal layer cache width mismatch: expected {}, actual {}",
+                        kv_width,
+                        layer_cache.width()
+                    )),
+                ));
+            }
+
+            let residual = hidden.clone();
+            let attention_norm_start = Instant::now();
+            let hidden_norm = rms_norm(
+                hidden.as_slice(),
+                layer.attention_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.attention_norm_ns = perf
+                .stage_timings
+                .attention_norm_ns
+                .saturating_add(duration_ns(attention_norm_start));
+
+            let qkv_start = Instant::now();
+            write_metal_buffer_prefix(&mut plan.hidden_norm_buffer, hidden_norm.as_slice(), &mut perf)?;
+            let mut qkv_submission = backend.begin_submission("psionic.gpt_oss.qkv")?;
+            backend.encode_quantized_matvec_submission(
+                &mut qkv_submission,
+                &layer.attention_query_weight.storage,
+                0,
+                layer.attention_query_weight.host.mode,
+                layer.attention_query_weight.host.rows,
+                layer.attention_query_weight.host.columns,
+                &plan.hidden_norm_buffer,
+                &plan.q_buffer,
+            )?;
+            backend.encode_quantized_matvec_submission(
+                &mut qkv_submission,
+                &layer.attention_key_weight.storage,
+                0,
+                layer.attention_key_weight.host.mode,
+                layer.attention_key_weight.host.rows,
+                layer.attention_key_weight.host.columns,
+                &plan.hidden_norm_buffer,
+                &plan.k_buffer,
+            )?;
+            backend.encode_quantized_matvec_submission(
+                &mut qkv_submission,
+                &layer.attention_value_weight.storage,
+                0,
+                layer.attention_value_weight.host.mode,
+                layer.attention_value_weight.host.rows,
+                layer.attention_value_weight.host.columns,
+                &plan.hidden_norm_buffer,
+                &plan.v_buffer,
+            )?;
+            qkv_submission.synchronize_buffer(&plan.q_buffer)?;
+            qkv_submission.synchronize_buffer(&plan.k_buffer)?;
+            qkv_submission.synchronize_buffer(&plan.v_buffer)?;
+            let qkv_report = qkv_submission
+                .commit(psionic_backend_metal::MetalCommandWait::Completed)
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            accumulate_metal_submission_report(&mut perf, &qkv_report);
+            kernel_count = kernel_count.saturating_add(qkv_report.encoded_operations);
+            read_metal_buffer_prefix_into(
+                &plan.q_buffer,
+                layer.attention_query_weight.host.rows,
+                &mut plan.q_values,
+                &mut perf,
+            )?;
+            read_metal_buffer_prefix_into(
+                &plan.k_buffer,
+                layer.attention_key_weight.host.rows,
+                &mut plan.k_values,
+                &mut perf,
+            )?;
+            read_metal_buffer_prefix_into(
+                &plan.v_buffer,
+                layer.attention_value_weight.host.rows,
+                &mut plan.v_values,
+                &mut perf,
+            )?;
+            add_bias_in_place(&mut plan.q_values, layer.attention_query_bias.as_slice());
+            add_bias_in_place(&mut plan.k_values, layer.attention_key_bias.as_slice());
+            add_bias_in_place(&mut plan.v_values, layer.attention_value_bias.as_slice());
+            perf.stage_timings.qkv_projection_ns = perf
+                .stage_timings
+                .qkv_projection_ns
+                .saturating_add(duration_ns(qkv_start));
+
+            let rope_start = Instant::now();
+            let mut cache_layer_key = plan.k_values.clone();
+            apply_rope_neox(
+                &mut cache_layer_key,
+                kv_head_count,
+                head_dim,
+                rotary_dim,
+                position,
+                &self.family_metadata,
+            );
+            perf.stage_timings.rope_ns = perf
+                .stage_timings
+                .rope_ns
+                .saturating_add(duration_ns(rope_start));
+
+            let cache_offset = layer_index.saturating_mul(kv_width);
+            plan.cache_key[cache_offset..cache_offset + kv_width]
+                .copy_from_slice(cache_layer_key.as_slice());
+            plan.cache_value[cache_offset..cache_offset + kv_width]
+                .copy_from_slice(plan.v_values.as_slice());
+
+            let attention_start = Instant::now();
+            write_metal_buffer_prefix(&mut plan.query_buffer, plan.q_values.as_slice(), &mut perf)?;
+            write_metal_buffer_prefix(&mut plan.key_buffer, plan.k_values.as_slice(), &mut perf)?;
+            write_metal_buffer_prefix(&mut plan.value_buffer, plan.v_values.as_slice(), &mut perf)?;
+            let attention = backend
+                .decode_attention_f32_reserved(
+                    attention_runtime,
+                    &plan.query_buffer,
+                    &plan.key_buffer,
+                    &plan.value_buffer,
+                    &cos,
+                    &sin,
+                    layer_cache,
+                    1.0 / (head_dim as f32).sqrt(),
+                    true,
+                    false,
+                    true,
+                )
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            read_metal_buffer_prefix_into(
+                &attention.output,
+                head_count.saturating_mul(head_dim),
+                &mut plan.attention_values,
+                &mut perf,
+            )?;
+            perf.stage_timings.attention_ns = perf
+                .stage_timings
+                .attention_ns
+                .saturating_add(duration_ns(attention_start));
+
+            let attention_output_start = Instant::now();
+            write_metal_buffer_prefix(
+                &mut plan.q_buffer,
+                plan.attention_values.as_slice(),
+                &mut perf,
+            )?;
+            let mut attention_output_submission =
+                backend.begin_submission("psionic.gpt_oss.attention_output")?;
+            backend.encode_quantized_matvec_submission(
+                &mut attention_output_submission,
+                &layer.attention_output_weight.storage,
+                0,
+                layer.attention_output_weight.host.mode,
+                layer.attention_output_weight.host.rows,
+                layer.attention_output_weight.host.columns,
+                &plan.q_buffer,
+                &plan.final_hidden_buffer,
+            )?;
+            attention_output_submission.synchronize_buffer(&plan.final_hidden_buffer)?;
+            let attention_output_report = attention_output_submission
+                .commit(psionic_backend_metal::MetalCommandWait::Completed)
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            accumulate_metal_submission_report(&mut perf, &attention_output_report);
+            kernel_count = kernel_count.saturating_add(attention_output_report.encoded_operations);
+            read_metal_buffer_prefix_into(
+                &plan.final_hidden_buffer,
+                layer.attention_output_weight.host.rows,
+                &mut plan.attention_values,
+                &mut perf,
+            )?;
+            if let Some(bias) = layer.attention_output_bias.as_ref() {
+                add_bias_in_place(&mut plan.attention_values, bias.as_slice());
+            }
+            perf.stage_timings.attention_output_projection_ns = perf
+                .stage_timings
+                .attention_output_projection_ns
+                .saturating_add(duration_ns(attention_output_start));
+            hidden = add_vectors(plan.attention_values.as_slice(), residual.as_slice())?;
+
+            let ffn_residual = hidden.clone();
+            let feed_forward_norm_start = Instant::now();
+            let ffn_input = rms_norm(
+                hidden.as_slice(),
+                layer.feed_forward_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.feed_forward_norm_ns = perf
+                .stage_timings
+                .feed_forward_norm_ns
+                .saturating_add(duration_ns(feed_forward_norm_start));
+
+            let router_start = Instant::now();
+            let mut router_logits = Vec::new();
+            layer
+                .feed_forward_router_weight
+                .matvec(ffn_input.as_slice(), &mut router_logits)?;
+            if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
+                add_bias_in_place(&mut router_logits, bias.as_slice());
+            }
+            let selected = top_k_indices(
+                router_logits.as_slice(),
+                self.family_metadata.expert_used_count.unwrap_or(0),
+            );
+            let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
+            perf.stage_timings.router_ns = perf
+                .stage_timings
+                .router_ns
+                .saturating_add(duration_ns(router_start));
+
+            let mut moe_out = vec![0.0; hidden_size];
+            if !selected.is_empty() {
+                let expert_projection_start = Instant::now();
+                write_metal_buffer_prefix(&mut plan.hidden_norm_buffer, ffn_input.as_slice(), &mut perf)?;
+                let mut gate_up_submission = backend.begin_submission("psionic.gpt_oss.gate_up")?;
+                let selected_ids = selected
+                    .iter()
+                    .copied()
+                    .map(|index| {
+                        i32::try_from(index).map_err(|_| {
+                            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                                format!(
+                                    "expert index {index} exceeds i32 range for metal grouped dispatch",
+                                ),
+                            ))
+                        })
+                    })
+                    .collect::<Result<Vec<_>, _>>()?;
+                backend.encode_grouped_quantized_matvec_submission(
+                    &mut gate_up_submission,
+                    &layer.feed_forward_gate_up_experts_weight.storage,
+                    layer.feed_forward_gate_up_experts_weight.mode,
+                    layer.feed_forward_gate_up_experts_weight.row_byte_len,
+                    layer.feed_forward_gate_up_experts_weight.total_rows(),
+                    layer.feed_forward_gate_up_experts_weight.columns,
+                    selected_ids.as_slice(),
+                    &plan.hidden_norm_buffer,
+                    &plan.gate_up_output_buffer,
+                )?;
+                gate_up_submission.synchronize_buffer(&plan.gate_up_output_buffer)?;
+                let gate_up_report = gate_up_submission
+                    .commit(psionic_backend_metal::MetalCommandWait::Completed)
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                accumulate_metal_submission_report(&mut perf, &gate_up_report);
+                kernel_count = kernel_count.saturating_add(gate_up_report.encoded_operations);
+                let per_selected_rows = layer.feed_forward_gate_up_experts_weight.total_rows();
+                read_metal_buffer_prefix_into(
+                    &plan.gate_up_output_buffer,
+                    selected.len().saturating_mul(per_selected_rows),
+                    &mut plan.gate_up_values,
+                    &mut perf,
+                )?;
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_projection_start));
+
+                let gate_rows = layer.feed_forward_gate_up_experts_weight.rows_per_projection[0];
+                let up_rows = layer.feed_forward_gate_up_experts_weight.rows_per_projection[1];
+                for (selected_index, expert_index) in selected.iter().copied().enumerate() {
+                    let base = selected_index.saturating_mul(per_selected_rows);
+                    let gate_end = base.saturating_add(gate_rows);
+                    let up_end = gate_end.saturating_add(up_rows);
+
+                    let mut gate = plan.gate_up_values[base..gate_end].to_vec();
+                    if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
+                        add_expert_bias_in_place(&mut gate, bias.as_slice(), expert_index, gate_rows);
+                    }
+                    let mut up = plan.gate_up_values[gate_end..up_end].to_vec();
+                    if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
+                        add_expert_bias_in_place(&mut up, bias.as_slice(), expert_index, up_rows);
+                    }
+
+                    let expert_activation_start = Instant::now();
+                    let activated = oai_swiglu(gate.as_slice(), up.as_slice());
+                    perf.stage_timings.expert_activation_ns = perf
+                        .stage_timings
+                        .expert_activation_ns
+                        .saturating_add(duration_ns(expert_activation_start));
+
+                    let expert_down_start = Instant::now();
+                    write_metal_buffer_prefix(
+                        &mut plan.expert_input_buffer,
+                        activated.as_slice(),
+                        &mut perf,
+                    )?;
+                    let mut expert_down_submission =
+                        backend.begin_submission("psionic.gpt_oss.expert_down")?;
+                    let byte_offset = expert_index
+                        .saturating_mul(layer.feed_forward_down_experts_weight.rows)
+                        .saturating_mul(layer.feed_forward_down_experts_weight.row_byte_len);
+                    backend.encode_quantized_matvec_submission(
+                        &mut expert_down_submission,
+                        &layer.feed_forward_down_experts_weight.storage,
+                        byte_offset,
+                        layer.feed_forward_down_experts_weight.mode,
+                        layer.feed_forward_down_experts_weight.rows,
+                        layer.feed_forward_down_experts_weight.columns,
+                        &plan.expert_input_buffer,
+                        &plan.expert_output_buffer,
+                    )?;
+                    expert_down_submission.synchronize_buffer(&plan.expert_output_buffer)?;
+                    let expert_down_report = expert_down_submission
+                        .commit(psionic_backend_metal::MetalCommandWait::Completed)
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                    accumulate_metal_submission_report(&mut perf, &expert_down_report);
+                    kernel_count = kernel_count.saturating_add(expert_down_report.encoded_operations);
+                    read_metal_buffer_prefix_into(
+                        &plan.expert_output_buffer,
+                        layer.feed_forward_down_experts_weight.rows,
+                        &mut plan.expert_values,
+                        &mut perf,
+                    )?;
+                    if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
+                        add_expert_bias_in_place(
+                            &mut plan.expert_values,
+                            bias.as_slice(),
+                            expert_index,
+                            layer.feed_forward_down_experts_weight.rows,
+                        );
+                    }
+                    perf.stage_timings.expert_projection_ns = perf
+                        .stage_timings
+                        .expert_projection_ns
+                        .saturating_add(duration_ns(expert_down_start));
+
+                    let route = routing[selected_index];
+                    let expert_aggregation_start = Instant::now();
+                    for (dst, value) in moe_out.iter_mut().zip(plan.expert_values.iter().copied()) {
+                        *dst += value * route;
+                    }
+                    perf.stage_timings.expert_aggregation_ns = perf
+                        .stage_timings
+                        .expert_aggregation_ns
+                        .saturating_add(duration_ns(expert_aggregation_start));
+                }
+            }
+            hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
+
+            bytes_moved = bytes_moved
+                .saturating_add(layer.attention_query_weight.byte_length() as u64)
+                .saturating_add(layer.attention_key_weight.byte_length() as u64)
+                .saturating_add(layer.attention_value_weight.byte_length() as u64)
+                .saturating_add(layer.attention_output_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_gate_up_experts_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_down_experts_weight.byte_length() as u64);
+        }
+
+        let output_norm_start = Instant::now();
+        let final_hidden = rms_norm(
+            hidden.as_slice(),
+            self.output_norm.as_slice(),
+            self.family_metadata.rms_norm_epsilon,
+        );
+        perf.stage_timings.output_norm_ns = perf
+            .stage_timings
+            .output_norm_ns
+            .saturating_add(duration_ns(output_norm_start));
+
+        let logits_projection_start = Instant::now();
+        write_metal_buffer_prefix(
+            &mut plan.final_hidden_buffer,
+            final_hidden.as_slice(),
+            &mut perf,
+        )?;
+        let mut logits_submission = backend.begin_submission("psionic.gpt_oss.logits")?;
+        backend.encode_quantized_matvec_submission(
+            &mut logits_submission,
+            &self.output.storage,
+            0,
+            self.output.host.mode,
+            self.output.host.rows,
+            self.output.host.columns,
+            &plan.final_hidden_buffer,
+            &plan.logits_buffer,
+        )?;
+        logits_submission.synchronize_buffer(&plan.logits_buffer)?;
+        let logits_report = logits_submission
+            .commit(psionic_backend_metal::MetalCommandWait::Completed)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        accumulate_metal_submission_report(&mut perf, &logits_report);
+        kernel_count = kernel_count.saturating_add(logits_report.encoded_operations);
+        let selection = backend
+            .select_logits_output_f32(
+                &plan.logits_buffer,
+                1,
+                self.output.host.rows,
+                logits_output_mode,
+            )
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        perf.stage_timings.logits_projection_ns = perf
+            .stage_timings
+            .logits_projection_ns
+            .saturating_add(duration_ns(logits_projection_start));
+        perf.metal.device_to_host_bytes = perf
+            .metal
+            .device_to_host_bytes
+            .saturating_add(selection.metrics.readback_bytes);
+        if record_decode_logits_metrics {
+            accumulate_metal_decode_logits_metrics(
+                &mut perf,
+                selection.metrics.output_mode,
+                selection.metrics.readback_bytes,
+                selection.metrics.raw_logits_materialized,
+            );
+        }
+        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
+
+        let (logits, selected_token) = match logits_output_mode {
+            MetalLogitsOutputMode::GreedyToken => {
+                let token = selection.selected_tokens.first().copied().ok_or_else(|| {
+                    ReferenceTextGenerationError::MissingOutput("metal greedy token")
+                })?;
+                (Vec::new(), Some(TokenId(token)))
+            }
+            MetalLogitsOutputMode::TopKCandidates(_) => {
+                let candidates = selection.candidates.as_ref().ok_or_else(|| {
+                    ReferenceTextGenerationError::MissingOutput("metal logits top_k candidates")
+                })?;
+                (
+                    expand_metal_top_k_candidates_to_logits(
+                        self.descriptor.config.vocab_size,
+                        candidates,
+                    )?,
+                    None,
+                )
+            }
+            MetalLogitsOutputMode::RawLogits => (
+                selection
+                    .logits
+                    .ok_or(ReferenceTextGenerationError::MissingOutput("metal raw logits"))?,
+                None,
+            ),
+        };
+
+        Ok(GptOssForwardStep {
+            key: plan.cache_key.clone(),
+            value: plan.cache_value.clone(),
             logits,
             selected_token,
             kernel_count,
@@ -7258,12 +8018,73 @@ fn decode_step_plan_compile_path(plan_cache_hit: bool) -> CompilePathEvidence {
     }
 }
 
+fn metal_decode_step_plan_compile_path(plan_cache_hit: bool) -> CompilePathEvidence {
+    CompilePathEvidence {
+        temperature: if plan_cache_hit {
+            CompilePathTemperature::WarmReuse
+        } else {
+            CompilePathTemperature::ColdCompile
+        },
+        execution_plan_cache: if plan_cache_hit {
+            CacheObservation::new(
+                CacheKind::ExecutionPlan,
+                CacheAction::Reuse,
+                "reused a cached gpt-oss metal decode-step plan",
+            )
+        } else {
+            CacheObservation::new(
+                CacheKind::ExecutionPlan,
+                CacheAction::Rebuild,
+                "built a new gpt-oss metal decode-step plan",
+            )
+        },
+        kernel_cache: CacheObservation::new(
+            CacheKind::KernelCache,
+            CacheAction::Reuse,
+            "reused the configured metal kernel cache",
+        ),
+    }
+}
+
 fn cache_key_value_byte_len(width: usize) -> u64 {
     width
         .saturating_mul(2)
         .saturating_mul(std::mem::size_of::<u16>())
         .try_into()
         .unwrap_or(u64::MAX)
+}
+
+fn write_metal_buffer_prefix(
+    buffer: &mut MetalBuffer,
+    values: &[f32],
+    perf: &mut GptOssPerformanceMetrics,
+) -> Result<(), ReferenceTextGenerationError> {
+    buffer
+        .write_f32_prefix(values)
+        .map_err(ReferenceTextGenerationError::Runtime)?;
+    accumulate_metal_host_to_device_bytes(
+        perf,
+        values
+            .len()
+            .saturating_mul(std::mem::size_of::<f32>()),
+    );
+    Ok(())
+}
+
+fn read_metal_buffer_prefix_into(
+    buffer: &MetalBuffer,
+    element_count: usize,
+    values: &mut Vec<f32>,
+    perf: &mut GptOssPerformanceMetrics,
+) -> Result<(), ReferenceTextGenerationError> {
+    buffer
+        .read_f32_prefix_into(element_count, values)
+        .map_err(ReferenceTextGenerationError::Runtime)?;
+    accumulate_metal_device_to_host_bytes(
+        perf,
+        element_count.saturating_mul(std::mem::size_of::<f32>()),
+    );
+    Ok(())
 }
 
 fn f32_slice_to_f16_bytes(values: &[f32]) -> Vec<u8> {
@@ -7613,7 +8434,8 @@ mod tests {
     #[cfg(target_os = "macos")]
     use crate::{
         GenerationOptions, GenerationRequest, GptOssMetalDecodeLogitsMetrics,
-        GptOssMetalLogitsOutputMode, TextGenerationExecutor, TokenId, TokenSequence,
+        GptOssMetalLogitsOutputMode, GptOssPerformanceMetrics, TextGenerationExecutor, TokenId,
+        TokenSequence,
     };
     use psionic_backend_cpu::quantized_row_dot;
     use psionic_backend_cuda::{CudaBackend, CudaCommandStatus, CudaCommandWait};
@@ -7777,14 +8599,14 @@ mod tests {
             .ok_or("missing first gpt-oss perf")?;
         assert!(first_perf.graph_node_count > 0);
         assert!(first_perf.graph_layer_node_count > 0);
-        assert_eq!(
+        assert!(matches!(
             first
                 .provenance
                 .as_ref()
                 .and_then(|value| value.compile_path.as_ref())
                 .map(|value| value.temperature),
-            Some(CompilePathTemperature::WarmReuse)
-        );
+            Some(CompilePathTemperature::WarmReuse | CompilePathTemperature::ColdCompile)
+        ));
         assert!(
             first
                 .provenance
@@ -7814,6 +8636,14 @@ mod tests {
             .ok_or("missing second gpt-oss perf")?;
         assert!(second_perf.graph_node_count > 0);
         assert!(second_perf.graph_layer_node_count > 0);
+        assert_eq!(
+            second
+                .provenance
+                .as_ref()
+                .and_then(|value| value.compile_path.as_ref())
+                .map(|value| value.temperature),
+            Some(CompilePathTemperature::WarmReuse)
+        );
         assert!(
             second
                 .provenance
@@ -7831,10 +8661,10 @@ mod tests {
     }
 
     #[cfg(target_os = "macos")]
-    fn metal_decode_logits_metrics_for_options(
+    fn metal_perf_for_options(
         request_id: &str,
         options: GenerationOptions,
-    ) -> Result<GptOssMetalDecodeLogitsMetrics, Box<dyn std::error::Error>> {
+    ) -> Result<GptOssPerformanceMetrics, Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let path = temp.path().join(format!("{request_id}.gguf"));
         write_test_gpt_oss_gguf(&path)?;
@@ -7851,7 +8681,33 @@ mod tests {
         response
             .metrics
             .gpt_oss_perf
-            .and_then(|perf| perf.metal_decode_logits)
+            .ok_or_else(|| std::io::Error::other("missing metal gpt-oss perf metrics").into())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_gpt_oss_service_batches_decode_kernels_into_fewer_submissions()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let perf =
+            metal_perf_for_options("tiny-gpt-oss-metal-step-plan", GenerationOptions::greedy(1))?;
+
+        assert_eq!(perf.step_count, 2);
+        assert_eq!(perf.layer_visit_count, 2);
+        assert_eq!(perf.metal.kernel_launches, 16);
+        assert_eq!(perf.metal.submission_count, 12);
+        assert!(perf.metal.submission_count < perf.metal.kernel_launches);
+        assert!(perf.metal.host_to_device_bytes > 0);
+        assert!(perf.metal.device_to_host_bytes > 0);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn metal_decode_logits_metrics_for_options(
+        request_id: &str,
+        options: GenerationOptions,
+    ) -> Result<GptOssMetalDecodeLogitsMetrics, Box<dyn std::error::Error>> {
+        metal_perf_for_options(request_id, options)?
+            .metal_decode_logits
             .ok_or_else(|| std::io::Error::other("missing metal decode logits metrics").into())
     }
 
