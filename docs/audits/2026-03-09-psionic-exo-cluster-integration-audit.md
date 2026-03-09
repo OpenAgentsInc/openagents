@@ -17,6 +17,8 @@
 - `crates/psionic/docs/EXO_UNIFIED_INTEGRATION_PLAN.md`
 - `crates/psionic/psionic-runtime/src/lib.rs`
 - `crates/psionic/psionic-provider/src/lib.rs`
+- `https://github.com/exo-explore/exo`
+- `https://raw.githubusercontent.com/exo-explore/exo/main/TODO.md`
 
 ## Executive Summary
 
@@ -110,6 +112,14 @@ The parts Exo does not solve for us are just as important:
   adversarial compute market
 - its mDNS-centric discovery is good for same-network clusters, not for the
   wider network by itself
+- its current README still treats Linux as CPU-only, which is another reason to
+  keep Psionic's first clustered execution claim narrow and backend-specific
+
+Exo also exposes two practical control-plane hints that map well to a Psionic
+cluster model:
+
+- namespace-based cluster isolation
+- coordinator-only operation via `--no-worker`
 
 So the right reading is:
 
@@ -187,6 +197,176 @@ It should not own:
 - a required Python or MLX runtime dependency
 
 That split matches both the Exo research and the current ownership contract.
+
+## Trust Boundary
+
+- First shipped scope is a trusted same-network cluster.
+- This is not yet a compute-market trust model.
+- Exo's current posture is much closer to "cooperating devices on one operator's
+  network" than to an adversarial market-facing fabric.
+- Required later hardening includes authenticated membership.
+- Required later hardening includes signed control-plane messages.
+- Required later hardening includes replay protection.
+- Required later hardening includes tamper-evident catchup.
+- Required later hardening includes explicit cluster admission policy.
+
+This trust boundary should be stated directly in product and runtime language.
+Otherwise the system will sound broader than the current security posture
+actually supports.
+
+## Cluster Identity And Node Roles
+
+The audit should be more concrete here than "figure out identity later."
+
+Recommended minimum model:
+
+- `ClusterId`
+- `NodeId`
+- `NodeEpoch`
+- `NodeRole::{CoordinatorOnly, ExecutorOnly, Mixed}`
+
+That maps cleanly onto the Exo ideas already visible today:
+
+- namespace-scoped cluster isolation
+- coordinator-only nodes via `--no-worker`
+
+`NodeEpoch` matters because clustered placement, warm-state reporting, and
+receipt truth all become ambiguous if a rebooted or restarted node can be
+mistaken for the prior instance.
+
+## Artifact Residency And Staging
+
+Placement and residency are separate decisions.
+
+The cluster planner should be able to conclude "this node is topologically
+correct" while the artifact layer concludes "this node is not yet ready to
+execute." The runtime contract should make that visible instead of silently
+turning staging into an implementation detail.
+
+Recommended residency states:
+
+- `resident`
+- `copy_required`
+- `pull_required`
+- `refused`
+
+This is one of the clearest places where Exo's TODO maps directly onto Psionic:
+offline model copy, model streaming from peer devices, and better handling of
+already-present local model folders are all artifact-staging concerns, not
+placement concerns.
+
+Psionic should keep these authoritative:
+
+- artifact digest
+- provenance
+- license policy
+- supply and refusal policy
+
+Cluster receipts should say whether execution used a resident artifact or a
+cluster-staged artifact and how that artifact became available.
+
+## Transport And Link Policy
+
+Exo is unusually explicit that topology quality matters. Its current README and
+TODO call out topology-aware auto-parallel, RDMA over Thunderbolt, displaying
+connection type, and preferring better links when they are available.
+
+Psionic should not bury that inside opaque scheduler heuristics.
+
+Cluster topology needs machine-checkable link facts such as:
+
+- transport class
+- latency posture
+- bandwidth posture
+- stability posture
+
+Placement and receipts should also expose:
+
+- why a link was chosen
+- what failover rule applied
+- whether execution degraded onto a lower-quality link
+
+Transport preference should be runtime policy, not implicit folklore.
+
+## Serving Policy And Fairness
+
+The cluster document should say directly that orchestration quality is not just
+about placement. It is also about queue discipline.
+
+Exo's TODO already calls out a real batching failure mode:
+new prefill can block decode for the current batch. Psionic should therefore
+make serving policy first-class from the start.
+
+Cluster scheduling work needs explicit rules for:
+
+- prefill-vs-decode fairness
+- queue discipline
+- cancellation propagation
+- slow-node backpressure
+- degraded-replica routing
+
+Without that, a cluster can look impressive on paper while still underperforming
+badly under real mixed traffic.
+
+## State Durability And Recovery
+
+Ordered event history is a strong foundation, but it is not enough by itself.
+
+If `psionic-cluster` adopts an Exo-like ordered state model, it should make
+these rules explicit from day one:
+
+- the ordered event log is the authoritative cluster-state history
+- snapshots and compaction are explicit
+- replay windows and replay bounds are explicit
+- partition healing and leader failover behavior are explicit
+- node rejoin semantics are explicit
+- state versioning and migration are separate from model/runtime versioning
+
+This is the difference between "event sourced" as an architectural slogan and
+"event sourced" as an operationally supportable system.
+
+## Cluster Evidence Additions
+
+Clustered execution should extend the existing Psionic capability and receipt
+surfaces rather than inventing a parallel truth system.
+
+Recommended additions:
+
+- `cluster_plan_digest`
+- `selected_nodes`
+- `selected_node_inventory`
+- `shard_assignments`
+- `artifact_residency`
+- `transport_class`
+- `degraded_or_fallback_history`
+- `per_node_warm_state`
+- `cluster_policy_digest`
+
+This is the minimum level of specificity needed if clustered execution is later
+used for provider receipts, payout arguments, or validation gates.
+
+## Definition Of Done For First Cluster Scope
+
+The first cluster scope should be deliberately narrower than Exo's full
+marketing surface.
+
+Definition of done for the first truthful Psionic cluster scope:
+
+- trusted same-network cluster only
+- explicit `ClusterId`, `NodeId`, role, and admission policy
+- whole-request remote scheduling works and is reflected in receipts
+- artifact residency and staging state are explicit
+- cluster policy and degraded/fallback history are explicit
+- replicated serving works for one validated backend/product lane
+- unsupported backends are refused explicitly rather than silently included
+
+Not in the first done definition:
+
+- internet-wide cluster claims
+- adversarial compute-market trust claims
+- "all backends are cluster-capable" claims
+- Metal GPT-OSS as an eligible clustered execution lane
+- broad tensor-sharding claims before one validated homogeneous path exists
 
 ## Path Forward
 
