@@ -619,6 +619,38 @@ impl MetalBuffer {
         self.write_bytes(&bytes)
     }
 
+    /// Writes a prefix of contiguous `f32` values into an `f32` buffer.
+    pub fn write_f32_prefix(&mut self, values: &[f32]) -> Result<(), RuntimeError> {
+        if self.spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "write_f32_prefix requires F32 buffer, actual {:?}",
+                self.spec.dtype()
+            )));
+        }
+        if self.storage_kind != BufferStorageKind::DenseF32 {
+            return Err(RuntimeError::Backend(format!(
+                "write_f32_prefix requires dense f32 storage, actual {:?}",
+                self.storage_kind
+            )));
+        }
+        if values.len() > self.spec.storage_size() {
+            return Err(RuntimeError::Backend(format!(
+                "metal buffer prefix write exceeds allocation: values {} allocation {}",
+                values.len(),
+                self.spec.storage_size()
+            )));
+        }
+        let mut bytes = Vec::with_capacity(
+            values
+                .len()
+                .saturating_mul(size_of_dtype(self.spec.dtype())),
+        );
+        for value in values {
+            bytes.extend_from_slice(&value.to_ne_bytes());
+        }
+        self.write_bytes_at_offset(0, bytes.as_slice())
+    }
+
     /// Reads contiguous `f32` values from an `f32` buffer.
     pub fn read_f32(&self) -> Result<Vec<f32>, RuntimeError> {
         if self.spec.dtype() != DType::F32 {
@@ -639,6 +671,44 @@ impl MetalBuffer {
             values.push(f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
         }
         Ok(values)
+    }
+
+    /// Reads a prefix of contiguous `f32` values from an `f32` buffer into a reusable vector.
+    pub fn read_f32_prefix_into(
+        &self,
+        element_count: usize,
+        output: &mut Vec<f32>,
+    ) -> Result<(), RuntimeError> {
+        if self.spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "read_f32_prefix_into requires F32 buffer, actual {:?}",
+                self.spec.dtype()
+            )));
+        }
+        if self.storage_kind != BufferStorageKind::DenseF32 {
+            return Err(RuntimeError::Backend(format!(
+                "read_f32_prefix_into requires dense f32 storage, actual {:?}",
+                self.storage_kind
+            )));
+        }
+        if element_count > self.spec.storage_size() {
+            return Err(RuntimeError::Backend(format!(
+                "metal buffer prefix read exceeds allocation: values {} allocation {}",
+                element_count,
+                self.spec.storage_size()
+            )));
+        }
+        let byte_len = element_count.saturating_mul(size_of_dtype(self.spec.dtype()));
+        output.clear();
+        output.reserve(element_count.saturating_sub(output.capacity()));
+        self.with_bytes_at_offset(0, byte_len, |bytes| {
+            output.extend(
+                bytes
+                    .chunks_exact(size_of_dtype(self.spec.dtype()))
+                    .map(|chunk| f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]])),
+            );
+            Ok(())
+        })
     }
 }
 
@@ -1507,6 +1577,89 @@ impl MetalBackend {
                 health.message
             ))),
         }
+    }
+
+    /// Encodes one quantized row-wise matrix-vector product into an existing submission.
+    pub fn encode_quantized_matvec_submission(
+        &mut self,
+        submission: &mut MetalSubmission,
+        weights: &MetalBuffer,
+        byte_offset: usize,
+        mode: psionic_core::QuantizationMode,
+        rows: usize,
+        columns: usize,
+        input: &MetalBuffer,
+        output: &MetalBuffer,
+    ) -> Result<(), RuntimeError> {
+        validate_quantized_matvec_request(
+            weights,
+            byte_offset,
+            mode,
+            rows,
+            columns,
+            input,
+            output,
+        )?;
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        backend.platform.encode_quantized_matvec(
+            &mut submission.platform,
+            weights,
+            byte_offset,
+            mode,
+            rows,
+            columns,
+            input,
+            output,
+        )?;
+        submission.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Encodes one grouped ids-enabled quantized expert matvec into an existing submission.
+    pub fn encode_grouped_quantized_matvec_submission(
+        &mut self,
+        submission: &mut MetalSubmission,
+        weights: &MetalBuffer,
+        mode: psionic_core::QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        selected_ids: &[i32],
+        input: &MetalBuffer,
+        output: &MetalBuffer,
+    ) -> Result<(), RuntimeError> {
+        validate_grouped_quantized_matvec_request(
+            weights,
+            mode,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids,
+            input,
+            output,
+        )?;
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        backend.platform.encode_grouped_quantized_matvec(
+            &mut submission.platform,
+            weights,
+            mode,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids,
+            input,
+            output,
+        )?;
+        submission.encoded_operations += 1;
+        Ok(())
     }
 
     /// Creates a device-resident KV mirror from host-owned prompt-cache rows.
@@ -3990,6 +4143,117 @@ fn validate_grouped_expert_layout(
         )));
     }
     Ok(weights.byte_len() / rows_per_group)
+}
+
+fn validate_quantized_matvec_request(
+    weights: &MetalBuffer,
+    byte_offset: usize,
+    mode: psionic_core::QuantizationMode,
+    rows: usize,
+    columns: usize,
+    input: &MetalBuffer,
+    output: &MetalBuffer,
+) -> Result<usize, RuntimeError> {
+    let row_stride = quantized_row_stride(mode, columns)?;
+    let required_bytes = rows.saturating_mul(row_stride);
+    let end_offset = byte_offset.saturating_add(required_bytes);
+    match weights.storage_kind() {
+        BufferStorageKind::QuantizedBlocks {
+            mode: stored_mode, ..
+        } if stored_mode == mode => {}
+        BufferStorageKind::QuantizedBlocks {
+            mode: stored_mode, ..
+        } => {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec mode mismatch: requested {mode:?}, stored {stored_mode:?}",
+            )));
+        }
+        storage_kind => {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec requires quantized block storage, actual {:?}",
+                storage_kind
+            )));
+        }
+    }
+    if weights.byte_len() < end_offset {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized matvec byte length mismatch: required {end_offset}, actual {}",
+            weights.byte_len(),
+        )));
+    }
+    if input.storage_kind() != BufferStorageKind::DenseF32 || input.spec().dtype() != DType::F32 {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized matvec input requires dense f32 storage, actual {:?}",
+            input.storage_kind()
+        )));
+    }
+    if output.storage_kind() != BufferStorageKind::DenseF32 || output.spec().dtype() != DType::F32
+    {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized matvec output requires dense f32 storage, actual {:?}",
+            output.storage_kind()
+        )));
+    }
+    if input.spec().storage_size() < columns {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized matvec input width mismatch: required at least {columns}, actual {}",
+            input.spec().storage_size()
+        )));
+    }
+    if output.spec().storage_size() < rows {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized matvec output rows mismatch: required at least {rows}, actual {}",
+            output.spec().storage_size()
+        )));
+    }
+    Ok(row_stride)
+}
+
+fn validate_grouped_quantized_matvec_request(
+    weights: &MetalBuffer,
+    mode: psionic_core::QuantizationMode,
+    row_stride: usize,
+    rows_per_expert: usize,
+    columns: usize,
+    selected_ids: &[i32],
+    input: &MetalBuffer,
+    output: &MetalBuffer,
+) -> Result<(), RuntimeError> {
+    validate_grouped_expert_layout(weights, mode, row_stride, rows_per_expert, columns)?;
+    let total_rows = rows_per_expert.saturating_mul(selected_ids.len());
+    if input.storage_kind() != BufferStorageKind::DenseF32 || input.spec().dtype() != DType::F32 {
+        return Err(RuntimeError::Backend(format!(
+            "metal grouped matvec input requires dense f32 storage, actual {:?}",
+            input.storage_kind()
+        )));
+    }
+    if output.storage_kind() != BufferStorageKind::DenseF32 || output.spec().dtype() != DType::F32
+    {
+        return Err(RuntimeError::Backend(format!(
+            "metal grouped matvec output requires dense f32 storage, actual {:?}",
+            output.storage_kind()
+        )));
+    }
+    if input.spec().storage_size() < columns {
+        return Err(RuntimeError::Backend(format!(
+            "metal grouped matvec input width mismatch: required at least {columns}, actual {}",
+            input.spec().storage_size()
+        )));
+    }
+    if output.spec().storage_size() < total_rows {
+        return Err(RuntimeError::Backend(format!(
+            "metal grouped matvec output rows mismatch: required at least {total_rows}, actual {}",
+            output.spec().storage_size()
+        )));
+    }
+    let _ = selected_expert_indices(selected_ids, validate_grouped_expert_layout(
+        weights,
+        mode,
+        row_stride,
+        rows_per_expert,
+        columns,
+    )?)?;
+    Ok(())
 }
 
 fn quantized_row_stride(

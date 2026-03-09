@@ -1072,6 +1072,35 @@ impl GptOssCudaRuntimeMetrics {
     }
 }
 
+/// Metal-side counters surfaced by the GPT-OSS runtime.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Default)]
+pub struct GptOssMetalRuntimeMetrics {
+    /// Bytes written from host slices into Metal-owned buffers.
+    pub host_to_device_bytes: u64,
+    /// Bytes materialized back into host-owned vectors from Metal-owned buffers.
+    pub device_to_host_bytes: u64,
+    /// Number of Metal command submissions used by the request.
+    pub submission_count: usize,
+    /// Number of explicit Metal synchronizations used by the request.
+    pub sync_count: usize,
+    /// Number of quantized Metal kernel encodes used by the request.
+    pub kernel_launches: usize,
+}
+
+impl GptOssMetalRuntimeMetrics {
+    fn accumulate(&mut self, other: &Self) {
+        self.host_to_device_bytes = self
+            .host_to_device_bytes
+            .saturating_add(other.host_to_device_bytes);
+        self.device_to_host_bytes = self
+            .device_to_host_bytes
+            .saturating_add(other.device_to_host_bytes);
+        self.submission_count = self.submission_count.saturating_add(other.submission_count);
+        self.sync_count = self.sync_count.saturating_add(other.sync_count);
+        self.kernel_launches = self.kernel_launches.saturating_add(other.kernel_launches);
+    }
+}
+
 /// Metal logits-output mode used by GPT-OSS decode steps.
 #[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1131,6 +1160,8 @@ pub struct GptOssPerformanceMetrics {
     pub stage_timings: GptOssStageTimingMetrics,
     /// Accumulated CUDA transfer and synchronization counters.
     pub cuda: GptOssCudaRuntimeMetrics,
+    /// Accumulated Metal transfer and synchronization counters.
+    pub metal: GptOssMetalRuntimeMetrics,
     /// Decode-step logits-selection evidence for Metal GPT-OSS requests.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub metal_decode_logits: Option<GptOssMetalDecodeLogitsMetrics>,
@@ -1148,6 +1179,7 @@ impl GptOssPerformanceMetrics {
             .max(other.graph_layer_node_count);
         self.stage_timings.accumulate(&other.stage_timings);
         self.cuda.accumulate(&other.cuda);
+        self.metal.accumulate(&other.metal);
         if let Some(other_metal_decode_logits) = &other.metal_decode_logits {
             self.metal_decode_logits
                 .get_or_insert_with(GptOssMetalDecodeLogitsMetrics::default)
@@ -1167,6 +1199,7 @@ impl GptOssPerformanceMetrics {
             && self.layer_visit_count == 0
             && self.graph_node_count == 0
             && self.graph_layer_node_count == 0
+            && self.metal == GptOssMetalRuntimeMetrics::default()
             && self
                 .metal_decode_logits
                 .as_ref()
