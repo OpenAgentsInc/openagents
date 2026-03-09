@@ -4,7 +4,6 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use psionic_runtime::{
-    validation_reference_for_served_product, validation_reference_for_text_generation_model,
     AcceleratorDeliverabilityReport, AcceleratorExecutionRequirement, AmdDeviceMetadata,
     AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendProbeState,
     BackendSelection, BackendToolchainIdentity, CacheAction, CacheInvalidationPolicy,
@@ -16,19 +15,20 @@ use psionic_runtime::{
     NvidiaTopologyInfo, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
     SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
     SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
-    ValidationMatrixReference,
+    ValidationMatrixReference, validation_reference_for_served_product,
+    validation_reference_for_text_generation_model,
 };
 use psionic_serve::{
-    cache_invalidation_policy, cache_observations_for_embedding_model,
-    default_decoder_kv_cache_policy, default_embeddings_execution_profile,
-    default_prefix_cache_policy, served_artifact_identity_for_decoder_model,
-    served_artifact_identity_for_embedding_model, DecoderModelDescriptor, EmbeddingModelDescriptor,
+    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
     EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, GenerationInput,
     GenerationLoadState, GenerationRequest, GenerationResponse, GenerationStreamStatus,
     GenerationStreamTerminal, GenerationStreamingPolicy, ModelArtifactGovernance,
-    ModelArtifactProvenanceKind, QuantizationMode, SessionId, TerminationReason,
-    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
-    EMBEDDINGS_PRODUCT_ID, TEXT_GENERATION_PRODUCT_ID,
+    ModelArtifactProvenanceKind, QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID,
+    TerminationReason, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
+    cache_invalidation_policy, cache_observations_for_embedding_model,
+    default_decoder_kv_cache_policy, default_embeddings_execution_profile,
+    default_prefix_cache_policy, served_artifact_identity_for_decoder_model,
+    served_artifact_identity_for_embedding_model,
 };
 
 /// Human-readable crate ownership summary.
@@ -1946,28 +1946,29 @@ mod tests {
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
+        ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
+        EmbeddingResponse, EmbeddingVector, GenerationLoadState, GenerationMetrics,
+        GenerationOptions, GenerationProvenance, GenerationRequest, GenerationResponse,
+        GenerationStreamStatus, GenerationStreamTerminal, ModelArtifactGovernance,
+        ModelArtifactLicenseEntry, ModelArtifactLicenseFacts, ModelArtifactProvenance,
+        ModelArtifactProvenanceKind, ReferenceWordDecoder, SessionId, SmokeByteEmbedder,
+        TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
         default_decoder_kv_cache_policy, default_decoder_memory_plan,
         default_generation_streaming_policy, default_prefix_cache_policy,
-        default_text_generation_execution_profile, ByteProjectionEmbedder, EmbeddingMetrics,
-        EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
-        GenerationLoadState, GenerationMetrics, GenerationOptions, GenerationProvenance,
-        GenerationRequest, GenerationResponse, GenerationStreamStatus, GenerationStreamTerminal,
-        ModelArtifactGovernance, ModelArtifactLicenseEntry, ModelArtifactLicenseFacts,
-        ModelArtifactProvenance, ModelArtifactProvenanceKind, ReferenceWordDecoder, SessionId,
-        SmokeByteEmbedder, TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
+        default_text_generation_execution_profile,
     };
     use serde_json::json;
     use tempfile::tempdir;
 
     use super::{
-        cache_invalidation_policy, compute_market_supply_refusal_diagnostic,
-        default_compute_market_supply_policy, digest_embedding_request, digest_generation_request,
-        digest_sandbox_execution_request, evaluate_compute_market_supply,
-        served_artifact_identity_for_decoder_model, CapabilityEnvelope,
-        ComputeMarketSupplyViolationCode, ExecutionReceipt, KvCacheMode,
+        CapabilityEnvelope, ComputeMarketSupplyViolationCode, ExecutionReceipt, KvCacheMode,
         LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
         SandboxExecutionCapabilityEnvelope, SandboxExecutionReceipt,
         TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
+        cache_invalidation_policy, compute_market_supply_refusal_diagnostic,
+        default_compute_market_supply_policy, digest_embedding_request, digest_generation_request,
+        digest_sandbox_execution_request, evaluate_compute_market_supply,
+        served_artifact_identity_for_decoder_model,
     };
 
     #[test]
@@ -2552,8 +2553,8 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_execution_receipt_can_surface_accelerator_deliverability(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn sandbox_execution_receipt_can_surface_accelerator_deliverability()
+    -> Result<(), Box<dyn std::error::Error>> {
         let request = SandboxExecutionRequestIdentity {
             request_id: String::from("sandbox-req-2"),
             sandbox_profile_digest: SandboxExecutionCapabilityProfile::bounded_accelerated(
@@ -2958,8 +2959,8 @@ mod tests {
     }
 
     #[test]
-    fn metal_gpt_oss_text_generation_capability_stays_not_yet_validated(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_gpt_oss_text_generation_capability_reports_explicit_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_gpt_oss_decoder_descriptor();
         let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
             metal_backend_selection(),
@@ -2973,11 +2974,11 @@ mod tests {
 
         assert_eq!(
             envelope.validation.claim_id,
-            "metal.gpt_oss.text_generation.not_yet_validated"
+            "metal.gpt_oss.text_generation.apple_silicon"
         );
         assert_eq!(
             envelope.validation.coverage,
-            ValidationCoverage::NotYetValidated
+            ValidationCoverage::PositiveExecution
         );
         assert_eq!(envelope.model_family, "gpt-oss");
         assert_eq!(envelope.runtime_backend, "metal");
@@ -2985,8 +2986,8 @@ mod tests {
     }
 
     #[test]
-    fn compute_market_supply_refuses_unlicensed_local_path_artifacts(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn compute_market_supply_refuses_unlicensed_local_path_artifacts()
+    -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let path = temp.path().join("byte_projection.safetensors");
         ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -3023,9 +3024,11 @@ mod tests {
         .expect("policy refusal diagnostic");
         assert_eq!(diagnostic.code, LocalRuntimeErrorCode::AdmissionRefused);
         assert_eq!(diagnostic.status, 403);
-        assert!(diagnostic
-            .message
-            .contains("compute-market supply policy refused artifact"));
+        assert!(
+            diagnostic
+                .message
+                .contains("compute-market supply policy refused artifact")
+        );
         Ok(())
     }
 
@@ -3062,8 +3065,8 @@ mod tests {
     }
 
     #[test]
-    fn capability_envelope_preserves_backend_runtime_resources(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn capability_envelope_preserves_backend_runtime_resources()
+    -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             cpu_backend_selection()
@@ -3086,8 +3089,7 @@ mod tests {
             json!("positive_execution")
         );
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]
-                ["max_cached_bytes"],
+            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]["max_cached_bytes"],
             json!(8 * 1024 * 1024)
         );
         assert_eq!(
@@ -3095,8 +3097,7 @@ mod tests {
             json!(false)
         );
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]
-                ["allocator_pool_budget_bytes"],
+            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]["allocator_pool_budget_bytes"],
             json!(8 * 1024 * 1024)
         );
         assert_eq!(
@@ -3156,8 +3157,8 @@ mod tests {
     }
 
     #[test]
-    fn capability_envelope_can_surface_multi_device_topology_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn capability_envelope_can_surface_multi_device_topology_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_multi_device_selection(),
@@ -3180,8 +3181,8 @@ mod tests {
     }
 
     #[test]
-    fn local_runtime_observability_envelope_serializes_stably(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn local_runtime_observability_envelope_serializes_stably()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = LocalRuntimeObservabilityEnvelope::new(LocalRuntimeObservability {
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             cache_invalidation_policy: cache_invalidation_policy(),
@@ -3357,8 +3358,8 @@ mod tests {
     }
 
     #[test]
-    fn fallback_capability_reports_requested_metal_but_effective_cpu(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn fallback_capability_reports_requested_metal_but_effective_cpu()
+    -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             metal_fallback_selection(),
@@ -3400,8 +3401,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_kfd_capability_reports_mode_topology_and_recovery(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_kfd_capability_reports_mode_topology_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_kfd_selection(),
             &sample_embedding_descriptor(),
@@ -3435,8 +3436,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_kfd_execution_capability_preserves_runtime_resources(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_kfd_execution_capability_preserves_runtime_resources()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_kfd_execution_selection(),
             &sample_embedding_descriptor(),
@@ -3448,13 +3449,11 @@ mod tests {
 
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]
-                ["max_cached_buffers"],
+            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]["max_cached_buffers"],
             json!(64)
         );
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]
-                ["allocator_pool_budget_bytes"],
+            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]["allocator_pool_budget_bytes"],
             json!(8 * 1024 * 1024u64)
         );
         assert_eq!(
@@ -3465,8 +3464,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_userspace_capability_reports_disabled_risk_posture(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_userspace_capability_reports_disabled_risk_posture()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_userspace_selection(),
             &sample_embedding_descriptor(),
@@ -3503,8 +3502,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_userspace_execution_capability_preserves_runtime_resources(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_userspace_execution_capability_preserves_runtime_resources()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_userspace_execution_selection(),
             &sample_embedding_descriptor(),
@@ -3528,8 +3527,8 @@ mod tests {
     }
 
     #[test]
-    fn cuda_capability_reports_topology_risk_and_recovery_without_amd_context(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn cuda_capability_reports_topology_risk_and_recovery_without_amd_context()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_backend_selection(),
             &sample_embedding_descriptor(),
@@ -3580,8 +3579,8 @@ mod tests {
     }
 
     #[test]
-    fn degraded_cuda_capability_reports_same_backend_degraded_state(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn degraded_cuda_capability_reports_same_backend_degraded_state()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             degraded_cuda_backend_selection(),
             &sample_embedding_descriptor(),
@@ -3613,8 +3612,8 @@ mod tests {
     }
 
     #[test]
-    fn cuda_fallback_capability_reports_requested_cuda_but_effective_cpu(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn cuda_fallback_capability_reports_requested_cuda_but_effective_cpu()
+    -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_fallback_selection(),
             &sample_embedding_descriptor(),
@@ -3948,8 +3947,8 @@ mod tests {
     }
 
     #[test]
-    fn metal_gpt_oss_text_generation_receipt_stays_not_yet_validated(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_gpt_oss_text_generation_receipt_reports_explicit_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "metal-gpt-oss-req",
             sample_gpt_oss_decoder_descriptor(),
@@ -3978,11 +3977,11 @@ mod tests {
 
         assert_eq!(
             receipt.validation.claim_id,
-            "metal.gpt_oss.text_generation.not_yet_validated"
+            "metal.gpt_oss.text_generation.apple_silicon"
         );
         assert_eq!(
             receipt.validation.coverage,
-            ValidationCoverage::NotYetValidated
+            ValidationCoverage::PositiveExecution
         );
         assert_eq!(receipt.model_family, "gpt-oss");
         Ok(())
