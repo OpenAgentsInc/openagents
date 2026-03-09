@@ -2558,56 +2558,16 @@ extern "C" int psionic_cuda_q8_0_matvec_q8_1(
     void *output,
     void *stream
 ) {
-    if (rows >= 128 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
-        const int block_count = cols / kQ81ElementsPerBlock;
-        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
-        const dim3 blocks(static_cast<unsigned int>((rows + 7) / 8), 1, 1);
-        const dim3 block_dims(kWarpSize, 8, 1);
-        quantized_matvec_q8_1_shared_input_kernel<Q80Q81Dot, 8><<<
-            blocks,
-            block_dims,
-            shared_input_bytes,
-            static_cast<cudaStream_t>(stream)
-        >>>(
-            static_cast<const uint8_t *>(weights),
-            row_stride,
-            rows,
-            block_count,
-            static_cast<const Q81Block *>(input_q8_1),
-            static_cast<float *>(output),
-            Q80Q81Dot{}
-        );
-    } else if (rows >= 32 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
-        const int block_count = cols / kQ81ElementsPerBlock;
-        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
-        const dim3 blocks(static_cast<unsigned int>((rows + 3) / 4), 1, 1);
-        const dim3 block_dims(kWarpSize, 4, 1);
-        quantized_matvec_q8_1_shared_input_kernel<Q80Q81Dot, 4><<<
-            blocks,
-            block_dims,
-            shared_input_bytes,
-            static_cast<cudaStream_t>(stream)
-        >>>(
-            static_cast<const uint8_t *>(weights),
-            row_stride,
-            rows,
-            block_count,
-            static_cast<const Q81Block *>(input_q8_1),
-            static_cast<float *>(output),
-            Q80Q81Dot{}
-        );
-    } else {
-        launch_quantized_matvec_q8_1_regular(
-            static_cast<const uint8_t *>(weights),
-            rows,
-            cols,
-            row_stride,
-            static_cast<const Q81Block *>(input_q8_1),
-            static_cast<float *>(output),
-            static_cast<cudaStream_t>(stream),
-            Q80Q81Dot{}
-        );
-    }
+    launch_quantized_matvec_q8_1_regular(
+        static_cast<const uint8_t *>(weights),
+        rows,
+        cols,
+        row_stride,
+        static_cast<const Q81Block *>(input_q8_1),
+        static_cast<float *>(output),
+        static_cast<cudaStream_t>(stream),
+        Q80Q81Dot{}
+    );
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -2620,62 +2580,22 @@ extern "C" int psionic_cuda_mxfp4_matvec_q8_1(
     void *output,
     void *stream
 ) {
-    if (rows >= 128 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
-        const int block_count = cols / kQ81ElementsPerBlock;
-        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
-        const dim3 blocks(static_cast<unsigned int>((rows + 7) / 8), 1, 1);
-        const dim3 block_dims(kWarpSize, 8, 1);
-        quantized_matvec_q8_1_shared_input_kernel<Mxfp4Q81Dot, 8><<<
-            blocks,
-            block_dims,
-            shared_input_bytes,
-            static_cast<cudaStream_t>(stream)
-        >>>(
-            static_cast<const uint8_t *>(weights),
-            row_stride,
-            rows,
-            block_count,
-            static_cast<const Q81Block *>(input_q8_1),
-            static_cast<float *>(output),
-            Mxfp4Q81Dot{}
-        );
-    } else if (rows >= 32 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
-        const int block_count = cols / kQ81ElementsPerBlock;
-        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
-        const dim3 blocks(static_cast<unsigned int>((rows + 3) / 4), 1, 1);
-        const dim3 block_dims(kWarpSize, 4, 1);
-        quantized_matvec_q8_1_shared_input_kernel<Mxfp4Q81Dot, 4><<<
-            blocks,
-            block_dims,
-            shared_input_bytes,
-            static_cast<cudaStream_t>(stream)
-        >>>(
-            static_cast<const uint8_t *>(weights),
-            row_stride,
-            rows,
-            block_count,
-            static_cast<const Q81Block *>(input_q8_1),
-            static_cast<float *>(output),
-            Mxfp4Q81Dot{}
-        );
-    } else {
-        const int block_count = cols / kQ81ElementsPerBlock;
-        const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
-        quantized_matvec_q8_1_mmvq_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
-            rows,
-            block_dims,
-            0,
-            static_cast<cudaStream_t>(stream)
-        >>>(
-            static_cast<const uint8_t *>(weights),
-            row_stride,
-            rows,
-            block_count,
-            static_cast<const Q81Block *>(input_q8_1),
-            static_cast<float *>(output),
-            Mxfp4Q81Dot{}
-        );
-    }
+    const int block_count = cols / kQ81ElementsPerBlock;
+    const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
+    quantized_matvec_q8_1_mmvq_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
+        rows,
+        block_dims,
+        0,
+        static_cast<cudaStream_t>(stream)
+    >>>(
+        static_cast<const uint8_t *>(weights),
+        row_stride,
+        rows,
+        block_count,
+        static_cast<const Q81Block *>(input_q8_1),
+        static_cast<float *>(output),
+        Mxfp4Q81Dot{}
+    );
     return static_cast<int>(cudaGetLastError());
 }
 

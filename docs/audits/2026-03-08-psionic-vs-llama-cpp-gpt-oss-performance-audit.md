@@ -6,12 +6,17 @@
 > OpenAI-compatible hot path so Harmony debug fields are opt-in instead of
 > always serialized, after adding prompt-token reuse on the HTTP lane plus
 > safe cross-request CUDA decode-graph reuse keyed to the actual KV allocation
-> identities, and after the newer exact-prompt shared-prefix fast paths that
-> stop cloning full prompt-logit histories and avoid re-recording or
-> host-cloning unchanged prompt caches on repeated GPT-OSS HTTP requests. This
-> file is the current audit for the GPT-OSS throughput gap; later product truth
-> still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
-> `crates/psionic/docs/ROADMAP.md`, and the referenced issues.
+> identities, after the newer exact-prompt shared-prefix fast paths that stop
+> cloning full prompt-logit histories and avoid re-recording or host-cloning
+> unchanged prompt caches on repeated GPT-OSS HTTP requests, and after the
+> latest decode-kernel checkpoint that confirmed two plausible llama.cpp-aligned
+> ideas did not improve this workload: q8_0 `f16` projection mirrors feeding
+> cuBLAS tensor-op GEMV regressed into the mid-80s tok/s, and replacing the
+> GPT-OSS `selected_count = 4` custom MoE kernels with simpler per-expert MMVQ
+> routing also stayed below the best prior checkpoint. This file is the current
+> audit for the GPT-OSS throughput gap; later product truth still lives in
+> `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and the
+> referenced issues.
 
 ## Scope
 
@@ -149,9 +154,61 @@
 - Psionic improvement over the previous hot-path checkpoint:
   - `1.05x`
 
+### Current ruled-out-experiment checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.401s`
+  - `92.32 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.252s`
+  - `166.46 tok/s`
+- Gap:
+  - `1.80x`
+- Psionic improvement over the original baseline:
+  - `5.52x`
+- Psionic improvement over the previous exact-prompt cache checkpoint:
+  - effectively flat; `92.32 tok/s` is within noise of the prior `92.02 tok/s`
+- Ruled-out changes from this checkpoint:
+  - enabling q8_0 `f16` transpose mirrors for GPT-OSS attention projections and
+    routing them through cuBLAS `GemmEx` regressed the exact same benchmark into
+    the `83-84 tok/s` range on this host
+  - replacing the GPT-OSS `selected_count = 4` custom MoE kernels with the
+    simpler direct per-expert MMVQ/atomic route also failed to improve the
+    benchmark and stayed around `90.74 tok/s`
+- Host-state note:
+  - the external `dota2` process still holds about `2.1 GiB` of RTX 4080 VRAM
+  - even the local `llama.cpp` control therefore remains below the requested
+    `190 tok/s` target on this machine state, so Psionic cannot honestly prove
+    `>190 tok/s` here until that competing workload is cleared
+
 The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
+
+## New Findings From The Latest Iteration
+
+- CUDA decode-graph replay is still useful plumbing, but it is no longer the
+  dominant limiter on this exact prompt.
+  - disabling the graph fast path on warm repeated requests left per-token wall
+    time almost unchanged while keeping one CUDA submission and one sync per
+    token
+- the existing shared-input multi-row q8_1 matvec kernels were not helping the
+  GPT-OSS decode lane on this host.
+  - the current faster checkpoint keeps the regular single-row MMVQ-style
+    kernel for both `Q8_0 x Q8_1` and `MXFP4 x Q8_1` decode projections
+- not every llama.cpp-looking shortcut is an actual win for this workload.
+  - on this RTX 4080 + `gpt-oss-20b-mxfp4.gguf` combination, the q8_0
+    projection `f16` mirror path and the direct per-expert MoE route were both
+    plausible from code inspection and both lost to the current path in live
+    benchmark runs
+- the remaining gap is now concentrated even more tightly in the kernels that
+  Psionic still does not match line-for-line with llama.cpp.
+  - the next real alignment targets are the ids-enabled `mul_mat_vec_q` / MMVQ
+    path for the GPT-OSS MoE decode lane, the final-logits greedy path
+    (preferably avoiding a full logits materialization when only argmax is
+    needed), and a deeper audit of whether llama.cpp's reported `REPACK = 1`
+    state implies a useful backend-side weight layout transform for this exact
+    model family on CUDA
 
 ## What Landed Between The Two Measurements
 
