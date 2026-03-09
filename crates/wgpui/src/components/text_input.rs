@@ -530,7 +530,7 @@ impl Component for TextInput {
                 && let Some((sel_start, sel_end)) = self.get_selection()
             {
                 let ranges = self.visual_line_ranges();
-                let selection_color = Hsla::from_hex(0x2A2A2A);
+                let selection_color = theme::theme().colors.overlay;
                 for (i, (line_start, line_end)) in ranges.iter().enumerate() {
                     if i < first_line || i >= end_line {
                         continue;

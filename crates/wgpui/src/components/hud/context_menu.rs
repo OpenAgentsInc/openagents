@@ -4,7 +4,7 @@
 
 use crate::components::{Component, ComponentId, EventContext, EventResult, PaintContext};
 use crate::text::FontStyle;
-use crate::{Bounds, Hsla, InputEvent, Key, MouseButton, Point, Quad, theme};
+use crate::{Bounds, InputEvent, Key, MouseButton, Point, Quad, theme};
 
 /// Menu item separator
 pub const SEPARATOR: &str = "---";
@@ -367,13 +367,12 @@ impl Component for ContextMenu {
         );
         cx.scene.draw_quad(
             Quad::new(shadow_bounds)
-                .with_background(Hsla::new(0.0, 0.0, 0.0, 0.5))
+                .with_background(theme::theme().colors.overlay_scrim)
                 .with_corner_radius(6.0),
         );
 
-        // Draw solid menu background - #0a0a0a
-        let menu_bg = Hsla::new(0.0, 0.0, 0.039, 1.0); // #0a0a0a
-        let menu_border = Hsla::new(0.0, 0.0, 0.2, 1.0);
+        let menu_bg = theme::bg::SURFACE;
+        let menu_border = theme::border::DEFAULT;
         cx.scene.draw_quad(
             Quad::new(menu_bounds)
                 .with_background(menu_bg)
@@ -402,10 +401,9 @@ impl Component for ContextMenu {
 
             // Draw selection highlight
             if is_selected && !item.disabled {
-                let hover_bg = Hsla::new(0.0, 0.0, 0.22, 1.0); // lighter than menu bg
                 cx.scene.draw_quad(
                     Quad::new(item_bounds)
-                        .with_background(hover_bg)
+                        .with_background(theme::bg::HOVER)
                         .with_corner_radius(3.0),
                 );
             }

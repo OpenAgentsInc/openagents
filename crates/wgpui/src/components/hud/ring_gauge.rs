@@ -1,6 +1,6 @@
 use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
-use crate::{Bounds, Hsla, InputEvent, Quad};
+use crate::{Bounds, Hsla, InputEvent, Quad, theme};
 
 /// A circular progress/level gauge using dot segments.
 ///
@@ -25,9 +25,9 @@ impl RingGauge {
             segments: 64,
             level: 0.0,
             dot_size: 6.0,
-            active_color: Hsla::from_hex(0x2ec4d6),
-            inactive_color: Hsla::from_hex(0x10212a),
-            head_color: Hsla::from_hex(0xf5faff),
+            active_color: theme::accent::PRIMARY,
+            inactive_color: theme::bg::ELEVATED,
+            head_color: theme::text::PRIMARY,
             head: None,
             start_angle: -std::f32::consts::FRAC_PI_2,
             sweep: std::f32::consts::TAU,

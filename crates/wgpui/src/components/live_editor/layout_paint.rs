@@ -42,7 +42,7 @@ impl LiveEditor {
 
             BlockType::CodeBlock | BlockType::CodeFence => {
                 // Render code with monospace, slightly dimmed
-                let code_color = Hsla::new(0.0, 0.0, 0.7, 1.0);
+                let code_color = theme::text::SECONDARY;
                 let text_run = cx.text.layout_styled_mono(
                     line,
                     Point::new(x, y),
@@ -110,7 +110,7 @@ impl LiveEditor {
             BlockType::Blockquote => {
                 // Render blockquote bar and content
                 let content = strip_blockquote_prefix(line);
-                let bar_color = Hsla::new(210.0, 0.5, 0.5, 0.7);
+                let bar_color = theme::accent::PRIMARY.with_alpha(0.7);
 
                 // Draw vertical bar
                 cx.scene.draw_quad(
@@ -128,7 +128,7 @@ impl LiveEditor {
                     content,
                     Point::new(x + 12.0, y),
                     self.style.font_size,
-                    Hsla::new(0.0, 0.0, 0.7, 1.0),
+                    theme::text::SECONDARY,
                     FontStyle::italic(),
                 );
                 cx.scene.draw_text(text_run);
@@ -139,7 +139,7 @@ impl LiveEditor {
                 let rule_y = y + (self.style.font_size * self.style.line_height) / 2.0;
                 cx.scene.draw_quad(
                     Quad::new(Bounds::new(x, rule_y, 200.0, 1.0))
-                        .with_background(Hsla::new(0.0, 0.0, 0.3, 1.0)),
+                        .with_background(theme::border::DEFAULT),
                 );
             }
 
@@ -184,7 +184,7 @@ impl LiveEditor {
                     &span.text,
                     Point::new(current_x, y),
                     self.style.font_size,
-                    Hsla::new(30.0, 0.8, 0.7, 1.0), // Orange-ish for code
+                    theme::accent::PRIMARY,
                     FontStyle::default(),
                 );
                 cx.scene.draw_text(text_run);
@@ -452,7 +452,7 @@ impl LiveEditor {
                     scrollbar_width,
                     visible_height,
                 ))
-                .with_background(Hsla::new(0.0, 0.0, 0.3, 0.2)),
+                .with_background(crate::theme::theme().colors.overlay_subtle),
             );
 
             // Thumb
@@ -470,7 +470,7 @@ impl LiveEditor {
                     scrollbar_width,
                     thumb_height,
                 ))
-                .with_background(Hsla::new(0.0, 0.0, 0.5, 0.5))
+                .with_background(theme::border::ACTIVE.with_alpha(0.5))
                 .with_corner_radius(6.0),
             );
         }
@@ -503,7 +503,7 @@ impl LiveEditor {
             &status_text,
             Point::new(status_x, status_y),
             STATUS_BAR_FONT_SIZE,
-            Hsla::new(0.0, 0.0, 0.5, 1.0),
+            theme::text::MUTED,
             FontStyle::default(),
         );
         cx.scene.draw_text(status_run);
