@@ -1070,6 +1070,10 @@ pub struct GptOssPerformanceMetrics {
     pub step_count: usize,
     /// Number of decoder layers traversed across those steps.
     pub layer_visit_count: usize,
+    /// Number of explicit high-level decode-graph nodes for the realized GPT-OSS path.
+    pub graph_node_count: usize,
+    /// Number of per-layer graph nodes repeated across decoder layers.
+    pub graph_layer_node_count: usize,
     /// Accumulated stage timings in nanoseconds.
     pub stage_timings: GptOssStageTimingMetrics,
     /// Accumulated CUDA transfer and synchronization counters.
@@ -1082,12 +1086,19 @@ impl GptOssPerformanceMetrics {
         self.layer_visit_count = self
             .layer_visit_count
             .saturating_add(other.layer_visit_count);
+        self.graph_node_count = self.graph_node_count.max(other.graph_node_count);
+        self.graph_layer_node_count = self
+            .graph_layer_node_count
+            .max(other.graph_layer_node_count);
         self.stage_timings.accumulate(&other.stage_timings);
         self.cuda.accumulate(&other.cuda);
     }
 
     fn is_zero(&self) -> bool {
-        self.step_count == 0 && self.layer_visit_count == 0
+        self.step_count == 0
+            && self.layer_visit_count == 0
+            && self.graph_node_count == 0
+            && self.graph_layer_node_count == 0
     }
 }
 
