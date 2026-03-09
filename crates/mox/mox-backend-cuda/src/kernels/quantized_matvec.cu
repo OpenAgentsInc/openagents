@@ -5,6 +5,7 @@
 namespace {
 
 constexpr int kBlockSize = 256;
+constexpr int kAttentionMaxPositions = 513;
 
 __device__ __forceinline__ float half_to_float(uint16_t bits) {
     const uint32_t sign = static_cast<uint32_t>(bits & 0x8000u) << 16;
@@ -124,6 +125,212 @@ struct Mxfp4Dot {
     }
 };
 
+__global__ void add_f32_offset_in_place_kernel(
+    float *destination,
+    int element_offset,
+    const float *rhs,
+    int element_count
+) {
+    const int index = static_cast<int>(blockIdx.x) * blockDim.x + threadIdx.x;
+    if (index < element_count) {
+        destination[element_offset + index] += rhs[index];
+    }
+}
+
+__global__ void rms_norm_kernel(
+    const float *input,
+    const float *weight,
+    int element_count,
+    float epsilon,
+    float *output
+) {
+    __shared__ float scratch[kBlockSize];
+    float sum = 0.0f;
+    for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
+        const float value = input[index];
+        sum += value * value;
+    }
+    scratch[threadIdx.x] = sum;
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+        if (threadIdx.x < offset) {
+            scratch[threadIdx.x] += scratch[threadIdx.x + offset];
+        }
+        __syncthreads();
+    }
+
+    const float inv_rms = rsqrtf(scratch[0] / static_cast<float>(element_count) + epsilon);
+    for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
+        output[index] = input[index] * weight[index] * inv_rms;
+    }
+}
+
+__device__ __forceinline__ float rope_yarn_ramp(const float low, const float high, const int i0) {
+    const float y = ((i0 / 2) - low) / fmaxf(high - low, 0.001f);
+    return 1.0f - fminf(fmaxf(y, 0.0f), 1.0f);
+}
+
+__device__ __forceinline__ void rope_yarn(
+    const float theta_extrap,
+    const float freq_scale,
+    const float corr_low,
+    const float corr_high,
+    const int i0,
+    const float ext_factor,
+    const float theta_scale,
+    float &cos_theta,
+    float &sin_theta
+) {
+    float theta_interp = freq_scale * theta_extrap;
+    float theta = theta_interp;
+    float mscale = 1.0f;
+    if (ext_factor != 0.0f) {
+        const float ramp_mix = rope_yarn_ramp(corr_low, corr_high, i0) * ext_factor;
+        theta = theta_interp * (1.0f - ramp_mix) + theta_extrap * ramp_mix;
+        mscale *= 1.0f + 0.1f * logf(1.0f / freq_scale);
+    }
+    cos_theta = cosf(theta) * mscale;
+    sin_theta = sinf(theta) * mscale;
+}
+
+__global__ void rope_neox_in_place_kernel(
+    float *values,
+    int element_offset,
+    int head_count,
+    int head_dim,
+    int rotary_dim,
+    int position,
+    float freq_scale,
+    float ext_factor,
+    float corr_low,
+    float corr_high,
+    float theta_scale
+) {
+    const int head_index = blockIdx.x;
+    if (head_index >= head_count) {
+        return;
+    }
+    const int rotary_pairs = rotary_dim / 2;
+    for (int pair = threadIdx.x; pair < rotary_pairs; pair += blockDim.x) {
+        const int head_base = element_offset + head_index * head_dim;
+        const int index0 = head_base + pair;
+        const int index1 = head_base + pair + rotary_pairs;
+        if (index1 >= head_base + head_dim) {
+            continue;
+        }
+        const float theta_base = static_cast<float>(position) * powf(theta_scale, static_cast<float>(pair));
+        float cos_theta = 0.0f;
+        float sin_theta = 0.0f;
+        rope_yarn(
+            theta_base,
+            freq_scale,
+            corr_low,
+            corr_high,
+            pair * 2,
+            ext_factor,
+            theta_scale,
+            cos_theta,
+            sin_theta
+        );
+        const float x0 = values[index0];
+        const float x1 = values[index1];
+        values[index0] = x0 * cos_theta - x1 * sin_theta;
+        values[index1] = x0 * sin_theta + x1 * cos_theta;
+    }
+}
+
+__global__ void attention_decode_kernel(
+    const float *query,
+    int query_offset,
+    const float *current_key,
+    int key_offset,
+    const float *current_value,
+    int value_offset,
+    const float *cache_keys,
+    const float *cache_values,
+    int cache_width,
+    int layer_offset,
+    int past_tokens,
+    int sliding_window,
+    int head_count,
+    int kv_head_count,
+    int head_dim,
+    const float *attention_sinks,
+    float *output
+) {
+    const int head_index = blockIdx.x;
+    if (head_index >= head_count) {
+        return;
+    }
+
+    __shared__ float logits[kAttentionMaxPositions];
+    __shared__ float weights[kAttentionMaxPositions];
+
+    int window_tokens = past_tokens;
+    if (sliding_window > 0 && window_tokens > sliding_window) {
+        window_tokens = sliding_window;
+    }
+    if (window_tokens > kAttentionMaxPositions - 1) {
+        window_tokens = kAttentionMaxPositions - 1;
+    }
+    const int start = past_tokens - window_tokens;
+    const int group_size = max(head_count / max(kv_head_count, 1), 1);
+    const int kv_head = min(head_index / group_size, kv_head_count - 1);
+    const float scale = rsqrtf(static_cast<float>(head_dim));
+    const float *query_head = query + query_offset + head_index * head_dim;
+
+    if (threadIdx.x <= window_tokens) {
+        const bool current = threadIdx.x == window_tokens;
+        const float *key_head = current
+            ? current_key + key_offset + kv_head * head_dim
+            : cache_keys + (start + threadIdx.x) * cache_width + layer_offset + kv_head * head_dim;
+        float dot = 0.0f;
+        for (int dim = 0; dim < head_dim; ++dim) {
+            dot += query_head[dim] * key_head[dim];
+        }
+        logits[threadIdx.x] = dot * scale;
+    }
+    __syncthreads();
+
+    if (threadIdx.x == 0) {
+        float max_value = logits[0];
+        for (int index = 1; index <= window_tokens; ++index) {
+            max_value = fmaxf(max_value, logits[index]);
+        }
+        if (attention_sinks != nullptr) {
+            max_value = fmaxf(max_value, attention_sinks[head_index]);
+        }
+
+        float denom = 0.0f;
+        for (int index = 0; index <= window_tokens; ++index) {
+            weights[index] = expf(logits[index] - max_value);
+            denom += weights[index];
+        }
+        if (attention_sinks != nullptr) {
+            denom += expf(attention_sinks[head_index] - max_value);
+        }
+        if (denom != 0.0f) {
+            for (int index = 0; index <= window_tokens; ++index) {
+                weights[index] /= denom;
+            }
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.x < head_dim) {
+        float sum = 0.0f;
+        for (int index = 0; index < window_tokens; ++index) {
+            const float *value_head =
+                cache_values + (start + index) * cache_width + layer_offset + kv_head * head_dim;
+            sum += value_head[threadIdx.x] * weights[index];
+        }
+        const float *current_value_head = current_value + value_offset + kv_head * head_dim;
+        sum += current_value_head[threadIdx.x] * weights[window_tokens];
+        output[head_index * head_dim + threadIdx.x] = sum;
+    }
+}
+
 }  // namespace
 
 extern "C" int mox_cuda_quantized_kernels_compiled(void) {
@@ -168,6 +375,113 @@ extern "C" int mox_cuda_mxfp4_matvec(
         static_cast<const float *>(input),
         static_cast<float *>(output),
         Mxfp4Dot{}
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int mox_cuda_rms_norm(
+    const void *input,
+    const void *weight,
+    int element_count,
+    float epsilon,
+    void *output,
+    void *stream
+) {
+    rms_norm_kernel<<<1, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const float *>(input),
+        static_cast<const float *>(weight),
+        element_count,
+        epsilon,
+        static_cast<float *>(output)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int mox_cuda_add_f32_offset_in_place(
+    void *destination,
+    int element_offset,
+    const void *rhs,
+    int element_count,
+    void *stream
+) {
+    const int blocks = (element_count + kBlockSize - 1) / kBlockSize;
+    add_f32_offset_in_place_kernel<<<blocks, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<float *>(destination),
+        element_offset,
+        static_cast<const float *>(rhs),
+        element_count
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int mox_cuda_rope_neox_in_place(
+    void *values,
+    int element_offset,
+    int head_count,
+    int head_dim,
+    int rotary_dim,
+    int position,
+    float freq_scale,
+    float ext_factor,
+    float corr_low,
+    float corr_high,
+    float theta_scale,
+    void *stream
+) {
+    rope_neox_in_place_kernel<<<head_count, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<float *>(values),
+        element_offset,
+        head_count,
+        head_dim,
+        rotary_dim,
+        position,
+        freq_scale,
+        ext_factor,
+        corr_low,
+        corr_high,
+        theta_scale
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int mox_cuda_attention_decode(
+    const void *query,
+    int query_offset,
+    const void *current_key,
+    int key_offset,
+    const void *current_value,
+    int value_offset,
+    const void *cache_keys,
+    const void *cache_values,
+    int cache_width,
+    int layer_offset,
+    int past_tokens,
+    int sliding_window,
+    int head_count,
+    int kv_head_count,
+    int head_dim,
+    const void *attention_sinks,
+    void *output,
+    void *stream
+) {
+    attention_decode_kernel<<<head_count, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const float *>(query),
+        query_offset,
+        static_cast<const float *>(current_key),
+        key_offset,
+        static_cast<const float *>(current_value),
+        value_offset,
+        static_cast<const float *>(cache_keys),
+        static_cast<const float *>(cache_values),
+        cache_width,
+        layer_offset,
+        past_tokens,
+        sliding_window,
+        head_count,
+        kv_head_count,
+        head_dim,
+        static_cast<const float *>(attention_sinks),
+        static_cast<float *>(output)
     );
     return static_cast<int>(cudaGetLastError());
 }

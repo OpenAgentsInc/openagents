@@ -4,7 +4,7 @@ use mox_backend_cpu::{
     CpuBackend, decode_quantized_row_into, quantized_row_byte_len, quantized_row_dot,
 };
 use mox_backend_cuda::{
-    CudaBackend, CudaBuffer, CudaQuantizedMatvecStats,
+    CudaBackend, CudaBuffer, CudaQuantizedMatvecStats, CudaSubmissionReport,
     TEXT_GENERATION_SUPPORTED_OPS as CUDA_TEXT_GENERATION_SUPPORTED_OPS,
 };
 use mox_catalog::LocalBlobOpenOptions;
@@ -15,14 +15,13 @@ use sha2::{Digest, Sha256};
 use super::{
     BackendHealthTracker, CompiledWordGenerationModel, DecoderModelDescriptor,
     GenerationEventStream, GenerationModelHandle, GenerationResponse, GenerationStreamEvent,
-    GenerationStreamStatus, GenerationStreamTerminal, GgufDecoderAdapterLoader,
-    GgufDecoderFamily, GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout,
-    GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
-    InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
-    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
-    ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
-    TokenSequence, TokenizerBoundary, current_time_millis, generation_runtime_observability,
-    run_generation_request,
+    GenerationStreamStatus, GenerationStreamTerminal, GgufDecoderAdapterLoader, GgufDecoderFamily,
+    GgufDecoderFamilyMetadata, GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics,
+    InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore, LoadedModelRegistryError,
+    LoadedModelView, LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError,
+    QuantizationMode, ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor,
+    TokenId, TokenSequence, TokenizerBoundary, current_time_millis, default_prefix_cache_policy,
+    generation_runtime_observability, prefix_compatibility, run_generation_request,
 };
 use thiserror::Error;
 
@@ -58,6 +57,28 @@ fn accumulate_cuda_matvec_stats(
         .cuda
         .kernel_launches
         .saturating_add(stats.kernel_launches);
+}
+
+fn accumulate_cuda_submission_report(
+    perf: &mut GptOssPerformanceMetrics,
+    report: &CudaSubmissionReport,
+    host_to_device_bytes: u64,
+    device_to_host_bytes: u64,
+) {
+    perf.cuda.host_to_device_bytes = perf
+        .cuda
+        .host_to_device_bytes
+        .saturating_add(host_to_device_bytes);
+    perf.cuda.device_to_host_bytes = perf
+        .cuda
+        .device_to_host_bytes
+        .saturating_add(device_to_host_bytes);
+    perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+    perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+    perf.cuda.kernel_launches = perf
+        .cuda
+        .kernel_launches
+        .saturating_add(report.encoded_operations);
 }
 
 /// CPU-backed real GGUF GPT-OSS text-generation service.
@@ -462,7 +483,7 @@ impl TextGenerationExecutor for CudaGgufGptOssTextGenerationService {
         &mut self,
         request: &super::GenerationRequest,
     ) -> Result<super::GenerationResponse, Self::Error> {
-        run_generation_request(
+        run_cuda_generation_request(
             &mut self.backend,
             &mut self.models,
             &mut self.sessions,
@@ -471,6 +492,321 @@ impl TextGenerationExecutor for CudaGgufGptOssTextGenerationService {
         )
         .map_err(Into::into)
     }
+}
+
+fn run_cuda_generation_request(
+    backend: &mut CudaBackend,
+    models: &mut InMemoryGenerationModelRegistry<CudaGgufGptOssGenerationModel>,
+    sessions: &mut InMemoryGenerationSessionStore,
+    shared_prefixes: &mut SharedPrefixStore,
+    request: &super::GenerationRequest,
+) -> Result<GenerationResponse, ReferenceTextGenerationError> {
+    if request.product_id != super::TEXT_GENERATION_PRODUCT_ID {
+        return Err(ReferenceTextGenerationError::UnsupportedProduct(
+            request.product_id.clone(),
+        ));
+    }
+
+    let loaded_model = models
+        .active(request.model.model.model_id.as_str())
+        .ok_or_else(|| {
+            ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
+        })?
+        .clone();
+    if loaded_model.descriptor() != &request.model {
+        return Err(ReferenceTextGenerationError::UnsupportedModel(
+            request.model.model.model_id.clone(),
+        ));
+    }
+
+    let model_id = request.model.model.model_id.as_str();
+    let load_state = models
+        .load_state(model_id)
+        .unwrap_or(super::GenerationLoadState::Warm);
+    let request_start = current_time_millis();
+    let generation_start = Instant::now();
+    models.begin_request(model_id, request_start)?;
+    let memory_plan = models.memory_plan(model_id).cloned();
+    let residency_policy = Some(models.residency_policy().clone());
+    let residency_snapshot = Some(models.memory_snapshot());
+    let served_artifact = super::served_artifact_identity_for_decoder_backend(
+        loaded_model.descriptor(),
+        loaded_model.backend_compatibility(),
+        &[],
+    );
+
+    let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
+        let prompt_eval_start = Instant::now();
+        let tokenizer = loaded_model.tokenizer();
+        let prompt_tokens = loaded_model.encode_prompt_input(&request.prompt)?;
+        if prompt_tokens.is_empty() {
+            return Err(ReferenceTextGenerationError::EmptyPrompt);
+        }
+
+        let expected_kv_width = loaded_model.cache_width();
+        let mut session_tokens = Vec::new();
+        let compatibility = prefix_compatibility(&loaded_model);
+        let prefix_policy = default_prefix_cache_policy();
+        let mut prefix_state = super::PrefixCacheState::None;
+        let mut prefix_tokens_reused = 0usize;
+        let mut prefix_identity = None;
+        let mut shared_prefix_eligible = false;
+        let previous_kv_state = if let Some(session_id) = &request.session_id {
+            if request.reset_session {
+                sessions.reset(session_id)?;
+            }
+            let state = sessions.state(session_id)?;
+            super::validate_session_model(
+                state,
+                session_id,
+                loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
+            )?;
+            session_tokens = state.tokens().to_vec();
+            if state.cache().is_empty() {
+                shared_prefix_eligible = true;
+            } else {
+                prefix_state = super::PrefixCacheState::Bypassed;
+            }
+            state.cache().state()
+        } else {
+            shared_prefix_eligible = true;
+            mox_runtime::KvCacheState::default()
+        };
+        let preserve_prefix_tokens = usize::from(
+            prompt_tokens.as_slice().first().copied() == Some(tokenizer.vocabulary().bos_id()),
+        );
+        let (prompt_tokens, context_window) = super::apply_context_window(
+            &prompt_tokens,
+            loaded_model.descriptor().config.max_context,
+            previous_kv_state.tokens,
+            request.options.max_output_tokens,
+            request.options.context_overflow_policy,
+            preserve_prefix_tokens,
+        )?;
+        let mut prompt_logits = Vec::new();
+        let mut last_logits = Vec::new();
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
+        let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
+        let mut cache = if shared_prefix_eligible {
+            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            prefix_state = lookup.state;
+            prefix_tokens_reused = lookup.reused_tokens;
+            prefix_identity = lookup.identity;
+            prompt_logits = lookup.prompt_logits;
+            last_logits = prompt_logits.last().cloned().unwrap_or_default();
+            lookup.cache.unwrap_or_else(|| {
+                super::InMemoryKvCache::new(
+                    loaded_model.descriptor().config.max_context,
+                    expected_kv_width,
+                )
+            })
+        } else if let Some(session_id) = &request.session_id {
+            sessions.state(session_id)?.cache().clone()
+        } else {
+            super::InMemoryKvCache::new(
+                loaded_model.descriptor().config.max_context,
+                expected_kv_width,
+            )
+        };
+        if cache.width() != expected_kv_width {
+            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                expected_kv_width,
+                kv_width: cache.width(),
+            });
+        }
+        let mut cuda_cache = CudaKvCacheMirror::from_host_cache(
+            backend,
+            &cache,
+            request.options.max_output_tokens.saturating_add(1),
+        )?;
+        for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
+            let step = loaded_model.execute_step_with_cuda_cache(
+                backend,
+                *token,
+                cache.len(),
+                &cache,
+                &cuda_cache,
+            )?;
+            super::accumulate_generation_step_counters(
+                &step,
+                &mut execution_plan_digest,
+                &mut compile_path,
+                &mut kernel_count,
+                &mut bytes_moved,
+                &mut plan_cache_hits,
+                &mut plan_cache_misses,
+                &mut gpt_oss_perf,
+            );
+            cache.append(*token, step.key.clone(), step.value.clone())?;
+            cuda_cache.append(backend, step.key.as_slice(), step.value.as_slice())?;
+            last_logits = step.logits;
+            prompt_logits.push(last_logits.clone());
+        }
+        let prompt_cache = cache.clone();
+
+        let mut sampler = super::GenerationSampler::new(&request.options);
+        let mut generated_tokens = Vec::new();
+        let termination = loop {
+            if generated_tokens.len() >= request.options.max_output_tokens {
+                break super::TerminationReason::MaxOutputTokens;
+            }
+            if cache.len() >= cache.max_context() {
+                break super::TerminationReason::ContextLimit;
+            }
+
+            let next_token = sampler
+                .select_next_token(&last_logits, &cache)
+                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            if loaded_model.is_end_of_sequence(next_token) {
+                break super::TerminationReason::EndOfSequence;
+            }
+
+            generated_tokens.push(next_token);
+            let step = loaded_model.execute_step_with_cuda_cache(
+                backend,
+                next_token,
+                cache.len(),
+                &cache,
+                &cuda_cache,
+            )?;
+            super::accumulate_generation_step_counters(
+                &step,
+                &mut execution_plan_digest,
+                &mut compile_path,
+                &mut kernel_count,
+                &mut bytes_moved,
+                &mut plan_cache_hits,
+                &mut plan_cache_misses,
+                &mut gpt_oss_perf,
+            );
+            cache.append(next_token, step.key.clone(), step.value.clone())?;
+            cuda_cache.append(backend, step.key.as_slice(), step.value.as_slice())?;
+            last_logits = step.logits;
+
+            if super::truncate_generated_text(
+                loaded_model.tokenizer(),
+                &mut generated_tokens,
+                &request.options.stop_sequences,
+            )
+            .is_some()
+            {
+                break super::TerminationReason::EndOfSequence;
+            }
+        };
+
+        if shared_prefix_eligible {
+            let recorded_identity = shared_prefixes.record(
+                compatibility,
+                &prompt_tokens,
+                &prompt_logits,
+                &prompt_cache,
+            );
+            if prefix_state != super::PrefixCacheState::Hit || prefix_identity.is_none() {
+                prefix_identity = Some(recorded_identity);
+            }
+        }
+
+        let prompt_eval_duration_ns = prompt_eval_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+
+        let generated = TokenSequence::new(generated_tokens);
+        if let Some(session_id) = &request.session_id {
+            session_tokens.extend_from_slice(prompt_tokens.as_slice());
+            session_tokens.extend_from_slice(generated.as_slice());
+            sessions.replace_cache(
+                session_id,
+                loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
+                cache.clone(),
+                TokenSequence::new(session_tokens),
+            )?;
+        }
+        let text = loaded_model.tokenizer().decode(generated.as_slice());
+        let usage = super::GenerationUsage {
+            input_tokens: prompt_tokens.len(),
+            output_tokens: generated.len(),
+            cache_tokens: cache.len(),
+        };
+        let kv_cache =
+            mox_runtime::KvCacheAccounting::from_states(&previous_kv_state, cache.state());
+        let total_duration_ns = generation_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        let metrics = super::GenerationMetrics {
+            total_duration_ns: Some(total_duration_ns),
+            load_duration_ns: Some(match load_state {
+                super::GenerationLoadState::Cold => loaded_model.load_duration_ns(),
+                super::GenerationLoadState::Warm => 0,
+            }),
+            prompt_eval_count: Some(usage.input_tokens),
+            prompt_eval_duration_ns: Some(prompt_eval_duration_ns),
+            context_window: Some(context_window),
+            eval_count: Some(usage.output_tokens),
+            eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
+            kv_cache: Some(kv_cache),
+            prefix_tokens_reused: Some(prefix_tokens_reused),
+            gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
+        };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| loaded_model.plan_digest().to_string());
+        let provenance = super::GenerationProvenance {
+            served_artifact,
+            execution_plan_digest: delivery_plan_digest.clone(),
+            load_state,
+            isolation_policy: super::LocalServingIsolationPolicy::in_process_runtime(),
+            streaming_policy: None,
+            memory_plan,
+            residency_policy,
+            residency_snapshot,
+            kv_cache_policy: Some(cache.policy().clone()),
+            prefix_cache_state: Some(prefix_state),
+            prefix_cache_policy: Some(prefix_policy),
+            prefix_cache_identity: prefix_identity,
+            compile_path: compile_path.clone(),
+            delivery_proof: super::build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+            ),
+            cache_observations: super::generation_cache_observations(
+                loaded_model.descriptor(),
+                compile_path.as_ref(),
+                load_state,
+                request.session_id.as_ref(),
+                request.reset_session,
+                &previous_kv_state,
+                prefix_state,
+            ),
+        };
+        Ok(GenerationResponse::new(
+            request,
+            request.session_id.clone(),
+            generated,
+            text,
+            usage.input_tokens,
+            usage.cache_tokens,
+            termination,
+        )
+        .with_metrics_and_provenance(metrics, provenance))
+    })();
+
+    let _ = models.finish_request(model_id, current_time_millis());
+    result
 }
 
 impl From<ModelLoadError> for CudaGptOssTextGenerationError {
@@ -740,6 +1076,13 @@ impl CudaGgufGptOssGenerationModel {
             .iter()
             .map(|layer| GptOssCudaLayer::load(backend, &artifact, layer))
             .collect::<Result<Vec<_>, _>>()?;
+        let output_norm =
+            load_dense_vector(&artifact, adapter.tensor_layout().output_norm.as_str())?;
+        let output_norm_device = upload_cuda_f32_buffer(
+            backend,
+            adapter.tensor_layout().output_norm.as_str(),
+            output_norm.as_slice(),
+        )?;
         let inner = GptOssCudaModelInner {
             descriptor: adapter.descriptor().clone(),
             family_metadata: adapter.family_metadata().clone(),
@@ -748,10 +1091,8 @@ impl CudaGgufGptOssGenerationModel {
                 &artifact,
                 adapter.tensor_layout().token_embedding.as_str(),
             )?,
-            output_norm: load_dense_vector(
-                &artifact,
-                adapter.tensor_layout().output_norm.as_str(),
-            )?,
+            output_norm,
+            output_norm_device,
             output,
             layers,
             plan_digest: digest_gpt_oss_plan(
@@ -773,6 +1114,49 @@ impl CudaGgufGptOssGenerationModel {
     #[must_use]
     pub fn plan_digest(&self) -> &str {
         self.inner.plan_digest.as_str()
+    }
+
+    fn execute_step_with_cuda_cache(
+        &self,
+        backend: &mut CudaBackend,
+        token: TokenId,
+        position: usize,
+        cache: &super::InMemoryKvCache,
+        cuda_cache: &CudaKvCacheMirror,
+    ) -> Result<super::GenerationStepOutput, ReferenceTextGenerationError> {
+        if token.as_u32() as usize >= self.inner.descriptor.config.vocab_size {
+            return Err(ReferenceTextGenerationError::InvalidToken {
+                token: token.as_u32(),
+                vocab_size: self.inner.descriptor.config.vocab_size,
+            });
+        }
+        if position >= self.inner.descriptor.config.max_context {
+            return Err(ReferenceTextGenerationError::InvalidPosition {
+                position,
+                max_context: self.inner.descriptor.config.max_context,
+            });
+        }
+        if cache.width() != self.inner.cache_width() {
+            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                expected_kv_width: self.inner.cache_width(),
+                kv_width: cache.width(),
+            });
+        }
+        let step = self
+            .inner
+            .forward_step_with_cuda_cache(backend, token, position, cache, cuda_cache)?;
+        Ok(super::GenerationStepOutput {
+            key: step.key,
+            value: step.value,
+            logits: step.logits,
+            execution_plan_digest: Some(self.inner.plan_digest.clone()),
+            compile_path: None,
+            kernel_count: step.kernel_count,
+            bytes_moved: step.bytes_moved,
+            plan_cache_hits: 0,
+            plan_cache_misses: 0,
+            gpt_oss_perf: step.perf,
+        })
     }
 }
 
@@ -868,6 +1252,7 @@ struct GptOssCudaModelInner {
     tokenizer: GptOssTokenizer,
     token_embedding: QuantizedMatrix,
     output_norm: Vec<f32>,
+    output_norm_device: CudaBuffer,
     output: CudaQuantizedMatrix,
     layers: Vec<GptOssCudaLayer>,
     plan_digest: String,
@@ -880,6 +1265,356 @@ impl GptOssCudaModelInner {
             .config
             .layer_count
             .saturating_mul(self.descriptor.config.kv_width())
+    }
+
+    fn forward_step_with_cuda_cache(
+        &self,
+        backend: &mut CudaBackend,
+        token: TokenId,
+        position: usize,
+        _cache: &super::InMemoryKvCache,
+        cuda_cache: &CudaKvCacheMirror,
+    ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
+        let hidden_size = self.descriptor.config.hidden_size;
+        let kv_width = self.descriptor.config.kv_width();
+        let mut bytes_moved = 0_u64;
+        let mut kernel_count = 0_usize;
+        let mut perf = GptOssPerformanceMetrics {
+            step_count: 1,
+            layer_visit_count: self.layers.len(),
+            ..GptOssPerformanceMetrics::default()
+        };
+
+        let token_embedding_start = Instant::now();
+        let mut hidden = self.token_embedding.decode_row(token.as_u32() as usize)?;
+        perf.stage_timings.token_embedding_ns = perf
+            .stage_timings
+            .token_embedding_ns
+            .saturating_add(duration_ns(token_embedding_start));
+        bytes_moved = bytes_moved.saturating_add(self.token_embedding.byte_length() as u64);
+
+        let mut cache_key = vec![0.0; self.cache_width()];
+        let mut cache_value = vec![0.0; self.cache_width()];
+        let head_count = self.descriptor.config.block.attention.head_count;
+        let kv_head_count = self.descriptor.config.block.attention.kv_head_count;
+        let head_dim = self.descriptor.config.block.attention.head_dim;
+        let rotary_dim = self.descriptor.config.block.attention.rotary_dim;
+        let (freq_scale, ext_factor, corr_dims, theta_scale) =
+            rope_runtime_parameters(rotary_dim, &self.family_metadata);
+
+        for (layer_index, layer) in self.layers.iter().enumerate() {
+            let residual = hidden.clone();
+            let layer_offset = layer_index.saturating_mul(kv_width);
+            let q_rows = layer.attention_qkv_weight.rows_per_projection[0];
+            let k_rows = layer.attention_qkv_weight.rows_per_projection[1];
+            let v_rows = layer.attention_qkv_weight.rows_per_projection[2];
+
+            let mut hidden_buffer = backend.f32_buffer(hidden.len())?;
+            hidden_buffer.write_f32(hidden.as_slice())?;
+            let hidden_upload_bytes = hidden.len().saturating_mul(std::mem::size_of::<f32>());
+
+            let hidden_norm_buffer = backend.f32_buffer(hidden.len())?;
+            let qkv_buffer = backend.f32_buffer(layer.attention_qkv_weight.total_rows())?;
+            let attention_buffer = backend.f32_buffer(layer.attention_output_weight.columns)?;
+            let projected_buffer = backend.f32_buffer(layer.attention_output_weight.rows)?;
+
+            let qkv_start = Instant::now();
+            let mut qkv_submission = backend.begin_submission()?;
+            qkv_submission.rms_norm(
+                &hidden_buffer,
+                &layer.attention_norm_device,
+                &hidden_norm_buffer,
+                hidden.len(),
+                self.family_metadata.rms_norm_epsilon,
+            )?;
+            qkv_submission.quantized_matvec(
+                &layer.attention_qkv_weight.storage,
+                0,
+                layer.attention_qkv_weight.mode,
+                layer.attention_qkv_weight.total_rows(),
+                layer.attention_qkv_weight.columns,
+                &hidden_norm_buffer,
+                &qkv_buffer,
+            )?;
+            qkv_submission.add_f32_in_place(
+                &qkv_buffer,
+                0,
+                &layer.attention_qkv_bias_device,
+                layer.attention_qkv_weight.total_rows(),
+            )?;
+            qkv_submission.rope_neox_in_place(
+                &qkv_buffer,
+                0,
+                head_count,
+                head_dim,
+                rotary_dim,
+                position,
+                freq_scale,
+                ext_factor,
+                corr_dims,
+                theta_scale,
+            )?;
+            qkv_submission.rope_neox_in_place(
+                &qkv_buffer,
+                q_rows,
+                kv_head_count,
+                head_dim,
+                rotary_dim,
+                position,
+                freq_scale,
+                ext_factor,
+                corr_dims,
+                theta_scale,
+            )?;
+            let qkv_report = qkv_submission.commit(mox_backend_cuda::CudaCommandWait::Completed)?;
+            accumulate_cuda_submission_report(
+                &mut perf,
+                &qkv_report,
+                hidden_upload_bytes.try_into().unwrap_or(u64::MAX),
+                0,
+            );
+            perf.stage_timings.qkv_projection_ns = perf
+                .stage_timings
+                .qkv_projection_ns
+                .saturating_add(duration_ns(qkv_start));
+
+            let attention_start = Instant::now();
+            let mut attention_submission = backend.begin_submission()?;
+            attention_submission.attention_decode(
+                &qkv_buffer,
+                0,
+                &qkv_buffer,
+                q_rows,
+                &qkv_buffer,
+                q_rows.saturating_add(k_rows),
+                &cuda_cache.key_buffer,
+                &cuda_cache.value_buffer,
+                cuda_cache.width,
+                layer_offset,
+                cuda_cache.len(),
+                self.family_metadata.sliding_window.unwrap_or(0),
+                head_count,
+                kv_head_count,
+                head_dim,
+                layer.attention_sinks_device.as_ref(),
+                &attention_buffer,
+            )?;
+            attention_submission.quantized_matvec(
+                &layer.attention_output_weight.storage,
+                0,
+                layer.attention_output_weight.mode,
+                layer.attention_output_weight.rows,
+                layer.attention_output_weight.columns,
+                &attention_buffer,
+                &projected_buffer,
+            )?;
+            if let Some(bias) = layer.attention_output_bias_device.as_ref() {
+                attention_submission.add_f32_in_place(
+                    &projected_buffer,
+                    0,
+                    bias,
+                    layer.attention_output_weight.rows,
+                )?;
+            }
+            let attention_report =
+                attention_submission.commit(mox_backend_cuda::CudaCommandWait::Completed)?;
+            let attention_readback_bytes = layer
+                .attention_output_weight
+                .rows
+                .saturating_add(k_rows)
+                .saturating_add(v_rows)
+                .saturating_mul(std::mem::size_of::<f32>());
+            accumulate_cuda_submission_report(
+                &mut perf,
+                &attention_report,
+                0,
+                attention_readback_bytes.try_into().unwrap_or(u64::MAX),
+            );
+            perf.stage_timings.attention_ns = perf
+                .stage_timings
+                .attention_ns
+                .saturating_add(duration_ns(attention_start));
+
+            let attention_out = projected_buffer.read_f32()?;
+            let k = qkv_buffer.read_f32_at_offset(q_rows, k_rows)?;
+            let v = qkv_buffer.read_f32_at_offset(q_rows.saturating_add(k_rows), v_rows)?;
+            cache_key[layer_offset..layer_offset + kv_width].copy_from_slice(k.as_slice());
+            cache_value[layer_offset..layer_offset + kv_width].copy_from_slice(v.as_slice());
+            hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
+
+            let ffn_residual = hidden.clone();
+            let feed_forward_norm_start = Instant::now();
+            let ffn_input = rms_norm(
+                hidden.as_slice(),
+                layer.feed_forward_norm.as_slice(),
+                self.family_metadata.rms_norm_epsilon,
+            );
+            perf.stage_timings.feed_forward_norm_ns = perf
+                .stage_timings
+                .feed_forward_norm_ns
+                .saturating_add(duration_ns(feed_forward_norm_start));
+
+            let router_start = Instant::now();
+            let mut router_logits = Vec::new();
+            layer
+                .feed_forward_router_weight
+                .matvec(ffn_input.as_slice(), &mut router_logits)?;
+            if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
+                add_bias_in_place(&mut router_logits, bias.as_slice());
+            }
+            let selected = top_k_indices(
+                router_logits.as_slice(),
+                self.family_metadata.expert_used_count.unwrap_or(0),
+            );
+            let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
+            perf.stage_timings.router_ns = perf
+                .stage_timings
+                .router_ns
+                .saturating_add(duration_ns(router_start));
+
+            let mut moe_out = vec![0.0; hidden_size];
+            for (selected_index, expert_index) in selected.iter().copied().enumerate() {
+                let expert_projection_start = Instant::now();
+                let (mut gate_up_outputs, gate_up_stats) = layer
+                    .feed_forward_gate_up_experts_weight
+                    .expert_matvec_profiled(backend, expert_index, ffn_input.as_slice())?;
+                accumulate_cuda_matvec_stats(&mut perf, &gate_up_stats);
+                let mut gate = gate_up_outputs.remove(0);
+                if let Some(bias) = layer.feed_forward_gate_experts_bias.as_ref() {
+                    add_expert_bias_in_place(
+                        &mut gate,
+                        bias.as_slice(),
+                        expert_index,
+                        layer
+                            .feed_forward_gate_up_experts_weight
+                            .rows_per_projection[0],
+                    );
+                }
+
+                let mut up = gate_up_outputs.remove(0);
+                if let Some(bias) = layer.feed_forward_up_experts_bias.as_ref() {
+                    add_expert_bias_in_place(
+                        &mut up,
+                        bias.as_slice(),
+                        expert_index,
+                        layer
+                            .feed_forward_gate_up_experts_weight
+                            .rows_per_projection[1],
+                    );
+                }
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_projection_start));
+
+                let expert_activation_start = Instant::now();
+                let activated = oai_swiglu(gate.as_slice(), up.as_slice());
+                perf.stage_timings.expert_activation_ns = perf
+                    .stage_timings
+                    .expert_activation_ns
+                    .saturating_add(duration_ns(expert_activation_start));
+
+                let expert_down_start = Instant::now();
+                let mut expert = Vec::new();
+                let expert_stats = layer
+                    .feed_forward_down_experts_weight
+                    .expert_matvec_profiled(
+                        backend,
+                        expert_index,
+                        activated.as_slice(),
+                        &mut expert,
+                    )?;
+                accumulate_cuda_matvec_stats(&mut perf, &expert_stats);
+                if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
+                    add_expert_bias_in_place(
+                        &mut expert,
+                        bias.as_slice(),
+                        expert_index,
+                        layer.feed_forward_down_experts_weight.rows,
+                    );
+                }
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_down_start));
+
+                let route = routing[selected_index];
+                let expert_aggregation_start = Instant::now();
+                for (dst, value) in moe_out.iter_mut().zip(expert.iter().copied()) {
+                    *dst += value * route;
+                }
+                perf.stage_timings.expert_aggregation_ns = perf
+                    .stage_timings
+                    .expert_aggregation_ns
+                    .saturating_add(duration_ns(expert_aggregation_start));
+            }
+            hidden = add_vectors(moe_out.as_slice(), ffn_residual.as_slice())?;
+
+            bytes_moved = bytes_moved
+                .saturating_add(layer.attention_qkv_weight.byte_length() as u64)
+                .saturating_add(layer.attention_output_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_gate_up_experts_weight.byte_length() as u64)
+                .saturating_add(layer.feed_forward_down_experts_weight.byte_length() as u64);
+            kernel_count = kernel_count
+                .saturating_add(qkv_report.encoded_operations)
+                .saturating_add(attention_report.encoded_operations)
+                .saturating_add(selected.len().saturating_mul(2));
+        }
+
+        let mut final_hidden_buffer = backend.f32_buffer(hidden.len())?;
+        final_hidden_buffer.write_f32(hidden.as_slice())?;
+        let final_norm_buffer = backend.f32_buffer(hidden.len())?;
+        let logits_buffer = backend.f32_buffer(self.output.rows)?;
+        let logits_start = Instant::now();
+        let mut logits_submission = backend.begin_submission()?;
+        logits_submission.rms_norm(
+            &final_hidden_buffer,
+            &self.output_norm_device,
+            &final_norm_buffer,
+            hidden.len(),
+            self.family_metadata.rms_norm_epsilon,
+        )?;
+        logits_submission.quantized_matvec(
+            &self.output.storage,
+            0,
+            self.output.mode,
+            self.output.rows,
+            self.output.columns,
+            &final_norm_buffer,
+            &logits_buffer,
+        )?;
+        let logits_report =
+            logits_submission.commit(mox_backend_cuda::CudaCommandWait::Completed)?;
+        let logits_values = logits_buffer.read_f32()?;
+        accumulate_cuda_submission_report(
+            &mut perf,
+            &logits_report,
+            hidden
+                .len()
+                .saturating_mul(std::mem::size_of::<f32>())
+                .try_into()
+                .unwrap_or(u64::MAX),
+            self.output
+                .rows
+                .saturating_mul(std::mem::size_of::<f32>())
+                .try_into()
+                .unwrap_or(u64::MAX),
+        );
+        perf.stage_timings.logits_projection_ns = perf
+            .stage_timings
+            .logits_projection_ns
+            .saturating_add(duration_ns(logits_start));
+        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
+        kernel_count = kernel_count.saturating_add(logits_report.encoded_operations);
+
+        Ok(GptOssForwardStep {
+            key: cache_key,
+            value: cache_value,
+            logits: logits_values,
+            kernel_count,
+            bytes_moved,
+            perf: Some(perf),
+        })
     }
 
     fn forward_step(
@@ -1042,7 +1777,9 @@ impl GptOssCudaModelInner {
                         &mut gate,
                         bias.as_slice(),
                         expert_index,
-                        layer.feed_forward_gate_up_experts_weight.rows_per_projection[0],
+                        layer
+                            .feed_forward_gate_up_experts_weight
+                            .rows_per_projection[0],
                     );
                 }
 
@@ -1052,7 +1789,9 @@ impl GptOssCudaModelInner {
                         &mut up,
                         bias.as_slice(),
                         expert_index,
-                        layer.feed_forward_gate_up_experts_weight.rows_per_projection[1],
+                        layer
+                            .feed_forward_gate_up_experts_weight
+                            .rows_per_projection[1],
                     );
                 }
                 perf.stage_timings.expert_projection_ns = perf
@@ -1069,12 +1808,14 @@ impl GptOssCudaModelInner {
 
                 let expert_down_start = Instant::now();
                 let mut expert = Vec::new();
-                let expert_stats = layer.feed_forward_down_experts_weight.expert_matvec_profiled(
-                    backend,
-                    expert_index,
-                    activated.as_slice(),
-                    &mut expert,
-                )?;
+                let expert_stats = layer
+                    .feed_forward_down_experts_weight
+                    .expert_matvec_profiled(
+                        backend,
+                        expert_index,
+                        activated.as_slice(),
+                        &mut expert,
+                    )?;
                 accumulate_cuda_matvec_stats(&mut perf, &expert_stats);
                 if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
                     add_expert_bias_in_place(
@@ -1122,9 +1863,9 @@ impl GptOssCudaModelInner {
 
         let logits_projection_start = Instant::now();
         let mut logits = Vec::new();
-        let logits_stats = self
-            .output
-            .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?;
+        let logits_stats =
+            self.output
+                .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?;
         accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
         bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
         kernel_count = kernel_count.saturating_add(1);
@@ -1147,13 +1888,17 @@ impl GptOssCudaModelInner {
 #[derive(Clone, Debug)]
 struct GptOssCudaLayer {
     attention_norm: Vec<f32>,
+    attention_norm_device: CudaBuffer,
     attention_qkv_weight: CudaQuantizedProjectionGroup,
+    attention_qkv_bias_device: CudaBuffer,
     attention_query_bias: Vec<f32>,
     attention_key_bias: Vec<f32>,
     attention_value_bias: Vec<f32>,
     attention_output_weight: CudaQuantizedMatrix,
     attention_output_bias: Option<Vec<f32>>,
+    attention_output_bias_device: Option<CudaBuffer>,
     attention_sinks: Option<Vec<f32>>,
+    attention_sinks_device: Option<CudaBuffer>,
     feed_forward_norm: Vec<f32>,
     feed_forward_router_weight: DenseMatrix,
     feed_forward_router_bias: Option<Vec<f32>>,
@@ -1170,8 +1915,58 @@ impl GptOssCudaLayer {
         artifact: &GgufBlobArtifact,
         layout: &GgufDecoderLayerTensorLayout,
     ) -> Result<Self, ModelLoadError> {
+        let attention_norm = load_dense_vector(artifact, layout.attention_norm.as_str())?;
+        let attention_norm_device = upload_cuda_f32_buffer(
+            backend,
+            layout.attention_norm.as_str(),
+            attention_norm.as_slice(),
+        )?;
+        let attention_query_bias = load_dense_vector(
+            artifact,
+            required_tensor_name(layout.attention_query_bias.as_ref(), "attention_query_bias")?,
+        )?;
+        let attention_key_bias = load_dense_vector(
+            artifact,
+            required_tensor_name(layout.attention_key_bias.as_ref(), "attention_key_bias")?,
+        )?;
+        let attention_value_bias = load_dense_vector(
+            artifact,
+            required_tensor_name(layout.attention_value_bias.as_ref(), "attention_value_bias")?,
+        )?;
+        let mut attention_qkv_bias = Vec::with_capacity(
+            attention_query_bias
+                .len()
+                .saturating_add(attention_key_bias.len())
+                .saturating_add(attention_value_bias.len()),
+        );
+        attention_qkv_bias.extend_from_slice(attention_query_bias.as_slice());
+        attention_qkv_bias.extend_from_slice(attention_key_bias.as_slice());
+        attention_qkv_bias.extend_from_slice(attention_value_bias.as_slice());
+        let attention_qkv_bias_device =
+            upload_cuda_f32_buffer(backend, "attention_qkv_bias", attention_qkv_bias.as_slice())?;
+        let attention_output_bias = layout
+            .attention_output_bias
+            .as_ref()
+            .map(|name| load_dense_vector(artifact, name.as_str()))
+            .transpose()?;
+        let attention_output_bias_device = attention_output_bias
+            .as_ref()
+            .map(|values| {
+                upload_cuda_f32_buffer(backend, "attention_output_bias", values.as_slice())
+            })
+            .transpose()?;
+        let attention_sinks = layout
+            .attention_sinks_weight
+            .as_ref()
+            .map(|name| load_dense_vector(artifact, name.as_str()))
+            .transpose()?;
+        let attention_sinks_device = attention_sinks
+            .as_ref()
+            .map(|values| upload_cuda_f32_buffer(backend, "attention_sinks", values.as_slice()))
+            .transpose()?;
         Ok(Self {
-            attention_norm: load_dense_vector(artifact, layout.attention_norm.as_str())?,
+            attention_norm,
+            attention_norm_device,
             attention_qkv_weight: load_cuda_quantized_projection_group(
                 backend,
                 artifact,
@@ -1181,33 +1976,19 @@ impl GptOssCudaLayer {
                     layout.attention_value_weight.as_str(),
                 ],
             )?,
-            attention_query_bias: load_dense_vector(
-                artifact,
-                required_tensor_name(layout.attention_query_bias.as_ref(), "attention_query_bias")?,
-            )?,
-            attention_key_bias: load_dense_vector(
-                artifact,
-                required_tensor_name(layout.attention_key_bias.as_ref(), "attention_key_bias")?,
-            )?,
-            attention_value_bias: load_dense_vector(
-                artifact,
-                required_tensor_name(layout.attention_value_bias.as_ref(), "attention_value_bias")?,
-            )?,
+            attention_qkv_bias_device,
+            attention_query_bias,
+            attention_key_bias,
+            attention_value_bias,
             attention_output_weight: load_cuda_quantized_matrix(
                 backend,
                 artifact,
                 layout.attention_output_weight.as_str(),
             )?,
-            attention_output_bias: layout
-                .attention_output_bias
-                .as_ref()
-                .map(|name| load_dense_vector(artifact, name.as_str()))
-                .transpose()?,
-            attention_sinks: layout
-                .attention_sinks_weight
-                .as_ref()
-                .map(|name| load_dense_vector(artifact, name.as_str()))
-                .transpose()?,
+            attention_output_bias,
+            attention_output_bias_device,
+            attention_sinks,
+            attention_sinks_device,
             feed_forward_norm: load_dense_vector(
                 artifact,
                 required_tensor_name(layout.feed_forward_norm.as_ref(), "feed_forward_norm")?,
@@ -2043,8 +2824,10 @@ fn pack_quantized_expert_projection_bytes(
         .saturating_mul(row_byte_len);
     let mut packed = Vec::with_capacity(total_bytes);
     for expert_index in 0..outer {
-        for (projection_rows, projection_bytes) in
-            rows_per_projection.iter().copied().zip(projections.iter().copied())
+        for (projection_rows, projection_bytes) in rows_per_projection
+            .iter()
+            .copied()
+            .zip(projections.iter().copied())
         {
             let expert_stride = projection_rows.saturating_mul(row_byte_len);
             let start = expert_index.saturating_mul(expert_stride);
@@ -2111,6 +2894,109 @@ impl CudaQuantizedExpertProjectionGroup {
             split_projection_outputs(&self.rows_per_projection, result.values)?,
             result.stats,
         ))
+    }
+}
+
+#[derive(Clone, Debug)]
+struct CudaKvCacheMirror {
+    key_buffer: CudaBuffer,
+    value_buffer: CudaBuffer,
+    width: usize,
+    len: usize,
+    capacity_tokens: usize,
+}
+
+impl CudaKvCacheMirror {
+    fn capacity_for_request(
+        current_tokens: usize,
+        reserve_tokens: usize,
+        max_context: usize,
+    ) -> usize {
+        let requested = current_tokens
+            .saturating_add(reserve_tokens)
+            .max(64)
+            .min(max_context.max(1));
+        requested
+            .checked_next_power_of_two()
+            .unwrap_or(max_context.max(1))
+            .min(max_context.max(1))
+    }
+
+    fn from_host_cache(
+        backend: &mut CudaBackend,
+        cache: &super::InMemoryKvCache,
+        reserve_tokens: usize,
+    ) -> Result<Self, super::RuntimeError> {
+        let capacity_tokens =
+            Self::capacity_for_request(cache.len(), reserve_tokens, cache.max_context());
+        let mut key_buffer = backend.f32_buffer(capacity_tokens.saturating_mul(cache.width()))?;
+        let mut value_buffer = backend.f32_buffer(capacity_tokens.saturating_mul(cache.width()))?;
+        if !cache.is_empty() {
+            let mut keys = Vec::with_capacity(cache.len().saturating_mul(cache.width()));
+            let mut values = Vec::with_capacity(cache.len().saturating_mul(cache.width()));
+            for entry in cache.entries() {
+                keys.extend_from_slice(entry.key.as_slice());
+                values.extend_from_slice(entry.value.as_slice());
+            }
+            key_buffer.write_f32_at_offset(0, keys.as_slice())?;
+            value_buffer.write_f32_at_offset(0, values.as_slice())?;
+        }
+        Ok(Self {
+            key_buffer,
+            value_buffer,
+            width: cache.width(),
+            len: cache.len(),
+            capacity_tokens,
+        })
+    }
+
+    fn ensure_capacity(
+        &mut self,
+        backend: &mut CudaBackend,
+        required_tokens: usize,
+    ) -> Result<(), super::RuntimeError> {
+        if required_tokens <= self.capacity_tokens {
+            return Ok(());
+        }
+        let new_capacity = required_tokens
+            .max(self.capacity_tokens.saturating_mul(2))
+            .checked_next_power_of_two()
+            .unwrap_or(required_tokens);
+        let mut new_keys = backend.f32_buffer(new_capacity.saturating_mul(self.width))?;
+        let mut new_values = backend.f32_buffer(new_capacity.saturating_mul(self.width))?;
+        if self.len > 0 {
+            let existing_keys = self
+                .key_buffer
+                .read_f32_at_offset(0, self.len.saturating_mul(self.width))?;
+            let existing_values = self
+                .value_buffer
+                .read_f32_at_offset(0, self.len.saturating_mul(self.width))?;
+            new_keys.write_f32_at_offset(0, existing_keys.as_slice())?;
+            new_values.write_f32_at_offset(0, existing_values.as_slice())?;
+        }
+        self.key_buffer = new_keys;
+        self.value_buffer = new_values;
+        self.capacity_tokens = new_capacity;
+        Ok(())
+    }
+
+    fn append(
+        &mut self,
+        backend: &mut CudaBackend,
+        key: &[f32],
+        value: &[f32],
+    ) -> Result<(), super::RuntimeError> {
+        self.ensure_capacity(backend, self.len.saturating_add(1))?;
+        self.key_buffer
+            .write_f32_at_offset(self.len.saturating_mul(self.width), key)?;
+        self.value_buffer
+            .write_f32_at_offset(self.len.saturating_mul(self.width), value)?;
+        self.len = self.len.saturating_add(1);
+        Ok(())
+    }
+
+    fn len(&self) -> usize {
+        self.len
     }
 }
 
@@ -2364,15 +3250,16 @@ fn load_cuda_quantized_projection_group(
             names.join(", ")
         ),
     })?;
-    let storage = backend
-        .byte_buffer(packed.as_slice())
-        .map_err(|error| ModelLoadError::ArtifactFormat {
-            format: String::from("gguf"),
-            message: format!(
-                "failed to upload packed cuda projection group `{}`: {error}",
-                names.join(", ")
-            ),
-        })?;
+    let storage =
+        backend
+            .byte_buffer(packed.as_slice())
+            .map_err(|error| ModelLoadError::ArtifactFormat {
+                format: String::from("gguf"),
+                message: format!(
+                    "failed to upload packed cuda projection group `{}`: {error}",
+                    names.join(", ")
+                ),
+            })?;
     Ok(CudaQuantizedProjectionGroup {
         storage,
         mode,
@@ -2506,15 +3393,16 @@ fn load_cuda_quantized_expert_projection_group(
             .collect::<Vec<_>>()
             .as_slice(),
     );
-    let storage = backend
-        .byte_buffer(packed.as_slice())
-        .map_err(|error| ModelLoadError::ArtifactFormat {
-            format: String::from("gguf"),
-            message: format!(
-                "failed to upload packed cuda expert projection group `{}`: {error}",
-                names.join(", ")
-            ),
-        })?;
+    let storage =
+        backend
+            .byte_buffer(packed.as_slice())
+            .map_err(|error| ModelLoadError::ArtifactFormat {
+                format: String::from("gguf"),
+                message: format!(
+                    "failed to upload packed cuda expert projection group `{}`: {error}",
+                    names.join(", ")
+                ),
+            })?;
     Ok(CudaQuantizedExpertProjectionGroup {
         storage,
         mode,
@@ -2528,6 +3416,48 @@ fn load_cuda_quantized_expert_projection_group(
 fn load_dense_vector(artifact: &GgufBlobArtifact, name: &str) -> Result<Vec<f32>, ModelLoadError> {
     let tensor = artifact.load_tensor(name)?;
     tensor.values().map(|values| values.into_owned())
+}
+
+fn upload_cuda_f32_buffer(
+    backend: &mut CudaBackend,
+    name: &str,
+    values: &[f32],
+) -> Result<CudaBuffer, ModelLoadError> {
+    let mut buffer =
+        backend
+            .f32_buffer(values.len())
+            .map_err(|error| ModelLoadError::ArtifactFormat {
+                format: String::from("gguf"),
+                message: format!("failed to allocate cuda buffer for `{name}`: {error}"),
+            })?;
+    buffer
+        .write_f32(values)
+        .map_err(|error| ModelLoadError::ArtifactFormat {
+            format: String::from("gguf"),
+            message: format!("failed to upload `{name}` to cuda: {error}"),
+        })?;
+    Ok(buffer)
+}
+
+fn rope_runtime_parameters(
+    rotary_dim: usize,
+    metadata: &GgufDecoderFamilyMetadata,
+) -> (f32, f32, [f32; 2], f32) {
+    let freq_scale = metadata
+        .rope_scaling_factor
+        .filter(|value| *value > 0.0)
+        .map_or(1.0, |value| 1.0 / value);
+    let ext_factor = metadata
+        .rope_scaling_factor
+        .zip(metadata.rope_original_context_length)
+        .filter(|(factor, original)| *factor > 1.0 && *original > 0)
+        .map_or(0.0, |_| 1.0);
+    let corr_dims = metadata
+        .rope_original_context_length
+        .map(|original| rope_yarn_corr_dims(rotary_dim, original, metadata.rope_theta))
+        .unwrap_or([0.0, rotary_dim as f32 - 1.0]);
+    let theta_scale = metadata.rope_theta.powf(-2.0 / rotary_dim as f32);
+    (freq_scale, ext_factor, corr_dims, theta_scale)
 }
 
 fn load_dense_matrix(
@@ -2787,12 +3717,8 @@ mod tests {
 
     #[test]
     fn packed_expert_projection_bytes_interleave_each_expert_group() {
-        let packed = pack_quantized_expert_projection_bytes(
-            1,
-            2,
-            &[2, 1],
-            &[&[10, 11, 20, 21], &[30, 40]],
-        );
+        let packed =
+            pack_quantized_expert_projection_bytes(1, 2, &[2, 1], &[&[10, 11, 20, 21], &[30, 40]]);
         assert_eq!(packed, vec![10, 11, 30, 20, 21, 40]);
     }
 

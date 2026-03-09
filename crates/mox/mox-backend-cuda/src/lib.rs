@@ -201,9 +201,41 @@ impl CudaBuffer {
         self.platform.write_bytes(bytes)
     }
 
+    /// Writes raw bytes into a region of the CUDA buffer via an explicit host-to-device transfer.
+    pub fn write_bytes_at_offset(
+        &mut self,
+        byte_offset: usize,
+        bytes: &[u8],
+    ) -> Result<(), RuntimeError> {
+        if byte_offset.saturating_add(bytes.len()) > self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda buffer region write exceeds allocation: offset={} len={} allocation={}",
+                byte_offset,
+                bytes.len(),
+                self.byte_len
+            )));
+        }
+        self.platform.write_bytes_at_offset(byte_offset, bytes)
+    }
+
     /// Reads raw bytes from the CUDA buffer via an explicit device-to-host transfer.
     pub fn read_bytes(&self) -> Result<Vec<u8>, RuntimeError> {
         self.platform.read_bytes(self.byte_len)
+    }
+
+    /// Reads raw bytes from a region of the CUDA buffer via an explicit device-to-host transfer.
+    pub fn read_bytes_at_offset(
+        &self,
+        byte_offset: usize,
+        byte_len: usize,
+    ) -> Result<Vec<u8>, RuntimeError> {
+        if byte_offset.saturating_add(byte_len) > self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda buffer region read exceeds allocation: offset={} len={} allocation={}",
+                byte_offset, byte_len, self.byte_len
+            )));
+        }
+        self.platform.read_bytes_at_offset(byte_offset, byte_len)
     }
 
     /// Writes contiguous `f32` values into an `f32` buffer.
@@ -228,6 +260,36 @@ impl CudaBuffer {
         self.write_bytes(&bytes)
     }
 
+    /// Writes contiguous `f32` values into a region of an `f32` buffer.
+    pub fn write_f32_at_offset(
+        &mut self,
+        element_offset: usize,
+        values: &[f32],
+    ) -> Result<(), RuntimeError> {
+        if self.spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "write_f32_at_offset requires F32 buffer, actual {:?}",
+                self.spec.dtype()
+            )));
+        }
+        let expected_end = element_offset.saturating_add(values.len());
+        if expected_end > self.spec.storage_size() {
+            return Err(RuntimeError::Backend(format!(
+                "cuda buffer f32 region write exceeds allocation: end={} allocation={}",
+                expected_end,
+                self.spec.storage_size()
+            )));
+        }
+        let mut bytes = Vec::with_capacity(values.len().saturating_mul(size_of_dtype(DType::F32)));
+        for value in values {
+            bytes.extend_from_slice(&value.to_ne_bytes());
+        }
+        self.write_bytes_at_offset(
+            element_offset.saturating_mul(size_of_dtype(DType::F32)),
+            bytes.as_slice(),
+        )
+    }
+
     /// Reads contiguous `f32` values from an `f32` buffer.
     pub fn read_f32(&self) -> Result<Vec<f32>, RuntimeError> {
         if self.spec.dtype() != DType::F32 {
@@ -239,6 +301,37 @@ impl CudaBuffer {
         let bytes = self.read_bytes()?;
         let mut values = Vec::with_capacity(bytes.len() / size_of_dtype(self.spec.dtype()));
         for chunk in bytes.chunks_exact(size_of_dtype(self.spec.dtype())) {
+            values.push(f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+        }
+        Ok(values)
+    }
+
+    /// Reads contiguous `f32` values from a region of an `f32` buffer.
+    pub fn read_f32_at_offset(
+        &self,
+        element_offset: usize,
+        element_count: usize,
+    ) -> Result<Vec<f32>, RuntimeError> {
+        if self.spec.dtype() != DType::F32 {
+            return Err(RuntimeError::Backend(format!(
+                "read_f32_at_offset requires F32 buffer, actual {:?}",
+                self.spec.dtype()
+            )));
+        }
+        let expected_end = element_offset.saturating_add(element_count);
+        if expected_end > self.spec.storage_size() {
+            return Err(RuntimeError::Backend(format!(
+                "cuda buffer f32 region read exceeds allocation: end={} allocation={}",
+                expected_end,
+                self.spec.storage_size()
+            )));
+        }
+        let bytes = self.read_bytes_at_offset(
+            element_offset.saturating_mul(size_of_dtype(DType::F32)),
+            element_count.saturating_mul(size_of_dtype(DType::F32)),
+        )?;
+        let mut values = Vec::with_capacity(element_count);
+        for chunk in bytes.chunks_exact(size_of_dtype(DType::F32)) {
             values.push(f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
         }
         Ok(values)
@@ -302,6 +395,119 @@ impl CudaSubmission {
             rows,
             cols,
             &input.platform,
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Launches one RMSNorm kernel.
+    pub fn rms_norm(
+        &mut self,
+        input: &CudaBuffer,
+        weight: &CudaBuffer,
+        output: &CudaBuffer,
+        element_count: usize,
+        epsilon: f32,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_rms_norm(
+            &input.platform,
+            &weight.platform,
+            &output.platform,
+            element_count,
+            epsilon,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Adds one dense vector into a region of a destination buffer in place.
+    pub fn add_f32_in_place(
+        &mut self,
+        destination: &CudaBuffer,
+        element_offset: usize,
+        rhs: &CudaBuffer,
+        element_count: usize,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_add_f32_in_place(
+            &destination.platform,
+            element_offset,
+            &rhs.platform,
+            element_count,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Applies GPT-OSS NEOX-style RoPE in place to one buffer region.
+    pub fn rope_neox_in_place(
+        &mut self,
+        values: &CudaBuffer,
+        element_offset: usize,
+        head_count: usize,
+        head_dim: usize,
+        rotary_dim: usize,
+        position: usize,
+        freq_scale: f32,
+        ext_factor: f32,
+        corr_dims: [f32; 2],
+        theta_scale: f32,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_rope_neox_in_place(
+            &values.platform,
+            element_offset,
+            head_count,
+            head_dim,
+            rotary_dim,
+            position,
+            freq_scale,
+            ext_factor,
+            corr_dims,
+            theta_scale,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Executes single-token GPT-OSS attention against a device-resident KV cache.
+    #[allow(clippy::too_many_arguments)]
+    pub fn attention_decode(
+        &mut self,
+        query: &CudaBuffer,
+        query_offset: usize,
+        current_key: &CudaBuffer,
+        key_offset: usize,
+        current_value: &CudaBuffer,
+        value_offset: usize,
+        cache_keys: &CudaBuffer,
+        cache_values: &CudaBuffer,
+        cache_width: usize,
+        layer_offset: usize,
+        past_tokens: usize,
+        sliding_window: usize,
+        head_count: usize,
+        kv_head_count: usize,
+        head_dim: usize,
+        attention_sinks: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_attention_decode(
+            &query.platform,
+            query_offset,
+            &current_key.platform,
+            key_offset,
+            &current_value.platform,
+            value_offset,
+            &cache_keys.platform,
+            &cache_values.platform,
+            cache_width,
+            layer_offset,
+            past_tokens,
+            sliding_window,
+            head_count,
+            kv_head_count,
+            head_dim,
+            attention_sinks.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
         self.encoded_operations += 1;
@@ -445,6 +651,19 @@ impl CudaBackend {
         let mut buffer = self.allocate(&TensorSpec::new(shape, DType::F32, device))?;
         buffer.write_f32(values.into().as_slice())?;
         Ok(buffer)
+    }
+
+    /// Allocates an uninitialized dense `f32` buffer on the selected CUDA device.
+    pub fn f32_buffer(&mut self, len: usize) -> Result<CudaBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "cuda backend unavailable: no selected execution device",
+            )));
+        };
+        self.allocate_buffer(&TensorSpec::new(Shape::new(vec![len]), DType::F32, device))
     }
 
     /// Returns whether the Mox-owned CUDA quantized text-generation kernels are built.
@@ -1672,6 +1891,55 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn mox_cuda_rms_norm(
+            input: *const c_void,
+            weight: *const c_void,
+            element_count: c_int,
+            epsilon: f32,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn mox_cuda_add_f32_offset_in_place(
+            destination: *mut c_void,
+            element_offset: c_int,
+            rhs: *const c_void,
+            element_count: c_int,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn mox_cuda_rope_neox_in_place(
+            values: *mut c_void,
+            element_offset: c_int,
+            head_count: c_int,
+            head_dim: c_int,
+            rotary_dim: c_int,
+            position: c_int,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_low: f32,
+            corr_high: f32,
+            theta_scale: f32,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn mox_cuda_attention_decode(
+            query: *const c_void,
+            query_offset: c_int,
+            current_key: *const c_void,
+            key_offset: c_int,
+            current_value: *const c_void,
+            value_offset: c_int,
+            cache_keys: *const c_void,
+            cache_values: *const c_void,
+            cache_width: c_int,
+            layer_offset: c_int,
+            past_tokens: c_int,
+            sliding_window: c_int,
+            head_count: c_int,
+            kv_head_count: c_int,
+            head_dim: c_int,
+            attention_sinks: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
     }
 
     pub(super) struct ConfiguredBackend {
@@ -1771,6 +2039,28 @@ mod platform {
             )
         }
 
+        pub(super) fn write_bytes_at_offset(
+            &self,
+            byte_offset: usize,
+            bytes: &[u8],
+        ) -> Result<(), RuntimeError> {
+            if bytes.is_empty() {
+                return Ok(());
+            }
+            self.inner.runtime.set_device()?;
+            self.inner.runtime.check(
+                unsafe {
+                    (self.inner.runtime.cuda_memcpy)(
+                        self.inner.device_ptr.cast::<u8>().add(byte_offset).cast(),
+                        bytes.as_ptr().cast(),
+                        bytes.len(),
+                        CUDA_MEMCPY_HOST_TO_DEVICE,
+                    )
+                },
+                "cudaMemcpy host_to_device_region",
+            )
+        }
+
         pub(super) fn read_bytes(&self, byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
             if byte_len == 0 {
                 return Ok(Vec::new());
@@ -1787,6 +2077,30 @@ mod platform {
                     )
                 },
                 "cudaMemcpy device_to_host",
+            )?;
+            Ok(bytes)
+        }
+
+        pub(super) fn read_bytes_at_offset(
+            &self,
+            byte_offset: usize,
+            byte_len: usize,
+        ) -> Result<Vec<u8>, RuntimeError> {
+            if byte_len == 0 {
+                return Ok(Vec::new());
+            }
+            self.inner.runtime.set_device()?;
+            let mut bytes = vec![0u8; byte_len];
+            self.inner.runtime.check(
+                unsafe {
+                    (self.inner.runtime.cuda_memcpy)(
+                        bytes.as_mut_ptr().cast(),
+                        self.inner.device_ptr.cast::<u8>().add(byte_offset).cast(),
+                        byte_len,
+                        CUDA_MEMCPY_DEVICE_TO_HOST,
+                    )
+                },
+                "cudaMemcpy device_to_host_region",
             )?;
             Ok(bytes)
         }
@@ -1989,6 +2303,199 @@ mod platform {
                     )
                 },
                 "mox_cuda_quantized_matvec",
+            )
+        }
+
+        pub(super) fn encode_rms_norm(
+            &mut self,
+            input: &PlatformBuffer,
+            weight: &PlatformBuffer,
+            output: &PlatformBuffer,
+            element_count: usize,
+            epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            let element_count = c_int::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda rms_norm element count exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    mox_cuda_rms_norm(
+                        input.inner.device_ptr.cast(),
+                        weight.inner.device_ptr.cast(),
+                        element_count,
+                        epsilon,
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "mox_cuda_rms_norm",
+            )
+        }
+
+        pub(super) fn encode_add_f32_in_place(
+            &mut self,
+            destination: &PlatformBuffer,
+            element_offset: usize,
+            rhs: &PlatformBuffer,
+            element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            let element_offset = c_int::try_from(element_offset).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda add_f32_in_place element offset exceeds c_int",
+                ))
+            })?;
+            let element_count = c_int::try_from(element_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda add_f32_in_place element count exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    mox_cuda_add_f32_offset_in_place(
+                        destination.inner.device_ptr.cast(),
+                        element_offset,
+                        rhs.inner.device_ptr.cast(),
+                        element_count,
+                        self.stream,
+                    )
+                },
+                "mox_cuda_add_f32_offset_in_place",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_rope_neox_in_place(
+            &mut self,
+            values: &PlatformBuffer,
+            element_offset: usize,
+            head_count: usize,
+            head_dim: usize,
+            rotary_dim: usize,
+            position: usize,
+            freq_scale: f32,
+            ext_factor: f32,
+            corr_dims: [f32; 2],
+            theta_scale: f32,
+        ) -> Result<(), RuntimeError> {
+            let element_offset = c_int::try_from(element_offset).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda rope_neox element offset exceeds c_int"))
+            })?;
+            let head_count = c_int::try_from(head_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda rope_neox head count exceeds c_int"))
+            })?;
+            let head_dim = c_int::try_from(head_dim).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda rope_neox head dim exceeds c_int"))
+            })?;
+            let rotary_dim = c_int::try_from(rotary_dim).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda rope_neox rotary dim exceeds c_int"))
+            })?;
+            let position = c_int::try_from(position).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda rope_neox position exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    mox_cuda_rope_neox_in_place(
+                        values.inner.device_ptr.cast(),
+                        element_offset,
+                        head_count,
+                        head_dim,
+                        rotary_dim,
+                        position,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims[0],
+                        corr_dims[1],
+                        theta_scale,
+                        self.stream,
+                    )
+                },
+                "mox_cuda_rope_neox_in_place",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode(
+            &mut self,
+            query: &PlatformBuffer,
+            query_offset: usize,
+            current_key: &PlatformBuffer,
+            key_offset: usize,
+            current_value: &PlatformBuffer,
+            value_offset: usize,
+            cache_keys: &PlatformBuffer,
+            cache_values: &PlatformBuffer,
+            cache_width: usize,
+            layer_offset: usize,
+            past_tokens: usize,
+            sliding_window: usize,
+            head_count: usize,
+            kv_head_count: usize,
+            head_dim: usize,
+            attention_sinks: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let query_offset = c_int::try_from(query_offset).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention query offset exceeds c_int"))
+            })?;
+            let key_offset = c_int::try_from(key_offset).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention key offset exceeds c_int"))
+            })?;
+            let value_offset = c_int::try_from(value_offset).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention value offset exceeds c_int"))
+            })?;
+            let cache_width = c_int::try_from(cache_width).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention cache width exceeds c_int"))
+            })?;
+            let layer_offset = c_int::try_from(layer_offset).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention layer offset exceeds c_int"))
+            })?;
+            let past_tokens = c_int::try_from(past_tokens).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda attention past token count exceeds c_int",
+                ))
+            })?;
+            let sliding_window = c_int::try_from(sliding_window).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention sliding window exceeds c_int"))
+            })?;
+            let head_count = c_int::try_from(head_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention head count exceeds c_int"))
+            })?;
+            let kv_head_count = c_int::try_from(kv_head_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention kv head count exceeds c_int"))
+            })?;
+            let head_dim = c_int::try_from(head_dim).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda attention head dim exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    mox_cuda_attention_decode(
+                        query.inner.device_ptr.cast(),
+                        query_offset,
+                        current_key.inner.device_ptr.cast(),
+                        key_offset,
+                        current_value.inner.device_ptr.cast(),
+                        value_offset,
+                        cache_keys.inner.device_ptr.cast(),
+                        cache_values.inner.device_ptr.cast(),
+                        cache_width,
+                        layer_offset,
+                        past_tokens,
+                        sliding_window,
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        attention_sinks
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "mox_cuda_attention_decode",
             )
         }
 
@@ -2215,7 +2722,27 @@ mod platform {
             )))
         }
 
+        pub(super) fn write_bytes_at_offset(
+            &self,
+            _byte_offset: usize,
+            _bytes: &[u8],
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
         pub(super) fn read_bytes(&self, _byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn read_bytes_at_offset(
+            &self,
+            _byte_offset: usize,
+            _byte_len: usize,
+        ) -> Result<Vec<u8>, RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "cuda runtime substrate currently requires Linux libcudart",
             )))
@@ -2279,6 +2806,76 @@ mod platform {
             _rows: usize,
             _cols: usize,
             _input: &PlatformBuffer,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        pub(super) fn encode_rms_norm(
+            &mut self,
+            _input: &PlatformBuffer,
+            _weight: &PlatformBuffer,
+            _output: &PlatformBuffer,
+            _element_count: usize,
+            _epsilon: f32,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        pub(super) fn encode_add_f32_in_place(
+            &mut self,
+            _destination: &PlatformBuffer,
+            _element_offset: usize,
+            _rhs: &PlatformBuffer,
+            _element_count: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_rope_neox_in_place(
+            &mut self,
+            _values: &PlatformBuffer,
+            _element_offset: usize,
+            _head_count: usize,
+            _head_dim: usize,
+            _rotary_dim: usize,
+            _position: usize,
+            _freq_scale: f32,
+            _ext_factor: f32,
+            _corr_dims: [f32; 2],
+            _theta_scale: f32,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_attention_decode(
+            &mut self,
+            _query: &PlatformBuffer,
+            _query_offset: usize,
+            _current_key: &PlatformBuffer,
+            _key_offset: usize,
+            _current_value: &PlatformBuffer,
+            _value_offset: usize,
+            _cache_keys: &PlatformBuffer,
+            _cache_values: &PlatformBuffer,
+            _cache_width: usize,
+            _layer_offset: usize,
+            _past_tokens: usize,
+            _sliding_window: usize,
+            _head_count: usize,
+            _kv_head_count: usize,
+            _head_dim: usize,
+            _attention_sinks: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
