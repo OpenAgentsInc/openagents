@@ -11,6 +11,7 @@ use crate::app_state::{
 };
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
+    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_thread_row_bounds,
     chat_composer_height_for_value, chat_composer_input_bounds_with_height,
     chat_send_button_bounds, chat_thread_rail_bounds, chat_transcript_body_bounds_with_height,
     chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
@@ -25,7 +26,6 @@ const CHAT_PROGRESS_BLOCK_GAP: f32 = 4.0;
 const CHAT_ACTIVITY_HEADER_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_ROW_LINE_HEIGHT: f32 = 12.0;
 const CHAT_ACTIVITY_MAX_ROWS: usize = 14;
-const CHAT_SHELL_ROW_HEIGHT: f32 = 30.0;
 const CHAT_WORKSPACE_AVATAR_SIZE: f32 = 36.0;
 const CHAT_ATTACHMENT_CARD_GAP: f32 = 6.0;
 const CHAT_ATTACHMENT_LABEL_LINE_HEIGHT: f32 = 10.0;
@@ -1881,7 +1881,12 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
         badge_urgent: false,
     }];
 
-    entries.extend(autopilot_chat.threads.iter().take(6).map(|thread_id| {
+    entries.extend(
+        autopilot_chat
+            .threads
+            .iter()
+            .take(CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT)
+            .map(|thread_id| {
         let metadata = autopilot_chat.thread_metadata.get(thread_id);
         let title = metadata
             .and_then(|value| value.thread_name.as_ref())
@@ -1901,7 +1906,8 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
             badge_count: 0,
             badge_urgent: false,
         }
-    }));
+    }),
+    );
 
     entries.push(ChatShellChannelEntry {
         title: "@ approvals".to_string(),
@@ -2045,14 +2051,8 @@ fn paint_chat_shell(
         15.0,
         theme::text::PRIMARY,
     ));
-    let mut row_y = channel_bounds.origin.y + 54.0;
-    for entry in shell_channel_entries(autopilot_chat) {
-        let row_bounds = Bounds::new(
-            channel_bounds.origin.x + 8.0,
-            row_y,
-            (channel_bounds.size.width - 16.0).max(0.0),
-            CHAT_SHELL_ROW_HEIGHT,
-        );
+    for (index, entry) in shell_channel_entries(autopilot_chat).into_iter().enumerate() {
+        let row_bounds = chat_thread_row_bounds(content_bounds, index);
         let background = if entry.is_category {
             theme::bg::APP.with_alpha(0.08)
         } else if entry.active {
@@ -2109,7 +2109,6 @@ fn paint_chat_shell(
                 paint,
             );
         }
-        row_y += CHAT_SHELL_ROW_HEIGHT + 6.0;
     }
 
     paint.scene.draw_quad(

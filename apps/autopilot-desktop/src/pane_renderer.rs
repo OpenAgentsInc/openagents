@@ -537,8 +537,12 @@ fn paint_go_online_pane(
     let header_bottom_y = (content_bounds.origin.y + 50.0).max(toggle_bounds.max_y());
     let card_y = header_bottom_y + 16.0;
     let card_gap = 12.0;
-    let top_card_height = 240.0;
-    let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(240.0);
+    let available_card_height = (content_bounds.max_y() - card_y - 12.0).max(0.0);
+    let desired_top_card_height = (available_card_height * 0.46).min(240.0);
+    let max_top_card_height = (available_card_height - card_gap - 72.0).max(0.0);
+    let top_card_height = desired_top_card_height.min(max_top_card_height);
+    let bottom_card_height = (available_card_height - top_card_height - card_gap).max(0.0);
+    let card_width = ((content_bounds.size.width - 24.0 - card_gap) * 0.5).max(0.0);
     let left_card = Bounds::new(
         content_bounds.origin.x + 12.0,
         card_y,
@@ -555,7 +559,7 @@ fn paint_go_online_pane(
         content_bounds.origin.x + 12.0,
         left_card.max_y() + card_gap,
         content_bounds.size.width - 24.0,
-        (content_bounds.max_y() - left_card.max_y() - card_gap - 12.0).max(180.0),
+        bottom_card_height,
     );
 
     paint_mission_control_card(left_card, "Provider Rig", theme::accent::PRIMARY, paint);
@@ -852,21 +856,23 @@ fn paint_go_online_pane(
             )
         },
     );
-    let jobs_title_y = bottom_card.origin.y + 32.0;
-    paint.scene.draw_text(paint.text.layout(
+    let job_flow_value_chunk_len = mission_control_value_chunk_len(bottom_card);
+    let job_flow_body_chunk_len = mission_control_body_chunk_len(bottom_card);
+    let job_flow_clip = Bounds::new(
+        bottom_card.origin.x + 8.0,
+        bottom_card.origin.y + 8.0,
+        (bottom_card.size.width - 16.0).max(0.0),
+        (bottom_card.size.height - 16.0).max(0.0),
+    );
+    paint.scene.push_clip(job_flow_clip);
+    let mut list_y = paint_wrapped_label_line(
+        paint,
+        bottom_card.origin.x + 12.0,
+        bottom_card.origin.y + 32.0,
         "Active job",
-        Point::new(bottom_card.origin.x + 12.0, jobs_title_y),
-        11.0,
-        theme::text::MUTED,
-    ));
-    paint.scene.draw_text(paint.text.layout_mono(
         &active_summary,
-        Point::new(bottom_card.origin.x + 126.0, jobs_title_y),
-        11.0,
-        theme::text::PRIMARY,
-    ));
-
-    let list_origin_y = jobs_title_y + 24.0;
+        job_flow_value_chunk_len,
+    ) + 10.0;
     let recent_requests = job_inbox.requests.iter().rev().take(5).collect::<Vec<_>>();
     if recent_requests.is_empty() {
         let empty_label = if provider_runtime.mode == crate::app_state::ProviderMode::Offline {
@@ -874,73 +880,37 @@ fn paint_go_online_pane(
         } else {
             "No jobs visible yet. Stay online and Mission Control will fill as demand arrives."
         };
-        paint.scene.draw_text(paint.text.layout(
-            empty_label,
-            Point::new(bottom_card.origin.x + 12.0, list_origin_y + 4.0),
-            11.0,
-            theme::text::MUTED,
-        ));
-    } else {
-        let row_height = 28.0;
-        for (index, request) in recent_requests.iter().enumerate() {
-            let row_bounds = Bounds::new(
-                bottom_card.origin.x + 12.0,
-                list_origin_y + index as f32 * row_height,
-                bottom_card.size.width - 24.0,
-                22.0,
-            );
-            let accent = match request.demand_source {
-                crate::app_state::JobDemandSource::StarterDemand => theme::status::SUCCESS,
-                crate::app_state::JobDemandSource::OpenNetwork => theme::accent::PRIMARY,
-            };
-            paint.scene.draw_quad(
-                Quad::new(row_bounds)
-                    .with_background(theme::bg::APP.with_alpha(0.55))
-                    .with_border(theme::border::DEFAULT, 1.0)
-                    .with_corner_radius(4.0),
-            );
-            let source_label = match request.demand_source {
-                crate::app_state::JobDemandSource::StarterDemand => "STARTER",
-                crate::app_state::JobDemandSource::OpenNetwork => "OPEN",
-            };
-            paint.scene.draw_text(paint.text.layout_mono(
-                source_label,
-                Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 6.0),
-                9.0,
-                accent,
-            ));
-            paint.scene.draw_text(paint.text.layout_mono(
-                &format_sats_amount(request.price_sats),
-                Point::new(row_bounds.origin.x + 74.0, row_bounds.origin.y + 6.0),
-                10.0,
-                theme::text::PRIMARY,
-            ));
-            let preview_suffix = if provider_runtime.mode == crate::app_state::ProviderMode::Offline
-            {
-                "preview".to_string()
-            } else {
-                request.decision.label()
-            };
+        for line in split_text_for_display(empty_label, job_flow_body_chunk_len) {
             paint.scene.draw_text(paint.text.layout(
-                &format!(
-                    "{}  {}  {}",
-                    request.capability, request.requester, preview_suffix
-                ),
-                Point::new(row_bounds.origin.x + 146.0, row_bounds.origin.y + 5.0),
-                10.0,
-                theme::text::PRIMARY,
+                &line,
+                Point::new(bottom_card.origin.x + 12.0, list_y + 4.0),
+                11.0,
+                theme::text::MUTED,
             ));
+            list_y += 16.0;
+        }
+    } else {
+        for request in recent_requests.iter() {
+            list_y = paint_mission_control_job_flow_row(
+                bottom_card,
+                list_y,
+                request,
+                provider_runtime.mode == crate::app_state::ProviderMode::Offline,
+                job_flow_body_chunk_len,
+                paint,
+            );
         }
     }
 
     if let Some(code) = provider_runtime.degraded_reason_code.as_deref() {
         paint.scene.draw_text(paint.text.layout_mono(
             &format!("Last reason code: {code}"),
-            Point::new(bottom_card.origin.x + 12.0, bottom_card.max_y() - 18.0),
+            Point::new(bottom_card.origin.x + 12.0, list_y + 8.0),
             10.0,
             theme::text::MUTED,
         ));
     }
+    paint.scene.pop_clip();
 }
 
 fn paint_mission_control_card(bounds: Bounds, title: &str, accent: Hsla, paint: &mut PaintContext) {
@@ -956,6 +926,72 @@ fn paint_mission_control_card(bounds: Bounds, title: &str, accent: Hsla, paint: 
         12.0,
         theme::text::PRIMARY,
     ));
+}
+
+fn paint_mission_control_job_flow_row(
+    bottom_card: Bounds,
+    row_y: f32,
+    request: &crate::state::job_inbox::JobInboxRequest,
+    offline_preview: bool,
+    body_chunk_len: usize,
+    paint: &mut PaintContext,
+) -> f32 {
+    let accent = match request.demand_source {
+        crate::app_state::JobDemandSource::StarterDemand => theme::status::SUCCESS,
+        crate::app_state::JobDemandSource::OpenNetwork => theme::accent::PRIMARY,
+    };
+    let source_label = match request.demand_source {
+        crate::app_state::JobDemandSource::StarterDemand => "STARTER",
+        crate::app_state::JobDemandSource::OpenNetwork => "OPEN",
+    };
+    let preview_suffix = if offline_preview {
+        "preview".to_string()
+    } else {
+        request.decision.label()
+    };
+    let detail_lines = split_text_for_display(
+        &format!(
+            "{}  {}  {}",
+            request.capability, request.requester, preview_suffix
+        ),
+        body_chunk_len.saturating_sub(18).max(16),
+    );
+    let row_height = (detail_lines.len() as f32 * 12.0 + 10.0).max(22.0);
+    let row_bounds = Bounds::new(
+        bottom_card.origin.x + 12.0,
+        row_y,
+        (bottom_card.size.width - 24.0).max(0.0),
+        row_height,
+    );
+    paint.scene.draw_quad(
+        Quad::new(row_bounds)
+            .with_background(theme::bg::APP.with_alpha(0.55))
+            .with_border(theme::border::DEFAULT, 1.0)
+            .with_corner_radius(4.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        source_label,
+        Point::new(row_bounds.origin.x + 8.0, row_bounds.origin.y + 6.0),
+        9.0,
+        accent,
+    ));
+    paint.scene.draw_text(paint.text.layout_mono(
+        &format_sats_amount(request.price_sats),
+        Point::new(row_bounds.origin.x + 74.0, row_bounds.origin.y + 6.0),
+        10.0,
+        theme::text::PRIMARY,
+    ));
+    let mut detail_y = row_bounds.origin.y + 5.0;
+    for line in detail_lines {
+        paint.scene.draw_text(paint.text.layout(
+            &line,
+            Point::new(row_bounds.origin.x + 146.0, detail_y),
+            10.0,
+            theme::text::PRIMARY,
+        ));
+        detail_y += 12.0;
+    }
+    row_bounds.max_y() + 6.0
 }
 
 fn paint_first_sats_progress(bounds: Bounds, lifetime_sats: u64, paint: &mut PaintContext) {

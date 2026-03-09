@@ -255,6 +255,20 @@ pub fn handle_window_event(app: &mut App, event_loop: &ActiveEventLoop, event: W
                 MouseScrollDelta::PixelDelta(pos) => (-pos.x as f32, -pos.y as f32),
             };
             let scroll_event = InputEvent::Scroll { dx, dy };
+            if state.command_palette.is_open() {
+                if state
+                    .command_palette
+                    .event(
+                        &scroll_event,
+                        command_palette_bounds(state),
+                        &mut state.event_context,
+                    )
+                    .is_handled()
+                {
+                    state.window.request_redraw();
+                }
+                return;
+            }
             if dispatch_mouse_scroll(state, app.cursor_position, &scroll_event) {
                 state.window.request_redraw();
             }
@@ -1651,6 +1665,14 @@ fn dispatch_mouse_down(
         return true;
     }
     let mut handled = begin_chat_transcript_selection_drag(state, point, button);
+
+    if button == MouseButton::Left {
+        let settings_bounds = sidebar_settings_icon_bounds(state);
+        if settings_bounds.size.width > 0.0 && settings_bounds.contains(point) {
+            PaneController::create_for_kind(state, crate::app_state::PaneKind::Settings);
+            return true;
+        }
+    }
 
     // Sidebar "Go Online" button (when panel is open).
     if button == MouseButton::Left && state.sidebar.is_open {

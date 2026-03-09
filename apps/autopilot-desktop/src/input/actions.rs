@@ -1,7 +1,7 @@
 use super::*;
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRuntimeCommand};
-use crate::pane_system::LocalInferencePaneAction;
+use crate::pane_system::{CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction};
 use crate::state::job_inbox::JobExecutionParam;
 
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
@@ -2705,63 +2705,72 @@ pub(super) fn run_chat_select_thread_action(
     index: usize,
 ) -> bool {
     match state.autopilot_chat.chat_browse_mode() {
-        crate::app_state::ChatBrowseMode::Managed => {
-            return state
-                .autopilot_chat
-                .select_managed_chat_channel_row_by_index(index);
-        }
-        crate::app_state::ChatBrowseMode::DirectMessages => {
-            return state
-                .autopilot_chat
-                .select_direct_message_room_by_index(index);
-        }
-        crate::app_state::ChatBrowseMode::Autopilot => {}
-    }
+        crate::app_state::ChatBrowseMode::Managed => state
+            .autopilot_chat
+            .select_managed_chat_channel_row_by_index(index),
+        crate::app_state::ChatBrowseMode::DirectMessages => state
+            .autopilot_chat
+            .select_direct_message_room_by_index(index),
+        crate::app_state::ChatBrowseMode::Autopilot => {
+            if index == 0 {
+                state.autopilot_chat.active_thread_id = None;
+                state.autopilot_chat.reset_transcript_scroll();
+                state.autopilot_chat.last_error = None;
+                focus_chat_composer(state);
+                return true;
+            }
 
-    let Some(target) = state.autopilot_chat.select_thread_by_index(index) else {
-        return false;
-    };
-    focus_chat_composer(state);
-    let experimental_api = state.codex_lane_config.experimental_api;
-    let resume_path = if experimental_api {
-        target.path.clone()
-    } else {
-        None
-    };
+            let preview_index = index - 1;
+            if preview_index >= CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT {
+                return false;
+            }
 
-    tracing::info!(
-        "codex thread/resume target id={} cwd={:?} path={:?} experimental_api={}",
-        target.thread_id,
-        target.cwd,
-        resume_path,
-        experimental_api
-    );
+            let Some(target) = state.autopilot_chat.select_thread_by_index(preview_index) else {
+                return false;
+            };
+            focus_chat_composer(state);
+            let experimental_api = state.codex_lane_config.experimental_api;
+            let resume_path = if experimental_api {
+                target.path.clone()
+            } else {
+                None
+            };
 
-    let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
-        thread_id: target.thread_id,
-        model: None,
-        model_provider: None,
-        cwd: target.cwd,
-        approval_policy: cad_turn_approval_policy(false),
-        sandbox: dangerous_sandbox_mode(),
-        path: resume_path.map(std::path::PathBuf::from),
-    });
-    if let Err(error) = state.queue_codex_command(command) {
-        state.autopilot_chat.last_error = Some(error);
-        return true;
-    }
+            tracing::info!(
+                "codex thread/resume target id={} cwd={:?} path={:?} experimental_api={}",
+                target.thread_id,
+                target.cwd,
+                resume_path,
+                experimental_api
+            );
 
-    if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
-        let read =
-            crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
-                thread_id,
-                include_turns: true,
+            let command = crate::codex_lane::CodexLaneCommand::ThreadResume(ThreadResumeParams {
+                thread_id: target.thread_id,
+                model: None,
+                model_provider: None,
+                cwd: target.cwd,
+                approval_policy: cad_turn_approval_policy(false),
+                sandbox: dangerous_sandbox_mode(),
+                path: resume_path.map(std::path::PathBuf::from),
             });
-        if let Err(error) = state.queue_codex_command(read) {
-            state.autopilot_chat.last_error = Some(error);
+            if let Err(error) = state.queue_codex_command(command) {
+                state.autopilot_chat.last_error = Some(error);
+                return true;
+            }
+
+            if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
+                let read =
+                    crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
+                        thread_id,
+                        include_turns: true,
+                    });
+                if let Err(error) = state.queue_codex_command(read) {
+                    state.autopilot_chat.last_error = Some(error);
+                }
+            }
+            return true;
         }
     }
-    true
 }
 
 pub(super) fn run_chat_select_workspace_action(
