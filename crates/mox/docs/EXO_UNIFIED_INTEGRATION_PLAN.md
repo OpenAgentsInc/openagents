@@ -4,11 +4,14 @@
 > `deep-research-exo.md`, `EXO_INTEGRATION_PLAN.md`, and the current
 > `ROADMAP.md` state on `main`.
 >
-> Baseline assumption: the generic Mox cutover and GPT-OSS/NVIDIA completion
-> track are already landed on `main`, so this document starts from "Mox can run
-> the truthful local GPT-OSS path" and defines the remaining work to integrate
-> the full set of Exo-derived recommendations without surrendering Mox's
-> Rust-first runtime truth.
+> Baseline assumption: the generic Mox cutover is already landed on `main`, and
+> Mox can run a truthful local GPT-OSS path today. However, the full
+> GPT-OSS/NVIDIA completion track is still in flight as of 2026-03-09:
+> `#3244` through `#3248` remain open after `#3243` closed, and the single-node
+> execution shape is still converging toward device-resident KV/attention/MoE
+> plus graph-based prefill/decode. This document therefore treats clustered
+> execution as gated on that local execution shape stabilizing, and it treats
+> Metal GPT-OSS as deferred rather than assumed-ready.
 
 ## Objective
 
@@ -42,6 +45,21 @@ The primary semantic references remain:
 - ordered event-log and catchup design
 - topology-aware placement and sharding heuristics
 - GPT-OSS/Harmony parser fixtures and multi-API adapter patterns
+
+For Apple-specific clustered execution semantics, Exo should be read precisely:
+
+- Exo's first-class Apple path is MLX-backed, not a generic "Metal available"
+  switch
+- placement distinguishes concrete distributed communication modes:
+  `MlxRing` over socket connectivity and `MlxJaccl` over RDMA/JACCL
+- model cards and placement rules gate sharding eligibility explicitly
+  (`supports_tensor`, model-specific exclusions, memory fit, topology fit)
+- unsupported topology/backend combinations fail at placement time with an
+  explicit error rather than silently falling back
+
+Mox should preserve those semantics when cluster execution reaches Apple, but
+translate them into Mox-owned backend/transport capability classes instead of
+copying the MLX runtime dependency or names wholesale.
 
 ## Non-Negotiable Constraints
 
@@ -131,7 +149,9 @@ The starting point on `main` is:
 - Mox already has explicit topology planning and selected-device truth
 - Mox already has provider-visible capability and receipt surfaces for
   topology, batching, cache state, and delivery-proof inputs
-- Mox already has the local GPT-OSS/NVIDIA path landed
+- Mox already has a truthful local GPT-OSS path, but the CUDA runtime refactor
+  toward device-resident KV, attention, MoE, and graph-based execution is still
+  active
 - Mox already has substantial loader and artifact substrate landed in
   `mox-models` and `mox-catalog`, including GGUF metadata/tensor loading,
   tokenizer loading, Harmony/GPT-OSS prompt/output handling, paged blob access,
@@ -139,6 +159,8 @@ The starting point on `main` is:
   license facts
 - OpenAgents no longer depends on the external Ollama daemon for the default
   local path
+- Metal GPT-OSS should currently be treated as a deferred backend lane, not as
+  a cluster-ready execution target
 
 That means the Exo integration problem is no longer "make Mox able to run a
 real model." It is now:
@@ -146,6 +168,74 @@ real model." It is now:
 - add a truthful cluster control plane
 - add cluster-aware scheduling and execution
 - keep evidence, capability, and policy truth explicit as those features widen
+
+## Backend Readiness Gate For Cluster Execution
+
+The cluster plan should not assume that every local backend lane is equally
+ready for clustered execution.
+
+For GPT-OSS specifically, the current gating rule should be:
+
+- phases 0 through 7 can proceed because they are mainly control-plane,
+  residency, planning, and evidence work
+- phases 8 through 10 must target a stable single-node execution seam rather
+  than the current moving GPT-OSS internals
+- the first truthful clustered execution target should be one homogeneous
+  backend/product lane, realistically CUDA first
+- Apple/Metal GPT-OSS nodes should currently be treated as explicit refusal or
+  unsupported candidates for cluster execution until the single-node Metal
+  GPT-OSS path is real and validated
+
+This preserves truthful planning and avoids coupling the cluster layer to a
+backend path that is still being restructured.
+
+The phrase to use here is not "deferred refusal." The concrete rule is:
+
+- Metal GPT-OSS remains a deferred roadmap lane
+- until that lane exists, cluster placement should refuse current Mox Metal
+  GPT-OSS nodes for GPT-OSS execution instead of pretending they are eligible
+
+That matches Exo's own posture more closely: unsupported combinations are
+rejected during placement rather than hidden behind ambiguous fallback.
+
+## Exo Apple / MLX Semantics To Preserve In Mox
+
+When Mox eventually adds clustered Apple execution, the Exo reference says the
+cluster layer should model more than "Apple node" or "Metal backend."
+
+Semantics worth preserving:
+
+- communication-class distinction:
+  Exo uses `MlxRing` for socket-based ring communication and `MlxJaccl` for
+  RDMA-backed JACCL communication
+- topology-aware admission:
+  ring only needs neighbour connectivity, while JACCL requires all-to-all RDMA
+  connectivity plus coordinator selection
+- model-card sharding gates:
+  placement checks `supports_tensor`, hidden-size divisibility for tensor
+  parallelism, and model-specific refusal cases
+- single-node downgrade behavior:
+  Exo forces single-node placement onto the simpler pipeline/ring path instead
+  of pretending tensor/JACCL still applies
+- explicit runtime knobs and risk surfaces:
+  Exo runner bootstrap sets `MLX_METAL_FAST_SYNCH`, and its MLX distributed
+  code treats synchronization/deadlock behavior as a first-class operational
+  concern
+
+What Mox should copy from that:
+
+- explicit transport / communication classes in cluster capability and
+  placement types
+- explicit backend-specific admission and refusal diagnostics
+- explicit model eligibility flags for sharding modes
+- explicit coordinator / connectivity evidence in receipts and validation
+
+What Mox should not copy from that:
+
+- MLX as a required runtime dependency
+- MLX-specific environment variables as public Mox abstractions
+- the `MlxRing` / `MlxJaccl` names as the final Mox API if backend-agnostic
+  names are clearer
 
 ## What Cluster Work Should Reuse From Existing Mox Loader And Artifact Work
 
@@ -339,7 +429,9 @@ Steps:
    cycle filtering by memory,
    smallest-cycle selection,
    ring-vs-RDMA coordinator selection heuristics,
-   layer-allocation proportionality edge cases.
+   layer-allocation proportionality edge cases,
+   single-node downgrade to the simpler communication class,
+   and explicit refusal for unsupported backend/topology/model combinations.
 5. Port Exo KV-prefix-cache hit/update ideas into Mox test cases where they
    match Mox's cache policy model.
 6. Document every intentional deviation where Mox chooses a different semantic.
@@ -591,7 +683,9 @@ Steps:
    provenance/license gating,
    memory admission,
    policy refusals,
-   performance qualifiers.
+   performance qualifiers,
+   communication-class eligibility,
+   and model sharding eligibility.
 5. Emit explicit refusal diagnostics when no valid placement exists.
 6. Emit planner explanations and stable plan digests so receipts can explain the
    chosen topology.
@@ -617,7 +711,9 @@ Steps:
 
 1. Add remote execution selection so a request can be admitted on one node and
    executed on another Mox node.
-2. Keep the execution path Mox-native on the selected node.
+2. Keep the execution path Mox-native on the selected node through a stable
+   local execution seam, not by coupling cluster scheduling to backend-specific
+   GPT-OSS internals that are still in flux.
 3. Surface in receipts:
    selected node,
    selected devices,
@@ -629,6 +725,12 @@ Steps:
 7. Define continuous batching admission policy explicitly.
 8. Add cluster-wide cancellation, retry, and degraded/fallback semantics.
 9. Add backpressure behavior for slow coordinator or slow execution nodes.
+10. For GPT-OSS, start with a homogeneous backend class and explicit backend
+    admission rules rather than mixed-backend scheduling guesses.
+11. When Apple cluster execution exists, model communication-class admission
+    explicitly in the Exo spirit:
+    socket/ring-like paths versus RDMA/all-to-all paths, not a single generic
+    "Metal cluster" bucket.
 
 Deliverables:
 
@@ -641,6 +743,8 @@ Definition of done:
 
 - Mox can use a cluster to pick the best execution node without pretending it is
   already doing sharded execution
+- the first shipping path can refuse nodes whose local backend/product lane is
+  not yet cluster-ready, including current Metal GPT-OSS nodes
 
 ## Phase 9: Replicated Cluster Serving
 
@@ -651,11 +755,13 @@ Goal:
 Steps:
 
 1. Add replicated model residency across multiple nodes.
-2. Add cluster-aware balancing and queue routing across replicas.
-3. Add replica health and backpressure reporting.
-4. Define how shared artifact identity and version drift are handled across
+2. Start with homogeneous replication for one truthful backend/product lane,
+   not mixed CUDA+Metal GPT-OSS replication.
+3. Add cluster-aware balancing and queue routing across replicas.
+4. Add replica health and backpressure reporting.
+5. Define how shared artifact identity and version drift are handled across
    replicas.
-5. Ensure receipts distinguish:
+6. Ensure receipts distinguish:
    cluster available replicas,
    selected replica,
    degraded replica routing,
@@ -671,6 +777,10 @@ Deliverables:
 Definition of done:
 
 - Mox can truthfully serve the same model from multiple nodes in one cluster
+- cluster replication does not imply that every backend with local loading
+  support is already an eligible GPT-OSS execution backend
+- future Apple replication should inherit the same communication-class and
+  topology gates Exo applies to MLX ring and JACCL modes
 
 ## Phase 10: True Sharded Cluster Execution
 
@@ -690,7 +800,9 @@ Steps:
 1. Define a backend-specific distributed communication substrate for activations,
    KV, and synchronization.
 2. Start with one backend/platform combination and make it truthful before
-   widening claims.
+   widening claims. Given the current local-runtime state, that should be gated
+   on the CUDA single-node execution track stabilizing first, especially the
+   graph/runtime seam.
 3. Extend compiled plans with cross-node communication edges.
 4. Extend runtime evidence with:
    shard map,
@@ -704,6 +816,11 @@ Steps:
    sharded execution path.
 6. Refuse unsupported sharding modes explicitly instead of silently collapsing
    to single-node execution.
+7. Defer Metal GPT-OSS sharding until there is a real single-node Apple path;
+   do not use cluster work to paper over missing local Metal execution.
+8. When Apple sharding is attempted later, require explicit communication-class
+   validation analogous to Exo's ring-vs-JACCL split instead of treating Apple
+   clustered execution as one undifferentiated backend mode.
 
 Deliverables:
 
@@ -863,14 +980,25 @@ From today's `main`, the shortest honest order is:
 6. Phase 5: topology and telemetry
 7. Phase 6: artifact residency and logistics
 8. Phase 7: placement planner
-9. Phase 8: cluster-aware single-node scheduling
-10. Phase 9: replicated serving
-11. Phase 10: true sharded execution
-12. Phase 11: provider/evidence expansion in parallel with phases 8-10, with
+9. Gate execution phases on a stable local single-node runtime seam for the
+   target backend/product lane
+10. Phase 8: cluster-aware single-node scheduling
+11. Phase 9: replicated serving
+12. Phase 10: true sharded execution
+13. Phase 11: provider/evidence expansion in parallel with phases 8-10, with
     the required schema work landing before any public claim widening
-13. Phase 13: hardening and rollout
-14. Phase 12: optional Exo interoperability spike only when the Rust-native
+14. Phase 13: hardening and rollout
+15. Phase 12: optional Exo interoperability spike only when the Rust-native
     substrate is already credible
+
+For GPT-OSS today, that gate means:
+
+- proceed freely through phases 0-7
+- do not begin serious cluster execution work on Metal GPT-OSS yet
+- treat CUDA as the likely first truthful clustered execution backend if the
+  local `#3244`-`#3246` work lands cleanly
+- do not wait for late-stage kernel parity work before continuing backend-agnostic
+  cluster-control phases
 
 ## What Not To Do
 
@@ -884,9 +1012,16 @@ Do not:
   adversarial compute-market cluster security
 - claim sharded cluster execution when the system is only doing remote
   scheduling
+- start clustered execution work on top of a local backend/product path whose
+  execution seam is still being rewritten
 - copy Exo's relaxed transport-security posture into a compute-market-facing
   Mox cluster
 - leak Apple/MLX assumptions into Mox's backend truth
+- treat deferred Metal GPT-OSS support as if it were an eligible cluster
+  execution lane
+- erase Exo's useful Apple placement semantics by collapsing communication mode,
+  topology fit, and model sharding eligibility into a single "Metal capable"
+  boolean
 - add cluster complexity to app code when the substrate belongs in `crates/mox/*`
 
 ## Deliverables Checklist
