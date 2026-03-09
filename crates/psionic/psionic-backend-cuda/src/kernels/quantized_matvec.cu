@@ -548,6 +548,39 @@ __global__ void rms_norm_kernel(
     }
 }
 
+__global__ void add_residual_rms_norm_kernel(
+    const float *input,
+    const float *residual,
+    const float *weight,
+    int element_count,
+    float epsilon,
+    float *summed_output,
+    float *normalized_output
+) {
+    __shared__ float scratch[kBlockSize];
+    float sum = 0.0f;
+    for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
+        const float value = input[index] + residual[index];
+        sum += value * value;
+    }
+    scratch[threadIdx.x] = sum;
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+        if (threadIdx.x < offset) {
+            scratch[threadIdx.x] += scratch[threadIdx.x + offset];
+        }
+        __syncthreads();
+    }
+
+    const float inv_rms = rsqrtf(scratch[0] / static_cast<float>(element_count) + epsilon);
+    for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
+        const float value = input[index] + residual[index];
+        summed_output[index] = value;
+        normalized_output[index] = value * weight[index] * inv_rms;
+    }
+}
+
 __device__ __forceinline__ float rope_yarn_ramp(const float low, const float high, const int i0) {
     const float y = ((i0 / 2) - low) / fmaxf(high - low, 0.001f);
     return 1.0f - fminf(fmaxf(y, 0.0f), 1.0f);
@@ -620,6 +653,50 @@ __global__ void rope_neox_in_place_kernel(
         values[index0] = x0 * cos_theta - x1 * sin_theta;
         values[index1] = x0 * sin_theta + x1 * cos_theta;
     }
+}
+
+__device__ __forceinline__ float rope_neox_component(
+    const float *values,
+    int dim,
+    int head_dim,
+    int rotary_dim,
+    int position,
+    float freq_scale,
+    float ext_factor,
+    float corr_low,
+    float corr_high,
+    float theta_scale
+) {
+    if (dim >= head_dim) {
+        return 0.0f;
+    }
+    const int bounded_rotary_dim = max(min(rotary_dim, head_dim), 2);
+    if (dim >= bounded_rotary_dim) {
+        return values[dim];
+    }
+
+    const int rotary_pairs = bounded_rotary_dim / 2;
+    const int pair = dim < rotary_pairs ? dim : dim - rotary_pairs;
+    const int index0 = pair;
+    const int index1 = pair + rotary_pairs;
+    const float theta_base =
+        static_cast<float>(position) * powf(theta_scale, static_cast<float>(pair));
+    float cos_theta = 0.0f;
+    float sin_theta = 0.0f;
+    rope_yarn(
+        theta_base,
+        freq_scale,
+        corr_low,
+        corr_high,
+        pair * 2,
+        ext_factor,
+        theta_scale,
+        cos_theta,
+        sin_theta
+    );
+    const float x0 = values[index0];
+    const float x1 = values[index1];
+    return dim < rotary_pairs ? x0 * cos_theta - x1 * sin_theta : x0 * sin_theta + x1 * cos_theta;
 }
 
 __global__ void attention_decode_kernel(
@@ -708,6 +785,285 @@ __global__ void attention_decode_kernel(
             sum += value_head[threadIdx.x] * weights[index];
         }
         const float *current_value_head = current_value + value_offset + kv_head * head_dim;
+        sum += current_value_head[threadIdx.x] * weights[window_tokens];
+        output[head_index * head_dim + threadIdx.x] = sum;
+    }
+}
+
+__global__ void attention_decode_rope_cache_kernel(
+    const float *qkv,
+    int query_offset,
+    int key_offset,
+    int value_offset,
+    float *cache_keys,
+    float *cache_values,
+    int cache_width,
+    int layer_offset,
+    int past_tokens,
+    int sliding_window,
+    int head_count,
+    int kv_head_count,
+    int head_dim,
+    int rotary_dim,
+    int position,
+    float freq_scale,
+    float ext_factor,
+    float corr_low,
+    float corr_high,
+    float theta_scale,
+    const float *attention_sinks,
+    float *output
+) {
+    const int head_index = blockIdx.x;
+    if (head_index >= head_count) {
+        return;
+    }
+
+    extern __shared__ float head_state[];
+    float *query_rotated = head_state;
+    float *current_key_rotated = head_state + head_dim;
+
+    __shared__ float logits[kAttentionMaxPositions];
+    __shared__ float weights[kAttentionMaxPositions];
+
+    int window_tokens = past_tokens;
+    if (sliding_window > 0 && window_tokens > sliding_window) {
+        window_tokens = sliding_window;
+    }
+    if (window_tokens > kAttentionMaxPositions - 1) {
+        window_tokens = kAttentionMaxPositions - 1;
+    }
+    const int start = past_tokens - window_tokens;
+    const int group_size = max(head_count / max(kv_head_count, 1), 1);
+    const int kv_head = min(head_index / group_size, kv_head_count - 1);
+    const bool cache_writer = (head_index % group_size) == 0;
+    const int cache_token_offset = past_tokens * cache_width + layer_offset + kv_head * head_dim;
+    const float scale = rsqrtf(static_cast<float>(head_dim));
+
+    const float *query_head = qkv + query_offset + head_index * head_dim;
+    const float *current_key_head = qkv + key_offset + kv_head * head_dim;
+    const float *current_value_head = qkv + value_offset + kv_head * head_dim;
+
+    for (int dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+        query_rotated[dim] = rope_neox_component(
+            query_head,
+            dim,
+            head_dim,
+            rotary_dim,
+            position,
+            freq_scale,
+            ext_factor,
+            corr_low,
+            corr_high,
+            theta_scale
+        );
+        const float rotated_key = rope_neox_component(
+            current_key_head,
+            dim,
+            head_dim,
+            rotary_dim,
+            position,
+            freq_scale,
+            ext_factor,
+            corr_low,
+            corr_high,
+            theta_scale
+        );
+        current_key_rotated[dim] = rotated_key;
+        if (cache_writer) {
+            cache_keys[cache_token_offset + dim] = rotated_key;
+            cache_values[cache_token_offset + dim] = current_value_head[dim];
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.x <= window_tokens) {
+        const bool current = threadIdx.x == window_tokens;
+        const float *key_head = current
+            ? current_key_rotated
+            : cache_keys + (start + threadIdx.x) * cache_width + layer_offset + kv_head * head_dim;
+        float dot = 0.0f;
+        for (int dim = 0; dim < head_dim; ++dim) {
+            dot += query_rotated[dim] * key_head[dim];
+        }
+        logits[threadIdx.x] = dot * scale;
+    }
+    __syncthreads();
+
+    if (threadIdx.x == 0) {
+        float max_value = logits[0];
+        for (int index = 1; index <= window_tokens; ++index) {
+            max_value = fmaxf(max_value, logits[index]);
+        }
+        if (attention_sinks != nullptr) {
+            max_value = fmaxf(max_value, attention_sinks[head_index]);
+        }
+
+        float denom = 0.0f;
+        for (int index = 0; index <= window_tokens; ++index) {
+            weights[index] = expf(logits[index] - max_value);
+            denom += weights[index];
+        }
+        if (attention_sinks != nullptr) {
+            denom += expf(attention_sinks[head_index] - max_value);
+        }
+        if (denom != 0.0f) {
+            for (int index = 0; index <= window_tokens; ++index) {
+                weights[index] /= denom;
+            }
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.x < head_dim) {
+        float sum = 0.0f;
+        for (int index = 0; index < window_tokens; ++index) {
+            const float *value_head =
+                cache_values + (start + index) * cache_width + layer_offset + kv_head * head_dim;
+            sum += value_head[threadIdx.x] * weights[index];
+        }
+        sum += current_value_head[threadIdx.x] * weights[window_tokens];
+        output[head_index * head_dim + threadIdx.x] = sum;
+    }
+}
+
+__global__ void attention_decode_rope_cache_f16_kv_kernel(
+    const float *qkv,
+    int query_offset,
+    int key_offset,
+    int value_offset,
+    __half *cache_keys,
+    __half *cache_values,
+    int cache_width,
+    int layer_offset,
+    int past_tokens,
+    int sliding_window,
+    int head_count,
+    int kv_head_count,
+    int head_dim,
+    int rotary_dim,
+    int position,
+    float freq_scale,
+    float ext_factor,
+    float corr_low,
+    float corr_high,
+    float theta_scale,
+    const float *attention_sinks,
+    float *output
+) {
+    const int head_index = blockIdx.x;
+    if (head_index >= head_count) {
+        return;
+    }
+
+    extern __shared__ float head_state[];
+    float *query_rotated = head_state;
+    float *current_key_rotated = head_state + head_dim;
+
+    __shared__ float logits[kAttentionMaxPositions];
+    __shared__ float weights[kAttentionMaxPositions];
+
+    int window_tokens = past_tokens;
+    if (sliding_window > 0 && window_tokens > sliding_window) {
+        window_tokens = sliding_window;
+    }
+    if (window_tokens > kAttentionMaxPositions - 1) {
+        window_tokens = kAttentionMaxPositions - 1;
+    }
+    const int start = past_tokens - window_tokens;
+    const int group_size = max(head_count / max(kv_head_count, 1), 1);
+    const int kv_head = min(head_index / group_size, kv_head_count - 1);
+    const bool cache_writer = (head_index % group_size) == 0;
+    const int cache_token_offset = past_tokens * cache_width + layer_offset + kv_head * head_dim;
+    const float scale = rsqrtf(static_cast<float>(head_dim));
+
+    const float *query_head = qkv + query_offset + head_index * head_dim;
+    const float *current_key_head = qkv + key_offset + kv_head * head_dim;
+    const float *current_value_head = qkv + value_offset + kv_head * head_dim;
+
+    for (int dim = threadIdx.x; dim < head_dim; dim += blockDim.x) {
+        query_rotated[dim] = rope_neox_component(
+            query_head,
+            dim,
+            head_dim,
+            rotary_dim,
+            position,
+            freq_scale,
+            ext_factor,
+            corr_low,
+            corr_high,
+            theta_scale
+        );
+        const float rotated_key = rope_neox_component(
+            current_key_head,
+            dim,
+            head_dim,
+            rotary_dim,
+            position,
+            freq_scale,
+            ext_factor,
+            corr_low,
+            corr_high,
+            theta_scale
+        );
+        current_key_rotated[dim] = rotated_key;
+        if (cache_writer) {
+            cache_keys[cache_token_offset + dim] = __float2half_rn(rotated_key);
+            cache_values[cache_token_offset + dim] = __float2half_rn(current_value_head[dim]);
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.x <= window_tokens) {
+        const bool current = threadIdx.x == window_tokens;
+        float dot = 0.0f;
+        if (current) {
+            for (int dim = 0; dim < head_dim; ++dim) {
+                dot += query_rotated[dim] * current_key_rotated[dim];
+            }
+        } else {
+            const __half *key_head =
+                cache_keys + (start + threadIdx.x) * cache_width + layer_offset + kv_head * head_dim;
+            for (int dim = 0; dim < head_dim; ++dim) {
+                dot += query_rotated[dim] * __half2float(key_head[dim]);
+            }
+        }
+        logits[threadIdx.x] = dot * scale;
+    }
+    __syncthreads();
+
+    if (threadIdx.x == 0) {
+        float max_value = logits[0];
+        for (int index = 1; index <= window_tokens; ++index) {
+            max_value = fmaxf(max_value, logits[index]);
+        }
+        if (attention_sinks != nullptr) {
+            max_value = fmaxf(max_value, attention_sinks[head_index]);
+        }
+
+        float denom = 0.0f;
+        for (int index = 0; index <= window_tokens; ++index) {
+            weights[index] = expf(logits[index] - max_value);
+            denom += weights[index];
+        }
+        if (attention_sinks != nullptr) {
+            denom += expf(attention_sinks[head_index] - max_value);
+        }
+        if (denom != 0.0f) {
+            for (int index = 0; index <= window_tokens; ++index) {
+                weights[index] /= denom;
+            }
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.x < head_dim) {
+        float sum = 0.0f;
+        for (int index = 0; index < window_tokens; ++index) {
+            const __half *value_head =
+                cache_values + (start + index) * cache_width + layer_offset + kv_head * head_dim;
+            sum += __half2float(value_head[threadIdx.x]) * weights[index];
+        }
         sum += current_value_head[threadIdx.x] * weights[window_tokens];
         output[head_index * head_dim + threadIdx.x] = sum;
     }
@@ -1196,6 +1552,28 @@ extern "C" int psionic_cuda_rms_norm(
     return static_cast<int>(cudaGetLastError());
 }
 
+extern "C" int psionic_cuda_add_residual_rms_norm(
+    const void *input,
+    const void *residual,
+    const void *weight,
+    int element_count,
+    float epsilon,
+    void *summed_output,
+    void *normalized_output,
+    void *stream
+) {
+    add_residual_rms_norm_kernel<<<1, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+        static_cast<const float *>(input),
+        static_cast<const float *>(residual),
+        static_cast<const float *>(weight),
+        element_count,
+        epsilon,
+        static_cast<float *>(summed_output),
+        static_cast<float *>(normalized_output)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
 extern "C" int psionic_cuda_argmax_f32(
     const void *input,
     int rows,
@@ -1257,6 +1635,122 @@ extern "C" int psionic_cuda_rope_neox_in_place(
         corr_low,
         corr_high,
         theta_scale
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_attention_decode_rope_cache(
+    const void *qkv,
+    int query_offset,
+    int key_offset,
+    int value_offset,
+    void *cache_keys,
+    void *cache_values,
+    int cache_width,
+    int layer_offset,
+    int past_tokens,
+    int sliding_window,
+    int head_count,
+    int kv_head_count,
+    int head_dim,
+    int rotary_dim,
+    int position,
+    float freq_scale,
+    float ext_factor,
+    float corr_low,
+    float corr_high,
+    float theta_scale,
+    const void *attention_sinks,
+    void *output,
+    void *stream
+) {
+    const size_t shared_bytes = static_cast<size_t>(head_dim) * 2 * sizeof(float);
+    attention_decode_rope_cache_kernel<<<
+        head_count,
+        kBlockSize,
+        shared_bytes,
+        static_cast<cudaStream_t>(stream)
+    >>>(
+        static_cast<const float *>(qkv),
+        query_offset,
+        key_offset,
+        value_offset,
+        static_cast<float *>(cache_keys),
+        static_cast<float *>(cache_values),
+        cache_width,
+        layer_offset,
+        past_tokens,
+        sliding_window,
+        head_count,
+        kv_head_count,
+        head_dim,
+        rotary_dim,
+        position,
+        freq_scale,
+        ext_factor,
+        corr_low,
+        corr_high,
+        theta_scale,
+        static_cast<const float *>(attention_sinks),
+        static_cast<float *>(output)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_attention_decode_rope_cache_f16_kv(
+    const void *qkv,
+    int query_offset,
+    int key_offset,
+    int value_offset,
+    void *cache_keys,
+    void *cache_values,
+    int cache_width,
+    int layer_offset,
+    int past_tokens,
+    int sliding_window,
+    int head_count,
+    int kv_head_count,
+    int head_dim,
+    int rotary_dim,
+    int position,
+    float freq_scale,
+    float ext_factor,
+    float corr_low,
+    float corr_high,
+    float theta_scale,
+    const void *attention_sinks,
+    void *output,
+    void *stream
+) {
+    const size_t shared_bytes = static_cast<size_t>(head_dim) * 2 * sizeof(float);
+    attention_decode_rope_cache_f16_kv_kernel<<<
+        head_count,
+        kBlockSize,
+        shared_bytes,
+        static_cast<cudaStream_t>(stream)
+    >>>(
+        static_cast<const float *>(qkv),
+        query_offset,
+        key_offset,
+        value_offset,
+        static_cast<__half *>(cache_keys),
+        static_cast<__half *>(cache_values),
+        cache_width,
+        layer_offset,
+        past_tokens,
+        sliding_window,
+        head_count,
+        kv_head_count,
+        head_dim,
+        rotary_dim,
+        position,
+        freq_scale,
+        ext_factor,
+        corr_low,
+        corr_high,
+        theta_scale,
+        static_cast<const float *>(attention_sinks),
+        static_cast<float *>(output)
     );
     return static_cast<int>(cudaGetLastError());
 }
