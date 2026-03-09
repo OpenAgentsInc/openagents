@@ -45,9 +45,10 @@ const CHAT_THREAD_FILTER_BUTTON_WIDTH: f32 = 72.0;
 const CHAT_THREAD_ACTION_BUTTON_HEIGHT: f32 = 22.0;
 const CHAT_THREAD_ACTION_BUTTON_WIDTH: f32 = 72.0;
 const CHAT_THREAD_ACTION_BUTTON_GAP: f32 = 4.0;
-const CHAT_THREAD_ROW_HEIGHT: f32 = 24.0;
-const CHAT_THREAD_ROW_GAP: f32 = 4.0;
+const CHAT_SHELL_ROW_HEIGHT: f32 = 30.0;
+const CHAT_SHELL_ROW_GAP: f32 = 6.0;
 const CHAT_MAX_THREAD_ROWS: usize = 10;
+pub const CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT: usize = 6;
 const CALCULATOR_INPUT_HEIGHT: f32 = 30.0;
 const CAST_BUTTON_HEIGHT: f32 = 28.0;
 const SKILL_REGISTRY_ROW_HEIGHT: f32 = 28.0;
@@ -1356,13 +1357,12 @@ pub fn chat_interrupt_button_bounds(content_bounds: Bounds) -> Bounds {
 
 pub fn chat_thread_row_bounds(content_bounds: Bounds, index: usize) -> Bounds {
     let rail = chat_thread_rail_bounds(content_bounds);
-    let actions_bottom = chat_thread_action_unsubscribe_button_bounds(content_bounds).max_y();
-    let y = actions_bottom + 10.0 + index as f32 * (CHAT_THREAD_ROW_HEIGHT + CHAT_THREAD_ROW_GAP);
+    let y = rail.origin.y + 54.0 + index as f32 * (CHAT_SHELL_ROW_HEIGHT + CHAT_SHELL_ROW_GAP);
     Bounds::new(
-        rail.origin.x + 10.0,
+        rail.origin.x + 8.0,
         y,
-        (rail.size.width - 20.0).max(80.0),
-        CHAT_THREAD_ROW_HEIGHT,
+        (rail.size.width - 16.0).max(80.0),
+        CHAT_SHELL_ROW_HEIGHT,
     )
 }
 
@@ -1374,12 +1374,12 @@ pub fn chat_visible_thread_row_count(content_bounds: Bounds, total_threads: usiz
     let first_row = chat_thread_row_bounds(content_bounds, 0);
     let rail = chat_thread_rail_bounds(content_bounds);
     let available_height = (rail.max_y() - first_row.origin.y).max(0.0);
-    if available_height < CHAT_THREAD_ROW_HEIGHT {
+    if available_height < CHAT_SHELL_ROW_HEIGHT {
         return 0;
     }
 
-    let row_span = CHAT_THREAD_ROW_HEIGHT + CHAT_THREAD_ROW_GAP;
-    let max_fit = ((available_height + CHAT_THREAD_ROW_GAP) / row_span).floor() as usize;
+    let row_span = CHAT_SHELL_ROW_HEIGHT + CHAT_SHELL_ROW_GAP;
+    let max_fit = ((available_height + CHAT_SHELL_ROW_GAP) / row_span).floor() as usize;
     total_threads.min(CHAT_MAX_THREAD_ROWS).min(max_fit.max(1))
 }
 
@@ -3475,7 +3475,11 @@ fn pane_hit_action_for_pane(
             } else if browse_mode == crate::app_state::ChatBrowseMode::DirectMessages {
                 direct_room_count
             } else {
-                state.autopilot_chat.threads.len()
+                1 + state
+                    .autopilot_chat
+                    .threads
+                    .len()
+                    .min(CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT)
             };
             let visible_rows = chat_visible_thread_row_count(content_bounds, channel_count);
             for index in 0..visible_rows {

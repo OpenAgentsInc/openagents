@@ -230,6 +230,67 @@ impl CommandPalette {
             self.item_height,
         )
     }
+
+    fn visible_item_count(&self) -> usize {
+        self.filtered_commands.len().min(self.max_visible_items)
+    }
+
+    fn footer_height(&self) -> f32 {
+        if self.filtered_commands.len() > self.max_visible_items {
+            20.0
+        } else {
+            0.0
+        }
+    }
+
+    fn palette_bounds(&self, bounds: Bounds) -> Bounds {
+        let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
+        let input_height = 48.0;
+        let padding = theme::spacing::XS;
+        let list_height = self.visible_item_count() as f32 * self.item_height;
+        let palette_height = input_height + padding + list_height + padding + self.footer_height();
+
+        Bounds::new(
+            bounds.origin.x + (bounds.size.width - palette_width) / 2.0,
+            bounds.origin.y + 100.0,
+            palette_width,
+            palette_height,
+        )
+    }
+
+    fn scroll_by_pixels(&mut self, delta_pixels: f32) -> bool {
+        if self.filtered_commands.len() <= self.max_visible_items
+            || !delta_pixels.is_finite()
+            || delta_pixels.abs() <= f32::EPSILON
+        {
+            return false;
+        }
+
+        let max_scroll = self
+            .filtered_commands
+            .len()
+            .saturating_sub(self.max_visible_items) as isize;
+        let mut row_delta = (delta_pixels / self.item_height.max(1.0)).round() as isize;
+        if row_delta == 0 {
+            row_delta = if delta_pixels.is_sign_positive() { 1 } else { -1 };
+        }
+
+        let next_offset = (self.scroll_offset as isize + row_delta).clamp(0, max_scroll) as usize;
+        if next_offset == self.scroll_offset {
+            return false;
+        }
+
+        self.scroll_offset = next_offset;
+        if self.selected_index < self.scroll_offset {
+            self.selected_index = self.scroll_offset;
+        } else {
+            let max_selected = self.scroll_offset + self.visible_item_count().saturating_sub(1);
+            if self.selected_index > max_selected {
+                self.selected_index = max_selected;
+            }
+        }
+        true
+    }
 }
 
 impl Default for CommandPalette {
@@ -253,19 +314,9 @@ impl Component for CommandPalette {
         cx.scene
             .draw_quad(Quad::new(bounds).with_background(theme::theme().colors.overlay_scrim));
 
-        let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
         let input_height = 48.0;
         let padding = theme::spacing::XS;
-        let visible_items = self.filtered_commands.len().min(self.max_visible_items);
-        let list_height = visible_items as f32 * self.item_height;
-        let palette_height = input_height + padding + list_height + padding;
-
-        let palette_bounds = Bounds::new(
-            bounds.origin.x + (bounds.size.width - palette_width) / 2.0,
-            bounds.origin.y + 100.0,
-            palette_width,
-            palette_height,
-        );
+        let palette_bounds = self.palette_bounds(bounds);
 
         cx.scene.draw_quad(
             Quad::new(palette_bounds)
@@ -415,6 +466,36 @@ impl Component for CommandPalette {
             cx.scene.draw_text(empty_run);
         }
 
+        if self.filtered_commands.len() > self.max_visible_items {
+            let footer_label = format!(
+                "Showing {}-{} of {}  •  scroll for more",
+                self.scroll_offset + 1,
+                (self.scroll_offset + self.visible_item_count()).min(self.filtered_commands.len()),
+                self.filtered_commands.len()
+            );
+            let footer_origin = Point::new(
+                palette_bounds.origin.x + theme::spacing::SM,
+                palette_bounds.max_y() - self.footer_height() + 4.0,
+            );
+            let footer_run = if self.mono {
+                cx.text.layout_styled_mono(
+                    &footer_label,
+                    footer_origin,
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                    FontStyle::default(),
+                )
+            } else {
+                cx.text.layout_mono(
+                    &footer_label,
+                    footer_origin,
+                    theme::font_size::XS,
+                    theme::text::MUTED,
+                )
+            };
+            cx.scene.draw_text(footer_run);
+        }
+
         // Restore caller layer to avoid leaking palette layering state.
         cx.scene.set_layer(base_layer);
     }
@@ -446,20 +527,7 @@ impl Component for CommandPalette {
             },
             InputEvent::MouseUp { x, y, .. } => {
                 let point = Point::new(*x, *y);
-
-                let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
-                let input_height = 48.0;
-                let padding = theme::spacing::XS;
-                let visible_items = self.filtered_commands.len().min(self.max_visible_items);
-                let list_height = visible_items as f32 * self.item_height;
-                let palette_height = input_height + padding + list_height + padding;
-
-                let palette_bounds = Bounds::new(
-                    bounds.origin.x + (bounds.size.width - palette_width) / 2.0,
-                    bounds.origin.y + 100.0,
-                    palette_width,
-                    palette_height,
-                );
+                let palette_bounds = self.palette_bounds(bounds);
 
                 if !palette_bounds.contains(point) {
                     self.close();
@@ -477,17 +545,21 @@ impl Component for CommandPalette {
                     }
                 }
             }
+            InputEvent::Scroll { dy, .. } => {
+                if self.scroll_by_pixels(*dy) {
+                    return EventResult::Handled;
+                }
+            }
             _ => {}
         }
 
-        let palette_width = 500.0_f32.min(bounds.size.width - 40.0);
+        let palette_bounds = self.palette_bounds(bounds);
         let padding = theme::spacing::XS;
-        let palette_x = bounds.origin.x + (bounds.size.width - palette_width) / 2.0;
 
         let input_bounds = Bounds::new(
-            palette_x + padding,
-            bounds.origin.y + 100.0 + padding,
-            palette_width - padding * 2.0,
+            palette_bounds.origin.x + padding,
+            palette_bounds.origin.y + padding,
+            palette_bounds.size.width - padding * 2.0,
             48.0 - padding * 2.0,
         );
 
