@@ -1164,6 +1164,81 @@ impl MetalBackend {
         backend.run_quantized_matvec(weights, byte_offset, mode, rows, columns, input)
     }
 
+    /// Executes one quantized row-wise matrix-vector product and returns only
+    /// the requested logits output shape on the host path.
+    pub fn quantized_matvec_select_logits_output(
+        &mut self,
+        weights: &MetalBuffer,
+        byte_offset: usize,
+        mode: psionic_core::QuantizationMode,
+        rows: usize,
+        columns: usize,
+        input: &[f32],
+        output_mode: MetalLogitsOutputMode,
+    ) -> Result<MetalLogitsSelectionResult, RuntimeError> {
+        let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec does not support mode {mode:?}",
+            )));
+        };
+        if columns == 0 || columns % elements_per_block != 0 {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec requires block-aligned width {columns} for {mode:?}",
+            )));
+        }
+        if input.len() != columns {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec input width mismatch: expected {columns}, actual {}",
+                input.len()
+            )));
+        }
+        let row_stride = (columns / elements_per_block)
+            .checked_mul(bytes_per_block)
+            .ok_or_else(|| {
+                RuntimeError::Backend(String::from("metal quantized matvec row stride overflow"))
+            })?;
+        let required_bytes = rows.saturating_mul(row_stride);
+        let end_offset = byte_offset.saturating_add(required_bytes);
+        match weights.storage_kind() {
+            BufferStorageKind::QuantizedBlocks {
+                mode: stored_mode, ..
+            } if stored_mode == mode => {}
+            BufferStorageKind::QuantizedBlocks {
+                mode: stored_mode, ..
+            } => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal quantized matvec mode mismatch: requested {mode:?}, stored {stored_mode:?}",
+                )));
+            }
+            storage_kind => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal quantized matvec requires quantized block storage, actual {:?}",
+                    storage_kind
+                )));
+            }
+        }
+        if weights.byte_len() < end_offset {
+            return Err(RuntimeError::Backend(format!(
+                "metal quantized matvec byte length mismatch: required {end_offset}, actual {}",
+                weights.byte_len(),
+            )));
+        }
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        backend.run_quantized_matvec_select_logits_output(
+            weights,
+            byte_offset,
+            mode,
+            rows,
+            columns,
+            input,
+            output_mode,
+        )
+    }
+
     /// Compiles and executes a graph on the supported dense Metal surface.
     pub fn compile_and_execute(
         &mut self,
@@ -2453,6 +2528,114 @@ impl AvailableMetalBackend {
         Ok(MetalQuantizedMatvecResult {
             values: output.read_f32()?,
         })
+    }
+
+    fn run_quantized_matvec_select_logits_output(
+        &mut self,
+        weights: &MetalBuffer,
+        byte_offset: usize,
+        mode: psionic_core::QuantizationMode,
+        rows: usize,
+        columns: usize,
+        input: &[f32],
+        output_mode: MetalLogitsOutputMode,
+    ) -> Result<MetalLogitsSelectionResult, RuntimeError> {
+        let device = self.descriptor.device.clone();
+        let mut input_buffer = self.allocate(&TensorSpec::new(
+            Shape::new(vec![columns]),
+            DType::F32,
+            device.clone(),
+        ))?;
+        input_buffer.write_f32(input)?;
+        let output = self.allocate(&TensorSpec::new(Shape::new(vec![rows]), DType::F32, device))?;
+        let mut submission = MetalSubmission {
+            encoded_operations: 0,
+            synchronized_buffers: 0,
+            platform: self
+                .platform
+                .begin_submission(String::from("psionic.quantized_matvec"))?,
+        };
+        self.platform.encode_quantized_matvec(
+            &mut submission.platform,
+            weights,
+            byte_offset,
+            mode,
+            rows,
+            columns,
+            &input_buffer,
+            &output,
+        )?;
+        submission.encoded_operations += 1;
+        if self
+            .platform
+            .synchronize_output(&mut submission.platform, &output)?
+        {
+            submission.synchronized_buffers += 1;
+        }
+        submission.commit(MetalCommandWait::Completed)?;
+        match output_mode {
+            MetalLogitsOutputMode::GreedyToken => {
+                let selected_tokens = argmax_dense_rows(&output, 1, rows, "metal argmax")?;
+                Ok(MetalLogitsSelectionResult {
+                    selected_tokens,
+                    candidates: None,
+                    logits: None,
+                    metrics: MetalLogitsSelectionMetrics {
+                        output_mode,
+                        readback_bytes: std::mem::size_of::<u32>().try_into().unwrap_or(u64::MAX),
+                        raw_logits_materialized: false,
+                    },
+                })
+            }
+            MetalLogitsOutputMode::TopKCandidates(top_k) => {
+                let candidates = top_k_dense_rows(&output, 1, rows, top_k, "metal top_k")?;
+                let selected_tokens = candidates
+                    .indices
+                    .chunks_exact(candidates.top_k.max(1))
+                    .map(|row| row[0])
+                    .collect::<Vec<_>>();
+                let readback_bytes = candidates
+                    .indices
+                    .len()
+                    .saturating_mul(std::mem::size_of::<u32>())
+                    .saturating_add(
+                        candidates
+                            .values
+                            .len()
+                            .saturating_mul(std::mem::size_of::<f32>()),
+                    )
+                    .try_into()
+                    .unwrap_or(u64::MAX);
+                Ok(MetalLogitsSelectionResult {
+                    selected_tokens,
+                    candidates: Some(candidates),
+                    logits: None,
+                    metrics: MetalLogitsSelectionMetrics {
+                        output_mode,
+                        readback_bytes,
+                        raw_logits_materialized: false,
+                    },
+                })
+            }
+            MetalLogitsOutputMode::RawLogits => {
+                let logits = output.read_f32()?;
+                let selected_tokens =
+                    argmax_values(logits.as_slice(), 1, rows, "metal raw logits")?;
+                Ok(MetalLogitsSelectionResult {
+                    selected_tokens,
+                    candidates: None,
+                    logits: Some(logits),
+                    metrics: MetalLogitsSelectionMetrics {
+                        output_mode,
+                        readback_bytes: rows
+                            .saturating_mul(std::mem::size_of::<f32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                        raw_logits_materialized: true,
+                    },
+                })
+            }
+        }
     }
 
     fn run_grouped_quantized_matvec(

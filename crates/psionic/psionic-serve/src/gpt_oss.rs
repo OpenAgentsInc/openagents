@@ -17,7 +17,8 @@ use psionic_backend_cuda::{
 use psionic_backend_metal::{
     MetalAttentionGraphReserve, MetalAttentionGraphRuntime, MetalBackend, MetalBuffer,
     MetalGraphReserveKind, MetalGroupedExpertMatvecResult, MetalKvCacheMirror,
-    MetalPromptResidencyMetrics, MetalSharedPrefixCompatibility, MetalSharedPrefixStore,
+    MetalLogitsOutputMode, MetalPromptResidencyMetrics, MetalSharedPrefixCompatibility,
+    MetalSharedPrefixStore, MetalTopKResult,
     TEXT_GENERATION_SUPPORTED_OPS as METAL_TEXT_GENERATION_SUPPORTED_OPS,
 };
 use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
@@ -35,12 +36,13 @@ use super::{
     GenerationEventStream, GenerationModelHandle, GenerationOptions, GenerationResponse,
     GenerationStreamEvent, GenerationStreamStatus, GenerationStreamTerminal,
     GgufDecoderAdapterLoader, GgufDecoderFamily, GgufDecoderFamilyMetadata,
-    GgufDecoderLayerTensorLayout, GptOssPerformanceMetrics, InMemoryGenerationModelRegistry,
-    InMemoryGenerationSessionStore, LoadedModelRegistryError, LoadedModelView,
-    LocalRuntimeObservability, ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode,
-    ReferenceTextGenerationError, SharedPrefixStore, TextGenerationExecutor, TokenId,
-    TokenSequence, TokenizerBoundary, current_time_millis, default_prefix_cache_policy,
-    generation_runtime_observability, prefix_compatibility, run_generation_request,
+    GgufDecoderLayerTensorLayout, GptOssMetalDecodeLogitsMetrics, GptOssMetalLogitsOutputMode,
+    GptOssPerformanceMetrics, InMemoryGenerationModelRegistry, InMemoryGenerationSessionStore,
+    LoadedModelRegistryError, LoadedModelView, LocalRuntimeObservability,
+    ManagedTextGenerationRuntime, ModelLoadError, QuantizationMode, ReferenceTextGenerationError,
+    SharedPrefixStore, TextGenerationExecutor, TokenId, TokenSequence, TokenizerBoundary,
+    current_time_millis, default_prefix_cache_policy, generation_runtime_observability,
+    prefix_compatibility, run_generation_request,
 };
 use thiserror::Error;
 
@@ -94,6 +96,32 @@ fn can_use_cached_prompt_argmax(options: &GenerationOptions) -> bool {
     can_use_cuda_argmax_fast_path(options)
 }
 
+fn has_sampling_penalties(options: &GenerationOptions) -> bool {
+    options.repeat_penalty.is_some()
+        || options.presence_penalty.is_some()
+        || options.frequency_penalty.is_some()
+}
+
+fn can_use_metal_greedy_logits_output(options: &GenerationOptions) -> bool {
+    !has_sampling_penalties(options)
+        && (options.decode_strategy == DecodeStrategy::Greedy
+            || options.sampling_policy().effective_temperature() <= 1e-6)
+}
+
+fn metal_decode_logits_output_mode(options: &GenerationOptions) -> MetalLogitsOutputMode {
+    if can_use_metal_greedy_logits_output(options) {
+        return MetalLogitsOutputMode::GreedyToken;
+    }
+    if has_sampling_penalties(options) {
+        return MetalLogitsOutputMode::RawLogits;
+    }
+    match options.sampling_policy().effective_top_k() {
+        Some(1) => MetalLogitsOutputMode::GreedyToken,
+        Some(top_k) if top_k > 1 => MetalLogitsOutputMode::TopKCandidates(top_k),
+        _ => MetalLogitsOutputMode::RawLogits,
+    }
+}
+
 fn can_use_q8_1_mmvq(mode: QuantizationMode) -> bool {
     matches!(
         mode,
@@ -114,6 +142,84 @@ fn can_use_q8_1_attention_output_fusion(
         && attention_output_columns == head_count.saturating_mul(head_dim)
         && attention_output_columns % 32 == 0
 }
+
+fn gpt_oss_metal_logits_output_mode(
+    output_mode: MetalLogitsOutputMode,
+) -> GptOssMetalLogitsOutputMode {
+    match output_mode {
+        MetalLogitsOutputMode::GreedyToken => GptOssMetalLogitsOutputMode::GreedyToken,
+        MetalLogitsOutputMode::TopKCandidates(top_k) => {
+            GptOssMetalLogitsOutputMode::TopKCandidates { top_k }
+        }
+        MetalLogitsOutputMode::RawLogits => GptOssMetalLogitsOutputMode::RawLogits,
+    }
+}
+
+fn accumulate_metal_decode_logits_metrics(
+    perf: &mut GptOssPerformanceMetrics,
+    output_mode: MetalLogitsOutputMode,
+    readback_bytes: u64,
+    raw_logits_materialized: bool,
+) {
+    let metrics = perf
+        .metal_decode_logits
+        .get_or_insert_with(GptOssMetalDecodeLogitsMetrics::default);
+    metrics.step_count = metrics.step_count.saturating_add(1);
+    metrics.readback_bytes = metrics.readback_bytes.saturating_add(readback_bytes);
+    metrics.raw_logits_materialized |= raw_logits_materialized;
+    metrics
+        .output_modes
+        .push(gpt_oss_metal_logits_output_mode(output_mode));
+    metrics.output_modes.sort();
+    metrics.output_modes.dedup();
+}
+
+fn expand_metal_top_k_candidates_to_logits(
+    vocab_size: usize,
+    candidates: &MetalTopKResult,
+) -> Result<Vec<f32>, ReferenceTextGenerationError> {
+    if candidates.row_count != 1 {
+        return Err(ReferenceTextGenerationError::Runtime(
+            super::RuntimeError::Backend(format!(
+                "metal logits top-k row count mismatch: expected 1, actual {}",
+                candidates.row_count
+            )),
+        ));
+    }
+    if candidates.indices.len() != candidates.values.len() {
+        return Err(ReferenceTextGenerationError::Runtime(
+            super::RuntimeError::Backend(format!(
+                "metal logits top-k shape mismatch: indices {}, values {}",
+                candidates.indices.len(),
+                candidates.values.len()
+            )),
+        ));
+    }
+
+    let mut logits = vec![f32::NEG_INFINITY; vocab_size];
+    for (index, value) in candidates
+        .indices
+        .iter()
+        .copied()
+        .zip(candidates.values.iter().copied())
+    {
+        let token_index = usize::try_from(index).map_err(|_| {
+            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                "metal logits top-k token index conversion overflow: {index}",
+            )))
+        })?;
+        if token_index >= vocab_size {
+            return Err(ReferenceTextGenerationError::Runtime(
+                super::RuntimeError::Backend(format!(
+                    "metal logits top-k token index out of bounds: index {token_index}, vocab {vocab_size}",
+                )),
+            ));
+        }
+        logits[token_index] = value;
+    }
+    Ok(logits)
+}
+
 fn accumulate_cuda_matvec_stats(
     perf: &mut GptOssPerformanceMetrics,
     stats: &CudaQuantizedMatvecStats,
@@ -1693,6 +1799,7 @@ fn run_metal_generation_request(
         let mut attention_runtime = loaded_model
             .inner
             .reserve_decode_attention_runtime(backend)?;
+        let decode_output_mode = metal_decode_logits_output_mode(&request.options);
 
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
             let position = layer_caches
@@ -1705,6 +1812,8 @@ fn run_metal_generation_request(
                 position,
                 layer_caches.as_mut_slice(),
                 &mut attention_runtime,
+                MetalLogitsOutputMode::RawLogits,
+                false,
             )?;
             if execution_plan_digest.is_none() {
                 execution_plan_digest = Some(loaded_model.plan_digest().to_string());
@@ -1735,6 +1844,7 @@ fn run_metal_generation_request(
 
         let mut sampler = super::GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
+        let mut pending_token = None;
         let termination = loop {
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
@@ -1742,10 +1852,13 @@ fn run_metal_generation_request(
             if cache.len() >= cache.max_context() {
                 break super::TerminationReason::ContextLimit;
             }
-
-            let next_token = sampler
-                .select_next_token(&last_logits, &cache)
-                .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+            let next_token = if let Some(token) = pending_token.take() {
+                token
+            } else {
+                sampler
+                    .select_next_token(&last_logits, &cache)
+                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?
+            };
             if loaded_model.is_end_of_sequence(next_token) {
                 break super::TerminationReason::EndOfSequence;
             }
@@ -1761,6 +1874,8 @@ fn run_metal_generation_request(
                 position,
                 layer_caches.as_mut_slice(),
                 &mut attention_runtime,
+                decode_output_mode,
+                true,
             )?;
             if execution_plan_digest.is_none() {
                 execution_plan_digest = Some(loaded_model.plan_digest().to_string());
@@ -1781,7 +1896,6 @@ fn run_metal_generation_request(
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
             cache.append(next_token, step.key.clone(), step.value.clone())?;
-            last_logits = step.logits;
 
             if super::truncate_generated_text(
                 loaded_model.tokenizer(),
@@ -1791,6 +1905,17 @@ fn run_metal_generation_request(
             .is_some()
             {
                 break super::TerminationReason::EndOfSequence;
+            }
+
+            if let Some(token) = step.selected_token {
+                pending_token = Some(token);
+            } else {
+                last_logits = step.logits;
+                pending_token = Some(
+                    sampler
+                        .select_next_token(&last_logits, &cache)
+                        .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
+                );
             }
         };
 
@@ -2386,7 +2511,14 @@ impl CompiledWordGenerationModel for MetalGgufGptOssGenerationModel {
             });
         }
 
-        let step = self.inner.forward_step(backend, token, position, cache)?;
+        let step = self.inner.forward_step(
+            backend,
+            token,
+            position,
+            cache,
+            MetalLogitsOutputMode::RawLogits,
+            false,
+        )?;
         Ok(super::GenerationStepOutput {
             key: step.key,
             value: step.value,
@@ -4178,12 +4310,74 @@ impl GptOssMetalModelInner {
             .map_err(ReferenceTextGenerationError::Runtime)
     }
 
+    fn select_step_logits_output(
+        &self,
+        backend: &mut MetalBackend,
+        final_hidden: &[f32],
+        perf: &mut GptOssPerformanceMetrics,
+        bytes_moved: &mut u64,
+        kernel_count: &mut usize,
+        output_mode: MetalLogitsOutputMode,
+        record_decode_logits_metrics: bool,
+    ) -> Result<(Vec<f32>, Option<TokenId>), ReferenceTextGenerationError> {
+        let logits_projection_start = Instant::now();
+        let selection = self
+            .output
+            .select_logits_output(backend, final_hidden, output_mode)
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        perf.stage_timings.logits_projection_ns = perf
+            .stage_timings
+            .logits_projection_ns
+            .saturating_add(duration_ns(logits_projection_start));
+        if record_decode_logits_metrics {
+            accumulate_metal_decode_logits_metrics(
+                perf,
+                selection.metrics.output_mode,
+                selection.metrics.readback_bytes,
+                selection.metrics.raw_logits_materialized,
+            );
+        }
+        *bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
+        *kernel_count = kernel_count.saturating_add(1);
+
+        match output_mode {
+            MetalLogitsOutputMode::GreedyToken => {
+                let token = selection.selected_tokens.first().copied().ok_or_else(|| {
+                    ReferenceTextGenerationError::MissingOutput("metal greedy token")
+                })?;
+                Ok((Vec::new(), Some(TokenId(token))))
+            }
+            MetalLogitsOutputMode::TopKCandidates(_) => {
+                let candidates = selection.candidates.as_ref().ok_or_else(|| {
+                    ReferenceTextGenerationError::MissingOutput("metal logits top_k candidates")
+                })?;
+                Ok((
+                    expand_metal_top_k_candidates_to_logits(
+                        self.descriptor.config.vocab_size,
+                        candidates,
+                    )?,
+                    None,
+                ))
+            }
+            MetalLogitsOutputMode::RawLogits => Ok((
+                selection
+                    .logits
+                    .ok_or(ReferenceTextGenerationError::MissingOutput(
+                        "metal raw logits",
+                    ))?,
+                None,
+            )),
+        }
+    }
+
     fn forward_step(
         &self,
         backend: &mut MetalBackend,
         token: TokenId,
         position: usize,
         cache: &super::InMemoryKvCache,
+        logits_output_mode: MetalLogitsOutputMode,
+        record_decode_logits_metrics: bool,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
         let hidden_size = self.descriptor.config.hidden_size;
         let kv_width = self.descriptor.config.kv_width();
@@ -4429,22 +4623,21 @@ impl GptOssMetalModelInner {
             .output_norm_ns
             .saturating_add(duration_ns(output_norm_start));
 
-        let logits_projection_start = Instant::now();
-        let mut logits = Vec::new();
-        self.output
-            .matvec(backend, final_hidden.as_slice(), &mut logits)?;
-        perf.stage_timings.logits_projection_ns = perf
-            .stage_timings
-            .logits_projection_ns
-            .saturating_add(duration_ns(logits_projection_start));
-        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
-        kernel_count = kernel_count.saturating_add(1);
+        let (logits, selected_token) = self.select_step_logits_output(
+            backend,
+            final_hidden.as_slice(),
+            &mut perf,
+            &mut bytes_moved,
+            &mut kernel_count,
+            logits_output_mode,
+            record_decode_logits_metrics,
+        )?;
 
         Ok(GptOssForwardStep {
             key: cache_key,
             value: cache_value,
             logits,
-            selected_token: None,
+            selected_token,
             kernel_count,
             bytes_moved,
             perf: Some(perf),
@@ -4458,6 +4651,8 @@ impl GptOssMetalModelInner {
         position: usize,
         layer_caches: &mut [MetalKvCacheMirror],
         attention_runtime: &mut MetalAttentionGraphRuntime,
+        logits_output_mode: MetalLogitsOutputMode,
+        record_decode_logits_metrics: bool,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
         if layer_caches.len() != self.layers.len() {
             return Err(ReferenceTextGenerationError::Runtime(
@@ -4750,22 +4945,21 @@ impl GptOssMetalModelInner {
             .output_norm_ns
             .saturating_add(duration_ns(output_norm_start));
 
-        let logits_projection_start = Instant::now();
-        let mut logits = Vec::new();
-        self.output
-            .matvec(backend, final_hidden.as_slice(), &mut logits)?;
-        perf.stage_timings.logits_projection_ns = perf
-            .stage_timings
-            .logits_projection_ns
-            .saturating_add(duration_ns(logits_projection_start));
-        bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
-        kernel_count = kernel_count.saturating_add(1);
+        let (logits, selected_token) = self.select_step_logits_output(
+            backend,
+            final_hidden.as_slice(),
+            &mut perf,
+            &mut bytes_moved,
+            &mut kernel_count,
+            logits_output_mode,
+            record_decode_logits_metrics,
+        )?;
 
         Ok(GptOssForwardStep {
             key: cache_key,
             value: cache_value,
             logits,
-            selected_token: None,
+            selected_token,
             kernel_count,
             bytes_moved,
             perf: Some(perf),
@@ -5469,6 +5663,23 @@ impl MetalQuantizedMatrix {
             input,
         )?;
         Ok(())
+    }
+
+    fn select_logits_output(
+        &self,
+        backend: &mut MetalBackend,
+        input: &[f32],
+        output_mode: MetalLogitsOutputMode,
+    ) -> Result<psionic_backend_metal::MetalLogitsSelectionResult, super::RuntimeError> {
+        backend.quantized_matvec_select_logits_output(
+            &self.storage,
+            0,
+            self.host.mode,
+            self.host.rows,
+            self.host.columns,
+            input,
+            output_mode,
+        )
     }
 }
 
@@ -7401,7 +7612,8 @@ mod tests {
     use crate::QuantizationMode;
     #[cfg(target_os = "macos")]
     use crate::{
-        GenerationOptions, GenerationRequest, TextGenerationExecutor, TokenId, TokenSequence,
+        GenerationOptions, GenerationRequest, GptOssMetalDecodeLogitsMetrics,
+        GptOssMetalLogitsOutputMode, TextGenerationExecutor, TokenId, TokenSequence,
     };
     use psionic_backend_cpu::quantized_row_dot;
     use psionic_backend_cuda::{CudaBackend, CudaCommandStatus, CudaCommandWait};
@@ -7615,6 +7827,92 @@ mod tests {
                 })
                 .unwrap_or(false)
         );
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn metal_decode_logits_metrics_for_options(
+        request_id: &str,
+        options: GenerationOptions,
+    ) -> Result<GptOssMetalDecodeLogitsMetrics, Box<dyn std::error::Error>> {
+        let temp = tempdir()?;
+        let path = temp.path().join(format!("{request_id}.gguf"));
+        write_test_gpt_oss_gguf(&path)?;
+
+        let mut metal = MetalGgufGptOssTextGenerationService::from_gguf_path(&path)?;
+        let request = GenerationRequest::new_tokens(
+            request_id,
+            metal.model_descriptor().clone(),
+            None,
+            TokenSequence::new(vec![TokenId(2)]),
+            options,
+        );
+        let response = metal.generate(&request)?;
+        response
+            .metrics
+            .gpt_oss_perf
+            .and_then(|perf| perf.metal_decode_logits)
+            .ok_or_else(|| std::io::Error::other("missing metal decode logits metrics").into())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_gpt_oss_service_reports_greedy_decode_logits_mode()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let metrics = metal_decode_logits_metrics_for_options(
+            "tiny-gpt-oss-metal-greedy-logits",
+            GenerationOptions::greedy(1),
+        )?;
+
+        assert_eq!(metrics.step_count, 1);
+        assert_eq!(
+            metrics.output_modes,
+            vec![GptOssMetalLogitsOutputMode::GreedyToken]
+        );
+        assert_eq!(metrics.readback_bytes, std::mem::size_of::<u32>() as u64);
+        assert_eq!(metrics.raw_logits_materialized, false);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_gpt_oss_service_reports_bounded_top_k_decode_logits_mode()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut options = GenerationOptions::sample(1);
+        options.top_k = Some(2);
+        options.seed = Some(7);
+        let metrics =
+            metal_decode_logits_metrics_for_options("tiny-gpt-oss-metal-top-k-logits", options)?;
+
+        assert_eq!(metrics.step_count, 1);
+        assert_eq!(
+            metrics.output_modes,
+            vec![GptOssMetalLogitsOutputMode::TopKCandidates { top_k: 2 }]
+        );
+        assert_eq!(
+            metrics.readback_bytes,
+            (2 * std::mem::size_of::<u32>() + 2 * std::mem::size_of::<f32>()) as u64
+        );
+        assert_eq!(metrics.raw_logits_materialized, false);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_gpt_oss_service_reports_raw_decode_logits_mode_when_required()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut options = GenerationOptions::greedy(1);
+        options.repeat_penalty = Some(1.1);
+        let metrics =
+            metal_decode_logits_metrics_for_options("tiny-gpt-oss-metal-raw-logits", options)?;
+
+        assert_eq!(metrics.step_count, 1);
+        assert_eq!(
+            metrics.output_modes,
+            vec![GptOssMetalLogitsOutputMode::RawLogits]
+        );
+        assert!(metrics.readback_bytes >= std::mem::size_of::<f32>() as u64);
+        assert_eq!(metrics.raw_logits_materialized, true);
         Ok(())
     }
 
