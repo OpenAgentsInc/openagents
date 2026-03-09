@@ -21,8 +21,9 @@ use psionic_runtime::{
     BackendSelection, BufferHandle, BufferResidency, BufferStorageKind, CacheAction, CacheKind,
     CacheObservation, CompilePathEvidence, CompilePathTemperature, DeviceDescriptor,
     DeviceDiscovery, ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy,
-    ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, HealthStatus, RuntimeError,
-    RuntimeHealth, ServedProductBackendPolicy,
+    ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, HealthStatus,
+    KvCacheAccounting, KvCachePageLayout, KvCacheState, PrefixCacheIdentity, PrefixCacheState,
+    RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
 };
 #[cfg(target_os = "macos")]
 use psionic_runtime::{KernelCachePolicy, KernelCacheReport, KernelCacheState};
@@ -152,6 +153,77 @@ pub struct MetalGroupedExpertMatvecResult {
     pub stats: MetalGroupedExpertStats,
 }
 
+/// Device-resident GPT-OSS KV cache mirror for the Metal backend.
+#[derive(Clone, Debug)]
+pub struct MetalKvCacheMirror {
+    key_buffer: MetalBuffer,
+    value_buffer: MetalBuffer,
+    width: usize,
+    len: usize,
+    capacity_tokens: usize,
+    max_context_tokens: usize,
+}
+
+/// Compatibility tuple required for safe shared-prefix reuse on Metal.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalSharedPrefixCompatibility {
+    /// Stable served-artifact digest used to validate ownership.
+    pub served_artifact_digest: String,
+    /// Stable model identifier.
+    pub model_id: String,
+    /// Stable model revision.
+    pub model_revision: String,
+    /// Stable weight-bundle digest.
+    pub weight_bundle_digest: String,
+    /// Stable tokenizer family label.
+    pub tokenizer_family: String,
+    /// Stable backend compatibility label.
+    pub backend_compatibility: String,
+    /// KV width required for reuse.
+    pub kv_width: usize,
+    /// Logical KV page layout required for reuse.
+    pub page_layout: KvCachePageLayout,
+}
+
+#[derive(Clone, Debug)]
+struct MetalSharedPrefixEntry {
+    compatibility: MetalSharedPrefixCompatibility,
+    prompt_tokens: Vec<u32>,
+    cache: MetalKvCacheMirror,
+}
+
+/// Result of one shared-prefix lookup against the Metal device cache store.
+#[derive(Clone, Debug)]
+pub struct MetalSharedPrefixLookup {
+    /// Observable prefix-cache state for the request.
+    pub state: PrefixCacheState,
+    /// Number of prompt tokens reused from the device-resident prefix.
+    pub reused_tokens: usize,
+    /// Stable identity for the reused prefix when one existed.
+    pub identity: Option<PrefixCacheIdentity>,
+    /// Device-resident truncated cache when reuse succeeded.
+    pub cache: Option<MetalKvCacheMirror>,
+}
+
+/// Shared prompt-prefix reuse store backed by Metal device-resident KV mirrors.
+#[derive(Clone, Debug, Default)]
+pub struct MetalSharedPrefixStore {
+    entries: Vec<MetalSharedPrefixEntry>,
+}
+
+/// Runtime-visible prompt residency metrics for one Metal request path.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalPromptResidencyMetrics {
+    /// Current KV-cache accounting.
+    pub kv_accounting: KvCacheAccounting,
+    /// Shared-prefix reuse state for the request.
+    pub prefix_state: PrefixCacheState,
+    /// Stable identity for the reused prefix when one existed.
+    pub prefix_identity: Option<PrefixCacheIdentity>,
+    /// Explicit cache observations explaining the outcome.
+    pub observations: Vec<CacheObservation>,
+}
+
 /// Metal-backed tensor buffer.
 #[derive(Clone)]
 pub struct MetalBuffer {
@@ -207,9 +279,42 @@ impl MetalBuffer {
         self.platform.write_bytes(bytes, self.storage_mode)
     }
 
+    /// Writes raw bytes into a byte range inside the host-visible buffer contents.
+    pub fn write_bytes_at_offset(
+        &mut self,
+        byte_offset: usize,
+        bytes: &[u8],
+    ) -> Result<(), RuntimeError> {
+        if byte_offset.saturating_add(bytes.len()) > self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "metal buffer ranged write exceeds allocation: offset={} len={} allocation={}",
+                byte_offset,
+                bytes.len(),
+                self.byte_len
+            )));
+        }
+        self.platform
+            .write_bytes_at_offset(byte_offset, bytes, self.storage_mode)
+    }
+
     /// Reads raw bytes from the host-visible buffer contents.
     pub fn read_bytes(&self) -> Result<Vec<u8>, RuntimeError> {
         self.platform.read_bytes(self.byte_len)
+    }
+
+    /// Reads raw bytes from a byte range inside the buffer contents.
+    pub fn read_bytes_at_offset(
+        &self,
+        byte_offset: usize,
+        byte_len: usize,
+    ) -> Result<Vec<u8>, RuntimeError> {
+        if byte_offset.saturating_add(byte_len) > self.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "metal buffer ranged read exceeds allocation: offset={} len={} allocation={}",
+                byte_offset, byte_len, self.byte_len
+            )));
+        }
+        self.platform.read_bytes_at_offset(byte_offset, byte_len)
     }
 
     /// Writes contiguous `f32` values into an `f32` buffer.
@@ -832,6 +937,27 @@ impl MetalBackend {
         }
     }
 
+    /// Creates a device-resident KV mirror from host-owned prompt-cache rows.
+    pub fn kv_cache_mirror_from_host_rows(
+        &mut self,
+        width: usize,
+        max_context_tokens: usize,
+        tokens: usize,
+        key_values: &[f32],
+        value_values: &[f32],
+        reserve_tokens: usize,
+    ) -> Result<MetalKvCacheMirror, RuntimeError> {
+        MetalKvCacheMirror::from_host_rows(
+            self,
+            width,
+            max_context_tokens,
+            tokens,
+            key_values,
+            value_values,
+            reserve_tokens,
+        )
+    }
+
     /// Returns truthful backend-selection data for a supported Metal product path.
     pub fn backend_selection(
         &self,
@@ -952,6 +1078,357 @@ impl DeviceDiscovery for MetalBackend {
                 BackendExtensionSupport::reference(BackendExtensionKind::RotaryEmbedding),
             ],
             MetalBackendState::Unavailable(_) => Vec::new(),
+        }
+    }
+}
+
+impl MetalKvCacheMirror {
+    /// Returns the target capacity for the current request shape.
+    #[must_use]
+    pub fn capacity_for_request(
+        current_tokens: usize,
+        reserve_tokens: usize,
+        max_context_tokens: usize,
+    ) -> usize {
+        let requested = current_tokens
+            .saturating_add(reserve_tokens)
+            .max(64)
+            .min(max_context_tokens.max(1));
+        requested
+            .checked_next_power_of_two()
+            .unwrap_or(max_context_tokens.max(1))
+            .min(max_context_tokens.max(1))
+    }
+
+    /// Builds a device-resident KV mirror from host-owned key/value rows.
+    pub fn from_host_rows(
+        backend: &mut MetalBackend,
+        width: usize,
+        max_context_tokens: usize,
+        tokens: usize,
+        key_values: &[f32],
+        value_values: &[f32],
+        reserve_tokens: usize,
+    ) -> Result<Self, RuntimeError> {
+        if key_values.len() != tokens.saturating_mul(width) {
+            return Err(RuntimeError::Backend(format!(
+                "metal kv key rows length mismatch: expected {}, actual {}",
+                tokens.saturating_mul(width),
+                key_values.len()
+            )));
+        }
+        if value_values.len() != tokens.saturating_mul(width) {
+            return Err(RuntimeError::Backend(format!(
+                "metal kv value rows length mismatch: expected {}, actual {}",
+                tokens.saturating_mul(width),
+                value_values.len()
+            )));
+        }
+        let capacity_tokens =
+            Self::capacity_for_request(tokens, reserve_tokens, max_context_tokens);
+        let mut key_buffer = backend.input_buffer(
+            Shape::new(vec![capacity_tokens.saturating_mul(width)]),
+            vec![0.0; capacity_tokens.saturating_mul(width)],
+        )?;
+        let mut value_buffer = backend.input_buffer(
+            Shape::new(vec![capacity_tokens.saturating_mul(width)]),
+            vec![0.0; capacity_tokens.saturating_mul(width)],
+        )?;
+        if tokens > 0 {
+            key_buffer.write_bytes_at_offset(0, f32_slice_to_bytes(key_values).as_slice())?;
+            value_buffer.write_bytes_at_offset(0, f32_slice_to_bytes(value_values).as_slice())?;
+        }
+        Ok(Self {
+            key_buffer,
+            value_buffer,
+            width,
+            len: tokens,
+            capacity_tokens,
+            max_context_tokens,
+        })
+    }
+
+    /// Ensures the device-resident cache can hold the requested number of tokens.
+    pub fn ensure_capacity(
+        &mut self,
+        backend: &mut MetalBackend,
+        required_tokens: usize,
+    ) -> Result<(), RuntimeError> {
+        if required_tokens <= self.capacity_tokens {
+            return Ok(());
+        }
+        let new_capacity = required_tokens
+            .max(self.capacity_tokens.saturating_mul(2))
+            .checked_next_power_of_two()
+            .unwrap_or(required_tokens)
+            .min(self.max_context_tokens.max(1));
+        let mut new_keys = backend.input_buffer(
+            Shape::new(vec![new_capacity.saturating_mul(self.width)]),
+            vec![0.0; new_capacity.saturating_mul(self.width)],
+        )?;
+        let mut new_values = backend.input_buffer(
+            Shape::new(vec![new_capacity.saturating_mul(self.width)]),
+            vec![0.0; new_capacity.saturating_mul(self.width)],
+        )?;
+        if self.len > 0 {
+            let byte_len = self
+                .len
+                .saturating_mul(self.width)
+                .saturating_mul(std::mem::size_of::<f32>());
+            new_keys.write_bytes_at_offset(
+                0,
+                self.key_buffer
+                    .read_bytes_at_offset(0, byte_len)?
+                    .as_slice(),
+            )?;
+            new_values.write_bytes_at_offset(
+                0,
+                self.value_buffer
+                    .read_bytes_at_offset(0, byte_len)?
+                    .as_slice(),
+            )?;
+        }
+        self.key_buffer = new_keys;
+        self.value_buffer = new_values;
+        self.capacity_tokens = new_capacity;
+        Ok(())
+    }
+
+    /// Appends one key/value entry and returns the write index.
+    pub fn append_entry(
+        &mut self,
+        backend: &mut MetalBackend,
+        key: &[f32],
+        value: &[f32],
+    ) -> Result<usize, RuntimeError> {
+        if key.len() != self.width || value.len() != self.width {
+            return Err(RuntimeError::Backend(format!(
+                "metal kv entry width mismatch: expected {}, actual key {} value {}",
+                self.width,
+                key.len(),
+                value.len()
+            )));
+        }
+        if self.len >= self.max_context_tokens {
+            return Err(RuntimeError::Backend(format!(
+                "metal kv cache exceeded max context {}",
+                self.max_context_tokens
+            )));
+        }
+        self.ensure_capacity(backend, self.len.saturating_add(1))?;
+        let write_index = self.len;
+        let byte_offset = write_index
+            .saturating_mul(self.width)
+            .saturating_mul(std::mem::size_of::<f32>());
+        self.key_buffer
+            .write_bytes_at_offset(byte_offset, f32_slice_to_bytes(key).as_slice())?;
+        self.value_buffer
+            .write_bytes_at_offset(byte_offset, f32_slice_to_bytes(value).as_slice())?;
+        self.len = self.len.saturating_add(1);
+        Ok(write_index)
+    }
+
+    /// Reads one key/value entry from the device-resident mirror.
+    pub fn read_entry(&self, token_index: usize) -> Result<(Vec<f32>, Vec<f32>), RuntimeError> {
+        if token_index >= self.len {
+            return Err(RuntimeError::Backend(format!(
+                "metal kv cache entry read exceeds logical length: index={} len={}",
+                token_index, self.len
+            )));
+        }
+        let byte_offset = token_index
+            .saturating_mul(self.width)
+            .saturating_mul(std::mem::size_of::<f32>());
+        let byte_len = self.width.saturating_mul(std::mem::size_of::<f32>());
+        Ok((
+            bytes_to_f32_vec(
+                self.key_buffer
+                    .read_bytes_at_offset(byte_offset, byte_len)?
+                    .as_slice(),
+            )?,
+            bytes_to_f32_vec(
+                self.value_buffer
+                    .read_bytes_at_offset(byte_offset, byte_len)?
+                    .as_slice(),
+            )?,
+        ))
+    }
+
+    /// Returns a logical truncated view of the cache.
+    #[must_use]
+    pub fn truncated(&self, len: usize) -> Self {
+        let mut truncated = self.clone();
+        truncated.len = len.min(self.len);
+        truncated
+    }
+
+    /// Returns the current logical token count.
+    #[must_use]
+    pub const fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Returns whether the cache is empty.
+    #[must_use]
+    pub const fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Returns the cache width in scalar elements per token.
+    #[must_use]
+    pub const fn width(&self) -> usize {
+        self.width
+    }
+
+    /// Returns the logical page layout for this cache.
+    #[must_use]
+    pub fn page_layout(&self) -> KvCachePageLayout {
+        KvCachePageLayout::new(
+            self.max_context_tokens,
+            4,
+            self.width
+                .saturating_mul(std::mem::size_of::<f32>())
+                .saturating_mul(2),
+        )
+    }
+
+    /// Returns the current observable KV state.
+    #[must_use]
+    pub fn state(&self) -> KvCacheState {
+        KvCacheState::paged(&self.page_layout(), self.len)
+    }
+}
+
+impl MetalSharedPrefixStore {
+    /// Looks up the best compatible reusable prefix on the Metal device.
+    pub fn lookup(
+        &mut self,
+        compatibility: &MetalSharedPrefixCompatibility,
+        prompt_tokens: &[u32],
+    ) -> MetalSharedPrefixLookup {
+        let compatible_indices = self
+            .entries
+            .iter()
+            .enumerate()
+            .filter_map(|(index, entry)| (&entry.compatibility == compatibility).then_some(index))
+            .collect::<Vec<_>>();
+        if compatible_indices.is_empty() {
+            return MetalSharedPrefixLookup {
+                state: PrefixCacheState::None,
+                reused_tokens: 0,
+                identity: None,
+                cache: None,
+            };
+        }
+
+        let mut best: Option<(usize, usize)> = None;
+        let mut stale_prefix = false;
+        for index in compatible_indices {
+            let entry = &self.entries[index];
+            let shared = shared_prefix_len(entry.prompt_tokens.as_slice(), prompt_tokens);
+            if shared == 0 {
+                continue;
+            }
+            if entry.cache.len() < shared {
+                stale_prefix = true;
+                continue;
+            }
+            match best {
+                Some((_, best_shared)) if best_shared >= shared => {}
+                _ => best = Some((index, shared)),
+            }
+        }
+
+        if let Some((index, shared)) = best {
+            let entry = &self.entries[index];
+            return MetalSharedPrefixLookup {
+                state: PrefixCacheState::Hit,
+                reused_tokens: shared,
+                identity: Some(prefix_identity(
+                    compatibility,
+                    &entry.prompt_tokens[..shared],
+                )),
+                cache: Some(entry.cache.truncated(shared)),
+            };
+        }
+
+        if stale_prefix {
+            self.entries.retain(|entry| {
+                !(&entry.compatibility == compatibility
+                    && entry.cache.len() < entry.prompt_tokens.len())
+            });
+            return MetalSharedPrefixLookup {
+                state: PrefixCacheState::Rebuilt,
+                reused_tokens: 0,
+                identity: None,
+                cache: None,
+            };
+        }
+
+        MetalSharedPrefixLookup {
+            state: PrefixCacheState::Miss,
+            reused_tokens: 0,
+            identity: None,
+            cache: None,
+        }
+    }
+
+    /// Records or replaces one reusable prompt prefix.
+    pub fn record(
+        &mut self,
+        compatibility: MetalSharedPrefixCompatibility,
+        prompt_tokens: &[u32],
+        cache: &MetalKvCacheMirror,
+    ) -> PrefixCacheIdentity {
+        let identity = prefix_identity(&compatibility, prompt_tokens);
+        if let Some(existing) = self.entries.iter_mut().find(|entry| {
+            entry.compatibility == compatibility && entry.prompt_tokens.as_slice() == prompt_tokens
+        }) {
+            existing.cache = cache.clone();
+        } else {
+            self.entries.push(MetalSharedPrefixEntry {
+                compatibility,
+                prompt_tokens: prompt_tokens.to_vec(),
+                cache: cache.clone(),
+            });
+        }
+        identity
+    }
+
+    /// Discards all shared prefix entries.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
+impl MetalPromptResidencyMetrics {
+    /// Creates prompt residency metrics from explicit before/after state and prefix reuse truth.
+    #[must_use]
+    pub fn new(
+        before: &KvCacheState,
+        current: KvCacheState,
+        prefix_state: PrefixCacheState,
+        prefix_identity: Option<PrefixCacheIdentity>,
+        kv_action: CacheAction,
+    ) -> Self {
+        let mut observations = Vec::with_capacity(2);
+        observations.push(prefix_cache_observation(prefix_state));
+        observations.push(CacheObservation::new(
+            CacheKind::KvState,
+            kv_action,
+            match kv_action {
+                CacheAction::Reuse => "device-resident kv state was reused",
+                CacheAction::Rebuild => "device-resident kv state was rebuilt",
+                CacheAction::Bypass => "device-resident kv state was bypassed",
+                CacheAction::Invalidate => "device-resident kv state was invalidated",
+                CacheAction::Restore => "device-resident kv state was restored",
+            },
+        ));
+        Self {
+            kv_accounting: KvCacheAccounting::from_states(before, current),
+            prefix_state,
+            prefix_identity,
+            observations,
         }
     }
 }
@@ -1840,6 +2317,92 @@ fn half_to_f32(bits: u16) -> f32 {
     f32::from_bits(value)
 }
 
+fn f32_slice_to_bytes(values: &[f32]) -> Vec<u8> {
+    let mut bytes = Vec::with_capacity(values.len().saturating_mul(std::mem::size_of::<f32>()));
+    for value in values {
+        bytes.extend_from_slice(&value.to_ne_bytes());
+    }
+    bytes
+}
+
+fn bytes_to_f32_vec(bytes: &[u8]) -> Result<Vec<f32>, RuntimeError> {
+    if bytes.len() % std::mem::size_of::<f32>() != 0 {
+        return Err(RuntimeError::Backend(format!(
+            "metal f32 byte decode requires 4-byte alignment, actual {}",
+            bytes.len()
+        )));
+    }
+    let mut values = Vec::with_capacity(bytes.len() / std::mem::size_of::<f32>());
+    for chunk in bytes.chunks_exact(std::mem::size_of::<f32>()) {
+        values.push(f32::from_ne_bytes([chunk[0], chunk[1], chunk[2], chunk[3]]));
+    }
+    Ok(values)
+}
+
+fn shared_prefix_len(left: &[u32], right: &[u32]) -> usize {
+    left.iter()
+        .zip(right.iter())
+        .take_while(|(left, right)| left == right)
+        .count()
+}
+
+fn prefix_identity(
+    compatibility: &MetalSharedPrefixCompatibility,
+    prompt_tokens: &[u32],
+) -> PrefixCacheIdentity {
+    PrefixCacheIdentity {
+        served_artifact_digest: compatibility.served_artifact_digest.clone(),
+        model_id: compatibility.model_id.clone(),
+        model_revision: compatibility.model_revision.clone(),
+        weight_bundle_digest: compatibility.weight_bundle_digest.clone(),
+        tokenizer_family: compatibility.tokenizer_family.clone(),
+        tokenizer_digest: None,
+        chat_template_digest: None,
+        generation_defaults_digest: None,
+        backend_compatibility: compatibility.backend_compatibility.clone(),
+        prefix_digest: format!(
+            "metal-prefix:{}:{}",
+            prompt_tokens.len(),
+            prompt_tokens
+                .iter()
+                .map(|token| token.to_string())
+                .collect::<Vec<_>>()
+                .join(",")
+        ),
+        prefix_tokens: prompt_tokens.len(),
+    }
+}
+
+fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation {
+    match prefix_state {
+        PrefixCacheState::None => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Bypass,
+            "no compatible shared prefix entry existed for this prompt",
+        ),
+        PrefixCacheState::Hit => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Reuse,
+            "compatible shared prefix state was reused on the Metal device",
+        ),
+        PrefixCacheState::Miss => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Rebuild,
+            "shared prefix reuse missed and a fresh Metal prefix entry must be recorded",
+        ),
+        PrefixCacheState::Bypassed => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Bypass,
+            "shared prefix reuse was skipped under the current policy",
+        ),
+        PrefixCacheState::Rebuilt => CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Invalidate,
+            "stale Metal shared prefix state was discarded and rebuilt",
+        ),
+    }
+}
+
 #[cfg(target_os = "macos")]
 mod platform {
     use std::ptr;
@@ -1893,6 +2456,34 @@ mod platform {
             Ok(())
         }
 
+        pub(super) fn write_bytes_at_offset(
+            &self,
+            byte_offset: usize,
+            bytes: &[u8],
+            storage_mode: MetalStorageMode,
+        ) -> Result<(), RuntimeError> {
+            let contents = self.raw.contents().cast::<u8>();
+            if contents.is_null() {
+                return Err(RuntimeError::Backend(String::from(
+                    "metal buffer is not host visible",
+                )));
+            }
+            unsafe {
+                ptr::copy_nonoverlapping(bytes.as_ptr(), contents.add(byte_offset), bytes.len());
+            }
+            if matches!(storage_mode, MetalStorageMode::Managed) {
+                self.raw.did_modify_range(NSRange::new(
+                    u64::try_from(byte_offset).map_err(|_| {
+                        RuntimeError::Backend(String::from("metal ranged write offset overflow"))
+                    })?,
+                    u64::try_from(bytes.len()).map_err(|_| {
+                        RuntimeError::Backend(String::from("metal ranged write length overflow"))
+                    })?,
+                ));
+            }
+            Ok(())
+        }
+
         pub(super) fn read_bytes(&self, byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
             let contents = self.raw.contents().cast::<u8>();
             if contents.is_null() {
@@ -1903,6 +2494,24 @@ mod platform {
             let mut bytes = vec![0u8; byte_len];
             unsafe {
                 ptr::copy_nonoverlapping(contents, bytes.as_mut_ptr(), byte_len);
+            }
+            Ok(bytes)
+        }
+
+        pub(super) fn read_bytes_at_offset(
+            &self,
+            byte_offset: usize,
+            byte_len: usize,
+        ) -> Result<Vec<u8>, RuntimeError> {
+            let contents = self.raw.contents().cast::<u8>();
+            if contents.is_null() {
+                return Err(RuntimeError::Backend(String::from(
+                    "metal buffer is not host visible",
+                )));
+            }
+            let mut bytes = vec![0u8; byte_len];
+            unsafe {
+                ptr::copy_nonoverlapping(contents.add(byte_offset), bytes.as_mut_ptr(), byte_len);
             }
             Ok(bytes)
         }
@@ -2550,7 +3159,28 @@ mod platform {
             )))
         }
 
+        pub(super) fn write_bytes_at_offset(
+            &self,
+            _byte_offset: usize,
+            _bytes: &[u8],
+            _storage_mode: MetalStorageMode,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
+
         pub(super) fn read_bytes(&self, _byte_len: usize) -> Result<Vec<u8>, RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
+
+        pub(super) fn read_bytes_at_offset(
+            &self,
+            _byte_offset: usize,
+            _byte_len: usize,
+        ) -> Result<Vec<u8>, RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "metal backend is only available on macOS",
             )))
@@ -2717,12 +3347,15 @@ mod tests {
     use psionic_ir::GraphBuilder;
     use psionic_runtime::{
         Allocator, BackendDegradedPolicy, BackendParityPolicy, BackendSelectionState, BufferHandle,
-        BufferResidency, BufferStorageKind, DeviceDiscovery, HealthStatus, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, RuntimeError, ServedProductBackendPolicy,
+        BufferResidency, BufferStorageKind, CacheAction, CacheKind, DeviceDiscovery, HealthStatus,
+        KvCacheAccounting, KvCachePageLayout, KvCacheState, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, RuntimeError,
+        ServedProductBackendPolicy,
     };
 
     use super::{
         DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend,
+        MetalPromptResidencyMetrics, MetalSharedPrefixCompatibility, MetalSharedPrefixStore,
         TEXT_GENERATION_SUPPORTED_OPS, classify_support, validate_quantized_storage,
         validate_supported_plan,
     };
@@ -2819,6 +3452,28 @@ mod tests {
             return sign | 0x7c00;
         }
         sign | ((exponent as u16) << 10) | ((mantissa >> 13) as u16)
+    }
+
+    fn sample_prefix_compatibility(
+        width: usize,
+        max_context_tokens: usize,
+    ) -> MetalSharedPrefixCompatibility {
+        MetalSharedPrefixCompatibility {
+            served_artifact_digest: String::from("metal-artifact"),
+            model_id: String::from("gpt-oss"),
+            model_revision: String::from("20b"),
+            weight_bundle_digest: String::from("weights-digest"),
+            tokenizer_family: String::from("cl100k"),
+            backend_compatibility: String::from("metal-apple"),
+            kv_width: width,
+            page_layout: KvCachePageLayout::new(
+                max_context_tokens,
+                4,
+                width
+                    .saturating_mul(std::mem::size_of::<f32>())
+                    .saturating_mul(2),
+            ),
+        }
     }
 
     #[test]
@@ -3535,6 +4190,161 @@ mod tests {
             weights.as_slice(),
         )?;
         assert_eq!(result.values, expected);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_kv_cache_mirror_appends_and_reads_entries_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let width = 4;
+        let max_context_tokens = 8;
+        let before = KvCacheState::default();
+        let mut mirror = backend.kv_cache_mirror_from_host_rows(
+            width,
+            max_context_tokens,
+            2,
+            &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+            2,
+        )?;
+
+        assert_eq!(mirror.len(), 2);
+        assert_eq!(
+            mirror.read_entry(1)?,
+            (vec![5.0, 6.0, 7.0, 8.0], vec![50.0, 60.0, 70.0, 80.0])
+        );
+        assert_eq!(
+            mirror.page_layout(),
+            KvCachePageLayout::new(max_context_tokens, 4, width * 4 * 2)
+        );
+
+        let write_index = mirror.append_entry(
+            &mut backend,
+            &[9.0, 10.0, 11.0, 12.0],
+            &[90.0, 100.0, 110.0, 120.0],
+        )?;
+        assert_eq!(write_index, 2);
+        assert_eq!(
+            mirror.read_entry(2)?,
+            (vec![9.0, 10.0, 11.0, 12.0], vec![90.0, 100.0, 110.0, 120.0])
+        );
+
+        let accounting = KvCacheAccounting::from_states(&before, mirror.state());
+        assert_eq!(accounting.current.tokens, 3);
+        assert_eq!(accounting.current.pages, 1);
+        assert_eq!(accounting.growth.tokens, 3);
+        assert_eq!(accounting.growth.pages, 1);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_shared_prefix_store_reuses_device_resident_prefix_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let width = 4;
+        let max_context_tokens = 8;
+        let compatibility = sample_prefix_compatibility(width, max_context_tokens);
+        let cache = backend.kv_cache_mirror_from_host_rows(
+            width,
+            max_context_tokens,
+            3,
+            &[1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0, 5.5, 6.0, 6.5],
+            &[
+                10.0, 10.5, 11.0, 11.5, 12.0, 12.5, 13.0, 13.5, 14.0, 14.5, 15.0, 15.5,
+            ],
+            2,
+        )?;
+
+        let mut store = MetalSharedPrefixStore::default();
+        let recorded_identity = store.record(compatibility.clone(), &[1, 2, 3], &cache);
+        let lookup = store.lookup(&compatibility, &[1, 2, 3, 4]);
+
+        assert_eq!(lookup.state, PrefixCacheState::Hit);
+        assert_eq!(lookup.reused_tokens, 3);
+        assert_eq!(lookup.identity, Some(recorded_identity.clone()));
+        assert_eq!(lookup.cache.as_ref().map(|value| value.len()), Some(3));
+        assert_eq!(
+            lookup.cache.as_ref().expect("reused cache").read_entry(2)?,
+            (vec![5.0, 5.5, 6.0, 6.5], vec![14.0, 14.5, 15.0, 15.5])
+        );
+
+        let metrics = MetalPromptResidencyMetrics::new(
+            &KvCacheState::default(),
+            lookup.cache.as_ref().expect("reused cache").state(),
+            lookup.state,
+            lookup.identity.clone(),
+            CacheAction::Reuse,
+        );
+        assert_eq!(metrics.prefix_state, PrefixCacheState::Hit);
+        assert_eq!(metrics.prefix_identity, Some(recorded_identity));
+        assert_eq!(metrics.kv_accounting.current.tokens, 3);
+        assert_eq!(metrics.kv_accounting.growth.tokens, 3);
+        assert_eq!(metrics.observations.len(), 2);
+        assert_eq!(metrics.observations[0].kind, CacheKind::PrefixCache);
+        assert_eq!(metrics.observations[0].action, CacheAction::Reuse);
+        assert_eq!(metrics.observations[1].kind, CacheKind::KvState);
+        assert_eq!(metrics.observations[1].action, CacheAction::Reuse);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_shared_prefix_store_rebuilds_stale_entries_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let width = 4;
+        let max_context_tokens = 8;
+        let compatibility = sample_prefix_compatibility(width, max_context_tokens);
+        let stale_cache = backend.kv_cache_mirror_from_host_rows(
+            width,
+            max_context_tokens,
+            2,
+            &[1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0],
+            &[10.0, 20.0, 30.0, 40.0, 50.0, 60.0, 70.0, 80.0],
+            2,
+        )?;
+
+        let mut store = MetalSharedPrefixStore::default();
+        store.record(compatibility.clone(), &[1, 2, 3], &stale_cache);
+
+        let lookup = store.lookup(&compatibility, &[1, 2, 3, 4]);
+        assert_eq!(lookup.state, PrefixCacheState::Rebuilt);
+        assert_eq!(lookup.reused_tokens, 0);
+        assert!(lookup.identity.is_none());
+        assert!(lookup.cache.is_none());
+        assert!(store.entries.is_empty());
+
+        let metrics = MetalPromptResidencyMetrics::new(
+            &stale_cache.state(),
+            KvCacheState::default(),
+            lookup.state,
+            None,
+            CacheAction::Invalidate,
+        );
+        assert_eq!(metrics.prefix_state, PrefixCacheState::Rebuilt);
+        assert_eq!(metrics.kv_accounting.current, KvCacheState::default());
+        assert_eq!(metrics.observations[0].kind, CacheKind::PrefixCache);
+        assert_eq!(metrics.observations[0].action, CacheAction::Invalidate);
+        assert_eq!(metrics.observations[1].kind, CacheKind::KvState);
+        assert_eq!(metrics.observations[1].action, CacheAction::Invalidate);
         Ok(())
     }
 
