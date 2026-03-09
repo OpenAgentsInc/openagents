@@ -377,6 +377,38 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Copies a byte range between CUDA buffers.
+    pub fn copy_buffer_region(
+        &mut self,
+        source: &CudaBuffer,
+        source_byte_offset: usize,
+        destination: &CudaBuffer,
+        destination_byte_offset: usize,
+        byte_len: usize,
+    ) -> Result<(), RuntimeError> {
+        if source_byte_offset.saturating_add(byte_len) > source.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda source region copy exceeds allocation: offset={} len={} allocation={}",
+                source_byte_offset, byte_len, source.byte_len
+            )));
+        }
+        if destination_byte_offset.saturating_add(byte_len) > destination.byte_len {
+            return Err(RuntimeError::Backend(format!(
+                "cuda destination region copy exceeds allocation: offset={} len={} allocation={}",
+                destination_byte_offset, byte_len, destination.byte_len
+            )));
+        }
+        self.platform.copy_buffer_region(
+            &source.platform,
+            source_byte_offset,
+            &destination.platform,
+            destination_byte_offset,
+            byte_len,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Launches one quantized row-wise matrix-vector product.
     pub fn quantized_matvec(
         &mut self,
@@ -2299,6 +2331,42 @@ mod platform {
             )
         }
 
+        pub(super) fn copy_buffer_region(
+            &mut self,
+            source: &PlatformBuffer,
+            source_byte_offset: usize,
+            destination: &PlatformBuffer,
+            destination_byte_offset: usize,
+            byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            if byte_len == 0 {
+                return Ok(());
+            }
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    (self.runtime.cuda_memcpy_async)(
+                        destination
+                            .inner
+                            .device_ptr
+                            .cast::<u8>()
+                            .add(destination_byte_offset)
+                            .cast(),
+                        source
+                            .inner
+                            .device_ptr
+                            .cast::<u8>()
+                            .add(source_byte_offset)
+                            .cast(),
+                        byte_len,
+                        CUDA_MEMCPY_DEVICE_TO_DEVICE,
+                        self.stream,
+                    )
+                },
+                "cudaMemcpyAsync device_to_device_region",
+            )
+        }
+
         pub(super) fn encode_add(
             &mut self,
             left: &PlatformBuffer,
@@ -3084,6 +3152,19 @@ mod platform {
             &mut self,
             _source: &PlatformBuffer,
             _destination: &PlatformBuffer,
+            _byte_len: usize,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda runtime substrate currently requires Linux libcudart",
+            )))
+        }
+
+        pub(super) fn copy_buffer_region(
+            &mut self,
+            _source: &PlatformBuffer,
+            _source_byte_offset: usize,
+            _destination: &PlatformBuffer,
+            _destination_byte_offset: usize,
             _byte_len: usize,
         ) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(

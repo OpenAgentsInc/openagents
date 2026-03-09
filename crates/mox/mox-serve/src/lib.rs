@@ -417,6 +417,17 @@ fn accumulate_generation_step_counters(
     }
 }
 
+fn accumulate_optional_gpt_oss_perf(
+    gpt_oss_perf: &mut Option<GptOssPerformanceMetrics>,
+    step_perf: Option<&GptOssPerformanceMetrics>,
+) {
+    if let Some(step_perf) = step_perf {
+        gpt_oss_perf
+            .get_or_insert_with(GptOssPerformanceMetrics::default)
+            .accumulate(step_perf);
+    }
+}
+
 fn prefix_cache_observation(prefix_state: PrefixCacheState) -> CacheObservation {
     match prefix_state {
         PrefixCacheState::None => CacheObservation::new(
@@ -4152,8 +4163,12 @@ impl GenerationSampler {
             .iter()
             .map(|entry| entry.token.as_u32())
             .collect::<Vec<_>>();
+        self.select_next_token_from_history(logits, &history)
+    }
+
+    fn select_next_token_from_history(&mut self, logits: &[f32], history: &[u32]) -> Option<TokenId> {
         self.sampler
-            .select_next_token(logits, &history)
+            .select_next_token(logits, history)
             .map(TokenId)
     }
 }
