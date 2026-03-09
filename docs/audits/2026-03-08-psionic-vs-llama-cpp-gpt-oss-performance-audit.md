@@ -92,6 +92,8 @@ The current Psionic checkpoint added:
 - a CUDA argmax fast path for the greedy decode lane
 - removal of two explicit residual-buffer copies from the steady-state decode
   token path
+- an explicit high-level GPT-OSS decode-graph representation in Psionic, with a
+  graph-derived CUDA step-plan digest and surfaced decode-graph node counts
 - CUDA build tuning in `psionic-backend-cuda/build.rs`:
   - `-O3`
   - `--use_fast_math`
@@ -114,6 +116,8 @@ The latest Psionic benchmark receipt for the timed request reports:
 
 - `step_count = 37`
 - `layer_visit_count = 888`
+- `graph_node_count = 266`
+- `graph_layer_node_count = 11`
 - `host_to_device_bytes = 426240`
 - `device_to_host_bytes = 148`
 - `submission_count = 37`
@@ -133,6 +137,11 @@ Important interpretation:
 - throughput barely changed after removing almost all logits readback
   - that is the strongest evidence that the remaining gap is now mostly
     compute-shape, fusion, and dispatch architecture
+- the first explicit decode-graph alignment step did not materially change
+  throughput by itself
+  - the latest rerun stayed at about `35.50 tok/s`
+  - that is expected because the change made the graph shape explicit and
+    testable, but did not yet add new fusion or kernel families
 
 Timing caveat:
 

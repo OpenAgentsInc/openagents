@@ -47,6 +47,64 @@ enum CudaStepOutputMode {
     DeviceArgmax,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum GptOssDecodeGraphNodeKind {
+    AttnNorm,
+    AttnQkv,
+    AttnQRope,
+    AttnKRope,
+    AttnOut,
+    FfnInp,
+    AttnPostNorm,
+    FfnMoeTopk,
+    FfnMoeGateUp,
+    FfnMoeDown,
+    FfnMoeOut,
+    ResultNorm,
+    ResultOutput,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct GptOssDecodeGraphNode {
+    kind: GptOssDecodeGraphNodeKind,
+    name: &'static str,
+}
+
+impl GptOssDecodeGraphNode {
+    const fn new(kind: GptOssDecodeGraphNodeKind, name: &'static str) -> Self {
+        Self { kind, name }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct GptOssDecodeGraph {
+    layer_nodes: Vec<Vec<GptOssDecodeGraphNode>>,
+    terminal_nodes: Vec<GptOssDecodeGraphNode>,
+}
+
+impl GptOssDecodeGraph {
+    fn node_count(&self) -> usize {
+        self.layer_nodes.iter().map(Vec::len).sum::<usize>() + self.terminal_nodes.len()
+    }
+
+    fn layer_node_count(&self) -> usize {
+        self.layer_nodes.first().map_or(0, Vec::len)
+    }
+
+    fn signature_key(&self) -> String {
+        let mut names = Vec::with_capacity(self.node_count());
+        for layer in &self.layer_nodes {
+            for node in layer {
+                names.push(node.name);
+            }
+        }
+        for node in &self.terminal_nodes {
+            names.push(node.name);
+        }
+        names.join("|")
+    }
+}
+
 fn duration_ns(start: Instant) -> u64 {
     start.elapsed().as_nanos().try_into().unwrap_or(u64::MAX)
 }
@@ -56,6 +114,34 @@ fn can_use_cuda_argmax_fast_path(options: &GenerationOptions) -> bool {
         && options.repeat_penalty.is_none()
         && options.presence_penalty.is_none()
         && options.frequency_penalty.is_none()
+}
+
+fn gpt_oss_layer_decode_graph_nodes() -> Vec<GptOssDecodeGraphNode> {
+    vec![
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnNorm, "attn_norm"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnQkv, "attn_qkv"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnQRope, "attn_q_rope"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnKRope, "attn_k_rope"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnOut, "attn_out"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnInp, "ffn_inp"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::AttnPostNorm, "attn_post_norm"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeTopk, "ffn_moe_topk"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeGateUp, "ffn_moe_gate_up"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeDown, "ffn_moe_down"),
+        GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::FfnMoeOut, "ffn_moe_out"),
+    ]
+}
+
+fn build_gpt_oss_decode_graph(layer_count: usize) -> GptOssDecodeGraph {
+    GptOssDecodeGraph {
+        layer_nodes: (0..layer_count)
+            .map(|_| gpt_oss_layer_decode_graph_nodes())
+            .collect(),
+        terminal_nodes: vec![
+            GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::ResultNorm, "result_norm"),
+            GptOssDecodeGraphNode::new(GptOssDecodeGraphNodeKind::ResultOutput, "result_output"),
+        ],
+    }
 }
 
 fn accumulate_cuda_matvec_stats(
@@ -1183,6 +1269,7 @@ impl CudaGgufGptOssGenerationModel {
             descriptor: adapter.descriptor().clone(),
             family_metadata: adapter.family_metadata().clone(),
             tokenizer,
+            decode_graph: build_gpt_oss_decode_graph(adapter.tensor_layout().layers.len()),
             token_embedding: load_quantized_matrix(
                 &artifact,
                 adapter.tensor_layout().token_embedding.as_str(),
@@ -1304,6 +1391,7 @@ struct GptOssCudaModelInner {
     descriptor: DecoderModelDescriptor,
     family_metadata: GgufDecoderFamilyMetadata,
     tokenizer: GptOssTokenizer,
+    decode_graph: GptOssDecodeGraph,
     token_embedding: QuantizedMatrix,
     output_norm: Vec<f32>,
     output_norm_device: CudaBuffer,
@@ -1345,6 +1433,14 @@ impl GptOssCudaModelInner {
             .config
             .layer_count
             .saturating_mul(self.descriptor.config.kv_width())
+    }
+
+    fn graph_node_count(&self) -> usize {
+        self.decode_graph.node_count()
+    }
+
+    fn graph_layer_node_count(&self) -> usize {
+        self.decode_graph.layer_node_count()
     }
 
     fn acquire_decode_step_plan(
@@ -1424,7 +1520,10 @@ impl GptOssCudaModelInner {
         let vector_q8_1_bytes = ggml_q8_1_storage_bytes(1, vector_q8_1_columns)
             .map_err(ReferenceTextGenerationError::Runtime)?;
         Ok(GptOssCudaStepPlan {
-            digest: digest_gpt_oss_cuda_step_plan(self.plan_digest.as_str()),
+            digest: digest_gpt_oss_cuda_step_plan(
+                self.plan_digest.as_str(),
+                self.decode_graph.signature_key().as_str(),
+            ),
             hidden_buffer: backend.f32_buffer(hidden_size)?,
             vector_q8_1_buffer: backend.byte_buffer(&vec![0_u8; vector_q8_1_bytes])?,
             layers,
@@ -1451,6 +1550,8 @@ impl GptOssCudaModelInner {
         let mut perf = GptOssPerformanceMetrics {
             step_count: 1,
             layer_visit_count: self.layers.len(),
+            graph_node_count: self.graph_node_count(),
+            graph_layer_node_count: self.graph_layer_node_count(),
             ..GptOssPerformanceMetrics::default()
         };
 
@@ -1902,6 +2003,8 @@ impl GptOssCudaModelInner {
         let mut perf = GptOssPerformanceMetrics {
             step_count: 1,
             layer_visit_count: self.layers.len(),
+            graph_node_count: self.graph_node_count(),
+            graph_layer_node_count: self.graph_layer_node_count(),
             ..GptOssPerformanceMetrics::default()
         };
 
@@ -3864,10 +3967,12 @@ fn cache_key_value_byte_len(width: usize) -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-fn digest_gpt_oss_cuda_step_plan(model_plan_digest: &str) -> String {
+fn digest_gpt_oss_cuda_step_plan(model_plan_digest: &str, graph_signature: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(model_plan_digest.as_bytes());
     hasher.update(b"|cuda-decode-step|v1");
+    hasher.update(b"|");
+    hasher.update(graph_signature.as_bytes());
     hex::encode(hasher.finalize())
 }
 
@@ -4072,6 +4177,7 @@ fn rope_yarn_ramp(low: f32, high: f32, i0: usize) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::{
+        build_gpt_oss_decode_graph, digest_gpt_oss_cuda_step_plan,
         pack_quantized_expert_projection_bytes, pack_quantized_projection_bytes,
         split_projection_outputs,
     };
@@ -4097,5 +4203,49 @@ mod tests {
             outputs,
             vec![vec![1.0, 2.0], vec![3.0], vec![4.0, 5.0, 6.0]]
         );
+    }
+
+    #[test]
+    fn gpt_oss_decode_graph_matches_llama_cpp_high_level_order() {
+        let graph = build_gpt_oss_decode_graph(2);
+        let layer_names = graph.layer_nodes[0]
+            .iter()
+            .map(|node| node.name)
+            .collect::<Vec<_>>();
+        assert_eq!(
+            layer_names,
+            vec![
+                "attn_norm",
+                "attn_qkv",
+                "attn_q_rope",
+                "attn_k_rope",
+                "attn_out",
+                "ffn_inp",
+                "attn_post_norm",
+                "ffn_moe_topk",
+                "ffn_moe_gate_up",
+                "ffn_moe_down",
+                "ffn_moe_out",
+            ]
+        );
+        let terminal_names = graph
+            .terminal_nodes
+            .iter()
+            .map(|node| node.name)
+            .collect::<Vec<_>>();
+        assert_eq!(terminal_names, vec!["result_norm", "result_output"]);
+        assert_eq!(graph.layer_node_count(), 11);
+        assert_eq!(graph.node_count(), 24);
+    }
+
+    #[test]
+    fn cuda_step_plan_digest_includes_decode_graph_signature() {
+        let short_graph = build_gpt_oss_decode_graph(1);
+        let long_graph = build_gpt_oss_decode_graph(2);
+        let short_digest =
+            digest_gpt_oss_cuda_step_plan("model-digest", short_graph.signature_key().as_str());
+        let long_digest =
+            digest_gpt_oss_cuda_step_plan("model-digest", long_graph.signature_key().as_str());
+        assert_ne!(short_digest, long_digest);
     }
 }
