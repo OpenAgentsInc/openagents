@@ -1,4 +1,8 @@
-use std::{env, process::ExitCode};
+use std::{
+    env,
+    io::{self, Write},
+    process::ExitCode,
+};
 
 use psionic_serve::{
     GptOssMetalExecutionMode, GptOssOpenAiCompatBackend, GptOssOpenAiCompatConfig,
@@ -11,7 +15,7 @@ async fn main() -> ExitCode {
     match run().await {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
-            eprintln!("{error}");
+            let _ = writeln!(io::stderr(), "{error}");
             ExitCode::FAILURE
         }
     }
@@ -25,7 +29,9 @@ async fn run() -> Result<(), String> {
         .map_err(|error| format!("failed to bind {address}: {error}"))?;
     let server = GptOssOpenAiCompatServer::from_config(&config)
         .map_err(|error| format!("failed to load GPT-OSS GGUF: {error}"))?;
-    eprintln!(
+    let mut stdout = io::stdout();
+    let _ = writeln!(
+        stdout,
         "psionic gpt-oss server listening on http://{} with model {} backend={} execution_mode={} execution_engine={}",
         listener
             .local_addr()

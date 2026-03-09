@@ -260,11 +260,9 @@ struct LlamaCppProxyState {
 
 impl Drop for LlamaCppProxyState {
     fn drop(&mut self) {
-        if let Ok(mut child) = self.child.lock() {
-            if let Some(mut child) = child.take() {
-                let _ = child.kill();
-                let _ = child.wait();
-            }
+        if let Some(mut child) = self.child.lock().ok().and_then(|mut child| child.take()) {
+            let _ = child.kill();
+            let _ = child.wait();
         }
     }
 }
@@ -392,7 +390,6 @@ impl GptOssOpenAiCompatServer {
         self.state.execution_engine_label
     }
 
-    #[must_use]
     pub fn router(&self) -> Router {
         Router::new()
             .route("/health", get(health))
@@ -417,7 +414,6 @@ impl GptOssCudaOpenAiCompatServer {
         })
     }
 
-    #[must_use]
     pub fn router(&self) -> Router {
         self.inner.router()
     }
@@ -721,19 +717,20 @@ fn wait_for_upstream_ready(
         "temperature": 0
     });
     for _ in 0..300 {
-        if let Ok(response) = health_client.get(health_url.as_str()).send() {
-            if response.status().is_success() {
-                if let Ok(response) = chat_client.post(chat_url.as_str()).json(&probe).send() {
-                    if response.status().is_success() {
-                        return Ok(());
-                    }
-                    if response.status() != reqwest::StatusCode::SERVICE_UNAVAILABLE {
-                        return Err(OpenAiCompatServerError::Config(format!(
-                            "llama.cpp proxy readiness probe failed with status {}",
-                            response.status()
-                        )));
-                    }
+        let health_ready = matches!(
+            health_client.get(health_url.as_str()).send(),
+            Ok(response) if response.status().is_success()
+        );
+        if health_ready {
+            match chat_client.post(chat_url.as_str()).json(&probe).send() {
+                Ok(response) if response.status().is_success() => return Ok(()),
+                Ok(response) if response.status() != reqwest::StatusCode::SERVICE_UNAVAILABLE => {
+                    return Err(OpenAiCompatServerError::Config(format!(
+                        "llama.cpp proxy readiness probe failed with status {}",
+                        response.status()
+                    )));
                 }
+                Ok(_) | Err(_) => {}
             }
         }
         thread::sleep(Duration::from_millis(200));
@@ -747,25 +744,42 @@ fn wait_for_upstream_ready(
 enum OpenAiCompatHttpError {
     #[error("{0}")]
     BadRequest(String),
+    #[error("{0}")]
+    Internal(String),
     #[error(transparent)]
-    PromptRender(#[from] PromptRenderError),
+    PromptRender(Box<PromptRenderError>),
     #[error(transparent)]
-    Generation(#[from] GptOssOpenAiCompatGenerationError),
+    Generation(Box<GptOssOpenAiCompatGenerationError>),
+}
+
+impl From<PromptRenderError> for OpenAiCompatHttpError {
+    fn from(value: PromptRenderError) -> Self {
+        Self::PromptRender(Box::new(value))
+    }
+}
+
+impl From<GptOssOpenAiCompatGenerationError> for OpenAiCompatHttpError {
+    fn from(value: GptOssOpenAiCompatGenerationError) -> Self {
+        Self::Generation(Box::new(value))
+    }
 }
 
 impl IntoResponse for OpenAiCompatHttpError {
     fn into_response(self) -> Response {
         let (status, kind) = match &self {
             Self::BadRequest(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
+            Self::Internal(_) => (StatusCode::INTERNAL_SERVER_ERROR, "server_error"),
             Self::PromptRender(_) => (StatusCode::BAD_REQUEST, "invalid_request_error"),
-            Self::Generation(GptOssOpenAiCompatGenerationError::BackendUnavailable { .. }) => {
-                (StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable")
-            }
-            Self::Generation(GptOssOpenAiCompatGenerationError::Generation(error)) => (
-                StatusCode::from_u16(error.diagnostic().status)
-                    .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
-                "generation_error",
-            ),
+            Self::Generation(error) => match error.as_ref() {
+                GptOssOpenAiCompatGenerationError::BackendUnavailable { .. } => {
+                    (StatusCode::SERVICE_UNAVAILABLE, "backend_unavailable")
+                }
+                GptOssOpenAiCompatGenerationError::Generation(error) => (
+                    StatusCode::from_u16(error.diagnostic().status)
+                        .unwrap_or(StatusCode::INTERNAL_SERVER_ERROR),
+                    "generation_error",
+                ),
+            },
         };
         (
             status,
@@ -888,7 +902,7 @@ async fn handle_chat_completions(
     let options = generation_options_from_chat_request(&request);
     let prompt_tokens = {
         let mut cache = state.prompt_token_cache.lock().map_err(|_| {
-            OpenAiCompatHttpError::Generation(GptOssOpenAiCompatGenerationError::Generation(
+            OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::Generation(
                 ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
                     String::from("openai prompt token cache is poisoned"),
                 )),
@@ -904,7 +918,7 @@ async fn handle_chat_completions(
                 Some(&state.prompt_options),
             )
             .map_err(|error| {
-                OpenAiCompatHttpError::PromptRender(PromptRenderError::HarmonyRendering {
+                OpenAiCompatHttpError::from(PromptRenderError::HarmonyRendering {
                     message: error.to_string(),
                 })
             })?;
@@ -921,12 +935,14 @@ async fn handle_chat_completions(
         options,
     );
 
-    let response = state
-        .worker
-        .as_ref()
-        .expect("native worker is present when proxy mode is disabled")
-        .generate(generation_request)
-        .await?;
+    let worker = state.worker.as_ref().ok_or_else(|| {
+        OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::BackendUnavailable {
+            backend: state.backend_label,
+            status: psionic_runtime::HealthStatus::Offline,
+            message: String::from("gpt-oss native worker is not available"),
+        })
+    })?;
+    let response = worker.generate(generation_request).await?;
     let parsed = if state.include_psionic_fields {
         parse_gpt_oss_harmony_tokens(
             response.output.tokens.as_slice(),
@@ -947,21 +963,16 @@ async fn handle_chat_completions(
             response.termination,
             unix_timestamp_secs(),
         );
+        let delta_chunk = serialize_event_data(&completion_delta_chunk(
+            request_id.as_str(),
+            response_model_name.as_str(),
+            choice.content.as_str(),
+            unix_timestamp_secs(),
+        ))?;
+        let terminal_chunk = serialize_event_data(&terminal_chunk)?;
         let events = vec![
-            Ok::<_, Infallible>(
-                Event::default().data(
-                    serde_json::to_string(&completion_delta_chunk(
-                        request_id.as_str(),
-                        response_model_name.as_str(),
-                        choice.content.as_str(),
-                        unix_timestamp_secs(),
-                    ))
-                    .unwrap(),
-                ),
-            ),
-            Ok::<_, Infallible>(
-                Event::default().data(serde_json::to_string(&terminal_chunk).unwrap()),
-            ),
+            Ok::<_, Infallible>(Event::default().data(delta_chunk)),
+            Ok::<_, Infallible>(Event::default().data(terminal_chunk)),
             Ok::<_, Infallible>(Event::default().data("[DONE]")),
         ];
         let mut response = Sse::new(iter(events)).into_response();
@@ -1012,13 +1023,11 @@ async fn proxy_chat_completions(
         .send()
         .await
         .map_err(|error| {
-            OpenAiCompatHttpError::Generation(
-                GptOssOpenAiCompatGenerationError::BackendUnavailable {
-                    backend: "metal-proxy",
-                    status: psionic_runtime::HealthStatus::Offline,
-                    message: format!("llama.cpp proxy request failed: {error}"),
-                },
-            )
+            OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::BackendUnavailable {
+                backend: "metal-proxy",
+                status: psionic_runtime::HealthStatus::Offline,
+                message: format!("llama.cpp proxy request failed: {error}"),
+            })
         })?;
     let status = upstream.status();
     let content_type = upstream
@@ -1026,7 +1035,7 @@ async fn proxy_chat_completions(
         .get(axum::http::header::CONTENT_TYPE)
         .cloned();
     let body = upstream.bytes().await.map_err(|error| {
-        OpenAiCompatHttpError::Generation(GptOssOpenAiCompatGenerationError::BackendUnavailable {
+        OpenAiCompatHttpError::from(GptOssOpenAiCompatGenerationError::BackendUnavailable {
             backend: "metal-proxy",
             status: psionic_runtime::HealthStatus::Offline,
             message: format!("llama.cpp proxy response read failed: {error}"),
@@ -1190,6 +1199,12 @@ fn completion_delta_chunk(
             finish_reason: None,
         }],
     }
+}
+
+fn serialize_event_data(value: &impl Serialize) -> Result<String, OpenAiCompatHttpError> {
+    serde_json::to_string(value).map_err(|error| {
+        OpenAiCompatHttpError::Internal(format!("failed to serialize OpenAI stream event: {error}"))
+    })
 }
 
 fn finish_reason(termination: TerminationReason) -> &'static str {
