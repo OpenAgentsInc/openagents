@@ -2,11 +2,13 @@
 
 > Updated 2026-03-09 after re-running the live repo benchmark script against
 > the current Psionic worktree on the local RTX 4080 host, after landing the
-> CUDA-side shared-prefix residency follow-up, and after comparing the exact
-> timed-request flow with `llama.cpp`'s prompt-cache behavior on the same
-> machine. This file is the current audit for the GPT-OSS throughput gap;
-> later product truth still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
-> `crates/psionic/docs/ROADMAP.md`, and the referenced issues.
+> CUDA-side shared-prefix residency follow-up, after trimming the default
+> OpenAI-compatible hot path so Harmony debug fields are opt-in instead of
+> always serialized, and after comparing the exact timed-request flow with
+> `llama.cpp`'s prompt-cache behavior on the same machine. This file is the
+> current audit for the GPT-OSS throughput gap; later product truth still lives
+> in `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and
+> the referenced issues.
 
 ## Scope
 
@@ -99,6 +101,29 @@
   - `4.10x`
 - Psionic improvement over the last audited checkpoint:
   - `1.91x`
+
+### Current hot-path checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.426s`
+  - `86.95 tok/s`
+- Repeated timed-request range on the same loaded server:
+  - `84.10 tok/s`
+  - `86.95 tok/s`
+  - `83.88 tok/s`
+- Comparison status:
+  - the clean same-moment `llama.cpp` control could not be re-established on
+    this machine because an external `dota2` process was already holding about
+    `2.1 GiB` of RTX 4080 memory
+  - under that contention, a fresh `llama.cpp` load offloaded `0` repeating
+    layers to CUDA and fell to about `16.4 tok/s`, which is not a valid parity
+    control and must not be compared against the Psionic run
+  - the last clean same-machine `llama.cpp` control remains the stable
+    checkpoint above at about `167 tok/s`
+- Psionic improvement over the original baseline:
+  - `5.20x`
+- Psionic improvement over the previous stable checkpoint:
+  - `1.27x`
 
 The visible output text matched exactly in the current benchmark:
 
@@ -195,6 +220,19 @@ keep them as the main story:
 - an `f16` dense-transposed mirror for the final vocabulary projection slowed
   the real HTTP benchmark and was backed back out
 
+The current hot-path checkpoint then moved the real HTTP benchmark from the
+high-60s into the mid/high-80s without changing the model math:
+
+- the default OpenAI-compatible response path no longer serializes
+  `psionic_metrics`, `psionic_perf`, or parsed Harmony structure unless
+  `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS=1`
+- the default visible content lane now uses a small GPT-OSS final-message
+  extractor instead of running the full Harmony parse on every timed request
+- the full Harmony parse still remains available and is still the source of
+  truth when debug fields are explicitly requested
+- regression tests now pin the fast extractor against the same final-channel
+  semantics as the full parser so the hot path does not regress visible output
+
 The latest exact-flow comparison first exposed, and the new checkpoint only
 partially closed, a concrete request-to-request gap that is not just "CUDA
 kernels are slower":
@@ -247,6 +285,12 @@ Important interpretation:
   scheduler rather than in host/device readback
   - the timed lane reads back only one token id per step
   - the timed lane uploads only about `11.5 KB` per token
+- the OpenAI/Harmony compatibility surface was also still paying more than it
+  needed to on the steady-state benchmark path
+  - always serializing debug receipts and always running the full Harmony parse
+    cost enough wall time to move the exact benchmark by about `18 tok/s`
+  - that is now fixed on the default path, but it is not the remaining `150+`
+    tok/s blocker
 - `llama.cpp` still has a request-to-request advantage before decode even starts
   - its timed request re-evaluates only one prompt token because prompt cache
     state stays live in the backend

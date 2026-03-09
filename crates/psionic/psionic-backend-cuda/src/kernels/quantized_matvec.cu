@@ -7,6 +7,7 @@
 namespace {
 
 constexpr int kBlockSize = 256;
+constexpr int kAttentionBlockSize = 128;
 constexpr int kMatvecBlockSize = 128;
 constexpr int kWarpSize = 32;
 constexpr int kMmvqWarps = kMatvecBlockSize / kWarpSize;
@@ -209,6 +210,20 @@ __device__ __forceinline__ float reduce_block_sum(float value, float *scratch) {
     for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
         if (threadIdx.x < offset) {
             scratch[threadIdx.x] += scratch[threadIdx.x + offset];
+        }
+        __syncthreads();
+    }
+
+    return scratch[0];
+}
+
+__device__ __forceinline__ float reduce_block_max(float value, float *scratch) {
+    scratch[threadIdx.x] = value;
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+        if (threadIdx.x < offset) {
+            scratch[threadIdx.x] = fmaxf(scratch[threadIdx.x], scratch[threadIdx.x + offset]);
         }
         __syncthreads();
     }
@@ -499,6 +514,35 @@ __global__ void quantized_matvec_q8_1_shared_input_kernel(
     if (threadIdx.x == 0) {
         output[row] = sum;
     }
+}
+
+template <typename DotFn>
+static void launch_quantized_matvec_q8_1_regular(
+    const uint8_t *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const Q81Block *input_q8_1,
+    float *output,
+    cudaStream_t stream,
+    DotFn dot_fn
+) {
+    const int block_count = cols / kQ81ElementsPerBlock;
+    const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
+    quantized_matvec_q8_1_mmvq_kernel<DotFn, kQ80Q81MmvqVdr, kQ80Qi><<<
+        rows,
+        block_dims,
+        0,
+        stream
+    >>>(
+        weights,
+        row_stride,
+        rows,
+        block_count,
+        input_q8_1,
+        output,
+        dot_fn
+    );
 }
 
 __global__ void argmax_f32_kernel(
@@ -1024,6 +1068,7 @@ __global__ void attention_decode_rope_cache_f16_kv_kernel(
 
     __shared__ float logits[kAttentionMaxPositions];
     __shared__ float weights[kAttentionMaxPositions];
+    __shared__ float reduction_scratch[kAttentionBlockSize];
 
     int window_tokens = past_tokens;
     if (sliding_window > 0 && window_tokens > sliding_window) {
@@ -1076,46 +1121,45 @@ __global__ void attention_decode_rope_cache_f16_kv_kernel(
     }
     __syncthreads();
 
-    if (threadIdx.x <= window_tokens) {
-        const bool current = threadIdx.x == window_tokens;
+    if (threadIdx.x < window_tokens) {
         float dot = 0.0f;
-        if (current) {
-            for (int dim = 0; dim < head_dim; ++dim) {
-                dot += query_rotated[dim] * current_key_rotated[dim];
-            }
-        } else {
-            const __half *key_head =
-                cache_keys + (start + threadIdx.x) * cache_width + layer_offset + kv_head * head_dim;
-            for (int dim = 0; dim < head_dim; ++dim) {
-                dot += query_rotated[dim] * __half2float(key_head[dim]);
-            }
+        const __half *key_head =
+            cache_keys + (start + threadIdx.x) * cache_width + layer_offset + kv_head * head_dim;
+        for (int dim = 0; dim < head_dim; ++dim) {
+            dot += query_rotated[dim] * __half2float(key_head[dim]);
         }
         logits[threadIdx.x] = dot * scale;
     }
+    if (threadIdx.x == 0) {
+        float dot = 0.0f;
+        for (int dim = 0; dim < head_dim; ++dim) {
+            dot += query_rotated[dim] * current_key_rotated[dim];
+        }
+        logits[window_tokens] = dot * scale;
+    }
     __syncthreads();
 
-    if (threadIdx.x == 0) {
-        float max_value = logits[0];
-        for (int index = 1; index <= window_tokens; ++index) {
-            max_value = fmaxf(max_value, logits[index]);
-        }
-        if (attention_sinks != nullptr) {
-            max_value = fmaxf(max_value, attention_sinks[head_index]);
-        }
+    float local_max = -INFINITY;
+    for (int index = static_cast<int>(threadIdx.x); index <= window_tokens; index += blockDim.x) {
+        local_max = fmaxf(local_max, logits[index]);
+    }
+    if (threadIdx.x == 0 && attention_sinks != nullptr) {
+        local_max = fmaxf(local_max, attention_sinks[head_index]);
+    }
+    const float max_value = reduce_block_max(local_max, reduction_scratch);
 
-        float denom = 0.0f;
-        for (int index = 0; index <= window_tokens; ++index) {
-            weights[index] = expf(logits[index] - max_value);
-            denom += weights[index];
-        }
-        if (attention_sinks != nullptr) {
-            denom += expf(attention_sinks[head_index] - max_value);
-        }
-        if (denom != 0.0f) {
-            for (int index = 0; index <= window_tokens; ++index) {
-                weights[index] /= denom;
-            }
-        }
+    float local_denom = 0.0f;
+    for (int index = static_cast<int>(threadIdx.x); index <= window_tokens; index += blockDim.x) {
+        const float weight = expf(logits[index] - max_value);
+        weights[index] = weight;
+        local_denom += weight;
+    }
+    if (threadIdx.x == 0 && attention_sinks != nullptr) {
+        local_denom += expf(attention_sinks[head_index] - max_value);
+    }
+    const float denom = reduce_block_sum(local_denom, reduction_scratch);
+    for (int index = static_cast<int>(threadIdx.x); index <= window_tokens; index += blockDim.x) {
+        weights[index] = denom != 0.0f ? weights[index] / denom : 0.0f;
     }
     __syncthreads();
 
@@ -1167,6 +1211,7 @@ __global__ void attention_decode_rope_cache_f16_kv_graph_kernel(
 
     __shared__ float logits[kAttentionMaxPositions];
     __shared__ float weights[kAttentionMaxPositions];
+    __shared__ float reduction_scratch[kAttentionBlockSize];
 
     int window_tokens = past_tokens;
     if (sliding_window > 0 && window_tokens > sliding_window) {
@@ -1219,46 +1264,45 @@ __global__ void attention_decode_rope_cache_f16_kv_graph_kernel(
     }
     __syncthreads();
 
-    if (threadIdx.x <= window_tokens) {
-        const bool current = threadIdx.x == window_tokens;
+    if (threadIdx.x < window_tokens) {
         float dot = 0.0f;
-        if (current) {
-            for (int dim = 0; dim < head_dim; ++dim) {
-                dot += query_rotated[dim] * current_key_rotated[dim];
-            }
-        } else {
-            const __half *key_head =
-                cache_keys + (start + threadIdx.x) * cache_width + layer_offset + kv_head * head_dim;
-            for (int dim = 0; dim < head_dim; ++dim) {
-                dot += query_rotated[dim] * __half2float(key_head[dim]);
-            }
+        const __half *key_head =
+            cache_keys + (start + threadIdx.x) * cache_width + layer_offset + kv_head * head_dim;
+        for (int dim = 0; dim < head_dim; ++dim) {
+            dot += query_rotated[dim] * __half2float(key_head[dim]);
         }
         logits[threadIdx.x] = dot * scale;
     }
+    if (threadIdx.x == 0) {
+        float dot = 0.0f;
+        for (int dim = 0; dim < head_dim; ++dim) {
+            dot += query_rotated[dim] * current_key_rotated[dim];
+        }
+        logits[window_tokens] = dot * scale;
+    }
     __syncthreads();
 
-    if (threadIdx.x == 0) {
-        float max_value = logits[0];
-        for (int index = 1; index <= window_tokens; ++index) {
-            max_value = fmaxf(max_value, logits[index]);
-        }
-        if (attention_sinks != nullptr) {
-            max_value = fmaxf(max_value, attention_sinks[head_index]);
-        }
+    float local_max = -INFINITY;
+    for (int index = static_cast<int>(threadIdx.x); index <= window_tokens; index += blockDim.x) {
+        local_max = fmaxf(local_max, logits[index]);
+    }
+    if (threadIdx.x == 0 && attention_sinks != nullptr) {
+        local_max = fmaxf(local_max, attention_sinks[head_index]);
+    }
+    const float max_value = reduce_block_max(local_max, reduction_scratch);
 
-        float denom = 0.0f;
-        for (int index = 0; index <= window_tokens; ++index) {
-            weights[index] = expf(logits[index] - max_value);
-            denom += weights[index];
-        }
-        if (attention_sinks != nullptr) {
-            denom += expf(attention_sinks[head_index] - max_value);
-        }
-        if (denom != 0.0f) {
-            for (int index = 0; index <= window_tokens; ++index) {
-                weights[index] /= denom;
-            }
-        }
+    float local_denom = 0.0f;
+    for (int index = static_cast<int>(threadIdx.x); index <= window_tokens; index += blockDim.x) {
+        const float weight = expf(logits[index] - max_value);
+        weights[index] = weight;
+        local_denom += weight;
+    }
+    if (threadIdx.x == 0 && attention_sinks != nullptr) {
+        local_denom += expf(attention_sinks[head_index] - max_value);
+    }
+    const float denom = reduce_block_sum(local_denom, reduction_scratch);
+    for (int index = static_cast<int>(threadIdx.x); index <= window_tokens; index += blockDim.x) {
+        weights[index] = denom != 0.0f ? weights[index] / denom : 0.0f;
     }
     __syncthreads();
 
@@ -1828,6 +1872,95 @@ __global__ void moe_gate_up_swiglu_q8_1_mmvq_grouped_selected_kernel(
     }
 }
 
+template <typename DotFn, int Vdr, int Qi>
+__launch_bounds__(4 * kWarpSize, 1)
+__global__ void moe_gate_up_swiglu_q8_1_selected4_kernel(
+    const uint8_t *weights,
+    int row_stride,
+    int rows_per_expert,
+    int columns,
+    int gate_rows,
+    int up_rows,
+    const int32_t *selected_ids,
+    int selected_count,
+    const Q81Block *input,
+    const float *gate_bias,
+    const float *up_bias,
+    float *output,
+    DotFn dot_fn
+) {
+    extern __shared__ unsigned char shared_storage[];
+    Q81Block *shared_input = reinterpret_cast<Q81Block *>(shared_storage);
+
+    const int block_count = columns / kQ81ElementsPerBlock;
+    const int linear_tid = static_cast<int>(threadIdx.y) * kWarpSize + static_cast<int>(threadIdx.x);
+    const int thread_count = 4 * kWarpSize;
+    for (int block_index = linear_tid; block_index < block_count; block_index += thread_count) {
+        shared_input[block_index] = input[block_index];
+    }
+    __syncthreads();
+
+    const int row0 = 2 * static_cast<int>(blockIdx.x);
+    const int selected_slot = static_cast<int>(threadIdx.y);
+    if (row0 >= gate_rows || row0 >= up_rows || selected_slot >= selected_count) {
+        return;
+    }
+
+    const int expert_id = selected_ids[selected_slot];
+    const uint8_t *gate_rows_ptrs[2] = {nullptr, nullptr};
+    const uint8_t *up_rows_ptrs[2] = {nullptr, nullptr};
+#pragma unroll
+    for (int row_offset = 0; row_offset < 2; ++row_offset) {
+        const int row = row0 + row_offset;
+        if (row < gate_rows && row < up_rows) {
+            const size_t gate_row_offset =
+                (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) +
+                 static_cast<size_t>(row)) *
+                static_cast<size_t>(row_stride);
+            const size_t up_row_offset =
+                (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) +
+                 static_cast<size_t>(gate_rows + row)) *
+                static_cast<size_t>(row_stride);
+            gate_rows_ptrs[row_offset] = weights + gate_row_offset;
+            up_rows_ptrs[row_offset] = weights + up_row_offset;
+        }
+    }
+    constexpr int warp_blocks_per_iter = Vdr * kWarpSize / Qi;
+    const int block_start = static_cast<int>(threadIdx.x) / (Qi / Vdr);
+    const int quant_index = Vdr * (static_cast<int>(threadIdx.x) % (Qi / Vdr));
+
+    float gate_sum[2] = {0.0f, 0.0f};
+    float up_sum[2] = {0.0f, 0.0f};
+    for (int block_index = block_start; block_index < block_count; block_index += warp_blocks_per_iter) {
+        if (gate_rows_ptrs[0] != nullptr) {
+            gate_sum[0] += dot_fn(gate_rows_ptrs[0], shared_input, block_index, block_index, quant_index);
+            up_sum[0] += dot_fn(up_rows_ptrs[0], shared_input, block_index, block_index, quant_index);
+        }
+        if (gate_rows_ptrs[1] != nullptr) {
+            gate_sum[1] += dot_fn(gate_rows_ptrs[1], shared_input, block_index, block_index, quant_index);
+            up_sum[1] += dot_fn(up_rows_ptrs[1], shared_input, block_index, block_index, quant_index);
+        }
+    }
+
+    gate_sum[0] = warp_reduce_sum(gate_sum[0]);
+    gate_sum[1] = warp_reduce_sum(gate_sum[1]);
+    up_sum[0] = warp_reduce_sum(up_sum[0]);
+    up_sum[1] = warp_reduce_sum(up_sum[1]);
+    if (threadIdx.x == 0) {
+        for (int row_offset = 0; row_offset < 2; ++row_offset) {
+            const int row = row0 + row_offset;
+            if (row >= gate_rows || row >= up_rows) {
+                continue;
+            }
+            const float gate = gate_sum[row_offset] +
+                (gate_bias != nullptr ? gate_bias[expert_id * gate_rows + row] : 0.0f);
+            const float up = up_sum[row_offset] +
+                (up_bias != nullptr ? up_bias[expert_id * up_rows + row] : 0.0f);
+            output[selected_slot * gate_rows + row] = swiglu_oai_single(gate, up);
+        }
+    }
+}
+
 __global__ void moe_down_aggregate_q8_1_kernel(
     const uint8_t *weights,
     int mode,
@@ -1893,6 +2026,150 @@ __global__ void moe_down_aggregate_q8_1_kernel(
     if (threadIdx.x == 0) {
         output[row] = total;
     }
+}
+
+template <typename DotFn, int Vdr, int Qi, bool HasGate>
+__launch_bounds__(kMmvqWarps * kWarpSize, 1)
+__global__ void expert_mul_mat_vec_q8_1_kernel(
+    const uint8_t *weights,
+    const uint8_t *gate_weights,
+    int row_stride,
+    int rows,
+    int rows_per_expert,
+    int block_count,
+    const int32_t *selected_ids,
+    int selected_count,
+    const Q81Block *input,
+    int input_block_stride,
+    const float *bias,
+    const float *gate_bias,
+    float *output,
+    DotFn dot_fn
+) {
+    const int row = static_cast<int>(blockIdx.x);
+    const int selected_slot = static_cast<int>(blockIdx.y);
+    if (row >= rows || selected_slot >= selected_count) {
+        return;
+    }
+
+    constexpr int blocks_per_iter = Vdr * kMmvqWarps * kWarpSize / Qi;
+    const int tid = kWarpSize * static_cast<int>(threadIdx.y) + static_cast<int>(threadIdx.x);
+    const int expert_id = selected_ids[selected_slot];
+
+    const uint8_t *row_weights =
+        weights +
+        (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) +
+         static_cast<size_t>(row)) *
+            static_cast<size_t>(row_stride);
+    const uint8_t *gate_row_weights = nullptr;
+    if constexpr (HasGate) {
+        gate_row_weights =
+            gate_weights +
+            (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) +
+             static_cast<size_t>(row)) *
+                static_cast<size_t>(row_stride);
+    }
+    const Q81Block *input_blocks =
+        input + static_cast<size_t>(selected_slot) * static_cast<size_t>(input_block_stride);
+
+    float sum = 0.0f;
+    float gate_sum = 0.0f;
+    for (int block_index = tid / (Qi / Vdr); block_index < block_count; block_index += blocks_per_iter) {
+        const int quant_index = Vdr * (tid % (Qi / Vdr));
+        sum += dot_fn(row_weights, input_blocks, block_index, block_index, quant_index);
+        if constexpr (HasGate) {
+            gate_sum += dot_fn(gate_row_weights, input_blocks, block_index, block_index, quant_index);
+        }
+    }
+
+    __shared__ float partials[kMmvqWarps - 1 > 0 ? kMmvqWarps - 1 : 1][kWarpSize];
+    __shared__ float gate_partials[(HasGate && (kMmvqWarps - 1 > 0)) ? kMmvqWarps - 1 : 1][kWarpSize];
+
+    if (threadIdx.y > 0) {
+        partials[threadIdx.y - 1][threadIdx.x] = sum;
+        if constexpr (HasGate) {
+            gate_partials[threadIdx.y - 1][threadIdx.x] = gate_sum;
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.y > 0) {
+        return;
+    }
+
+#pragma unroll
+    for (int warp_index = 0; warp_index < kMmvqWarps - 1; ++warp_index) {
+        sum += partials[warp_index][threadIdx.x];
+        if constexpr (HasGate) {
+            gate_sum += gate_partials[warp_index][threadIdx.x];
+        }
+    }
+
+    sum = warp_reduce_sum(sum);
+    if constexpr (HasGate) {
+        gate_sum = warp_reduce_sum(gate_sum);
+    }
+
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    float result = sum;
+    if (bias != nullptr) {
+        result += bias[expert_id * rows + row];
+    }
+    if constexpr (HasGate) {
+        float gate = gate_sum;
+        if (gate_bias != nullptr) {
+            gate += gate_bias[expert_id * rows + row];
+        }
+        result = swiglu_oai_single(gate, result);
+    }
+    output[selected_slot * rows + row] = result;
+}
+
+template <typename DotFn, int Vdr, int Qi>
+static void launch_expert_gate_up_swiglu_q8_1_direct(
+    const uint8_t *weights,
+    int row_stride,
+    int rows_per_expert,
+    int columns,
+    int gate_rows,
+    int selected_count,
+    const int32_t *selected_ids,
+    const Q81Block *input_q8_1,
+    const float *gate_bias,
+    const float *up_bias,
+    float *output,
+    cudaStream_t stream,
+    DotFn dot_fn
+) {
+    const dim3 blocks(static_cast<unsigned int>(gate_rows), static_cast<unsigned int>(selected_count), 1);
+    const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
+    const uint8_t *gate_weights = weights;
+    const uint8_t *up_weights =
+        weights + static_cast<size_t>(gate_rows) * static_cast<size_t>(row_stride);
+    expert_mul_mat_vec_q8_1_kernel<DotFn, Vdr, Qi, true><<<
+        blocks,
+        block_dims,
+        0,
+        stream
+    >>>(
+        up_weights,
+        gate_weights,
+        row_stride,
+        gate_rows,
+        rows_per_expert,
+        columns / kQ81ElementsPerBlock,
+        selected_ids,
+        selected_count,
+        input_q8_1,
+        0,
+        up_bias,
+        gate_bias,
+        output,
+        dot_fn
+    );
 }
 
 template <typename DotFn, int Vdr, int Qi, int MaxSelected, int RowsPerBlock>
@@ -2025,6 +2302,172 @@ __global__ void moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel(
     output[row] = total;
 }
 
+template <typename DotFn, int Vdr, int Qi>
+__launch_bounds__(kMmvqWarps * kWarpSize, 1)
+__global__ void expert_down_aggregate_q8_1_atomic_kernel(
+    const uint8_t *weights,
+    int row_stride,
+    int rows,
+    int rows_per_expert,
+    const int32_t *selected_ids,
+    const float *selected_weights,
+    int selected_count,
+    const Q81Block *activated,
+    int activated_block_stride,
+    const float *bias,
+    float *output,
+    DotFn dot_fn
+) {
+    const int row = static_cast<int>(blockIdx.x);
+    const int selected_slot = static_cast<int>(blockIdx.y);
+    if (row >= rows || selected_slot >= selected_count) {
+        return;
+    }
+
+    constexpr int blocks_per_iter = Vdr * kMmvqWarps * kWarpSize / Qi;
+    const int tid = kWarpSize * static_cast<int>(threadIdx.y) + static_cast<int>(threadIdx.x);
+    const int block_count = activated_block_stride;
+    const int expert_id = selected_ids[selected_slot];
+    const uint8_t *row_weights =
+        weights +
+        (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) +
+         static_cast<size_t>(row)) *
+            static_cast<size_t>(row_stride);
+    const Q81Block *input_blocks =
+        activated + static_cast<size_t>(selected_slot) * static_cast<size_t>(activated_block_stride);
+
+    float sum = 0.0f;
+    for (int block_index = tid / (Qi / Vdr); block_index < block_count; block_index += blocks_per_iter) {
+        const int quant_index = Vdr * (tid % (Qi / Vdr));
+        sum += dot_fn(row_weights, input_blocks, block_index, block_index, quant_index);
+    }
+
+    __shared__ float partials[kMmvqWarps - 1 > 0 ? kMmvqWarps - 1 : 1][kWarpSize];
+    if (threadIdx.y > 0) {
+        partials[threadIdx.y - 1][threadIdx.x] = sum;
+    }
+    __syncthreads();
+
+    if (threadIdx.y > 0) {
+        return;
+    }
+
+#pragma unroll
+    for (int warp_index = 0; warp_index < kMmvqWarps - 1; ++warp_index) {
+        sum += partials[warp_index][threadIdx.x];
+    }
+
+    sum = warp_reduce_sum(sum);
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    float result = sum;
+    if (bias != nullptr) {
+        result += bias[expert_id * rows + row];
+    }
+    result *= selected_weights[selected_slot];
+    atomicAdd(output + row, result);
+}
+
+template <typename DotFn, int Vdr, int Qi>
+__launch_bounds__(4 * kWarpSize, 1)
+__global__ void moe_down_aggregate_q8_1_selected4_kernel(
+    const uint8_t *weights,
+    int row_stride,
+    int rows,
+    const int32_t *selected_ids,
+    const float *selected_weights,
+    int selected_count,
+    const Q81Block *activated,
+    int activated_block_stride,
+    const float *bias,
+    float *output,
+    DotFn dot_fn
+) {
+    extern __shared__ unsigned char shared_storage[];
+    Q81Block *shared_inputs = reinterpret_cast<Q81Block *>(shared_storage);
+
+    const int block_count = activated_block_stride;
+    const int linear_tid = static_cast<int>(threadIdx.y) * kWarpSize + static_cast<int>(threadIdx.x);
+    const int thread_count = 4 * kWarpSize;
+    for (int block_index = linear_tid; block_index < selected_count * block_count; block_index += thread_count) {
+        shared_inputs[block_index] = activated[block_index];
+    }
+    __syncthreads();
+
+    const int row0 = 2 * static_cast<int>(blockIdx.x);
+    const int selected_slot = static_cast<int>(threadIdx.y);
+    if (row0 >= rows) {
+        return;
+    }
+
+    __shared__ float expert_totals[4];
+    __shared__ float expert_totals_row1[4];
+    if (threadIdx.x == 0 && selected_slot < 4) {
+        expert_totals[selected_slot] = 0.0f;
+        expert_totals_row1[selected_slot] = 0.0f;
+    }
+    __syncthreads();
+
+    if (selected_slot < selected_count) {
+        const int expert_id = selected_ids[selected_slot];
+        const uint8_t *row_weights0 =
+            weights +
+            (static_cast<size_t>(expert_id) * static_cast<size_t>(rows) +
+             static_cast<size_t>(row0)) *
+                static_cast<size_t>(row_stride);
+        const uint8_t *row_weights1 = row0 + 1 < rows
+            ? weights +
+                (static_cast<size_t>(expert_id) * static_cast<size_t>(rows) +
+                 static_cast<size_t>(row0 + 1)) *
+                    static_cast<size_t>(row_stride)
+            : nullptr;
+        const Q81Block *input_blocks =
+            shared_inputs + static_cast<size_t>(selected_slot) * static_cast<size_t>(activated_block_stride);
+        constexpr int warp_blocks_per_iter = Vdr * kWarpSize / Qi;
+        const int block_start = static_cast<int>(threadIdx.x) / (Qi / Vdr);
+        const int quant_index = Vdr * (static_cast<int>(threadIdx.x) % (Qi / Vdr));
+
+        float sum0 = 0.0f;
+        float sum1 = 0.0f;
+        for (int block_index = block_start; block_index < block_count; block_index += warp_blocks_per_iter) {
+            sum0 += dot_fn(row_weights0, input_blocks, block_index, block_index, quant_index);
+            if (row_weights1 != nullptr) {
+                sum1 += dot_fn(row_weights1, input_blocks, block_index, block_index, quant_index);
+            }
+        }
+        sum0 = warp_reduce_sum(sum0);
+        sum1 = warp_reduce_sum(sum1);
+        if (threadIdx.x == 0) {
+            expert_totals[selected_slot] =
+                sum0 + (bias != nullptr ? bias[expert_id * rows + row0] : 0.0f);
+            if (row0 + 1 < rows) {
+                expert_totals_row1[selected_slot] =
+                    sum1 + (bias != nullptr ? bias[expert_id * rows + row0 + 1] : 0.0f);
+            }
+        }
+    }
+    __syncthreads();
+
+    if (selected_slot == 0 && threadIdx.x == 0) {
+        float total0 = 0.0f;
+        float total1 = 0.0f;
+#pragma unroll
+        for (int slot = 0; slot < 4; ++slot) {
+            if (slot >= selected_count) {
+                break;
+            }
+            total0 += expert_totals[slot] * selected_weights[slot];
+            total1 += expert_totals_row1[slot] * selected_weights[slot];
+        }
+        output[row0] = total0;
+        if (row0 + 1 < rows) {
+            output[row0 + 1] = total1;
+        }
+    }
+}
+
 }  // namespace
 
 extern "C" int psionic_cuda_quantized_kernels_compiled(void) {
@@ -2115,22 +2558,56 @@ extern "C" int psionic_cuda_q8_0_matvec_q8_1(
     void *output,
     void *stream
 ) {
-    const int block_count = cols / kQ81ElementsPerBlock;
-    const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
-    quantized_matvec_q8_1_mmvq_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
-        rows,
-        block_dims,
-        0,
-        static_cast<cudaStream_t>(stream)
-    >>>(
-        static_cast<const uint8_t *>(weights),
-        row_stride,
-        rows,
-        block_count,
-        static_cast<const Q81Block *>(input_q8_1),
-        static_cast<float *>(output),
-        Q80Q81Dot{}
-    );
+    if (rows >= 128 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
+        const int block_count = cols / kQ81ElementsPerBlock;
+        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
+        const dim3 blocks(static_cast<unsigned int>((rows + 7) / 8), 1, 1);
+        const dim3 block_dims(kWarpSize, 8, 1);
+        quantized_matvec_q8_1_shared_input_kernel<Q80Q81Dot, 8><<<
+            blocks,
+            block_dims,
+            shared_input_bytes,
+            static_cast<cudaStream_t>(stream)
+        >>>(
+            static_cast<const uint8_t *>(weights),
+            row_stride,
+            rows,
+            block_count,
+            static_cast<const Q81Block *>(input_q8_1),
+            static_cast<float *>(output),
+            Q80Q81Dot{}
+        );
+    } else if (rows >= 32 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
+        const int block_count = cols / kQ81ElementsPerBlock;
+        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
+        const dim3 blocks(static_cast<unsigned int>((rows + 3) / 4), 1, 1);
+        const dim3 block_dims(kWarpSize, 4, 1);
+        quantized_matvec_q8_1_shared_input_kernel<Q80Q81Dot, 4><<<
+            blocks,
+            block_dims,
+            shared_input_bytes,
+            static_cast<cudaStream_t>(stream)
+        >>>(
+            static_cast<const uint8_t *>(weights),
+            row_stride,
+            rows,
+            block_count,
+            static_cast<const Q81Block *>(input_q8_1),
+            static_cast<float *>(output),
+            Q80Q81Dot{}
+        );
+    } else {
+        launch_quantized_matvec_q8_1_regular(
+            static_cast<const uint8_t *>(weights),
+            rows,
+            cols,
+            row_stride,
+            static_cast<const Q81Block *>(input_q8_1),
+            static_cast<float *>(output),
+            static_cast<cudaStream_t>(stream),
+            Q80Q81Dot{}
+        );
+    }
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -2143,22 +2620,62 @@ extern "C" int psionic_cuda_mxfp4_matvec_q8_1(
     void *output,
     void *stream
 ) {
-    const int block_count = cols / kQ81ElementsPerBlock;
-    const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
-    quantized_matvec_q8_1_mmvq_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
-        rows,
-        block_dims,
-        0,
-        static_cast<cudaStream_t>(stream)
-    >>>(
-        static_cast<const uint8_t *>(weights),
-        row_stride,
-        rows,
-        block_count,
-        static_cast<const Q81Block *>(input_q8_1),
-        static_cast<float *>(output),
-        Mxfp4Q81Dot{}
-    );
+    if (rows >= 128 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
+        const int block_count = cols / kQ81ElementsPerBlock;
+        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
+        const dim3 blocks(static_cast<unsigned int>((rows + 7) / 8), 1, 1);
+        const dim3 block_dims(kWarpSize, 8, 1);
+        quantized_matvec_q8_1_shared_input_kernel<Mxfp4Q81Dot, 8><<<
+            blocks,
+            block_dims,
+            shared_input_bytes,
+            static_cast<cudaStream_t>(stream)
+        >>>(
+            static_cast<const uint8_t *>(weights),
+            row_stride,
+            rows,
+            block_count,
+            static_cast<const Q81Block *>(input_q8_1),
+            static_cast<float *>(output),
+            Mxfp4Q81Dot{}
+        );
+    } else if (rows >= 32 && static_cast<size_t>(cols / kQ81ElementsPerBlock) * sizeof(Q81Block) <= 8192) {
+        const int block_count = cols / kQ81ElementsPerBlock;
+        const size_t shared_input_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
+        const dim3 blocks(static_cast<unsigned int>((rows + 3) / 4), 1, 1);
+        const dim3 block_dims(kWarpSize, 4, 1);
+        quantized_matvec_q8_1_shared_input_kernel<Mxfp4Q81Dot, 4><<<
+            blocks,
+            block_dims,
+            shared_input_bytes,
+            static_cast<cudaStream_t>(stream)
+        >>>(
+            static_cast<const uint8_t *>(weights),
+            row_stride,
+            rows,
+            block_count,
+            static_cast<const Q81Block *>(input_q8_1),
+            static_cast<float *>(output),
+            Mxfp4Q81Dot{}
+        );
+    } else {
+        const int block_count = cols / kQ81ElementsPerBlock;
+        const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
+        quantized_matvec_q8_1_mmvq_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
+            rows,
+            block_dims,
+            0,
+            static_cast<cudaStream_t>(stream)
+        >>>(
+            static_cast<const uint8_t *>(weights),
+            row_stride,
+            rows,
+            block_count,
+            static_cast<const Q81Block *>(input_q8_1),
+            static_cast<float *>(output),
+            Mxfp4Q81Dot{}
+        );
+    }
     return static_cast<int>(cudaGetLastError());
 }
 
@@ -2295,7 +2812,7 @@ extern "C" int psionic_cuda_attention_decode_rope_cache(
     const size_t shared_bytes = static_cast<size_t>(head_dim) * 2 * sizeof(float);
     attention_decode_rope_cache_kernel<<<
         head_count,
-        kBlockSize,
+        kAttentionBlockSize,
         shared_bytes,
         static_cast<cudaStream_t>(stream)
     >>>(
@@ -2353,7 +2870,7 @@ extern "C" int psionic_cuda_attention_decode_rope_cache_f16_kv(
     const size_t shared_bytes = static_cast<size_t>(head_dim) * 2 * sizeof(float);
     attention_decode_rope_cache_f16_kv_kernel<<<
         head_count,
-        kBlockSize,
+        kAttentionBlockSize,
         shared_bytes,
         static_cast<cudaStream_t>(stream)
     >>>(
@@ -2410,7 +2927,7 @@ extern "C" int psionic_cuda_attention_decode_rope_cache_f16_kv_graph(
     const size_t shared_bytes = static_cast<size_t>(head_dim) * 2 * sizeof(float);
     attention_decode_rope_cache_f16_kv_graph_kernel<<<
         head_count,
-        kBlockSize,
+        kAttentionBlockSize,
         shared_bytes,
         static_cast<cudaStream_t>(stream)
     >>>(
@@ -2557,17 +3074,14 @@ extern "C" int psionic_cuda_moe_gate_up_swiglu_q8_1(
     void *stream
 ) {
     if (selected_count <= 8) {
-        const dim3 blocks(static_cast<unsigned int>((gate_rows + 1) / 2), 1, 1);
-        const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
         if (selected_count <= 4) {
             if (mode == 0) {
-                moe_gate_up_swiglu_q8_1_mmvq_grouped_selected_kernel<
-                    Q80Q81Dot,
-                    kQ80Q81MmvqVdr,
-                    kQ80Qi,
-                    4,
-                    2
-                ><<<blocks, block_dims, 0, static_cast<cudaStream_t>(stream)>>>(
+                moe_gate_up_swiglu_q8_1_selected4_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
+                    static_cast<unsigned int>((gate_rows + 1) / 2),
+                    dim3(kWarpSize, 4, 1),
+                    static_cast<size_t>(columns / kQ81ElementsPerBlock) * sizeof(Q81Block),
+                    static_cast<cudaStream_t>(stream)
+                >>>(
                     static_cast<const uint8_t *>(weights),
                     row_stride,
                     rows_per_expert,
@@ -2583,13 +3097,12 @@ extern "C" int psionic_cuda_moe_gate_up_swiglu_q8_1(
                     Q80Q81Dot{}
                 );
             } else {
-                moe_gate_up_swiglu_q8_1_mmvq_grouped_selected_kernel<
-                    Mxfp4Q81Dot,
-                    kMxfp4Q81MmvqVdr,
-                    kMxfp4Qi,
-                    4,
-                    2
-                ><<<blocks, block_dims, 0, static_cast<cudaStream_t>(stream)>>>(
+                moe_gate_up_swiglu_q8_1_selected4_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
+                    static_cast<unsigned int>((gate_rows + 1) / 2),
+                    dim3(kWarpSize, 4, 1),
+                    static_cast<size_t>(columns / kQ81ElementsPerBlock) * sizeof(Q81Block),
+                    static_cast<cudaStream_t>(stream)
+                >>>(
                     static_cast<const uint8_t *>(weights),
                     row_stride,
                     rows_per_expert,
@@ -2606,6 +3119,8 @@ extern "C" int psionic_cuda_moe_gate_up_swiglu_q8_1(
                 );
             }
         } else if (mode == 0) {
+            const dim3 blocks(static_cast<unsigned int>((gate_rows + 1) / 2), 1, 1);
+            const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
             moe_gate_up_swiglu_q8_1_mmvq_grouped_selected_kernel<
                 Q80Q81Dot,
                 kQ80Q81MmvqVdr,
@@ -2628,6 +3143,8 @@ extern "C" int psionic_cuda_moe_gate_up_swiglu_q8_1(
                 Q80Q81Dot{}
             );
         } else {
+            const dim3 blocks(static_cast<unsigned int>((gate_rows + 1) / 2), 1, 1);
+            const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
             moe_gate_up_swiglu_q8_1_mmvq_grouped_selected_kernel<
                 Mxfp4Q81Dot,
                 kMxfp4Q81MmvqVdr,
@@ -2715,105 +3232,48 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
     void *output,
     void *stream
 ) {
-    if (selected_count <= 8) {
-        const dim3 blocks(static_cast<unsigned int>((rows + 1) / 2), 1, 1);
-        const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
-        if (selected_count <= 4) {
-            if (mode == 0) {
-                moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel<
-                    Q80Q81Dot,
-                    kQ80Q81MmvqVdr,
-                    kQ80Qi,
-                    4,
-                    2
-                ><<<blocks, block_dims, 0, static_cast<cudaStream_t>(stream)>>>(
-                    static_cast<const uint8_t *>(weights),
-                    row_stride,
-                    rows,
-                    columns,
-                    static_cast<const int32_t *>(selected_ids),
-                    static_cast<const float *>(selected_weights),
-                    selected_count,
-                    static_cast<const Q81Block *>(activated_q8_1),
-                    static_cast<const float *>(bias),
-                    static_cast<float *>(output),
-                    Q80Q81Dot{}
-                );
-            } else {
-                moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel<
-                    Mxfp4Q81Dot,
-                    kMxfp4Q81MmvqVdr,
-                    kMxfp4Qi,
-                    4,
-                    2
-                ><<<blocks, block_dims, 0, static_cast<cudaStream_t>(stream)>>>(
-                    static_cast<const uint8_t *>(weights),
-                    row_stride,
-                    rows,
-                    columns,
-                    static_cast<const int32_t *>(selected_ids),
-                    static_cast<const float *>(selected_weights),
-                    selected_count,
-                    static_cast<const Q81Block *>(activated_q8_1),
-                    static_cast<const float *>(bias),
-                    static_cast<float *>(output),
-                    Mxfp4Q81Dot{}
-                );
-            }
-        } else if (mode == 0) {
-            moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel<
-                Q80Q81Dot,
-                kQ80Q81MmvqVdr,
-                kQ80Qi,
-                8,
-                2
-            ><<<blocks, block_dims, 0, static_cast<cudaStream_t>(stream)>>>(
-                static_cast<const uint8_t *>(weights),
-                row_stride,
-                rows,
-                columns,
-                static_cast<const int32_t *>(selected_ids),
-                static_cast<const float *>(selected_weights),
-                selected_count,
-                static_cast<const Q81Block *>(activated_q8_1),
-                static_cast<const float *>(bias),
-                static_cast<float *>(output),
-                Q80Q81Dot{}
-            );
-        } else {
-            moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel<
-                Mxfp4Q81Dot,
-                kMxfp4Q81MmvqVdr,
-                kMxfp4Qi,
-                8,
-                2
-            ><<<blocks, block_dims, 0, static_cast<cudaStream_t>(stream)>>>(
-                static_cast<const uint8_t *>(weights),
-                row_stride,
-                rows,
-                columns,
-                static_cast<const int32_t *>(selected_ids),
-                static_cast<const float *>(selected_weights),
-                selected_count,
-                static_cast<const Q81Block *>(activated_q8_1),
-                static_cast<const float *>(bias),
-                static_cast<float *>(output),
-                Mxfp4Q81Dot{}
-            );
-        }
-    } else {
-        moe_down_aggregate_q8_1_kernel<<<rows, kMatvecBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
+    const int activated_block_stride = columns / kQ81ElementsPerBlock;
+    cudaMemsetAsync(output, 0, static_cast<size_t>(rows) * sizeof(float), static_cast<cudaStream_t>(stream));
+    const dim3 atomic_blocks(static_cast<unsigned int>(rows), static_cast<unsigned int>(selected_count), 1);
+    if (mode == 0) {
+        expert_down_aggregate_q8_1_atomic_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
+            atomic_blocks,
+            dim3(kWarpSize, kMmvqWarps, 1),
+            0,
+            static_cast<cudaStream_t>(stream)
+        >>>(
             static_cast<const uint8_t *>(weights),
-            mode,
             row_stride,
             rows,
-            columns,
+            rows,
             static_cast<const int32_t *>(selected_ids),
             static_cast<const float *>(selected_weights),
             selected_count,
             static_cast<const Q81Block *>(activated_q8_1),
+            activated_block_stride,
             static_cast<const float *>(bias),
-            static_cast<float *>(output)
+            static_cast<float *>(output),
+            Q80Q81Dot{}
+        );
+    } else {
+        expert_down_aggregate_q8_1_atomic_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi><<<
+            atomic_blocks,
+            dim3(kWarpSize, kMmvqWarps, 1),
+            0,
+            static_cast<cudaStream_t>(stream)
+        >>>(
+            static_cast<const uint8_t *>(weights),
+            row_stride,
+            rows,
+            rows,
+            static_cast<const int32_t *>(selected_ids),
+            static_cast<const float *>(selected_weights),
+            selected_count,
+            static_cast<const Q81Block *>(activated_q8_1),
+            activated_block_stride,
+            static_cast<const float *>(bias),
+            static_cast<float *>(output),
+            Mxfp4Q81Dot{}
         );
     }
     return static_cast<int>(cudaGetLastError());

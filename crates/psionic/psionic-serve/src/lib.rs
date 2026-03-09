@@ -972,6 +972,8 @@ pub struct GenerationMetrics {
 pub struct GptOssStageTimingMetrics {
     /// Token-embedding row decode time in nanoseconds.
     pub token_embedding_ns: u64,
+    /// Whole forward-step wall time in nanoseconds.
+    pub step_wall_ns: u64,
     /// Attention RMSNorm time in nanoseconds.
     pub attention_norm_ns: u64,
     /// Q/K/V projection time in nanoseconds.
@@ -996,6 +998,10 @@ pub struct GptOssStageTimingMetrics {
     pub output_norm_ns: u64,
     /// Final logits projection time in nanoseconds.
     pub logits_projection_ns: u64,
+    /// Stop-sequence checking time in nanoseconds.
+    pub stop_check_ns: u64,
+    /// Host-side sampling / token-selection time in nanoseconds.
+    pub sampling_ns: u64,
 }
 
 impl GptOssStageTimingMetrics {
@@ -1003,6 +1009,7 @@ impl GptOssStageTimingMetrics {
         self.token_embedding_ns = self
             .token_embedding_ns
             .saturating_add(other.token_embedding_ns);
+        self.step_wall_ns = self.step_wall_ns.saturating_add(other.step_wall_ns);
         self.attention_norm_ns = self
             .attention_norm_ns
             .saturating_add(other.attention_norm_ns);
@@ -1031,6 +1038,8 @@ impl GptOssStageTimingMetrics {
         self.logits_projection_ns = self
             .logits_projection_ns
             .saturating_add(other.logits_projection_ns);
+        self.stop_check_ns = self.stop_check_ns.saturating_add(other.stop_check_ns);
+        self.sampling_ns = self.sampling_ns.saturating_add(other.sampling_ns);
     }
 }
 
