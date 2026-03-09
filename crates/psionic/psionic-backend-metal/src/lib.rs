@@ -14,10 +14,11 @@ use psionic_ir::{ExecutionOp, ExecutionPlan, ExecutionStep, Graph};
 use psionic_runtime::{
     Allocator, AllocatorPoolMode, AllocatorPoolPolicy, AllocatorPoolReport, AllocatorPoolState,
     BackendDegradedPolicy, BackendName, BackendRuntimeResources, BackendSelection, BufferHandle,
-    CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
-    DeviceDescriptor, DeviceDiscovery, ExecutionBackend, ExecutionMetrics,
-    ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult,
-    HealthStatus, RuntimeError, RuntimeHealth, ServedProductBackendPolicy,
+    BufferResidency, BufferStorageKind, CacheAction, CacheKind, CacheObservation,
+    CompilePathEvidence, CompilePathTemperature, DeviceDescriptor, DeviceDiscovery,
+    ExecutionBackend, ExecutionMetrics, ExecutionPlanCachePolicy, ExecutionPlanCacheReport,
+    ExecutionPlanCacheState, ExecutionResult, HealthStatus, RuntimeError, RuntimeHealth,
+    ServedProductBackendPolicy,
 };
 #[cfg(target_os = "macos")]
 use psionic_runtime::{KernelCachePolicy, KernelCacheReport, KernelCacheState};
@@ -104,6 +105,7 @@ pub struct MetalSubmissionReport {
 pub struct MetalBuffer {
     spec: TensorSpec,
     byte_len: usize,
+    storage_kind: BufferStorageKind,
     storage_mode: MetalStorageMode,
     host_visible: bool,
     platform: platform::PlatformBuffer,
@@ -114,6 +116,7 @@ impl fmt::Debug for MetalBuffer {
         f.debug_struct("MetalBuffer")
             .field("spec", &self.spec)
             .field("byte_len", &self.byte_len)
+            .field("storage_kind", &self.storage_kind)
             .field("storage_mode", &self.storage_mode)
             .field("host_visible", &self.host_visible)
             .field("platform", &"<metal platform buffer>")
@@ -165,6 +168,12 @@ impl MetalBuffer {
                 self.spec.dtype()
             )));
         }
+        if self.storage_kind != BufferStorageKind::DenseF32 {
+            return Err(RuntimeError::Backend(format!(
+                "write_f32 requires dense f32 storage, actual {:?}",
+                self.storage_kind
+            )));
+        }
         if values.len() != self.spec.storage_size() {
             return Err(RuntimeError::Backend(format!(
                 "metal buffer write length mismatch: expected {} values, actual {}",
@@ -187,6 +196,12 @@ impl MetalBuffer {
                 self.spec.dtype()
             )));
         }
+        if self.storage_kind != BufferStorageKind::DenseF32 {
+            return Err(RuntimeError::Backend(format!(
+                "read_f32 requires dense f32 storage, actual {:?}",
+                self.storage_kind
+            )));
+        }
         let bytes = self.read_bytes()?;
         let mut values = Vec::with_capacity(bytes.len() / size_of_dtype(self.spec.dtype()));
         for chunk in bytes.chunks_exact(size_of_dtype(self.spec.dtype())) {
@@ -199,6 +214,10 @@ impl MetalBuffer {
 impl BufferHandle for MetalBuffer {
     fn spec(&self) -> &TensorSpec {
         &self.spec
+    }
+
+    fn storage_kind(&self) -> BufferStorageKind {
+        self.storage_kind.clone()
     }
 }
 
@@ -354,6 +373,9 @@ impl MetalAllocatorPool {
     }
 
     fn recycle(&mut self, buffer: MetalBuffer) {
+        if buffer.storage_kind != BufferStorageKind::DenseF32 {
+            return;
+        }
         if self.policy.mode != AllocatorPoolMode::ExactTensorSpec {
             return;
         }
@@ -739,6 +761,7 @@ impl AvailableMetalBackend {
         Ok(MetalBuffer {
             spec: spec.clone(),
             byte_len,
+            storage_kind: BufferStorageKind::DenseF32,
             storage_mode,
             host_visible: matches!(
                 storage_mode,
@@ -766,17 +789,34 @@ impl AvailableMetalBackend {
         spec: &TensorSpec,
         data: &TensorData,
     ) -> Result<MetalBuffer, RuntimeError> {
-        let mut buffer = self.allocate(spec)?;
         match data {
-            TensorData::F32(values) => buffer.write_f32(values.as_slice())?,
+            TensorData::F32(values) => {
+                let mut buffer = self.allocate(spec)?;
+                buffer.write_f32(values.as_slice())?;
+                Ok(buffer)
+            }
             TensorData::QuantizedBlocks(data) => {
-                return Err(RuntimeError::Backend(format!(
-                    "metal backend does not support quantized constant storage for {:?}",
-                    data.mode
-                )));
+                validate_quantized_storage(spec, data)?;
+                let storage_mode = self.platform.storage_mode();
+                let mut buffer = MetalBuffer {
+                    spec: spec.clone(),
+                    byte_len: data.bytes.len(),
+                    storage_kind: BufferStorageKind::QuantizedBlocks {
+                        mode: data.mode,
+                        layout: data.layout,
+                        residency: BufferResidency::Backend,
+                    },
+                    storage_mode,
+                    host_visible: matches!(
+                        storage_mode,
+                        MetalStorageMode::Shared | MetalStorageMode::Managed
+                    ),
+                    platform: self.platform.allocate_buffer(data.bytes.len())?,
+                };
+                buffer.write_bytes(data.bytes.as_slice())?;
+                Ok(buffer)
             }
         }
-        Ok(buffer)
     }
 
     fn execute(
@@ -1028,6 +1068,44 @@ fn plan_output_bytes(plan: &ExecutionPlan) -> u64 {
 
 fn size_of_dtype(dtype: DType) -> usize {
     dtype.element_size_bytes()
+}
+
+fn validate_quantized_storage(
+    spec: &TensorSpec,
+    data: &psionic_core::QuantizedTensorData,
+) -> Result<(), RuntimeError> {
+    if spec.dtype() != DType::F32 {
+        return Err(RuntimeError::Backend(format!(
+            "quantized blocks require logical F32 dtype, actual {:?}",
+            spec.dtype()
+        )));
+    }
+    if !spec.layout().is_contiguous() || spec.layout().offset() != 0 {
+        return Err(RuntimeError::Backend(String::from(
+            "quantized blocks require a contiguous zero-offset tensor spec",
+        )));
+    }
+    let Some(expected_layout) = data.mode.ggml_block_layout(spec.shape()) else {
+        return Err(RuntimeError::Backend(format!(
+            "shape {} is invalid for quantized mode {:?}",
+            spec.shape(),
+            data.mode
+        )));
+    };
+    if expected_layout != data.layout {
+        return Err(RuntimeError::Backend(format!(
+            "quantized layout mismatch: expected {:?}, actual {:?}",
+            expected_layout, data.layout
+        )));
+    }
+    if data.bytes.len() != data.layout.byte_len() {
+        return Err(RuntimeError::Backend(format!(
+            "quantized byte length mismatch: expected {}, actual {}",
+            data.layout.byte_len(),
+            data.bytes.len()
+        )));
+    }
+    Ok(())
 }
 
 fn validate_supported_plan(plan: &ExecutionPlan) -> Result<(), RuntimeError> {
@@ -1645,11 +1723,23 @@ mod platform {
             device: Device::new(DeviceKind::Metal, ordinal, Some(format!("metal:{ordinal}"))),
             device_name: Some(device.name().to_owned()),
             supported_dtypes: vec![DType::F32],
-            supported_quantization: vec![QuantizationSupport {
-                mode: QuantizationMode::None,
-                load_path: QuantizationLoadPath::DenseF32,
-                execution: QuantizationExecution::Native,
-            }],
+            supported_quantization: vec![
+                QuantizationSupport {
+                    mode: QuantizationMode::None,
+                    load_path: QuantizationLoadPath::DenseF32,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: QuantizationMode::GgmlQ8_0,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::DequantizeToF32,
+                },
+                QuantizationSupport {
+                    mode: QuantizationMode::GgmlMxfp4,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::DequantizeToF32,
+                },
+            ],
             memory_capacity_bytes,
             unified_memory: Some(device.has_unified_memory()),
             feature_flags,
@@ -2003,17 +2093,40 @@ mod platform {
 mod tests {
     use psionic_backend_cpu::CpuBackend;
     use psionic_compiler::compile_graph;
-    use psionic_core::{DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec};
+    use psionic_core::{
+        DType, Device, DeviceKind, QuantizationMode, QuantizedTensorData, Shape, TensorSpec,
+    };
     use psionic_ir::GraphBuilder;
     use psionic_runtime::{
-        Allocator, BackendDegradedPolicy, BackendParityPolicy, BackendSelectionState, HealthStatus,
-        ServedProductBackendPolicy,
+        Allocator, BackendDegradedPolicy, BackendParityPolicy, BackendSelectionState, BufferHandle,
+        BufferResidency, BufferStorageKind, DeviceDiscovery, HealthStatus, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, RuntimeError, ServedProductBackendPolicy,
     };
 
     use super::{
         DeviceSupportTier, EMBEDDINGS_SUPPORTED_OPS, FamilySupport, MetalBackend,
-        TEXT_GENERATION_SUPPORTED_OPS, classify_support, validate_supported_plan,
+        TEXT_GENERATION_SUPPORTED_OPS, classify_support, validate_quantized_storage,
+        validate_supported_plan,
     };
+
+    fn sample_repeated_mxfp4_rows(rows: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(rows * 17);
+        for _ in 0..rows {
+            bytes.push(128_u8);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+            bytes.extend([0x10, 0x32, 0x54, 0x76, 0x98, 0xba, 0xdc, 0xfe]);
+        }
+        bytes
+    }
+
+    fn sample_repeated_q8_0_rows(rows: usize) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(rows * 34);
+        for _ in 0..rows {
+            bytes.extend([0x00, 0x3c]);
+            bytes.extend([0_u8; 32]);
+        }
+        bytes
+    }
 
     #[test]
     fn apple_family_devices_classify_as_modern() {
@@ -2174,11 +2287,33 @@ mod tests {
         assert!(submission.is_err());
     }
 
+    #[test]
+    fn metal_quantized_storage_validation_rejects_mismatched_bytes() {
+        let spec = TensorSpec::new(
+            Shape::new(vec![1, 32]),
+            DType::F32,
+            Device::new(DeviceKind::Metal, 0, Some(String::from("metal:0"))),
+        );
+        let data = QuantizedTensorData::new(
+            QuantizationMode::GgmlQ8_0,
+            QuantizationMode::GgmlQ8_0
+                .ggml_block_layout(spec.shape())
+                .expect("q8_0 layout"),
+            vec![0_u8; 33],
+        );
+
+        let error = validate_quantized_storage(&spec, &data).expect_err("mismatch should fail");
+        assert_eq!(
+            error,
+            RuntimeError::Backend(String::from(
+                "quantized byte length mismatch: expected 34, actual 33",
+            ))
+        );
+    }
+
     #[cfg(target_os = "macos")]
     #[test]
     fn metal_backend_health_matches_discovery() -> Result<(), psionic_runtime::RuntimeError> {
-        use psionic_runtime::DeviceDiscovery;
-
         use super::{LEGACY_FAMILY_FLAG, MODERN_FAMILY_FLAG};
 
         let backend = MetalBackend::new();
@@ -2332,6 +2467,39 @@ mod tests {
 
     #[cfg(target_os = "macos")]
     #[test]
+    fn metal_backend_reports_quantized_weight_upload_support()
+    -> Result<(), psionic_runtime::RuntimeError> {
+        let backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        assert_eq!(
+            selected.supported_quantization,
+            vec![
+                QuantizationSupport {
+                    mode: QuantizationMode::None,
+                    load_path: QuantizationLoadPath::DenseF32,
+                    execution: QuantizationExecution::Native,
+                },
+                QuantizationSupport {
+                    mode: QuantizationMode::GgmlQ8_0,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::DequantizeToF32,
+                },
+                QuantizationSupport {
+                    mode: QuantizationMode::GgmlMxfp4,
+                    load_path: QuantizationLoadPath::BackendQuantized,
+                    execution: QuantizationExecution::DequantizeToF32,
+                },
+            ]
+        );
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
     fn metal_backend_executes_embedding_surface_on_supported_hardware()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = MetalBackend::new();
@@ -2421,7 +2589,88 @@ mod tests {
             .ok_or("missing metal logits output")?;
         assert_eq!(hidden_output.read_f32()?, vec![4.5, 6.0]);
         assert_eq!(logits_output.read_f32()?, vec![7.75, 5.5, 4.0]);
-        assert_eq!(result.metrics.steps_executed, 11);
+        assert_eq!(result.metrics.steps_executed, 15);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_outputs_quantized_constant_storage_truth() -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let quantized_shape = Shape::new(vec![2, 32]);
+        let quantized_bytes = sample_repeated_q8_0_rows(2);
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let rhs = builder
+            .constant_quantized_blocks(
+                quantized_shape.clone(),
+                QuantizationMode::GgmlQ8_0,
+                quantized_bytes.clone(),
+            )
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![rhs.clone()]);
+
+        let result = backend.compile_and_execute(&graph, &std::collections::BTreeMap::new())?;
+        let output = result
+            .outputs
+            .get(&rhs.id())
+            .ok_or_else(|| RuntimeError::Backend(String::from("quantized constant output")))?;
+        assert_eq!(
+            output.storage_kind(),
+            BufferStorageKind::QuantizedBlocks {
+                mode: QuantizationMode::GgmlQ8_0,
+                layout: QuantizationMode::GgmlQ8_0
+                    .ggml_block_layout(&quantized_shape)
+                    .ok_or_else(|| RuntimeError::Backend(String::from("q8_0 layout")))?,
+                residency: BufferResidency::Backend,
+            }
+        );
+        assert_eq!(output.read_bytes()?, quantized_bytes);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_uploads_mxfp4_constant_bytes_without_dense_rewrite() -> Result<(), RuntimeError>
+    {
+        let mut backend = MetalBackend::new();
+        let Some(selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let quantized_shape = Shape::new(vec![3, 32]);
+        let quantized_bytes = sample_repeated_mxfp4_rows(3);
+        let mut builder = GraphBuilder::new(selected.device.clone());
+        let rhs = builder
+            .constant_quantized_blocks(
+                quantized_shape.clone(),
+                QuantizationMode::GgmlMxfp4,
+                quantized_bytes.clone(),
+            )
+            .map_err(|error| RuntimeError::Backend(error.to_string()))?;
+        let graph = builder.finish(vec![rhs.clone()]);
+
+        let result = backend.compile_and_execute(&graph, &std::collections::BTreeMap::new())?;
+        let output = result
+            .outputs
+            .get(&rhs.id())
+            .ok_or_else(|| RuntimeError::Backend(String::from("mxfp4 constant output")))?;
+        assert_eq!(
+            output.storage_kind(),
+            BufferStorageKind::QuantizedBlocks {
+                mode: QuantizationMode::GgmlMxfp4,
+                layout: QuantizationMode::GgmlMxfp4
+                    .ggml_block_layout(&quantized_shape)
+                    .ok_or_else(|| RuntimeError::Backend(String::from("mxfp4 layout")))?,
+                residency: BufferResidency::Backend,
+            }
+        );
+        assert_eq!(output.read_bytes()?, quantized_bytes);
         Ok(())
     }
 }
