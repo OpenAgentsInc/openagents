@@ -40,6 +40,59 @@ int mox_cuda_mxfp4_matvec(
     return 1;
 }
 
+int mox_cuda_quantize_q8_1(
+    const void *input,
+    int rows,
+    int cols,
+    void *output,
+    void *stream
+) {
+    (void)input;
+    (void)rows;
+    (void)cols;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int mox_cuda_q8_0_matvec_q8_1(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *input_q8_1,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)rows;
+    (void)cols;
+    (void)row_stride;
+    (void)input_q8_1;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int mox_cuda_mxfp4_matvec_q8_1(
+    const void *weights,
+    int rows,
+    int cols,
+    int row_stride,
+    const void *input_q8_1,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)rows;
+    (void)cols;
+    (void)row_stride;
+    (void)input_q8_1;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
 int mox_cuda_rms_norm(
     const void *input,
     const void *weight,
@@ -198,6 +251,39 @@ int mox_cuda_moe_gate_up_swiglu(
     return 1;
 }
 
+int mox_cuda_moe_gate_up_swiglu_q8_1(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows_per_expert,
+    int columns,
+    int gate_rows,
+    int up_rows,
+    const void *selected_ids,
+    int selected_count,
+    const void *input_q8_1,
+    const void *gate_bias,
+    const void *up_bias,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)mode;
+    (void)row_stride;
+    (void)rows_per_expert;
+    (void)columns;
+    (void)gate_rows;
+    (void)up_rows;
+    (void)selected_ids;
+    (void)selected_count;
+    (void)input_q8_1;
+    (void)gate_bias;
+    (void)up_bias;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
 int mox_cuda_moe_down_aggregate(
     const void *weights,
     int mode,
@@ -221,6 +307,35 @@ int mox_cuda_moe_down_aggregate(
     (void)selected_weights;
     (void)selected_count;
     (void)activated;
+    (void)bias;
+    (void)output;
+    (void)stream;
+    return 1;
+}
+
+int mox_cuda_moe_down_aggregate_q8_1(
+    const void *weights,
+    int mode,
+    int row_stride,
+    int rows,
+    int columns,
+    const void *selected_ids,
+    const void *selected_weights,
+    int selected_count,
+    const void *activated_q8_1,
+    const void *bias,
+    void *output,
+    void *stream
+) {
+    (void)weights;
+    (void)mode;
+    (void)row_stride;
+    (void)rows;
+    (void)columns;
+    (void)selected_ids;
+    (void)selected_weights;
+    (void)selected_count;
+    (void)activated_q8_1;
     (void)bias;
     (void)output;
     (void)stream;
