@@ -25,8 +25,7 @@ use psionic_catalog::LocalBlobOpenOptions;
 use psionic_models::{
     GgufBlobArtifact, GptOssHarmonyParseOptions, GptOssHarmonyParsedOutput,
     GptOssHarmonyRenderContext, GptOssTokenizer, PromptChannelConfig, PromptMessage,
-    PromptMessageRole,
-    PromptReasoningEffort, PromptRenderOptions, parse_gpt_oss_harmony_tokens,
+    PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, parse_gpt_oss_harmony_tokens,
     render_gpt_oss_harmony_prompt,
 };
 use serde::{Deserialize, Serialize};
@@ -38,9 +37,9 @@ use tokio_stream::iter;
 
 use crate::{
     CudaGgufGptOssTextGenerationService, CudaGptOssTextGenerationError, DecodeStrategy,
-    DecoderModelDescriptor, GenerationMetrics, GenerationOptions, GenerationRequest, TokenSequence,
+    DecoderModelDescriptor, GenerationMetrics, GenerationOptions, GenerationRequest,
     GgufDecoderAdapterLoader, GptOssPerformanceMetrics, PromptRenderError, TerminationReason,
-    TextGenerationExecutor,
+    TextGenerationExecutor, TokenSequence,
 };
 
 const DEFAULT_MAX_TOKENS: usize = 256;
@@ -437,9 +436,11 @@ async fn handle_chat_completions(
     let prompt_tokens = {
         let mut cache = state.prompt_token_cache.lock().map_err(|_| {
             OpenAiCompatHttpError::Generation(CudaGptOssTextGenerationError::Generation(
-                crate::ReferenceTextGenerationError::Runtime(psionic_runtime::RuntimeError::Backend(
-                    String::from("openai prompt token cache is poisoned"),
-                )),
+                crate::ReferenceTextGenerationError::Runtime(
+                    psionic_runtime::RuntimeError::Backend(String::from(
+                        "openai prompt token cache is poisoned",
+                    )),
+                ),
             ))
         })?;
         if let Some(tokens) = cache.lookup(rendered.as_str()) {
@@ -847,7 +848,8 @@ mod tests {
     use super::{
         ChatCompletionMessage, ChatCompletionRequest, HARMONY_CALL_STOP, HARMONY_RETURN_STOP,
         PromptTokenCache, chat_messages_to_prompt_messages, ensure_harmony_stop_sequences,
-        fast_final_assistant_content, final_assistant_content, generation_options_from_chat_request,
+        fast_final_assistant_content, final_assistant_content,
+        generation_options_from_chat_request,
     };
     use psionic_models::{
         GptOssHarmonyParseSource, GptOssHarmonyParsedOutput, PromptMessage, PromptMessageRole,

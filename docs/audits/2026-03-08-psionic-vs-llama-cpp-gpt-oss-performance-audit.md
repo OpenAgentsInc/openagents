@@ -6,11 +6,12 @@
 > OpenAI-compatible hot path so Harmony debug fields are opt-in instead of
 > always serialized, after adding prompt-token reuse on the HTTP lane plus
 > safe cross-request CUDA decode-graph reuse keyed to the actual KV allocation
-> identities, and after comparing the exact timed-request flow with
-> `llama.cpp`'s prompt-cache behavior on the same machine. This file is the
-> current audit for the GPT-OSS throughput gap; later product truth still lives
-> in `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and
-> the referenced issues.
+> identities, and after the newer exact-prompt shared-prefix fast paths that
+> stop cloning full prompt-logit histories and avoid re-recording or
+> host-cloning unchanged prompt caches on repeated GPT-OSS HTTP requests. This
+> file is the current audit for the GPT-OSS throughput gap; later product truth
+> still lives in `docs/MVP.md`, `docs/OWNERSHIP.md`,
+> `crates/psionic/docs/ROADMAP.md`, and the referenced issues.
 
 ## Scope
 
@@ -127,6 +128,27 @@
 - Psionic improvement over the previous stable checkpoint:
   - `1.28x`
 
+### Current exact-prompt cache checkpoint
+
+- Psionic:
+  - repeated timed-request range on the same loaded server:
+    - `89.34 tok/s`
+    - `91.69 tok/s`
+    - `91.49 tok/s`
+  - best observed timed request:
+    - `37` completion tokens in `0.402s`
+    - `92.02 tok/s`
+- Comparison status:
+  - the last clean same-machine `llama.cpp` control still remains about
+    `167 tok/s`
+  - the local RTX 4080 host still had an external `dota2` process resident
+    during these re-runs, so the new Psionic number should be treated as a
+    real product-path improvement but not as a fresh clean parity control
+- Psionic improvement over the original baseline:
+  - `5.50x`
+- Psionic improvement over the previous hot-path checkpoint:
+  - `1.05x`
+
 The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
@@ -242,9 +264,37 @@ high-60s into the mid/high-80s without changing the model math:
 - the CUDA decode graph is now reused across requests when the shared prompt KV
   mirror resolves to the same underlying device allocations
   - this is the correct long-term behavior and closes one more concrete gap with
-    `llama.cpp`'s graph/cache residency model
+  `llama.cpp`'s graph/cache residency model
   - on this exact benchmark it only moved the steady-state result marginally,
-    from the mid-86s to about `87.6 tok/s`
+  from the mid-86s to about `87.6 tok/s`
+
+The latest exact-prompt cache checkpoint then tightened the repeated-request
+path further without changing the decode math:
+
+- exact repeated-prompt shared-prefix hits no longer clone the full
+  per-prompt logit history on the request path
+  - the shared-prefix entry now carries the final prompt logits separately so
+    the repeated-request path can seed sampling from one logits vector instead
+    of cloning the whole prompt-logit ladder
+- exact repeated-prompt hits no longer re-record unchanged prompt caches
+  - Psionic now skips the host prompt-cache clone and CUDA prompt-cache clone
+    when the reused prompt already matches the full incoming prompt
+- the GPT-OSS path now has an exact-prompt shared-prefix fast path that can
+  skip the host KV-cache clone entirely for sessionless repeated requests
+  - token history is rebuilt directly from the prompt tokens on that path,
+    while the device-side prompt KV mirror still comes from the CUDA shared
+    prefix store
+
+That work moved the real repeated HTTP benchmark from about `87.6 tok/s` to
+about `92 tok/s`, but the decode-step wall only moved marginally. The best
+debug receipt after these changes still showed roughly:
+
+- `322 ms` of summed decode-step wall time for `37` generated tokens
+- `13,468` CUDA kernel launches across those `37` decode steps
+
+That result matters because it rules out "the remaining gap is mainly prompt
+cache churn" as the top diagnosis. The remaining gap is still in the
+device-side decode path.
 
 The latest exact-flow comparison first exposed, and the new checkpoint only
 partially closed, a concrete request-to-request gap that is not just "CUDA

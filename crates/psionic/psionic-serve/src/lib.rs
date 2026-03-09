@@ -2579,6 +2579,7 @@ struct SharedPrefixEntry {
     compatibility: SharedPrefixCompatibility,
     prompt_tokens: TokenSequence,
     prompt_logits: Vec<Vec<f32>>,
+    last_prompt_logits: Vec<f32>,
     cache: InMemoryKvCache,
 }
 
@@ -2594,9 +2595,35 @@ struct PrefixLookupResult {
     identity: Option<PrefixCacheIdentity>,
     cache: Option<InMemoryKvCache>,
     prompt_logits: Vec<Vec<f32>>,
+    last_logits: Vec<f32>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct ExactPrefixLookupResult {
+    identity: PrefixCacheIdentity,
+    last_logits: Vec<f32>,
 }
 
 impl SharedPrefixStore {
+    fn lookup_exact_prompt(
+        &self,
+        compatibility: &SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+    ) -> Option<ExactPrefixLookupResult> {
+        self.entries
+            .iter()
+            .find(|entry| {
+                &entry.compatibility == compatibility
+                    && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
+                    && entry.cache.len() >= prompt_tokens.len()
+                    && entry.prompt_logits.len() >= prompt_tokens.len()
+            })
+            .map(|entry| ExactPrefixLookupResult {
+                identity: prefix_identity(compatibility, prompt_tokens.as_slice()),
+                last_logits: entry.last_prompt_logits.clone(),
+            })
+    }
+
     fn lookup(
         &mut self,
         compatibility: &SharedPrefixCompatibility,
@@ -2615,6 +2642,7 @@ impl SharedPrefixStore {
                 identity: None,
                 cache: None,
                 prompt_logits: Vec::new(),
+                last_logits: Vec::new(),
             };
         }
 
@@ -2641,6 +2669,7 @@ impl SharedPrefixStore {
             let entry = &self.entries[index];
             let mut cache = entry.cache.clone();
             cache.entries.truncate(shared);
+            let exact_prompt_hit = entry.prompt_tokens.as_slice() == prompt_tokens.as_slice();
             return PrefixLookupResult {
                 state: PrefixCacheState::Hit,
                 reused_tokens: shared,
@@ -2649,7 +2678,20 @@ impl SharedPrefixStore {
                     &entry.prompt_tokens.as_slice()[..shared],
                 )),
                 cache: Some(cache),
-                prompt_logits: entry.prompt_logits[..shared].to_vec(),
+                prompt_logits: if exact_prompt_hit {
+                    Vec::new()
+                } else {
+                    entry.prompt_logits[..shared].to_vec()
+                },
+                last_logits: if exact_prompt_hit {
+                    entry.last_prompt_logits.clone()
+                } else {
+                    entry
+                        .prompt_logits
+                        .get(shared.saturating_sub(1))
+                        .cloned()
+                        .unwrap_or_default()
+                },
             };
         }
 
@@ -2665,6 +2707,7 @@ impl SharedPrefixStore {
                 identity: None,
                 cache: None,
                 prompt_logits: Vec::new(),
+                last_logits: Vec::new(),
             };
         }
 
@@ -2674,6 +2717,7 @@ impl SharedPrefixStore {
             identity: None,
             cache: None,
             prompt_logits: Vec::new(),
+            last_logits: Vec::new(),
         }
     }
 
@@ -2690,12 +2734,14 @@ impl SharedPrefixStore {
                 && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
         }) {
             existing.prompt_logits = prompt_logits.to_vec();
+            existing.last_prompt_logits = prompt_logits.last().cloned().unwrap_or_default();
             existing.cache = cache.clone();
         } else {
             self.entries.push(SharedPrefixEntry {
                 compatibility,
                 prompt_tokens: prompt_tokens.clone(),
                 prompt_logits: prompt_logits.to_vec(),
+                last_prompt_logits: prompt_logits.last().cloned().unwrap_or_default(),
                 cache: cache.clone(),
             });
         }
@@ -4351,7 +4397,11 @@ where
                 prefix_tokens_reused = lookup.reused_tokens;
                 prefix_identity = lookup.identity;
                 prompt_logits = lookup.prompt_logits;
-                last_logits = prompt_logits.last().cloned().unwrap_or_default();
+                last_logits = if lookup.last_logits.is_empty() {
+                    prompt_logits.last().cloned().unwrap_or_default()
+                } else {
+                    lookup.last_logits
+                };
                 lookup.cache.unwrap_or_else(|| {
                     InMemoryKvCache::new(
                         loaded_model.descriptor().config.max_context,
@@ -4389,7 +4439,7 @@ where
                 prompt_logits.push(last_logits.clone());
             }
 
-            if shared_prefix_eligible {
+            if shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len() {
                 let recorded_identity =
                     shared_prefixes.record(compatibility, &prompt_tokens, &prompt_logits, &cache);
                 if prefix_state != PrefixCacheState::Hit || prefix_identity.is_none() {
@@ -4968,7 +5018,11 @@ where
             prefix_tokens_reused = lookup.reused_tokens;
             prefix_identity = lookup.identity;
             prompt_logits = lookup.prompt_logits;
-            last_logits = prompt_logits.last().cloned().unwrap_or_default();
+            last_logits = if lookup.last_logits.is_empty() {
+                prompt_logits.last().cloned().unwrap_or_default()
+            } else {
+                lookup.last_logits
+            };
             lookup.cache.unwrap_or_else(|| {
                 InMemoryKvCache::new(
                     loaded_model.descriptor().config.max_context,
@@ -5005,7 +5059,8 @@ where
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
         }
-        let prompt_cache = cache.clone();
+        let prompt_cache = (shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len())
+            .then(|| cache.clone());
 
         let mut sampler = GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
@@ -5050,15 +5105,17 @@ where
             }
         };
 
-        if shared_prefix_eligible {
-            let recorded_identity = shared_prefixes.record(
-                compatibility,
-                &prompt_tokens,
-                &prompt_logits,
-                &prompt_cache,
-            );
-            if prefix_state != PrefixCacheState::Hit || prefix_identity.is_none() {
-                prefix_identity = Some(recorded_identity);
+        if shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len() {
+            if let Some(prompt_cache) = prompt_cache.as_ref() {
+                let recorded_identity = shared_prefixes.record(
+                    compatibility,
+                    &prompt_tokens,
+                    &prompt_logits,
+                    prompt_cache,
+                );
+                if prefix_state != PrefixCacheState::Hit || prefix_identity.is_none() {
+                    prefix_identity = Some(recorded_identity);
+                }
             }
         }
 
@@ -7222,6 +7279,19 @@ mod tests {
             Some(hello.len())
         );
         assert_eq!(hit.prompt_logits.len(), hello.len());
+        assert_eq!(
+            hit.last_logits,
+            vec![hello.as_slice()[hello.len() - 1].as_u32() as f32; vocab_size]
+        );
+
+        let exact_hit = store.lookup(&compatibility, &hello_world);
+        assert_eq!(exact_hit.state, PrefixCacheState::Hit);
+        assert_eq!(exact_hit.reused_tokens, hello_world.len());
+        assert!(exact_hit.prompt_logits.is_empty());
+        assert_eq!(
+            exact_hit.last_logits,
+            vec![hello_world.as_slice()[hello_world.len() - 1].as_u32() as f32; vocab_size]
+        );
 
         let miss = store.lookup(&compatibility, &rusty);
         assert_eq!(miss.state, PrefixCacheState::Miss);

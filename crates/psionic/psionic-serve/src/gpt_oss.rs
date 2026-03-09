@@ -533,7 +533,8 @@ impl CudaSharedPrefixStore {
 
         if stale_prefix {
             self.entries.retain(|entry| {
-                !(&entry.compatibility == compatibility && entry.cache.len() < entry.prompt_tokens.len())
+                !(&entry.compatibility == compatibility
+                    && entry.cache.len() < entry.prompt_tokens.len())
             });
         }
         None
@@ -843,13 +844,32 @@ fn run_cuda_generation_request(
         let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
         let mut decode_step_plan = None;
         let use_cuda_argmax_fast_path = can_use_cuda_argmax_fast_path(&request.options);
-        let mut cache = if shared_prefix_eligible {
+        let exact_prefix_hit = if shared_prefix_eligible && request.session_id.is_none() {
+            shared_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens)
+        } else {
+            None
+        };
+        let exact_prompt_cache_hit = exact_prefix_hit.is_some();
+        let mut cache = if let Some(hit) = exact_prefix_hit {
+            prefix_state = super::PrefixCacheState::Hit;
+            prefix_tokens_reused = prompt_tokens.len();
+            prefix_identity = Some(hit.identity);
+            last_logits = hit.last_logits;
+            super::InMemoryKvCache::new(
+                loaded_model.descriptor().config.max_context,
+                expected_kv_width,
+            )
+        } else if shared_prefix_eligible {
             let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
             prefix_state = lookup.state;
             prefix_tokens_reused = lookup.reused_tokens;
             prefix_identity = lookup.identity;
             prompt_logits = lookup.prompt_logits;
-            last_logits = prompt_logits.last().cloned().unwrap_or_default();
+            last_logits = if lookup.last_logits.is_empty() {
+                prompt_logits.last().cloned().unwrap_or_default()
+            } else {
+                lookup.last_logits
+            };
             lookup.cache.unwrap_or_else(|| {
                 super::InMemoryKvCache::new(
                     loaded_model.descriptor().config.max_context,
@@ -864,11 +884,20 @@ fn run_cuda_generation_request(
                 expected_kv_width,
             )
         };
-        let mut token_history = cache
-            .entries()
-            .iter()
-            .map(|entry| entry.token.as_u32())
-            .collect::<Vec<_>>();
+        let mut token_history = if exact_prompt_cache_hit {
+            prompt_tokens
+                .as_slice()
+                .iter()
+                .copied()
+                .map(|token| token.as_u32())
+                .collect::<Vec<_>>()
+        } else {
+            cache
+                .entries()
+                .iter()
+                .map(|entry| entry.token.as_u32())
+                .collect::<Vec<_>>()
+        };
         if cache.width() != expected_kv_width {
             return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
                 expected_kv_width,
@@ -932,8 +961,10 @@ fn run_cuda_generation_request(
             last_logits = step.logits;
             prompt_logits.push(last_logits.clone());
         }
-        let prompt_cache = cache.clone();
-        let prompt_cuda_cache = cuda_cache.clone();
+        let should_record_prompt_prefix =
+            shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
+        let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
+        let prompt_cuda_cache = should_record_prompt_prefix.then(|| cuda_cache.clone());
 
         let mut sampler = super::GenerationSampler::new(&request.options);
         let mut generated_tokens = Vec::new();
@@ -1031,16 +1062,20 @@ fn run_cuda_generation_request(
             }
         };
 
-        if shared_prefix_eligible {
-            let recorded_identity = shared_prefixes.record(
-                compatibility.clone(),
-                &prompt_tokens,
-                &prompt_logits,
-                &prompt_cache,
-            );
-            cuda_shared_prefixes.record(compatibility, &prompt_tokens, &prompt_cuda_cache);
-            if prefix_state != super::PrefixCacheState::Hit || prefix_identity.is_none() {
-                prefix_identity = Some(recorded_identity);
+        if should_record_prompt_prefix {
+            if let (Some(prompt_cache), Some(prompt_cuda_cache)) =
+                (prompt_cache.as_ref(), prompt_cuda_cache.as_ref())
+            {
+                let recorded_identity = shared_prefixes.record(
+                    compatibility.clone(),
+                    &prompt_tokens,
+                    &prompt_logits,
+                    prompt_cache,
+                );
+                cuda_shared_prefixes.record(compatibility, &prompt_tokens, prompt_cuda_cache);
+                if prefix_state != super::PrefixCacheState::Hit || prefix_identity.is_none() {
+                    prefix_identity = Some(recorded_identity);
+                }
             }
         }
 
@@ -2087,7 +2122,12 @@ impl GptOssCudaModelInner {
             )?;
         }
         if output_mode == CudaStepOutputMode::DeviceArgmax {
-            submission.argmax_f32(&plan.logits_buffer, 1, self.output.rows, &plan.next_token_buffer)?;
+            submission.argmax_f32(
+                &plan.logits_buffer,
+                1,
+                self.output.rows,
+                &plan.next_token_buffer,
+            )?;
         }
         perf.stage_timings.logits_projection_ns = perf
             .stage_timings
@@ -2161,8 +2201,8 @@ impl GptOssCudaModelInner {
                         &mut bytes_moved,
                         true,
                     )?;
-                    let (report, graph_exec) =
-                        submission.commit_captured(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                    let (report, graph_exec) = submission
+                        .commit_captured(psionic_backend_cuda::CudaCommandWait::Completed)?;
                     plan.decode_graph_exec = Some(graph_exec);
                     plan.decode_graph_cache_identity = decode_graph_cache_identity;
                     report
@@ -3966,10 +4006,7 @@ fn try_build_cuda_transposed_f16_mirror(
     build_f16_mirror: bool,
     f16_mirror_state: &mut CudaF16MirrorState,
 ) -> Result<Option<CudaBuffer>, ModelLoadError> {
-    if !build_f16_mirror
-        || f16_mirror_state.disabled
-        || mode != QuantizationMode::GgmlQ8_0
-    {
+    if !build_f16_mirror || f16_mirror_state.disabled || mode != QuantizationMode::GgmlQ8_0 {
         return Ok(None);
     }
     let transposed = decode_quantized_matrix_bytes_transposed_f16(
@@ -4104,12 +4141,13 @@ fn load_cuda_quantized_projection_group(
             name: tensor_name,
             dtype: String::from("quantized"),
         })?;
-        let projection_row_byte_len = quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
-            ModelLoadError::InvalidQuantizedTensorShape {
-                quantization,
-                shape: dims.clone(),
-            }
-        })?;
+        let projection_row_byte_len =
+            quantized_row_byte_len(&metadata.shape, layout).map_err(|_| {
+                ModelLoadError::InvalidQuantizedTensorShape {
+                    quantization,
+                    shape: dims.clone(),
+                }
+            })?;
         if let Some(expected_mode) = mode {
             if expected_mode != quantization {
                 return Err(ModelLoadError::ArtifactFormat {
