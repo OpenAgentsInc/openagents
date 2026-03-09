@@ -628,7 +628,7 @@ fn preferred_provider_compute_capability(state: &RenderState) -> ProviderNip90Co
 
 fn provider_compute_capability_from_ollama(state: &RenderState) -> ProviderNip90ComputeCapability {
     ProviderNip90ComputeCapability {
-        backend: "mox".to_string(),
+        backend: "psionic".to_string(),
         reachable: state.ollama_execution.reachable,
         configured_model: state.ollama_execution.configured_model.clone(),
         ready_model: state.ollama_execution.ready_model.clone(),

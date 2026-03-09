@@ -5504,13 +5504,13 @@ fn build_spot_compute_rfq_from_inputs(
             .replace(['.', '-'], "_")
             .as_str()
         {
-            "mox" | "local_inference" | "ollama" => Some(ComputeBackendFamily::Ollama),
+            "psionic" | "local_inference" | "ollama" => Some(ComputeBackendFamily::Ollama),
             "apple_foundation_models" | "apple_fm" | "apple_foundation" => {
                 Some(ComputeBackendFamily::AppleFoundationModels)
             }
             other => {
                 return Err(format!(
-                    "Preferred backend must be mox, apple_foundation_models, or empty, got {other}"
+                    "Preferred backend must be psionic, apple_foundation_models, or empty, got {other}"
                 ));
             }
         },

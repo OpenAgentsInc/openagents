@@ -1,0 +1,6664 @@
+//! Runtime traits and execution surfaces for Psionic.
+
+mod parity;
+mod validation;
+
+use std::collections::{BTreeMap, VecDeque};
+
+use psionic_core::{
+    BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, QuantizedBlockLayout,
+    TensorId, TensorSpec,
+};
+use psionic_ir::ExecutionPlan;
+pub use parity::*;
+use rand::{Rng, SeedableRng, rngs::StdRng};
+use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
+use thiserror::Error;
+pub use validation::*;
+
+/// Human-readable crate ownership summary.
+pub const CRATE_ROLE: &str = "runtime traits for devices and execution";
+
+/// Stable runtime backend name.
+pub type BackendName = &'static str;
+
+/// Runtime failure.
+#[derive(Debug, Error, PartialEq, Eq)]
+pub enum RuntimeError {
+    /// The requested tensor input was not supplied.
+    #[error("missing input tensor {0}")]
+    MissingInput(TensorId),
+    /// A buffer shape or dtype was not what execution expected.
+    #[error("invalid buffer for tensor {tensor}: expected {expected:?}, actual {actual:?}")]
+    InvalidBuffer {
+        /// Tensor ID that failed validation.
+        tensor: TensorId,
+        /// Expected tensor specification.
+        expected: TensorSpec,
+        /// Actual tensor specification.
+        actual: TensorSpec,
+    },
+    /// The execution plan referenced a node that the backend cannot execute.
+    #[error("unsupported execution step `{0}`")]
+    UnsupportedStep(String),
+    /// Generic backend failure.
+    #[error("{0}")]
+    Backend(String),
+}
+
+/// Backend-neutral local runtime error taxonomy used by served-product surfaces.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LocalRuntimeErrorCode {
+    /// The caller supplied an invalid request.
+    InvalidRequest,
+    /// The caller targeted the wrong served product.
+    UnsupportedProduct,
+    /// The caller requested a model that is unsupported by the current path.
+    UnsupportedModel,
+    /// The requested model was not found.
+    ModelNotFound,
+    /// The requested model is not currently loaded.
+    ModelNotLoaded,
+    /// The requested backend or model capability is unsupported.
+    UnsupportedCapability,
+    /// A required local artifact is missing.
+    ArtifactMissing,
+    /// A local artifact is unreadable, corrupt, or otherwise invalid.
+    ArtifactInvalid,
+    /// The request exceeded an explicit context or prompt budget.
+    ContextOverflow,
+    /// The referenced generation session does not exist.
+    SessionNotFound,
+    /// The referenced generation session is incompatible with the request.
+    SessionMismatch,
+    /// The request exhausted explicit KV/cache limits.
+    CacheExhausted,
+    /// Local-serving admission policy refused the request.
+    AdmissionRefused,
+    /// The requested backend is unavailable.
+    BackendUnavailable,
+    /// The selected backend is degraded and refused execution.
+    BackendDegraded,
+    /// Backend execution failed after planning succeeded.
+    BackendExecutionFailed,
+    /// The runtime produced an invalid output payload.
+    InvalidOutput,
+    /// The caller cancelled the request.
+    Cancelled,
+    /// The client disconnected after execution started.
+    Disconnected,
+    /// The runtime hit an unexpected internal error.
+    Internal,
+}
+
+/// Structured diagnostic carried across the local runtime seam.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalRuntimeDiagnostic {
+    /// Stable taxonomy code.
+    pub code: LocalRuntimeErrorCode,
+    /// Comparable HTTP-style status code for app cutover and conformance.
+    pub status: u16,
+    /// Plain-language message safe to surface in logs or UI.
+    pub message: String,
+    /// Stable product identifier when the diagnostic belongs to one request.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub product_id: Option<String>,
+    /// Stable model identifier when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Runtime backend involved in the failure when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Honest backend health posture when the diagnostic is backend-driven.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend_health: Option<HealthStatus>,
+}
+
+impl LocalRuntimeDiagnostic {
+    /// Creates a structured local-runtime diagnostic.
+    #[must_use]
+    pub fn new(code: LocalRuntimeErrorCode, status: u16, message: impl Into<String>) -> Self {
+        Self {
+            code,
+            status,
+            message: message.into(),
+            product_id: None,
+            model_id: None,
+            backend: None,
+            backend_health: None,
+        }
+    }
+
+    /// Attaches a served-product identifier.
+    #[must_use]
+    pub fn with_product_id(mut self, product_id: impl Into<String>) -> Self {
+        self.product_id = Some(product_id.into());
+        self
+    }
+
+    /// Attaches a model identifier.
+    #[must_use]
+    pub fn with_model_id(mut self, model_id: impl Into<String>) -> Self {
+        self.model_id = Some(model_id.into());
+        self
+    }
+
+    /// Attaches the runtime backend name.
+    #[must_use]
+    pub fn with_backend(mut self, backend: impl Into<String>) -> Self {
+        self.backend = Some(backend.into());
+        self
+    }
+
+    /// Attaches the backend health posture.
+    #[must_use]
+    pub const fn with_backend_health(mut self, backend_health: HealthStatus) -> Self {
+        self.backend_health = Some(backend_health);
+        self
+    }
+}
+
+/// Runtime-visible device description.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceDescriptor {
+    /// Backend family name.
+    pub backend: String,
+    /// Logical device.
+    pub device: Device,
+    /// Human-readable device name when the backend can supply one.
+    pub device_name: Option<String>,
+    /// Supported dtypes for the device.
+    pub supported_dtypes: Vec<DType>,
+    /// Supported quantization modes for model-backed execution.
+    pub supported_quantization: Vec<QuantizationSupport>,
+    /// Optional memory capacity in bytes.
+    pub memory_capacity_bytes: Option<u64>,
+    /// Whether the device shares memory with the host, when known.
+    pub unified_memory: Option<bool>,
+    /// Stable feature flags relevant to runtime/backend selection.
+    pub feature_flags: Vec<String>,
+    /// AMD-specific topology/risk metadata when the device belongs to an AMD backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub amd_metadata: Option<AmdDeviceMetadata>,
+    /// NVIDIA-specific topology/risk metadata when the device belongs to a CUDA backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub nvidia_metadata: Option<NvidiaDeviceMetadata>,
+}
+
+/// High-level memory posture for one advertised execution device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DeviceMemoryClass {
+    /// Pure host/system-memory execution.
+    HostOnly,
+    /// Shared host/device memory such as unified-memory accelerators.
+    SharedHostDevice,
+    /// Dedicated accelerator memory.
+    DedicatedDevice,
+}
+
+/// High-level performance class for one advertised execution device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum DevicePerformanceClass {
+    /// Reference path, typically host CPU execution.
+    Reference,
+    /// Integrated or shared-memory accelerator path.
+    IntegratedAccelerator,
+    /// Dedicated discrete accelerator path.
+    DiscreteAccelerator,
+    /// Partitioned accelerator path such as MIG.
+    PartitionedAccelerator,
+}
+
+/// Reusable inventory qualifiers for compute-market capability surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceInventoryQualifiers {
+    /// Stable device identifier used for inventory comparisons when available.
+    pub stable_device_id: String,
+    /// Stable topology key such as PCI BDF when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_key: Option<String>,
+    /// High-level performance class for the device.
+    pub performance_class: DevicePerformanceClass,
+    /// High-level memory posture for the device.
+    pub memory_class: DeviceMemoryClass,
+    /// Total memory visible to the runtime for this device when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_memory_bytes: Option<u64>,
+    /// Currently free memory visible to the runtime for this device when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub free_memory_bytes: Option<u64>,
+}
+
+/// Stable placement identifier for one device participating in an execution topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionDevicePlacement {
+    /// Stable device identifier used for cross-run comparison.
+    pub stable_device_id: String,
+    /// Stable topology key such as PCI BDF when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_key: Option<String>,
+    /// Deterministic placement order inside the topology plan.
+    pub placement_index: usize,
+}
+
+impl ExecutionDevicePlacement {
+    /// Creates a stable placement identifier from reusable inventory qualifiers.
+    #[must_use]
+    pub fn from_inventory(device: &DeviceInventoryQualifiers, placement_index: usize) -> Self {
+        Self {
+            stable_device_id: device.stable_device_id.clone(),
+            topology_key: device.topology_key.clone(),
+            placement_index,
+        }
+    }
+}
+
+/// High-level topology mode for one compiled or advertised execution path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ExecutionTopologyKind {
+    /// The whole model executes on one concrete device.
+    SingleDevice,
+    /// Multiple devices each hold a full replica of the executable state.
+    Replicated,
+    /// Model layers are partitioned across multiple devices.
+    LayerSharded,
+    /// One tensor axis is partitioned across multiple devices.
+    TensorSharded,
+}
+
+/// One logical partition assigned to a concrete device.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ExecutionPartition {
+    /// One device owns the full executable state.
+    WholeModel,
+    /// One replica of a replicated plan.
+    Replica {
+        /// Stable replica index inside the topology plan.
+        replica_index: usize,
+    },
+    /// A contiguous block of layers owned by one device.
+    LayerRange {
+        /// Inclusive starting layer index.
+        start_layer: usize,
+        /// Exclusive ending layer index.
+        end_layer: usize,
+    },
+    /// A contiguous logical slice of one tensor axis.
+    TensorRange {
+        /// Tensor axis being partitioned.
+        axis: usize,
+        /// Inclusive starting logical element.
+        start: usize,
+        /// Exclusive ending logical element.
+        end: usize,
+    },
+}
+
+/// One stable shard or placement assignment inside an execution topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionShardAssignment {
+    /// Stable shard identifier within the topology plan.
+    pub shard_id: usize,
+    /// Concrete device placement that owns this partition.
+    pub device: ExecutionDevicePlacement,
+    /// Logical model or tensor partition mapped to that device.
+    pub partition: ExecutionPartition,
+}
+
+/// Explicit multi-device or sharded execution topology.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionTopologyPlan {
+    /// Backend that will execute this topology.
+    pub effective_backend: String,
+    /// High-level topology kind.
+    pub kind: ExecutionTopologyKind,
+    /// Ordered shard/placement assignments.
+    pub assignments: Vec<ExecutionShardAssignment>,
+}
+
+impl ExecutionTopologyPlan {
+    /// Creates a single-device topology.
+    #[must_use]
+    pub fn single_device(
+        effective_backend: impl Into<String>,
+        device: DeviceInventoryQualifiers,
+    ) -> Self {
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::SingleDevice,
+            assignments: vec![ExecutionShardAssignment {
+                shard_id: 0,
+                device: ExecutionDevicePlacement::from_inventory(&device, 0),
+                partition: ExecutionPartition::WholeModel,
+            }],
+        }
+    }
+
+    /// Creates a replicated multi-device topology.
+    #[must_use]
+    pub fn replicated(
+        effective_backend: impl Into<String>,
+        devices: Vec<DeviceInventoryQualifiers>,
+    ) -> Self {
+        let assignments = devices
+            .iter()
+            .enumerate()
+            .map(|(index, device)| ExecutionShardAssignment {
+                shard_id: index,
+                device: ExecutionDevicePlacement::from_inventory(device, index),
+                partition: ExecutionPartition::Replica {
+                    replica_index: index,
+                },
+            })
+            .collect();
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::Replicated,
+            assignments,
+        }
+    }
+
+    /// Creates a layer-sharded topology from explicit per-device layer ranges.
+    #[must_use]
+    pub fn layer_sharded(
+        effective_backend: impl Into<String>,
+        shards: Vec<(DeviceInventoryQualifiers, usize, usize)>,
+    ) -> Self {
+        let assignments = shards
+            .iter()
+            .enumerate()
+            .map(
+                |(index, (device, start_layer, end_layer))| ExecutionShardAssignment {
+                    shard_id: index,
+                    device: ExecutionDevicePlacement::from_inventory(device, index),
+                    partition: ExecutionPartition::LayerRange {
+                        start_layer: *start_layer,
+                        end_layer: *end_layer,
+                    },
+                },
+            )
+            .collect();
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::LayerSharded,
+            assignments,
+        }
+    }
+
+    /// Creates a tensor-sharded topology from explicit per-device axis ranges.
+    #[must_use]
+    pub fn tensor_sharded(
+        effective_backend: impl Into<String>,
+        axis: usize,
+        shards: Vec<(DeviceInventoryQualifiers, usize, usize)>,
+    ) -> Self {
+        let assignments = shards
+            .iter()
+            .enumerate()
+            .map(|(index, (device, start, end))| ExecutionShardAssignment {
+                shard_id: index,
+                device: ExecutionDevicePlacement::from_inventory(device, index),
+                partition: ExecutionPartition::TensorRange {
+                    axis,
+                    start: *start,
+                    end: *end,
+                },
+            })
+            .collect();
+        Self {
+            effective_backend: effective_backend.into(),
+            kind: ExecutionTopologyKind::TensorSharded,
+            assignments,
+        }
+    }
+
+    /// Returns a stable digest for the topology assignments.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.effective_backend.as_bytes());
+        hasher.update(b"|");
+        hasher.update(match self.kind {
+            ExecutionTopologyKind::SingleDevice => b"single_device".as_slice(),
+            ExecutionTopologyKind::Replicated => b"replicated".as_slice(),
+            ExecutionTopologyKind::LayerSharded => b"layer_sharded".as_slice(),
+            ExecutionTopologyKind::TensorSharded => b"tensor_sharded".as_slice(),
+        });
+        for assignment in &self.assignments {
+            hasher.update(b"|");
+            hasher.update(assignment.shard_id.to_string().as_bytes());
+            hasher.update(b"|");
+            hasher.update(assignment.device.stable_device_id.as_bytes());
+            hasher.update(b"|");
+            hasher.update(
+                assignment
+                    .device
+                    .topology_key
+                    .as_deref()
+                    .unwrap_or_default()
+                    .as_bytes(),
+            );
+            hasher.update(b"|");
+            hasher.update(assignment.device.placement_index.to_string().as_bytes());
+            hasher.update(b"|");
+            match assignment.partition {
+                ExecutionPartition::WholeModel => hasher.update(b"whole_model"),
+                ExecutionPartition::Replica { replica_index } => {
+                    hasher.update(b"replica|");
+                    hasher.update(replica_index.to_string().as_bytes());
+                }
+                ExecutionPartition::LayerRange {
+                    start_layer,
+                    end_layer,
+                } => {
+                    hasher.update(b"layer_range|");
+                    hasher.update(start_layer.to_string().as_bytes());
+                    hasher.update(b"|");
+                    hasher.update(end_layer.to_string().as_bytes());
+                }
+                ExecutionPartition::TensorRange { axis, start, end } => {
+                    hasher.update(b"tensor_range|");
+                    hasher.update(axis.to_string().as_bytes());
+                    hasher.update(b"|");
+                    hasher.update(start.to_string().as_bytes());
+                    hasher.update(b"|");
+                    hasher.update(end.to_string().as_bytes());
+                }
+            }
+        }
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+/// Machine-checkable promised accelerator requirements for one compute-market offer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceleratorExecutionRequirement {
+    /// Runtime backend promised for the offer.
+    pub runtime_backend: String,
+    /// Minimum number of devices required by the offer.
+    pub minimum_device_count: usize,
+    /// Exact topology kind required by the offer when one matters.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub required_topology_kind: Option<ExecutionTopologyKind>,
+    /// Exact stable device IDs required by the offer, when pinned.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_stable_device_ids: Vec<String>,
+    /// Exact topology keys required by the offer, when pinned.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub required_topology_keys: Vec<String>,
+    /// Minimum performance class required across delivered devices.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_performance_class: Option<DevicePerformanceClass>,
+    /// Minimum memory class required across delivered devices.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_memory_class: Option<DeviceMemoryClass>,
+    /// Minimum aggregate visible device memory required by the offer.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub minimum_total_memory_bytes: Option<u64>,
+}
+
+impl AcceleratorExecutionRequirement {
+    /// Creates a new promised accelerator requirement.
+    #[must_use]
+    pub fn new(runtime_backend: impl Into<String>, minimum_device_count: usize) -> Self {
+        Self {
+            runtime_backend: runtime_backend.into(),
+            minimum_device_count,
+            required_topology_kind: None,
+            required_stable_device_ids: Vec::new(),
+            required_topology_keys: Vec::new(),
+            minimum_performance_class: None,
+            minimum_memory_class: None,
+            minimum_total_memory_bytes: None,
+        }
+    }
+
+    /// Pins the offer to one exact topology kind.
+    #[must_use]
+    pub const fn with_topology_kind(mut self, kind: ExecutionTopologyKind) -> Self {
+        self.required_topology_kind = Some(kind);
+        self
+    }
+
+    /// Pins the offer to exact stable device IDs.
+    #[must_use]
+    pub fn with_required_devices(mut self, stable_device_ids: Vec<String>) -> Self {
+        self.required_stable_device_ids = stable_device_ids;
+        self
+    }
+
+    /// Pins the offer to exact topology keys.
+    #[must_use]
+    pub fn with_required_topology_keys(mut self, topology_keys: Vec<String>) -> Self {
+        self.required_topology_keys = topology_keys;
+        self
+    }
+
+    /// Requires at least one device performance class.
+    #[must_use]
+    pub const fn with_minimum_performance_class(mut self, class: DevicePerformanceClass) -> Self {
+        self.minimum_performance_class = Some(class);
+        self
+    }
+
+    /// Requires at least one device memory class.
+    #[must_use]
+    pub const fn with_minimum_memory_class(mut self, class: DeviceMemoryClass) -> Self {
+        self.minimum_memory_class = Some(class);
+        self
+    }
+
+    /// Requires a minimum aggregate visible memory budget.
+    #[must_use]
+    pub const fn with_minimum_total_memory_bytes(mut self, bytes: u64) -> Self {
+        self.minimum_total_memory_bytes = Some(bytes);
+        self
+    }
+
+    /// Evaluates one promised offer against the delivered execution context.
+    #[must_use]
+    pub fn evaluate(
+        &self,
+        delivered: DeliveredExecutionContext,
+    ) -> AcceleratorDeliverabilityReport {
+        let mut differences = Vec::new();
+        let mut underdelivered = false;
+
+        if delivered.runtime_backend != self.runtime_backend {
+            underdelivered = true;
+            differences.push(AcceleratorDeliverabilityDifference::new(
+                AcceleratorDeliverabilityDifferenceCode::RuntimeBackendChanged,
+                format!(
+                    "promised backend `{}` but delivered `{}`",
+                    self.runtime_backend, delivered.runtime_backend
+                ),
+            ));
+        }
+
+        if delivered.selected_devices.len() < self.minimum_device_count {
+            underdelivered = true;
+            differences.push(AcceleratorDeliverabilityDifference::new(
+                AcceleratorDeliverabilityDifferenceCode::DeviceCountReduced,
+                format!(
+                    "promised at least {} devices but delivered {}",
+                    self.minimum_device_count,
+                    delivered.selected_devices.len()
+                ),
+            ));
+        }
+
+        if let Some(required_kind) = self.required_topology_kind {
+            if delivered.topology_kind() != Some(required_kind) {
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::TopologyKindChanged,
+                    format!(
+                        "promised topology {:?} but delivered {:?}",
+                        required_kind,
+                        delivered.topology_kind()
+                    ),
+                ));
+            }
+        }
+
+        for stable_device_id in &self.required_stable_device_ids {
+            if !delivered
+                .selected_devices
+                .iter()
+                .any(|device| device.stable_device_id == *stable_device_id)
+            {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::StableDeviceMissing,
+                    format!("required stable device `{stable_device_id}` was not delivered"),
+                ));
+            }
+        }
+
+        for topology_key in &self.required_topology_keys {
+            if !delivered
+                .selected_devices
+                .iter()
+                .any(|device| device.topology_key.as_deref() == Some(topology_key.as_str()))
+            {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::TopologyKeyMissing,
+                    format!("required topology key `{topology_key}` was not delivered"),
+                ));
+            }
+        }
+
+        if let Some(required_class) = self.minimum_performance_class {
+            if delivered.selected_devices.iter().any(|device| {
+                device_performance_rank(device.performance_class)
+                    < device_performance_rank(required_class)
+            }) {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::PerformanceClassReduced,
+                    format!(
+                        "promised performance class {:?} or better across delivered devices",
+                        required_class
+                    ),
+                ));
+            }
+        }
+
+        if let Some(required_class) = self.minimum_memory_class {
+            if delivered.selected_devices.iter().any(|device| {
+                device_memory_rank(device.memory_class) < device_memory_rank(required_class)
+            }) {
+                underdelivered = true;
+                differences.push(AcceleratorDeliverabilityDifference::new(
+                    AcceleratorDeliverabilityDifferenceCode::MemoryClassReduced,
+                    format!(
+                        "promised memory class {:?} or better across delivered devices",
+                        required_class
+                    ),
+                ));
+            }
+        }
+
+        if let Some(required_total_memory) = self.minimum_total_memory_bytes {
+            match delivered.total_memory_bytes() {
+                Some(total_memory) if total_memory < required_total_memory => {
+                    underdelivered = true;
+                    differences.push(AcceleratorDeliverabilityDifference::new(
+                        AcceleratorDeliverabilityDifferenceCode::TotalMemoryReduced,
+                        format!(
+                            "promised at least {required_total_memory} bytes of total accelerator memory but delivered {total_memory}"
+                        ),
+                    ));
+                }
+                None => {
+                    underdelivered = true;
+                    differences.push(AcceleratorDeliverabilityDifference::new(
+                        AcceleratorDeliverabilityDifferenceCode::TotalMemoryUnknown,
+                        "promised total accelerator memory could not be verified from delivered inventory",
+                    ));
+                }
+                Some(_) => {}
+            }
+        }
+
+        let status = if underdelivered {
+            AcceleratorDeliverabilityStatus::Underdelivered
+        } else if differences.is_empty() {
+            AcceleratorDeliverabilityStatus::Exact
+        } else {
+            AcceleratorDeliverabilityStatus::CompatibleSubstitution
+        };
+
+        AcceleratorDeliverabilityReport {
+            status,
+            requirement: self.clone(),
+            delivered,
+            differences,
+        }
+    }
+}
+
+/// Delivered execution facts used to compare against one promised accelerator offer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeliveredExecutionContext {
+    /// Runtime backend that actually executed the work.
+    pub runtime_backend: String,
+    /// Explicit multi-device or sharded topology when one was planned.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Delivered device inventory qualifiers.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceInventoryQualifiers>,
+}
+
+impl DeliveredExecutionContext {
+    /// Creates a delivered execution context from explicit backend/topology/device facts.
+    #[must_use]
+    pub fn new(
+        runtime_backend: impl Into<String>,
+        execution_topology: Option<ExecutionTopologyPlan>,
+        selected_devices: Vec<DeviceInventoryQualifiers>,
+    ) -> Self {
+        Self {
+            runtime_backend: runtime_backend.into(),
+            execution_topology,
+            selected_devices,
+        }
+    }
+
+    /// Returns the delivered topology kind when one is explicit or derivable.
+    #[must_use]
+    pub fn topology_kind(&self) -> Option<ExecutionTopologyKind> {
+        self.execution_topology
+            .as_ref()
+            .map(|plan| plan.kind)
+            .or_else(|| {
+                (self.selected_devices.len() == 1).then_some(ExecutionTopologyKind::SingleDevice)
+            })
+    }
+
+    /// Returns the aggregate visible memory across delivered devices when known.
+    #[must_use]
+    pub fn total_memory_bytes(&self) -> Option<u64> {
+        if self.selected_devices.is_empty() {
+            return Some(0);
+        }
+        self.selected_devices.iter().try_fold(0u64, |acc, device| {
+            device.total_memory_bytes.map(|value| acc + value)
+        })
+    }
+}
+
+/// High-level result for one promised-vs-delivered accelerator comparison.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceleratorDeliverabilityStatus {
+    /// Delivered execution exactly matched the promised accelerator offer.
+    Exact,
+    /// Delivered execution differed, but still met the minimum promise.
+    CompatibleSubstitution,
+    /// Delivered execution failed to satisfy the promised accelerator offer.
+    Underdelivered,
+}
+
+/// Stable difference code for one promised-vs-delivered accelerator comparison.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AcceleratorDeliverabilityDifferenceCode {
+    /// The runtime backend changed between promise and delivery.
+    RuntimeBackendChanged,
+    /// The delivered topology kind differed from the promise.
+    TopologyKindChanged,
+    /// Fewer devices were delivered than promised.
+    DeviceCountReduced,
+    /// One required stable device ID was not delivered.
+    StableDeviceMissing,
+    /// One required topology key was not delivered.
+    TopologyKeyMissing,
+    /// Delivered devices fell below the promised performance class.
+    PerformanceClassReduced,
+    /// Delivered devices fell below the promised memory class.
+    MemoryClassReduced,
+    /// Delivered aggregate memory fell below the promised minimum.
+    TotalMemoryReduced,
+    /// Delivered aggregate memory could not be verified.
+    TotalMemoryUnknown,
+}
+
+/// One explicit difference between a promised and delivered accelerator offer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceleratorDeliverabilityDifference {
+    /// Stable difference code.
+    pub code: AcceleratorDeliverabilityDifferenceCode,
+    /// Short machine-readable explanation for the difference.
+    pub detail: String,
+}
+
+impl AcceleratorDeliverabilityDifference {
+    fn new(code: AcceleratorDeliverabilityDifferenceCode, detail: impl Into<String>) -> Self {
+        Self {
+            code,
+            detail: detail.into(),
+        }
+    }
+}
+
+/// Machine-checkable promised-vs-delivered report for accelerator-sensitive offers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AcceleratorDeliverabilityReport {
+    /// High-level comparison status.
+    pub status: AcceleratorDeliverabilityStatus,
+    /// Promised accelerator requirement.
+    pub requirement: AcceleratorExecutionRequirement,
+    /// Delivered execution context.
+    pub delivered: DeliveredExecutionContext,
+    /// Explicit substitutions or underdelivery differences.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub differences: Vec<AcceleratorDeliverabilityDifference>,
+}
+
+const fn device_performance_rank(class: DevicePerformanceClass) -> u8 {
+    match class {
+        DevicePerformanceClass::Reference => 0,
+        DevicePerformanceClass::IntegratedAccelerator => 1,
+        DevicePerformanceClass::PartitionedAccelerator => 2,
+        DevicePerformanceClass::DiscreteAccelerator => 3,
+    }
+}
+
+const fn device_memory_rank(class: DeviceMemoryClass) -> u8 {
+    match class {
+        DeviceMemoryClass::HostOnly => 0,
+        DeviceMemoryClass::SharedHostDevice => 1,
+        DeviceMemoryClass::DedicatedDevice => 2,
+    }
+}
+
+impl DeviceDescriptor {
+    /// Returns stable inventory qualifiers derived from the current device/topology metadata.
+    #[must_use]
+    pub fn inventory_qualifiers(&self) -> DeviceInventoryQualifiers {
+        let topology_key = self
+            .nvidia_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.topology.pci_bdf.clone())
+            .or_else(|| {
+                self.amd_metadata
+                    .as_ref()
+                    .and_then(|metadata| metadata.topology.pci_bdf.clone())
+            });
+        let stable_device_id = topology_key
+            .clone()
+            .or_else(|| self.device.label().map(String::from))
+            .unwrap_or_else(|| format!("{}:{}", self.backend, self.device.ordinal()));
+        let performance_class = if self.device.kind() == DeviceKind::Cpu {
+            DevicePerformanceClass::Reference
+        } else if self
+            .nvidia_metadata
+            .as_ref()
+            .and_then(|metadata| metadata.topology.mig_profile.as_ref())
+            .is_some()
+        {
+            DevicePerformanceClass::PartitionedAccelerator
+        } else if self.unified_memory == Some(true) {
+            DevicePerformanceClass::IntegratedAccelerator
+        } else {
+            DevicePerformanceClass::DiscreteAccelerator
+        };
+        let memory_class = if self.device.kind() == DeviceKind::Cpu {
+            DeviceMemoryClass::HostOnly
+        } else if self.unified_memory == Some(true) {
+            DeviceMemoryClass::SharedHostDevice
+        } else {
+            DeviceMemoryClass::DedicatedDevice
+        };
+
+        DeviceInventoryQualifiers {
+            stable_device_id,
+            topology_key,
+            performance_class,
+            memory_class,
+            total_memory_bytes: self.memory_capacity_bytes,
+            free_memory_bytes: None,
+        }
+    }
+}
+
+/// Exact allocator-pool reuse posture for one backend.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AllocatorPoolMode {
+    /// Do not retain freed buffers for reuse.
+    Disabled,
+    /// Reuse only buffers whose tensor spec matches exactly.
+    ExactTensorSpec,
+}
+
+/// Explicit allocator-pool policy for one backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllocatorPoolPolicy {
+    /// Reuse posture for returned buffers.
+    pub mode: AllocatorPoolMode,
+    /// Maximum cached buffers retained by the pool.
+    pub max_cached_buffers: usize,
+    /// Maximum cached bytes retained by the pool.
+    pub max_cached_bytes: u64,
+}
+
+impl AllocatorPoolPolicy {
+    /// Creates a disabled allocator pool policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self {
+            mode: AllocatorPoolMode::Disabled,
+            max_cached_buffers: 0,
+            max_cached_bytes: 0,
+        }
+    }
+
+    /// Creates an exact-spec reuse policy with explicit bounds.
+    #[must_use]
+    pub const fn exact_tensor_spec(max_cached_buffers: usize, max_cached_bytes: u64) -> Self {
+        Self {
+            mode: AllocatorPoolMode::ExactTensorSpec,
+            max_cached_buffers,
+            max_cached_bytes,
+        }
+    }
+}
+
+/// Current allocator-pool occupancy for one backend.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllocatorPoolState {
+    /// Number of buffers currently retained for reuse.
+    pub cached_buffers: usize,
+    /// Number of bytes currently retained for reuse.
+    pub cached_bytes: u64,
+}
+
+/// Explicit allocator-pool policy plus current occupancy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AllocatorPoolReport {
+    /// Allocator-pool policy for the backend.
+    pub policy: AllocatorPoolPolicy,
+    /// Current allocator-pool occupancy.
+    pub state: AllocatorPoolState,
+}
+
+/// Explicit execution-plan cache policy for one backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionPlanCachePolicy {
+    /// Whether compiled execution plans are cached across requests.
+    pub enabled: bool,
+    /// Maximum cache entries retained by the backend.
+    pub max_cached_entries: usize,
+    /// Maximum cache bytes reserved by policy, when bounded.
+    pub max_cached_bytes: Option<u64>,
+}
+
+impl ExecutionPlanCachePolicy {
+    /// Creates a disabled execution-plan cache policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self {
+            enabled: false,
+            max_cached_entries: 0,
+            max_cached_bytes: Some(0),
+        }
+    }
+
+    /// Creates a bounded enabled execution-plan cache policy.
+    #[must_use]
+    pub const fn bounded(max_cached_entries: usize, max_cached_bytes: Option<u64>) -> Self {
+        Self {
+            enabled: true,
+            max_cached_entries,
+            max_cached_bytes,
+        }
+    }
+}
+
+/// Current execution-plan cache occupancy for one backend.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionPlanCacheState {
+    /// Number of compiled execution plans retained by the backend.
+    pub cached_entries: usize,
+    /// Estimated bytes retained by the cache.
+    pub cached_bytes: u64,
+}
+
+/// Explicit execution-plan cache policy plus current occupancy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionPlanCacheReport {
+    /// Execution-plan cache policy for the backend.
+    pub policy: ExecutionPlanCachePolicy,
+    /// Current execution-plan cache occupancy.
+    pub state: ExecutionPlanCacheState,
+}
+
+/// Explicit kernel-cache policy for one backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KernelCachePolicy {
+    /// Whether compiled kernels are cached across requests.
+    pub enabled: bool,
+    /// Maximum cache entries retained by the backend.
+    pub max_cached_entries: usize,
+    /// Maximum cache bytes reserved by policy, when bounded.
+    pub max_cached_bytes: Option<u64>,
+}
+
+impl KernelCachePolicy {
+    /// Creates a disabled kernel-cache policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self {
+            enabled: false,
+            max_cached_entries: 0,
+            max_cached_bytes: Some(0),
+        }
+    }
+
+    /// Creates a bounded enabled kernel-cache policy.
+    #[must_use]
+    pub const fn bounded(max_cached_entries: usize, max_cached_bytes: Option<u64>) -> Self {
+        Self {
+            enabled: true,
+            max_cached_entries,
+            max_cached_bytes,
+        }
+    }
+}
+
+/// Current kernel-cache occupancy for one backend.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KernelCacheState {
+    /// Number of compiled cache entries retained by the backend.
+    pub cached_entries: usize,
+    /// Estimated bytes retained by the cache.
+    pub cached_bytes: u64,
+}
+
+/// Explicit kernel-cache policy plus current occupancy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KernelCacheReport {
+    /// Kernel-cache policy for the backend.
+    pub policy: KernelCachePolicy,
+    /// Current kernel-cache occupancy.
+    pub state: KernelCacheState,
+}
+
+/// Backend-visible device-memory budget reserved around allocator and kernel caches.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DeviceMemoryBudget {
+    /// Total device-visible memory budget when the backend can report one.
+    pub total_bytes: Option<u64>,
+    /// Bytes reserved by allocator-pool policy.
+    pub allocator_pool_budget_bytes: u64,
+    /// Bytes reserved by kernel-cache policy.
+    pub kernel_cache_budget_bytes: u64,
+    /// Remaining bytes available for execution/model residency after reserved budgets, when known.
+    pub available_execution_bytes: Option<u64>,
+}
+
+impl DeviceMemoryBudget {
+    /// Creates a device-memory budget from explicit total and reserved budgets.
+    #[must_use]
+    pub fn new(
+        total_bytes: Option<u64>,
+        allocator_pool_budget_bytes: u64,
+        kernel_cache_budget_bytes: u64,
+    ) -> Self {
+        let reserved = allocator_pool_budget_bytes.saturating_add(kernel_cache_budget_bytes);
+        let available_execution_bytes =
+            total_bytes.and_then(|total_bytes| total_bytes.checked_sub(reserved));
+        Self {
+            total_bytes,
+            allocator_pool_budget_bytes,
+            kernel_cache_budget_bytes,
+            available_execution_bytes,
+        }
+    }
+}
+
+/// Explicit backend resource state carried into capability and receipt surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendRuntimeResources {
+    /// Explicit execution-plan cache policy and occupancy.
+    pub execution_plan_cache: ExecutionPlanCacheReport,
+    /// Explicit allocator-pool policy and occupancy.
+    pub allocator_pool: AllocatorPoolReport,
+    /// Explicit kernel-cache policy and occupancy.
+    pub kernel_cache: KernelCacheReport,
+    /// Device-memory budget reserved around those runtime-owned caches, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_memory_budget: Option<DeviceMemoryBudget>,
+}
+
+/// Current execution-plan cache format version.
+pub const EXECUTION_PLAN_CACHE_FORMAT_VERSION: u32 = 1;
+
+/// Current backend kernel-cache format version.
+pub const KERNEL_CACHE_FORMAT_VERSION: u32 = 1;
+
+/// Current paged-tensor storage format version.
+pub const PAGED_TENSOR_STORAGE_FORMAT_VERSION: u32 = 1;
+
+/// Current shared prefix-cache format version.
+pub const PREFIX_CACHE_FORMAT_VERSION: u32 = 1;
+
+/// Current persisted/session KV-state format version.
+pub const KV_STATE_FORMAT_VERSION: u32 = 1;
+
+/// Cache family covered by the runtime invalidation policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheKind {
+    /// Compiled execution plans retained across warm loads.
+    ExecutionPlan,
+    /// Backend-managed compiled kernels or pipelines.
+    KernelCache,
+    /// Artifact-backed paged tensor storage or mappings.
+    PagedTensorStorage,
+    /// Shared prompt-prefix reuse entries.
+    PrefixCache,
+    /// Per-session KV state retained across requests.
+    KvState,
+}
+
+/// Reuse scope for one runtime-owned cache family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheScope {
+    /// Reuse is limited to the current host process.
+    ProcessLocal,
+    /// Reuse spans multiple requests in shared in-memory state.
+    SharedAcrossRequests,
+    /// Reuse spans multiple requests for one bound session only.
+    SessionBound,
+    /// Reuse restores access from artifact-backed bytes instead of in-memory copies.
+    ArtifactBacked,
+}
+
+/// Explicit action taken for one cache family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheAction {
+    /// Compatible state was reused as-is.
+    Reuse,
+    /// State was rebuilt under the current runtime.
+    Rebuild,
+    /// Reuse was intentionally skipped.
+    Bypass,
+    /// Incompatible state was explicitly discarded.
+    Invalidate,
+    /// State was restored from artifact-backed or serialized inputs.
+    Restore,
+}
+
+/// Explicit trigger that invalidates one cache family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CacheInvalidationTrigger {
+    /// The runtime binary or crate version changed.
+    BinaryUpgrade,
+    /// The effective backend or its toolchain version changed.
+    BackendToolchainUpgrade,
+    /// Model-level metadata changed.
+    ModelMetadataChange,
+    /// Tokenizer behavior or digest changed.
+    TokenizerDrift,
+    /// Chat-template behavior or digest changed.
+    ChatTemplateDrift,
+    /// Default BOS/EOS or stop behavior changed.
+    GenerationDefaultsDrift,
+    /// Quantization family or layout changed.
+    QuantizationChange,
+    /// The execution-plan cache format changed.
+    PlanFormatUpgrade,
+    /// The backend kernel-cache format changed.
+    KernelFormatUpgrade,
+    /// The paged-tensor storage format changed.
+    PagedTensorFormatUpgrade,
+    /// The shared prefix-cache format changed.
+    PrefixCacheFormatUpgrade,
+    /// The KV-state format changed.
+    KvStateFormatUpgrade,
+    /// The caller explicitly reset or discarded state.
+    ExplicitReset,
+}
+
+/// Invalidations and mismatch behavior for one cache family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheStorePolicy {
+    /// Reuse scope for the cache family.
+    pub scope: CacheScope,
+    /// Current runtime-owned format version for the cache family.
+    pub format_version: u32,
+    /// Action taken when cached state remains compatible.
+    pub compatible_action: CacheAction,
+    /// Action taken when a required compatibility input changes.
+    pub incompatible_action: CacheAction,
+    /// Triggers that invalidate this cache family.
+    pub invalidates_on: Vec<CacheInvalidationTrigger>,
+}
+
+impl CacheStorePolicy {
+    /// Creates a cache-store policy from explicit compatibility rules.
+    #[must_use]
+    pub fn new(
+        scope: CacheScope,
+        format_version: u32,
+        compatible_action: CacheAction,
+        incompatible_action: CacheAction,
+        invalidates_on: Vec<CacheInvalidationTrigger>,
+    ) -> Self {
+        Self {
+            scope,
+            format_version,
+            compatible_action,
+            incompatible_action,
+            invalidates_on,
+        }
+    }
+}
+
+/// Runtime-owned invalidation policy across reusable cache families.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheInvalidationPolicy {
+    /// Runtime binary version used to evaluate upgrade invalidation.
+    pub runtime_binary_version: String,
+    /// Execution-plan cache policy.
+    pub execution_plan: CacheStorePolicy,
+    /// Backend kernel-cache policy.
+    pub kernel_cache: CacheStorePolicy,
+    /// Paged tensor storage policy.
+    pub paged_tensor_storage: CacheStorePolicy,
+    /// Shared prefix-cache policy.
+    pub prefix_cache: CacheStorePolicy,
+    /// Session KV-state policy.
+    pub kv_state: CacheStorePolicy,
+}
+
+impl Default for CacheInvalidationPolicy {
+    fn default() -> Self {
+        default_cache_invalidation_policy()
+    }
+}
+
+/// Observable cache action for one realized request or restore path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CacheObservation {
+    /// Cache family involved in the action.
+    pub kind: CacheKind,
+    /// Action taken for that cache family.
+    pub action: CacheAction,
+    /// Trigger that forced a rebuild, invalidation, or bypass when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub trigger: Option<CacheInvalidationTrigger>,
+    /// Short machine-readable explanation for the realized action.
+    pub detail: String,
+}
+
+impl CacheObservation {
+    /// Creates a cache observation from explicit action and detail.
+    #[must_use]
+    pub fn new(kind: CacheKind, action: CacheAction, detail: impl Into<String>) -> Self {
+        Self {
+            kind,
+            action,
+            trigger: None,
+            detail: detail.into(),
+        }
+    }
+
+    /// Attaches the invalidation trigger that drove the action.
+    #[must_use]
+    pub const fn with_trigger(mut self, trigger: CacheInvalidationTrigger) -> Self {
+        self.trigger = Some(trigger);
+        self
+    }
+}
+
+/// Whether a request compiled a plan cold or reused one from a warm cache.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CompilePathTemperature {
+    /// The runtime had to compile a new execution plan for this path.
+    ColdCompile,
+    /// The runtime reused an already-compiled execution plan.
+    WarmReuse,
+}
+
+/// Explicit compile-path evidence for a realized execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CompilePathEvidence {
+    /// Whether the path compiled cold or reused a warm plan cache entry.
+    pub temperature: CompilePathTemperature,
+    /// Observable execution-plan cache action for the realized path.
+    pub execution_plan_cache: CacheObservation,
+    /// Observable kernel-cache action for the realized path.
+    pub kernel_cache: CacheObservation,
+}
+
+/// Delivery-proof facts surfaced for one realized execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionDeliveryProof {
+    /// Stable execution-plan digest used for the realized path.
+    pub execution_plan_digest: String,
+    /// Total kernel or step dispatch count surfaced by the backend path.
+    pub kernel_count: usize,
+    /// Total bytes moved or written by the backend path.
+    pub bytes_moved: u64,
+    /// Number of execution-plan cache hits observed during the request path.
+    pub plan_cache_hits: usize,
+    /// Number of execution-plan cache misses or rebuilds observed during the request path.
+    pub plan_cache_misses: usize,
+    /// KV-cache growth surfaced for the request path, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_growth: Option<KvCacheGrowth>,
+}
+
+/// Provider-facing settlement-linkage inputs derived from a realized execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SettlementLinkageInput {
+    /// Stable request digest used for settlement correlation.
+    pub request_digest: String,
+    /// Product family executed for the request.
+    pub product_id: String,
+    /// Stable model identifier executed for the request.
+    pub model_id: String,
+    /// Stable served-artifact digest for the realized model/backend path.
+    pub served_artifact_digest: String,
+    /// Stable execution-plan digest used for the realized path.
+    pub execution_plan_digest: String,
+    /// Runtime backend that actually executed the work.
+    pub runtime_backend: String,
+    /// Total kernel or step dispatch count surfaced by the backend path.
+    pub kernel_count: usize,
+    /// Total bytes moved or written by the backend path.
+    pub bytes_moved: u64,
+    /// Number of execution-plan cache hits observed during the request path.
+    pub plan_cache_hits: usize,
+    /// Number of execution-plan cache misses or rebuilds observed during the request path.
+    pub plan_cache_misses: usize,
+    /// KV-cache growth surfaced for the request path, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub kv_growth: Option<KvCacheGrowth>,
+    /// Output token count when the product family emits tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output_tokens: Option<usize>,
+}
+
+/// Returns the current runtime cache invalidation policy.
+#[must_use]
+pub fn default_cache_invalidation_policy() -> CacheInvalidationPolicy {
+    CacheInvalidationPolicy {
+        runtime_binary_version: String::from(env!("CARGO_PKG_VERSION")),
+        execution_plan: CacheStorePolicy::new(
+            CacheScope::ProcessLocal,
+            EXECUTION_PLAN_CACHE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Rebuild,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::TokenizerDrift,
+                CacheInvalidationTrigger::ChatTemplateDrift,
+                CacheInvalidationTrigger::GenerationDefaultsDrift,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::PlanFormatUpgrade,
+            ],
+        ),
+        kernel_cache: CacheStorePolicy::new(
+            CacheScope::ProcessLocal,
+            KERNEL_CACHE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Invalidate,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::KernelFormatUpgrade,
+            ],
+        ),
+        paged_tensor_storage: CacheStorePolicy::new(
+            CacheScope::ArtifactBacked,
+            PAGED_TENSOR_STORAGE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Restore,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::PagedTensorFormatUpgrade,
+            ],
+        ),
+        prefix_cache: CacheStorePolicy::new(
+            CacheScope::SharedAcrossRequests,
+            PREFIX_CACHE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Rebuild,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::TokenizerDrift,
+                CacheInvalidationTrigger::ChatTemplateDrift,
+                CacheInvalidationTrigger::GenerationDefaultsDrift,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::PrefixCacheFormatUpgrade,
+            ],
+        ),
+        kv_state: CacheStorePolicy::new(
+            CacheScope::SessionBound,
+            KV_STATE_FORMAT_VERSION,
+            CacheAction::Reuse,
+            CacheAction::Invalidate,
+            vec![
+                CacheInvalidationTrigger::BinaryUpgrade,
+                CacheInvalidationTrigger::BackendToolchainUpgrade,
+                CacheInvalidationTrigger::ModelMetadataChange,
+                CacheInvalidationTrigger::TokenizerDrift,
+                CacheInvalidationTrigger::ChatTemplateDrift,
+                CacheInvalidationTrigger::GenerationDefaultsDrift,
+                CacheInvalidationTrigger::QuantizationChange,
+                CacheInvalidationTrigger::KvStateFormatUpgrade,
+            ],
+        ),
+    }
+}
+
+/// How one backend executes a typed extension family.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendExtensionExecution {
+    /// The backend executes the extension through a reference implementation.
+    Reference,
+    /// The backend executes the extension through a backend-specific fused/custom kernel.
+    BackendSpecialized,
+}
+
+/// Explicit support declaration for one backend-extension family.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendExtensionSupport {
+    /// Backend-extension family.
+    pub kind: BackendExtensionKind,
+    /// Execution posture for that family.
+    pub execution: BackendExtensionExecution,
+}
+
+impl BackendExtensionSupport {
+    /// Creates reference-path support for one extension family.
+    #[must_use]
+    pub const fn reference(kind: BackendExtensionKind) -> Self {
+        Self {
+            kind,
+            execution: BackendExtensionExecution::Reference,
+        }
+    }
+
+    /// Creates backend-specialized support for one extension family.
+    #[must_use]
+    pub const fn backend_specialized(kind: BackendExtensionKind) -> Self {
+        Self {
+            kind,
+            execution: BackendExtensionExecution::BackendSpecialized,
+        }
+    }
+}
+
+/// Distinct AMD runtime mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdRuntimeMode {
+    /// Kernel-mediated AMD KFD posture using the standard `amdgpu` driver stack.
+    Kfd,
+    /// Explicitly opted-in userspace/AM-driver posture.
+    Userspace,
+}
+
+/// Whether an AMD mode requires or has satisfied explicit opt-in.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdOptInStatus {
+    /// The backend does not require an explicit opt-in gate.
+    NotRequired,
+    /// The backend is present but currently disabled until the operator opts in.
+    Disabled,
+    /// The operator has explicitly enabled the backend.
+    Enabled,
+}
+
+/// Risk posture for an AMD backend mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdRiskLevel {
+    /// Lower-risk operational posture.
+    Standard,
+    /// Higher-risk posture that needs stronger operator intent.
+    Elevated,
+}
+
+/// Driver ownership/binding state relevant to AMD recovery posture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdDriverBinding {
+    /// The kernel `amdgpu` driver still owns the device.
+    KernelAmdgpu,
+    /// A userspace stack has taken ownership of the device.
+    UserspaceClaimed,
+    /// Psionic could not determine the binding state.
+    Unknown,
+}
+
+/// Expected operator-level recovery step for an AMD backend mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AmdRecoveryAction {
+    /// Restart the affected process/runtime first.
+    ProcessRestart,
+    /// Attempt a kernel-driver reset or recovery path.
+    KernelDriverReset,
+    /// Rebind or restore the kernel driver after userspace mode.
+    RebindKernelDriver,
+    /// Reboot the host when the runtime cannot recover in-place.
+    RebootHost,
+}
+
+/// Stable AMD topology fields relevant to backend discovery and later capability reporting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdTopologyInfo {
+    /// Stable architecture label such as `gfx1100`, when known.
+    pub architecture: Option<String>,
+    /// PCI bus/device/function address, when known.
+    pub pci_bdf: Option<String>,
+    /// Number of XCC partitions, when known.
+    pub xcc_count: Option<u16>,
+    /// Number of shader engines, when known.
+    pub shader_engine_count: Option<u16>,
+    /// Number of compute units, when known.
+    pub compute_unit_count: Option<u16>,
+    /// Total VRAM bytes, when known.
+    pub vram_bytes: Option<u64>,
+    /// Host-visible VRAM bytes, when known.
+    pub visible_vram_bytes: Option<u64>,
+}
+
+/// Stable AMD risk posture derived from the backend/runtime mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdRiskProfile {
+    /// High-level risk classification.
+    pub level: AmdRiskLevel,
+    /// Whether the mode requires explicit operator intent before activation.
+    pub requires_explicit_opt_in: bool,
+    /// Whether the mode may unbind or otherwise displace the kernel driver.
+    pub may_unbind_kernel_driver: bool,
+    /// Plain-text warnings the operator should see or preserve in logs.
+    pub warnings: Vec<String>,
+}
+
+/// Stable AMD recovery posture derived from the backend/runtime mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdRecoveryProfile {
+    /// Current or expected driver binding state.
+    pub driver_binding: AmdDriverBinding,
+    /// Ordered recovery actions Psionic expects the operator/runtime to consider.
+    pub expected_actions: Vec<AmdRecoveryAction>,
+}
+
+/// AMD-specific device metadata carried through runtime and provider truth surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdDeviceMetadata {
+    /// Runtime mode that discovered the device.
+    pub mode: AmdRuntimeMode,
+    /// Stable topology snapshot.
+    pub topology: AmdTopologyInfo,
+    /// Risk posture for the selected AMD mode.
+    pub risk: AmdRiskProfile,
+    /// Recovery posture for the selected AMD mode.
+    pub recovery: AmdRecoveryProfile,
+}
+
+/// Backend-local AMD discovery report that preserves mode and opt-in truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AmdBackendReport {
+    /// AMD backend mode represented by the report.
+    pub mode: AmdRuntimeMode,
+    /// Opt-in state for the backend mode.
+    pub opt_in: AmdOptInStatus,
+    /// Discovered devices for the mode.
+    pub devices: Vec<DeviceDescriptor>,
+    /// Honest readiness/health for the mode.
+    pub health: RuntimeHealth,
+}
+
+/// High-level NVIDIA operational risk posture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NvidiaRiskLevel {
+    /// Lower-risk dedicated compute posture.
+    Standard,
+    /// Higher-risk posture such as display-attached or MIG-partitioned operation.
+    Elevated,
+}
+
+/// Stable NVIDIA topology fields relevant to backend discovery and later capability reporting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaTopologyInfo {
+    /// Stable architecture label such as `ada`, when known.
+    pub architecture: Option<String>,
+    /// Stable CUDA compute capability such as `8.9`, when known.
+    pub compute_capability: Option<String>,
+    /// PCI bus/device/function address, when known.
+    pub pci_bdf: Option<String>,
+    /// Number of streaming multiprocessors, when known.
+    pub sm_count: Option<u16>,
+    /// Total VRAM bytes, when known.
+    pub vram_bytes: Option<u64>,
+    /// Active MIG profile or partition label, when known.
+    pub mig_profile: Option<String>,
+}
+
+/// Stable NVIDIA risk posture derived from the current topology and host role.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaRiskProfile {
+    /// High-level risk classification.
+    pub level: NvidiaRiskLevel,
+    /// Whether the GPU is believed to be attached to a live display, when known.
+    pub display_attached: Option<bool>,
+    /// Whether the device is a MIG partition or otherwise sharing the physical GPU.
+    pub mig_partitioned: bool,
+    /// Plain-text warnings the operator should preserve in logs or inventory surfaces.
+    pub warnings: Vec<String>,
+}
+
+/// Expected operator-level recovery step for a CUDA backend/device.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum NvidiaRecoveryAction {
+    /// Restart the affected process/runtime first.
+    ProcessRestart,
+    /// Attempt a GPU reset when the platform/driver permits it.
+    GpuReset,
+    /// Reboot the host when the runtime cannot recover in place.
+    RebootHost,
+}
+
+/// Stable NVIDIA recovery posture derived from the current device and host mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaRecoveryProfile {
+    /// Whether the runtime believes GPU reset is available on this host, when known.
+    pub supports_gpu_reset: Option<bool>,
+    /// Ordered recovery actions Psionic expects the operator/runtime to consider.
+    pub expected_actions: Vec<NvidiaRecoveryAction>,
+}
+
+/// NVIDIA-specific device metadata carried through runtime and provider truth surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaDeviceMetadata {
+    /// Stable topology snapshot.
+    pub topology: NvidiaTopologyInfo,
+    /// Risk posture for the selected NVIDIA device.
+    pub risk: NvidiaRiskProfile,
+    /// Recovery posture for the selected NVIDIA device.
+    pub recovery: NvidiaRecoveryProfile,
+}
+
+/// Backend-local NVIDIA discovery report that preserves topology/risk truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NvidiaBackendReport {
+    /// Discovered devices for the CUDA backend.
+    pub devices: Vec<DeviceDescriptor>,
+    /// Honest readiness/health for the backend.
+    pub health: RuntimeHealth,
+}
+
+/// How a backend handles a quantization mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationExecution {
+    /// Execute the quantized representation directly.
+    Native,
+    /// Dequantize weights to `f32` before execution.
+    DequantizeToF32,
+}
+
+/// Explicit load/storage posture for a quantized mode.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QuantizationLoadPath {
+    /// Weights arrive as ordinary dense `f32` tensors.
+    DenseF32,
+    /// The runtime loads quantized weights and immediately dequantizes them to `f32`.
+    DequantizedF32,
+    /// The runtime preserves quantized blocks in backend-owned storage.
+    BackendQuantized,
+}
+
+/// Runtime support declaration for a quantization mode.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QuantizationSupport {
+    /// Supported quantization mode.
+    pub mode: QuantizationMode,
+    /// Explicit load/storage path for the quantized weights.
+    pub load_path: QuantizationLoadPath,
+    /// How the runtime executes that mode.
+    pub execution: QuantizationExecution,
+}
+
+/// Runtime health state.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum HealthStatus {
+    /// Device/runtime is ready for work.
+    Ready,
+    /// Device/runtime can execute but with caveats.
+    Degraded,
+    /// Device/runtime cannot execute.
+    Offline,
+}
+
+/// Health report for a runtime or backend.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeHealth {
+    /// Current health status.
+    pub status: HealthStatus,
+    /// Plain-text explanation.
+    pub message: String,
+}
+
+/// Default number of recent runtime transitions to retain for observability.
+pub const DEFAULT_OBSERVABILITY_HISTORY_LIMIT: usize = 32;
+
+/// Current observed health for one backend in the local runtime.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendHealthObservation {
+    /// Stable backend label such as `cpu` or `metal`.
+    pub backend: String,
+    /// Current observed health status.
+    pub status: HealthStatus,
+    /// Current observed health message.
+    pub message: String,
+    /// Timestamp when the backend was last observed.
+    pub observed_at_millis: u64,
+    /// Timestamp when the backend last changed health/message.
+    pub changed_at_millis: u64,
+}
+
+/// Explicit runtime transition category surfaced for local observability.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum RuntimeTransitionKind {
+    /// A model was loaded and begins in the cold state.
+    ModelLoadedCold,
+    /// A previously cold model became warm after serving its first request.
+    ModelBecameWarm,
+    /// A model was unloaded or evicted.
+    ModelUnloaded,
+    /// A backend changed health posture.
+    BackendHealthChanged,
+}
+
+/// One observable runtime transition for local lifecycle/debug reporting.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RuntimeTransitionEvent {
+    /// Transition category.
+    pub kind: RuntimeTransitionKind,
+    /// Model involved in the transition, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_id: Option<String>,
+    /// Backend involved in the transition, when applicable.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub backend: Option<String>,
+    /// Previous backend health status when the transition is health-driven.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub previous_status: Option<HealthStatus>,
+    /// Current backend health status when the transition is health-driven.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub status: Option<HealthStatus>,
+    /// Human-readable transition detail when useful.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    /// Timestamp when the transition was observed.
+    pub observed_at_millis: u64,
+}
+
+impl RuntimeTransitionEvent {
+    /// Creates a model lifecycle transition.
+    #[must_use]
+    pub fn model(
+        kind: RuntimeTransitionKind,
+        model_id: impl Into<String>,
+        observed_at_millis: u64,
+    ) -> Self {
+        Self {
+            kind,
+            model_id: Some(model_id.into()),
+            backend: None,
+            previous_status: None,
+            status: None,
+            message: None,
+            observed_at_millis,
+        }
+    }
+
+    /// Creates a backend-health transition.
+    #[must_use]
+    pub fn backend_health_changed(
+        backend: impl Into<String>,
+        previous: &RuntimeHealth,
+        current: &RuntimeHealth,
+        observed_at_millis: u64,
+    ) -> Self {
+        Self {
+            kind: RuntimeTransitionKind::BackendHealthChanged,
+            model_id: None,
+            backend: Some(backend.into()),
+            previous_status: Some(previous.status),
+            status: Some(current.status),
+            message: Some(current.message.clone()),
+            observed_at_millis,
+        }
+    }
+}
+
+/// Bounded log of recent runtime transitions.
+#[derive(Clone, Debug)]
+pub struct RuntimeTransitionLog {
+    limit: usize,
+    events: VecDeque<RuntimeTransitionEvent>,
+}
+
+impl RuntimeTransitionLog {
+    /// Creates a transition log with the default retention limit.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_limit(DEFAULT_OBSERVABILITY_HISTORY_LIMIT)
+    }
+
+    /// Creates a transition log with an explicit retention limit.
+    #[must_use]
+    pub fn with_limit(limit: usize) -> Self {
+        Self {
+            limit: limit.max(1),
+            events: VecDeque::new(),
+        }
+    }
+
+    /// Records one runtime transition, dropping the oldest retained entry when full.
+    pub fn record(&mut self, event: RuntimeTransitionEvent) {
+        if self.events.len() == self.limit {
+            self.events.pop_front();
+        }
+        self.events.push_back(event);
+    }
+
+    /// Returns the retained transitions in chronological order.
+    #[must_use]
+    pub fn snapshot(&self) -> Vec<RuntimeTransitionEvent> {
+        self.events.iter().cloned().collect()
+    }
+}
+
+impl Default for RuntimeTransitionLog {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Tracks observed backend health and records health-change transitions.
+#[derive(Clone, Debug)]
+pub struct BackendHealthTracker {
+    observed: BTreeMap<String, BackendHealthObservation>,
+    changes: RuntimeTransitionLog,
+}
+
+impl BackendHealthTracker {
+    /// Creates a health tracker with the default transition-history limit.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::with_history_limit(DEFAULT_OBSERVABILITY_HISTORY_LIMIT)
+    }
+
+    /// Creates a health tracker with an explicit transition-history limit.
+    #[must_use]
+    pub fn with_history_limit(limit: usize) -> Self {
+        Self {
+            observed: BTreeMap::new(),
+            changes: RuntimeTransitionLog::with_limit(limit),
+        }
+    }
+
+    /// Observes current health for one backend and records a change event when it differs.
+    pub fn observe(
+        &mut self,
+        backend: impl Into<String>,
+        health: RuntimeHealth,
+        observed_at_millis: u64,
+    ) -> BackendHealthObservation {
+        let backend = backend.into();
+        let entry =
+            self.observed
+                .entry(backend.clone())
+                .or_insert_with(|| BackendHealthObservation {
+                    backend: backend.clone(),
+                    status: health.status,
+                    message: health.message.clone(),
+                    observed_at_millis,
+                    changed_at_millis: observed_at_millis,
+                });
+        let previous = RuntimeHealth {
+            status: entry.status,
+            message: entry.message.clone(),
+        };
+        let changed = previous != health;
+        entry.status = health.status;
+        entry.message.clone_from(&health.message);
+        entry.observed_at_millis = observed_at_millis;
+        if changed {
+            entry.changed_at_millis = observed_at_millis;
+            self.changes
+                .record(RuntimeTransitionEvent::backend_health_changed(
+                    backend,
+                    &previous,
+                    &health,
+                    observed_at_millis,
+                ));
+        }
+        entry.clone()
+    }
+
+    /// Returns the currently observed backend-health rows in stable backend order.
+    #[must_use]
+    pub fn snapshot(&self) -> Vec<BackendHealthObservation> {
+        self.observed.values().cloned().collect()
+    }
+
+    /// Returns recent health-change transitions in chronological order.
+    #[must_use]
+    pub fn recent_changes(&self) -> Vec<RuntimeTransitionEvent> {
+        self.changes.snapshot()
+    }
+}
+
+impl Default for BackendHealthTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Maximum token-history window used when applying repetition-style penalties.
+pub const DEFAULT_PENALTY_LOOKBACK: usize = 64;
+
+/// Runtime-owned token-selection strategy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SamplingStrategy {
+    /// Always choose the highest adjusted logit.
+    Greedy,
+    /// Draw from the adjusted probability distribution.
+    Sample,
+}
+
+/// Reusable runtime sampling policy for token selection.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SamplingPolicy {
+    /// Sampling strategy.
+    pub strategy: SamplingStrategy,
+    /// Temperature override for stochastic sampling.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>,
+    /// Top-k sampling cap.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_k: Option<usize>,
+    /// Top-p / nucleus sampling threshold.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub top_p: Option<f32>,
+    /// Repeat penalty applied to previously seen tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub repeat_penalty: Option<f32>,
+    /// Presence penalty applied once to previously seen tokens.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub presence_penalty: Option<f32>,
+    /// Frequency penalty scaled by prior token count.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frequency_penalty: Option<f32>,
+    /// Deterministic seed for stochastic decode.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+}
+
+impl SamplingPolicy {
+    /// Returns the effective temperature after applying runtime defaults.
+    #[must_use]
+    pub fn effective_temperature(&self) -> f32 {
+        self.temperature.unwrap_or(0.8).max(0.0)
+    }
+
+    /// Returns the effective top-k cap after applying runtime defaults.
+    #[must_use]
+    pub fn effective_top_k(&self) -> Option<usize> {
+        self.top_k.or(Some(40))
+    }
+
+    /// Returns the effective top-p threshold after applying runtime defaults.
+    #[must_use]
+    pub fn effective_top_p(&self) -> Option<f32> {
+        self.top_p.or(Some(0.9))
+    }
+
+    /// Returns the effective repeat penalty after applying runtime defaults.
+    #[must_use]
+    pub fn effective_repeat_penalty(&self) -> f32 {
+        self.repeat_penalty.unwrap_or(1.0)
+    }
+
+    /// Returns the effective presence penalty after applying runtime defaults.
+    #[must_use]
+    pub fn effective_presence_penalty(&self) -> f32 {
+        self.presence_penalty.unwrap_or(0.0)
+    }
+
+    /// Returns the effective frequency penalty after applying runtime defaults.
+    #[must_use]
+    pub fn effective_frequency_penalty(&self) -> f32 {
+        self.frequency_penalty.unwrap_or(0.0)
+    }
+}
+
+/// Reusable runtime sampler with optional seeded replay.
+#[derive(Clone, Debug)]
+pub struct TokenSampler {
+    policy: SamplingPolicy,
+    rng: StdRng,
+}
+
+impl TokenSampler {
+    /// Creates a token sampler for one runtime policy.
+    #[must_use]
+    pub fn new(policy: &SamplingPolicy) -> Self {
+        let rng = policy
+            .seed
+            .map_or_else(StdRng::from_os_rng, StdRng::seed_from_u64);
+        Self {
+            policy: policy.clone(),
+            rng,
+        }
+    }
+
+    /// Returns the runtime sampling policy.
+    #[must_use]
+    pub fn policy(&self) -> &SamplingPolicy {
+        &self.policy
+    }
+
+    /// Selects the next token from logits and prior token history.
+    pub fn select_next_token(&mut self, logits: &[f32], history: &[u32]) -> Option<u32> {
+        let mut adjusted_logits = logits.to_vec();
+        apply_sampling_penalties(&mut adjusted_logits, history, &self.policy);
+        if self.policy.strategy == SamplingStrategy::Greedy
+            || self.policy.effective_temperature() <= 1e-6
+        {
+            return select_argmax_token(&adjusted_logits);
+        }
+        sample_token_index(&mut self.rng, &adjusted_logits, &self.policy)
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SampleToken {
+    id: u32,
+    value: f32,
+}
+
+/// Applies repeat, presence, and frequency penalties using the bounded runtime history window.
+pub fn apply_sampling_penalties(logits: &mut [f32], history: &[u32], policy: &SamplingPolicy) {
+    let repeat_penalty = policy.effective_repeat_penalty();
+    let presence_penalty = policy.effective_presence_penalty();
+    let frequency_penalty = policy.effective_frequency_penalty();
+    if (repeat_penalty - 1.0).abs() <= f32::EPSILON
+        && presence_penalty.abs() <= f32::EPSILON
+        && frequency_penalty.abs() <= f32::EPSILON
+    {
+        return;
+    }
+
+    for (token, count) in token_counts(history, logits.len()) {
+        let Some(logit) = logits.get_mut(token as usize) else {
+            continue;
+        };
+        if (repeat_penalty - 1.0).abs() > f32::EPSILON {
+            if *logit < 0.0 {
+                *logit *= repeat_penalty;
+            } else {
+                *logit /= repeat_penalty;
+            }
+        }
+        if frequency_penalty.abs() > f32::EPSILON {
+            *logit -= frequency_penalty * (count as f32);
+        }
+        if presence_penalty.abs() > f32::EPSILON {
+            *logit -= presence_penalty;
+        }
+    }
+}
+
+/// Selects the highest-logit token index.
+#[must_use]
+pub fn select_argmax_token(logits: &[f32]) -> Option<u32> {
+    logits
+        .iter()
+        .enumerate()
+        .max_by(|(_, left), (_, right)| left.total_cmp(right))
+        .map(|(index, _)| index as u32)
+}
+
+fn token_counts(history: &[u32], vocab_size: usize) -> BTreeMap<u32, usize> {
+    let start = history.len().saturating_sub(DEFAULT_PENALTY_LOOKBACK);
+    let mut counts = BTreeMap::new();
+    for &token in &history[start..] {
+        if token as usize >= vocab_size {
+            continue;
+        }
+        *counts.entry(token).or_insert(0) += 1;
+    }
+    counts
+}
+
+fn sample_token_index(rng: &mut StdRng, logits: &[f32], policy: &SamplingPolicy) -> Option<u32> {
+    let temperature = policy.effective_temperature();
+    if temperature <= 1e-6 {
+        return select_argmax_token(logits);
+    }
+
+    let mut tokens = logits
+        .iter()
+        .enumerate()
+        .map(|(index, value)| SampleToken {
+            id: index as u32,
+            value: *value,
+        })
+        .collect::<Vec<_>>();
+    top_k(&mut tokens, policy.effective_top_k());
+    temperature_scale(&mut tokens, temperature);
+    let total = softmax(&mut tokens);
+    if !total.is_finite() || total <= 0.0 {
+        return None;
+    }
+    top_p(&mut tokens, policy.effective_top_p());
+
+    let distribution_total = tokens.iter().map(|token| token.value).sum::<f32>();
+    if !distribution_total.is_finite() || distribution_total <= 0.0 {
+        return None;
+    }
+
+    let mut target = rng.random::<f32>() * distribution_total;
+    for token in &tokens {
+        target -= token.value;
+        if target <= 0.0 {
+            return Some(token.id);
+        }
+    }
+    tokens.last().map(|token| token.id)
+}
+
+fn top_k(tokens: &mut Vec<SampleToken>, top_k: Option<usize>) {
+    tokens.sort_by(|left, right| right.value.total_cmp(&left.value));
+    let Some(top_k) = top_k else {
+        return;
+    };
+    if top_k > 0 && top_k < tokens.len() {
+        tokens.truncate(top_k);
+    }
+}
+
+fn temperature_scale(tokens: &mut [SampleToken], temperature: f32) {
+    let temperature = temperature.max(1e-7);
+    for token in tokens {
+        token.value /= temperature;
+    }
+}
+
+fn softmax(tokens: &mut [SampleToken]) -> f32 {
+    let Some(max_logit) = tokens
+        .iter()
+        .map(|token| token.value)
+        .max_by(f32::total_cmp)
+    else {
+        return 0.0;
+    };
+    let mut sum = 0.0;
+    for token in tokens.iter_mut() {
+        token.value = (token.value - max_logit).exp();
+        sum += token.value;
+    }
+    if !sum.is_finite() || sum <= 0.0 {
+        return sum;
+    }
+    for token in tokens.iter_mut() {
+        token.value /= sum;
+    }
+    sum
+}
+
+fn top_p(tokens: &mut Vec<SampleToken>, top_p: Option<f32>) {
+    let Some(top_p) = top_p else {
+        return;
+    };
+    if top_p <= 0.0 || top_p >= 1.0 {
+        return;
+    }
+
+    let mut cumulative = 0.0;
+    let mut keep = tokens.len();
+    for (index, token) in tokens.iter().enumerate() {
+        cumulative += token.value;
+        if cumulative >= top_p {
+            keep = index + 1;
+            break;
+        }
+    }
+    tokens.truncate(keep.max(1));
+}
+
+/// Lifecycle state for a model that is resident in a local runtime.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum LoadedModelState {
+    /// The model is still warming/loading.
+    Loading,
+    /// The model is loaded and available for requests.
+    Ready,
+}
+
+/// Explicit keepalive and residency truth for one loaded model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedModelResidency {
+    /// Current lifecycle state.
+    pub state: LoadedModelState,
+    /// Number of active requests currently using the model.
+    pub active_requests: usize,
+    /// Configured keepalive duration in milliseconds.
+    pub keep_alive_millis: u64,
+    /// Time the current residency was established.
+    pub loaded_at_millis: u64,
+    /// Most recent time the model was touched by load/warm/request activity.
+    pub last_used_at_millis: u64,
+    /// Planned expiration time when the model is idle.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub expires_at_millis: Option<u64>,
+}
+
+impl LoadedModelResidency {
+    /// Creates a loading residency record.
+    #[must_use]
+    pub fn loading(now_millis: u64, keep_alive_millis: u64) -> Self {
+        Self {
+            state: LoadedModelState::Loading,
+            active_requests: 0,
+            keep_alive_millis,
+            loaded_at_millis: now_millis,
+            last_used_at_millis: now_millis,
+            expires_at_millis: Self::idle_expiration(now_millis, keep_alive_millis, 0),
+        }
+    }
+
+    /// Creates a ready residency record.
+    #[must_use]
+    pub fn ready(now_millis: u64, keep_alive_millis: u64) -> Self {
+        Self {
+            state: LoadedModelState::Ready,
+            active_requests: 0,
+            keep_alive_millis,
+            loaded_at_millis: now_millis,
+            last_used_at_millis: now_millis,
+            expires_at_millis: Self::idle_expiration(now_millis, keep_alive_millis, 0),
+        }
+    }
+
+    /// Marks the model ready without changing its residency anchor.
+    pub fn mark_ready(&mut self, now_millis: u64) {
+        self.state = LoadedModelState::Ready;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis =
+            Self::idle_expiration(now_millis, self.keep_alive_millis, self.active_requests);
+    }
+
+    /// Refreshes keepalive and idle-expiration posture.
+    pub fn refresh_keep_alive(&mut self, keep_alive_millis: u64, now_millis: u64) {
+        self.keep_alive_millis = keep_alive_millis;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis =
+            Self::idle_expiration(now_millis, keep_alive_millis, self.active_requests);
+    }
+
+    /// Marks the start of a request using the model.
+    pub fn begin_request(&mut self, now_millis: u64) {
+        self.active_requests += 1;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis = None;
+    }
+
+    /// Marks the completion of a request using the model.
+    pub fn finish_request(&mut self, now_millis: u64) {
+        if self.active_requests > 0 {
+            self.active_requests -= 1;
+        }
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis =
+            Self::idle_expiration(now_millis, self.keep_alive_millis, self.active_requests);
+    }
+
+    /// Forces the model to expire immediately once idle.
+    pub fn expire_now(&mut self, now_millis: u64) {
+        self.keep_alive_millis = 0;
+        self.last_used_at_millis = now_millis;
+        self.expires_at_millis = Some(now_millis);
+    }
+
+    /// Returns whether the model should be unloaded at the provided time.
+    #[must_use]
+    pub fn is_expired(&self, now_millis: u64) -> bool {
+        self.active_requests == 0
+            && self
+                .expires_at_millis
+                .is_some_and(|expires_at_millis| expires_at_millis <= now_millis)
+    }
+
+    fn idle_expiration(
+        now_millis: u64,
+        keep_alive_millis: u64,
+        active_requests: usize,
+    ) -> Option<u64> {
+        if active_requests > 0 {
+            None
+        } else {
+            now_millis.checked_add(keep_alive_millis)
+        }
+    }
+}
+
+/// Explicit resident-memory plan for one served model.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelMemoryPlan {
+    /// Bytes attributable to model weights.
+    pub weights_bytes: u64,
+    /// Bytes attributable to the admitted KV-cache posture.
+    pub kv_cache_bytes: u64,
+    /// Bytes attributable to graph or runtime workspace planning.
+    pub graph_bytes: u64,
+    /// Resident host-memory bytes the runtime must admit for the model.
+    pub resident_host_bytes: u64,
+    /// Resident device-memory bytes the runtime must admit for the model.
+    pub resident_device_bytes: u64,
+}
+
+impl ModelMemoryPlan {
+    /// Creates a host-only memory plan for CPU-backed serving.
+    #[must_use]
+    pub fn host_only(weights_bytes: u64, kv_cache_bytes: u64, graph_bytes: u64) -> Self {
+        let resident_host_bytes = weights_bytes
+            .saturating_add(kv_cache_bytes)
+            .saturating_add(graph_bytes);
+        Self {
+            weights_bytes,
+            kv_cache_bytes,
+            graph_bytes,
+            resident_host_bytes,
+            resident_device_bytes: 0,
+        }
+    }
+
+    /// Creates a plan with an explicit host/device residency split.
+    #[must_use]
+    pub fn split_residency(
+        weights_bytes: u64,
+        kv_cache_bytes: u64,
+        graph_bytes: u64,
+        resident_host_bytes: u64,
+        resident_device_bytes: u64,
+    ) -> Self {
+        Self {
+            weights_bytes,
+            kv_cache_bytes,
+            graph_bytes,
+            resident_host_bytes,
+            resident_device_bytes,
+        }
+    }
+}
+
+/// Explicit resident-memory budgets for local-serving admission.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryBudget {
+    /// Maximum admitted resident host-memory bytes, when bounded.
+    pub resident_host_bytes: Option<u64>,
+    /// Maximum admitted resident device-memory bytes, when bounded.
+    pub resident_device_bytes: Option<u64>,
+}
+
+/// Policy to apply when a new model would exceed admitted residency.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ResidencyPressureAction {
+    /// Refuse the new model instead of evicting anything implicitly.
+    RefuseNewModel,
+    /// Unload the oldest idle models first until the new model fits.
+    UnloadIdleOldestFirst,
+}
+
+/// Reusable local-serving residency and admission policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelResidencyPolicy {
+    /// Maximum number of simultaneously loaded models, when bounded.
+    pub max_loaded_models: Option<usize>,
+    /// Explicit admitted resident-memory budgets.
+    pub memory_budget: MemoryBudget,
+    /// What to do when the candidate would exceed the admitted budgets.
+    pub pressure_action: ResidencyPressureAction,
+}
+
+impl ModelResidencyPolicy {
+    /// Creates an explicit unbounded policy.
+    #[must_use]
+    pub fn unbounded() -> Self {
+        Self {
+            max_loaded_models: None,
+            memory_budget: MemoryBudget::default(),
+            pressure_action: ResidencyPressureAction::RefuseNewModel,
+        }
+    }
+}
+
+impl Default for ModelResidencyPolicy {
+    fn default() -> Self {
+        Self::unbounded()
+    }
+}
+
+/// Runtime-visible memory state for one loaded model.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoadedModelMemoryState {
+    /// Stable model identifier.
+    pub model_id: String,
+    /// Explicit resident-memory plan for the model.
+    pub plan: ModelMemoryPlan,
+    /// Number of active requests currently using the model.
+    pub active_requests: usize,
+    /// Most recent activity time used for idle-eviction ordering.
+    pub last_used_at_millis: u64,
+}
+
+/// Aggregate resident-memory snapshot for the currently loaded model set.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MemoryResidencySnapshot {
+    /// Number of loaded models in the snapshot.
+    pub loaded_models: usize,
+    /// Aggregate admitted host-memory bytes.
+    pub resident_host_bytes: u64,
+    /// Aggregate admitted device-memory bytes.
+    pub resident_device_bytes: u64,
+}
+
+impl MemoryResidencySnapshot {
+    /// Builds a snapshot from the currently loaded models.
+    #[must_use]
+    pub fn from_loaded_models(models: &[LoadedModelMemoryState]) -> Self {
+        Self {
+            loaded_models: models.len(),
+            resident_host_bytes: models
+                .iter()
+                .map(|model| model.plan.resident_host_bytes)
+                .sum(),
+            resident_device_bytes: models
+                .iter()
+                .map(|model| model.plan.resident_device_bytes)
+                .sum(),
+        }
+    }
+}
+
+/// How the local serving runtime crosses the backend boundary.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendInterfaceMode {
+    /// Backend code runs in the same process as the caller.
+    InProcess,
+    /// Backend work is isolated behind a dedicated subprocess boundary.
+    Subprocess,
+}
+
+/// Process boundary that contains a backend or runtime crash.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationFailureBoundary {
+    /// A crash can take down the shared host process.
+    SharedHostProcess,
+    /// A crash is contained to a dedicated runtime subprocess.
+    DedicatedRuntimeSubprocess,
+}
+
+/// State that must be discarded when the runtime performs an isolation reset.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationResetScope {
+    /// Discard loaded-model state and residency.
+    LoadedModels,
+    /// Discard live generation sessions.
+    Sessions,
+    /// Discard shared prefix-cache entries.
+    PrefixCache,
+    /// Discard paged KV state.
+    KvState,
+    /// Discard backend-owned allocator and kernel-cache state.
+    BackendRuntimeResources,
+}
+
+/// Recovery action the runtime must take after an isolation-relevant failure.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum IsolationRecoveryAction {
+    /// Refuse the affected request and preserve the rest of the runtime state.
+    RefuseRequest,
+    /// Reset runtime-owned loaded-model, session, cache, and backend-resource state.
+    ResetRuntimeState,
+    /// Restart only the dedicated runtime subprocess.
+    RestartRuntimeSubprocess,
+    /// Restart the whole host process because no smaller crash boundary exists.
+    RestartHostProcess,
+}
+
+/// Explicit isolation policy for local Psionic serving.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalServingIsolationPolicy {
+    /// Whether the backend boundary is in-process or subprocess-isolated.
+    pub backend_interface_mode: BackendInterfaceMode,
+    /// Smallest process boundary that contains a crash.
+    pub failure_boundary: IsolationFailureBoundary,
+    /// Recovery action for request-local failures such as invalid input or unsupported capability.
+    pub request_failure_recovery: IsolationRecoveryAction,
+    /// Recovery action for backend execution failures that return control to the caller.
+    pub backend_error_recovery: IsolationRecoveryAction,
+    /// Recovery action when the backend/runtime crashes outright.
+    pub crash_recovery: IsolationRecoveryAction,
+    /// State that is considered unsafe and must be discarded during an isolation reset.
+    pub reset_scopes: Vec<IsolationResetScope>,
+}
+
+impl LocalServingIsolationPolicy {
+    /// Returns the current in-process Psionic serving policy.
+    #[must_use]
+    pub fn in_process_runtime() -> Self {
+        Self {
+            backend_interface_mode: BackendInterfaceMode::InProcess,
+            failure_boundary: IsolationFailureBoundary::SharedHostProcess,
+            request_failure_recovery: IsolationRecoveryAction::RefuseRequest,
+            backend_error_recovery: IsolationRecoveryAction::ResetRuntimeState,
+            crash_recovery: IsolationRecoveryAction::RestartHostProcess,
+            reset_scopes: vec![
+                IsolationResetScope::LoadedModels,
+                IsolationResetScope::Sessions,
+                IsolationResetScope::PrefixCache,
+                IsolationResetScope::KvState,
+                IsolationResetScope::BackendRuntimeResources,
+            ],
+        }
+    }
+
+    /// Returns the target policy if Psionic later isolates execution behind a subprocess.
+    #[must_use]
+    pub fn subprocess_runtime() -> Self {
+        Self {
+            backend_interface_mode: BackendInterfaceMode::Subprocess,
+            failure_boundary: IsolationFailureBoundary::DedicatedRuntimeSubprocess,
+            request_failure_recovery: IsolationRecoveryAction::RefuseRequest,
+            backend_error_recovery: IsolationRecoveryAction::RestartRuntimeSubprocess,
+            crash_recovery: IsolationRecoveryAction::RestartRuntimeSubprocess,
+            reset_scopes: vec![
+                IsolationResetScope::LoadedModels,
+                IsolationResetScope::Sessions,
+                IsolationResetScope::PrefixCache,
+                IsolationResetScope::KvState,
+                IsolationResetScope::BackendRuntimeResources,
+            ],
+        }
+    }
+}
+
+impl Default for LocalServingIsolationPolicy {
+    fn default() -> Self {
+        Self::in_process_runtime()
+    }
+}
+
+/// Advertised batch execution posture for one served path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BatchExecutionPosture {
+    /// One request executes at a time without admitted multi-request batching.
+    SingleRequestOnly,
+    /// Callers may submit one bounded batch in a single request.
+    CallerStaticBatch,
+    /// The runtime may combine compatible requests into a static shared batch.
+    SchedulerStaticBatch,
+    /// The runtime supports continuous batching across active requests.
+    ContinuousBatch,
+}
+
+/// How the runtime admits work before execution starts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum QueueDiscipline {
+    /// The caller provides backpressure directly; there is no internal queue.
+    DirectCallerBackpressure,
+    /// The runtime admits work into a first-in/first-out queue.
+    Fifo,
+}
+
+/// Explicit queueing policy for one served path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct QueuePolicy {
+    /// Queue discipline used before execution starts.
+    pub discipline: QueueDiscipline,
+    /// Maximum concurrently active requests admitted by the runtime.
+    pub max_active_requests: usize,
+    /// Maximum queued requests admitted behind active execution.
+    pub max_queued_requests: usize,
+    /// Whether the runtime serializes execution per loaded model.
+    pub per_model_serialization: bool,
+}
+
+impl QueuePolicy {
+    /// Direct caller-owned backpressure with one active request and no internal queue.
+    #[must_use]
+    pub const fn direct_caller_serial() -> Self {
+        Self {
+            discipline: QueueDiscipline::DirectCallerBackpressure,
+            max_active_requests: 1,
+            max_queued_requests: 0,
+            per_model_serialization: true,
+        }
+    }
+}
+
+/// High-level throughput category for one served path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ThroughputClass {
+    /// Optimized for low-latency single-request execution.
+    LatencyOptimized,
+    /// Balanced around caller-supplied bounded batches.
+    Balanced,
+    /// Optimized for throughput via runtime-owned batching.
+    ThroughputOptimized,
+}
+
+/// Reusable execution profile for capability and observability surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionCapabilityProfile {
+    /// Advertised batch posture for the served path.
+    pub batch_posture: BatchExecutionPosture,
+    /// Explicit queueing policy for the served path.
+    pub queue_policy: QueuePolicy,
+    /// High-level throughput class for the served path.
+    pub throughput_class: ThroughputClass,
+}
+
+impl ExecutionCapabilityProfile {
+    /// Single-request, direct-caller execution profile.
+    #[must_use]
+    pub const fn single_request_latency_optimized() -> Self {
+        Self {
+            batch_posture: BatchExecutionPosture::SingleRequestOnly,
+            queue_policy: QueuePolicy::direct_caller_serial(),
+            throughput_class: ThroughputClass::LatencyOptimized,
+        }
+    }
+
+    /// Caller-batched execution profile with direct caller backpressure.
+    #[must_use]
+    pub const fn caller_static_batch_balanced() -> Self {
+        Self {
+            batch_posture: BatchExecutionPosture::CallerStaticBatch,
+            queue_policy: QueuePolicy::direct_caller_serial(),
+            throughput_class: ThroughputClass::Balanced,
+        }
+    }
+}
+
+impl Default for ExecutionCapabilityProfile {
+    fn default() -> Self {
+        Self::single_request_latency_optimized()
+    }
+}
+
+/// Explicit isolation boundary for bounded sandbox execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxIsolationBoundary {
+    /// Work runs inside the current host process boundary.
+    Process,
+    /// Work runs inside a container-style process boundary.
+    Container,
+    /// Work runs inside a VM-style boundary.
+    VirtualMachine,
+}
+
+/// Root filesystem posture for bounded sandbox execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxFilesystemRoot {
+    /// The root filesystem is mounted read-only.
+    ReadOnly,
+    /// The root filesystem is ephemeral and writable for the job lifetime only.
+    EphemeralWritable,
+}
+
+/// Explicit filesystem policy for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxFilesystemPolicy {
+    /// Root filesystem posture for the sandbox.
+    pub root: SandboxFilesystemRoot,
+    /// Explicit writable mounts exposed to the job.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub writable_mounts: Vec<String>,
+    /// Maximum bytes the sandbox may write across writable mounts.
+    pub max_write_bytes: u64,
+}
+
+/// Network posture for bounded sandbox execution.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxNetworkMode {
+    /// No outbound network access is permitted.
+    Disabled,
+    /// Only explicit destinations are permitted.
+    RestrictedEgress,
+}
+
+/// Explicit network policy for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxNetworkPolicy {
+    /// High-level network mode for the sandbox.
+    pub mode: SandboxNetworkMode,
+    /// Whether loopback access remains available inside the sandbox.
+    pub allow_loopback: bool,
+    /// Explicit allowed egress destinations when the sandbox permits restricted egress.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub allowed_hosts: Vec<String>,
+}
+
+/// Explicit process-spawning boundary for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxProcessPolicy {
+    /// Maximum number of live processes allowed for the job.
+    pub max_processes: u32,
+    /// Maximum threads allowed within one process.
+    pub max_threads_per_process: u32,
+    /// Whether privilege escalation inside the sandbox is permitted.
+    pub allow_privilege_escalation: bool,
+}
+
+/// Explicit resource limits for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxResourceLimits {
+    /// Maximum wall-clock execution time in milliseconds.
+    pub max_wall_time_ms: u64,
+    /// Maximum CPU time in milliseconds across the sandbox.
+    pub max_cpu_time_ms: u64,
+    /// Maximum resident memory for the sandbox.
+    pub max_memory_bytes: u64,
+    /// Maximum stdout bytes retained in evidence.
+    pub max_stdout_bytes: u64,
+    /// Maximum stderr bytes retained in evidence.
+    pub max_stderr_bytes: u64,
+}
+
+/// Accelerator exposure policy for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "mode", rename_all = "snake_case")]
+pub enum SandboxAcceleratorAccess {
+    /// No accelerator devices are exposed to the sandbox.
+    Disabled,
+    /// Accelerator devices are exposed under an explicit backend and device bound.
+    Allowed {
+        /// Backend family exposed to the sandbox.
+        runtime_backend: String,
+        /// Maximum number of visible devices.
+        max_visible_devices: usize,
+        /// Allowed performance classes for exposed devices.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        allowed_performance_classes: Vec<DevicePerformanceClass>,
+        /// Whether exposed devices must surface stable topology keys.
+        require_topology_keys: bool,
+    },
+}
+
+impl SandboxAcceleratorAccess {
+    /// Returns an explicit no-accelerator policy.
+    #[must_use]
+    pub const fn disabled() -> Self {
+        Self::Disabled
+    }
+
+    /// Returns an explicit bounded accelerator policy.
+    #[must_use]
+    pub fn allowed(runtime_backend: impl Into<String>, max_visible_devices: usize) -> Self {
+        Self::Allowed {
+            runtime_backend: runtime_backend.into(),
+            max_visible_devices,
+            allowed_performance_classes: vec![
+                DevicePerformanceClass::IntegratedAccelerator,
+                DevicePerformanceClass::DiscreteAccelerator,
+                DevicePerformanceClass::PartitionedAccelerator,
+            ],
+            require_topology_keys: true,
+        }
+    }
+
+    /// Returns whether the sandbox expects accelerator visibility at all.
+    #[must_use]
+    pub const fn requires_accelerator(&self) -> bool {
+        matches!(self, Self::Allowed { .. })
+    }
+}
+
+/// Reusable execution profile for bounded sandbox execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionCapabilityProfile {
+    /// Dispatch posture for the sandbox job lane.
+    pub dispatch_profile: ExecutionCapabilityProfile,
+    /// Isolation boundary for the job.
+    pub isolation_boundary: SandboxIsolationBoundary,
+    /// Filesystem policy for the sandbox.
+    pub filesystem: SandboxFilesystemPolicy,
+    /// Network policy for the sandbox.
+    pub network: SandboxNetworkPolicy,
+    /// Process-spawning policy for the sandbox.
+    pub process: SandboxProcessPolicy,
+    /// Explicit resource limits for the sandbox.
+    pub resource_limits: SandboxResourceLimits,
+    /// Accelerator exposure policy for the sandbox.
+    pub accelerator_access: SandboxAcceleratorAccess,
+}
+
+impl SandboxExecutionCapabilityProfile {
+    /// Returns a bounded CPU-only sandbox profile.
+    #[must_use]
+    pub fn bounded_cpu() -> Self {
+        Self {
+            dispatch_profile: ExecutionCapabilityProfile::single_request_latency_optimized(),
+            isolation_boundary: SandboxIsolationBoundary::Container,
+            filesystem: SandboxFilesystemPolicy {
+                root: SandboxFilesystemRoot::ReadOnly,
+                writable_mounts: vec![String::from("/tmp")],
+                max_write_bytes: 64 * 1024 * 1024,
+            },
+            network: SandboxNetworkPolicy {
+                mode: SandboxNetworkMode::Disabled,
+                allow_loopback: false,
+                allowed_hosts: Vec::new(),
+            },
+            process: SandboxProcessPolicy {
+                max_processes: 32,
+                max_threads_per_process: 8,
+                allow_privilege_escalation: false,
+            },
+            resource_limits: SandboxResourceLimits {
+                max_wall_time_ms: 300_000,
+                max_cpu_time_ms: 300_000,
+                max_memory_bytes: 2 * 1024 * 1024 * 1024,
+                max_stdout_bytes: 1 * 1024 * 1024,
+                max_stderr_bytes: 1 * 1024 * 1024,
+            },
+            accelerator_access: SandboxAcceleratorAccess::disabled(),
+        }
+    }
+
+    /// Returns a bounded accelerator-visible sandbox profile.
+    #[must_use]
+    pub fn bounded_accelerated(
+        runtime_backend: impl Into<String>,
+        max_visible_devices: usize,
+    ) -> Self {
+        Self {
+            accelerator_access: SandboxAcceleratorAccess::allowed(
+                runtime_backend,
+                max_visible_devices,
+            ),
+            ..Self::bounded_cpu()
+        }
+    }
+
+    /// Returns a stable digest for the bounded sandbox profile.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(match self.dispatch_profile.batch_posture {
+            BatchExecutionPosture::SingleRequestOnly => b"single_request_only".as_slice(),
+            BatchExecutionPosture::CallerStaticBatch => b"caller_static_batch".as_slice(),
+            BatchExecutionPosture::SchedulerStaticBatch => b"scheduler_static_batch".as_slice(),
+            BatchExecutionPosture::ContinuousBatch => b"continuous_batch".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.dispatch_profile.throughput_class {
+            ThroughputClass::LatencyOptimized => b"latency_optimized".as_slice(),
+            ThroughputClass::Balanced => b"balanced".as_slice(),
+            ThroughputClass::ThroughputOptimized => b"throughput_optimized".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(
+            self.dispatch_profile
+                .queue_policy
+                .max_active_requests
+                .to_string(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            self.dispatch_profile
+                .queue_policy
+                .max_queued_requests
+                .to_string(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            if self.dispatch_profile.queue_policy.per_model_serialization {
+                b"1".as_slice()
+            } else {
+                b"0".as_slice()
+            },
+        );
+        hasher.update(b"|");
+        hasher.update(match self.isolation_boundary {
+            SandboxIsolationBoundary::Process => b"process".as_slice(),
+            SandboxIsolationBoundary::Container => b"container".as_slice(),
+            SandboxIsolationBoundary::VirtualMachine => b"virtual_machine".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.filesystem.root {
+            SandboxFilesystemRoot::ReadOnly => b"read_only".as_slice(),
+            SandboxFilesystemRoot::EphemeralWritable => b"ephemeral_writable".as_slice(),
+        });
+        hasher.update(b"|");
+        for mount in &self.filesystem.writable_mounts {
+            hasher.update(mount.as_bytes());
+            hasher.update(b"\x1f");
+        }
+        hasher.update(b"|");
+        hasher.update(self.filesystem.max_write_bytes.to_string());
+        hasher.update(b"|");
+        hasher.update(match self.network.mode {
+            SandboxNetworkMode::Disabled => b"disabled".as_slice(),
+            SandboxNetworkMode::RestrictedEgress => b"restricted_egress".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(if self.network.allow_loopback {
+            b"1".as_slice()
+        } else {
+            b"0".as_slice()
+        });
+        hasher.update(b"|");
+        for host in &self.network.allowed_hosts {
+            hasher.update(host.as_bytes());
+            hasher.update(b"\x1f");
+        }
+        hasher.update(b"|");
+        hasher.update(self.process.max_processes.to_string());
+        hasher.update(b"|");
+        hasher.update(self.process.max_threads_per_process.to_string());
+        hasher.update(b"|");
+        hasher.update(if self.process.allow_privilege_escalation {
+            b"1".as_slice()
+        } else {
+            b"0".as_slice()
+        });
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_wall_time_ms.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_cpu_time_ms.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_memory_bytes.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_stdout_bytes.to_string());
+        hasher.update(b"|");
+        hasher.update(self.resource_limits.max_stderr_bytes.to_string());
+        hasher.update(b"|");
+        match &self.accelerator_access {
+            SandboxAcceleratorAccess::Disabled => hasher.update(b"disabled"),
+            SandboxAcceleratorAccess::Allowed {
+                runtime_backend,
+                max_visible_devices,
+                allowed_performance_classes,
+                require_topology_keys,
+            } => {
+                hasher.update(b"allowed|");
+                hasher.update(runtime_backend.as_bytes());
+                hasher.update(b"|");
+                hasher.update(max_visible_devices.to_string());
+                hasher.update(b"|");
+                for class in allowed_performance_classes {
+                    hasher.update(match class {
+                        DevicePerformanceClass::Reference => b"reference".as_slice(),
+                        DevicePerformanceClass::IntegratedAccelerator => {
+                            b"integrated_accelerator".as_slice()
+                        }
+                        DevicePerformanceClass::DiscreteAccelerator => {
+                            b"discrete_accelerator".as_slice()
+                        }
+                        DevicePerformanceClass::PartitionedAccelerator => {
+                            b"partitioned_accelerator".as_slice()
+                        }
+                    });
+                    hasher.update(b"\x1f");
+                }
+                hasher.update(b"|");
+                hasher.update(if *require_topology_keys {
+                    b"1".as_slice()
+                } else {
+                    b"0".as_slice()
+                });
+            }
+        }
+        format!("{:x}", hasher.finalize())
+    }
+}
+
+/// Stable identity inputs for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionRequestIdentity {
+    /// Stable request identifier.
+    pub request_id: String,
+    /// Stable digest of the bounded sandbox profile used for the request.
+    pub sandbox_profile_digest: String,
+    /// Stable digest of the command or job spec executed inside the sandbox.
+    pub command_digest: String,
+    /// Stable digest of the execution environment exposed to the job.
+    pub environment_digest: String,
+    /// Stable digests for declared input artifacts when the request consumes them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_artifact_digests: Vec<String>,
+}
+
+/// Explicit terminal reason for one sandbox-execution request.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum SandboxExecutionExitKind {
+    /// The sandbox job completed successfully.
+    Succeeded,
+    /// The sandbox job exited with a non-zero exit code.
+    NonZeroExit,
+    /// The sandbox job exceeded its explicit time budget.
+    TimedOut,
+    /// The sandbox job was cancelled by the caller.
+    Cancelled,
+    /// The runtime killed the sandbox job for safety or resource reasons.
+    Killed,
+    /// The runtime refused the sandbox job before launch under explicit policy.
+    RefusedByPolicy,
+}
+
+/// Explicit terminal exit facts for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionExit {
+    /// Stable terminal reason.
+    pub kind: SandboxExecutionExitKind,
+    /// Concrete process exit code when one existed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exit_code: Option<i32>,
+    /// Short machine-readable explanation for the realized terminal state.
+    pub detail: String,
+}
+
+/// Explicit resource summary for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionResourceSummary {
+    /// Realized wall-clock runtime in milliseconds.
+    pub wall_time_ms: u64,
+    /// Realized CPU time in milliseconds.
+    pub cpu_time_ms: u64,
+    /// Peak resident memory observed for the sandbox.
+    pub peak_memory_bytes: u64,
+    /// Total bytes written through writable filesystem mounts.
+    pub filesystem_write_bytes: u64,
+    /// Total stdout bytes produced by the sandbox.
+    pub stdout_bytes: u64,
+    /// Total stderr bytes produced by the sandbox.
+    pub stderr_bytes: u64,
+    /// Total network egress bytes observed for the sandbox.
+    pub network_egress_bytes: u64,
+}
+
+/// Machine-checkable runtime evidence for one sandbox-execution request.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SandboxExecutionEvidence {
+    /// Stable digest for the request identity.
+    pub request_digest: String,
+    /// Stable digest of the bounded sandbox profile used for the request.
+    pub sandbox_profile_digest: String,
+    /// Stable digest of the executed command or job spec.
+    pub command_digest: String,
+    /// Stable digest of the execution environment exposed to the job.
+    pub environment_digest: String,
+    /// Stable input artifact digests declared for the request.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub input_artifact_digests: Vec<String>,
+    /// Stable output artifact digests emitted by the request when applicable.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub output_artifact_digests: Vec<String>,
+    /// Explicit terminal status for the sandbox job.
+    pub exit: SandboxExecutionExit,
+    /// Explicit resource summary for the sandbox job.
+    pub resources: SandboxExecutionResourceSummary,
+    /// Stable digest of stdout bytes when retained.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stdout_sha256: Option<String>,
+    /// Stable digest of stderr bytes when retained.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub stderr_sha256: Option<String>,
+    /// Delivery-proof facts surfaced by the underlying execution runtime when available.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof: Option<ExecutionDeliveryProof>,
+}
+
+/// Explicit local-runtime observability snapshot for app cutover and debugging.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LocalRuntimeObservability {
+    /// Explicit runtime crash/reset isolation policy.
+    pub isolation_policy: LocalServingIsolationPolicy,
+    /// Explicit invalidation policy for reusable cache and persisted-state families.
+    pub cache_invalidation_policy: CacheInvalidationPolicy,
+    /// Explicit batch, queueing, and throughput profile for the served path.
+    pub execution_profile: ExecutionCapabilityProfile,
+    /// Number of requests currently queued behind active execution.
+    pub queue_depth: usize,
+    /// Maximum queued requests admitted by policy, when bounded.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queue_capacity: Option<usize>,
+    /// Number of active generation sessions currently tracked by the runtime.
+    pub active_sessions: usize,
+    /// Number of actively executing requests across loaded models.
+    pub active_requests: usize,
+    /// Aggregate resident-memory footprint for currently loaded models.
+    pub memory_footprint: MemoryResidencySnapshot,
+    /// Current observed health for the backends participating in the local runtime.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backend_health: Vec<BackendHealthObservation>,
+    /// Recent runtime transitions in chronological order.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_transitions: Vec<RuntimeTransitionEvent>,
+}
+
+/// Explicit reason admission was refused under the active residency policy.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize, Error)]
+#[serde(rename_all = "snake_case")]
+pub enum AdmissionRefusalReason {
+    /// The candidate would exceed the admitted loaded-model count.
+    #[error("loaded model count exceeds the admitted limit")]
+    MaxLoadedModels,
+    /// The candidate would exceed the admitted host-memory budget.
+    #[error("resident host-memory budget exceeded")]
+    HostMemoryBudget,
+    /// The candidate would exceed the admitted device-memory budget.
+    #[error("resident device-memory budget exceeded")]
+    DeviceMemoryBudget,
+}
+
+/// Refusal details for a candidate model under the active residency policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, Error)]
+#[error("admission refused for model `{requested_model_id}`: {reason}")]
+pub struct ModelAdmissionRefusal {
+    /// Stable candidate model identifier.
+    pub requested_model_id: String,
+    /// Explicit refusal reason.
+    pub reason: AdmissionRefusalReason,
+    /// Active residency policy at refusal time.
+    pub policy: ModelResidencyPolicy,
+    /// Current loaded-model memory state before the attempted admission.
+    pub current: MemoryResidencySnapshot,
+    /// Requested plan for the candidate model.
+    pub requested_plan: ModelMemoryPlan,
+    /// Remaining loaded models that blocked the candidate after any evictions.
+    pub blocking_models: Vec<String>,
+}
+
+/// Admission decision for a candidate model under the active residency policy.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelAdmissionDecision {
+    /// Loaded-model residency before the candidate was considered.
+    pub current: MemoryResidencySnapshot,
+    /// Loaded-model residency after the candidate is admitted.
+    pub admitted: MemoryResidencySnapshot,
+    /// Idle models that must be evicted before admitting the candidate.
+    pub evicted_models: Vec<String>,
+}
+
+/// Plans local-serving admission for one candidate model.
+pub fn plan_model_admission(
+    loaded: &[LoadedModelMemoryState],
+    requested_model_id: &str,
+    requested_plan: &ModelMemoryPlan,
+    policy: &ModelResidencyPolicy,
+) -> Result<ModelAdmissionDecision, ModelAdmissionRefusal> {
+    let current = MemoryResidencySnapshot::from_loaded_models(loaded);
+    let mut remaining = loaded
+        .iter()
+        .filter(|model| model.model_id != requested_model_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    let mut evicted_models = Vec::new();
+    let mut admitted = snapshot_with_candidate(&remaining, requested_plan);
+    if policy_admits_snapshot(policy, &admitted) {
+        return Ok(ModelAdmissionDecision {
+            current,
+            admitted,
+            evicted_models,
+        });
+    }
+
+    if policy.pressure_action == ResidencyPressureAction::UnloadIdleOldestFirst {
+        remaining.sort_by_key(|model| {
+            (
+                usize::from(model.active_requests > 0),
+                model.last_used_at_millis,
+                model.model_id.clone(),
+            )
+        });
+        while !policy_admits_snapshot(policy, &admitted) {
+            let Some(index) = remaining
+                .iter()
+                .position(|model| model.active_requests == 0)
+            else {
+                break;
+            };
+            let evicted = remaining.remove(index);
+            evicted_models.push(evicted.model_id);
+            admitted = snapshot_with_candidate(&remaining, requested_plan);
+        }
+        if policy_admits_snapshot(policy, &admitted) {
+            return Ok(ModelAdmissionDecision {
+                current,
+                admitted,
+                evicted_models,
+            });
+        }
+    }
+
+    Err(ModelAdmissionRefusal {
+        requested_model_id: requested_model_id.to_string(),
+        reason: first_policy_violation(policy, &admitted),
+        policy: policy.clone(),
+        current,
+        requested_plan: requested_plan.clone(),
+        blocking_models: remaining.into_iter().map(|model| model.model_id).collect(),
+    })
+}
+
+fn snapshot_with_candidate(
+    loaded: &[LoadedModelMemoryState],
+    requested_plan: &ModelMemoryPlan,
+) -> MemoryResidencySnapshot {
+    let mut snapshot = MemoryResidencySnapshot::from_loaded_models(loaded);
+    snapshot.loaded_models += 1;
+    snapshot.resident_host_bytes = snapshot
+        .resident_host_bytes
+        .saturating_add(requested_plan.resident_host_bytes);
+    snapshot.resident_device_bytes = snapshot
+        .resident_device_bytes
+        .saturating_add(requested_plan.resident_device_bytes);
+    snapshot
+}
+
+fn policy_admits_snapshot(
+    policy: &ModelResidencyPolicy,
+    snapshot: &MemoryResidencySnapshot,
+) -> bool {
+    if let Some(max_loaded_models) = policy.max_loaded_models {
+        if snapshot.loaded_models > max_loaded_models {
+            return false;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_host_bytes {
+        if snapshot.resident_host_bytes > limit {
+            return false;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_device_bytes {
+        if snapshot.resident_device_bytes > limit {
+            return false;
+        }
+    }
+    true
+}
+
+fn first_policy_violation(
+    policy: &ModelResidencyPolicy,
+    snapshot: &MemoryResidencySnapshot,
+) -> AdmissionRefusalReason {
+    if let Some(max_loaded_models) = policy.max_loaded_models {
+        if snapshot.loaded_models > max_loaded_models {
+            return AdmissionRefusalReason::MaxLoadedModels;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_host_bytes {
+        if snapshot.resident_host_bytes > limit {
+            return AdmissionRefusalReason::HostMemoryBudget;
+        }
+    }
+    if let Some(limit) = policy.memory_budget.resident_device_bytes {
+        if snapshot.resident_device_bytes > limit {
+            return AdmissionRefusalReason::DeviceMemoryBudget;
+        }
+    }
+    AdmissionRefusalReason::MaxLoadedModels
+}
+
+/// Whether KV pages stay bound to one backend/device posture or can move.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvCacheDeviceScope {
+    /// KV state stays bound to the active backend/device and is not migrated.
+    SameDeviceOnly,
+    /// KV state may move across devices through an explicit transfer path.
+    CrossDeviceExplicit,
+}
+
+/// Policy to apply when paged KV growth would exceed the admitted budget.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum KvCacheSpillPolicy {
+    /// Refuse additional KV growth instead of evicting or spilling silently.
+    RefuseNewPages,
+    /// Evict older pages to admit new ones.
+    EvictOldestPages,
+    /// Spill pages to a slower/offloaded tier.
+    SpillToHost,
+}
+
+/// Stable logical page layout for paged KV state.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCachePageLayout {
+    /// Maximum supported context tokens for the cache.
+    pub max_context_tokens: usize,
+    /// Number of tokens stored in one logical page.
+    pub tokens_per_page: usize,
+    /// Number of bytes consumed per cached token.
+    pub bytes_per_token: usize,
+    /// Number of bytes consumed by one full logical page.
+    pub page_bytes: usize,
+    /// Maximum number of pages the cache may own.
+    pub max_pages: usize,
+}
+
+impl KvCachePageLayout {
+    /// Creates a logical page layout from token and byte geometry.
+    #[must_use]
+    pub fn new(max_context_tokens: usize, tokens_per_page: usize, bytes_per_token: usize) -> Self {
+        let max_context_tokens = max_context_tokens.max(1);
+        let tokens_per_page = tokens_per_page.max(1);
+        let bytes_per_token = bytes_per_token.max(1);
+        let max_pages = max_context_tokens.div_ceil(tokens_per_page);
+        Self {
+            max_context_tokens,
+            tokens_per_page,
+            bytes_per_token,
+            page_bytes: tokens_per_page.saturating_mul(bytes_per_token),
+            max_pages,
+        }
+    }
+
+    /// Returns the number of pages required for the provided token count.
+    #[must_use]
+    pub fn page_count_for_tokens(&self, tokens: usize) -> usize {
+        if tokens == 0 {
+            0
+        } else {
+            tokens.div_ceil(self.tokens_per_page)
+        }
+    }
+
+    /// Returns the number of bytes required for the provided token count.
+    #[must_use]
+    pub fn bytes_for_tokens(&self, tokens: usize) -> u64 {
+        tokens
+            .saturating_mul(self.bytes_per_token)
+            .try_into()
+            .unwrap_or(u64::MAX)
+    }
+}
+
+/// Explicit paged-KV policy exposed through runtime and evidence surfaces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCachePolicy {
+    /// Whether KV state stays on one backend/device or can move explicitly.
+    pub device_scope: KvCacheDeviceScope,
+    /// What to do when the page budget would be exceeded.
+    pub spill_policy: KvCacheSpillPolicy,
+    /// Logical page layout for the cache.
+    pub page_layout: KvCachePageLayout,
+}
+
+/// Snapshot of current paged-KV usage.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheState {
+    /// Number of tokens currently cached.
+    pub tokens: usize,
+    /// Number of bytes currently owned by the cache.
+    pub bytes: u64,
+    /// Number of pages currently owned by the cache.
+    pub pages: usize,
+}
+
+impl KvCacheState {
+    /// Builds paged-KV state from a logical layout and token count.
+    #[must_use]
+    pub fn paged(layout: &KvCachePageLayout, tokens: usize) -> Self {
+        Self {
+            tokens,
+            bytes: layout.bytes_for_tokens(tokens),
+            pages: layout.page_count_for_tokens(tokens),
+        }
+    }
+}
+
+/// Growth delta between two paged-KV states.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheGrowth {
+    /// Net token growth between the baseline and current state.
+    pub tokens: usize,
+    /// Net byte growth between the baseline and current state.
+    pub bytes: u64,
+    /// Net page growth between the baseline and current state.
+    pub pages: usize,
+}
+
+/// Current paged-KV state plus request-local growth accounting.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct KvCacheAccounting {
+    /// Current paged-KV state after the request.
+    pub current: KvCacheState,
+    /// Growth attributable to the request.
+    pub growth: KvCacheGrowth,
+}
+
+impl KvCacheAccounting {
+    /// Creates accounting from a before/after paged-KV snapshot.
+    #[must_use]
+    pub fn from_states(before: &KvCacheState, current: KvCacheState) -> Self {
+        Self {
+            growth: KvCacheGrowth {
+                tokens: current.tokens.saturating_sub(before.tokens),
+                bytes: current.bytes.saturating_sub(before.bytes),
+                pages: current.pages.saturating_sub(before.pages),
+            },
+            current,
+        }
+    }
+}
+
+/// Observable state for shared prompt-prefix reuse.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PrefixCacheState {
+    /// No compatible shared prefix cache existed for the request.
+    None,
+    /// A compatible shared prefix cache was found and reused.
+    Hit,
+    /// Compatible shared prefix caches existed but none matched the request prefix.
+    Miss,
+    /// Reuse was intentionally skipped under the current policy.
+    Bypassed,
+    /// A stale or invalid shared prefix entry was discarded and rebuilt.
+    Rebuilt,
+}
+
+/// Explicit reuse boundaries for shared prompt-prefix caches.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefixCacheReusePolicy {
+    /// Whether prefixes may be reused across distinct sessions.
+    pub shared_across_sessions: bool,
+    /// Whether prefixes may be reused across distinct user/security domains.
+    pub shared_across_users: bool,
+    /// Whether prefixes may be reused across different models or revisions.
+    pub shared_across_models: bool,
+    /// Whether prefixes may be reused across different backend identities.
+    pub shared_across_backends: bool,
+}
+
+/// Stable backend/toolchain identity carried into artifact reproducibility claims.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendToolchainIdentity {
+    /// Effective backend label such as `cpu`, `metal`, or `cuda`.
+    pub effective_backend: String,
+    /// Stable toolchain/version label for the active backend path.
+    pub toolchain_version: String,
+    /// Stable backend feature flags compiled or selected for the active path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub compiled_backend_features: Vec<String>,
+    /// Whether the toolchain truth is compile-only or also backed by a live host probe.
+    pub probe_state: BackendProbeState,
+    /// Stable backend/runtime feature flags observed from the host probe.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub probed_backend_features: Vec<String>,
+}
+
+/// Whether backend/toolchain truth is compile-only or backed by a live host probe.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendProbeState {
+    /// Capability truth comes only from what was compiled into the binary.
+    CompiledOnly,
+    /// Capability truth is backed by a live host/backend probe.
+    CompiledAndProbed,
+}
+
+impl BackendToolchainIdentity {
+    /// Creates backend/toolchain identity from explicit labels.
+    #[must_use]
+    pub fn new(
+        effective_backend: impl Into<String>,
+        toolchain_version: impl Into<String>,
+        compiled_backend_features: Vec<String>,
+    ) -> Self {
+        Self {
+            effective_backend: effective_backend.into(),
+            toolchain_version: toolchain_version.into(),
+            compiled_backend_features,
+            probe_state: BackendProbeState::CompiledOnly,
+            probed_backend_features: Vec::new(),
+        }
+    }
+
+    /// Attaches probe-backed runtime feature truth for the active backend path.
+    #[must_use]
+    pub fn with_probe(
+        mut self,
+        probe_state: BackendProbeState,
+        mut probed_backend_features: Vec<String>,
+    ) -> Self {
+        probed_backend_features.sort();
+        probed_backend_features.dedup();
+        self.probe_state = probe_state;
+        self.probed_backend_features = probed_backend_features;
+        self
+    }
+}
+
+/// Stable served-artifact identity tuple for one served model/backend path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServedArtifactIdentity {
+    /// Stable model identifier.
+    pub model_id: String,
+    /// Stable model revision.
+    pub model_revision: String,
+    /// Stable weight-bundle digest for the loaded weights.
+    pub weight_bundle_digest: String,
+    /// Stable top-level served-artifact digest over all identity inputs below.
+    pub served_artifact_digest: String,
+    /// Primary model-blob digest when the model came from an external artifact.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub model_blob_digest: Option<String>,
+    /// Stable tokenizer digest when tokenization participates in serving behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer_digest: Option<String>,
+    /// Stable chat-template digest when prompt rendering participates in serving behavior.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_template_digest: Option<String>,
+    /// Stable digest over default generation behavior such as BOS/EOS and default stops.
+    pub generation_defaults_digest: String,
+    /// Stable weight-format label.
+    pub weight_format: String,
+    /// Stable quantization family for the served model.
+    pub quantization_family: QuantizationMode,
+    /// Backend/toolchain identity for the active served path.
+    pub backend: BackendToolchainIdentity,
+}
+
+impl ServedArtifactIdentity {
+    /// Creates a served-artifact identity and computes its stable digest.
+    #[must_use]
+    pub fn new(
+        model_id: impl Into<String>,
+        model_revision: impl Into<String>,
+        weight_bundle_digest: impl Into<String>,
+        model_blob_digest: Option<String>,
+        tokenizer_digest: Option<String>,
+        chat_template_digest: Option<String>,
+        generation_defaults_digest: impl Into<String>,
+        weight_format: impl Into<String>,
+        quantization_family: QuantizationMode,
+        backend: BackendToolchainIdentity,
+    ) -> Self {
+        let model_id = model_id.into();
+        let model_revision = model_revision.into();
+        let weight_bundle_digest = weight_bundle_digest.into();
+        let generation_defaults_digest = generation_defaults_digest.into();
+        let weight_format = weight_format.into();
+        let served_artifact_digest = digest_served_artifact_identity(
+            model_id.as_str(),
+            model_revision.as_str(),
+            weight_bundle_digest.as_str(),
+            model_blob_digest.as_deref(),
+            tokenizer_digest.as_deref(),
+            chat_template_digest.as_deref(),
+            generation_defaults_digest.as_str(),
+            weight_format.as_str(),
+            quantization_family,
+            &backend,
+        );
+        Self {
+            model_id,
+            model_revision,
+            weight_bundle_digest,
+            served_artifact_digest,
+            model_blob_digest,
+            tokenizer_digest,
+            chat_template_digest,
+            generation_defaults_digest,
+            weight_format,
+            quantization_family,
+            backend,
+        }
+    }
+}
+
+/// Stable identity tuple for one reusable shared prompt prefix.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PrefixCacheIdentity {
+    /// Stable served-artifact digest used to validate reusable prefix ownership.
+    pub served_artifact_digest: String,
+    /// Stable model identifier.
+    pub model_id: String,
+    /// Stable model revision.
+    pub model_revision: String,
+    /// Stable weight-bundle digest.
+    pub weight_bundle_digest: String,
+    /// Tokenizer family label used to produce the prompt tokens.
+    pub tokenizer_family: String,
+    /// Stable tokenizer digest when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tokenizer_digest: Option<String>,
+    /// Stable chat-template digest when prompt rendering supplied one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chat_template_digest: Option<String>,
+    /// Stable generation-defaults digest when prompt rendering depended on one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_defaults_digest: Option<String>,
+    /// Stable backend compatibility label required for reuse.
+    pub backend_compatibility: String,
+    /// Stable digest of the reusable prompt-prefix tokens.
+    pub prefix_digest: String,
+    /// Number of reusable prompt-prefix tokens represented by the digest.
+    pub prefix_tokens: usize,
+}
+
+fn digest_served_artifact_identity(
+    model_id: &str,
+    model_revision: &str,
+    weight_bundle_digest: &str,
+    model_blob_digest: Option<&str>,
+    tokenizer_digest: Option<&str>,
+    chat_template_digest: Option<&str>,
+    generation_defaults_digest: &str,
+    weight_format: &str,
+    quantization_family: QuantizationMode,
+    backend: &BackendToolchainIdentity,
+) -> String {
+    let mut hasher = Sha256::new();
+    update_identity_string(&mut hasher, model_id);
+    update_identity_string(&mut hasher, model_revision);
+    update_identity_string(&mut hasher, weight_bundle_digest);
+    update_optional_identity_string(&mut hasher, model_blob_digest);
+    update_optional_identity_string(&mut hasher, tokenizer_digest);
+    update_optional_identity_string(&mut hasher, chat_template_digest);
+    update_identity_string(&mut hasher, generation_defaults_digest);
+    update_identity_string(&mut hasher, weight_format);
+    update_identity_string(&mut hasher, quantization_family_label(quantization_family));
+    update_identity_string(&mut hasher, backend.effective_backend.as_str());
+    update_identity_string(&mut hasher, backend.toolchain_version.as_str());
+    for feature in &backend.compiled_backend_features {
+        update_identity_string(&mut hasher, feature);
+    }
+    format!("{:x}", hasher.finalize())
+}
+
+fn update_identity_string(hasher: &mut Sha256, value: &str) {
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value.as_bytes());
+}
+
+fn update_optional_identity_string(hasher: &mut Sha256, value: Option<&str>) {
+    match value {
+        Some(value) => {
+            hasher.update([1]);
+            update_identity_string(hasher, value);
+        }
+        None => hasher.update([0]),
+    }
+}
+
+const fn quantization_family_label(mode: QuantizationMode) -> &'static str {
+    match mode {
+        QuantizationMode::None => "none",
+        QuantizationMode::Int8Symmetric => "int8_symmetric",
+        QuantizationMode::GgmlMxfp4 => "ggml_mxfp4",
+        QuantizationMode::GgmlQ4_0 => "ggml_q4_0",
+        QuantizationMode::GgmlQ4_1 => "ggml_q4_1",
+        QuantizationMode::GgmlQ8_0 => "ggml_q8_0",
+    }
+}
+
+/// Explicit runtime backend selection and fallback truth.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendUnavailablePolicy {
+    /// Refuse execution instead of switching backends.
+    Refuse,
+    /// Fall back to a compatible backend explicitly.
+    FallbackToCompatibleBackend,
+}
+
+/// Explicit degraded-state policy for one served product path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendDegradedPolicy {
+    /// Refuse execution when the requested backend is degraded.
+    Refuse,
+    /// Continue on the same backend explicitly even though it is degraded.
+    AllowSameBackend,
+}
+
+/// Explicit served-product backend policy for unavailable and degraded states.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServedProductBackendPolicy {
+    /// Action when the requested backend is unavailable.
+    pub unavailable: BackendUnavailablePolicy,
+    /// Action when the requested backend is degraded but still executable.
+    pub degraded: BackendDegradedPolicy,
+}
+
+impl ServedProductBackendPolicy {
+    /// Creates a served-product backend policy.
+    #[must_use]
+    pub const fn new(
+        unavailable: BackendUnavailablePolicy,
+        degraded: BackendDegradedPolicy,
+    ) -> Self {
+        Self {
+            unavailable,
+            degraded,
+        }
+    }
+
+    /// Returns the default same-backend CPU-style policy.
+    #[must_use]
+    pub const fn same_backend_only() -> Self {
+        Self::new(
+            BackendUnavailablePolicy::Refuse,
+            BackendDegradedPolicy::AllowSameBackend,
+        )
+    }
+
+    /// Returns a policy that allows explicit cross-backend fallback.
+    #[must_use]
+    pub const fn fallback_to_compatible_backend(degraded: BackendDegradedPolicy) -> Self {
+        Self::new(
+            BackendUnavailablePolicy::FallbackToCompatibleBackend,
+            degraded,
+        )
+    }
+}
+
+/// Trigger that forced the runtime to leave the preferred direct path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServedProductFallbackTrigger {
+    /// The requested backend was unavailable and could not execute the request directly.
+    RequestedBackendUnavailable,
+    /// The requested backend was available but degraded.
+    RequestedBackendDegraded,
+    /// The preferred path was numerically unsafe for the current request.
+    NumericalSafetyRisk,
+    /// The preferred path could not execute within the admitted memory budget.
+    MemoryPressure,
+    /// The preferred plan or kernel was not yet available.
+    PlanUnavailable,
+    /// The backend returned a transient failure and the runtime may retry explicitly.
+    TransientBackendFailure,
+}
+
+/// Allowed fallback action in the full served-product lattice.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ServedProductFallbackAction {
+    /// Refuse execution rather than changing semantics or backend posture.
+    Refuse,
+    /// Continue on the same backend explicitly in a degraded mode.
+    Degrade,
+    /// Replan execution explicitly, potentially onto another backend.
+    Replan,
+    /// Retry the same request explicitly after a transient failure.
+    Retry,
+    /// Continue on the same backend using a slower but still-correct path.
+    SameBackendSlowPath,
+}
+
+/// Full fallback lattice for one served product path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ServedProductFallbackLattice {
+    /// Action when the requested backend is unavailable.
+    pub unavailable: ServedProductFallbackAction,
+    /// Action when the requested backend is degraded but still executable.
+    pub degraded: ServedProductFallbackAction,
+    /// Action when the preferred path is numerically unsafe.
+    pub numerical_safety: ServedProductFallbackAction,
+    /// Action when the preferred path exceeds the admitted memory budget.
+    pub memory_pressure: ServedProductFallbackAction,
+    /// Action when the preferred plan or kernel is not yet available.
+    pub plan_unavailable: ServedProductFallbackAction,
+    /// Action when the backend returns a transient failure.
+    pub transient_backend_failure: ServedProductFallbackAction,
+}
+
+impl ServedProductFallbackLattice {
+    /// Creates a full fallback lattice.
+    #[must_use]
+    pub const fn new(
+        unavailable: ServedProductFallbackAction,
+        degraded: ServedProductFallbackAction,
+        numerical_safety: ServedProductFallbackAction,
+        memory_pressure: ServedProductFallbackAction,
+        plan_unavailable: ServedProductFallbackAction,
+        transient_backend_failure: ServedProductFallbackAction,
+    ) -> Self {
+        Self {
+            unavailable,
+            degraded,
+            numerical_safety,
+            memory_pressure,
+            plan_unavailable,
+            transient_backend_failure,
+        }
+    }
+
+    /// Conservative default lattice for same-backend-only serving.
+    #[must_use]
+    pub const fn same_backend_only() -> Self {
+        Self::new(
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::Degrade,
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::SameBackendSlowPath,
+            ServedProductFallbackAction::Retry,
+        )
+    }
+
+    /// Default lattice for paths that may explicitly replan onto a compatible backend.
+    #[must_use]
+    pub const fn fallback_to_compatible_backend(degraded: BackendDegradedPolicy) -> Self {
+        Self::new(
+            ServedProductFallbackAction::Replan,
+            degraded.to_fallback_action(),
+            ServedProductFallbackAction::Refuse,
+            ServedProductFallbackAction::Replan,
+            ServedProductFallbackAction::SameBackendSlowPath,
+            ServedProductFallbackAction::Retry,
+        )
+    }
+
+    /// Derives the full lattice from the narrower backend-selection policy.
+    #[must_use]
+    pub const fn from_backend_policy(policy: ServedProductBackendPolicy) -> Self {
+        let unavailable = match policy.unavailable {
+            BackendUnavailablePolicy::Refuse => ServedProductFallbackAction::Refuse,
+            BackendUnavailablePolicy::FallbackToCompatibleBackend => {
+                ServedProductFallbackAction::Replan
+            }
+        };
+        let degraded = policy.degraded.to_fallback_action();
+        Self::new(
+            unavailable,
+            degraded,
+            ServedProductFallbackAction::Refuse,
+            unavailable,
+            ServedProductFallbackAction::SameBackendSlowPath,
+            ServedProductFallbackAction::Retry,
+        )
+    }
+
+    /// Returns the allowed action for one fallback trigger.
+    #[must_use]
+    pub const fn action_for(
+        self,
+        trigger: ServedProductFallbackTrigger,
+    ) -> ServedProductFallbackAction {
+        match trigger {
+            ServedProductFallbackTrigger::RequestedBackendUnavailable => self.unavailable,
+            ServedProductFallbackTrigger::RequestedBackendDegraded => self.degraded,
+            ServedProductFallbackTrigger::NumericalSafetyRisk => self.numerical_safety,
+            ServedProductFallbackTrigger::MemoryPressure => self.memory_pressure,
+            ServedProductFallbackTrigger::PlanUnavailable => self.plan_unavailable,
+            ServedProductFallbackTrigger::TransientBackendFailure => self.transient_backend_failure,
+        }
+    }
+
+    /// Returns whether one trigger/action pair is allowed by the lattice.
+    #[must_use]
+    pub fn allows(
+        self,
+        trigger: ServedProductFallbackTrigger,
+        action: ServedProductFallbackAction,
+    ) -> bool {
+        self.action_for(trigger) == action
+    }
+}
+
+impl BackendDegradedPolicy {
+    #[must_use]
+    const fn to_fallback_action(self) -> ServedProductFallbackAction {
+        match self {
+            Self::Refuse => ServedProductFallbackAction::Refuse,
+            Self::AllowSameBackend => ServedProductFallbackAction::Degrade,
+        }
+    }
+}
+
+/// Actual backend-selection state used by one served request or capability.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BackendSelectionState {
+    /// The requested backend executes directly with no fallback or degradation.
+    Direct,
+    /// The requested backend executes explicitly while degraded.
+    SameBackendDegraded,
+    /// The requested backend executes explicitly on a slower same-backend path.
+    SameBackendSlowPath,
+    /// Execution switched to a different backend explicitly.
+    CrossBackendFallback,
+    /// Execution succeeded only after an explicit retry.
+    Retried,
+    /// Execution was explicitly refused under the active fallback lattice.
+    Refused,
+}
+
+/// Explicit runtime backend selection and fallback truth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BackendSelection {
+    /// Backend the caller or higher-level runtime requested.
+    pub requested_backend: String,
+    /// Backend that will actually execute the work.
+    pub effective_backend: String,
+    /// Selected device for the effective backend, when one exists.
+    pub selected_device: Option<DeviceDescriptor>,
+    /// All concrete devices selected for the effective backend path, when the runtime chose more than one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_devices: Vec<DeviceDescriptor>,
+    /// Explicit runtime-owned allocator/kernel-cache/device-budget state for the effective backend.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub runtime_resources: Option<BackendRuntimeResources>,
+    /// Explicit backend-extension families kept outside the base primitive-op list.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub backend_extensions: Vec<BackendExtensionSupport>,
+    /// Supported op labels for the advertised product path.
+    pub supported_ops: Vec<String>,
+    /// Explicit served-product fallback and degraded-state policy.
+    pub policy: ServedProductBackendPolicy,
+    /// Full fallback lattice used to decide allowed state transitions.
+    pub fallback_lattice: ServedProductFallbackLattice,
+    /// Actual selection state under that policy.
+    pub selection_state: BackendSelectionState,
+    /// Explicit trigger that forced the runtime off the preferred direct path.
+    pub fallback_trigger: Option<ServedProductFallbackTrigger>,
+    /// Explicit fallback action taken under the lattice.
+    pub fallback_action: Option<ServedProductFallbackAction>,
+    /// Explicit fallback reason when the effective backend differs from the requested backend.
+    pub fallback_reason: Option<String>,
+    /// Explicit degraded-state reason when the requested backend still executes while degraded.
+    pub degraded_reason: Option<String>,
+    /// Retry attempt count when the runtime retried explicitly.
+    pub retry_attempt: Option<u32>,
+    /// Explicit multi-device or sharded topology when execution uses more than one concrete placement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
+}
+
+impl BackendSelection {
+    /// Creates a direct backend selection with no fallback.
+    #[must_use]
+    pub fn direct(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+    ) -> Self {
+        Self::direct_with_policy(
+            backend,
+            selected_device,
+            supported_ops,
+            ServedProductBackendPolicy::same_backend_only(),
+        )
+    }
+
+    /// Creates a direct backend selection with an explicit served-product policy.
+    #[must_use]
+    pub fn direct_with_policy(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+    ) -> Self {
+        let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::Direct,
+            fallback_trigger: None,
+            fallback_action: None,
+            fallback_reason: None,
+            degraded_reason: None,
+            retry_attempt: None,
+        }
+    }
+
+    /// Creates an explicit fallback selection.
+    #[must_use]
+    pub fn fallback(
+        requested_backend: impl Into<String>,
+        effective_backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        fallback_reason: impl Into<String>,
+    ) -> Self {
+        Self::fallback_with_policy(
+            requested_backend,
+            effective_backend,
+            selected_device,
+            supported_ops,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+            fallback_reason,
+        )
+    }
+
+    /// Creates an explicit fallback selection with an explicit served-product policy.
+    #[must_use]
+    pub fn fallback_with_policy(
+        requested_backend: impl Into<String>,
+        effective_backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        fallback_reason: impl Into<String>,
+    ) -> Self {
+        let requested_backend = requested_backend.into();
+        let effective_backend = effective_backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(
+                effective_backend.clone(),
+                device.inventory_qualifiers(),
+            )
+        });
+        Self {
+            requested_backend,
+            effective_backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::CrossBackendFallback,
+            fallback_trigger: Some(ServedProductFallbackTrigger::RequestedBackendUnavailable),
+            fallback_action: Some(ServedProductFallbackAction::Replan),
+            fallback_reason: Some(fallback_reason.into()),
+            degraded_reason: None,
+            retry_attempt: None,
+        }
+    }
+
+    /// Creates an explicit same-backend degraded selection.
+    #[must_use]
+    pub fn degraded(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        degraded_reason: impl Into<String>,
+    ) -> Self {
+        let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::SameBackendDegraded,
+            fallback_trigger: Some(ServedProductFallbackTrigger::RequestedBackendDegraded),
+            fallback_action: Some(ServedProductFallbackAction::Degrade),
+            fallback_reason: None,
+            degraded_reason: Some(degraded_reason.into()),
+            retry_attempt: None,
+        }
+    }
+
+    /// Creates an explicit same-backend slow-path selection.
+    #[must_use]
+    pub fn slow_path(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        trigger: ServedProductFallbackTrigger,
+        reason: impl Into<String>,
+    ) -> Self {
+        let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::SameBackendSlowPath,
+            fallback_trigger: Some(trigger),
+            fallback_action: Some(ServedProductFallbackAction::SameBackendSlowPath),
+            fallback_reason: Some(reason.into()),
+            degraded_reason: None,
+            retry_attempt: None,
+        }
+    }
+
+    /// Creates an explicit retried selection.
+    #[must_use]
+    pub fn retried(
+        backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        trigger: ServedProductFallbackTrigger,
+        retry_attempt: u32,
+        reason: impl Into<String>,
+    ) -> Self {
+        let backend = backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(backend.clone(), device.inventory_qualifiers())
+        });
+        Self {
+            requested_backend: backend.clone(),
+            effective_backend: backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::Retried,
+            fallback_trigger: Some(trigger),
+            fallback_action: Some(ServedProductFallbackAction::Retry),
+            fallback_reason: Some(reason.into()),
+            degraded_reason: None,
+            retry_attempt: Some(retry_attempt),
+        }
+    }
+
+    /// Creates an explicit refused selection.
+    #[must_use]
+    pub fn refused(
+        requested_backend: impl Into<String>,
+        selected_device: Option<DeviceDescriptor>,
+        supported_ops: Vec<String>,
+        policy: ServedProductBackendPolicy,
+        trigger: ServedProductFallbackTrigger,
+        reason: impl Into<String>,
+    ) -> Self {
+        let requested_backend = requested_backend.into();
+        let execution_topology = selected_device.as_ref().map(|device| {
+            ExecutionTopologyPlan::single_device(
+                requested_backend.clone(),
+                device.inventory_qualifiers(),
+            )
+        });
+        Self {
+            requested_backend: requested_backend.clone(),
+            effective_backend: requested_backend,
+            selected_devices: selected_device.iter().cloned().collect(),
+            execution_topology,
+            selected_device,
+            runtime_resources: None,
+            backend_extensions: Vec::new(),
+            supported_ops,
+            policy,
+            fallback_lattice: ServedProductFallbackLattice::from_backend_policy(policy),
+            selection_state: BackendSelectionState::Refused,
+            fallback_trigger: Some(trigger),
+            fallback_action: Some(ServedProductFallbackAction::Refuse),
+            fallback_reason: Some(reason.into()),
+            degraded_reason: None,
+            retry_attempt: None,
+        }
+    }
+
+    /// Creates a direct selection from a discovered backend.
+    pub fn from_backend<B>(backend: &B, supported_ops: &[&str]) -> Result<Self, RuntimeError>
+    where
+        B: DeviceDiscovery + ?Sized,
+    {
+        Ok(Self::direct(
+            backend.backend_name(),
+            backend.discover_devices()?.into_iter().next(),
+            supported_ops
+                .iter()
+                .map(|label| String::from(*label))
+                .collect(),
+        )
+        .with_runtime_resources(backend.runtime_resources())
+        .with_backend_extensions(backend.extension_support()))
+    }
+
+    /// Creates a fallback selection to an effective backend discovered at runtime.
+    pub fn fallback_to_backend<B>(
+        requested_backend: impl Into<String>,
+        effective_backend: &B,
+        supported_ops: &[&str],
+        fallback_reason: impl Into<String>,
+    ) -> Result<Self, RuntimeError>
+    where
+        B: DeviceDiscovery + ?Sized,
+    {
+        Ok(Self::fallback_with_policy(
+            requested_backend,
+            effective_backend.backend_name(),
+            effective_backend.discover_devices()?.into_iter().next(),
+            supported_ops
+                .iter()
+                .map(|label| String::from(*label))
+                .collect(),
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+            fallback_reason,
+        )
+        .with_runtime_resources(effective_backend.runtime_resources())
+        .with_backend_extensions(effective_backend.extension_support()))
+    }
+
+    /// Attaches explicit backend runtime resource state.
+    #[must_use]
+    pub fn with_runtime_resources(
+        mut self,
+        runtime_resources: Option<BackendRuntimeResources>,
+    ) -> Self {
+        self.runtime_resources = runtime_resources;
+        self
+    }
+
+    /// Attaches explicit backend-extension support truth.
+    #[must_use]
+    pub fn with_backend_extensions(
+        mut self,
+        backend_extensions: Vec<BackendExtensionSupport>,
+    ) -> Self {
+        self.backend_extensions = backend_extensions;
+        self
+    }
+
+    /// Replaces the selected-device set explicitly.
+    #[must_use]
+    pub fn with_selected_devices(mut self, selected_devices: Vec<DeviceDescriptor>) -> Self {
+        self.selected_devices = selected_devices;
+        if self.selected_device.is_none() {
+            self.selected_device = self.selected_devices.first().cloned();
+        }
+        if self.execution_topology.is_none() && self.selected_devices.len() == 1 {
+            if let Some(device) = self.selected_devices.first() {
+                self.execution_topology = Some(ExecutionTopologyPlan::single_device(
+                    self.effective_backend.clone(),
+                    device.inventory_qualifiers(),
+                ));
+            }
+        }
+        self
+    }
+
+    /// Attaches an explicit multi-device or sharded execution topology.
+    #[must_use]
+    pub fn with_execution_topology(
+        mut self,
+        execution_topology: Option<ExecutionTopologyPlan>,
+    ) -> Self {
+        self.execution_topology = execution_topology;
+        self
+    }
+
+    /// Returns the primary selected device, preserving legacy single-device callers.
+    #[must_use]
+    pub fn primary_selected_device(&self) -> Option<&DeviceDescriptor> {
+        self.selected_device
+            .as_ref()
+            .or_else(|| self.selected_devices.first())
+    }
+
+    /// Returns all selected devices participating in the effective backend path.
+    #[must_use]
+    pub fn selected_devices(&self) -> Vec<&DeviceDescriptor> {
+        if self.selected_devices.is_empty() {
+            self.selected_device.iter().collect()
+        } else {
+            self.selected_devices.iter().collect()
+        }
+    }
+
+    /// Returns selected-device inventory qualifiers enriched with current runtime budget truth.
+    #[must_use]
+    pub fn selected_device_inventory(&self) -> Option<DeviceInventoryQualifiers> {
+        let mut qualifiers = self.primary_selected_device()?.inventory_qualifiers();
+        qualifiers.free_memory_bytes = self
+            .runtime_resources
+            .as_ref()
+            .and_then(|resources| resources.device_memory_budget.as_ref())
+            .and_then(|budget| budget.available_execution_bytes);
+        Some(qualifiers)
+    }
+
+    /// Returns all selected-device qualifiers enriched with current runtime budget truth.
+    #[must_use]
+    pub fn selected_devices_inventory(&self) -> Vec<DeviceInventoryQualifiers> {
+        let runtime_free_memory = self
+            .runtime_resources
+            .as_ref()
+            .and_then(|resources| resources.device_memory_budget.as_ref())
+            .and_then(|budget| budget.available_execution_bytes);
+        self.selected_devices()
+            .into_iter()
+            .map(|device| {
+                let mut qualifiers = device.inventory_qualifiers();
+                qualifiers.free_memory_bytes = runtime_free_memory;
+                qualifiers
+            })
+            .collect()
+    }
+
+    /// Returns the explicit execution topology, deriving the current single-device plan when possible.
+    #[must_use]
+    pub fn execution_topology_plan(&self) -> Option<ExecutionTopologyPlan> {
+        self.execution_topology.clone().or_else(|| {
+            self.primary_selected_device().map(|device| {
+                ExecutionTopologyPlan::single_device(
+                    self.effective_backend.clone(),
+                    device.inventory_qualifiers(),
+                )
+            })
+        })
+    }
+}
+
+impl DeliveredExecutionContext {
+    /// Derives delivered execution context from runtime backend selection truth.
+    #[must_use]
+    pub fn from_backend_selection(selection: &BackendSelection) -> Self {
+        Self::new(
+            selection.effective_backend.clone(),
+            selection.execution_topology_plan(),
+            selection.selected_devices_inventory(),
+        )
+    }
+}
+
+/// Minimal execution metrics.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExecutionMetrics {
+    /// Number of plan steps executed.
+    pub steps_executed: usize,
+    /// Total kernel or step dispatch count surfaced by the backend path.
+    pub kernel_count: usize,
+    /// Total bytes moved or written by the backend path.
+    pub bytes_moved: u64,
+    /// Number of execution-plan cache hits observed during this execution.
+    pub plan_cache_hits: usize,
+    /// Number of execution-plan cache misses observed during this execution.
+    pub plan_cache_misses: usize,
+    /// Stable digest of the execution plan used for this run, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_plan_digest: Option<String>,
+    /// Explicit warm/cold compile-path evidence for this run, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub compile_path: Option<CompilePathEvidence>,
+}
+
+/// Trait for backend-owned buffers.
+pub trait BufferHandle {
+    /// Returns the buffer tensor spec.
+    fn spec(&self) -> &TensorSpec;
+
+    /// Returns the storage posture for the buffer.
+    fn storage_kind(&self) -> BufferStorageKind {
+        BufferStorageKind::DenseF32
+    }
+}
+
+/// Physical residency of a backend-owned buffer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum BufferResidency {
+    /// Storage lives in host-managed memory.
+    Host,
+    /// Storage lives in backend-owned device memory.
+    Backend,
+}
+
+/// Explicit buffer storage kind surfaced by runtime backends.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum BufferStorageKind {
+    /// Ordinary dense `f32` tensor storage.
+    DenseF32,
+    /// Dense `f32` storage that came from a quantized source tensor.
+    DequantizedF32 {
+        /// Source quantization mode that was dequantized.
+        source_quantization: QuantizationMode,
+    },
+    /// Quantized GGML/GGUF block storage that remains quantized.
+    QuantizedBlocks {
+        /// Quantized storage family.
+        mode: QuantizationMode,
+        /// Stable GGML block layout.
+        layout: QuantizedBlockLayout,
+        /// Whether the storage is host- or backend-resident.
+        residency: BufferResidency,
+    },
+}
+
+/// How a runtime load plan sources model artifact bytes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactStorageKind {
+    /// The artifact was copied into an in-memory buffer before planning.
+    InMemoryCopy,
+    /// The artifact stays backed by a paged local blob.
+    PagedLocalBlob,
+}
+
+/// Blob family used by a paged local model artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ModelArtifactBlobKind {
+    /// Standalone GGUF file discovered on disk.
+    GgufFile,
+    /// Ollama-managed blob resolved by digest.
+    OllamaBlob,
+}
+
+/// Actual local read path used for a paged model artifact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ArtifactReadPath {
+    /// The artifact bytes are exposed through a memory map.
+    MemoryMapped,
+    /// The artifact bytes are exposed from a buffered host copy.
+    Buffered,
+}
+
+/// Runtime-visible storage truth for a model artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModelArtifactStorage {
+    /// Stable artifact name.
+    pub artifact_name: String,
+    /// Stable SHA-256 digest of the artifact bytes.
+    pub artifact_sha256: String,
+    /// High-level storage posture used by the runtime.
+    pub storage_kind: ModelArtifactStorageKind,
+    /// Blob family when the runtime kept paged local blob storage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub blob_kind: Option<ModelArtifactBlobKind>,
+    /// Actual local read path when the runtime kept paged local blob storage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub read_path: Option<ArtifactReadPath>,
+    /// Logical page size when the runtime kept paged local blob storage.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub page_size: Option<usize>,
+    /// Explicit fallback reason when mmap was preferred but not used.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub fallback_reason: Option<String>,
+}
+
+impl ModelArtifactStorage {
+    /// Creates storage truth for an eager in-memory artifact copy.
+    #[must_use]
+    pub fn in_memory_copy(
+        artifact_name: impl Into<String>,
+        artifact_sha256: impl Into<String>,
+    ) -> Self {
+        Self {
+            artifact_name: artifact_name.into(),
+            artifact_sha256: artifact_sha256.into(),
+            storage_kind: ModelArtifactStorageKind::InMemoryCopy,
+            blob_kind: None,
+            read_path: None,
+            page_size: None,
+            fallback_reason: None,
+        }
+    }
+
+    /// Creates storage truth for a paged local blob artifact.
+    #[must_use]
+    pub fn paged_local_blob(
+        artifact_name: impl Into<String>,
+        artifact_sha256: impl Into<String>,
+        blob_kind: ModelArtifactBlobKind,
+        read_path: ArtifactReadPath,
+        page_size: usize,
+        fallback_reason: Option<String>,
+    ) -> Self {
+        Self {
+            artifact_name: artifact_name.into(),
+            artifact_sha256: artifact_sha256.into(),
+            storage_kind: ModelArtifactStorageKind::PagedLocalBlob,
+            blob_kind: Some(blob_kind),
+            read_path: Some(read_path),
+            page_size: Some(page_size),
+            fallback_reason,
+        }
+    }
+}
+
+/// Runtime-visible paged tensor byte plan derived from a blob-backed artifact.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PagedTensorStoragePlan {
+    /// Stable tensor name.
+    pub tensor_name: String,
+    /// Backing artifact name.
+    pub artifact_name: String,
+    /// Byte offset inside the artifact.
+    pub byte_offset: u64,
+    /// Tensor byte length inside the artifact.
+    pub byte_length: u64,
+    /// Logical page size for reads over the tensor bytes.
+    pub page_size: usize,
+    /// Total page count for the tensor byte range.
+    pub page_count: usize,
+}
+
+/// Trait for device discovery.
+pub trait DeviceDiscovery {
+    /// Returns the backend name.
+    fn backend_name(&self) -> BackendName;
+
+    /// Returns discovered devices.
+    fn discover_devices(&self) -> Result<Vec<DeviceDescriptor>, RuntimeError>;
+
+    /// Returns current runtime health.
+    fn health(&self) -> RuntimeHealth;
+
+    /// Returns explicit allocator/kernel-cache/device-budget state for the effective backend.
+    fn runtime_resources(&self) -> Option<BackendRuntimeResources> {
+        None
+    }
+
+    /// Returns typed backend-extension families supported outside the base primitive-op list.
+    fn extension_support(&self) -> Vec<BackendExtensionSupport> {
+        Vec::new()
+    }
+}
+
+/// Trait for backend allocators.
+pub trait Allocator {
+    /// Concrete buffer type.
+    type Buffer: BufferHandle;
+
+    /// Allocates a buffer for a tensor spec.
+    fn allocate(&mut self, spec: &TensorSpec) -> Result<Self::Buffer, RuntimeError>;
+}
+
+/// Trait for graph execution.
+pub trait ExecutionBackend {
+    /// Concrete buffer type.
+    type Buffer: BufferHandle;
+
+    /// Executes a compiled plan with host-supplied inputs.
+    fn execute(
+        &mut self,
+        plan: &ExecutionPlan,
+        inputs: &BTreeMap<TensorId, Self::Buffer>,
+    ) -> Result<ExecutionResult<Self::Buffer>, RuntimeError>;
+}
+
+/// Execution result containing output buffers and basic metrics.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ExecutionResult<B> {
+    /// Materialized outputs by tensor ID.
+    pub outputs: BTreeMap<TensorId, B>,
+    /// Runtime metrics for the execution.
+    pub metrics: ExecutionMetrics,
+}
+
+#[cfg(test)]
+mod tests {
+    use std::collections::BTreeMap;
+
+    use psionic_core::{
+        BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec,
+    };
+    use psionic_ir::{ExecutionOp, ExecutionPlan, ExecutionStep};
+    use serde_json::json;
+
+    use super::{
+        AcceleratorDeliverabilityDifferenceCode, AcceleratorDeliverabilityStatus,
+        AcceleratorExecutionRequirement, AdmissionRefusalReason, Allocator, AllocatorPoolPolicy,
+        AllocatorPoolReport, AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata,
+        AmdDriverBinding, AmdOptInStatus, AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel,
+        AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, ArtifactReadPath, BackendDegradedPolicy,
+        BackendExtensionExecution, BackendExtensionSupport, BackendHealthTracker,
+        BackendRuntimeResources, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
+        BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
+        CacheInvalidationTrigger, CacheKind, CacheObservation, DEFAULT_PENALTY_LOOKBACK,
+        DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
+        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
+        ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
+        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
+        ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
+        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
+        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
+        SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
+        SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
+        SandboxExecutionResourceSummary, SandboxFilesystemPolicy, SandboxFilesystemRoot,
+        SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy,
+        SandboxResourceLimits, ServedArtifactIdentity, ServedProductBackendPolicy,
+        ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
+        ThroughputClass, TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
+        plan_model_admission,
+    };
+
+    #[derive(Clone, Debug, PartialEq, Eq)]
+    struct MockBuffer {
+        spec: TensorSpec,
+    }
+
+    impl BufferHandle for MockBuffer {
+        fn spec(&self) -> &TensorSpec {
+            &self.spec
+        }
+    }
+
+    struct MockRuntime;
+
+    impl DeviceDiscovery for MockRuntime {
+        fn backend_name(&self) -> super::BackendName {
+            "mock"
+        }
+
+        fn discover_devices(&self) -> Result<Vec<DeviceDescriptor>, RuntimeError> {
+            Ok(vec![DeviceDescriptor {
+                backend: String::from("mock"),
+                device: Device::cpu(),
+                device_name: Some(String::from("mock cpu")),
+                supported_dtypes: vec![DType::F32],
+                supported_quantization: vec![QuantizationSupport {
+                    mode: psionic_core::QuantizationMode::None,
+                    load_path: QuantizationLoadPath::DenseF32,
+                    execution: QuantizationExecution::Native,
+                }],
+                memory_capacity_bytes: None,
+                unified_memory: Some(true),
+                feature_flags: vec![String::from("mock_execution")],
+                amd_metadata: None,
+                nvidia_metadata: None,
+            }])
+        }
+
+        fn health(&self) -> RuntimeHealth {
+            RuntimeHealth {
+                status: HealthStatus::Ready,
+                message: String::from("ready"),
+            }
+        }
+
+        fn extension_support(&self) -> Vec<BackendExtensionSupport> {
+            vec![
+                BackendExtensionSupport::reference(BackendExtensionKind::RmsNorm),
+                BackendExtensionSupport::backend_specialized(BackendExtensionKind::QuantizedMatmul),
+            ]
+        }
+    }
+
+    impl Allocator for MockRuntime {
+        type Buffer = MockBuffer;
+
+        fn allocate(&mut self, spec: &TensorSpec) -> Result<Self::Buffer, RuntimeError> {
+            Ok(MockBuffer { spec: spec.clone() })
+        }
+    }
+
+    fn sample_cuda_device() -> DeviceDescriptor {
+        DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("NVIDIA CUDA Test Device")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: Some(NvidiaDeviceMetadata {
+                topology: NvidiaTopologyInfo {
+                    architecture: Some(String::from("ada")),
+                    compute_capability: Some(String::from("8.9")),
+                    pci_bdf: Some(String::from("00000000:01:00.0")),
+                    sm_count: Some(76),
+                    vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                    mig_profile: None,
+                },
+                risk: NvidiaRiskProfile {
+                    level: NvidiaRiskLevel::Standard,
+                    display_attached: Some(false),
+                    mig_partitioned: false,
+                    warnings: Vec::new(),
+                },
+                recovery: NvidiaRecoveryProfile {
+                    supports_gpu_reset: Some(true),
+                    expected_actions: vec![
+                        NvidiaRecoveryAction::ProcessRestart,
+                        NvidiaRecoveryAction::GpuReset,
+                        NvidiaRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
+        }
+    }
+
+    impl ExecutionBackend for MockRuntime {
+        type Buffer = MockBuffer;
+
+        fn execute(
+            &mut self,
+            plan: &ExecutionPlan,
+            _inputs: &BTreeMap<psionic_core::TensorId, Self::Buffer>,
+        ) -> Result<ExecutionResult<Self::Buffer>, RuntimeError> {
+            Ok(ExecutionResult {
+                outputs: BTreeMap::new(),
+                metrics: ExecutionMetrics {
+                    steps_executed: plan.steps.len(),
+                    kernel_count: plan.steps.len(),
+                    bytes_moved: 0,
+                    plan_cache_hits: 0,
+                    plan_cache_misses: 0,
+                    execution_plan_digest: None,
+                    compile_path: None,
+                },
+            })
+        }
+    }
+
+    #[test]
+    fn mock_runtime_reports_device_and_executes_plan() -> Result<(), RuntimeError> {
+        let mut runtime = MockRuntime;
+        let devices = runtime.discover_devices()?;
+        if devices.len() != 1 {
+            return Err(RuntimeError::Backend(format!(
+                "expected 1 discovered device, found {}",
+                devices.len()
+            )));
+        }
+        if runtime.health().status != HealthStatus::Ready {
+            return Err(RuntimeError::Backend(String::from(
+                "expected mock runtime health to be ready",
+            )));
+        }
+
+        let spec = TensorSpec::new(Shape::new(vec![1, 2]), DType::F32, Device::cpu());
+        let buffer = runtime.allocate(&spec)?;
+        let mut inputs = BTreeMap::new();
+        inputs.insert(psionic_core::TensorId(0), buffer);
+
+        let plan = ExecutionPlan {
+            graph_digest: String::from("digest"),
+            steps: vec![ExecutionStep {
+                output: psionic_core::TensorId(1),
+                op: ExecutionOp::Add,
+                spec: TensorSpec::new(Shape::new(vec![1, 2]), DType::F32, Device::cpu()),
+                inputs: vec![psionic_core::TensorId(0)],
+            }],
+            outputs: vec![psionic_core::TensorId(1)],
+        };
+
+        let result = runtime.execute(&plan, &inputs)?;
+        if result.metrics.steps_executed != 1 {
+            return Err(RuntimeError::Backend(format!(
+                "expected 1 executed step, found {}",
+                result.metrics.steps_executed
+            )));
+        }
+        Ok(())
+    }
+
+    #[test]
+    fn backend_selection_helpers_capture_direct_and_fallback_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let direct = BackendSelection::from_backend(&MockRuntime, &["input", "matmul"])?;
+        assert_eq!(direct.requested_backend, "mock");
+        assert_eq!(direct.effective_backend, "mock");
+        assert_eq!(
+            direct.supported_ops,
+            vec![String::from("input"), String::from("matmul")]
+        );
+        assert_eq!(
+            direct.policy,
+            ServedProductBackendPolicy::same_backend_only()
+        );
+        assert_eq!(
+            direct.fallback_lattice,
+            ServedProductFallbackLattice::same_backend_only()
+        );
+        assert_eq!(direct.selection_state, BackendSelectionState::Direct);
+        assert!(direct.fallback_trigger.is_none());
+        assert!(direct.fallback_action.is_none());
+        assert!(direct.fallback_reason.is_none());
+        assert!(direct.degraded_reason.is_none());
+        assert!(direct.retry_attempt.is_none());
+        assert_eq!(
+            serde_json::to_value(&direct)?,
+            json!({
+                "requested_backend": "mock",
+                "effective_backend": "mock",
+                "selected_device": {
+                    "backend": "mock",
+                    "device": {
+                        "kind": "Cpu",
+                        "ordinal": 0,
+                        "label": "cpu:0"
+                    },
+                    "device_name": "mock cpu",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [{
+                        "mode": "none",
+                        "load_path": "dense_f32",
+                        "execution": "native"
+                    }],
+                    "memory_capacity_bytes": null,
+                    "unified_memory": true,
+                    "feature_flags": ["mock_execution"]
+                },
+                "selected_devices": [{
+                    "backend": "mock",
+                    "device": {
+                        "kind": "Cpu",
+                        "ordinal": 0,
+                        "label": "cpu:0"
+                    },
+                    "device_name": "mock cpu",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [{
+                        "mode": "none",
+                        "load_path": "dense_f32",
+                        "execution": "native"
+                    }],
+                    "memory_capacity_bytes": null,
+                    "unified_memory": true,
+                    "feature_flags": ["mock_execution"]
+                }],
+                "backend_extensions": [
+                    {
+                        "kind": "rms_norm",
+                        "execution": "reference"
+                    },
+                    {
+                        "kind": "quantized_matmul",
+                        "execution": "backend_specialized"
+                    }
+                ],
+                "supported_ops": ["input", "matmul"],
+                "policy": {
+                    "unavailable": "refuse",
+                    "degraded": "allow_same_backend"
+                },
+                "fallback_lattice": {
+                    "unavailable": "refuse",
+                    "degraded": "degrade",
+                    "numerical_safety": "refuse",
+                    "memory_pressure": "refuse",
+                    "plan_unavailable": "same_backend_slow_path",
+                    "transient_backend_failure": "retry"
+                },
+                "selection_state": "direct",
+                "fallback_trigger": null,
+                "fallback_action": null,
+                "fallback_reason": null,
+                "degraded_reason": null,
+                "retry_attempt": null,
+                "execution_topology": {
+                    "effective_backend": "mock",
+                    "kind": "single_device",
+                    "assignments": [{
+                        "shard_id": 0,
+                        "device": {
+                            "stable_device_id": "cpu:0",
+                            "placement_index": 0
+                        },
+                        "partition": {
+                            "kind": "whole_model"
+                        }
+                    }]
+                }
+            })
+        );
+
+        let fallback = BackendSelection::fallback_to_backend(
+            "metal",
+            &MockRuntime,
+            &["input", "matmul"],
+            "metal backend unavailable: offline",
+        )?;
+        assert_eq!(fallback.requested_backend, "metal");
+        assert_eq!(fallback.effective_backend, "mock");
+        assert_eq!(
+            fallback.policy,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            fallback.fallback_lattice,
+            ServedProductFallbackLattice::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            fallback.selection_state,
+            BackendSelectionState::CrossBackendFallback
+        );
+        assert_eq!(
+            fallback.fallback_trigger,
+            Some(ServedProductFallbackTrigger::RequestedBackendUnavailable)
+        );
+        assert_eq!(
+            fallback.fallback_action,
+            Some(ServedProductFallbackAction::Replan)
+        );
+        assert_eq!(
+            fallback.fallback_reason.as_deref(),
+            Some("metal backend unavailable: offline")
+        );
+        assert!(fallback.degraded_reason.is_none());
+        assert!(fallback.retry_attempt.is_none());
+
+        let degraded = BackendSelection::degraded(
+            "metal",
+            direct.selected_device.clone(),
+            vec![String::from("input"), String::from("matmul")],
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend,
+            ),
+            "metal backend degraded: legacy-family device",
+        );
+        assert_eq!(degraded.requested_backend, "metal");
+        assert_eq!(degraded.effective_backend, "metal");
+        assert_eq!(
+            degraded.policy,
+            ServedProductBackendPolicy::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            degraded.fallback_lattice,
+            ServedProductFallbackLattice::fallback_to_compatible_backend(
+                BackendDegradedPolicy::AllowSameBackend
+            )
+        );
+        assert_eq!(
+            degraded.selection_state,
+            BackendSelectionState::SameBackendDegraded
+        );
+        assert_eq!(
+            degraded.fallback_trigger,
+            Some(ServedProductFallbackTrigger::RequestedBackendDegraded)
+        );
+        assert_eq!(
+            degraded.fallback_action,
+            Some(ServedProductFallbackAction::Degrade)
+        );
+        assert!(degraded.fallback_reason.is_none());
+        assert_eq!(
+            degraded.degraded_reason.as_deref(),
+            Some("metal backend degraded: legacy-family device")
+        );
+        assert!(degraded.retry_attempt.is_none());
+        Ok(())
+    }
+
+    #[test]
+    fn fallback_lattice_supports_refuse_replan_retry_and_same_backend_slow_path() {
+        let lattice = ServedProductFallbackLattice::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::RequestedBackendUnavailable,
+            ServedProductFallbackAction::Replan
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::RequestedBackendDegraded,
+            ServedProductFallbackAction::Degrade
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::PlanUnavailable,
+            ServedProductFallbackAction::SameBackendSlowPath
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::TransientBackendFailure,
+            ServedProductFallbackAction::Retry
+        ));
+        assert!(lattice.allows(
+            ServedProductFallbackTrigger::NumericalSafetyRisk,
+            ServedProductFallbackAction::Refuse
+        ));
+        assert!(!lattice.allows(
+            ServedProductFallbackTrigger::NumericalSafetyRisk,
+            ServedProductFallbackAction::Replan
+        ));
+    }
+
+    #[test]
+    fn backend_selection_can_surface_refusal_retry_and_same_backend_slow_path() {
+        let policy = ServedProductBackendPolicy::fallback_to_compatible_backend(
+            BackendDegradedPolicy::AllowSameBackend,
+        );
+        let slow_path = BackendSelection::slow_path(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+            policy,
+            ServedProductFallbackTrigger::PlanUnavailable,
+            "kernel fusion not compiled yet; using unfused path",
+        );
+        assert_eq!(
+            slow_path.selection_state,
+            BackendSelectionState::SameBackendSlowPath
+        );
+        assert_eq!(
+            slow_path.fallback_action,
+            Some(ServedProductFallbackAction::SameBackendSlowPath)
+        );
+
+        let retried = BackendSelection::retried(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+            policy,
+            ServedProductFallbackTrigger::TransientBackendFailure,
+            1,
+            "retry after transient launch timeout",
+        );
+        assert_eq!(retried.selection_state, BackendSelectionState::Retried);
+        assert_eq!(
+            retried.fallback_action,
+            Some(ServedProductFallbackAction::Retry)
+        );
+        assert_eq!(retried.retry_attempt, Some(1));
+
+        let refused = BackendSelection::refused(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+            policy,
+            ServedProductFallbackTrigger::NumericalSafetyRisk,
+            "tensor core path failed numerical safety gate",
+        );
+        assert_eq!(refused.selection_state, BackendSelectionState::Refused);
+        assert_eq!(
+            refused.fallback_action,
+            Some(ServedProductFallbackAction::Refuse)
+        );
+        assert_eq!(
+            refused.fallback_trigger,
+            Some(ServedProductFallbackTrigger::NumericalSafetyRisk)
+        );
+    }
+
+    #[test]
+    fn backend_selection_can_carry_cuda_backend_identity() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("probe_only")],
+        );
+        assert_eq!(selection.requested_backend, "cuda");
+        assert_eq!(selection.effective_backend, "cuda");
+        assert_eq!(
+            selection
+                .selected_device
+                .as_ref()
+                .map(|descriptor| descriptor.device.kind()),
+            Some(DeviceKind::Cuda)
+        );
+        assert_eq!(selection.selection_state, BackendSelectionState::Direct);
+    }
+
+    #[test]
+    fn quantization_support_surfaces_storage_path_and_pending_execution_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let support = QuantizationSupport {
+            mode: psionic_core::QuantizationMode::GgmlQ4_0,
+            load_path: QuantizationLoadPath::BackendQuantized,
+            execution: QuantizationExecution::DequantizeToF32,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&support)?,
+            json!({
+                "mode": "ggml_q4_0",
+                "load_path": "backend_quantized",
+                "execution": "dequantize_to_f32"
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn backend_extension_support_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let support = BackendExtensionSupport {
+            kind: BackendExtensionKind::RotaryEmbedding,
+            execution: BackendExtensionExecution::BackendSpecialized,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&support)?,
+            json!({
+                "kind": "rotary_embedding",
+                "execution": "backend_specialized"
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn buffer_handles_can_distinguish_quantized_storage_from_dequantized_fallback() {
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        struct QuantizedMockBuffer {
+            spec: TensorSpec,
+        }
+
+        impl BufferHandle for QuantizedMockBuffer {
+            fn spec(&self) -> &TensorSpec {
+                &self.spec
+            }
+
+            fn storage_kind(&self) -> BufferStorageKind {
+                BufferStorageKind::QuantizedBlocks {
+                    mode: psionic_core::QuantizationMode::GgmlQ8_0,
+                    layout: psionic_core::QuantizedBlockLayout::new(32, 34, 2),
+                    residency: BufferResidency::Backend,
+                }
+            }
+        }
+
+        #[derive(Clone, Debug, PartialEq, Eq)]
+        struct DequantizedMockBuffer {
+            spec: TensorSpec,
+        }
+
+        impl BufferHandle for DequantizedMockBuffer {
+            fn spec(&self) -> &TensorSpec {
+                &self.spec
+            }
+
+            fn storage_kind(&self) -> BufferStorageKind {
+                BufferStorageKind::DequantizedF32 {
+                    source_quantization: psionic_core::QuantizationMode::GgmlQ8_0,
+                }
+            }
+        }
+
+        let spec = TensorSpec::new(Shape::new(vec![64]), DType::F32, Device::cpu());
+        let quantized = QuantizedMockBuffer { spec: spec.clone() };
+        let dequantized = DequantizedMockBuffer { spec };
+
+        assert_eq!(
+            quantized.storage_kind(),
+            BufferStorageKind::QuantizedBlocks {
+                mode: psionic_core::QuantizationMode::GgmlQ8_0,
+                layout: psionic_core::QuantizedBlockLayout::new(32, 34, 2),
+                residency: BufferResidency::Backend,
+            }
+        );
+        assert_eq!(
+            dequantized.storage_kind(),
+            BufferStorageKind::DequantizedF32 {
+                source_quantization: psionic_core::QuantizationMode::GgmlQ8_0,
+            }
+        );
+    }
+
+    #[test]
+    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let copy = ModelArtifactStorage::in_memory_copy("weights.gguf", "abcd");
+        let paged = ModelArtifactStorage::paged_local_blob(
+            "weights.gguf",
+            "abcd",
+            ModelArtifactBlobKind::OllamaBlob,
+            ArtifactReadPath::MemoryMapped,
+            4096,
+            Some(String::from("mmap preferred and available")),
+        );
+
+        assert_eq!(copy.storage_kind, ModelArtifactStorageKind::InMemoryCopy);
+        assert_eq!(
+            serde_json::to_value(&copy)?,
+            json!({
+                "artifact_name": "weights.gguf",
+                "artifact_sha256": "abcd",
+                "storage_kind": "in_memory_copy"
+            })
+        );
+        assert_eq!(paged.storage_kind, ModelArtifactStorageKind::PagedLocalBlob);
+        assert_eq!(
+            serde_json::to_value(&paged)?,
+            json!({
+                "artifact_name": "weights.gguf",
+                "artifact_sha256": "abcd",
+                "storage_kind": "paged_local_blob",
+                "blob_kind": "ollama_blob",
+                "read_path": "memory_mapped",
+                "page_size": 4096,
+                "fallback_reason": "mmap preferred and available"
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let plan = PagedTensorStoragePlan {
+            tensor_name: String::from("blk.0.attn_q.weight"),
+            artifact_name: String::from("weights.gguf"),
+            byte_offset: 8192,
+            byte_length: 16384,
+            page_size: 4096,
+            page_count: 4,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&plan)?,
+            json!({
+                "tensor_name": "blk.0.attn_q.weight",
+                "artifact_name": "weights.gguf",
+                "byte_offset": 8192,
+                "byte_length": 16384,
+                "page_size": 4096,
+                "page_count": 4
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn loaded_model_residency_tracks_keepalive_and_request_activity() {
+        let mut residency = LoadedModelResidency::loading(1_000, 5_000);
+        assert_eq!(residency.state, LoadedModelState::Loading);
+        assert_eq!(residency.expires_at_millis, Some(6_000));
+
+        residency.mark_ready(1_500);
+        assert_eq!(residency.state, LoadedModelState::Ready);
+        assert_eq!(residency.expires_at_millis, Some(6_500));
+
+        residency.begin_request(2_000);
+        assert_eq!(residency.active_requests, 1);
+        assert_eq!(residency.expires_at_millis, None);
+
+        residency.finish_request(3_000);
+        assert_eq!(residency.active_requests, 0);
+        assert_eq!(residency.expires_at_millis, Some(8_000));
+        assert!(!residency.is_expired(7_999));
+        assert!(residency.is_expired(8_000));
+
+        residency.refresh_keep_alive(0, 8_500);
+        assert_eq!(residency.expires_at_millis, Some(8_500));
+        assert!(residency.is_expired(8_500));
+    }
+
+    #[test]
+    fn residency_policy_and_memory_plan_serialize_stably() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let plan = ModelMemoryPlan::split_residency(1024, 256, 128, 384, 2048);
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: Some(2),
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(4096),
+                resident_device_bytes: Some(8192),
+            },
+            pressure_action: ResidencyPressureAction::UnloadIdleOldestFirst,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&(plan, policy))?,
+            json!([
+                {
+                    "weights_bytes": 1024,
+                    "kv_cache_bytes": 256,
+                    "graph_bytes": 128,
+                    "resident_host_bytes": 384,
+                    "resident_device_bytes": 2048
+                },
+                {
+                    "max_loaded_models": 2,
+                    "memory_budget": {
+                        "resident_host_bytes": 4096,
+                        "resident_device_bytes": 8192
+                    },
+                    "pressure_action": "unload_idle_oldest_first"
+                }
+            ])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn model_admission_can_evict_oldest_idle_model_to_fit_budget() {
+        let loaded = vec![
+            LoadedModelMemoryState {
+                model_id: String::from("alpha"),
+                plan: ModelMemoryPlan::host_only(256, 128, 0),
+                active_requests: 0,
+                last_used_at_millis: 1_000,
+            },
+            LoadedModelMemoryState {
+                model_id: String::from("beta"),
+                plan: ModelMemoryPlan::host_only(256, 128, 0),
+                active_requests: 0,
+                last_used_at_millis: 2_000,
+            },
+        ];
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: Some(2),
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(800),
+                resident_device_bytes: None,
+            },
+            pressure_action: ResidencyPressureAction::UnloadIdleOldestFirst,
+        };
+
+        let decision = plan_model_admission(
+            &loaded,
+            "gamma",
+            &ModelMemoryPlan::host_only(256, 128, 0),
+            &policy,
+        );
+        assert!(decision.is_ok());
+        let Ok(decision) = decision else {
+            return;
+        };
+
+        assert_eq!(
+            decision,
+            ModelAdmissionDecision {
+                current: MemoryResidencySnapshot {
+                    loaded_models: 2,
+                    resident_host_bytes: 768,
+                    resident_device_bytes: 0,
+                },
+                admitted: MemoryResidencySnapshot {
+                    loaded_models: 2,
+                    resident_host_bytes: 768,
+                    resident_device_bytes: 0,
+                },
+                evicted_models: vec![String::from("alpha")],
+            }
+        );
+    }
+
+    #[test]
+    fn model_admission_refuses_when_only_active_models_block_the_budget() {
+        let loaded = vec![LoadedModelMemoryState {
+            model_id: String::from("alpha"),
+            plan: ModelMemoryPlan::host_only(256, 128, 0),
+            active_requests: 1,
+            last_used_at_millis: 1_000,
+        }];
+        let policy = ModelResidencyPolicy {
+            max_loaded_models: Some(1),
+            memory_budget: MemoryBudget {
+                resident_host_bytes: Some(512),
+                resident_device_bytes: None,
+            },
+            pressure_action: ResidencyPressureAction::UnloadIdleOldestFirst,
+        };
+
+        let refusal = plan_model_admission(
+            &loaded,
+            "beta",
+            &ModelMemoryPlan::host_only(256, 128, 0),
+            &policy,
+        );
+        assert!(refusal.is_err());
+        let Err(refusal) = refusal else {
+            return;
+        };
+
+        assert_eq!(refusal.reason, AdmissionRefusalReason::MaxLoadedModels);
+        assert_eq!(refusal.blocking_models, vec![String::from("alpha")]);
+        assert_eq!(
+            refusal.current,
+            MemoryResidencySnapshot {
+                loaded_models: 1,
+                resident_host_bytes: 384,
+                resident_device_bytes: 0,
+            }
+        );
+    }
+
+    #[test]
+    fn kv_page_layout_reports_page_and_byte_geometry() {
+        let layout = KvCachePageLayout::new(9, 4, 32);
+        assert_eq!(layout.page_bytes, 128);
+        assert_eq!(layout.max_pages, 3);
+        assert_eq!(layout.page_count_for_tokens(0), 0);
+        assert_eq!(layout.page_count_for_tokens(1), 1);
+        assert_eq!(layout.page_count_for_tokens(4), 1);
+        assert_eq!(layout.page_count_for_tokens(5), 2);
+        assert_eq!(layout.bytes_for_tokens(3), 96);
+    }
+
+    #[test]
+    fn kv_cache_state_and_growth_serialize_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let policy = KvCachePolicy {
+            device_scope: KvCacheDeviceScope::SameDeviceOnly,
+            spill_policy: KvCacheSpillPolicy::RefuseNewPages,
+            page_layout: KvCachePageLayout::new(8, 4, 64),
+        };
+        let before = KvCacheState::paged(&policy.page_layout, 3);
+        let current = KvCacheState::paged(&policy.page_layout, 6);
+        let accounting = KvCacheAccounting::from_states(&before, current.clone());
+
+        assert_eq!(
+            serde_json::to_value(&policy)?,
+            json!({
+                "device_scope": "same_device_only",
+                "spill_policy": "refuse_new_pages",
+                "page_layout": {
+                    "max_context_tokens": 8,
+                    "tokens_per_page": 4,
+                    "bytes_per_token": 64,
+                    "page_bytes": 256,
+                    "max_pages": 2
+                }
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&accounting)?,
+            json!({
+                "current": {
+                    "tokens": 6,
+                    "bytes": 384,
+                    "pages": 2
+                },
+                "growth": {
+                    "tokens": 3,
+                    "bytes": 192,
+                    "pages": 1
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn prefix_cache_identity_and_policy_serialize_stably() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let policy = PrefixCacheReusePolicy {
+            shared_across_sessions: true,
+            shared_across_users: false,
+            shared_across_models: false,
+            shared_across_backends: false,
+        };
+        let identity = PrefixCacheIdentity {
+            served_artifact_digest: String::from("served-artifact-digest"),
+            model_id: String::from("fixture-word-decoder-v0"),
+            model_revision: String::from("v0"),
+            weight_bundle_digest: String::from("bundle-digest"),
+            tokenizer_family: String::from("fixture_wordpiece"),
+            tokenizer_digest: Some(String::from("tokenizer-digest")),
+            chat_template_digest: None,
+            generation_defaults_digest: None,
+            backend_compatibility: String::from("cpu"),
+            prefix_digest: String::from("prefix-digest"),
+            prefix_tokens: 3,
+        };
+
+        assert_eq!(
+            serde_json::to_value(&policy)?,
+            json!({
+                "shared_across_sessions": true,
+                "shared_across_users": false,
+                "shared_across_models": false,
+                "shared_across_backends": false
+            })
+        );
+        assert_eq!(
+            serde_json::to_value(&(PrefixCacheState::Hit, identity))?,
+            json!([
+                "hit",
+                {
+                    "served_artifact_digest": "served-artifact-digest",
+                    "model_id": "fixture-word-decoder-v0",
+                    "model_revision": "v0",
+                    "weight_bundle_digest": "bundle-digest",
+                    "tokenizer_family": "fixture_wordpiece",
+                    "tokenizer_digest": "tokenizer-digest",
+                    "backend_compatibility": "cpu",
+                    "prefix_digest": "prefix-digest",
+                    "prefix_tokens": 3
+                }
+            ])
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn served_artifact_identity_digest_changes_when_identity_changes() {
+        let baseline = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cuda", "cuda@0.1.0", vec![]),
+        );
+
+        let changed_template = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("different-template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cuda", "cuda@0.1.0", vec![]),
+        );
+
+        let changed_backend = ServedArtifactIdentity::new(
+            "fixture-word-decoder-v0",
+            "v0",
+            "bundle-digest",
+            Some(String::from("model-blob-digest")),
+            Some(String::from("tokenizer-digest")),
+            Some(String::from("template-digest")),
+            "defaults-digest",
+            "gguf",
+            QuantizationMode::GgmlQ4_0,
+            BackendToolchainIdentity::new("cpu", "cpu@0.1.0", vec![]),
+        );
+
+        assert_ne!(
+            baseline.served_artifact_digest,
+            changed_template.served_artifact_digest
+        );
+        assert_ne!(
+            baseline.served_artifact_digest,
+            changed_backend.served_artifact_digest
+        );
+    }
+
+    #[test]
+    fn sampling_policy_serializes_supported_generation_controls()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let policy = SamplingPolicy {
+            strategy: SamplingStrategy::Sample,
+            temperature: Some(0.7),
+            top_k: Some(32),
+            top_p: Some(0.85),
+            repeat_penalty: Some(1.2),
+            presence_penalty: Some(0.4),
+            frequency_penalty: Some(0.3),
+            seed: Some(17),
+        };
+        let encoded = serde_json::to_value(&policy)?;
+
+        assert_eq!(encoded["strategy"], "sample");
+        assert!((encoded["temperature"].as_f64().unwrap_or_default() - 0.7).abs() < 1e-6);
+        assert_eq!(encoded["top_k"], 32);
+        assert!((encoded["top_p"].as_f64().unwrap_or_default() - 0.85).abs() < 1e-6);
+        assert!((encoded["repeat_penalty"].as_f64().unwrap_or_default() - 1.2).abs() < 1e-6);
+        assert!((encoded["presence_penalty"].as_f64().unwrap_or_default() - 0.4).abs() < 1e-6);
+        assert!((encoded["frequency_penalty"].as_f64().unwrap_or_default() - 0.3).abs() < 1e-6);
+        assert_eq!(encoded["seed"], 17);
+        Ok(())
+    }
+
+    #[test]
+    fn seeded_token_sampler_replays_draws() {
+        let policy = SamplingPolicy {
+            strategy: SamplingStrategy::Sample,
+            temperature: Some(0.9),
+            top_k: Some(3),
+            top_p: Some(0.95),
+            repeat_penalty: None,
+            presence_penalty: None,
+            frequency_penalty: None,
+            seed: Some(42),
+        };
+        let logits = vec![3.0, 2.9, 2.8];
+        let history = Vec::new();
+        let mut left = TokenSampler::new(&policy);
+        let mut right = TokenSampler::new(&policy);
+
+        let mut left_draws = Vec::new();
+        let mut right_draws = Vec::new();
+        for _ in 0..4 {
+            let left_sample = left.select_next_token(&logits, &history);
+            assert!(left_sample.is_some());
+            if let Some(left_sample) = left_sample {
+                left_draws.push(left_sample);
+            }
+
+            let right_sample = right.select_next_token(&logits, &history);
+            assert!(right_sample.is_some());
+            if let Some(right_sample) = right_sample {
+                right_draws.push(right_sample);
+            }
+        }
+
+        assert_eq!(left_draws, right_draws);
+    }
+
+    #[test]
+    fn sampling_penalties_honor_the_bounded_lookback_window() {
+        let policy = SamplingPolicy {
+            strategy: SamplingStrategy::Greedy,
+            temperature: None,
+            top_k: None,
+            top_p: None,
+            repeat_penalty: Some(1.0),
+            presence_penalty: Some(0.0),
+            frequency_penalty: Some(1.0),
+            seed: None,
+        };
+        let mut logits = vec![0.0, 10.0];
+        let mut history = vec![1u32; DEFAULT_PENALTY_LOOKBACK];
+        history.insert(0, 0);
+
+        apply_sampling_penalties(&mut logits, &history, &policy);
+
+        assert_eq!(logits[0], 0.0);
+        assert_eq!(logits[1], 10.0 - (DEFAULT_PENALTY_LOOKBACK as f32));
+    }
+
+    #[test]
+    fn amd_backend_model_serializes_mode_topology_risk_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let device = DeviceDescriptor {
+            backend: String::from("amd_userspace"),
+            device: Device::new(
+                psionic_core::DeviceKind::AmdUserspace,
+                0,
+                Some(String::from("amd_userspace:0")),
+            ),
+            device_name: Some(String::from("AMD Radeon Test")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(24 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("userspace_opt_in")],
+            amd_metadata: Some(AmdDeviceMetadata {
+                mode: AmdRuntimeMode::Userspace,
+                topology: AmdTopologyInfo {
+                    architecture: Some(String::from("gfx1100")),
+                    pci_bdf: Some(String::from("0000:03:00.0")),
+                    xcc_count: Some(1),
+                    shader_engine_count: Some(4),
+                    compute_unit_count: Some(60),
+                    vram_bytes: Some(24 * 1024 * 1024 * 1024),
+                    visible_vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                },
+                risk: AmdRiskProfile {
+                    level: AmdRiskLevel::Elevated,
+                    requires_explicit_opt_in: true,
+                    may_unbind_kernel_driver: true,
+                    warnings: vec![String::from(
+                        "userspace mode may require unloading or rebinding amdgpu",
+                    )],
+                },
+                recovery: AmdRecoveryProfile {
+                    driver_binding: AmdDriverBinding::UserspaceClaimed,
+                    expected_actions: vec![
+                        AmdRecoveryAction::ProcessRestart,
+                        AmdRecoveryAction::RebindKernelDriver,
+                    ],
+                },
+            }),
+            nvidia_metadata: None,
+        };
+        let report = AmdBackendReport {
+            mode: AmdRuntimeMode::Userspace,
+            opt_in: AmdOptInStatus::Enabled,
+            devices: vec![device],
+            health: RuntimeHealth {
+                status: HealthStatus::Degraded,
+                message: String::from("amdgpu is still loaded; userspace mode not yet ready"),
+            },
+        };
+
+        assert_eq!(
+            serde_json::to_value(&report)?,
+            json!({
+                "mode": "userspace",
+                "opt_in": "enabled",
+                "devices": [{
+                    "backend": "amd_userspace",
+                    "device": {
+                        "kind": "AmdUserspace",
+                        "ordinal": 0,
+                        "label": "amd_userspace:0"
+                    },
+                    "device_name": "AMD Radeon Test",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [],
+                    "memory_capacity_bytes": 25769803776u64,
+                    "unified_memory": false,
+                    "feature_flags": ["userspace_opt_in"],
+                    "amd_metadata": {
+                        "mode": "userspace",
+                        "topology": {
+                            "architecture": "gfx1100",
+                            "pci_bdf": "0000:03:00.0",
+                            "xcc_count": 1,
+                            "shader_engine_count": 4,
+                            "compute_unit_count": 60,
+                            "vram_bytes": 25769803776u64,
+                            "visible_vram_bytes": 17179869184u64
+                        },
+                        "risk": {
+                            "level": "elevated",
+                            "requires_explicit_opt_in": true,
+                            "may_unbind_kernel_driver": true,
+                            "warnings": [
+                                "userspace mode may require unloading or rebinding amdgpu"
+                            ]
+                        },
+                        "recovery": {
+                            "driver_binding": "userspace_claimed",
+                            "expected_actions": ["process_restart", "rebind_kernel_driver"]
+                        }
+                    }
+                }],
+                "health": {
+                    "status": "Degraded",
+                    "message": "amdgpu is still loaded; userspace mode not yet ready"
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn nvidia_backend_model_serializes_topology_risk_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let device = DeviceDescriptor {
+            backend: String::from("cuda"),
+            device: Device::new(psionic_core::DeviceKind::Cuda, 0, Some(String::from("cuda:0"))),
+            device_name: Some(String::from("NVIDIA GeForce RTX 4080")),
+            supported_dtypes: vec![DType::F32],
+            supported_quantization: Vec::new(),
+            memory_capacity_bytes: Some(16 * 1024 * 1024 * 1024),
+            unified_memory: Some(false),
+            feature_flags: vec![String::from("cuda_architecture_surface")],
+            amd_metadata: None,
+            nvidia_metadata: Some(NvidiaDeviceMetadata {
+                topology: NvidiaTopologyInfo {
+                    architecture: Some(String::from("ada")),
+                    compute_capability: Some(String::from("8.9")),
+                    pci_bdf: Some(String::from("00000000:01:00.0")),
+                    sm_count: Some(76),
+                    vram_bytes: Some(16 * 1024 * 1024 * 1024),
+                    mig_profile: None,
+                },
+                risk: NvidiaRiskProfile {
+                    level: NvidiaRiskLevel::Elevated,
+                    display_attached: Some(true),
+                    mig_partitioned: false,
+                    warnings: vec![String::from(
+                        "display-attached NVIDIA devices may show variable latency under local desktop load",
+                    )],
+                },
+                recovery: NvidiaRecoveryProfile {
+                    supports_gpu_reset: Some(true),
+                    expected_actions: vec![
+                        NvidiaRecoveryAction::ProcessRestart,
+                        NvidiaRecoveryAction::GpuReset,
+                        NvidiaRecoveryAction::RebootHost,
+                    ],
+                },
+            }),
+        };
+        let report = NvidiaBackendReport {
+            devices: vec![device],
+            health: RuntimeHealth {
+                status: HealthStatus::Degraded,
+                message: String::from(
+                    "cuda detected a display-attached GPU; provider execution should keep latency caveats explicit",
+                ),
+            },
+        };
+
+        assert_eq!(
+            serde_json::to_value(&report)?,
+            json!({
+                "devices": [{
+                    "backend": "cuda",
+                    "device": {
+                        "kind": "Cuda",
+                        "ordinal": 0,
+                        "label": "cuda:0"
+                    },
+                    "device_name": "NVIDIA GeForce RTX 4080",
+                    "supported_dtypes": ["F32"],
+                    "supported_quantization": [],
+                    "memory_capacity_bytes": 17179869184u64,
+                    "unified_memory": false,
+                    "feature_flags": ["cuda_architecture_surface"],
+                    "nvidia_metadata": {
+                        "topology": {
+                            "architecture": "ada",
+                            "compute_capability": "8.9",
+                            "pci_bdf": "00000000:01:00.0",
+                            "sm_count": 76,
+                            "vram_bytes": 17179869184u64,
+                            "mig_profile": null
+                        },
+                        "risk": {
+                            "level": "elevated",
+                            "display_attached": true,
+                            "mig_partitioned": false,
+                            "warnings": [
+                                "display-attached NVIDIA devices may show variable latency under local desktop load"
+                            ]
+                        },
+                        "recovery": {
+                            "supports_gpu_reset": true,
+                            "expected_actions": ["process_restart", "gpu_reset", "reboot_host"]
+                        }
+                    }
+                }],
+                "health": {
+                    "status": "Degraded",
+                    "message": "cuda detected a display-attached GPU; provider execution should keep latency caveats explicit"
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn backend_runtime_resources_serialize_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let selection = BackendSelection::direct("metal", None, vec![String::from("matmul")])
+            .with_runtime_resources(Some(BackendRuntimeResources {
+                execution_plan_cache: ExecutionPlanCacheReport {
+                    policy: ExecutionPlanCachePolicy::bounded(4, Some(256)),
+                    state: ExecutionPlanCacheState {
+                        cached_entries: 1,
+                        cached_bytes: 96,
+                    },
+                },
+                allocator_pool: AllocatorPoolReport {
+                    policy: AllocatorPoolPolicy::exact_tensor_spec(8, 1024),
+                    state: AllocatorPoolState {
+                        cached_buffers: 2,
+                        cached_bytes: 256,
+                    },
+                },
+                kernel_cache: KernelCacheReport {
+                    policy: KernelCachePolicy::bounded(1, Some(128)),
+                    state: KernelCacheState {
+                        cached_entries: 1,
+                        cached_bytes: 64,
+                    },
+                },
+                device_memory_budget: Some(DeviceMemoryBudget::new(Some(4096), 1024, 128)),
+            }));
+
+        let value = serde_json::to_value(selection)?;
+        assert_eq!(
+            value["runtime_resources"]["execution_plan_cache"]["state"]["cached_entries"],
+            json!(1)
+        );
+        assert_eq!(
+            value["runtime_resources"]["allocator_pool"]["policy"]["max_cached_buffers"],
+            json!(8)
+        );
+        assert_eq!(
+            value["runtime_resources"]["execution_plan_cache"]["state"]["cached_bytes"],
+            json!(96)
+        );
+        assert_eq!(
+            value["runtime_resources"]["kernel_cache"]["state"]["cached_entries"],
+            json!(1)
+        );
+        assert_eq!(
+            value["runtime_resources"]["device_memory_budget"]["available_execution_bytes"],
+            json!(2944)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn backend_selection_selected_device_inventory_uses_runtime_budget_bytes() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        )
+        .with_runtime_resources(Some(BackendRuntimeResources {
+            execution_plan_cache: ExecutionPlanCacheReport {
+                policy: ExecutionPlanCachePolicy::disabled(),
+                state: ExecutionPlanCacheState::default(),
+            },
+            allocator_pool: AllocatorPoolReport {
+                policy: AllocatorPoolPolicy::disabled(),
+                state: AllocatorPoolState {
+                    cached_buffers: 0,
+                    cached_bytes: 0,
+                },
+            },
+            kernel_cache: KernelCacheReport {
+                policy: KernelCachePolicy::disabled(),
+                state: KernelCacheState {
+                    cached_entries: 0,
+                    cached_bytes: 0,
+                },
+            },
+            device_memory_budget: Some(DeviceMemoryBudget::new(
+                Some(16 * 1024 * 1024 * 1024),
+                4 * 1024 * 1024 * 1024,
+                1024,
+            )),
+        }));
+
+        assert_eq!(
+            selection.selected_device_inventory(),
+            Some(DeviceInventoryQualifiers {
+                stable_device_id: String::from("00000000:01:00.0"),
+                topology_key: Some(String::from("00000000:01:00.0")),
+                performance_class: DevicePerformanceClass::DiscreteAccelerator,
+                memory_class: DeviceMemoryClass::DedicatedDevice,
+                total_memory_bytes: Some(16 * 1024 * 1024 * 1024),
+                free_memory_bytes: Some(
+                    (16 * 1024 * 1024 * 1024) - (4 * 1024 * 1024 * 1024) - 1024
+                ),
+            })
+        );
+    }
+
+    #[test]
+    fn backend_selection_can_surface_multi_device_topology_truth() {
+        let first = sample_cuda_device();
+        let mut second = sample_cuda_device();
+        second.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        second.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let metadata = second
+            .nvidia_metadata
+            .as_mut()
+            .expect("sample cuda metadata");
+        metadata.topology.pci_bdf = Some(String::from("00000000:02:00.0"));
+
+        let selection =
+            BackendSelection::direct("cuda", Some(first.clone()), vec![String::from("matmul")])
+                .with_selected_devices(vec![first.clone(), second.clone()])
+                .with_execution_topology(Some(ExecutionTopologyPlan::layer_sharded(
+                    "cuda",
+                    vec![
+                        (first.inventory_qualifiers(), 0, 20),
+                        (second.inventory_qualifiers(), 20, 40),
+                    ],
+                )));
+
+        assert_eq!(selection.selected_devices().len(), 2);
+        assert_eq!(selection.selected_devices_inventory().len(), 2);
+        assert_eq!(
+            selection
+                .execution_topology_plan()
+                .as_ref()
+                .map(|plan| plan.kind),
+            Some(ExecutionTopologyKind::LayerSharded)
+        );
+        assert_eq!(
+            selection
+                .execution_topology_plan()
+                .as_ref()
+                .map(|plan| plan.assignments.len()),
+            Some(2)
+        );
+    }
+
+    #[test]
+    fn accelerator_requirements_can_match_exact_delivery() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        );
+        let report = AcceleratorExecutionRequirement::new("cuda", 1)
+            .with_topology_kind(ExecutionTopologyKind::SingleDevice)
+            .with_minimum_performance_class(DevicePerformanceClass::DiscreteAccelerator)
+            .with_minimum_memory_class(DeviceMemoryClass::DedicatedDevice)
+            .with_minimum_total_memory_bytes(16 * 1024 * 1024 * 1024)
+            .evaluate(DeliveredExecutionContext::from_backend_selection(
+                &selection,
+            ));
+
+        assert_eq!(report.status, AcceleratorDeliverabilityStatus::Exact);
+        assert!(report.differences.is_empty());
+    }
+
+    #[test]
+    fn accelerator_requirements_mark_topology_change_as_compatible_substitution() {
+        let first = sample_cuda_device();
+        let mut second = sample_cuda_device();
+        second.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        second.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let metadata = second
+            .nvidia_metadata
+            .as_mut()
+            .expect("sample cuda metadata");
+        metadata.topology.pci_bdf = Some(String::from("00000000:02:00.0"));
+        let selection =
+            BackendSelection::direct("cuda", Some(first.clone()), vec![String::from("matmul")])
+                .with_selected_devices(vec![first.clone(), second.clone()])
+                .with_execution_topology(Some(ExecutionTopologyPlan::layer_sharded(
+                    "cuda",
+                    vec![
+                        (first.inventory_qualifiers(), 0, 20),
+                        (second.inventory_qualifiers(), 20, 40),
+                    ],
+                )));
+
+        let report = AcceleratorExecutionRequirement::new("cuda", 1)
+            .with_topology_kind(ExecutionTopologyKind::SingleDevice)
+            .with_minimum_performance_class(DevicePerformanceClass::DiscreteAccelerator)
+            .with_minimum_total_memory_bytes(16 * 1024 * 1024 * 1024)
+            .evaluate(DeliveredExecutionContext::from_backend_selection(
+                &selection,
+            ));
+
+        assert_eq!(
+            report.status,
+            AcceleratorDeliverabilityStatus::CompatibleSubstitution
+        );
+        assert_eq!(
+            report.differences.first().map(|value| value.code),
+            Some(AcceleratorDeliverabilityDifferenceCode::TopologyKindChanged)
+        );
+    }
+
+    #[test]
+    fn accelerator_requirements_can_detect_underdelivery() {
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        );
+        let report = AcceleratorExecutionRequirement::new("cuda", 2)
+            .with_required_topology_keys(vec![String::from("00000000:02:00.0")])
+            .with_minimum_total_memory_bytes(32 * 1024 * 1024 * 1024)
+            .evaluate(DeliveredExecutionContext::from_backend_selection(
+                &selection,
+            ));
+
+        assert_eq!(
+            report.status,
+            AcceleratorDeliverabilityStatus::Underdelivered
+        );
+        assert!(report.differences.iter().any(|difference| {
+            difference.code == AcceleratorDeliverabilityDifferenceCode::DeviceCountReduced
+        }));
+        assert!(report.differences.iter().any(|difference| {
+            difference.code == AcceleratorDeliverabilityDifferenceCode::TopologyKeyMissing
+        }));
+        assert!(report.differences.iter().any(|difference| {
+            difference.code == AcceleratorDeliverabilityDifferenceCode::TotalMemoryReduced
+        }));
+    }
+
+    #[test]
+    fn device_inventory_qualifiers_mark_mig_devices_as_partitioned() {
+        let mut device = sample_cuda_device();
+        let metadata = device
+            .nvidia_metadata
+            .as_mut()
+            .expect("sample cuda metadata");
+        metadata.topology.mig_profile = Some(String::from("1g.10gb"));
+        metadata.risk.mig_partitioned = true;
+
+        assert_eq!(
+            device.inventory_qualifiers().performance_class,
+            DevicePerformanceClass::PartitionedAccelerator
+        );
+    }
+
+    #[test]
+    fn backend_health_tracker_records_only_real_changes() {
+        let mut tracker = BackendHealthTracker::with_history_limit(2);
+        let first = tracker.observe(
+            "metal",
+            RuntimeHealth {
+                status: HealthStatus::Ready,
+                message: String::from("ready"),
+            },
+            10,
+        );
+        assert_eq!(first.changed_at_millis, 10);
+        assert!(tracker.recent_changes().is_empty());
+
+        tracker.observe(
+            "metal",
+            RuntimeHealth {
+                status: HealthStatus::Ready,
+                message: String::from("ready"),
+            },
+            15,
+        );
+        assert!(tracker.recent_changes().is_empty());
+
+        let changed = tracker.observe(
+            "metal",
+            RuntimeHealth {
+                status: HealthStatus::Degraded,
+                message: String::from("reduced throughput"),
+            },
+            20,
+        );
+        assert_eq!(changed.changed_at_millis, 20);
+        assert_eq!(changed.observed_at_millis, 20);
+        assert_eq!(changed.status, HealthStatus::Degraded);
+
+        assert_eq!(
+            tracker.recent_changes(),
+            vec![RuntimeTransitionEvent {
+                kind: RuntimeTransitionKind::BackendHealthChanged,
+                model_id: None,
+                backend: Some(String::from("metal")),
+                previous_status: Some(HealthStatus::Ready),
+                status: Some(HealthStatus::Degraded),
+                message: Some(String::from("reduced throughput")),
+                observed_at_millis: 20,
+            }]
+        );
+    }
+
+    #[test]
+    fn runtime_transition_log_retains_latest_events() {
+        let mut log = RuntimeTransitionLog::with_limit(2);
+        log.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelLoadedCold,
+            "alpha",
+            1,
+        ));
+        log.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelBecameWarm,
+            "alpha",
+            2,
+        ));
+        log.record(RuntimeTransitionEvent::model(
+            RuntimeTransitionKind::ModelUnloaded,
+            "alpha",
+            3,
+        ));
+
+        assert_eq!(
+            log.snapshot(),
+            vec![
+                RuntimeTransitionEvent::model(RuntimeTransitionKind::ModelBecameWarm, "alpha", 2,),
+                RuntimeTransitionEvent::model(RuntimeTransitionKind::ModelUnloaded, "alpha", 3),
+            ]
+        );
+    }
+
+    #[test]
+    fn local_runtime_observability_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let observability = LocalRuntimeObservability {
+            isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
+            cache_invalidation_policy: default_cache_invalidation_policy(),
+            execution_profile: ExecutionCapabilityProfile::single_request_latency_optimized(),
+            queue_depth: 0,
+            queue_capacity: None,
+            active_sessions: 2,
+            active_requests: 1,
+            memory_footprint: MemoryResidencySnapshot {
+                loaded_models: 1,
+                resident_host_bytes: 1024,
+                resident_device_bytes: 2048,
+            },
+            backend_health: vec![tracker_observation("cpu", HealthStatus::Ready, "ready", 10)],
+            recent_transitions: vec![
+                RuntimeTransitionEvent::model(
+                    RuntimeTransitionKind::ModelLoadedCold,
+                    "fixture-word-decoder-v0",
+                    8,
+                ),
+                RuntimeTransitionEvent {
+                    kind: RuntimeTransitionKind::BackendHealthChanged,
+                    model_id: None,
+                    backend: Some(String::from("cpu")),
+                    previous_status: Some(HealthStatus::Degraded),
+                    status: Some(HealthStatus::Ready),
+                    message: Some(String::from("ready")),
+                    observed_at_millis: 10,
+                },
+            ],
+        };
+
+        assert_eq!(
+            serde_json::to_value(&observability)?,
+            json!({
+                "isolation_policy": {
+                    "backend_interface_mode": "in_process",
+                    "failure_boundary": "shared_host_process",
+                    "request_failure_recovery": "refuse_request",
+                    "backend_error_recovery": "reset_runtime_state",
+                    "crash_recovery": "restart_host_process",
+                    "reset_scopes": [
+                        "loaded_models",
+                        "sessions",
+                        "prefix_cache",
+                        "kv_state",
+                        "backend_runtime_resources"
+                    ]
+                },
+                "cache_invalidation_policy": {
+                    "runtime_binary_version": "0.1.0",
+                    "execution_plan": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "plan_format_upgrade"
+                        ]
+                    },
+                    "kernel_cache": {
+                        "scope": "process_local",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "kernel_format_upgrade"
+                        ]
+                    },
+                    "paged_tensor_storage": {
+                        "scope": "artifact_backed",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "restore",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "model_metadata_change",
+                            "quantization_change",
+                            "paged_tensor_format_upgrade"
+                        ]
+                    },
+                    "prefix_cache": {
+                        "scope": "shared_across_requests",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "rebuild",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "prefix_cache_format_upgrade"
+                        ]
+                    },
+                    "kv_state": {
+                        "scope": "session_bound",
+                        "format_version": 1,
+                        "compatible_action": "reuse",
+                        "incompatible_action": "invalidate",
+                        "invalidates_on": [
+                            "binary_upgrade",
+                            "backend_toolchain_upgrade",
+                            "model_metadata_change",
+                            "tokenizer_drift",
+                            "chat_template_drift",
+                            "generation_defaults_drift",
+                            "quantization_change",
+                            "kv_state_format_upgrade"
+                        ]
+                    }
+                },
+                "execution_profile": {
+                    "batch_posture": "single_request_only",
+                    "queue_policy": {
+                        "discipline": "direct_caller_backpressure",
+                        "max_active_requests": 1,
+                        "max_queued_requests": 0,
+                        "per_model_serialization": true
+                    },
+                    "throughput_class": "latency_optimized"
+                },
+                "queue_depth": 0,
+                "active_sessions": 2,
+                "active_requests": 1,
+                "memory_footprint": {
+                    "loaded_models": 1,
+                    "resident_host_bytes": 1024,
+                    "resident_device_bytes": 2048
+                },
+                "backend_health": [{
+                    "backend": "cpu",
+                    "status": "Ready",
+                    "message": "ready",
+                    "observed_at_millis": 10,
+                    "changed_at_millis": 10
+                }],
+                "recent_transitions": [
+                    {
+                        "kind": "model_loaded_cold",
+                        "model_id": "fixture-word-decoder-v0",
+                        "observed_at_millis": 8
+                    },
+                    {
+                        "kind": "backend_health_changed",
+                        "backend": "cpu",
+                        "previous_status": "Degraded",
+                        "status": "Ready",
+                        "message": "ready",
+                        "observed_at_millis": 10
+                    }
+                ]
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn execution_capability_profiles_are_machine_checkable() {
+        assert_eq!(
+            ExecutionCapabilityProfile::single_request_latency_optimized(),
+            ExecutionCapabilityProfile {
+                batch_posture: BatchExecutionPosture::SingleRequestOnly,
+                queue_policy: QueuePolicy {
+                    discipline: QueueDiscipline::DirectCallerBackpressure,
+                    max_active_requests: 1,
+                    max_queued_requests: 0,
+                    per_model_serialization: true,
+                },
+                throughput_class: ThroughputClass::LatencyOptimized,
+            }
+        );
+        assert_eq!(
+            ExecutionCapabilityProfile::caller_static_batch_balanced(),
+            ExecutionCapabilityProfile {
+                batch_posture: BatchExecutionPosture::CallerStaticBatch,
+                queue_policy: QueuePolicy {
+                    discipline: QueueDiscipline::DirectCallerBackpressure,
+                    max_active_requests: 1,
+                    max_queued_requests: 0,
+                    per_model_serialization: true,
+                },
+                throughput_class: ThroughputClass::Balanced,
+            }
+        );
+    }
+
+    #[test]
+    fn sandbox_execution_capability_profiles_are_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let profile = SandboxExecutionCapabilityProfile::bounded_accelerated("cuda", 2);
+        assert!(profile.accelerator_access.requires_accelerator());
+        assert_eq!(
+            serde_json::to_value(&profile)?,
+            json!({
+                "dispatch_profile": {
+                    "batch_posture": "single_request_only",
+                    "queue_policy": {
+                        "discipline": "direct_caller_backpressure",
+                        "max_active_requests": 1,
+                        "max_queued_requests": 0,
+                        "per_model_serialization": true
+                    },
+                    "throughput_class": "latency_optimized"
+                },
+                "isolation_boundary": "container",
+                "filesystem": {
+                    "root": "read_only",
+                    "writable_mounts": ["/tmp"],
+                    "max_write_bytes": 67108864
+                },
+                "network": {
+                    "mode": "disabled",
+                    "allow_loopback": false
+                },
+                "process": {
+                    "max_processes": 32,
+                    "max_threads_per_process": 8,
+                    "allow_privilege_escalation": false
+                },
+                "resource_limits": {
+                    "max_wall_time_ms": 300000,
+                    "max_cpu_time_ms": 300000,
+                    "max_memory_bytes": 2147483648u64,
+                    "max_stdout_bytes": 1048576,
+                    "max_stderr_bytes": 1048576
+                },
+                "accelerator_access": {
+                    "mode": "allowed",
+                    "runtime_backend": "cuda",
+                    "max_visible_devices": 2,
+                    "allowed_performance_classes": [
+                        "integrated_accelerator",
+                        "discrete_accelerator",
+                        "partitioned_accelerator"
+                    ],
+                    "require_topology_keys": true
+                }
+            })
+        );
+        assert_eq!(
+            SandboxExecutionCapabilityProfile::bounded_cpu(),
+            SandboxExecutionCapabilityProfile {
+                dispatch_profile: ExecutionCapabilityProfile::single_request_latency_optimized(),
+                isolation_boundary: SandboxIsolationBoundary::Container,
+                filesystem: SandboxFilesystemPolicy {
+                    root: SandboxFilesystemRoot::ReadOnly,
+                    writable_mounts: vec![String::from("/tmp")],
+                    max_write_bytes: 64 * 1024 * 1024,
+                },
+                network: SandboxNetworkPolicy {
+                    mode: SandboxNetworkMode::Disabled,
+                    allow_loopback: false,
+                    allowed_hosts: Vec::new(),
+                },
+                process: SandboxProcessPolicy {
+                    max_processes: 32,
+                    max_threads_per_process: 8,
+                    allow_privilege_escalation: false,
+                },
+                resource_limits: SandboxResourceLimits {
+                    max_wall_time_ms: 300_000,
+                    max_cpu_time_ms: 300_000,
+                    max_memory_bytes: 2 * 1024 * 1024 * 1024,
+                    max_stdout_bytes: 1 * 1024 * 1024,
+                    max_stderr_bytes: 1 * 1024 * 1024,
+                },
+                accelerator_access: SandboxAcceleratorAccess::Disabled,
+            }
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn sandbox_execution_profile_digest_changes_with_bounds() {
+        let baseline = SandboxExecutionCapabilityProfile::bounded_cpu();
+        let tightened = SandboxExecutionCapabilityProfile {
+            resource_limits: SandboxResourceLimits {
+                max_wall_time_ms: 60_000,
+                ..baseline.resource_limits.clone()
+            },
+            ..baseline.clone()
+        };
+        assert_ne!(baseline.stable_digest(), tightened.stable_digest());
+    }
+
+    #[test]
+    fn sandbox_execution_evidence_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let request = SandboxExecutionRequestIdentity {
+            request_id: String::from("sandbox-req-1"),
+            sandbox_profile_digest: String::from("profile123"),
+            command_digest: String::from("command123"),
+            environment_digest: String::from("env123"),
+            input_artifact_digests: vec![String::from("input-a"), String::from("input-b")],
+        };
+        let evidence = SandboxExecutionEvidence {
+            request_digest: String::from("request123"),
+            sandbox_profile_digest: request.sandbox_profile_digest.clone(),
+            command_digest: request.command_digest.clone(),
+            environment_digest: request.environment_digest.clone(),
+            input_artifact_digests: request.input_artifact_digests.clone(),
+            output_artifact_digests: vec![String::from("output-a")],
+            exit: SandboxExecutionExit {
+                kind: SandboxExecutionExitKind::NonZeroExit,
+                exit_code: Some(17),
+                detail: String::from("tool exited non-zero"),
+            },
+            resources: SandboxExecutionResourceSummary {
+                wall_time_ms: 1500,
+                cpu_time_ms: 900,
+                peak_memory_bytes: 512 * 1024 * 1024,
+                filesystem_write_bytes: 4096,
+                stdout_bytes: 128,
+                stderr_bytes: 64,
+                network_egress_bytes: 0,
+            },
+            stdout_sha256: Some(String::from("stdout123")),
+            stderr_sha256: Some(String::from("stderr123")),
+            delivery_proof: Some(ExecutionDeliveryProof {
+                execution_plan_digest: String::from("plan123"),
+                kernel_count: 3,
+                bytes_moved: 1024,
+                plan_cache_hits: 1,
+                plan_cache_misses: 0,
+                kv_growth: None,
+            }),
+        };
+
+        assert_eq!(
+            serde_json::to_value(&evidence)?,
+            json!({
+                "request_digest": "request123",
+                "sandbox_profile_digest": "profile123",
+                "command_digest": "command123",
+                "environment_digest": "env123",
+                "input_artifact_digests": ["input-a", "input-b"],
+                "output_artifact_digests": ["output-a"],
+                "exit": {
+                    "kind": "non_zero_exit",
+                    "exit_code": 17,
+                    "detail": "tool exited non-zero"
+                },
+                "resources": {
+                    "wall_time_ms": 1500,
+                    "cpu_time_ms": 900,
+                    "peak_memory_bytes": 536870912u64,
+                    "filesystem_write_bytes": 4096,
+                    "stdout_bytes": 128,
+                    "stderr_bytes": 64,
+                    "network_egress_bytes": 0
+                },
+                "stdout_sha256": "stdout123",
+                "stderr_sha256": "stderr123",
+                "delivery_proof": {
+                    "execution_plan_digest": "plan123",
+                    "kernel_count": 3,
+                    "bytes_moved": 1024,
+                    "plan_cache_hits": 1,
+                    "plan_cache_misses": 0
+                }
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn cache_observation_serializes_stably() -> Result<(), Box<dyn std::error::Error>> {
+        let observation = CacheObservation::new(
+            CacheKind::PrefixCache,
+            CacheAction::Rebuild,
+            "stale prefix entry rebuilt under the current runtime",
+        )
+        .with_trigger(CacheInvalidationTrigger::PrefixCacheFormatUpgrade);
+
+        assert_eq!(
+            serde_json::to_value(&observation)?,
+            json!({
+                "kind": "prefix_cache",
+                "action": "rebuild",
+                "trigger": "prefix_cache_format_upgrade",
+                "detail": "stale prefix entry rebuilt under the current runtime"
+            })
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn local_serving_isolation_policy_helpers_are_stable() -> Result<(), Box<dyn std::error::Error>>
+    {
+        assert_eq!(
+            LocalServingIsolationPolicy::default(),
+            LocalServingIsolationPolicy::in_process_runtime()
+        );
+        assert_eq!(
+            serde_json::to_value(LocalServingIsolationPolicy::subprocess_runtime())?,
+            json!({
+                "backend_interface_mode": "subprocess",
+                "failure_boundary": "dedicated_runtime_subprocess",
+                "request_failure_recovery": "refuse_request",
+                "backend_error_recovery": "restart_runtime_subprocess",
+                "crash_recovery": "restart_runtime_subprocess",
+                "reset_scopes": [
+                    "loaded_models",
+                    "sessions",
+                    "prefix_cache",
+                    "kv_state",
+                    "backend_runtime_resources"
+                ]
+            })
+        );
+        Ok(())
+    }
+
+    fn tracker_observation(
+        backend: &str,
+        status: HealthStatus,
+        message: &str,
+        observed_at_millis: u64,
+    ) -> super::BackendHealthObservation {
+        super::BackendHealthObservation {
+            backend: String::from(backend),
+            status,
+            message: String::from(message),
+            observed_at_millis,
+            changed_at_millis: observed_at_millis,
+        }
+    }
+}

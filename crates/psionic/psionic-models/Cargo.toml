@@ -1,0 +1,28 @@
+[package]
+name = "psionic-models"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Reusable model abstractions and metadata for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+hex = { workspace = true }
+psionic-catalog = { path = "../psionic-catalog" }
+psionic-core = { path = "../psionic-core" }
+openai-harmony = "0.0.8"
+safetensors = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tempfile = "3"
