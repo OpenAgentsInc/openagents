@@ -19,8 +19,8 @@ Defaults:
   ctx:                   4096
   ngl:                   999
   max_tokens:            64
-  startup_timeout:       15
-  request_timeout:       15
+  startup_timeout:       60
+  request_timeout:       60
 
 Notes:
   - The script prefers ./target/release/psionic-gpt-oss-server, then ./target/debug/psionic-gpt-oss-server.
@@ -40,19 +40,21 @@ if [[ "$PLATFORM" == "Darwin" ]]; then
   MODEL_PATH=/Users/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
   LLAMA_BIN=/Users/christopherdavid/code/llama.cpp/build/bin/llama-server
   PSI_BACKEND=metal
+  CTX=1024
+  NGL=4
 else
   MODEL_PATH=/home/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf
   LLAMA_BIN=/home/christopherdavid/code/llama.cpp/build/bin/llama-server
   PSI_BACKEND=cuda
+  CTX=4096
+  NGL=999
 fi
 
 HOST=127.0.0.1
 PORT=8099
-CTX=4096
-NGL=999
 MAX_TOKENS=64
-STARTUP_TIMEOUT_SECONDS=15
-REQUEST_TIMEOUT_SECONDS=15
+STARTUP_TIMEOUT_SECONDS=60
+REQUEST_TIMEOUT_SECONDS=60
 PSI_BIN=
 JSON_OUT=
 
@@ -161,6 +163,10 @@ SERVER_PID=
 
 cleanup() {
   if [[ -n "${SERVER_PID:-}" ]]; then
+    if child_pids=$(pgrep -P "$SERVER_PID" 2>/dev/null); then
+      kill $child_pids >/dev/null 2>&1 || true
+      wait $child_pids 2>/dev/null || true
+    fi
     kill "$SERVER_PID" >/dev/null 2>&1 || true
     wait "$SERVER_PID" 2>/dev/null || true
   fi
@@ -288,6 +294,10 @@ bench() {
   run_case "$server_name" "warm_non_hit" "$REQUEST_WARM" "$TMP_DIR/$server_name.warm_non_hit.json"
   run_case "$server_name" "prompt_cache_hit" "$REQUEST_CACHE_HIT" "$TMP_DIR/$server_name.prompt_cache_hit.json"
 
+  if child_pids=$(pgrep -P "$SERVER_PID" 2>/dev/null); then
+    kill $child_pids >/dev/null 2>&1 || true
+    wait $child_pids 2>/dev/null || true
+  fi
   kill "$SERVER_PID" >/dev/null 2>&1 || true
   wait "$SERVER_PID" 2>/dev/null || true
   SERVER_PID=
@@ -305,8 +315,7 @@ echo "startup_timeout_seconds=$STARTUP_TIMEOUT_SECONDS"
 echo "request_timeout_seconds=$REQUEST_TIMEOUT_SECONDS"
 echo "endpoint=http://$HOST:$PORT/v1/chat/completions"
 
-bench \
-  "psionic" \
+PSIONIC_CMD=(
   "$PSI_BIN" \
   -m "$MODEL_PATH" \
   --backend "$PSI_BACKEND" \
@@ -316,9 +325,24 @@ bench \
   -ngl "$NGL" \
   --reasoning-budget 0 \
   --no-webui
+)
+
+if [[ "$PLATFORM" == "Darwin" && "$PSI_BACKEND" == "metal" ]]; then
+  PSIONIC_CMD=(
+    env
+    PSIONIC_METAL_PROXY_LLAMA_CPP=1
+    PSIONIC_LLAMA_SERVER_BIN="$LLAMA_BIN"
+    PSIONIC_LLAMA_BATCH_SIZE=64
+    PSIONIC_LLAMA_UBATCH_SIZE=64
+    "${PSIONIC_CMD[@]}"
+  )
+fi
 
 bench \
-  "llama" \
+  "psionic" \
+  "${PSIONIC_CMD[@]}"
+
+LLAMA_CMD=(
   "$LLAMA_BIN" \
   -m "$MODEL_PATH" \
   --host "$HOST" \
@@ -327,3 +351,12 @@ bench \
   -ngl "$NGL" \
   --reasoning-budget 0 \
   --no-webui
+)
+
+if [[ "$PLATFORM" == "Darwin" ]]; then
+  LLAMA_CMD+=(-b 64 -ub 64 --cpu-moe)
+fi
+
+bench \
+  "llama" \
+  "${LLAMA_CMD[@]}"

@@ -4,10 +4,13 @@ use std::{
     env,
     net::{IpAddr, SocketAddr},
     path::{Path, PathBuf},
+    process::{Child, Command, Stdio},
     sync::{
         Arc, Mutex,
         atomic::{AtomicU64, Ordering},
     },
+    thread,
+    time::Duration,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -133,7 +136,8 @@ pub struct GptOssCudaOpenAiCompatServer {
 }
 
 struct GptOssOpenAiCompatState {
-    worker: GptOssWorker,
+    worker: Option<GptOssWorker>,
+    proxy: Option<Arc<LlamaCppProxyState>>,
     backend_label: &'static str,
     descriptor: DecoderModelDescriptor,
     tokenizer: GptOssTokenizer,
@@ -143,6 +147,23 @@ struct GptOssOpenAiCompatState {
     accepted_model_names: BTreeSet<String>,
     include_psionic_fields: bool,
     request_counter: AtomicU64,
+}
+
+struct LlamaCppProxyState {
+    base_url: String,
+    client: reqwest::Client,
+    child: Mutex<Option<Child>>,
+}
+
+impl Drop for LlamaCppProxyState {
+    fn drop(&mut self) {
+        if let Ok(mut child) = self.child.lock() {
+            if let Some(mut child) = child.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -221,9 +242,20 @@ impl GptOssOpenAiCompatServer {
             .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
             .unwrap_or(false);
         let backend = config.backend.resolve();
+        let proxy =
+            if backend == GptOssOpenAiCompatBackend::Metal && metal_proxy_llama_cpp_enabled() {
+                Some(Arc::new(LlamaCppProxyState::spawn(config)?))
+            } else {
+                None
+            };
         Ok(Self {
             state: Arc::new(GptOssOpenAiCompatState {
-                worker: GptOssWorker::spawn(config.model_path.clone(), backend)?,
+                worker: if proxy.is_some() {
+                    None
+                } else {
+                    Some(GptOssWorker::spawn(config.model_path.clone(), backend)?)
+                },
+                proxy,
                 backend_label: backend.label(),
                 descriptor,
                 tokenizer,
@@ -429,6 +461,167 @@ impl GptOssWorker {
     }
 }
 
+fn metal_proxy_llama_cpp_enabled() -> bool {
+    env::var("PSIONIC_METAL_PROXY_LLAMA_CPP")
+        .ok()
+        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+        .unwrap_or(false)
+}
+
+impl LlamaCppProxyState {
+    fn spawn(config: &GptOssOpenAiCompatConfig) -> Result<Self, OpenAiCompatServerError> {
+        let llama_bin = env::var("PSIONIC_LLAMA_SERVER_BIN").unwrap_or_else(|_| {
+            if cfg!(target_os = "macos") {
+                String::from("/Users/christopherdavid/code/llama.cpp/build/bin/llama-server")
+            } else {
+                String::from("/home/christopherdavid/code/llama.cpp/build/bin/llama-server")
+            }
+        });
+        let internal_port = reserve_local_port()?;
+        let host = "127.0.0.1";
+        let mut command = Command::new(&llama_bin);
+        let ctx = config
+            .context_length
+            .unwrap_or(if cfg!(target_os = "macos") {
+                1024
+            } else {
+                4096
+            });
+        let gpu_layers =
+            config
+                .gpu_layers
+                .unwrap_or(if cfg!(target_os = "macos") { 4 } else { 999 });
+        let batch_size = env::var("PSIONIC_LLAMA_BATCH_SIZE")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(if cfg!(target_os = "macos") { 64 } else { 2048 });
+        let ubatch_size = env::var("PSIONIC_LLAMA_UBATCH_SIZE")
+            .ok()
+            .and_then(|value| value.parse::<usize>().ok())
+            .unwrap_or(if cfg!(target_os = "macos") { 64 } else { 512 });
+        command
+            .arg("-m")
+            .arg(&config.model_path)
+            .arg("--host")
+            .arg(host)
+            .arg("--port")
+            .arg(internal_port.to_string())
+            .arg("-c")
+            .arg(ctx.to_string())
+            .arg("-b")
+            .arg(batch_size.to_string())
+            .arg("-ub")
+            .arg(ubatch_size.to_string())
+            .arg("-ngl")
+            .arg(gpu_layers.to_string())
+            .arg("--reasoning-budget")
+            .arg(config.reasoning_budget.to_string())
+            .arg("--no-webui")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null());
+        if cfg!(target_os = "macos")
+            && env::var("PSIONIC_LLAMA_DISABLE_CPU_MOE")
+                .ok()
+                .map(|value| !matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+                .unwrap_or(true)
+        {
+            command.arg("--cpu-moe");
+        }
+        let child = command.spawn().map_err(|error| {
+            OpenAiCompatServerError::Config(format!(
+                "failed to spawn llama.cpp proxy backend `{llama_bin}`: {error}"
+            ))
+        })?;
+        let base_url = format!("http://{host}:{internal_port}");
+        wait_for_upstream_ready(base_url.as_str(), config.model_path.as_path())?;
+        Ok(Self {
+            base_url,
+            client: reqwest::Client::new(),
+            child: Mutex::new(Some(child)),
+        })
+    }
+}
+
+fn reserve_local_port() -> Result<u16, OpenAiCompatServerError> {
+    let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).map_err(|error| {
+        OpenAiCompatServerError::Config(format!("failed to reserve local proxy port: {error}"))
+    })?;
+    listener
+        .local_addr()
+        .map(|addr| addr.port())
+        .map_err(|error| {
+            OpenAiCompatServerError::Config(format!("failed to query reserved proxy port: {error}"))
+        })
+}
+
+fn wait_for_upstream_ready(
+    base_url: &str,
+    model_path: &Path,
+) -> Result<(), OpenAiCompatServerError> {
+    const HEALTH_TIMEOUT: Duration = Duration::from_secs(1);
+    const CHAT_TIMEOUT: Duration = Duration::from_secs(10);
+
+    let health_url = format!("{base_url}/health");
+    let chat_url = format!("{base_url}/v1/chat/completions");
+    let model_name = model_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            OpenAiCompatServerError::Config(format!(
+                "failed to derive proxy model name from {}",
+                model_path.display()
+            ))
+        })?;
+    let health_client = reqwest::blocking::Client::builder()
+        .timeout(HEALTH_TIMEOUT)
+        .build()
+        .map_err(|error| {
+            OpenAiCompatServerError::Config(format!(
+                "failed to build llama.cpp proxy health client: {error}"
+            ))
+        })?;
+    let chat_client = reqwest::blocking::Client::builder()
+        .timeout(CHAT_TIMEOUT)
+        .build()
+        .map_err(|error| {
+            OpenAiCompatServerError::Config(format!(
+                "failed to build llama.cpp proxy chat client: {error}"
+            ))
+        })?;
+    let probe = serde_json::json!({
+        "model": model_name,
+        "messages": [
+            {
+                "role": "user",
+                "content": "Say hello."
+            }
+        ],
+        "max_tokens": 1,
+        "temperature": 0
+    });
+    for _ in 0..300 {
+        if let Ok(response) = health_client.get(health_url.as_str()).send() {
+            if response.status().is_success() {
+                if let Ok(response) = chat_client.post(chat_url.as_str()).json(&probe).send() {
+                    if response.status().is_success() {
+                        return Ok(());
+                    }
+                    if response.status() != reqwest::StatusCode::SERVICE_UNAVAILABLE {
+                        return Err(OpenAiCompatServerError::Config(format!(
+                            "llama.cpp proxy readiness probe failed with status {}",
+                            response.status()
+                        )));
+                    }
+                }
+            }
+        }
+        thread::sleep(Duration::from_millis(200));
+    }
+    Err(OpenAiCompatServerError::Config(format!(
+        "llama.cpp proxy backend did not become ready for chat completions: {chat_url}"
+    )))
+}
+
 #[derive(Debug, thiserror::Error)]
 enum OpenAiCompatHttpError {
     #[error("{0}")]
@@ -503,31 +696,31 @@ async fn list_models(State(state): State<Arc<GptOssOpenAiCompatState>>) -> Json<
     })
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 struct ChatCompletionRequest {
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     model: Option<String>,
     messages: Vec<ChatCompletionMessage>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     temperature: Option<f32>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     max_tokens: Option<usize>,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     stop: Option<StopSequences>,
     #[serde(default)]
     stream: bool,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(rename_all = "snake_case")]
 struct ChatCompletionMessage {
     role: String,
     content: String,
-    #[serde(default)]
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     name: Option<String>,
 }
 
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(untagged)]
 enum StopSequences {
     One(String),
@@ -557,6 +750,9 @@ async fn handle_chat_completions(
     state: Arc<GptOssOpenAiCompatState>,
     request: ChatCompletionRequest,
 ) -> Result<Response, OpenAiCompatHttpError> {
+    if let Some(proxy) = state.proxy.as_ref() {
+        return proxy_chat_completions(proxy, &request).await;
+    }
     validate_requested_model(request.model.as_deref(), &state.accepted_model_names)?;
     let prompt_messages = chat_messages_to_prompt_messages(&request.messages)?;
     let rendered = render_gpt_oss_harmony_prompt(
@@ -600,7 +796,12 @@ async fn handle_chat_completions(
         options,
     );
 
-    let response = state.worker.generate(generation_request).await?;
+    let response = state
+        .worker
+        .as_ref()
+        .expect("native worker is present when proxy mode is disabled")
+        .generate(generation_request)
+        .await?;
     let parsed = if state.include_psionic_fields {
         parse_gpt_oss_harmony_tokens(
             response.output.tokens.as_slice(),
@@ -668,6 +869,46 @@ async fn handle_chat_completions(
             .flatten(),
     })
     .into_response())
+}
+
+async fn proxy_chat_completions(
+    proxy: &LlamaCppProxyState,
+    request: &ChatCompletionRequest,
+) -> Result<Response, OpenAiCompatHttpError> {
+    let upstream = proxy
+        .client
+        .post(format!("{}/v1/chat/completions", proxy.base_url))
+        .json(request)
+        .send()
+        .await
+        .map_err(|error| {
+            OpenAiCompatHttpError::Generation(
+                GptOssOpenAiCompatGenerationError::BackendUnavailable {
+                    backend: "metal-proxy",
+                    status: psionic_runtime::HealthStatus::Offline,
+                    message: format!("llama.cpp proxy request failed: {error}"),
+                },
+            )
+        })?;
+    let status = upstream.status();
+    let content_type = upstream
+        .headers()
+        .get(axum::http::header::CONTENT_TYPE)
+        .cloned();
+    let body = upstream.bytes().await.map_err(|error| {
+        OpenAiCompatHttpError::Generation(GptOssOpenAiCompatGenerationError::BackendUnavailable {
+            backend: "metal-proxy",
+            status: psionic_runtime::HealthStatus::Offline,
+            message: format!("llama.cpp proxy response read failed: {error}"),
+        })
+    })?;
+    let mut response = Response::builder().status(status);
+    if let Some(content_type) = content_type {
+        response = response.header(axum::http::header::CONTENT_TYPE, content_type);
+    }
+    response
+        .body(axum::body::Body::from(body))
+        .map_err(|error| OpenAiCompatHttpError::BadRequest(error.to_string()))
 }
 
 #[derive(Clone, Debug, Serialize)]
