@@ -381,7 +381,7 @@ impl Default for MissionControlPaneState {
     fn default() -> Self {
         Self {
             amount_display_mode: BitcoinAmountDisplayMode::Integer,
-            log_stream: TerminalPane::new().title("// LOG STREAM"),
+            log_stream: TerminalPane::new().title("\\\\ LOG STREAM"),
             last_action: Some("Mission Control ready".to_string()),
             last_error: None,
             rendered_log_lines: Vec::new(),
