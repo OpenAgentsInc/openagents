@@ -235,7 +235,6 @@ constexpr int kQ80Q81MmvqVdr = 2;
 constexpr int kQ80Qi = kQ81ElementsPerBlock / 4;
 constexpr int kMxfp4Q81MmvqVdr = 2;
 constexpr int kMxfp4Qi = kQ81ElementsPerBlock / 8;
-
 template <typename DotFn>
 __global__ void quantized_matvec_kernel(
     const uint8_t *weights,
@@ -644,11 +643,14 @@ static void launch_quantized_matvec_q8_1_regular(
     DotFn dot_fn
 ) {
     const int block_count = cols / kQ81ElementsPerBlock;
-    const dim3 block_dims(kWarpSize, kMmvqWarps, 1);
-    quantized_matvec_q8_1_mmvq_kernel<DotFn, kQ80Q81MmvqVdr, kQ80Qi><<<
-        rows,
+    constexpr int rows_per_block = 4;
+    const dim3 grid_dims((rows + rows_per_block - 1) / rows_per_block, 1, 1);
+    const dim3 block_dims(kWarpSize, rows_per_block, 1);
+    const size_t shared_bytes = static_cast<size_t>(block_count) * sizeof(Q81Block);
+    quantized_matvec_q8_1_shared_input_kernel<DotFn, rows_per_block><<<
+        grid_dims,
         block_dims,
-        0,
+        shared_bytes,
         stream
     >>>(
         weights,
@@ -924,6 +926,145 @@ __global__ void add_residual_rms_norm_q8_1_kernel(
             );
         }
         __syncthreads();
+    }
+}
+
+__global__ void add_residual_rms_norm_q8_1_router_topk_kernel(
+    const float *input,
+    const float *residual,
+    const float *input_bias,
+    const float *weight,
+    int element_count,
+    float epsilon,
+    float *summed_output,
+    float *normalized_output,
+    Q81Block *quantized_output,
+    const float *router_weights,
+    const float *router_bias,
+    int expert_count,
+    int top_k,
+    int32_t *selected_ids,
+    float *selected_weights
+) {
+    __shared__ float scratch[kBlockSize];
+    __shared__ float normalized_blocks[kBlockSize];
+    __shared__ float logits[kMoeMaxExperts];
+
+    float sum = 0.0f;
+    for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
+        const float value =
+            input[index] +
+            residual[index] +
+            (input_bias != nullptr ? input_bias[index] : 0.0f);
+        sum += value * value;
+    }
+    scratch[threadIdx.x] = sum;
+    __syncthreads();
+
+    for (int offset = blockDim.x / 2; offset > 0; offset >>= 1) {
+        if (threadIdx.x < offset) {
+            scratch[threadIdx.x] += scratch[threadIdx.x + offset];
+        }
+        __syncthreads();
+    }
+
+    const float inv_rms = rsqrtf(scratch[0] / static_cast<float>(element_count) + epsilon);
+    const int warp_id = static_cast<int>(threadIdx.x) / kWarpSize;
+    const int lane = static_cast<int>(threadIdx.x) % kWarpSize;
+    const int warp_count = blockDim.x / kWarpSize;
+    const int blocks_per_row = element_count / kQ81ElementsPerBlock;
+
+    for (int tile = 0; tile < blocks_per_row; tile += warp_count) {
+        const int block_index = tile + warp_id;
+        if (block_index < blocks_per_row) {
+            const int index = block_index * kQ81ElementsPerBlock + lane;
+            const float value =
+                input[index] +
+                residual[index] +
+                (input_bias != nullptr ? input_bias[index] : 0.0f);
+            const float normalized = value * weight[index] * inv_rms;
+            summed_output[index] = value;
+            normalized_output[index] = normalized;
+            normalized_blocks[threadIdx.x] = normalized;
+        } else {
+            normalized_blocks[threadIdx.x] = 0.0f;
+        }
+        __syncthreads();
+        if (block_index < blocks_per_row) {
+            quantize_q8_1_shared_block(
+                normalized_blocks + warp_id * kQ81ElementsPerBlock,
+                quantized_output + block_index,
+                lane
+            );
+        }
+        __syncthreads();
+    }
+
+    expert_count = min(expert_count, kMoeMaxExperts);
+    top_k = min(top_k, min(expert_count, kMoeMaxSelected));
+    for (int expert = 0; expert < expert_count; ++expert) {
+        const float *row = router_weights + static_cast<size_t>(expert) * static_cast<size_t>(element_count);
+        float partial = 0.0f;
+        for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
+            partial += row[index] * normalized_output[index];
+        }
+        const float reduced = reduce_block_sum(partial, scratch);
+        if (threadIdx.x == 0) {
+            logits[expert] = reduced + (router_bias != nullptr ? router_bias[expert] : 0.0f);
+        }
+        __syncthreads();
+    }
+
+    if (threadIdx.x != 0) {
+        return;
+    }
+
+    float top_values[kMoeMaxSelected];
+    int top_indices[kMoeMaxSelected];
+    for (int index = 0; index < top_k; ++index) {
+        top_values[index] = -INFINITY;
+        top_indices[index] = -1;
+    }
+
+    for (int expert = 0; expert < expert_count; ++expert) {
+        const float value = logits[expert];
+        int insert_at = top_k;
+        for (int slot = 0; slot < top_k; ++slot) {
+            if (value > top_values[slot] ||
+                (value == top_values[slot] && (top_indices[slot] < 0 || expert < top_indices[slot]))) {
+                insert_at = slot;
+                break;
+            }
+        }
+        if (insert_at >= top_k) {
+            continue;
+        }
+        for (int slot = top_k - 1; slot > insert_at; --slot) {
+            top_values[slot] = top_values[slot - 1];
+            top_indices[slot] = top_indices[slot - 1];
+        }
+        top_values[insert_at] = value;
+        top_indices[insert_at] = expert;
+    }
+
+    float max_value = -INFINITY;
+    for (int slot = 0; slot < top_k; ++slot) {
+        max_value = fmaxf(max_value, top_values[slot]);
+    }
+
+    float denom = 0.0f;
+    for (int slot = 0; slot < top_k; ++slot) {
+        const float selected = expf(top_values[slot] - max_value);
+        selected_weights[slot] = selected;
+        denom += selected;
+    }
+    if (denom != 0.0f) {
+        for (int slot = 0; slot < top_k; ++slot) {
+            selected_weights[slot] /= denom;
+        }
+    }
+    for (int slot = 0; slot < top_k; ++slot) {
+        selected_ids[slot] = top_indices[slot];
     }
 }
 
@@ -3408,6 +3549,52 @@ extern "C" int psionic_cuda_add_residual_rms_norm_q8_1(
         static_cast<float *>(summed_output),
         static_cast<float *>(normalized_output),
         static_cast<Q81Block *>(quantized_output)
+    );
+    return static_cast<int>(cudaGetLastError());
+}
+
+extern "C" int psionic_cuda_add_residual_rms_norm_q8_1_router_topk(
+    const void *input,
+    const void *residual,
+    const void *input_bias,
+    const void *weight,
+    int element_count,
+    float epsilon,
+    void *summed_output,
+    void *normalized_output,
+    void *quantized_output,
+    const void *router_weights,
+    const void *router_bias,
+    int expert_count,
+    int top_k,
+    void *selected_ids,
+    void *selected_weights,
+    void *stream
+) {
+    if (element_count % kQ81ElementsPerBlock != 0) {
+        return static_cast<int>(cudaErrorInvalidValue);
+    }
+    add_residual_rms_norm_q8_1_router_topk_kernel<<<
+        1,
+        kBlockSize,
+        0,
+        static_cast<cudaStream_t>(stream)
+    >>>(
+        static_cast<const float *>(input),
+        static_cast<const float *>(residual),
+        static_cast<const float *>(input_bias),
+        static_cast<const float *>(weight),
+        element_count,
+        epsilon,
+        static_cast<float *>(summed_output),
+        static_cast<float *>(normalized_output),
+        static_cast<Q81Block *>(quantized_output),
+        static_cast<const float *>(router_weights),
+        static_cast<const float *>(router_bias),
+        expert_count,
+        top_k,
+        static_cast<int32_t *>(selected_ids),
+        static_cast<float *>(selected_weights)
     );
     return static_cast<int>(cudaGetLastError());
 }
