@@ -15,7 +15,7 @@
 > where `#3242` through `#3246` are closed and `#3249` / `#3247` / `#3248`
 > remain open, and after the latest live benchmark plus deeper
 > llama.cpp-alignment checkpoint showing that Psionic now runs the exact
-> GPT-OSS HTTP lane at about `92.45 tok/s` on this RTX 4080 host after
+> GPT-OSS HTTP lane at about `91.79 tok/s` on this RTX 4080 host after
 > trimming the default OpenAI/Harmony hot path, with the MXFP4 correctness
 > fixes, expanded `Q8_1` fast-path routing, per-request CUDA graph replay, the
 > new CUDA-side shared-prefix residency, prompt-token reuse on the HTTP lane,
@@ -26,16 +26,21 @@
 > folding the greedy output-head argmax into the quantized q8_1 logits
 > projection, and after hardening the benchmark script so it explicitly unsets
 > `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS` before launching Psionic, and after
-> explicitly ruling out four plausible but losing follow-ups: q8_0 projection
+> explicitly ruling out six plausible but losing follow-ups: q8_0 projection
 > `f16` mirrors routed through cuBLAS tensor-op GEMV regressed into the
 > mid-80s tok/s, swapping the GPT-OSS `selected_count = 4` custom MoE path for
 > the simpler direct per-expert MMVQ/atomic route also failed to beat the
 > current decode lane, a grouped-query decode-attention kernel specialized for
 > the exact GPT-OSS `64` query head / `8` KV head / `64` head-dim geometry
 > regressed the live HTTP benchmark into the low `70 tok/s` range and was
-> removed, and forcing an `f16` mirror onto the final q8_0 output head alone
-> also regressed to `82.33 tok/s` and was removed. The current same-moment
-> `llama.cpp` oracle on this host is about `170.23 tok/s`. The external
+> removed, forcing an `f16` mirror onto the final q8_0 output head alone
+> also regressed to `82.33 tok/s` and was removed, quantizing the selected-4
+> MoE down activation from `f32` into shared `Q8_1` storage inside the down
+> kernel regressed to `79.03 tok/s` and is now experimental-only behind
+> `PSIONIC_GPT_OSS_EXPERIMENTAL_FUSED_SELECTED4_MOE_DOWN=1`, and widening the
+> selected-4 gate/down kernels from two rows per block to four regressed to
+> `88.98 tok/s` and was reverted. The current same-moment `llama.cpp` oracle
+> on this host is about `165.87 tok/s`. The external
 > `dota2` process is still resident on
 > the GPU with about `2.1 GiB`, so the requested `>190 tok/s` target cannot be
 > honestly validated on this host state until that competing workload is gone.
@@ -69,17 +74,20 @@
 > contract still shows a large remaining gap. `llama.cpp` serves the timed
 > request with a live prompt cache hit (`prompt eval time = 0.30 ms / 1 token`)
 > and Psionic now keeps a reusable CUDA shared-prefix mirror too, but the last
-> direct comparison now sits at about `92.45 tok/s` for Psionic versus
-> `170.23 tok/s` for `llama.cpp` on this machine state. Four follow-up
+> direct comparison now sits at about `91.79 tok/s` for Psionic versus
+> `165.87 tok/s` for `llama.cpp` on this machine state. Six follow-up
 > experiments are now explicitly ruled out on this exact workload: q8_0
 > projection `f16` mirrors through cuBLAS, a direct per-expert replacement
 > for the `selected_count = 4` custom MoE kernels, a grouped-query
 > decode-attention kernel specialized for the real GPT-OSS `64/8/64`
-> head geometry, and a forced `f16` mirror for the final q8_0 output head.
-> The latest small win was folding greedy argmax into the quantized output
-> projection, which removed one obvious logits-side waste but only moved the
-> end-to-end HTTP benchmark by a few tok/s. The next work should now bias
-> toward a more literal port of llama.cpp's ids-enabled MMVQ path and
+> head geometry, a forced `f16` mirror for the final q8_0 output head, a
+> selected-4 MoE-down kernel that quantizes expert activations from `f32`
+> inside the down projection, and a four-rows-per-block shape for the
+> selected-4 gate/down kernels. The latest small durable win was folding
+> greedy argmax into the quantized output projection, which removed one obvious
+> logits-side waste but only moved the end-to-end HTTP benchmark by a few
+> tok/s. The next work should now bias toward a more literal port of
+> llama.cpp's ids-enabled MMVQ path and
 > `fattn.cu` behavior, not more speculative local substitutions.
 
 Agent execution instruction: implement this roadmap one issue at a time in the

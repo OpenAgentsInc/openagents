@@ -49,6 +49,12 @@ fn decode_graph_fast_path_enabled() -> bool {
         .unwrap_or(true)
 }
 
+fn experimental_fused_selected4_moe_down_enabled() -> bool {
+    env::var("PSIONIC_GPT_OSS_EXPERIMENTAL_FUSED_SELECTED4_MOE_DOWN")
+        .map(|value| value == "1")
+        .unwrap_or(false)
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CudaStepOutputMode {
     FullLogits,
@@ -1994,26 +2000,43 @@ impl GptOssCudaModelInner {
                     layer.feed_forward_up_experts_bias_device.as_ref(),
                     &layer_plan.activated_buffer,
                 )?;
-                submission.quantize_f32_to_q8_1(
-                    &layer_plan.activated_buffer,
-                    selected_count,
-                    layer.feed_forward_down_experts_weight.columns,
-                    &layer_plan.activated_q8_1_buffer,
-                )?;
-                submission.moe_down_aggregate_q8_1(
-                    &layer.feed_forward_down_experts_weight.storage,
-                    layer.feed_forward_down_experts_weight.mode,
-                    layer.feed_forward_down_experts_weight.row_byte_len,
-                    layer.feed_forward_down_experts_weight.rows,
-                    layer.feed_forward_down_experts_weight.columns,
-                    &layer_plan.selected_ids_buffer,
-                    &layer_plan.selected_weights_buffer,
-                    selected_count,
-                    &layer_plan.activated_q8_1_buffer,
-                    layer.feed_forward_down_experts_bias_device.as_ref(),
-                    Some(&layer_plan.projected_buffer),
-                    &layer_plan.moe_buffer,
-                )?;
+                if selected_count <= 4 && experimental_fused_selected4_moe_down_enabled() {
+                    submission.moe_down_aggregate_q8_1_f32(
+                        &layer.feed_forward_down_experts_weight.storage,
+                        layer.feed_forward_down_experts_weight.mode,
+                        layer.feed_forward_down_experts_weight.row_byte_len,
+                        layer.feed_forward_down_experts_weight.rows,
+                        layer.feed_forward_down_experts_weight.columns,
+                        &layer_plan.selected_ids_buffer,
+                        &layer_plan.selected_weights_buffer,
+                        selected_count,
+                        &layer_plan.activated_buffer,
+                        layer.feed_forward_down_experts_bias_device.as_ref(),
+                        Some(&layer_plan.projected_buffer),
+                        &layer_plan.moe_buffer,
+                    )?;
+                } else {
+                    submission.quantize_f32_to_q8_1(
+                        &layer_plan.activated_buffer,
+                        selected_count,
+                        layer.feed_forward_down_experts_weight.columns,
+                        &layer_plan.activated_q8_1_buffer,
+                    )?;
+                    submission.moe_down_aggregate_q8_1(
+                        &layer.feed_forward_down_experts_weight.storage,
+                        layer.feed_forward_down_experts_weight.mode,
+                        layer.feed_forward_down_experts_weight.row_byte_len,
+                        layer.feed_forward_down_experts_weight.rows,
+                        layer.feed_forward_down_experts_weight.columns,
+                        &layer_plan.selected_ids_buffer,
+                        &layer_plan.selected_weights_buffer,
+                        selected_count,
+                        &layer_plan.activated_q8_1_buffer,
+                        layer.feed_forward_down_experts_bias_device.as_ref(),
+                        Some(&layer_plan.projected_buffer),
+                        &layer_plan.moe_buffer,
+                    )?;
+                }
             } else {
                 submission.moe_gate_up_swiglu(
                     &layer.feed_forward_gate_up_experts_weight.storage,

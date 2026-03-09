@@ -1238,6 +1238,43 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Executes the GPT-OSS down projection and route-weighted expert
+    /// aggregation on device by quantizing selected expert activations from
+    /// `f32` into shared `Q8_1` blocks inside the selected-4 fast path.
+    #[allow(clippy::too_many_arguments)]
+    pub fn moe_down_aggregate_q8_1_f32(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows: usize,
+        columns: usize,
+        selected_ids: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+        selected_count: usize,
+        activated: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        residual: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_moe_down_aggregate_q8_1_f32(
+            &weights.platform,
+            mode,
+            row_stride,
+            rows,
+            columns,
+            &selected_ids.platform,
+            &selected_weights.platform,
+            selected_count,
+            &activated.platform,
+            bias.map(|buffer| &buffer.platform),
+            residual.map(|buffer| &buffer.platform),
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Synchronizes the CUDA stream and returns explicit submission metadata.
     pub fn commit(self, wait: CudaCommandWait) -> Result<CudaSubmissionReport, RuntimeError> {
         if self.capturing {
@@ -3013,6 +3050,21 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_moe_down_aggregate_q8_1_f32(
+            weights: *const c_void,
+            mode: c_int,
+            row_stride: c_int,
+            rows: c_int,
+            columns: c_int,
+            selected_ids: *const c_void,
+            selected_weights: *const c_void,
+            selected_count: c_int,
+            activated: *const c_void,
+            bias: *const c_void,
+            residual: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
     }
 
     pub(super) struct ConfiguredBackend {
@@ -4740,6 +4792,74 @@ mod platform {
             )
         }
 
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_aggregate_q8_1_f32(
+            &mut self,
+            weights: &PlatformBuffer,
+            mode: QuantizationMode,
+            row_stride: usize,
+            rows: usize,
+            columns: usize,
+            selected_ids: &PlatformBuffer,
+            selected_weights: &PlatformBuffer,
+            selected_count: usize,
+            activated: &PlatformBuffer,
+            bias: Option<&PlatformBuffer>,
+            residual: Option<&PlatformBuffer>,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if selected_count > 4 {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda fused moe down f32->q8_1 path requires selected_count <= 4",
+                )));
+            }
+            let mode = match mode {
+                QuantizationMode::GgmlQ8_0 => 0,
+                QuantizationMode::GgmlMxfp4 => 1,
+                other => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda fused moe down kernel does not support {other:?}"
+                    )));
+                }
+            };
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe down row stride exceeds c_int"))
+            })?;
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe down rows exceeds c_int"))
+            })?;
+            let columns = c_int::try_from(columns).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe down columns exceeds c_int"))
+            })?;
+            let selected_count = c_int::try_from(selected_count).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda fused moe selected count exceeds c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_moe_down_aggregate_q8_1_f32(
+                        weights.inner.device_ptr.cast(),
+                        mode,
+                        row_stride,
+                        rows,
+                        columns,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_weights.inner.device_ptr.cast(),
+                        selected_count,
+                        activated.inner.device_ptr.cast(),
+                        bias.map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        residual
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_moe_down_aggregate_q8_1_f32",
+            )
+        }
+
         pub(super) fn commit(
             mut self,
             wait: CudaCommandWait,
@@ -5618,6 +5738,27 @@ mod platform {
             _selected_weights: &PlatformBuffer,
             _selected_count: usize,
             _activated_q8_1: &PlatformBuffer,
+            _bias: Option<&PlatformBuffer>,
+            _residual: Option<&PlatformBuffer>,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_down_aggregate_q8_1_f32(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _mode: QuantizationMode,
+            _row_stride: usize,
+            _rows: usize,
+            _columns: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_weights: &PlatformBuffer,
+            _selected_count: usize,
+            _activated: &PlatformBuffer,
             _bias: Option<&PlatformBuffer>,
             _residual: Option<&PlatformBuffer>,
             _output: &PlatformBuffer,
@@ -6774,6 +6915,61 @@ mod tests {
         )?;
         let report = submission.commit(CudaCommandWait::Completed)?;
         assert_eq!(report.encoded_operations, 2);
+
+        let actual = output.read_f32()?;
+        let expected = expected_moe_down_outputs(
+            &activated,
+            &weights_bytes,
+            selected_ids.as_slice(),
+            selected_weights.as_slice(),
+            32,
+        )?;
+        assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_mxfp4_moe_down_aggregate_q8_1_f32_selected4_path_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let selected_ids = [3_i32, 1_i32, 0_i32, 2_i32];
+        let selected_weights = [0.40_f32, 0.27_f32, 0.19_f32, 0.14_f32];
+        let activated = sample_selected_activated_vectors_for_count(selected_ids.len());
+        let weights_bytes = sample_mxfp4_expert_down_weights(selected_ids.len(), 32, 32);
+        let weights = backend.byte_buffer(&weights_bytes)?;
+        let activated_buffer =
+            backend.input_buffer(Shape::new(vec![activated.len()]), activated.clone())?;
+        let selected_ids_buffer = backend.byte_buffer(&i32_slice_to_bytes(&selected_ids))?;
+        let selected_weights_buffer = backend.input_buffer(
+            Shape::new(vec![selected_weights.len()]),
+            selected_weights.to_vec(),
+        )?;
+        let output = backend.f32_buffer(32)?;
+        let mut submission = backend.begin_submission()?;
+        submission.moe_down_aggregate_q8_1_f32(
+            &weights,
+            QuantizationMode::GgmlMxfp4,
+            17,
+            32,
+            32,
+            &selected_ids_buffer,
+            &selected_weights_buffer,
+            selected_ids.len(),
+            &activated_buffer,
+            None,
+            None,
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 1);
 
         let actual = output.read_f32()?;
         let expected = expected_moe_down_outputs(
