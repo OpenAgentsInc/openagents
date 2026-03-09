@@ -55,13 +55,13 @@ use crate::pane_system::{
     CodexLabsPaneAction, CodexMcpPaneAction, CodexModelsPaneAction, CredentialsPaneAction,
     EarningsScoreboardPaneAction, NetworkRequestsPaneAction, PaneController, PaneHitAction,
     PaneInput, ProviderStatusPaneAction, RIGHT_SIDEBAR_ENABLED, ReciprocalLoopPaneAction,
-    RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction,
-    StarterJobsPaneAction, SyncHealthPaneAction, cad_demo_context_menu_bounds,
-    cad_demo_context_menu_row_bounds, clamp_all_panes_to_window,
-    dispatch_activity_feed_detail_scroll_event, dispatch_calculator_input_event,
-    dispatch_chat_input_event, dispatch_chat_scroll_event, dispatch_create_invoice_input_event,
-    dispatch_credentials_input_event, dispatch_job_history_input_event,
-    dispatch_local_inference_input_event, dispatch_network_requests_input_event,
+    RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
+    SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
+    clamp_all_panes_to_window, dispatch_activity_feed_detail_scroll_event,
+    dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
+    dispatch_create_invoice_input_event, dispatch_credentials_input_event,
+    dispatch_job_history_input_event, dispatch_local_inference_input_event,
+    dispatch_mission_control_log_scroll_event, dispatch_network_requests_input_event,
     dispatch_pay_invoice_input_event, dispatch_relay_connections_input_event,
     dispatch_settings_input_event, dispatch_spark_input_event, pane_content_bounds,
     pane_indices_by_z_desc, pane_z_sort_invocation_count, topmost_pane_hit_action_in_order,
@@ -2061,7 +2061,10 @@ fn dispatch_mouse_scroll(
         if apply_cad_camera_zoom(state, point, *dy) {
             handled = true;
         } else {
-            handled |= dispatch_activity_feed_detail_scroll_event(state, point, *dy);
+            handled |= dispatch_mission_control_log_scroll_event(state, point, event);
+            if !handled {
+                handled |= dispatch_activity_feed_detail_scroll_event(state, point, *dy);
+            }
             if !handled {
                 handled |= dispatch_chat_scroll_event(state, point, *dy);
             }
@@ -2602,6 +2605,7 @@ pub(super) fn run_pane_hit_action(
             },
             "mission control toggle",
         ),
+        PaneHitAction::MissionControl(action) => run_mission_control_action(state, action),
         PaneHitAction::CodexAccount(action) => run_codex_account_action(state, action),
         PaneHitAction::CodexModels(action) => run_codex_models_action(state, action),
         PaneHitAction::CodexConfig(action) => run_codex_config_action(state, action),

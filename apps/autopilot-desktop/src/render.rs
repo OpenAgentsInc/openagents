@@ -7,8 +7,7 @@ use wgpui::components::Text;
 use wgpui::components::hud::{Command, CommandPalette, DotShape, DotsGrid, DotsOrigin};
 use wgpui::renderer::Renderer;
 use wgpui::{
-    Bounds, Component, Easing, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem,
-    theme,
+    Bounds, Component, Easing, PaintContext, Point, Quad, Scene, Size, SvgQuad, TextSystem, theme,
 };
 use winit::event_loop::ActiveEventLoop;
 use winit::window::Window;
@@ -279,6 +278,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             job_history_inputs: crate::app_state::JobHistoryPaneInputs::default(),
             chat_inputs: crate::app_state::ChatPaneInputs::default(),
             calculator_inputs: crate::app_state::CalculatorPaneInputs::default(),
+            mission_control: crate::app_state::MissionControlPaneState::default(),
             autopilot_chat: crate::app_state::AutopilotChatState::default(),
             project_ops: crate::project_ops::ProjectOpsPaneState::default(),
             chat_transcript_selection_drag: None,
@@ -1035,6 +1035,7 @@ pub fn render_frame(state: &mut RenderState) -> Result<()> {
             &mut state.job_history_inputs,
             &mut state.chat_inputs,
             &mut state.calculator_inputs,
+            &mut state.mission_control,
             &mut paint,
         );
         paint.scene.set_layer(hotbar_layer);

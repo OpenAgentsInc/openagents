@@ -241,7 +241,7 @@ const PANE_SPECS: [PaneSpec; 40] = [
     },
     PaneSpec {
         kind: PaneKind::GoOnline,
-        title: "Mission Control",
+        title: "MISSION CONTROL",
         default_width: 1040.0,
         default_height: 620.0,
         singleton: true,

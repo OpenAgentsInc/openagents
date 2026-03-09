@@ -2,13 +2,13 @@ use crate::components::context::{EventContext, PaintContext};
 use crate::components::{Component, ComponentId, EventResult};
 use crate::{Bounds, InputEvent, Point, Quad, theme};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum TerminalStream {
     Stdout,
     Stderr,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub struct TerminalLine {
     pub stream: TerminalStream,
     pub text: String,
@@ -25,6 +25,7 @@ impl TerminalLine {
 
 pub struct TerminalPane {
     id: Option<ComponentId>,
+    title: String,
     lines: Vec<TerminalLine>,
     scroll_offset: f32,
     content_height: f32,
@@ -37,6 +38,7 @@ impl TerminalPane {
     pub fn new() -> Self {
         Self {
             id: None,
+            title: "Terminal".to_string(),
             lines: Vec::new(),
             scroll_offset: 0.0,
             content_height: 0.0,
@@ -49,6 +51,15 @@ impl TerminalPane {
     pub fn with_id(mut self, id: ComponentId) -> Self {
         self.id = Some(id);
         self
+    }
+
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = title.into();
+        self
+    }
+
+    pub fn set_title(&mut self, title: impl Into<String>) {
+        self.title = title.into();
     }
 
     pub fn push_line(&mut self, line: TerminalLine) {
@@ -102,7 +113,7 @@ impl Component for TerminalPane {
 
         let header_bounds = Bounds::new(bounds.origin.x, bounds.origin.y, bounds.size.width, 24.0);
         let header_text = cx.text.layout_mono(
-            "Terminal",
+            &self.title,
             Point::new(header_bounds.origin.x + 10.0, header_bounds.origin.y + 6.0),
             theme::font_size::SM,
             theme::text::MUTED,

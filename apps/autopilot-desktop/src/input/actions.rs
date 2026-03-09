@@ -1,7 +1,9 @@
 use super::*;
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRuntimeCommand};
-use crate::pane_system::{CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction};
+use crate::pane_system::{
+    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction, MissionControlPaneAction,
+};
 use crate::state::job_inbox::JobExecutionParam;
 
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
@@ -2759,11 +2761,12 @@ pub(super) fn run_chat_select_thread_action(
             }
 
             if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
-                let read =
-                    crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
+                let read = crate::codex_lane::CodexLaneCommand::ThreadRead(
+                    codex_client::ThreadReadParams {
                         thread_id,
                         include_turns: true,
-                    });
+                    },
+                );
                 if let Err(error) = state.queue_codex_command(read) {
                     state.autopilot_chat.last_error = Some(error);
                 }
@@ -5570,6 +5573,95 @@ pub(super) fn run_local_inference_action(
             }
             true
         }
+    }
+}
+
+pub(super) fn run_mission_control_action(
+    state: &mut crate::app_state::RenderState,
+    action: MissionControlPaneAction,
+) -> bool {
+    match action {
+        MissionControlPaneAction::ToggleAmountDisplay => {
+            state.mission_control.toggle_amount_display_mode();
+            true
+        }
+        MissionControlPaneAction::WarmLocalModel => {
+            crate::pane_system::PaneController::create_for_kind(
+                state,
+                crate::app_state::PaneKind::LocalInference,
+            );
+            let handled = run_local_inference_action(state, LocalInferencePaneAction::WarmModel);
+            if handled {
+                state
+                    .mission_control
+                    .record_action("Queued configured local model warm");
+            } else {
+                state.mission_control.last_action = Some("Local model warm failed".to_string());
+                state.mission_control.last_error =
+                    Some("Failed to queue configured local model warm".to_string());
+            }
+            handled
+        }
+        MissionControlPaneAction::OpenDocumentation => {
+            match open_mission_control_documentation() {
+                Ok(path) => {
+                    state
+                        .mission_control
+                        .record_action(format!("Opened documentation ({})", path.display()));
+                }
+                Err(error) => {
+                    state.mission_control.last_action =
+                        Some("Documentation open failed".to_string());
+                    state.mission_control.last_error = Some(error);
+                }
+            }
+            true
+        }
+    }
+}
+
+fn open_mission_control_documentation() -> Result<std::path::PathBuf, String> {
+    let path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../docs/plans/mission-control-pane.md");
+    if !path.is_file() {
+        return Err(format!(
+            "Mission Control documentation not found: {}",
+            path.display()
+        ));
+    }
+    open_path_in_default_app(path.as_path())?;
+    Ok(path)
+}
+
+fn open_path_in_default_app(path: &std::path::Path) -> Result<(), String> {
+    let status = if cfg!(target_os = "macos") {
+        std::process::Command::new("open")
+            .arg(path)
+            .status()
+            .map_err(|error| format!("Failed to launch macOS open command: {error}"))?
+    } else if cfg!(target_os = "linux") {
+        std::process::Command::new("xdg-open")
+            .arg(path)
+            .status()
+            .map_err(|error| format!("Failed to launch xdg-open: {error}"))?
+    } else if cfg!(target_os = "windows") {
+        std::process::Command::new("cmd")
+            .arg("/C")
+            .arg("start")
+            .arg("")
+            .arg(path)
+            .status()
+            .map_err(|error| format!("Failed to launch Windows start command: {error}"))?
+    } else {
+        return Err("Opening documentation is unsupported on this platform".to_string());
+    };
+
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!(
+            "Documentation launcher exited with status {status}"
+        ))
     }
 }
 

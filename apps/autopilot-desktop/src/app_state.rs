@@ -4,6 +4,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use std::{cell::RefCell, rc::Rc};
 
+use chrono::{Datelike, TimeZone, Utc};
 use nostr::NostrIdentity;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use openagents_kernel_core::receipts::EvidenceRef;
@@ -11,11 +12,13 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use wgpui::components::TextInput;
 use wgpui::components::hud::{CommandPalette, Hotbar, PaneFrame, ResizablePane, ResizeEdge};
+use wgpui::components::sections::{TerminalLine, TerminalPane, TerminalStream};
 use wgpui::renderer::Renderer;
 use wgpui::{Bounds, EventContext, Modifiers, Point, TextSystem, theme};
 use winit::window::Window;
 
 use crate::apple_fm_bridge::{AppleFmBridgeCommand, AppleFmBridgeSnapshot, AppleFmBridgeWorker};
+use crate::bitcoin_display::{BitcoinAmountDisplayMode, format_mission_control_amount};
 use crate::labor_orchestrator::{
     CodexLaborApprovalEvent, CodexLaborBinding, CodexLaborClaimState, CodexLaborSubmissionState,
     CodexLaborVerdictState, CodexRunClassification,
@@ -363,6 +366,251 @@ impl Default for CalculatorPaneInputs {
                 .placeholder("e.g. (8 + 2) * 3 - 4 / 2")
                 .mono(true),
         }
+    }
+}
+
+pub struct MissionControlPaneState {
+    pub amount_display_mode: BitcoinAmountDisplayMode,
+    pub log_stream: TerminalPane,
+    pub last_action: Option<String>,
+    pub last_error: Option<String>,
+    rendered_log_lines: Vec<TerminalLine>,
+}
+
+impl Default for MissionControlPaneState {
+    fn default() -> Self {
+        Self {
+            amount_display_mode: BitcoinAmountDisplayMode::Integer,
+            log_stream: TerminalPane::new().title("// LOG STREAM"),
+            last_action: Some("Mission Control ready".to_string()),
+            last_error: None,
+            rendered_log_lines: Vec::new(),
+        }
+    }
+}
+
+impl MissionControlPaneState {
+    pub fn toggle_amount_display_mode(&mut self) {
+        self.amount_display_mode = self.amount_display_mode.toggle();
+        self.last_error = None;
+        self.last_action = Some(format!(
+            "Amount display -> {}",
+            self.amount_display_mode.button_label()
+        ));
+    }
+
+    pub fn record_action(&mut self, action: impl Into<String>) {
+        self.last_action = Some(action.into());
+        self.last_error = None;
+    }
+
+    pub fn record_error(&mut self, error: impl Into<String>) {
+        self.last_error = Some(error.into());
+    }
+
+    pub fn sync_log_stream(
+        &mut self,
+        provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+        provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
+        earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+        spark_wallet: &SparkPaneState,
+        job_inbox: &JobInboxState,
+        active_job: &ActiveJobState,
+    ) {
+        let lines = build_mission_control_log_lines(
+            self.amount_display_mode,
+            self.last_action.as_deref(),
+            self.last_error.as_deref(),
+            provider_runtime,
+            provider_blockers,
+            earn_job_lifecycle_projection,
+            spark_wallet,
+            job_inbox,
+            active_job,
+        );
+        if lines == self.rendered_log_lines {
+            return;
+        }
+
+        self.log_stream.clear();
+        for line in &lines {
+            self.log_stream.push_line(line.clone());
+        }
+        self.rendered_log_lines = lines;
+    }
+}
+
+fn build_mission_control_log_lines(
+    amount_display_mode: BitcoinAmountDisplayMode,
+    mission_action: Option<&str>,
+    mission_error: Option<&str>,
+    provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
+    earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
+    spark_wallet: &SparkPaneState,
+    job_inbox: &JobInboxState,
+    active_job: &ActiveJobState,
+) -> Vec<TerminalLine> {
+    let mut lines = Vec::<TerminalLine>::new();
+    let mut seen = HashSet::<String>::new();
+    let mut push_line = |stream: TerminalStream, text: String| {
+        let trimmed = text.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        if seen.insert(trimmed.to_string()) {
+            lines.push(TerminalLine::new(stream, trimmed));
+        }
+    };
+
+    let mode_line = match provider_runtime.mode {
+        crate::state::provider_runtime::ProviderMode::Offline => {
+            "Provider offline. Click GO ONLINE to accept jobs.".to_string()
+        }
+        crate::state::provider_runtime::ProviderMode::Connecting => {
+            "Provider connecting to relays and preparing runtime.".to_string()
+        }
+        crate::state::provider_runtime::ProviderMode::Online => {
+            "Provider online. Heartbeat and relay intake are active.".to_string()
+        }
+        crate::state::provider_runtime::ProviderMode::Degraded => {
+            "Provider degraded. Review blockers and wallet or relay health.".to_string()
+        }
+    };
+    push_line(TerminalStream::Stdout, mode_line);
+
+    if provider_blockers.is_empty() {
+        push_line(TerminalStream::Stdout, "Preflight clear.".to_string());
+    } else {
+        for blocker in provider_blockers.iter().take(3) {
+            push_line(
+                TerminalStream::Stderr,
+                format!(
+                    "Preflight blocker [{}]: {}",
+                    blocker.code(),
+                    blocker.detail()
+                ),
+            );
+        }
+    }
+
+    if provider_runtime.active_inference_backend().is_none() {
+        push_line(TerminalStream::Stderr, "No local model found.".to_string());
+    } else {
+        push_line(
+            TerminalStream::Stdout,
+            format!(
+                "Serving backend ready: {}",
+                provider_runtime.execution_backend_label()
+            ),
+        );
+    }
+
+    if let Some(action) = mission_action {
+        push_line(TerminalStream::Stdout, format!("UI: {action}"));
+    }
+    if let Some(error) = mission_error {
+        push_line(TerminalStream::Stderr, format!("UI error: {error}"));
+    }
+    if let Some(result) = provider_runtime.last_result.as_deref() {
+        push_line(TerminalStream::Stdout, format!("Provider: {result}"));
+    }
+    if let Some(error) = provider_runtime.last_error_detail.as_deref() {
+        push_line(TerminalStream::Stderr, format!("Provider error: {error}"));
+    }
+    if let Some(action) = provider_runtime.inventory_last_action.as_deref() {
+        push_line(TerminalStream::Stdout, format!("Inventory: {action}"));
+    }
+    if let Some(error) = provider_runtime.inventory_last_error.as_deref() {
+        push_line(TerminalStream::Stderr, format!("Inventory error: {error}"));
+    }
+
+    if let Some(action) = spark_wallet.last_action.as_deref() {
+        push_line(TerminalStream::Stdout, format!("Wallet: {action}"));
+    }
+    if let Some(error) = spark_wallet.last_error.as_deref() {
+        push_line(TerminalStream::Stderr, format!("Wallet error: {error}"));
+    }
+
+    if job_inbox.requests.is_empty() {
+        push_line(
+            TerminalStream::Stdout,
+            if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
+                "Relay preview idle. Observed market activity will appear here before you go online."
+                    .to_string()
+            } else {
+                "Watching relays for matching jobs.".to_string()
+            },
+        );
+    } else {
+        let request_count = job_inbox.requests.len();
+        push_line(
+            TerminalStream::Stdout,
+            if provider_runtime.mode == crate::state::provider_runtime::ProviderMode::Offline {
+                format!("Relay preview: {request_count} observed jobs while offline.")
+            } else {
+                format!("Relay intake: {request_count} observed jobs available.")
+            },
+        );
+    }
+    if let Some(action) = job_inbox.last_action.as_deref() {
+        push_line(TerminalStream::Stdout, format!("Inbox: {action}"));
+    }
+
+    if let Some(job) = active_job.job.as_ref() {
+        push_line(
+            mission_control_log_stream_for_stage(job.stage),
+            format!(
+                "Active {} -> {} [{}] {}",
+                job.job_id,
+                job.capability,
+                job.stage.label(),
+                format_mission_control_amount(job.quoted_price_sats, amount_display_mode)
+            ),
+        );
+    }
+    if let Some(action) = active_job.last_action.as_deref() {
+        push_line(TerminalStream::Stdout, format!("Active job: {action}"));
+    }
+    if let Some(error) = active_job.last_error.as_deref() {
+        push_line(TerminalStream::Stderr, format!("Active job error: {error}"));
+    }
+
+    for row in earn_job_lifecycle_projection.rows.iter().take(8).rev() {
+        let source = if row.source_tag.to_ascii_lowercase().contains("starter") {
+            "STARTER"
+        } else {
+            "OPEN"
+        };
+        push_line(
+            mission_control_log_stream_for_stage(row.stage),
+            format!(
+                "[{source}] {} {} {}",
+                row.stage.label(),
+                row.job_id,
+                format_mission_control_amount(row.quoted_price_sats, amount_display_mode)
+            ),
+        );
+    }
+
+    if lines.is_empty() {
+        lines.push(TerminalLine::new(
+            TerminalStream::Stdout,
+            "Mission Control log waiting for provider and wallet state.",
+        ));
+    }
+
+    lines
+}
+
+fn mission_control_log_stream_for_stage(stage: JobLifecycleStage) -> TerminalStream {
+    match stage {
+        JobLifecycleStage::Failed => TerminalStream::Stderr,
+        JobLifecycleStage::Received
+        | JobLifecycleStage::Accepted
+        | JobLifecycleStage::Running
+        | JobLifecycleStage::Delivered
+        | JobLifecycleStage::Paid => TerminalStream::Stdout,
     }
 }
 
@@ -4686,6 +4934,7 @@ pub struct EarningsScoreboardState {
     pub last_error: Option<String>,
     pub last_action: Option<String>,
     pub sats_today: u64,
+    pub sats_this_month: u64,
     pub lifetime_sats: u64,
     pub jobs_today: u64,
     pub last_job_result: String,
@@ -4707,6 +4956,7 @@ impl Default for EarningsScoreboardState {
             last_error: None,
             last_action: Some("Waiting for wallet + job receipts".to_string()),
             sats_today: 0,
+            sats_this_month: 0,
             lifetime_sats: 0,
             jobs_today: 0,
             last_job_result: "none".to_string(),
@@ -4782,6 +5032,16 @@ impl EarningsScoreboardState {
             .filter(|row| row.wallet_received_at_epoch_seconds >= threshold)
             .map(|row| row.payout_sats)
             .sum();
+        self.sats_this_month = reconciled_payout_rows
+            .iter()
+            .filter(|row| {
+                wallet_receipt_is_in_reference_month(
+                    row.wallet_received_at_epoch_seconds,
+                    job_history.reference_epoch_seconds,
+                )
+            })
+            .map(|row| row.payout_sats)
+            .sum();
         self.lifetime_sats = reconciled_payout_rows
             .iter()
             .map(|row| row.payout_sats)
@@ -4835,6 +5095,25 @@ fn ratio_bps(numerator: u64, denominator: u64) -> Option<u16> {
     }
     let ratio = ((numerator as u128) * 10_000u128 / (denominator as u128)).min(10_000u128);
     Some(ratio as u16)
+}
+
+fn wallet_receipt_is_in_reference_month(
+    wallet_received_at_epoch_seconds: u64,
+    reference_epoch_seconds: u64,
+) -> bool {
+    let Some(reference) = Utc
+        .timestamp_opt(reference_epoch_seconds as i64, 0)
+        .single()
+    else {
+        return false;
+    };
+    let Some(receipt) = Utc
+        .timestamp_opt(wallet_received_at_epoch_seconds as i64, 0)
+        .single()
+    else {
+        return false;
+    };
+    receipt.year() == reference.year() && receipt.month() == reference.month()
 }
 
 pub struct NetworkAggregateCountersState {
@@ -5088,6 +5367,7 @@ pub struct RenderState {
     pub job_history_inputs: JobHistoryPaneInputs,
     pub chat_inputs: ChatPaneInputs,
     pub calculator_inputs: CalculatorPaneInputs,
+    pub mission_control: MissionControlPaneState,
     pub autopilot_chat: AutopilotChatState,
     pub project_ops: ProjectOpsPaneState,
     pub chat_transcript_selection_drag: Option<ChatTranscriptSelectionDragState>,
@@ -5394,17 +5674,20 @@ mod tests {
         CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection, CadDrawingViewMode,
         CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis, CadSnapMode,
         CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
-        EarnJobLifecycleProjectionState, EarningsScoreboardState, JobDemandSource, JobHistoryState,
-        JobHistoryStatus, JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision,
-        JobInboxNetworkRequest, JobInboxState, JobInboxValidation, JobLifecycleStage,
-        NetworkAggregateCountersState, NetworkRequestStatus, NetworkRequestSubmission,
-        NetworkRequestsState, NostrSecretState, ProviderMode, ProviderRuntimeState,
-        ReciprocalLoopDirection, ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition,
-        ReciprocalLoopState, RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState,
-        SettingsState, SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-        SyncRecoveryPhase,
+        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
+        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
+        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
+        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
+    use crate::bitcoin_display::BitcoinAmountDisplayMode;
+    use chrono::TimeZone;
+    use wgpui::components::sections::TerminalStream;
 
     #[test]
     fn sidebar_defaults_to_collapsed() {
@@ -9040,6 +9323,7 @@ mod tests {
         assert_eq!(score.lifetime_sats, 2100);
         assert_eq!(score.jobs_today, 1);
         assert_eq!(score.sats_today, 2100);
+        assert_eq!(score.sats_this_month, 2100);
         assert!(!score.is_stale(now));
     }
 
@@ -9068,6 +9352,75 @@ mod tests {
         assert_eq!(score.lifetime_sats, 0);
         assert_eq!(score.jobs_today, 0);
         assert_eq!(score.sats_today, 0);
+        assert_eq!(score.sats_this_month, 0);
+    }
+
+    #[test]
+    fn earnings_scoreboard_tracks_monthly_reconciled_payouts() {
+        let mut score = EarningsScoreboardState::default();
+        let provider = ProviderRuntimeState::default();
+        let current_month = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 10, 12, 0, 0)
+            .single()
+            .expect("valid current month timestamp")
+            .timestamp() as u64;
+        let previous_month = chrono::Utc
+            .with_ymd_and_hms(2026, 2, 27, 12, 0, 0)
+            .single()
+            .expect("valid previous month timestamp")
+            .timestamp() as u64;
+        let reference = chrono::Utc
+            .with_ymd_and_hms(2026, 3, 15, 8, 0, 0)
+            .single()
+            .expect("valid reference timestamp")
+            .timestamp() as u64;
+
+        let mut current_row = fixture_history_row(
+            "job-month-001",
+            JobHistoryStatus::Succeeded,
+            current_month,
+            1500,
+        );
+        current_row.payment_pointer = "wallet-month-001".to_string();
+        let mut previous_row = fixture_history_row(
+            "job-month-002",
+            JobHistoryStatus::Succeeded,
+            previous_month,
+            900,
+        );
+        previous_row.payment_pointer = "wallet-month-002".to_string();
+        let mut history = seed_job_history(vec![current_row, previous_row]);
+        history.reference_epoch_seconds = reference;
+
+        let mut spark = SparkPaneState::default();
+        spark.balance = Some(openagents_spark::Balance {
+            spark_sats: 10_000,
+            lightning_sats: 0,
+            onchain_sats: 0,
+        });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-month-001".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 1500,
+                timestamp: current_month,
+            });
+        spark
+            .recent_payments
+            .push(openagents_spark::PaymentSummary {
+                id: "wallet-month-002".to_string(),
+                direction: "receive".to_string(),
+                status: "settled".to_string(),
+                amount_sats: 900,
+                timestamp: previous_month,
+            });
+
+        score.refresh_from_sources(std::time::Instant::now(), &provider, &history, &spark);
+
+        assert_eq!(score.lifetime_sats, 2400);
+        assert_eq!(score.sats_this_month, 1500);
     }
 
     #[test]
@@ -9157,6 +9510,48 @@ mod tests {
         assert_eq!(score.completion_ratio_bps, None);
         assert_eq!(score.payout_success_ratio_bps, None);
         assert_eq!(score.avg_wallet_confirmation_latency_seconds, None);
+    }
+
+    #[test]
+    fn mission_control_log_lines_use_active_display_mode_for_projection_amounts() {
+        let provider = ProviderRuntimeState::default();
+        let projection = EarnJobLifecycleProjectionState {
+            load_state: super::PaneLoadState::Ready,
+            last_error: None,
+            last_action: None,
+            stream_id: "stream.earn_job_lifecycle_projection.v1".to_string(),
+            authority: "non-authoritative".to_string(),
+            rows: vec![EarnJobLifecycleProjectionRow {
+                stream_seq: 1,
+                event_id: "earn.lifecycle:job-123:paid:wallet".to_string(),
+                job_id: "job-123".to_string(),
+                request_id: "123".to_string(),
+                stage: JobLifecycleStage::Paid,
+                source_tag: "starter-demand".to_string(),
+                occurred_at_epoch_seconds: 1_762_000_000,
+                quoted_price_sats: 1_000,
+                payment_pointer: Some("wallet:123".to_string()),
+                settlement_authority: "wallet.reconciliation".to_string(),
+                settlement_authoritative: true,
+            }],
+            projection_file_path: earn_projection_test_path("mission-control-log"),
+        };
+
+        let lines = super::build_mission_control_log_lines(
+            BitcoinAmountDisplayMode::LegacyBtc,
+            Some("Amount display -> LEGACY (BTC)"),
+            None,
+            &provider,
+            &[],
+            &projection,
+            &SparkPaneState::default(),
+            &JobInboxState::default(),
+            &ActiveJobState::default(),
+        );
+
+        assert!(lines.iter().any(|line| {
+            line.stream == TerminalStream::Stdout && line.text.contains("0.00001000 BTC")
+        }));
     }
 
     #[test]
