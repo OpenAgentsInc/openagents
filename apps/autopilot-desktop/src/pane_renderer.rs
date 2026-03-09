@@ -554,26 +554,26 @@ fn paint_go_online_pane(
 
     paint_mission_control_section_panel(
         layout.sell_panel,
-        "// SELL COMPUTE",
+        "\\\\ SELL COMPUTE",
         theme::accent::PRIMARY,
         paint,
     );
     paint_mission_control_section_panel(
         layout.earnings_panel,
-        "// EARNINGS",
+        "\\\\ EARNINGS",
         theme::status::SUCCESS,
         paint,
     );
     paint_mission_control_section_panel(
         layout.wallet_panel,
-        "// WALLET",
+        "\\\\ WALLET",
         theme::accent::PRIMARY,
         paint,
     );
     paint_mission_control_section_panel(layout.actions_panel, "", theme::border::DEFAULT, paint);
     paint_mission_control_section_panel(
         layout.active_jobs_panel,
-        "// ACTIVE JOBS",
+        "\\\\ ACTIVE JOBS",
         theme::accent::PRIMARY,
         paint,
     );
@@ -838,7 +838,7 @@ fn paint_go_online_pane(
     }
     paint.scene.pop_clip();
 
-    mission_control.log_stream.set_title("// LOG STREAM");
+    mission_control.log_stream.set_title("\\\\ LOG STREAM");
     mission_control.log_stream.paint(layout.log_stream, paint);
 }
 
