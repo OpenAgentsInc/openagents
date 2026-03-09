@@ -1,21 +1,23 @@
 use std::{
     env,
+    error::Error,
     path::{Path, PathBuf},
     process::Command,
 };
 
-fn main() {
+fn main() -> Result<(), Box<dyn Error>> {
     println!("cargo:rerun-if-changed=src/kernels/quantized_matvec.cu");
     println!("cargo:rerun-if-changed=src/kernels/quantized_matvec_stub.c");
 
-    let out_dir = PathBuf::from(env::var("OUT_DIR").expect("OUT_DIR must be set"));
+    let out_dir = PathBuf::from(env::var("OUT_DIR")?);
     if let Some(nvcc) = find_nvcc() {
-        compile_cuda_kernels(&nvcc, &out_dir);
+        compile_cuda_kernels(&nvcc, &out_dir)?;
     } else {
         cc::Build::new()
             .file("src/kernels/quantized_matvec_stub.c")
             .compile("psionic_cuda_quantized_kernels");
     }
+    Ok(())
 }
 
 fn find_nvcc() -> Option<PathBuf> {
@@ -36,7 +38,7 @@ fn find_nvcc() -> Option<PathBuf> {
         .find(|candidate| Command::new(candidate).arg("--version").output().is_ok())
 }
 
-fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) {
+fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) -> Result<(), Box<dyn Error>> {
     let object = out_dir.join("quantized_matvec.o");
     let mut command = Command::new(nvcc);
     command.args([
@@ -51,15 +53,10 @@ fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) {
     if let Some(arch) = find_cuda_arch() {
         command.arg(format!("-arch={arch}"));
     }
-    let status = command
-        .arg("-o")
-        .arg(&object)
-        .status()
-        .expect("failed to spawn nvcc");
-    assert!(
-        status.success(),
-        "nvcc failed to compile quantized CUDA kernels"
-    );
+    let status = command.arg("-o").arg(&object).status()?;
+    if !status.success() {
+        return Err("nvcc failed to compile quantized CUDA kernels".into());
+    }
 
     cc::Build::new()
         .cpp(true)
@@ -69,6 +66,7 @@ fn compile_cuda_kernels(nvcc: &Path, out_dir: &Path) {
     println!("cargo:rustc-link-lib=cudart");
     println!("cargo:rustc-link-search=native=/opt/cuda/lib64");
     println!("cargo:rustc-link-search=native=/usr/local/cuda/lib64");
+    Ok(())
 }
 
 fn find_cuda_arch() -> Option<String> {

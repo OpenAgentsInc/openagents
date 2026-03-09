@@ -828,28 +828,29 @@ impl CudaSubmission {
         attention_sinks: Option<&CudaBuffer>,
         output: &CudaBuffer,
     ) -> Result<(), RuntimeError> {
-        self.platform.encode_attention_decode_rope_cache_f16_kv_graph(
-            &qkv.platform,
-            query_offset,
-            key_offset,
-            value_offset,
-            &cache_keys.platform,
-            &cache_values.platform,
-            cache_width,
-            layer_offset,
-            &decode_params.platform,
-            sliding_window,
-            head_count,
-            kv_head_count,
-            head_dim,
-            rotary_dim,
-            freq_scale,
-            ext_factor,
-            corr_dims,
-            theta_scale,
-            attention_sinks.map(|buffer| &buffer.platform),
-            &output.platform,
-        )?;
+        self.platform
+            .encode_attention_decode_rope_cache_f16_kv_graph(
+                &qkv.platform,
+                query_offset,
+                key_offset,
+                value_offset,
+                &cache_keys.platform,
+                &cache_values.platform,
+                cache_width,
+                layer_offset,
+                &decode_params.platform,
+                sliding_window,
+                head_count,
+                kv_head_count,
+                head_dim,
+                rotary_dim,
+                freq_scale,
+                ext_factor,
+                corr_dims,
+                theta_scale,
+                attention_sinks.map(|buffer| &buffer.platform),
+                &output.platform,
+            )?;
         self.encoded_operations += 1;
         Ok(())
     }
@@ -2452,7 +2453,8 @@ mod platform {
     type CudaStreamSynchronize = unsafe extern "C" fn(CudaStream) -> CudaError;
     type CudaStreamBeginCapture = unsafe extern "C" fn(CudaStream, c_int) -> CudaError;
     type CudaStreamEndCapture = unsafe extern "C" fn(CudaStream, *mut CudaGraph) -> CudaError;
-    type CudaGraphInstantiate = unsafe extern "C" fn(*mut CudaGraphExec, CudaGraph, u64) -> CudaError;
+    type CudaGraphInstantiate =
+        unsafe extern "C" fn(*mut CudaGraphExec, CudaGraph, u64) -> CudaError;
     type CudaGraphLaunch = unsafe extern "C" fn(CudaGraphExec, CudaStream) -> CudaError;
     type CudaGraphExecDestroy = unsafe extern "C" fn(CudaGraphExec) -> CudaError;
     type CudaGraphDestroy = unsafe extern "C" fn(CudaGraph) -> CudaError;
@@ -4372,7 +4374,10 @@ mod platform {
     }
 
     impl PlatformGraphExec {
-        pub(super) fn launch(&self, wait: CudaCommandWait) -> Result<CudaCommandStatus, RuntimeError> {
+        pub(super) fn launch(
+            &self,
+            wait: CudaCommandWait,
+        ) -> Result<CudaCommandStatus, RuntimeError> {
             self.runtime.set_device()?;
             self.runtime.check(
                 unsafe { (self.runtime.cuda_graph_launch)(self.instance, self.stream) },
