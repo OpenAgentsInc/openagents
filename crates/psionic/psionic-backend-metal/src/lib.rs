@@ -61,6 +61,8 @@ pub const TEXT_GENERATION_SUPPORTED_OPS: &[&str] = &[
     "backend_extension:rotary_embedding",
     "argmax_f32",
     "top_k_f32",
+    "mul_mv_id_q8_0",
+    "mul_mv_id_mxfp4",
 ];
 
 /// Metal buffer storage mode visible to Psionic.
@@ -124,6 +126,30 @@ pub struct MetalTopKResult {
     pub indices: Vec<u32>,
     /// Row-major selected values aligned with `indices`.
     pub values: Vec<f32>,
+}
+
+/// Explicit grouped-expert execution evidence returned by Metal `mul_mv_id`.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MetalGroupedExpertStats {
+    /// Whether the grouped ids-enabled path executed.
+    pub grouped_path: bool,
+    /// Number of packed experts available in the weights buffer.
+    pub expert_count: usize,
+    /// Number of selected experts evaluated for this dispatch.
+    pub selected_count: usize,
+    /// Number of output rows produced per selected expert.
+    pub rows_per_expert: usize,
+    /// Packed byte stride for one expert row.
+    pub row_stride: usize,
+}
+
+/// Flattened output from one grouped selected-expert matvec request.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MetalGroupedExpertMatvecResult {
+    /// Row-major outputs with shape `[selected_count, rows_per_expert]`.
+    pub values: Vec<f32>,
+    /// Explicit grouped-path evidence.
+    pub stats: MetalGroupedExpertStats,
 }
 
 /// Metal-backed tensor buffer.
@@ -544,6 +570,39 @@ impl MetalBackend {
         Ok(buffer)
     }
 
+    /// Creates a backend-owned quantized GGML/GGUF buffer on the selected Metal device.
+    pub fn quantized_buffer(
+        &mut self,
+        shape: Shape,
+        mode: psionic_core::QuantizationMode,
+        bytes: impl Into<Vec<u8>>,
+    ) -> Result<MetalBuffer, RuntimeError> {
+        let Some(device) = self
+            .selected_device()
+            .map(|descriptor| descriptor.device.clone())
+        else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        let spec = TensorSpec::new(shape.clone(), DType::F32, device);
+        let tensor_data = TensorData::QuantizedBlocks(psionic_core::QuantizedTensorData::new(
+            mode,
+            mode.ggml_block_layout(&shape).ok_or_else(|| {
+                RuntimeError::Backend(format!(
+                    "shape {shape} is invalid for quantized mode {mode:?}",
+                ))
+            })?,
+            bytes,
+        ));
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        backend.buffer_from_tensor_data(&spec, &tensor_data)
+    }
+
     /// Compiles and executes a graph on the supported dense Metal surface.
     pub fn compile_and_execute(
         &mut self,
@@ -643,6 +702,115 @@ impl MetalBackend {
             top_k,
             indices,
             values: selected_values,
+        })
+    }
+
+    /// Executes a llama.cpp-style grouped `mul_mv_id` expert dispatch over one
+    /// decode vector and the selected expert ids.
+    pub fn mul_mv_id(
+        &self,
+        weights: &MetalBuffer,
+        mode: psionic_core::QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        selected_ids: &[i32],
+        input: &MetalBuffer,
+    ) -> Result<MetalGroupedExpertMatvecResult, RuntimeError> {
+        if rows_per_expert == 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal mul_mv_id requires at least one row per expert",
+            )));
+        }
+        if selected_ids.is_empty() {
+            return Ok(MetalGroupedExpertMatvecResult {
+                values: Vec::new(),
+                stats: MetalGroupedExpertStats {
+                    grouped_path: true,
+                    expert_count: 0,
+                    selected_count: 0,
+                    rows_per_expert,
+                    row_stride,
+                },
+            });
+        }
+        let input_values = dense_row_major_values(input, 1, columns, "metal mul_mv_id input")?;
+        let expert_count =
+            validate_grouped_expert_layout(weights, mode, row_stride, rows_per_expert, columns)?;
+        let quantized_bytes = match weights.storage_kind() {
+            BufferStorageKind::QuantizedBlocks {
+                mode: stored_mode, ..
+            } => {
+                if stored_mode != mode {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal mul_mv_id mode mismatch: requested {mode:?}, stored {stored_mode:?}",
+                    )));
+                }
+                Some(weights.read_bytes()?)
+            }
+            BufferStorageKind::DenseF32 => {
+                if mode != psionic_core::QuantizationMode::None {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal mul_mv_id requested quantized mode {mode:?} for dense expert weights",
+                    )));
+                }
+                None
+            }
+            storage_kind => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal mul_mv_id does not support expert storage {:?}",
+                    storage_kind
+                )));
+            }
+        };
+
+        let dense_weights = if quantized_bytes.is_none() {
+            Some(weights.read_f32()?)
+        } else {
+            None
+        };
+        let mut output = vec![0.0; selected_ids.len().saturating_mul(rows_per_expert)];
+
+        for (selected_index, selected_id) in selected_ids.iter().copied().enumerate() {
+            let expert_index = usize::try_from(selected_id).map_err(|_| {
+                RuntimeError::Backend(format!(
+                    "metal mul_mv_id does not accept negative expert id {selected_id}",
+                ))
+            })?;
+            if expert_index >= expert_count {
+                return Err(RuntimeError::Backend(format!(
+                    "metal mul_mv_id expert id {expert_index} exceeds packed expert count {expert_count}",
+                )));
+            }
+            for row in 0..rows_per_expert {
+                let row_index = expert_index
+                    .saturating_mul(rows_per_expert)
+                    .saturating_add(row);
+                output[selected_index * rows_per_expert + row] =
+                    if let Some(bytes) = quantized_bytes.as_ref() {
+                        let start = row_index.saturating_mul(row_stride);
+                        let end = start.saturating_add(row_stride);
+                        quantized_row_dot(mode, &input_values, &bytes[start..end])?
+                    } else {
+                        let row_start = row_index.saturating_mul(columns);
+                        let row_end = row_start.saturating_add(columns);
+                        dense_row_dot(
+                            &input_values,
+                            &dense_weights.as_ref().expect("dense weights")[row_start..row_end],
+                        )?
+                    };
+            }
+        }
+
+        Ok(MetalGroupedExpertMatvecResult {
+            values: output,
+            stats: MetalGroupedExpertStats {
+                grouped_path: true,
+                expert_count,
+                selected_count: selected_ids.len(),
+                rows_per_expert,
+                row_stride,
+            },
         })
     }
 
@@ -1485,6 +1653,191 @@ fn dense_row_major_values(
         )));
     }
     Ok(values)
+}
+
+fn validate_grouped_expert_layout(
+    weights: &MetalBuffer,
+    mode: psionic_core::QuantizationMode,
+    row_stride: usize,
+    rows_per_expert: usize,
+    columns: usize,
+) -> Result<usize, RuntimeError> {
+    if columns == 0 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal mul_mv_id requires a non-zero column count",
+        )));
+    }
+    let expected_row_stride = match mode {
+        psionic_core::QuantizationMode::None => columns
+            .checked_mul(size_of_dtype(DType::F32))
+            .ok_or_else(|| {
+                RuntimeError::Backend(String::from("metal mul_mv_id row stride overflow"))
+            })?,
+        psionic_core::QuantizationMode::GgmlQ8_0 | psionic_core::QuantizationMode::GgmlMxfp4 => {
+            let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+                return Err(RuntimeError::Backend(format!(
+                    "metal mul_mv_id does not support grouped mode {mode:?}",
+                )));
+            };
+            if columns % elements_per_block != 0 {
+                return Err(RuntimeError::Backend(format!(
+                    "metal mul_mv_id columns {columns} are not block-aligned for {mode:?}",
+                )));
+            }
+            (columns / elements_per_block).saturating_mul(bytes_per_block)
+        }
+        _ => {
+            return Err(RuntimeError::Backend(format!(
+                "metal mul_mv_id does not support grouped mode {mode:?}",
+            )));
+        }
+    };
+    if row_stride != expected_row_stride {
+        return Err(RuntimeError::Backend(format!(
+            "metal mul_mv_id row stride mismatch: expected {expected_row_stride}, actual {row_stride}",
+        )));
+    }
+    let rows_per_group = rows_per_expert.checked_mul(row_stride).ok_or_else(|| {
+        RuntimeError::Backend(String::from("metal mul_mv_id group size overflow"))
+    })?;
+    if rows_per_group == 0 || weights.byte_len() % rows_per_group != 0 {
+        return Err(RuntimeError::Backend(format!(
+            "metal mul_mv_id packed expert buffer length {} is not divisible by grouped row size {}",
+            weights.byte_len(),
+            rows_per_group
+        )));
+    }
+    Ok(weights.byte_len() / rows_per_group)
+}
+
+fn dense_row_dot(lhs: &[f32], rhs: &[f32]) -> Result<f32, RuntimeError> {
+    if lhs.len() != rhs.len() {
+        return Err(RuntimeError::Backend(format!(
+            "metal dense row dot length mismatch: lhs {}, rhs {}",
+            lhs.len(),
+            rhs.len()
+        )));
+    }
+    Ok(lhs
+        .iter()
+        .zip(rhs.iter())
+        .map(|(left, right)| left * right)
+        .sum())
+}
+
+fn quantized_row_dot(
+    mode: psionic_core::QuantizationMode,
+    lhs: &[f32],
+    bytes: &[u8],
+) -> Result<f32, RuntimeError> {
+    let Some((elements_per_block, bytes_per_block)) = mode.ggml_block_spec() else {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized row dot requires a GGML block mode, actual {mode:?}",
+        )));
+    };
+    if lhs.len() % elements_per_block != 0 {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized row dot requires block-aligned lhs width {}, actual {}",
+            elements_per_block,
+            lhs.len()
+        )));
+    }
+    if bytes.len() != (lhs.len() / elements_per_block).saturating_mul(bytes_per_block) {
+        return Err(RuntimeError::Backend(format!(
+            "metal quantized row dot byte length mismatch: expected {}, actual {}",
+            (lhs.len() / elements_per_block).saturating_mul(bytes_per_block),
+            bytes.len()
+        )));
+    }
+    let mut sum = 0.0;
+    for (lhs_block, block_bytes) in lhs
+        .chunks_exact(elements_per_block)
+        .zip(bytes.chunks_exact(bytes_per_block))
+    {
+        sum += match mode {
+            psionic_core::QuantizationMode::GgmlQ8_0 => dot_q8_0_block(lhs_block, block_bytes)?,
+            psionic_core::QuantizationMode::GgmlMxfp4 => dot_mxfp4_block(lhs_block, block_bytes)?,
+            _ => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal quantized row dot does not support {mode:?}",
+                )));
+            }
+        };
+    }
+    Ok(sum)
+}
+
+fn dot_q8_0_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
+    if bytes.len() != 34 || lhs.len() != 32 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal q8_0 block dot requires 32 lhs values and 34 bytes",
+        )));
+    }
+    let scale = decode_f16_le(bytes[0], bytes[1]);
+    let mut sum = 0.0;
+    for (lhs, quant) in lhs.iter().zip(bytes[2..].iter().copied()) {
+        let quant = i8::from_le_bytes([quant]);
+        sum += lhs * (f32::from(quant) * scale);
+    }
+    Ok(sum)
+}
+
+fn dot_mxfp4_block(lhs: &[f32], bytes: &[u8]) -> Result<f32, RuntimeError> {
+    const KVALUES: [i8; 16] = [0, 1, 2, 3, 4, 6, 8, 12, 0, -1, -2, -3, -4, -6, -8, -12];
+
+    if bytes.len() != 17 || lhs.len() != 32 {
+        return Err(RuntimeError::Backend(String::from(
+            "metal mxfp4 block dot requires 32 lhs values and 17 bytes",
+        )));
+    }
+    let scale = decode_e8m0_to_fp32_half(bytes[0]) * 0.5;
+    let quants = &bytes[1..];
+    let mut sum = 0.0;
+    for (pair_index, quant) in quants.iter().copied().enumerate() {
+        let low = f32::from(KVALUES[usize::from(quant & 0x0f)]) * scale;
+        let high = f32::from(KVALUES[usize::from((quant >> 4) & 0x0f)]) * scale;
+        sum += lhs[pair_index] * low;
+        sum += lhs[pair_index + 16] * high;
+    }
+    Ok(sum)
+}
+
+fn decode_f16_le(low: u8, high: u8) -> f32 {
+    half_to_f32(u16::from_le_bytes([low, high]))
+}
+
+fn decode_e8m0_to_fp32_half(value: u8) -> f32 {
+    let bits = if value == 0 {
+        0x0040_0000_u32
+    } else {
+        u32::from(value) << 23
+    };
+    f32::from_bits(bits)
+}
+
+fn half_to_f32(bits: u16) -> f32 {
+    let sign = u32::from(bits & 0x8000) << 16;
+    let exponent = (bits >> 10) & 0x1f;
+    let mantissa = bits & 0x03ff;
+    let value = match exponent {
+        0 => {
+            if mantissa == 0 {
+                sign
+            } else {
+                let mut mantissa = u32::from(mantissa);
+                let mut exponent = -14_i32;
+                while (mantissa & 0x0400) == 0 {
+                    mantissa <<= 1;
+                    exponent -= 1;
+                }
+                mantissa &= 0x03ff;
+                sign | (((exponent + 127) as u32) << 23) | (mantissa << 13)
+            }
+        }
+        0x1f => sign | 0x7f80_0000 | (u32::from(mantissa) << 13),
+        _ => sign | ((u32::from(exponent) + 112) << 23) | (u32::from(mantissa) << 13),
+    };
+    f32::from_bits(value)
 }
 
 #[cfg(target_os = "macos")]
@@ -2393,6 +2746,81 @@ mod tests {
         bytes
     }
 
+    fn sample_q8_0_row(scale: f32, multiplier: i8) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(34);
+        bytes.extend_from_slice(&f32_to_f16_bits(scale).to_le_bytes());
+        for index in 0_i8..32_i8 {
+            bytes.push(index.saturating_mul(multiplier).to_le_bytes()[0]);
+        }
+        bytes
+    }
+
+    fn sample_mxfp4_row(scale_exponent: u8) -> Vec<u8> {
+        let mut bytes = Vec::with_capacity(17);
+        bytes.push(scale_exponent);
+        for pair in 0..16_u8 {
+            let low = pair & 0x07;
+            let high = 0x0f_u8.saturating_sub(pair & 0x07);
+            bytes.push(low | (high << 4));
+        }
+        bytes
+    }
+
+    fn sample_reference_vector() -> Vec<f32> {
+        (0..32).map(|index| (index as f32 + 1.0) * 0.25).collect()
+    }
+
+    fn expected_grouped_expert_outputs(
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        selected_ids: &[i32],
+        input: &[f32],
+        bytes: &[u8],
+    ) -> Result<Vec<f32>, RuntimeError> {
+        let mut output = Vec::with_capacity(selected_ids.len().saturating_mul(rows_per_expert));
+        for &selected_id in selected_ids {
+            let expert_index = usize::try_from(selected_id).map_err(|_| {
+                RuntimeError::Backend(format!("negative selected expert id {selected_id}"))
+            })?;
+            for row in 0..rows_per_expert {
+                let row_index = expert_index
+                    .saturating_mul(rows_per_expert)
+                    .saturating_add(row);
+                let start = row_index.saturating_mul(row_stride);
+                let end = start.saturating_add(row_stride);
+                let mut decoded = Vec::with_capacity(input.len());
+                psionic_backend_cpu::decode_quantized_row_into(
+                    mode,
+                    &bytes[start..end],
+                    &mut decoded,
+                )?;
+                output.push(
+                    input
+                        .iter()
+                        .zip(decoded.iter())
+                        .map(|(left, right)| left * right)
+                        .sum(),
+                );
+            }
+        }
+        Ok(output)
+    }
+
+    fn f32_to_f16_bits(value: f32) -> u16 {
+        let bits = value.to_bits();
+        let sign = ((bits >> 16) & 0x8000) as u16;
+        let exponent = ((bits >> 23) & 0xff) as i32 - 127 + 15;
+        let mantissa = bits & 0x7f_ffff;
+        if exponent <= 0 {
+            return sign;
+        }
+        if exponent >= 0x1f {
+            return sign | 0x7c00;
+        }
+        sign | ((exponent as u16) << 10) | ((mantissa >> 13) as u16)
+    }
+
     #[test]
     fn apple_family_devices_classify_as_modern() {
         let family = FamilySupport {
@@ -2438,6 +2866,8 @@ mod tests {
                 "backend_extension:rotary_embedding",
                 "argmax_f32",
                 "top_k_f32",
+                "mul_mv_id_q8_0",
+                "mul_mv_id_mxfp4",
             ]
         );
         let budget = BackendParityPolicy::default().embedding_budget(QuantizationMode::None);
@@ -2984,6 +3414,127 @@ mod tests {
         assert_eq!(result.top_k, 2);
         assert_eq!(result.indices, vec![2, 3, 0, 2]);
         assert_eq!(result.values, vec![4.25, 3.0, 9.5, 9.5]);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_mul_mv_id_matches_grouped_q8_0_reference_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let rows_per_expert = 2;
+        let expert_count = 3;
+        let columns = 32;
+        let row_stride = 34;
+        let selected_ids = vec![2_i32, 0_i32];
+        let weights = [
+            sample_q8_0_row(0.25, 1),
+            sample_q8_0_row(0.5, -1),
+            sample_q8_0_row(0.125, -1),
+            sample_q8_0_row(0.375, 1),
+            sample_q8_0_row(0.625, 1),
+            sample_q8_0_row(0.75, -1),
+        ]
+        .concat();
+        let input = sample_reference_vector();
+
+        let weight_buffer = backend.quantized_buffer(
+            Shape::new(vec![expert_count * rows_per_expert, columns]),
+            QuantizationMode::GgmlQ8_0,
+            weights.clone(),
+        )?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![columns]), input.clone())?;
+        let result = backend.mul_mv_id(
+            &weight_buffer,
+            QuantizationMode::GgmlQ8_0,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids.as_slice(),
+            &input_buffer,
+        )?;
+
+        assert_eq!(
+            result.stats,
+            super::MetalGroupedExpertStats {
+                grouped_path: true,
+                expert_count,
+                selected_count: selected_ids.len(),
+                rows_per_expert,
+                row_stride,
+            }
+        );
+        let expected = expected_grouped_expert_outputs(
+            QuantizationMode::GgmlQ8_0,
+            row_stride,
+            rows_per_expert,
+            selected_ids.as_slice(),
+            input.as_slice(),
+            weights.as_slice(),
+        )?;
+        assert_eq!(result.values, expected);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_mul_mv_id_matches_grouped_mxfp4_reference_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let rows_per_expert = 2;
+        let expert_count = 3;
+        let columns = 32;
+        let row_stride = 17;
+        let selected_ids = vec![1_i32, 2_i32];
+        let weights = [
+            sample_mxfp4_row(4),
+            sample_mxfp4_row(5),
+            sample_mxfp4_row(6),
+            sample_mxfp4_row(7),
+            sample_mxfp4_row(5),
+            sample_mxfp4_row(4),
+        ]
+        .concat();
+        let input = sample_reference_vector();
+
+        let weight_buffer = backend.quantized_buffer(
+            Shape::new(vec![expert_count * rows_per_expert, columns]),
+            QuantizationMode::GgmlMxfp4,
+            weights.clone(),
+        )?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![columns]), input.clone())?;
+        let result = backend.mul_mv_id(
+            &weight_buffer,
+            QuantizationMode::GgmlMxfp4,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids.as_slice(),
+            &input_buffer,
+        )?;
+
+        assert_eq!(result.stats.grouped_path, true);
+        assert_eq!(result.stats.expert_count, expert_count);
+        assert_eq!(result.stats.selected_count, selected_ids.len());
+        let expected = expected_grouped_expert_outputs(
+            QuantizationMode::GgmlMxfp4,
+            row_stride,
+            rows_per_expert,
+            selected_ids.as_slice(),
+            input.as_slice(),
+            weights.as_slice(),
+        )?;
+        assert_eq!(result.values, expected);
         Ok(())
     }
 
