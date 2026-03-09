@@ -4,7 +4,9 @@
 > the current Psionic worktree on the local RTX 4080 host, after landing the
 > CUDA-side shared-prefix residency follow-up, after trimming the default
 > OpenAI-compatible hot path so Harmony debug fields are opt-in instead of
-> always serialized, and after comparing the exact timed-request flow with
+> always serialized, after adding prompt-token reuse on the HTTP lane plus
+> safe cross-request CUDA decode-graph reuse keyed to the actual KV allocation
+> identities, and after comparing the exact timed-request flow with
 > `llama.cpp`'s prompt-cache behavior on the same machine. This file is the
 > current audit for the GPT-OSS throughput gap; later product truth still lives
 > in `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and
@@ -105,12 +107,12 @@
 ### Current hot-path checkpoint
 
 - Psionic:
-  - `37` completion tokens in `0.426s`
-  - `86.95 tok/s`
+  - `37` completion tokens in `0.422s`
+  - `87.59 tok/s`
 - Repeated timed-request range on the same loaded server:
-  - `84.10 tok/s`
-  - `86.95 tok/s`
-  - `83.88 tok/s`
+  - `87.53 tok/s`
+  - `87.59 tok/s`
+  - `87.21 tok/s`
 - Comparison status:
   - the clean same-moment `llama.cpp` control could not be re-established on
     this machine because an external `dota2` process was already holding about
@@ -123,7 +125,7 @@
 - Psionic improvement over the original baseline:
   - `5.20x`
 - Psionic improvement over the previous stable checkpoint:
-  - `1.27x`
+  - `1.28x`
 
 The visible output text matched exactly in the current benchmark:
 
@@ -232,6 +234,17 @@ high-60s into the mid/high-80s without changing the model math:
   truth when debug fields are explicitly requested
 - regression tests now pin the fast extractor against the same final-channel
   semantics as the full parser so the hot path does not regress visible output
+- the HTTP server now also caches the tokenized rendered GPT-OSS prompt for
+  repeated identical requests
+  - this is a real cleanup and keeps repeated requests from re-running Harmony
+    tokenization, but it did not materially move the exact benchmark on this
+    workload
+- the CUDA decode graph is now reused across requests when the shared prompt KV
+  mirror resolves to the same underlying device allocations
+  - this is the correct long-term behavior and closes one more concrete gap with
+    `llama.cpp`'s graph/cache residency model
+  - on this exact benchmark it only moved the steady-state result marginally,
+    from the mid-86s to about `87.6 tok/s`
 
 The latest exact-flow comparison first exposed, and the new checkpoint only
 partially closed, a concrete request-to-request gap that is not just "CUDA
@@ -291,6 +304,11 @@ Important interpretation:
     cost enough wall time to move the exact benchmark by about `18 tok/s`
   - that is now fixed on the default path, but it is not the remaining `150+`
     tok/s blocker
+- request-local graph recapture is no longer the main remaining issue either
+  - once graph reuse was tied to the actual shared CUDA KV allocation identity,
+    the exact benchmark only improved marginally
+  - the remaining gap is still dominated by the core decode kernels, especially
+    the MoE and attention execution families, not by per-request HTTP setup
 - `llama.cpp` still has a request-to-request advantage before decode even starts
   - its timed request re-evaluates only one prompt token because prompt cache
     state stays live in the backend

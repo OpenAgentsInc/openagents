@@ -18,9 +18,11 @@
 > GPT-OSS HTTP lane in the mid/high-80s tok/s on this RTX 4080 host after
 > trimming the default OpenAI/Harmony hot path, with the MXFP4 correctness
 > fixes, expanded `Q8_1` fast-path routing, per-request CUDA graph replay, the
-> new CUDA-side shared-prefix residency, and default opt-in-only debug-field
-> serialization landed; the last clean same-machine `llama.cpp` oracle remains
-> about `167 tok/s`, while a newer control rerun was invalidated because an
+> new CUDA-side shared-prefix residency, prompt-token reuse on the HTTP lane,
+> safe cross-request decode-graph reuse keyed to the actual shared KV device
+> allocations, and default opt-in-only debug-field serialization landed; the
+> last clean same-machine `llama.cpp` oracle remains about `167 tok/s`, while a
+> newer control rerun was invalidated because an
 > external `dota2` process consumed enough GPU memory to force `llama.cpp` into
 > a `0`-layer CUDA offload path. The remaining gap is still concentrated in
 > `llama.cpp`-class graph update, flash attention, and MMQ/MMID kernel quality.
@@ -49,7 +51,10 @@
 > request with a live prompt cache hit (`prompt eval time = 0.30 ms / 1 token`)
 > and Psionic now keeps a reusable CUDA shared-prefix mirror too, but the last
 > clean direct comparison still sits at roughly `86.95 tok/s` for Psionic
-> versus `167.11 tok/s` for `llama.cpp`. A newer `llama.cpp` rerun on this host
+> versus `167.11 tok/s` for `llama.cpp`. The latest request-path follow-up moves
+> the current Psionic checkpoint to about `87.59 tok/s`, but that is still only
+> a marginal gain and does not change the core diagnosis. A newer `llama.cpp`
+> rerun on this host
 > was invalid because an external `dota2` process consumed enough VRAM to force
 > `0` repeating layers onto CUDA. The next work should still bias toward
 > `llama.cpp`'s MMQ/MMID execution path, graph update, and flash attention

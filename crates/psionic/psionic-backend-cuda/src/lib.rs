@@ -229,6 +229,12 @@ impl CudaBuffer {
         self.host_visible
     }
 
+    /// Returns a stable identity for the current device allocation.
+    #[must_use]
+    pub fn allocation_identity(&self) -> usize {
+        self.platform.allocation_identity()
+    }
+
     /// Writes raw bytes into the CUDA buffer via an explicit host-to-device transfer.
     pub fn write_bytes(&mut self, bytes: &[u8]) -> Result<(), RuntimeError> {
         if bytes.len() != self.byte_len {
@@ -2895,6 +2901,10 @@ mod platform {
     }
 
     impl PlatformBuffer {
+        pub(super) fn allocation_identity(&self) -> usize {
+            self.inner.device_ptr as usize
+        }
+
         pub(super) fn write_bytes(&self, bytes: &[u8]) -> Result<(), RuntimeError> {
             if bytes.is_empty() {
                 return Ok(());
@@ -4641,6 +4651,10 @@ mod platform {
     }
 
     impl PlatformBuffer {
+        pub(super) fn allocation_identity(&self) -> usize {
+            0
+        }
+
         pub(super) fn write_bytes(&self, _bytes: &[u8]) -> Result<(), RuntimeError> {
             Err(RuntimeError::Backend(String::from(
                 "cuda runtime substrate currently requires Linux libcudart",
