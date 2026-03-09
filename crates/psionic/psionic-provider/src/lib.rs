@@ -2986,6 +2986,32 @@ mod tests {
     }
 
     #[test]
+    fn metal_gpt_oss_text_generation_fallback_capability_reports_explicit_refusal_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_gpt_oss_decoder_descriptor();
+        let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
+            metal_fallback_selection(),
+            &model,
+            default_decoder_memory_plan(&model, None, None),
+            ModelResidencyPolicy::default(),
+            KvCacheMode::Paged,
+            default_text_generation_execution_profile(),
+            ProviderReadiness::ready("cpu fallback ready"),
+        );
+
+        assert_eq!(envelope.validation.claim_id, "metal.refusal.off_platform");
+        assert_eq!(
+            envelope.validation.coverage,
+            ValidationCoverage::ExplicitRefusal
+        );
+        assert_eq!(envelope.model_family, "gpt-oss");
+        assert_eq!(envelope.runtime_backend, "cpu");
+        assert_eq!(envelope.backend_selection.requested_backend, "metal");
+        assert_eq!(envelope.backend_selection.effective_backend, "cpu");
+        Ok(())
+    }
+
+    #[test]
     fn compute_market_supply_refuses_unlicensed_local_path_artifacts()
     -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
@@ -3984,6 +4010,52 @@ mod tests {
             ValidationCoverage::PositiveExecution
         );
         assert_eq!(receipt.model_family, "gpt-oss");
+        Ok(())
+    }
+
+    #[test]
+    fn metal_gpt_oss_text_generation_failed_receipt_reports_explicit_refusal_validation()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let request = GenerationRequest::new_text(
+            "metal-gpt-oss-req-fallback",
+            sample_gpt_oss_decoder_descriptor(),
+            Some(SessionId::new("metal-gpt-oss-session-fallback")),
+            "hello",
+            GenerationOptions::greedy(1),
+        );
+
+        let receipt = TextGenerationReceipt::failed_for_request(
+            metal_fallback_selection(),
+            &request,
+            None,
+            10,
+            20,
+            "metal backend unavailable",
+        )
+        .with_diagnostic(
+            LocalRuntimeDiagnostic::new(
+                LocalRuntimeErrorCode::BackendUnavailable,
+                503,
+                "metal backend unavailable",
+            )
+            .with_product_id(request.product_id.clone())
+            .with_model_id(request.model.model.model_id.clone())
+            .with_backend("metal"),
+        );
+
+        assert_eq!(receipt.validation.claim_id, "metal.refusal.off_platform");
+        assert_eq!(
+            receipt.validation.coverage,
+            ValidationCoverage::ExplicitRefusal
+        );
+        assert_eq!(receipt.model_family, "gpt-oss");
+        assert_eq!(receipt.runtime_backend, "cpu");
+        assert_eq!(receipt.backend_selection.requested_backend, "metal");
+        assert_eq!(receipt.backend_selection.effective_backend, "cpu");
+        assert_eq!(
+            receipt.diagnostic.as_ref().map(|value| value.code),
+            Some(LocalRuntimeErrorCode::BackendUnavailable)
+        );
         Ok(())
     }
 

@@ -98,6 +98,9 @@ const METAL_GPT_OSS_TEXT_GENERATION_TESTS: &[&str] = &[
 const METAL_REFUSAL_TESTS: &[&str] = &[
     "psionic-serve/tests/metal_embeddings_parity.rs::metal_model_backed_embeddings_parity_reports_explicit_offline_state",
     "psionic-serve/tests/metal_text_generation_parity.rs::metal_text_generation_parity_reports_explicit_offline_state",
+    "psionic-serve/src/gpt_oss.rs::tests::metal_gpt_oss_service_reports_backend_unavailable_off_platform",
+    "psionic-provider/src/lib.rs::metal_gpt_oss_text_generation_fallback_capability_reports_explicit_refusal_validation",
+    "psionic-provider/src/lib.rs::metal_gpt_oss_text_generation_failed_receipt_reports_explicit_refusal_validation",
 ];
 const CUDA_EMBEDDINGS_TESTS: &[&str] = &[
     "psionic-serve/tests/cuda_model_backed_embeddings.rs::cuda_model_backed_embeddings_flow_returns_response_capability_and_receipt_or_explicit_unavailability",
@@ -462,6 +465,20 @@ mod tests {
                 .expect("matrix claim")
                 .coverage,
             ValidationCoverage::PositiveExecution
+        );
+    }
+
+    #[test]
+    fn metal_gpt_oss_fallback_maps_to_explicit_refusal_claim() {
+        let reference =
+            validation_reference_for_text_generation_model(&fallback_selection("metal"), "gpt-oss");
+        assert_eq!(reference.coverage, ValidationCoverage::ExplicitRefusal);
+        assert_eq!(reference.claim_id, "metal.refusal.off_platform");
+        assert_eq!(
+            minimum_hardware_validation_claim(&reference.claim_id)
+                .expect("matrix claim")
+                .coverage,
+            ValidationCoverage::ExplicitRefusal
         );
     }
 
