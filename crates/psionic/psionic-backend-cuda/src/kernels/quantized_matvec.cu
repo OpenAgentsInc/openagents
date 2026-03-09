@@ -437,6 +437,7 @@ __global__ void quantized_matvec_q8_1_mmvq_kernel(
     int rows,
     int block_count,
     const Q81Block *input,
+    const float *bias,
     float *output,
     DotFn dot_fn
 ) {
@@ -474,7 +475,7 @@ __global__ void quantized_matvec_q8_1_mmvq_kernel(
 
     sum = warp_reduce_sum(sum);
     if (threadIdx.x == 0) {
-        output[row] = sum;
+        output[row] = sum + (bias != nullptr ? bias[row] : 0.0f);
     }
 }
 
@@ -486,6 +487,7 @@ __global__ void quantized_matvec_q8_1_shared_input_kernel(
     int rows,
     int block_count,
     const Q81Block *input,
+    const float *bias,
     float *output,
     DotFn dot_fn
 ) {
@@ -512,7 +514,7 @@ __global__ void quantized_matvec_q8_1_shared_input_kernel(
 
     sum = warp_reduce_sum(sum);
     if (threadIdx.x == 0) {
-        output[row] = sum;
+        output[row] = sum + (bias != nullptr ? bias[row] : 0.0f);
     }
 }
 
@@ -523,6 +525,7 @@ static void launch_quantized_matvec_q8_1_regular(
     int cols,
     int row_stride,
     const Q81Block *input_q8_1,
+    const float *bias,
     float *output,
     cudaStream_t stream,
     DotFn dot_fn
@@ -540,6 +543,7 @@ static void launch_quantized_matvec_q8_1_regular(
         rows,
         block_count,
         input_q8_1,
+        bias,
         output,
         dot_fn
     );
@@ -657,6 +661,7 @@ __global__ void rms_norm_kernel(
 __global__ void add_residual_rms_norm_kernel(
     const float *input,
     const float *residual,
+    const float *input_bias,
     const float *weight,
     int element_count,
     float epsilon,
@@ -666,7 +671,10 @@ __global__ void add_residual_rms_norm_kernel(
     __shared__ float scratch[kBlockSize];
     float sum = 0.0f;
     for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
-        const float value = input[index] + residual[index];
+        const float value =
+            input[index] +
+            residual[index] +
+            (input_bias != nullptr ? input_bias[index] : 0.0f);
         sum += value * value;
     }
     scratch[threadIdx.x] = sum;
@@ -681,7 +689,10 @@ __global__ void add_residual_rms_norm_kernel(
 
     const float inv_rms = rsqrtf(scratch[0] / static_cast<float>(element_count) + epsilon);
     for (int index = threadIdx.x; index < element_count; index += blockDim.x) {
-        const float value = input[index] + residual[index];
+        const float value =
+            input[index] +
+            residual[index] +
+            (input_bias != nullptr ? input_bias[index] : 0.0f);
         summed_output[index] = value;
         normalized_output[index] = value * weight[index] * inv_rms;
     }
@@ -1476,6 +1487,7 @@ __global__ void moe_down_aggregate_kernel(
     int selected_count,
     const float *activated,
     const float *bias,
+    const float *residual,
     float *output
 ) {
     const int row = static_cast<int>(blockIdx.x);
@@ -1520,7 +1532,7 @@ __global__ void moe_down_aggregate_kernel(
     }
 
     if (threadIdx.x == 0) {
-        output[row] = total;
+        output[row] = total + (residual != nullptr ? residual[row] : 0.0f);
     }
 }
 
@@ -1972,6 +1984,7 @@ __global__ void moe_down_aggregate_q8_1_kernel(
     int selected_count,
     const Q81Block *activated,
     const float *bias,
+    const float *residual,
     float *output
 ) {
     const int row = static_cast<int>(blockIdx.x);
@@ -2024,7 +2037,7 @@ __global__ void moe_down_aggregate_q8_1_kernel(
     }
 
     if (threadIdx.x == 0) {
-        output[row] = total;
+        output[row] = total + (residual != nullptr ? residual[row] : 0.0f);
     }
 }
 
@@ -2184,6 +2197,7 @@ __global__ void moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel(
     int selected_count,
     const Q81Block *activated,
     const float *bias,
+    const float *residual,
     float *output,
     DotFn dot_fn
 ) {
@@ -2299,7 +2313,7 @@ __global__ void moe_down_aggregate_q8_1_mmvq_grouped_selected_kernel(
             (bias != nullptr ? bias[expert_id * rows + row] : 0.0f);
         total += expert_value * selected_weights[selected_slot];
     }
-    output[row] = total;
+    output[row] = total + (residual != nullptr ? residual[row] : 0.0f);
 }
 
 template <typename DotFn, int Vdr, int Qi>
@@ -2315,6 +2329,7 @@ __global__ void expert_down_aggregate_q8_1_atomic_kernel(
     const Q81Block *activated,
     int activated_block_stride,
     const float *bias,
+    const float *residual,
     float *output,
     DotFn dot_fn
 ) {
@@ -2382,6 +2397,7 @@ __global__ void moe_down_aggregate_q8_1_selected4_kernel(
     const Q81Block *activated,
     int activated_block_stride,
     const float *bias,
+    const float *residual,
     float *output,
     DotFn dot_fn
 ) {
@@ -2461,9 +2477,9 @@ __global__ void moe_down_aggregate_q8_1_selected4_kernel(
             total0 += expert_totals[slot] * selected_weights[slot];
             total1 += expert_totals_row1[slot] * selected_weights[slot];
         }
-        output[row0] = total0;
+        output[row0] = total0 + (residual != nullptr ? residual[row0] : 0.0f);
         if (row0 + 1 < rows) {
-            output[row0 + 1] = total1;
+            output[row0 + 1] = total1 + (residual != nullptr ? residual[row0 + 1] : 0.0f);
         }
     }
 }
@@ -2555,6 +2571,7 @@ extern "C" int psionic_cuda_q8_0_matvec_q8_1(
     int cols,
     int row_stride,
     const void *input_q8_1,
+    const void *bias,
     void *output,
     void *stream
 ) {
@@ -2564,6 +2581,7 @@ extern "C" int psionic_cuda_q8_0_matvec_q8_1(
         cols,
         row_stride,
         static_cast<const Q81Block *>(input_q8_1),
+        static_cast<const float *>(bias),
         static_cast<float *>(output),
         static_cast<cudaStream_t>(stream),
         Q80Q81Dot{}
@@ -2577,6 +2595,7 @@ extern "C" int psionic_cuda_mxfp4_matvec_q8_1(
     int cols,
     int row_stride,
     const void *input_q8_1,
+    const void *bias,
     void *output,
     void *stream
 ) {
@@ -2593,6 +2612,7 @@ extern "C" int psionic_cuda_mxfp4_matvec_q8_1(
         rows,
         block_count,
         static_cast<const Q81Block *>(input_q8_1),
+        static_cast<const float *>(bias),
         static_cast<float *>(output),
         Mxfp4Q81Dot{}
     );
@@ -2620,6 +2640,7 @@ extern "C" int psionic_cuda_rms_norm(
 extern "C" int psionic_cuda_add_residual_rms_norm(
     const void *input,
     const void *residual,
+    const void *input_bias,
     const void *weight,
     int element_count,
     float epsilon,
@@ -2630,6 +2651,7 @@ extern "C" int psionic_cuda_add_residual_rms_norm(
     add_residual_rms_norm_kernel<<<1, kBlockSize, 0, static_cast<cudaStream_t>(stream)>>>(
         static_cast<const float *>(input),
         static_cast<const float *>(residual),
+        static_cast<const float *>(input_bias),
         static_cast<const float *>(weight),
         element_count,
         epsilon,
@@ -3119,6 +3141,7 @@ extern "C" int psionic_cuda_moe_down_aggregate(
     int selected_count,
     const void *activated,
     const void *bias,
+    const void *residual,
     void *output,
     void *stream
 ) {
@@ -3133,6 +3156,7 @@ extern "C" int psionic_cuda_moe_down_aggregate(
         selected_count,
         static_cast<const float *>(activated),
         static_cast<const float *>(bias),
+        static_cast<const float *>(residual),
         static_cast<float *>(output)
     );
     return static_cast<int>(cudaGetLastError());
@@ -3149,6 +3173,7 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
     int selected_count,
     const void *activated_q8_1,
     const void *bias,
+    const void *residual,
     void *output,
     void *stream
 ) {
@@ -3175,6 +3200,7 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
                     static_cast<const Q81Block *>(activated_q8_1),
                     activated_block_stride,
                     static_cast<const float *>(bias),
+                    static_cast<const float *>(residual),
                     static_cast<float *>(output),
                     Q80Q81Dot{}
                 );
@@ -3194,6 +3220,7 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
                     static_cast<const Q81Block *>(activated_q8_1),
                     activated_block_stride,
                     static_cast<const float *>(bias),
+                    static_cast<const float *>(residual),
                     static_cast<float *>(output),
                     Mxfp4Q81Dot{}
                 );
@@ -3220,6 +3247,7 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
                 selected_count,
                 static_cast<const Q81Block *>(activated_q8_1),
                 static_cast<const float *>(bias),
+                static_cast<const float *>(residual),
                 static_cast<float *>(output),
                 Q80Q81Dot{}
             );
@@ -3245,12 +3273,28 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
                 selected_count,
                 static_cast<const Q81Block *>(activated_q8_1),
                 static_cast<const float *>(bias),
+                static_cast<const float *>(residual),
                 static_cast<float *>(output),
                 Mxfp4Q81Dot{}
             );
         }
     } else {
-        cudaMemsetAsync(output, 0, static_cast<size_t>(rows) * sizeof(float), static_cast<cudaStream_t>(stream));
+        if (residual != nullptr) {
+            cudaMemcpyAsync(
+                output,
+                residual,
+                static_cast<size_t>(rows) * sizeof(float),
+                cudaMemcpyDeviceToDevice,
+                static_cast<cudaStream_t>(stream)
+            );
+        } else {
+            cudaMemsetAsync(
+                output,
+                0,
+                static_cast<size_t>(rows) * sizeof(float),
+                static_cast<cudaStream_t>(stream)
+            );
+        }
         const dim3 atomic_blocks(static_cast<unsigned int>(rows), static_cast<unsigned int>(selected_count), 1);
         if (mode == 0) {
             expert_down_aggregate_q8_1_atomic_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi><<<
@@ -3269,6 +3313,7 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
                 static_cast<const Q81Block *>(activated_q8_1),
                 activated_block_stride,
                 static_cast<const float *>(bias),
+                static_cast<const float *>(residual),
                 static_cast<float *>(output),
                 Q80Q81Dot{}
             );
@@ -3289,6 +3334,7 @@ extern "C" int psionic_cuda_moe_down_aggregate_q8_1(
                 static_cast<const Q81Block *>(activated_q8_1),
                 activated_block_stride,
                 static_cast<const float *>(bias),
+                static_cast<const float *>(residual),
                 static_cast<float *>(output),
                 Mxfp4Q81Dot{}
             );

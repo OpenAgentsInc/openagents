@@ -61,6 +61,7 @@ int psionic_cuda_q8_0_matvec_q8_1(
     int cols,
     int row_stride,
     const void *input_q8_1,
+    const void *bias,
     void *output,
     void *stream
 ) {
@@ -69,6 +70,7 @@ int psionic_cuda_q8_0_matvec_q8_1(
     (void)cols;
     (void)row_stride;
     (void)input_q8_1;
+    (void)bias;
     (void)output;
     (void)stream;
     return 1;
@@ -80,6 +82,7 @@ int psionic_cuda_mxfp4_matvec_q8_1(
     int cols,
     int row_stride,
     const void *input_q8_1,
+    const void *bias,
     void *output,
     void *stream
 ) {
@@ -88,6 +91,7 @@ int psionic_cuda_mxfp4_matvec_q8_1(
     (void)cols;
     (void)row_stride;
     (void)input_q8_1;
+    (void)bias;
     (void)output;
     (void)stream;
     return 1;
@@ -106,6 +110,29 @@ int psionic_cuda_rms_norm(
     (void)element_count;
     (void)epsilon;
     (void)output;
+    (void)stream;
+    return 1;
+}
+
+int psionic_cuda_add_residual_rms_norm(
+    const void *input,
+    const void *residual,
+    const void *input_bias,
+    const void *weight,
+    int element_count,
+    float epsilon,
+    void *summed_output,
+    void *normalized_output,
+    void *stream
+) {
+    (void)input;
+    (void)residual;
+    (void)input_bias;
+    (void)weight;
+    (void)element_count;
+    (void)epsilon;
+    (void)summed_output;
+    (void)normalized_output;
     (void)stream;
     return 1;
 }
@@ -295,6 +322,7 @@ int psionic_cuda_moe_down_aggregate(
     int selected_count,
     const void *activated,
     const void *bias,
+    const void *residual,
     void *output,
     void *stream
 ) {
@@ -308,6 +336,7 @@ int psionic_cuda_moe_down_aggregate(
     (void)selected_count;
     (void)activated;
     (void)bias;
+    (void)residual;
     (void)output;
     (void)stream;
     return 1;
@@ -324,6 +353,7 @@ int psionic_cuda_moe_down_aggregate_q8_1(
     int selected_count,
     const void *activated_q8_1,
     const void *bias,
+    const void *residual,
     void *output,
     void *stream
 ) {
@@ -337,6 +367,7 @@ int psionic_cuda_moe_down_aggregate_q8_1(
     (void)selected_count;
     (void)activated_q8_1;
     (void)bias;
+    (void)residual;
     (void)output;
     (void)stream;
     return 1;

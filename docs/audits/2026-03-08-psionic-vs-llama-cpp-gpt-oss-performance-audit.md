@@ -16,7 +16,14 @@
 > routing also stayed below the best prior checkpoint. This file is the current
 > audit for the GPT-OSS throughput gap; later product truth still lives in
 > `docs/MVP.md`, `docs/OWNERSHIP.md`, `crates/psionic/docs/ROADMAP.md`, and the
-> referenced issues.
+> referenced issues. The current benchmark script now explicitly unsets
+> `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS` before launching Psionic so perf
+> receipts and extra JSON serialization cannot silently contaminate the
+> benchmark, and this update also records one more ruled-out direct port:
+> a grouped-query decode-attention kernel specialized for the exact GPT-OSS
+> geometry on this host (`64` query heads, `8` KV heads, `64` head dim)
+> regressed the live HTTP benchmark into the low `70 tok/s` range and was
+> removed.
 
 ## Scope
 
@@ -181,6 +188,28 @@
     `190 tok/s` target on this machine state, so Psionic cannot honestly prove
     `>190 tok/s` here until that competing workload is cleared
 
+### Current clean benchmark-hygiene checkpoint
+
+- Psionic:
+  - `37` completion tokens in `0.415s`
+  - `89.16 tok/s`
+- `llama.cpp`:
+  - `42` completion tokens in `0.250s`
+  - `167.98 tok/s`
+- Gap:
+  - `1.88x`
+- Psionic improvement over the original baseline:
+  - `5.33x`
+- New benchmark-hygiene truth:
+  - the repo benchmark script now launches Psionic with
+    `PSIONIC_OPENAI_INCLUDE_DEBUG_FIELDS` explicitly unset so request-debug
+    receipts cannot distort perf numbers
+- Newly ruled-out direct port:
+  - a grouped-query attention kernel specialized for the real GPT-OSS decode
+    geometry (`n_head = 64`, `n_head_kv = 8`, `head_dim = 64`) was correct in
+    CUDA unit coverage but regressed the exact HTTP benchmark to about
+    `73.32 tok/s`, so it was removed rather than left in the runtime hot path
+
 The visible output text matched exactly in the current benchmark:
 
 `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
@@ -209,6 +238,11 @@ The visible output text matched exactly in the current benchmark:
     needed), and a deeper audit of whether llama.cpp's reported `REPACK = 1`
     state implies a useful backend-side weight layout transform for this exact
     model family on CUDA
+- the latest ruled-out branch sharpened that further.
+  - even for the exact GPT-OSS grouped-query geometry (`64/8/64`), simply
+    reusing K/V across eight query-head warps in a larger shared-memory block
+    did not help on this RTX 4080 prompt shape; the occupancy/shared-memory
+    tradeoff lost to the prior smaller kernel
 
 ## What Landed Between The Two Measurements
 
