@@ -99,15 +99,18 @@ pub(super) fn clamp_bounds_to_window(
     bounds: Bounds,
     window_size: Size,
     sidebar_width: f32,
+    min_size: Size,
 ) -> Bounds {
     // Keep panes within the main canvas area and out from under the right sidebar.
     let reserved_sidebar = sidebar_width.max(0.0);
     let available_width = window_size.width - reserved_sidebar - PANE_MARGIN * 2.0;
-    let max_width = available_width.max(PANE_MIN_WIDTH);
-    let width = bounds.size.width.clamp(PANE_MIN_WIDTH, max_width);
+    let min_width = min_size.width.max(PANE_MIN_WIDTH);
+    let max_width = available_width.max(min_width);
+    let width = bounds.size.width.clamp(min_width, max_width);
 
-    let max_height = (window_size.height - PANE_MARGIN - PANE_BOTTOM_RESERVED).max(PANE_MIN_HEIGHT);
-    let height = bounds.size.height.clamp(PANE_MIN_HEIGHT, max_height);
+    let min_height = min_size.height.max(PANE_MIN_HEIGHT);
+    let max_height = (window_size.height - PANE_MARGIN - PANE_BOTTOM_RESERVED).max(min_height);
+    let height = bounds.size.height.clamp(min_height, max_height);
 
     let max_x = (window_size.width - reserved_sidebar - width - PANE_MARGIN).max(PANE_MARGIN);
     let max_y = (window_size.height - height - PANE_BOTTOM_RESERVED).max(PANE_MARGIN);
