@@ -1771,3 +1771,20 @@ The right near-term target is smaller:
   restaging selected experts from host-backed MoE storage into CUDA caches.
   The next likely wins are therefore still in reducing or restructuring that
   surviving selected-expert staging traffic.
+- New timing evidence on the kept branch:
+  the debug-enabled prompt-cache-hit trace showed `step_wall_ns` around
+  `8.76 s` for `49` generated tokens, while the timed kernel buckets only
+  covered about `0.86 s` total. That means the remaining 120B wall time is
+  still dominated by work outside the timed kernels, and the selected4
+  cache-fill path remains the main suspect.
+- Newly ruled-out follow-ups after that trace:
+  an LFU/LRU mixed selected4 eviction policy regressed to about `10.32 tok/s`,
+  a reprofiled sixth-slot layer set regressed to about `10.41 tok/s`, a
+  memory-neutral `7/6/4` hot/mid/cold slot rebalance regressed to about
+  `10.35 tok/s`, and a pinned-host async region-copy rewrite of the decode
+  cache-fill path cratered the cold/warm lanes while leaving prompt-cache-hit
+  effectively flat at about `10.30 tok/s`.
+- Updated direction for `#3345`:
+  do not spend another cycle on small cache-shape or scratch-copy tweaks.
+  The remaining honest path is to reduce or fundamentally restructure
+  selected-expert staging itself.
