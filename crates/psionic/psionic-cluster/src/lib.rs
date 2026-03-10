@@ -1,6 +1,7 @@
 //! Trusted-LAN cluster control-plane substrate for Psionic.
 
 mod ordered_state;
+mod scheduler;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -23,6 +24,7 @@ use tokio::{
 };
 
 pub use ordered_state::*;
+pub use scheduler::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "trusted-lan cluster control-plane substrate";
@@ -153,6 +155,11 @@ impl ClusterId {
 pub struct NodeId(String);
 
 impl NodeId {
+    #[must_use]
+    pub fn new(node_id: impl Into<String>) -> Self {
+        Self(node_id.into())
+    }
+
     #[must_use]
     pub fn random() -> Self {
         let raw: [u8; 16] = random();
