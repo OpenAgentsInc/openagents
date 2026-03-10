@@ -3507,6 +3507,40 @@ mod tests {
     }
 
     #[test]
+    fn capability_envelope_can_publish_declared_cluster_capability_profile_without_execution()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let model = sample_embedding_descriptor();
+        let envelope = CapabilityEnvelope::from_embedding_model(
+            cpu_backend_selection().with_cluster_execution_capability_profile(
+                ClusterExecutionCapabilityProfile::new("cpu")
+                    .with_supported_lanes(vec![ClusterExecutionLane::RemoteWholeRequest])
+                    .with_detail(
+                        "backend `cpu` declares remote whole-request cluster dispatch for trusted operator lanes",
+                    ),
+            ),
+            &model,
+            ProviderReadiness::ready("cluster capability advertised"),
+        );
+
+        let encoded = serde_json::to_value(&envelope)?;
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["runtime_backend"],
+            json!("cpu")
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_lanes"],
+            json!(["remote_whole_request"])
+        );
+        assert_eq!(
+            encoded["backend_selection"]["cluster_execution_capability_profile"]["supported_communication_classes"],
+            json!(["remote_dispatch"])
+        );
+        assert_eq!(encoded.get("cluster_execution"), None);
+        assert!(envelope.cluster_execution.is_none());
+        Ok(())
+    }
+
+    #[test]
     fn capability_envelope_overrides_surface_for_replicated_cluster_execution()
     -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();

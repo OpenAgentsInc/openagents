@@ -5360,6 +5360,9 @@ pub struct BackendSelection {
     /// Explicit multi-device or sharded topology when execution uses more than one concrete placement.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub execution_topology: Option<ExecutionTopologyPlan>,
+    /// Declared clustered execution capability profile advertised before any request executes.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution_capability_profile: Option<ClusterExecutionCapabilityProfile>,
 }
 
 impl BackendSelection {
@@ -5395,6 +5398,7 @@ impl BackendSelection {
             effective_backend: backend,
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
+            cluster_execution_capability_profile: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5454,6 +5458,7 @@ impl BackendSelection {
             effective_backend,
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
+            cluster_execution_capability_profile: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5487,6 +5492,7 @@ impl BackendSelection {
             effective_backend: backend,
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
+            cluster_execution_capability_profile: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5521,6 +5527,7 @@ impl BackendSelection {
             effective_backend: backend,
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
+            cluster_execution_capability_profile: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5556,6 +5563,7 @@ impl BackendSelection {
             effective_backend: backend,
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
+            cluster_execution_capability_profile: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5593,6 +5601,7 @@ impl BackendSelection {
             effective_backend: requested_backend,
             selected_devices: selected_device.iter().cloned().collect(),
             execution_topology,
+            cluster_execution_capability_profile: None,
             selected_device,
             runtime_resources: None,
             backend_extensions: Vec::new(),
@@ -5697,6 +5706,16 @@ impl BackendSelection {
         execution_topology: Option<ExecutionTopologyPlan>,
     ) -> Self {
         self.execution_topology = execution_topology;
+        self
+    }
+
+    /// Attaches declared clustered execution capability truth for capability-side publication.
+    #[must_use]
+    pub fn with_cluster_execution_capability_profile(
+        mut self,
+        cluster_execution_capability_profile: ClusterExecutionCapabilityProfile,
+    ) -> Self {
+        self.cluster_execution_capability_profile = Some(cluster_execution_capability_profile);
         self
     }
 
@@ -7424,6 +7443,48 @@ mod tests {
                 .map(|plan| plan.assignments.len()),
             Some(2)
         );
+    }
+
+    #[test]
+    fn backend_selection_can_publish_declared_cluster_capability_profile_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let capability_profile = ClusterExecutionCapabilityProfile::new("cuda")
+            .with_supported_lanes(vec![
+                ClusterExecutionLane::RemoteWholeRequest,
+                ClusterExecutionLane::ReplicaRouted,
+            ])
+            .with_detail(
+                "backend `cuda` declares remote whole-request and replica-routed cluster support",
+            );
+        let selection = BackendSelection::direct(
+            "cuda",
+            Some(sample_cuda_device()),
+            vec![String::from("matmul")],
+        )
+        .with_cluster_execution_capability_profile(capability_profile.clone());
+
+        assert_eq!(
+            selection.cluster_execution_capability_profile,
+            Some(capability_profile.clone())
+        );
+
+        let value = serde_json::to_value(&selection)?;
+        assert_eq!(
+            value["cluster_execution_capability_profile"]["runtime_backend"],
+            json!("cuda")
+        );
+        assert_eq!(
+            value["cluster_execution_capability_profile"]["supported_lanes"],
+            json!(["remote_whole_request", "replica_routed"])
+        );
+        assert_eq!(
+            value["cluster_execution_capability_profile"]["supported_communication_classes"],
+            json!(["remote_dispatch", "replica_routing"])
+        );
+
+        let decoded: BackendSelection = serde_json::from_value(value)?;
+        assert_eq!(decoded, selection);
+        Ok(())
     }
 
     #[test]
