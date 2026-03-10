@@ -537,6 +537,8 @@ pub enum ClusterShardHandoffKind {
     Activation,
     /// Forward or synchronize KV-cache state across a shard boundary.
     KvCache,
+    /// Synchronize tensor-parallel shard state across multiple nodes.
+    TensorCollective,
 }
 
 /// Explicit cross-node handoff fact inside sharded cluster execution.
@@ -556,6 +558,15 @@ pub struct ClusterShardHandoff {
     pub transport: ClusterTransportClass,
     /// Layer boundary crossed by the handoff.
     pub layer_boundary: usize,
+    /// Tensor axis synchronized by the handoff, when this is a tensor-sharded collective.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tensor_axis: Option<usize>,
+    /// Inclusive tensor range start owned by the emitting shard, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tensor_range_start: Option<usize>,
+    /// Exclusive tensor range end owned by the emitting shard, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub tensor_range_end: Option<usize>,
     /// Estimated bytes transferred per token for this handoff.
     pub estimated_bytes_per_token: u64,
     /// Plain-language handoff detail.
@@ -584,9 +595,26 @@ impl ClusterShardHandoff {
             kind,
             transport,
             layer_boundary,
+            tensor_axis: None,
+            tensor_range_start: None,
+            tensor_range_end: None,
             estimated_bytes_per_token,
             detail: None,
         }
+    }
+
+    /// Attaches explicit tensor-axis partition facts for a tensor collective.
+    #[must_use]
+    pub const fn with_tensor_partition(
+        mut self,
+        tensor_axis: usize,
+        tensor_range_start: usize,
+        tensor_range_end: usize,
+    ) -> Self {
+        self.tensor_axis = Some(tensor_axis);
+        self.tensor_range_start = Some(tensor_range_start);
+        self.tensor_range_end = Some(tensor_range_end);
+        self
     }
 
     /// Attaches plain-language handoff detail.
@@ -6819,6 +6847,99 @@ mod tests {
                 .as_ref()
                 .map(|cluster| cluster.shard_handoffs[0].kind),
             Some(crate::ClusterShardHandoffKind::Activation)
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn delivered_execution_context_surfaces_tensor_sharded_collectives()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let first = sample_cuda_device().inventory_qualifiers();
+        let mut second_device = sample_cuda_device();
+        second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        second_device.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let second = second_device.inventory_qualifiers();
+        let cluster_execution = ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::Mixed,
+            ClusterExecutionDisposition::Sharded,
+        )
+        .with_execution_topology(ExecutionTopologyPlan::tensor_sharded(
+            "cuda",
+            1,
+            vec![(first.clone(), 0, 32), (second.clone(), 32, 64)],
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Sharding,
+            "tensor-sharding-policy-digest",
+        ))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda").with_device_inventory(first.clone()),
+            ClusterSelectedNode::new("worker-b", "cuda").with_device_inventory(second.clone()),
+        ])
+        .with_shard_handoffs(vec![
+            crate::ClusterShardHandoff::new(
+                0,
+                1,
+                "worker-a",
+                "worker-b",
+                crate::ClusterShardHandoffKind::TensorCollective,
+                ClusterTransportClass::TrustedLanStream,
+                0,
+                16_384,
+            )
+            .with_tensor_partition(1, 0, 32)
+            .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh"),
+        ]);
+        let delivered = DeliveredExecutionContext::new(
+            "cuda",
+            Some(ExecutionTopologyPlan::single_device("cuda", first.clone())),
+            vec![first.clone()],
+        )
+        .with_cluster_execution(cluster_execution.clone());
+
+        assert_eq!(
+            delivered.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(ExecutionTopologyKind::TensorSharded)
+        );
+        assert_eq!(delivered.selected_devices, vec![first, second]);
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .map(|cluster| cluster.shard_handoffs.len()),
+            Some(1)
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .map(|cluster| cluster.shard_handoffs[0].kind),
+            Some(crate::ClusterShardHandoffKind::TensorCollective)
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|cluster| cluster.shard_handoffs[0].tensor_axis),
+            Some(1)
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|cluster| cluster.shard_handoffs[0].tensor_range_start),
+            Some(0)
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|cluster| cluster.shard_handoffs[0].tensor_range_end),
+            Some(32)
         );
         Ok(())
     }

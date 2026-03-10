@@ -5,6 +5,7 @@ mod ordered_state;
 mod replicated_serving;
 mod scheduler;
 mod serving_policy;
+mod tensor_sharded;
 
 use std::{
     collections::{BTreeMap, BTreeSet},
@@ -31,6 +32,7 @@ pub use ordered_state::*;
 pub use replicated_serving::*;
 pub use scheduler::*;
 pub use serving_policy::*;
+pub use tensor_sharded::*;
 
 /// Human-readable crate ownership summary.
 pub const CRATE_ROLE: &str = "trusted-lan cluster control-plane substrate";
