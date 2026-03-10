@@ -1,5 +1,6 @@
 //! Trusted-LAN cluster control-plane substrate for Psionic.
 
+mod layer_sharded;
 mod ordered_state;
 mod replicated_serving;
 mod scheduler;
@@ -25,6 +26,7 @@ use tokio::{
     time::{MissedTickBehavior, interval},
 };
 
+pub use layer_sharded::*;
 pub use ordered_state::*;
 pub use replicated_serving::*;
 pub use scheduler::*;
