@@ -13,7 +13,8 @@
 > opening `PSI-188` through `PSI-197` as `#3297` through `#3306`, after
 > landing `PSI-187` / `#3292` through `PSI-190` / `#3299` in `2acc2ecf6`,
 > after landing `PSI-191` / `#3300` in `ad6891b82`, after confirming that
-> `#3301` is now the next open cluster queue item, and after checking live
+> `PSI-192` / `#3301` in `327944c08`, after confirming that `#3302` is now the
+> next open cluster queue item, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -104,8 +105,8 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is landed on `main`
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
-    `PSI-191` / [#3300](https://github.com/OpenAgentsInc/openagents/issues/3300) are landed on `main`
-  - `PSI-192` / [#3301](https://github.com/OpenAgentsInc/openagents/issues/3301) through
+    `PSI-192` / [#3301](https://github.com/OpenAgentsInc/openagents/issues/3301) are landed on `main`
+  - `PSI-193` / [#3302](https://github.com/OpenAgentsInc/openagents/issues/3302) through
     `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) remain open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
@@ -190,6 +191,13 @@ on:
     `ExecutionTopologyPlan` output plus runtime-owned cluster execution
     evidence, and surfaces explicit machine-checkable refusal and degraded-path
     diagnostics
+- `PSI-192` / [#3301](https://github.com/OpenAgentsInc/openagents/issues/3301)
+  - landed in `327944c08`
+  - `psionic-cluster` now provides explicit cluster serving policy for queue
+    discipline, prefill-versus-decode fairness, cancellation propagation,
+    slow-node backpressure, and reroute behavior on top of truthful
+    whole-request scheduling, while `psionic-runtime` now carries serving
+    policy digests and fallback reasons for those cluster-routing outcomes
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -208,9 +216,10 @@ one:
   discovery, persistent node identity, explicit admission policy,
   machine-checkable join refusals, replayable ordered state, catchup,
   snapshots, compaction, recovery, topology and telemetry facts, artifact
-  residency truth, cluster execution evidence seams, and truthful remote
-  whole-request scheduling, but there is still no cluster-wide queue policy,
-  replicated serving, or real sharded execution path
+  residency truth, cluster execution evidence seams, truthful remote
+  whole-request scheduling, and explicit cluster queue/fairness/backpressure
+  policy, but there is still no replicated serving or real sharded execution
+  path
 - the first honest cluster scope is still a trusted same-network LAN cluster
   with explicit namespace/admission policy, not an adversarial compute-market
   fabric
@@ -319,21 +328,25 @@ Required outcome:
 
 ### Cluster-aware scheduling and serving policy
 
-Tracked by `PSI-191` through `PSI-193`, with `PSI-191` now landed on `main`.
+Tracked by `PSI-191` through `PSI-193`, with `PSI-191` and `PSI-192` now landed
+on `main`.
 
 Current truth:
 
 - Psionic can now choose one best remote node for whole-request execution and
   express the result as truthful single-node topology and cluster evidence
-- fairness, cancellation, backpressure, and degraded replica routing are still
-  local-serving concepts, not cluster-serving policy
+- cluster serving policy is now explicit for queue discipline, decode fairness,
+  cancellation propagation, slow-node backpressure, and reroute/refusal
+  behavior across whole-request candidates
+- replicated serving is still absent, so cluster routing does not yet select
+  among true model replicas
 
 Required outcome:
 
-- cluster scheduling now needs queue policy and serving semantics rather than
-  just point-in-time node selection
 - replicated serving remains the next operationally useful scale-out behavior
-  after whole-request scheduling
+  after truthful whole-request scheduling and serving policy
+- degraded replica routing should become real replica-routing behavior once
+  replicated residency exists rather than remaining same-request reroute policy
 
 ### Real sharded execution
 
@@ -412,7 +425,7 @@ Already on `main`:
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-191` | [#3300](https://github.com/OpenAgentsInc/openagents/issues/3300) | Closed | Add whole-request remote scheduling for one-node execution | `psionic-cluster`, `psionic-runtime` | Landed in `ad6891b82`: authoritative cluster facts now drive deterministic whole-request remote scheduling with truthful single-node topology, selected device identity, degraded-path notes, and machine-checkable refusal diagnostics. |
-| `PSI-192` | [#3301](https://github.com/OpenAgentsInc/openagents/issues/3301) | Open | Add queue policy, fairness, cancellation, and backpressure rules | `psionic-cluster`, `psionic-runtime`, `psionic-serve` | A cluster that ignores fairness and slow-node behavior will underperform while still looking correct on paper. |
+| `PSI-192` | [#3301](https://github.com/OpenAgentsInc/openagents/issues/3301) | Closed | Add queue policy, fairness, cancellation, and backpressure rules | `psionic-cluster`, `psionic-runtime` | Landed in `327944c08`: cluster serving policy is now explicit and replayable, with queue discipline, decode fairness, cancellation propagation, slow-node backpressure, reroute/refusal outcomes, serving-policy digests, and fallback-reason evidence layered on top of truthful whole-request scheduling. |
 
 ### Phase C4: replicated serving for one validated backend lane
 
@@ -441,14 +454,14 @@ The shortest honest path from today's `main` is:
 1. Treat C1 and C2 as landed on `main` in `2acc2ecf6`.
 2. Keep the opened later-phase queue aligned to the roadmap and only pull work
    forward when its dependency notes are actually satisfied:
-   `#3301` -> `#3302` -> `#3303` -> `#3304` -> `#3305` -> `#3306`.
+   `#3302` -> `#3303` -> `#3304` -> `#3305` -> `#3306`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
 4. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond truthful whole-request scheduling into replicated
    and sharded delivery.
-5. Execute `#3301` then `#3302`.
+5. Execute `#3302`.
 6. Execute `#3303` then `#3304` only for one homogeneous CUDA lane.
 7. Execute `#3305` and `#3306` before widening scope beyond the first
    trusted-LAN cluster claim.
