@@ -3485,7 +3485,7 @@ impl GptOssCudaModelInner {
                 let use_selected4_quantized_gate_up = selected_count <= 4
                     && !experimental_fused_selected4_moe_down_enabled()
                     && layer.feed_forward_gate_up_experts_weight.columns % 32 == 0;
-                let use_official_selected4_moe_down = use_selected4_quantized_gate_up;
+                let use_ids_driven_expert_matvec = use_selected4_quantized_gate_up;
                 submission.quantize_f32_to_q8_1(
                     &layer_plan.ffn_norm_buffer,
                     1,
@@ -3493,7 +3493,7 @@ impl GptOssCudaModelInner {
                     &plan.vector_q8_1_buffer,
                 )?;
                 if use_selected4_quantized_gate_up {
-                    submission.moe_gate_up_swiglu_q8_1_selected4_quantized(
+                    submission.expert_gate_up_swiglu_q8_1_ids(
                         &layer.feed_forward_gate_up_experts_weight.storage,
                         layer.feed_forward_gate_up_experts_weight.mode,
                         layer.feed_forward_gate_up_experts_weight.row_byte_len,
@@ -3541,8 +3541,9 @@ impl GptOssCudaModelInner {
                         &layer_plan.moe_buffer,
                     )?;
                 } else if use_selected4_quantized_gate_up {
-                    if use_official_selected4_moe_down {
-                        submission.moe_down_project_q8_1_selected4(
+                    if use_ids_driven_expert_matvec {
+                        perf.cuda.grouped_expert_ids_path = true;
+                        submission.expert_matvec_q8_1_ids(
                             &layer.feed_forward_down_experts_weight.storage,
                             layer.feed_forward_down_experts_weight.mode,
                             layer.feed_forward_down_experts_weight.row_byte_len,
@@ -3554,7 +3555,7 @@ impl GptOssCudaModelInner {
                             layer.feed_forward_down_experts_bias_device.as_ref(),
                             &layer_plan.moe_projected_buffer,
                         )?;
-                        submission.accumulate_selected4(
+                        submission.accumulate_expert_outputs(
                             &layer_plan.moe_projected_buffer,
                             &layer_plan.selected_weights_buffer,
                             selected_count,

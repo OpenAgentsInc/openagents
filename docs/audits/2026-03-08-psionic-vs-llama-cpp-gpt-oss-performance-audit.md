@@ -59,7 +59,13 @@
 > over precomputed router logits. Two consecutive end-to-end runs of the exact
 > benchmark contract on this host now measure Psionic `prompt_cache_hit` at
 > `173.19 tok/s` and `171.29 tok/s`, both with the exact visible one-sentence
-> response. That is the current truthful floor for the next wave.
+> response. The newest landed follow-up keeps the benchmark in that same
+> throughput class while moving GPT-OSS expert down-projection onto a reusable
+> ids-driven backend surface: `#3294` now routes the real decode lane through
+> ids-driven expert matvec plus accumulate calls and uses a grouped project
+> kernel by default, with fresh full-script runs at `173.05 tok/s` and
+> `170.05 tok/s`. That low `170 tok/s` class is the current truthful floor for
+> the next wave.
 
 ## Scope
 
@@ -1194,3 +1200,53 @@ Interpretation:
 - The next remaining performance work should move directly to the expert path
   that still differs most from `llama.cpp`: `#3294` ids-driven grouped expert
   matvec, then `#3295` fused gate/up `+ GLU`, then `#3296` attention dispatch.
+
+## 2026-03-10 Grouped-Expert Matvec Checkpoint
+
+This checkpoint closes `#3294`.
+
+What changed:
+
+- `crates/psionic/psionic-backend-cuda/src/lib.rs` now exposes reusable
+  ids-driven expert matvec and expert-output accumulation submission calls,
+  rather than leaving the down-project expert path explained only as a
+  selected4-specific helper sequence.
+- `crates/psionic/psionic-serve/src/gpt_oss.rs` now routes the real GPT-OSS
+  decode lane through those ids-driven backend calls.
+- `crates/psionic/psionic-backend-cuda/src/kernels/quantized_matvec.cu` now
+  launches a grouped project kernel for the selected-expert down path, so the
+  selected experts are projected together instead of as four mostly
+  independent project launches glued together in the serve layer.
+
+Measured on the exact benchmark contract after landing `#3294`:
+
+- Psionic `prompt_cache_hit`:
+  - `173.05 tok/s`
+  - `170.05 tok/s`
+- Both runs returned the exact visible one-sentence response:
+  `HTTPS protects users by encrypting traffic, preventing tampering, and confirming they are connected to the right website.`
+- Same-script `llama.cpp` control on those runs:
+  - about `166.80 tok/s`
+  - about `167.89 tok/s`
+
+Short `ncu` sample on the kept path:
+
+- `moe_gate_up_swiglu_q8_1_selected4_quantized_kernel`:
+  - about `60.4 us` average
+- `expert_mul_mat_vec_q8_1_project_grouped_kernel`:
+  - about `32.7 us` average
+
+Interpretation:
+
+- `#3294` is mostly a structural parity landing, not another giant tok/s jump.
+- That is still a valid win: Psionic now has the ids-driven expert-matvec
+  substrate the roadmap needed, and it kept the exact benchmark in the same
+  low `170 tok/s` class instead of regressing it.
+- The short `ncu` sample shows the gate/up stage materially below the older
+  `~72.6 us` sample, while the project stage stayed roughly flat against the
+  older `~33.3 us` sample. That is consistent with the benchmark staying flat
+  overall: the selected-expert path is cleaner and somewhat cheaper, but it is
+  no longer the source of the huge gap that existed before `#3293`.
+- The next remaining direct-alignment work is now `#3295` fused ids-driven
+  gate/up `+ GLU`, and only after that should the queue revisit `#3296`
+  attention dispatch.

@@ -1517,6 +1517,42 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Executes the ids-driven GPT-OSS gate/up expert path and writes the
+    /// activated expert outputs directly as `Q8_1` blocks.
+    #[allow(clippy::too_many_arguments)]
+    pub fn expert_gate_up_swiglu_q8_1_ids(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        gate_rows: usize,
+        up_rows: usize,
+        selected_ids: &CudaBuffer,
+        selected_count: usize,
+        input_q8_1: &CudaBuffer,
+        gate_bias: Option<&CudaBuffer>,
+        up_bias: Option<&CudaBuffer>,
+        output_q8_1: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.moe_gate_up_swiglu_q8_1_selected4_quantized(
+            weights,
+            mode,
+            row_stride,
+            rows_per_expert,
+            columns,
+            gate_rows,
+            up_rows,
+            selected_ids,
+            selected_count,
+            input_q8_1,
+            gate_bias,
+            up_bias,
+            output_q8_1,
+        )
+    }
+
     /// Executes the GPT-OSS down projection and route-weighted expert
     /// aggregation on device for the selected experts.
     #[allow(clippy::too_many_arguments)]
@@ -1658,6 +1694,36 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Executes one ids-driven grouped expert projection from row-wise `Q8_1`
+    /// activations into expert-specific `f32` output rows.
+    #[allow(clippy::too_many_arguments)]
+    pub fn expert_matvec_q8_1_ids(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows: usize,
+        columns: usize,
+        selected_ids: &CudaBuffer,
+        selected_count: usize,
+        input_q8_1: &CudaBuffer,
+        bias: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.moe_down_project_q8_1_selected4(
+            weights,
+            mode,
+            row_stride,
+            rows,
+            columns,
+            selected_ids,
+            selected_count,
+            input_q8_1,
+            bias,
+            output,
+        )
+    }
+
     /// Accumulates up to four expert-specific output rows using route weights
     /// and an optional residual vector.
     pub fn accumulate_selected4(
@@ -1679,6 +1745,27 @@ impl CudaSubmission {
         )?;
         self.encoded_operations += 1;
         Ok(())
+    }
+
+    /// Accumulates grouped expert output rows using route weights and an
+    /// optional residual vector.
+    pub fn accumulate_expert_outputs(
+        &mut self,
+        input: &CudaBuffer,
+        selected_weights: &CudaBuffer,
+        selected_count: usize,
+        rows: usize,
+        residual: Option<&CudaBuffer>,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.accumulate_selected4(
+            input,
+            selected_weights,
+            selected_count,
+            rows,
+            residual,
+            output,
+        )
     }
 
     /// Synchronizes the CUDA stream and returns explicit submission metadata.
@@ -8896,7 +8983,7 @@ mod tests {
     }
 
     #[test]
-    fn cuda_submission_executes_mxfp4_moe_gate_up_swiglu_q8_1_selected4_quantized_when_available()
+    fn cuda_submission_executes_mxfp4_expert_gate_up_swiglu_q8_1_ids_when_available()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = CudaBackend::new();
         let Some(_selected) = backend.selected_device().cloned() else {
@@ -8958,7 +9045,7 @@ mod tests {
 
         let mut fused = backend.begin_submission()?;
         fused.quantize_f32_to_q8_1(&input_buffer, 1, 32, &input_q8_1)?;
-        fused.moe_gate_up_swiglu_q8_1_selected4_quantized(
+        fused.expert_gate_up_swiglu_q8_1_ids(
             &weights,
             QuantizationMode::GgmlMxfp4,
             17,
@@ -9168,7 +9255,7 @@ mod tests {
     }
 
     #[test]
-    fn cuda_submission_executes_mxfp4_selected4_moe_down_project_and_accumulate_when_available()
+    fn cuda_submission_executes_mxfp4_grouped_expert_matvec_and_accumulate_when_available()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = CudaBackend::new();
         let Some(_selected) = backend.selected_device().cloned() else {
@@ -9206,7 +9293,7 @@ mod tests {
             32,
             &activated_q8_1,
         )?;
-        submission.moe_down_project_q8_1_selected4(
+        submission.expert_matvec_q8_1_ids(
             &weights,
             QuantizationMode::GgmlMxfp4,
             17,
@@ -9218,7 +9305,7 @@ mod tests {
             None,
             &projected,
         )?;
-        submission.accumulate_selected4(
+        submission.accumulate_expert_outputs(
             &projected,
             &selected_weights_buffer,
             selected_ids.len(),
