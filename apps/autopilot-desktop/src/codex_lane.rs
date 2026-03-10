@@ -120,6 +120,7 @@ pub struct CodexLaneSnapshot {
     pub active_thread_id: Option<String>,
     pub last_error: Option<String>,
     pub last_status: Option<String>,
+    pub install_probe: codex_client::CodexInstallationProbe,
 }
 
 impl Default for CodexLaneSnapshot {
@@ -129,6 +130,7 @@ impl Default for CodexLaneSnapshot {
             active_thread_id: None,
             last_error: None,
             last_status: Some("Codex lane starting".to_string()),
+            install_probe: codex_client::CodexInstallationProbe::default(),
         }
     }
 }
@@ -454,6 +456,8 @@ pub enum CodexLaneNotification {
     },
     ConfigLoaded {
         config: String,
+        origins: String,
+        layers: String,
     },
     ConfigRequirementsLoaded {
         requirements: String,
@@ -814,8 +818,10 @@ struct CodexCommandEffect {
 
 impl CodexLaneState {
     fn new() -> Self {
+        let mut snapshot = CodexLaneSnapshot::default();
+        snapshot.install_probe = codex_client::probe_codex_installation();
         Self {
-            snapshot: CodexLaneSnapshot::default(),
+            snapshot,
             client: None,
             channels: None,
             pending_server_requests: HashMap::new(),
@@ -1403,9 +1409,22 @@ impl CodexLaneState {
                 let response = runtime.block_on(client.config_read(params))?;
                 let config = serde_json::to_string_pretty(&response.config)
                     .unwrap_or_else(|_| "{}".to_string());
+                let origins = serde_json::to_string_pretty(&response.origins)
+                    .unwrap_or_else(|_| "{}".to_string());
+                let layers = response
+                    .layers
+                    .as_ref()
+                    .map(|value| {
+                        serde_json::to_string_pretty(value).unwrap_or_else(|_| "[]".to_string())
+                    })
+                    .unwrap_or_else(|| "[]".to_string());
                 Ok(CodexCommandEffect {
                     active_thread_id: None,
-                    notification: Some(CodexLaneNotification::ConfigLoaded { config }),
+                    notification: Some(CodexLaneNotification::ConfigLoaded {
+                        config,
+                        origins,
+                        layers,
+                    }),
                 })
             }
             CodexLaneCommand::ConfigRequirementsRead => {

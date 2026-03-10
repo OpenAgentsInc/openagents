@@ -61,6 +61,62 @@ pub fn paint_account_pane(
         paint,
         content_bounds.origin.x + 12.0,
         y,
+        "Readiness",
+        &pane_state.readiness_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Installed",
+        if pane_state.install_available {
+            "yes"
+        } else {
+            "no"
+        },
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Invocation",
+        pane_state.install_command.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Version",
+        pane_state.install_version.as_deref().unwrap_or("n/a"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Config",
+        &pane_state.config_summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Requirements",
+        &pane_state.config_requirements_summary,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Constraints",
+        pane_state
+            .config_constraint_summary
+            .as_deref()
+            .unwrap_or("none"),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
         "Account",
         &pane_state.account_summary,
     );
@@ -223,12 +279,47 @@ pub fn paint_config_pane(
         "Detected external configs",
         &pane_state.detected_external_configs.to_string(),
     );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Summary",
+        &pane_state.summary,
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Requirements summary",
+        &pane_state.requirements_summary,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Constraints",
+        pane_state.constraint_summary.as_deref().unwrap_or("none"),
+    );
     y = paint_multiline_phrase(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Config",
         &pane_state.config_json,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Origins",
+        &pane_state.origins_json,
+    );
+    y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Layers",
+        &pane_state.layers_json,
     );
     let _ = paint_multiline_phrase(
         paint,

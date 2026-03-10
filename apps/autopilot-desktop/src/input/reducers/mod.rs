@@ -38,6 +38,14 @@ pub(super) fn run_job_history_action(
     jobs::run_job_history_action(state, action)
 }
 
+pub(super) fn queue_codex_readiness_refresh(
+    state: &mut RenderState,
+    refresh_token: bool,
+    reason: &str,
+) {
+    codex::queue_codex_readiness_refresh(state, refresh_token, reason);
+}
+
 pub(super) fn run_job_inbox_auto_admission_tick(state: &mut RenderState) -> bool {
     jobs::run_job_inbox_auto_admission_tick(state)
 }
