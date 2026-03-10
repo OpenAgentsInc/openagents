@@ -3,8 +3,7 @@
 > Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
 > OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
 > `docs/OWNERSHIP.md`, after re-checking the current desktop lane, pane, and
-> turn-input surfaces on `main`, and after landing `CX-1` in `8146e1f09`
-> (`Implement Codex readiness preflight`).
+> turn-input surfaces on `main`, and after landing `CX-4` on `main`.
 >
 > This is the live roadmap for Codex product work in OpenAgents Desktop. The
 > goal is not to clone T3 Code's TypeScript server/web/Electron architecture.
@@ -159,6 +158,11 @@ than replace:
   controls plus explicit thread lifecycle actions, thread history rows now show
   preview metadata instead of raw ids alone, and desktop caches/restores
   per-thread transcripts so resume/read/copy flows stop feeling lossy
+- `CX-4` landed on `main`: the composer now assembles text, mentions, local or
+  remote images, and skill attachments in deterministic order, per-thread draft
+  state and submission history are restored across thread switches, and sending
+  while a turn is active uses `turn/steer` so queued follow-up prompts keep the
+  live task moving instead of forcing a second pending turn
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -173,12 +177,6 @@ These are the current gaps that matter most:
 - we do not expose many already-supported lane capabilities as a coherent
   operator workflow in desktop chat; this is especially true for session
   controls, status, and coding-shell actions
-- `crates/codex-client` supports `Image`, `LocalImage`, and `Mention`, but
-  `assemble_chat_turn_input` in
-  `apps/autopilot-desktop/src/input/actions.rs` currently emits text plus skill
-  attachments only
-- `crates/codex-client` supports `turn/steer`, but the desktop lane does not yet
-  expose a queued follow-up / steer workflow comparable to Codex TUI behavior
 - plans and diffs are live state, not durable first-class Codex artifacts, and
   we do not have manual compact or review-centered artifact UX
 - we do not yet have an explicit local replacement for the main Codex TUI
@@ -228,7 +226,7 @@ Status:
 
 Next:
 
-- `CX-4` is now the first open execution item for Codex replacement work
+- `CX-5` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -287,7 +285,20 @@ Acceptance:
 - a user can manage Codex threads in Autopilot instead of the Codex TUI
 - resume/fork/rename flows no longer feel like hidden protocol features
 
-### CX-4. Composer Parity And Queued Follow-Up Turns
+### CX-4. Composer Parity And Queued Follow-Up Turns ([#3361](https://github.com/OpenAgentsInc/openagents/issues/3361))
+
+Status:
+
+- shipped on `main`
+- desktop chat now parses `/mention PATH [| LABEL]` and `/image PATH|URL`
+  directives into Codex `Mention`, `LocalImage`, and `Image` inputs while
+  keeping skill attachments deterministic and validated
+- composer drafts are tracked per thread plus detached state, restored on
+  thread switches, and the last submitted prompt is preserved for recovery when
+  a turn-start or steer submission is rejected
+- when a turn is already active, sending from the composer now routes through
+  `turn/steer` and appends the accepted follow-up prompt into the live
+  transcript without creating a second assistant placeholder
 
 Scope:
 

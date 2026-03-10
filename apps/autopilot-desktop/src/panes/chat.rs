@@ -3197,6 +3197,20 @@ pub fn paint(
         ));
         footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
     }
+    if browse_mode == ChatBrowseMode::Autopilot {
+        let hint = if autopilot_chat.active_turn_id.is_some() {
+            "Use `/mention PATH` or `/image PATH|URL`. Sending while a turn runs steers the live task."
+        } else {
+            "Use `/mention PATH` or `/image PATH|URL` to attach workspace targets and images."
+        };
+        paint.scene.draw_text(paint.text.layout_mono(
+            hint,
+            Point::new(transcript_body_bounds.origin.x, footer_y),
+            9.0,
+            theme::text::MUTED,
+        ));
+        footer_y -= CHAT_TRANSCRIPT_LINE_HEIGHT;
+    }
     if let Some(error) = autopilot_chat.last_error.as_deref() {
         paint.scene.draw_text(paint.text.layout(
             error,
@@ -3243,6 +3257,7 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
     };
 
     let content_bounds = pane_content_bounds(bounds);
+    let composer_before = state.chat_inputs.composer.get_value().to_string();
     let composer_value = state.chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
@@ -3261,6 +3276,14 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
                 &mut state.event_context,
             )
             .is_handled();
+    }
+    if handled
+        && state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::Autopilot
+        && composer_before != state.chat_inputs.composer.get_value()
+    {
+        state
+            .autopilot_chat
+            .record_composer_draft(state.chat_inputs.composer.get_value().to_string());
     }
     handled
 }

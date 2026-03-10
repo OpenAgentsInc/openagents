@@ -117,8 +117,9 @@ pub(super) fn run_chat_submit_action_with_trigger(
     trigger: crate::labor_orchestrator::CodexRunTrigger,
 ) -> bool {
     focus_chat_composer(state);
-    let prompt = state.chat_inputs.composer.get_value().trim().to_string();
-    match parse_direct_message_creation_intent(&prompt) {
+    let prompt = state.chat_inputs.composer.get_value().to_string();
+    let trimmed_prompt = prompt.trim().to_string();
+    match parse_direct_message_creation_intent(&trimmed_prompt) {
         Ok(Some(intent)) => {
             return run_direct_message_submit_action(state, Some(intent));
         }
@@ -135,8 +136,8 @@ pub(super) fn run_chat_submit_action_with_trigger(
         }
         crate::app_state::ChatBrowseMode::Autopilot => {}
     }
-    let prompt_chars = prompt.chars().count();
-    if prompt.is_empty() {
+    let prompt_chars = trimmed_prompt.chars().count();
+    if trimmed_prompt.is_empty() {
         return false;
     }
     let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() else {
@@ -144,17 +145,26 @@ pub(super) fn run_chat_submit_action_with_trigger(
             Some("No active thread yet. Wait for Codex lane readiness.".to_string());
         return true;
     };
+    let session_cwd = current_chat_session_cwd(state);
+    let (parsed_prompt, attachment_error) =
+        parse_chat_turn_prompt(prompt.clone(), session_cwd.as_deref());
+    if let Some(error) = attachment_error {
+        state.autopilot_chat.last_error = Some(error);
+        return true;
+    }
 
-    let classification = super::cad_turn_classifier::classify_chat_prompt(&prompt);
+    let classification =
+        super::cad_turn_classifier::classify_chat_prompt(&parsed_prompt.prompt_text);
     let submitted_at_epoch_ms = current_epoch_millis();
-
-    state.chat_inputs.composer.set_value(String::new());
-    state.autopilot_chat.submit_prompt(prompt.clone());
     state.autopilot_chat.record_turn_timeline_event(format!(
         "cad-turn classifier: is_cad_turn={} reason={}",
         classification.is_cad_turn, classification.reason
     ));
-    let _ = super::reducers::apply_chat_prompt_to_cad_session(state, &thread_id, &prompt);
+    let _ = super::reducers::apply_chat_prompt_to_cad_session(
+        state,
+        &thread_id,
+        &parsed_prompt.prompt_text,
+    );
 
     let mut turn_skill_attachments = selected_skill_candidates_for_turn(state);
     if let Some(goal_selection) = goal_policy_skill_candidates_for_turn(state) {
@@ -230,7 +240,7 @@ pub(super) fn run_chat_submit_action_with_trigger(
         .collect::<Vec<_>>();
 
     log_chat_prompt_to_console(&thread_id, &prompt);
-    let (input, skill_error) = assemble_chat_turn_input(prompt, turn_skill_attachments);
+    let (input, skill_error) = assemble_chat_turn_input(parsed_prompt, turn_skill_attachments);
     if let Some(skill_error) = skill_error {
         state.autopilot_chat.last_error = Some(skill_error);
     }
@@ -242,11 +252,49 @@ pub(super) fn run_chat_submit_action_with_trigger(
         state
             .autopilot_chat
             .record_turn_timeline_event(format!("cad skill policy blocked turn: {error}"));
-        state
-            .autopilot_chat
-            .mark_pending_turn_dispatch_failed(error);
         return true;
     }
+
+    state
+        .autopilot_chat
+        .remember_submission_draft(&thread_id, prompt.clone());
+    state.chat_inputs.composer.set_value(String::new());
+    state.autopilot_chat.record_composer_draft(String::new());
+
+    if let Some(active_turn_id) = state.autopilot_chat.active_turn_id.clone() {
+        let command =
+            crate::codex_lane::CodexLaneCommand::TurnSteer(codex_client::TurnSteerParams {
+                thread_id: thread_id.clone(),
+                input,
+                expected_turn_id: active_turn_id.clone(),
+            });
+        tracing::info!(
+            "codex turn/steer request thread_id={} turn_id={} chars={}",
+            thread_id,
+            active_turn_id,
+            prompt_chars
+        );
+        match state.queue_codex_command(command) {
+            Ok(seq) => {
+                state.autopilot_chat.enqueue_pending_steer_submission(
+                    seq,
+                    thread_id.clone(),
+                    prompt,
+                );
+                state.autopilot_chat.record_turn_timeline_event(format!(
+                    "turn steer queued: seq={seq} turn_id={active_turn_id}"
+                ));
+                state.autopilot_chat.last_error = None;
+            }
+            Err(error) => {
+                state.chat_inputs.composer.set_value(prompt.clone());
+                state.autopilot_chat.record_composer_draft(prompt);
+                state.autopilot_chat.last_error = Some(error);
+            }
+        }
+        return true;
+    }
+
     let model_override = state.autopilot_chat.selected_model_override();
     let model_label = model_override.as_deref().unwrap_or("server-default");
     let plan = crate::labor_orchestrator::orchestrate_codex_turn(
@@ -255,7 +303,7 @@ pub(super) fn run_chat_submit_action_with_trigger(
             submitted_at_epoch_ms,
             thread_id: thread_id.clone(),
             input,
-            cwd: current_chat_session_cwd(state).map(std::path::PathBuf::from),
+            cwd: session_cwd.clone().map(std::path::PathBuf::from),
             approval_policy: chat_session_approval_policy(state),
             sandbox_policy: chat_session_turn_sandbox_policy(state),
             model: model_override.clone(),
@@ -287,6 +335,7 @@ pub(super) fn run_chat_submit_action_with_trigger(
             binding.work_unit_id, binding.contract_id, binding.provenance.bundle_id
         ));
     }
+    state.autopilot_chat.submit_prompt(prompt.clone());
 
     tracing::info!(
         "codex turn/start request thread_id={} model={} chars={} class={} economic={} labor_bound={}",
@@ -306,6 +355,8 @@ pub(super) fn run_chat_submit_action_with_trigger(
             );
         }
         Err(error) => {
+            state.chat_inputs.composer.set_value(prompt.clone());
+            state.autopilot_chat.record_composer_draft(prompt.clone());
             state
                 .autopilot_chat
                 .mark_pending_turn_dispatch_failed(error);
@@ -2174,6 +2225,46 @@ pub(super) fn current_epoch_millis() -> u64 {
         .unwrap_or(0)
 }
 
+pub(super) fn sync_chat_composer_draft(state: &mut crate::app_state::RenderState) {
+    if state.autopilot_chat.chat_browse_mode() != crate::app_state::ChatBrowseMode::Autopilot {
+        return;
+    }
+    state
+        .autopilot_chat
+        .record_composer_draft(state.chat_inputs.composer.get_value().to_string());
+}
+
+pub(super) fn restore_chat_composer_draft(state: &mut crate::app_state::RenderState) {
+    if state.autopilot_chat.chat_browse_mode() != crate::app_state::ChatBrowseMode::Autopilot {
+        return;
+    }
+    state
+        .chat_inputs
+        .composer
+        .set_value(state.autopilot_chat.active_composer_draft().to_string());
+}
+
+pub(super) fn restore_last_submission_draft(
+    state: &mut crate::app_state::RenderState,
+    thread_id: &str,
+) {
+    let Some(draft) = state
+        .autopilot_chat
+        .last_submission_draft(thread_id)
+        .map(str::to_string)
+    else {
+        return;
+    };
+    if !state.autopilot_chat.is_active_thread(thread_id) {
+        return;
+    }
+    if !state.chat_inputs.composer.get_value().trim().is_empty() {
+        return;
+    }
+    state.chat_inputs.composer.set_value(draft.clone());
+    state.autopilot_chat.record_composer_draft(draft);
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd)]
 pub(super) enum TurnSkillSource {
     UserSelected,
@@ -2187,6 +2278,25 @@ pub(super) struct TurnSkillAttachment {
     pub path: String,
     pub enabled: bool,
     pub source: TurnSkillSource,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub(super) struct ParsedChatTurnPrompt {
+    pub prompt_text: String,
+    pub mention_attachments: Vec<TurnMentionAttachment>,
+    pub image_attachments: Vec<TurnImageAttachment>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct TurnMentionAttachment {
+    pub name: String,
+    pub path: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) enum TurnImageAttachment {
+    Remote { url: String },
+    Local { path: std::path::PathBuf },
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -2532,14 +2642,220 @@ pub(super) fn goal_scoped_thread_sandbox_mode(
     }
 }
 
-pub(super) fn assemble_chat_turn_input(
+fn parse_attachment_directive<'a>(line: &'a str, command: &str) -> Option<&'a str> {
+    if line == command {
+        return Some("");
+    }
+    let prefix = format!("{command} ");
+    line.strip_prefix(prefix.as_str())
+        .or_else(|| line.strip_prefix(format!("{command}\t").as_str()))
+}
+
+fn strip_wrapping_quotes(value: &str) -> &str {
+    let trimmed = value.trim();
+    if trimmed.len() >= 2
+        && ((trimmed.starts_with('"') && trimmed.ends_with('"'))
+            || (trimmed.starts_with('\'') && trimmed.ends_with('\'')))
+    {
+        &trimmed[1..trimmed.len().saturating_sub(1)]
+    } else {
+        trimmed
+    }
+}
+
+fn expand_attachment_path(raw: &str, cwd: Option<&str>) -> std::path::PathBuf {
+    let normalized = strip_wrapping_quotes(raw);
+    if let Some(home_relative) = normalized.strip_prefix("~/")
+        && let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from)
+    {
+        return home.join(home_relative);
+    }
+    let path = std::path::PathBuf::from(normalized);
+    if path.is_absolute() {
+        return path;
+    }
+    if let Some(cwd) = cwd {
+        return std::path::Path::new(cwd).join(path);
+    }
+    path
+}
+
+fn local_attachment_path_string(path: &std::path::Path) -> String {
+    std::fs::canonicalize(path)
+        .unwrap_or_else(|_| path.to_path_buf())
+        .display()
+        .to_string()
+}
+
+fn is_remote_image_reference(value: &str) -> bool {
+    value.starts_with("http://") || value.starts_with("https://") || value.starts_with("data:")
+}
+
+fn split_attachment_target_and_label(value: &str) -> (&str, Option<&str>) {
+    let trimmed = value.trim();
+    match trimmed.split_once('|') {
+        Some((target, label)) => (target.trim(), Some(label.trim())),
+        None => (trimmed, None),
+    }
+}
+
+fn default_mention_name(path: &str) -> String {
+    path.strip_prefix("app://")
+        .or_else(|| path.strip_prefix("plugin://"))
+        .or_else(|| path.strip_prefix("skill://"))
+        .or_else(|| path.strip_prefix("mcp://"))
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.rsplit('/').next().unwrap_or(value).to_string())
+        .or_else(|| {
+            std::path::Path::new(path)
+                .file_name()
+                .and_then(|name| name.to_str())
+                .map(ToString::to_string)
+        })
+        .unwrap_or_else(|| "attachment".to_string())
+}
+
+fn parse_turn_mention_attachment(
+    raw: &str,
+    cwd: Option<&str>,
+) -> Result<TurnMentionAttachment, String> {
+    let (target, label) = split_attachment_target_and_label(raw);
+    let target = strip_wrapping_quotes(target);
+    if target.is_empty() {
+        return Err("`/mention` requires a path or app/plugin target".to_string());
+    }
+    let path = if target.starts_with("app://")
+        || target.starts_with("plugin://")
+        || target.starts_with("skill://")
+        || target.starts_with("mcp://")
+    {
+        target.to_string()
+    } else {
+        let resolved = expand_attachment_path(target, cwd);
+        if !resolved.exists() {
+            return Err(format!(
+                "Mention target does not exist: {}",
+                resolved.display()
+            ));
+        }
+        local_attachment_path_string(resolved.as_path())
+    };
+    let name = label
+        .map(strip_wrapping_quotes)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .unwrap_or_else(|| default_mention_name(path.as_str()));
+    Ok(TurnMentionAttachment { name, path })
+}
+
+fn parse_turn_image_attachment(
+    raw: &str,
+    cwd: Option<&str>,
+) -> Result<TurnImageAttachment, String> {
+    let target = strip_wrapping_quotes(raw);
+    if target.is_empty() {
+        return Err("`/image` requires a local file path or URL".to_string());
+    }
+    if is_remote_image_reference(target) {
+        return Ok(TurnImageAttachment::Remote {
+            url: target.to_string(),
+        });
+    }
+    let resolved = expand_attachment_path(target, cwd);
+    if !resolved.exists() {
+        return Err(format!(
+            "Image attachment does not exist: {}",
+            resolved.display()
+        ));
+    }
+    if !resolved.is_file() {
+        return Err(format!(
+            "Image attachment must be a file: {}",
+            resolved.display()
+        ));
+    }
+    Ok(TurnImageAttachment::Local {
+        path: std::fs::canonicalize(&resolved).unwrap_or(resolved),
+    })
+}
+
+pub(super) fn parse_chat_turn_prompt(
     prompt: String,
+    cwd: Option<&str>,
+) -> (ParsedChatTurnPrompt, Option<String>) {
+    let mut prompt_lines = Vec::new();
+    let mut mention_attachments = Vec::new();
+    let mut image_attachments = Vec::new();
+    let mut mention_keys = std::collections::HashSet::new();
+    let mut image_keys = std::collections::HashSet::new();
+    let mut errors = Vec::new();
+
+    for line in prompt.lines() {
+        let trimmed = line.trim();
+        if let Some(rest) = parse_attachment_directive(trimmed, "/mention") {
+            match parse_turn_mention_attachment(rest, cwd) {
+                Ok(attachment) => {
+                    if mention_keys.insert(attachment.path.clone()) {
+                        mention_attachments.push(attachment);
+                    }
+                }
+                Err(error) => errors.push(error),
+            }
+            continue;
+        }
+        if let Some(rest) = parse_attachment_directive(trimmed, "/image") {
+            match parse_turn_image_attachment(rest, cwd) {
+                Ok(attachment) => {
+                    let key = match &attachment {
+                        TurnImageAttachment::Remote { url } => url.clone(),
+                        TurnImageAttachment::Local { path } => path.display().to_string(),
+                    };
+                    if image_keys.insert(key) {
+                        image_attachments.push(attachment);
+                    }
+                }
+                Err(error) => errors.push(error),
+            }
+            continue;
+        }
+        prompt_lines.push(line.to_string());
+    }
+
+    let prompt_text = prompt_lines.join("\n").trim().to_string();
+    (
+        ParsedChatTurnPrompt {
+            prompt_text,
+            mention_attachments,
+            image_attachments,
+        },
+        (!errors.is_empty()).then(|| errors.join(" | ")),
+    )
+}
+
+pub(super) fn assemble_chat_turn_input(
+    parsed_prompt: ParsedChatTurnPrompt,
     skill_attachments: Vec<TurnSkillAttachment>,
 ) -> (Vec<UserInput>, Option<String>) {
-    let mut input = vec![UserInput::Text {
-        text: prompt,
-        text_elements: Vec::new(),
-    }];
+    let mut input = Vec::new();
+    if !parsed_prompt.prompt_text.is_empty() {
+        input.push(UserInput::Text {
+            text: parsed_prompt.prompt_text,
+            text_elements: Vec::new(),
+        });
+    }
+    for mention in parsed_prompt.mention_attachments {
+        input.push(UserInput::Mention {
+            name: mention.name,
+            path: mention.path,
+        });
+    }
+    for image in parsed_prompt.image_attachments {
+        match image {
+            TurnImageAttachment::Remote { url } => input.push(UserInput::Image { url }),
+            TurnImageAttachment::Local { path } => input.push(UserInput::LocalImage { path }),
+        }
+    }
     let mut last_errors = Vec::new();
     let mut sorted_attachments = skill_attachments;
     sorted_attachments.sort_by(|left, right| {
@@ -2621,6 +2937,7 @@ pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::Rend
 
 pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderState) -> bool {
     focus_chat_composer(state);
+    sync_chat_composer_draft(state);
     let cwd = current_chat_session_cwd(state);
     let model_override = state.autopilot_chat.selected_model_override();
     let command = crate::codex_lane::CodexLaneCommand::ThreadStart(ThreadStartParams {
@@ -2930,10 +3247,12 @@ pub(super) fn run_chat_select_thread_action(
             .autopilot_chat
             .select_direct_message_room_by_index(index),
         crate::app_state::ChatBrowseMode::Autopilot => {
+            sync_chat_composer_draft(state);
             if index == 0 {
                 state.autopilot_chat.active_thread_id = None;
                 state.autopilot_chat.reset_transcript_scroll();
                 state.autopilot_chat.last_error = None;
+                restore_chat_composer_draft(state);
                 focus_chat_composer(state);
                 return true;
             }
@@ -2946,6 +3265,7 @@ pub(super) fn run_chat_select_thread_action(
             let Some(target) = state.autopilot_chat.select_thread_by_index(preview_index) else {
                 return false;
             };
+            restore_chat_composer_draft(state);
             focus_chat_composer(state);
             let experimental_api = state.codex_lane_config.experimental_api;
             let resume_path = if experimental_api {
