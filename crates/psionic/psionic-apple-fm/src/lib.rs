@@ -15,7 +15,9 @@ pub use contract::{
     AppleFmChatCompletionResponse, AppleFmChatMessage, AppleFmChatMessageRole,
     AppleFmChatResponseMessage, AppleFmChatUsage, AppleFmCompletionResult, AppleFmErrorDetail,
     AppleFmErrorResponse, AppleFmHealthResponse, AppleFmModelInfo, AppleFmModelsResponse,
-    DEFAULT_APPLE_FM_MODEL_ID,
+    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
+    AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
+    AppleFmSystemLanguageModelUseCase, DEFAULT_APPLE_FM_MODEL_ID,
 };
 
 /// Human-readable crate ownership summary.

@@ -589,6 +589,13 @@ fn sync_provider_runtime_ollama_state(state: &mut RenderState) {
 fn sync_provider_runtime_apple_fm_state(state: &mut RenderState) {
     state.provider_runtime.apple_fm.reachable = state.apple_fm_execution.reachable;
     state.provider_runtime.apple_fm.model_available = state.apple_fm_execution.model_available;
+    state.provider_runtime.apple_fm.system_model = state.apple_fm_execution.system_model.clone();
+    state.provider_runtime.apple_fm.unavailable_reason =
+        state.apple_fm_execution.unavailable_reason;
+    state.provider_runtime.apple_fm.supported_use_cases =
+        state.apple_fm_execution.supported_use_cases.clone();
+    state.provider_runtime.apple_fm.supported_guardrails =
+        state.apple_fm_execution.supported_guardrails.clone();
     state.provider_runtime.apple_fm.ready_model = state.apple_fm_execution.ready_model.clone();
     state.provider_runtime.apple_fm.available_models =
         state.apple_fm_execution.available_models.clone();
@@ -652,7 +659,13 @@ fn provider_compute_capability_from_apple_fm(
             .apple_fm_execution
             .last_error
             .clone()
-            .or_else(|| state.apple_fm_execution.availability_message.clone()),
+            .or_else(|| state.apple_fm_execution.availability_message.clone())
+            .or_else(|| {
+                state
+                    .apple_fm_execution
+                    .unavailable_reason
+                    .map(|reason| format!("Apple FM unavailable: {}", reason.label()))
+            }),
     }
 }
 
@@ -2115,6 +2128,10 @@ mod tests {
         ProviderAppleFmRuntimeState {
             reachable: true,
             model_available: true,
+            system_model: Default::default(),
+            unavailable_reason: None,
+            supported_use_cases: vec![],
+            supported_guardrails: vec![],
             ready_model: Some("apple-foundation-model".to_string()),
             available_models: vec!["apple-foundation-model".to_string()],
             last_error: None,

@@ -12,6 +12,151 @@ pub const APPLE_FM_BRIDGE_MODELS_PATH: &str = "/v1/models";
 /// Chat-completions endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 
+/// Typed system-model use cases exposed by Apple's Foundation Models surface.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleFmSystemLanguageModelUseCase {
+    /// General-purpose text generation.
+    #[default]
+    General,
+    /// Content tagging / classification.
+    ContentTagging,
+    /// Future or unknown bridge value.
+    #[serde(other)]
+    Unknown,
+}
+
+impl AppleFmSystemLanguageModelUseCase {
+    /// Stable label used in logs and UI.
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::General => "general",
+            Self::ContentTagging => "content_tagging",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Typed system-model guardrail modes exposed by Apple's Foundation Models surface.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleFmSystemLanguageModelGuardrails {
+    /// Standard Apple safety defaults.
+    #[default]
+    Default,
+    /// More permissive content-transformation mode.
+    PermissiveContentTransformations,
+    /// Future or unknown bridge value.
+    #[serde(other)]
+    Unknown,
+}
+
+impl AppleFmSystemLanguageModelGuardrails {
+    /// Stable label used in logs and UI.
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::Default => "default",
+            Self::PermissiveContentTransformations => "permissive_content_transformations",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Typed reasons Apple's system model may be unavailable.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleFmSystemLanguageModelUnavailableReason {
+    /// Apple Intelligence has not been enabled for the current system/user.
+    AppleIntelligenceNotEnabled,
+    /// The device does not satisfy Foundation Models requirements.
+    DeviceNotEligible,
+    /// The model has not finished downloading / preparing.
+    ModelNotReady,
+    /// Future or unknown bridge value.
+    #[default]
+    #[serde(other)]
+    Unknown,
+}
+
+impl AppleFmSystemLanguageModelUnavailableReason {
+    /// Stable label used in logs and UI.
+    #[must_use]
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::AppleIntelligenceNotEnabled => "apple_intelligence_not_enabled",
+            Self::DeviceNotEligible => "device_not_eligible",
+            Self::ModelNotReady => "model_not_ready",
+            Self::Unknown => "unknown",
+        }
+    }
+}
+
+/// Rust-side equivalent of the Python SDK's `SystemLanguageModel`.
+#[derive(Clone, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSystemLanguageModel {
+    /// Stable Apple FM model identifier.
+    pub id: String,
+    /// Use-case specialization.
+    #[serde(default)]
+    pub use_case: AppleFmSystemLanguageModelUseCase,
+    /// Guardrail mode.
+    #[serde(default)]
+    pub guardrails: AppleFmSystemLanguageModelGuardrails,
+}
+
+impl Default for AppleFmSystemLanguageModel {
+    fn default() -> Self {
+        Self {
+            id: DEFAULT_APPLE_FM_MODEL_ID.to_string(),
+            use_case: AppleFmSystemLanguageModelUseCase::General,
+            guardrails: AppleFmSystemLanguageModelGuardrails::Default,
+        }
+    }
+}
+
+/// Typed availability/configuration truth for the current system model.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSystemLanguageModelAvailability {
+    /// System model configuration.
+    pub model: AppleFmSystemLanguageModel,
+    /// Whether the configured system model is available now.
+    pub available: bool,
+    /// Optional typed reason for unavailability.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<AppleFmSystemLanguageModelUnavailableReason>,
+    /// Human-readable availability detail from the bridge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability_message: Option<String>,
+    /// Supported use cases the bridge currently exposes.
+    #[serde(default)]
+    pub supported_use_cases: Vec<AppleFmSystemLanguageModelUseCase>,
+    /// Supported guardrail modes the bridge currently exposes.
+    #[serde(default)]
+    pub supported_guardrails: Vec<AppleFmSystemLanguageModelGuardrails>,
+    /// Optional bridge version string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Optional platform string.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub platform: Option<String>,
+    /// Whether Apple Silicon is required for this lane.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apple_silicon_required: Option<bool>,
+    /// Whether Apple Intelligence is required for this lane.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub apple_intelligence_required: Option<bool>,
+}
+
+impl AppleFmSystemLanguageModelAvailability {
+    /// Returns whether the configured model is ready for requests.
+    #[must_use]
+    pub const fn is_ready(&self) -> bool {
+        self.available
+    }
+}
+
 /// Request/response chat message role used by the current bridge.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -91,12 +236,50 @@ pub struct AppleFmHealthResponse {
     /// Human-readable availability detail from the bridge.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub availability_message: Option<String>,
+    /// Typed reason for unavailability if the model is not available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<AppleFmSystemLanguageModelUnavailableReason>,
+    /// Default use-case configuration surfaced by the bridge.
+    #[serde(default)]
+    pub default_use_case: AppleFmSystemLanguageModelUseCase,
+    /// Default guardrail configuration surfaced by the bridge.
+    #[serde(default)]
+    pub default_guardrails: AppleFmSystemLanguageModelGuardrails,
+    /// Supported use cases the bridge currently exposes.
+    #[serde(default)]
+    pub supported_use_cases: Vec<AppleFmSystemLanguageModelUseCase>,
+    /// Supported guardrail modes the bridge currently exposes.
+    #[serde(default)]
+    pub supported_guardrails: Vec<AppleFmSystemLanguageModelGuardrails>,
     /// Whether Apple Silicon is required for this lane.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apple_silicon_required: Option<bool>,
     /// Whether Apple Intelligence is required for this lane.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub apple_intelligence_required: Option<bool>,
+}
+
+impl AppleFmHealthResponse {
+    /// Reconstructs typed system-model availability truth from the health payload.
+    #[must_use]
+    pub fn system_model_availability(&self) -> AppleFmSystemLanguageModelAvailability {
+        AppleFmSystemLanguageModelAvailability {
+            model: AppleFmSystemLanguageModel {
+                id: DEFAULT_APPLE_FM_MODEL_ID.to_string(),
+                use_case: self.default_use_case,
+                guardrails: self.default_guardrails,
+            },
+            available: self.model_available,
+            unavailable_reason: self.unavailable_reason,
+            availability_message: self.availability_message.clone(),
+            supported_use_cases: self.supported_use_cases.clone(),
+            supported_guardrails: self.supported_guardrails.clone(),
+            version: self.version.clone(),
+            platform: self.platform.clone(),
+            apple_silicon_required: self.apple_silicon_required,
+            apple_intelligence_required: self.apple_intelligence_required,
+        }
+    }
 }
 
 /// Model-list response returned by the current bridge.
@@ -132,6 +315,39 @@ pub struct AppleFmModelInfo {
     /// Optional owner string.
     #[serde(default, skip_serializing_if = "Option::is_none", rename = "owned_by")]
     pub owned_by: Option<String>,
+    /// Default use-case configuration for this system model.
+    #[serde(default)]
+    pub default_use_case: AppleFmSystemLanguageModelUseCase,
+    /// Default guardrail configuration for this system model.
+    #[serde(default)]
+    pub default_guardrails: AppleFmSystemLanguageModelGuardrails,
+    /// Supported use cases for this system model.
+    #[serde(default)]
+    pub supported_use_cases: Vec<AppleFmSystemLanguageModelUseCase>,
+    /// Supported guardrail modes for this system model.
+    #[serde(default)]
+    pub supported_guardrails: Vec<AppleFmSystemLanguageModelGuardrails>,
+    /// Current availability if the bridge includes it in model listing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub available: Option<bool>,
+    /// Current typed unavailability reason if the model is not available.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub unavailable_reason: Option<AppleFmSystemLanguageModelUnavailableReason>,
+    /// Human-readable availability detail if the bridge includes it in model listing.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub availability_message: Option<String>,
+}
+
+impl AppleFmModelInfo {
+    /// Returns the typed model configuration described by this listing entry.
+    #[must_use]
+    pub fn system_model(&self) -> AppleFmSystemLanguageModel {
+        AppleFmSystemLanguageModel {
+            id: self.id.clone(),
+            use_case: self.default_use_case,
+            guardrails: self.default_guardrails,
+        }
+    }
 }
 
 /// Chat-completion response returned by the current bridge.
@@ -261,7 +477,9 @@ pub struct AppleFmCompletionResult {
 mod tests {
     use super::{
         AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessageRole,
-        AppleFmHealthResponse, AppleFmModelsResponse,
+        AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSystemLanguageModelGuardrails,
+        AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
+        DEFAULT_APPLE_FM_MODEL_ID,
     };
 
     #[test]
@@ -326,6 +544,10 @@ mod tests {
                 "version":"1.0.0",
                 "platform":"macOS",
                 "availability_message":"Foundation Models is available",
+                "default_use_case":"general",
+                "default_guardrails":"default",
+                "supported_use_cases":["general","content_tagging"],
+                "supported_guardrails":["default","permissive_content_transformations"],
                 "apple_silicon_required":true,
                 "apple_intelligence_required":true
             }"#,
@@ -335,5 +557,89 @@ mod tests {
         assert!(response.model_available);
         assert_eq!(response.version.as_deref(), Some("1.0.0"));
         assert_eq!(response.platform.as_deref(), Some("macOS"));
+        assert_eq!(
+            response.availability_message.as_deref(),
+            Some("Foundation Models is available")
+        );
+        assert_eq!(
+            response.default_use_case,
+            AppleFmSystemLanguageModelUseCase::General
+        );
+        assert_eq!(
+            response.default_guardrails,
+            AppleFmSystemLanguageModelGuardrails::Default
+        );
+        assert_eq!(
+            response.supported_use_cases,
+            vec![
+                AppleFmSystemLanguageModelUseCase::General,
+                AppleFmSystemLanguageModelUseCase::ContentTagging,
+            ]
+        );
+        assert_eq!(
+            response.supported_guardrails,
+            vec![
+                AppleFmSystemLanguageModelGuardrails::Default,
+                AppleFmSystemLanguageModelGuardrails::PermissiveContentTransformations,
+            ]
+        );
+        assert_eq!(response.apple_silicon_required, Some(true));
+        assert_eq!(response.apple_intelligence_required, Some(true));
+
+        let system_model = response.system_model_availability();
+        assert_eq!(system_model.model.id, DEFAULT_APPLE_FM_MODEL_ID);
+        assert_eq!(
+            system_model.model.use_case,
+            AppleFmSystemLanguageModelUseCase::General
+        );
+        assert_eq!(
+            system_model.model.guardrails,
+            AppleFmSystemLanguageModelGuardrails::Default
+        );
+        assert!(system_model.is_ready());
+    }
+
+    #[test]
+    fn unknown_system_model_enums_decode_to_unknown() {
+        let response: AppleFmHealthResponse = serde_json::from_str(
+            r#"{
+                "status":"degraded",
+                "model_available":false,
+                "availability_message":"future system state",
+                "unavailable_reason":"future_reason",
+                "default_use_case":"future_use_case",
+                "default_guardrails":"future_guardrails",
+                "supported_use_cases":["general","future_use_case"],
+                "supported_guardrails":["default","future_guardrails"]
+            }"#,
+        )
+        .expect("decode unknown health enums");
+
+        assert_eq!(
+            response.unavailable_reason,
+            Some(AppleFmSystemLanguageModelUnavailableReason::Unknown)
+        );
+        assert_eq!(
+            response.default_use_case,
+            AppleFmSystemLanguageModelUseCase::Unknown
+        );
+        assert_eq!(
+            response.default_guardrails,
+            AppleFmSystemLanguageModelGuardrails::Unknown
+        );
+        assert_eq!(
+            response.supported_use_cases,
+            vec![
+                AppleFmSystemLanguageModelUseCase::General,
+                AppleFmSystemLanguageModelUseCase::Unknown,
+            ]
+        );
+        assert_eq!(
+            response.supported_guardrails,
+            vec![
+                AppleFmSystemLanguageModelGuardrails::Default,
+                AppleFmSystemLanguageModelGuardrails::Unknown,
+            ]
+        );
     }
 }

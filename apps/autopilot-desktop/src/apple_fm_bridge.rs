@@ -2,7 +2,10 @@ use crate::local_inference_runtime::{
     LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
-use psionic_apple_fm::{AppleFmBridgeClient, DEFAULT_APPLE_FM_MODEL_ID};
+use psionic_apple_fm::{
+    AppleFmBridgeClient, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
+    AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
+};
 use reqwest::Url;
 use reqwest::blocking::Client as HttpClient;
 use std::path::PathBuf;
@@ -71,6 +74,10 @@ pub struct AppleFmBridgeSnapshot {
     pub bridge_status: Option<String>,
     pub reachable: bool,
     pub model_available: bool,
+    pub system_model: AppleFmSystemLanguageModel,
+    pub unavailable_reason: Option<AppleFmSystemLanguageModelUnavailableReason>,
+    pub supported_use_cases: Vec<AppleFmSystemLanguageModelUseCase>,
+    pub supported_guardrails: Vec<AppleFmSystemLanguageModelGuardrails>,
     pub ready_model: Option<String>,
     pub available_models: Vec<String>,
     pub availability_message: Option<String>,
@@ -312,6 +319,10 @@ impl AppleFmBridgeState {
         self.snapshot.base_url = self.config.base_url.clone();
         self.snapshot.available_models.clear();
         self.snapshot.ready_model = None;
+        self.snapshot.system_model = AppleFmSystemLanguageModel::default();
+        self.snapshot.unavailable_reason = None;
+        self.snapshot.supported_use_cases.clear();
+        self.snapshot.supported_guardrails.clear();
         self.snapshot.last_metrics = None;
         self.snapshot.reachable = false;
         self.snapshot.model_available = false;
@@ -340,25 +351,36 @@ impl AppleFmBridgeState {
 
         match client.health() {
             Ok(health) => {
+                let system_model_status = health.system_model_availability();
                 self.snapshot.reachable = true;
-                self.snapshot.model_available = health.model_available;
-                self.snapshot.availability_message = health.availability_message.clone();
+                self.snapshot.model_available = system_model_status.available;
+                self.snapshot.system_model = system_model_status.model.clone();
+                self.snapshot.unavailable_reason = system_model_status.unavailable_reason;
+                self.snapshot.supported_use_cases = system_model_status.supported_use_cases.clone();
+                self.snapshot.supported_guardrails =
+                    system_model_status.supported_guardrails.clone();
+                self.snapshot.availability_message =
+                    system_model_status.availability_message.clone();
                 self.snapshot.bridge_status =
                     Some(AppleFmBridgeStatus::Running.label().to_string());
                 self.snapshot.last_error = None;
                 self.snapshot.last_action = Some("Refreshed Apple FM bridge health".to_string());
-                match client.model_ids() {
+                match client.list_models() {
                     Ok(models) => {
-                        self.snapshot.available_models = models.clone();
-                        self.snapshot.ready_model = health.model_available.then(|| {
-                            models
+                        self.snapshot.available_models = models.model_ids();
+                        self.snapshot.ready_model = system_model_status.available.then(|| {
+                            self.snapshot
+                                .available_models
                                 .first()
                                 .cloned()
-                                .unwrap_or_else(|| DEFAULT_APPLE_FM_MODEL_ID.to_string())
+                                .unwrap_or_else(|| self.snapshot.system_model.id.clone())
                         });
                     }
                     Err(error) => {
                         self.snapshot.last_error = Some(error.to_string());
+                        self.snapshot.ready_model = system_model_status
+                            .available
+                            .then(|| self.snapshot.system_model.id.clone());
                     }
                 }
             }
@@ -425,7 +447,7 @@ impl AppleFmBridgeState {
             .requested_model
             .clone()
             .or_else(|| self.snapshot.ready_model.clone())
-            .unwrap_or_else(|| DEFAULT_APPLE_FM_MODEL_ID.to_string());
+            .unwrap_or_else(|| self.snapshot.system_model.id.clone());
 
         let _ = update_tx.send(AppleFmBridgeUpdate::Started(AppleFmExecutionStarted {
             request_id: job.request_id.clone(),
@@ -582,6 +604,7 @@ fn find_bridge_binary() -> Option<PathBuf> {
 mod tests {
     use super::{
         AppleFmBridgeCommand, AppleFmBridgeConfig, AppleFmBridgeUpdate, AppleFmBridgeWorker,
+        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
     };
     use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
@@ -619,10 +642,21 @@ mod tests {
                         "status": "ok",
                         "model_available": true,
                         "availability_message": null,
+                        "default_use_case": "general",
+                        "default_guardrails": "default",
+                        "supported_use_cases": ["general", "content_tagging"],
+                        "supported_guardrails": ["default", "permissive_content_transformations"],
                     })
                     .to_string(),
                     ("GET", "/v1/models") => serde_json::json!({
-                        "data": [{ "id": "apple-foundation-model" }],
+                        "data": [{
+                            "id": "apple-foundation-model",
+                            "default_use_case": "general",
+                            "default_guardrails": "default",
+                            "supported_use_cases": ["general", "content_tagging"],
+                            "supported_guardrails": ["default", "permissive_content_transformations"],
+                            "available": true
+                        }],
                     })
                     .to_string(),
                     ("POST", "/v1/chat/completions") => {
@@ -728,6 +762,10 @@ mod tests {
                         if snapshot.reachable
                             && snapshot.model_available
                             && snapshot.ready_model.as_deref() == Some("apple-foundation-model")
+                            && snapshot.system_model.use_case
+                                == AppleFmSystemLanguageModelUseCase::General
+                            && snapshot.system_model.guardrails
+                                == AppleFmSystemLanguageModelGuardrails::Default
                         {
                             saw_ready_snapshot = true;
                         }

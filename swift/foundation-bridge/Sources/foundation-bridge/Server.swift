@@ -107,13 +107,18 @@ actor HTTPServer {
     }
 
     private func handleHealth() async -> Data {
-        let (available, message) = await chatHandler.getAvailabilityStatus()
+        let (available, reason, message) = await chatHandler.getAvailabilityStatus()
         let health = HealthResponse(
             status: available ? "ok" : "degraded",
             modelAvailable: available,
             version: "1.0.0",
             platform: "macOS",
             availabilityMessage: message,
+            unavailableReason: reason,
+            defaultUseCase: .general,
+            defaultGuardrails: .default,
+            supportedUseCases: await chatHandler.supportedUseCases(),
+            supportedGuardrails: await chatHandler.supportedGuardrails(),
             appleSiliconRequired: true,
             appleIntelligenceRequired: true
         )
@@ -121,6 +126,7 @@ actor HTTPServer {
     }
 
     private func handleModels() async -> Data {
+        let (available, reason, message) = await chatHandler.getAvailabilityStatus()
         let models = ModelsResponse(
             object: "list",
             data: [
@@ -128,7 +134,14 @@ actor HTTPServer {
                     id: "apple-foundation-model",
                     object: "model",
                     created: Int(Date().timeIntervalSince1970),
-                    ownedBy: "apple"
+                    ownedBy: "apple",
+                    defaultUseCase: .general,
+                    defaultGuardrails: .default,
+                    supportedUseCases: await chatHandler.supportedUseCases(),
+                    supportedGuardrails: await chatHandler.supportedGuardrails(),
+                    available: available,
+                    unavailableReason: reason,
+                    availabilityMessage: message
                 )
             ]
         )
