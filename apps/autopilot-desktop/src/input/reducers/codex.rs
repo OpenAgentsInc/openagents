@@ -379,6 +379,15 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                 .error
                 .clone()
                 .or_else(|| Some("codex skills/list failed".to_string()));
+        } else if matches!(
+            response.command,
+            CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport
+        ) {
+            state.skill_registry.load_state = PaneLoadState::Error;
+            state.skill_registry.last_error = response
+                .error
+                .clone()
+                .or_else(|| Some(format!("{} failed", response.command.label())));
         }
     } else if response.command == CodexLaneCommandKind::TurnStart {
         tracing::info!(
@@ -407,6 +416,12 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
         state.autopilot_chat.last_error = None;
         state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsList {
+        state.skill_registry.last_error = None;
+        state.codex_diagnostics.last_error = None;
+    } else if matches!(
+        response.command,
+        CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport
+    ) {
         state.skill_registry.last_error = None;
         state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsConfigWrite {
@@ -494,6 +509,19 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                 state.codex_apps.last_error = response_error
                     .clone()
                     .or_else(|| Some("app/list failed".to_string()));
+            }
+        }
+        CodexLaneCommandKind::SkillsRemoteList | CodexLaneCommandKind::SkillsRemoteExport => {
+            if response.status == CodexLaneCommandStatus::Accepted {
+                state.skill_registry.load_state = PaneLoadState::Ready;
+                state.skill_registry.last_error = None;
+                state.skill_registry.last_action =
+                    Some(format!("{} accepted", response.command.label()));
+            } else {
+                state.skill_registry.load_state = PaneLoadState::Error;
+                state.skill_registry.last_error = response_error
+                    .clone()
+                    .or_else(|| Some(format!("{} failed", response.command.label())));
             }
         }
         CodexLaneCommandKind::ReviewStart
@@ -1115,13 +1143,30 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     Some("fuzzyFileSearch/sessionStop completed".to_string());
                 state.codex_labs.last_error = None;
             }
-            CodexLaneNotification::SkillsRemoteListLoaded { .. } => {
-                state.codex_diagnostics.last_action =
-                    Some("Ignored skills/remote/list notification (pane removed)".to_string());
+            CodexLaneNotification::SkillsRemoteListLoaded { entries } => {
+                state.skill_registry.remote_skills = entries
+                    .into_iter()
+                    .map(|entry| crate::app_state::SkillRegistryRemoteSkill {
+                        id: entry.id,
+                        name: entry.name,
+                        description: entry.description,
+                    })
+                    .collect();
+                state.skill_registry.load_state = PaneLoadState::Ready;
+                state.skill_registry.last_action = Some(format!(
+                    "Loaded {} remote skills",
+                    state.skill_registry.remote_skills.len()
+                ));
+                state.skill_registry.last_error = None;
             }
-            CodexLaneNotification::SkillsRemoteExported { .. } => {
-                state.codex_diagnostics.last_action =
-                    Some("Ignored skills/remote/export notification (pane removed)".to_string());
+            CodexLaneNotification::SkillsRemoteExported { id, path } => {
+                state.skill_registry.last_remote_export_id = Some(id.clone());
+                state.skill_registry.last_remote_export_path = Some(path.clone());
+                state.skill_registry.load_state = PaneLoadState::Ready;
+                state.skill_registry.last_action =
+                    Some(format!("Exported remote skill {} to {}", id, path));
+                state.skill_registry.last_error = None;
+                queue_skills_list_refresh(state);
             }
             CodexLaneNotification::SkillsListLoaded { entries } => {
                 state.skill_registry.source = "codex".to_string();
@@ -2818,9 +2863,7 @@ fn notification_method_label(notification: &CodexLaneNotification) -> String {
         }
         CodexLaneNotification::TurnCompleted { .. } => "turn/completed".to_string(),
         CodexLaneNotification::TurnDiffUpdated { .. } => "turn/diff/updated".to_string(),
-        CodexLaneNotification::ReviewProgressUpdated { .. } => {
-            "item/review/progress".to_string()
-        }
+        CodexLaneNotification::ReviewProgressUpdated { .. } => "item/review/progress".to_string(),
         CodexLaneNotification::TurnPlanUpdated { .. } => "turn/plan/updated".to_string(),
         CodexLaneNotification::ThreadCompacted { .. } => "thread/compacted".to_string(),
         CodexLaneNotification::ThreadTokenUsageUpdated { .. } => {

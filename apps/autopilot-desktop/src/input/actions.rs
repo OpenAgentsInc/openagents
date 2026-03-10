@@ -114,6 +114,48 @@ enum ChatTerminalComposerIntent {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatSkillsComposerIntent {
+    Summary,
+    Refresh,
+    Inspect { query: Option<String> },
+    Use { query: String },
+    Clear,
+    SetEnabled { query: String, enabled: bool },
+    RemoteSummary,
+    RemoteList { scope: codex_client::HazelnutScope },
+    RemoteExport { query: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatMcpComposerIntent {
+    Summary,
+    Refresh,
+    Reload,
+    Select { query: String },
+    Login { query: Option<String> },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ChatAppsComposerIntent {
+    Summary,
+    Refresh,
+    Inspect { query: Option<String> },
+    Select { query: String },
+}
+
+#[derive(Debug, Clone)]
+enum ChatRequestComposerIntent {
+    Summary,
+    Approval {
+        decision: ApprovalDecision,
+        label: &'static str,
+    },
+    ToolCallRespond,
+    ToolUserInputRespond,
+    AuthRefreshRespond,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct ChatWalletMessageSource {
     reference_label: String,
     message_id: String,
@@ -179,6 +221,46 @@ pub(super) fn run_chat_submit_action_with_trigger(
     match parse_chat_terminal_intent(&trimmed_prompt) {
         Ok(Some(intent)) => {
             return run_chat_terminal_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_skills_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_skills_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_mcp_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_mcp_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_apps_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_apps_action(state, prompt, intent);
+        }
+        Ok(None) => {}
+        Err(error) => {
+            state.autopilot_chat.last_error = Some(error);
+            return true;
+        }
+    }
+    match parse_chat_request_intent(&trimmed_prompt) {
+        Ok(Some(intent)) => {
+            return run_chat_request_action(state, prompt, intent);
         }
         Ok(None) => {}
         Err(error) => {
@@ -2549,6 +2631,19 @@ fn current_chat_workspace_root(state: &crate::app_state::RenderState) -> Option<
         })
 }
 
+fn remember_chat_command_prompt(state: &mut crate::app_state::RenderState, prompt: &str) {
+    if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
+        state
+            .autopilot_chat
+            .remember_submission_draft(&thread_id, prompt.to_string());
+    }
+}
+
+fn clear_chat_command_prompt(state: &mut crate::app_state::RenderState) {
+    state.chat_inputs.composer.set_value(String::new());
+    state.autopilot_chat.record_composer_draft(String::new());
+}
+
 #[derive(Debug, Clone, Eq, PartialEq)]
 struct ChatGitExecutionResult {
     response: String,
@@ -3336,6 +3431,1117 @@ fn parse_chat_terminal_intent(prompt: &str) -> Result<Option<ChatTerminalCompose
         );
     }
     Ok(None)
+}
+
+fn hazelnut_scope_label(scope: codex_client::HazelnutScope) -> &'static str {
+    match scope {
+        codex_client::HazelnutScope::Example => "example",
+        codex_client::HazelnutScope::WorkspaceShared => "workspace-shared",
+        codex_client::HazelnutScope::AllShared => "all-shared",
+        codex_client::HazelnutScope::Personal => "personal",
+    }
+}
+
+fn parse_hazelnut_scope(value: &str) -> Option<codex_client::HazelnutScope> {
+    match value.trim().to_ascii_lowercase().as_str() {
+        "example" => Some(codex_client::HazelnutScope::Example),
+        "workspace-shared" | "workspace_shared" | "workspace" => {
+            Some(codex_client::HazelnutScope::WorkspaceShared)
+        }
+        "all-shared" | "all_shared" | "shared" | "all" => {
+            Some(codex_client::HazelnutScope::AllShared)
+        }
+        "personal" => Some(codex_client::HazelnutScope::Personal),
+        _ => None,
+    }
+}
+
+fn parse_chat_skills_intent(prompt: &str) -> Result<Option<ChatSkillsComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    let Some(command) = words.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    if command != "/skills" && command != "/skill" {
+        return Ok(None);
+    }
+    let subcommand = words.get(1).map(String::as_str);
+    match subcommand {
+        None => Ok(Some(ChatSkillsComposerIntent::Summary)),
+        Some("list") if words.len() == 2 => Ok(Some(ChatSkillsComposerIntent::Summary)),
+        Some("refresh") if words.len() == 2 => Ok(Some(ChatSkillsComposerIntent::Refresh)),
+        Some("inspect") if words.len() <= 3 => Ok(Some(ChatSkillsComposerIntent::Inspect {
+            query: words.get(2).cloned(),
+        })),
+        Some("use") => {
+            let Some(query) = words.get(2).cloned() else {
+                return Err("Usage: `/skills use <name|path>`.".to_string());
+            };
+            if words.len() != 3 {
+                return Err("Usage: `/skills use <name|path>`.".to_string());
+            }
+            Ok(Some(ChatSkillsComposerIntent::Use { query }))
+        }
+        Some("clear") if words.len() == 2 => Ok(Some(ChatSkillsComposerIntent::Clear)),
+        Some("enable") => {
+            let Some(query) = words.get(2).cloned() else {
+                return Err("Usage: `/skills enable <name|path>`.".to_string());
+            };
+            if words.len() != 3 {
+                return Err("Usage: `/skills enable <name|path>`.".to_string());
+            }
+            Ok(Some(ChatSkillsComposerIntent::SetEnabled {
+                query,
+                enabled: true,
+            }))
+        }
+        Some("disable") => {
+            let Some(query) = words.get(2).cloned() else {
+                return Err("Usage: `/skills disable <name|path>`.".to_string());
+            };
+            if words.len() != 3 {
+                return Err("Usage: `/skills disable <name|path>`.".to_string());
+            }
+            Ok(Some(ChatSkillsComposerIntent::SetEnabled {
+                query,
+                enabled: false,
+            }))
+        }
+        Some("remote") if words.len() == 2 => Ok(Some(ChatSkillsComposerIntent::RemoteSummary)),
+        Some("remote") if words.get(2).map(String::as_str) == Some("list") => {
+            if words.len() > 4 {
+                return Err(
+                    "Usage: `/skills remote list [example|workspace-shared|all-shared|personal]`."
+                        .to_string(),
+                );
+            }
+            let scope = if let Some(raw_scope) = words.get(3).map(String::as_str) {
+                parse_hazelnut_scope(raw_scope).ok_or_else(|| {
+                    "Remote scope must be one of: example, workspace-shared, all-shared, personal."
+                        .to_string()
+                })?
+            } else {
+                codex_client::HazelnutScope::Example
+            };
+            Ok(Some(ChatSkillsComposerIntent::RemoteList { scope }))
+        }
+        Some("remote") if words.get(2).map(String::as_str) == Some("export") => {
+            let Some(query) = words.get(3).cloned() else {
+                return Err("Usage: `/skills remote export <name|id>`.".to_string());
+            };
+            if words.len() != 4 {
+                return Err("Usage: `/skills remote export <name|id>`.".to_string());
+            }
+            Ok(Some(ChatSkillsComposerIntent::RemoteExport { query }))
+        }
+        Some("remote") => Err(
+            "Usage: `/skills remote`, `/skills remote list [scope]`, or `/skills remote export <name|id>`."
+                .to_string(),
+        ),
+        _ => Err(
+            "Skills commands: `/skills`, `/skills refresh`, `/skills use <name>`, `/skills enable <name>`, `/skills disable <name>`, `/skills remote ...`"
+                .to_string(),
+        ),
+    }
+}
+
+fn parse_chat_mcp_intent(prompt: &str) -> Result<Option<ChatMcpComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    let Some(command) = words.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    if command != "/mcp" {
+        return Ok(None);
+    }
+    match words.get(1).map(String::as_str) {
+        None | Some("status") | Some("list") if words.len() <= 2 => {
+            Ok(Some(ChatMcpComposerIntent::Summary))
+        }
+        Some("refresh") if words.len() == 2 => Ok(Some(ChatMcpComposerIntent::Refresh)),
+        Some("reload") if words.len() == 2 => Ok(Some(ChatMcpComposerIntent::Reload)),
+        Some("select") => {
+            let Some(query) = words.get(2).cloned() else {
+                return Err("Usage: `/mcp select <server>`.".to_string());
+            };
+            if words.len() != 3 {
+                return Err("Usage: `/mcp select <server>`.".to_string());
+            }
+            Ok(Some(ChatMcpComposerIntent::Select { query }))
+        }
+        Some("login") if words.len() <= 3 => Ok(Some(ChatMcpComposerIntent::Login {
+            query: words.get(2).cloned(),
+        })),
+        _ => Err(
+            "MCP commands: `/mcp`, `/mcp refresh`, `/mcp reload`, `/mcp select <server>`, `/mcp login [server]`"
+                .to_string(),
+        ),
+    }
+}
+
+fn parse_chat_apps_intent(prompt: &str) -> Result<Option<ChatAppsComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    let Some(command) = words.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    if command != "/apps" && command != "/app" {
+        return Ok(None);
+    }
+    match words.get(1).map(String::as_str) {
+        None | Some("list") if words.len() <= 2 => Ok(Some(ChatAppsComposerIntent::Summary)),
+        Some("refresh") if words.len() == 2 => Ok(Some(ChatAppsComposerIntent::Refresh)),
+        Some("inspect") if words.len() <= 3 => Ok(Some(ChatAppsComposerIntent::Inspect {
+            query: words.get(2).cloned(),
+        })),
+        Some("select") => {
+            let Some(query) = words.get(2).cloned() else {
+                return Err("Usage: `/apps select <name|id>`.".to_string());
+            };
+            if words.len() != 3 {
+                return Err("Usage: `/apps select <name|id>`.".to_string());
+            }
+            Ok(Some(ChatAppsComposerIntent::Select { query }))
+        }
+        _ => Err(
+            "Apps commands: `/apps`, `/apps refresh`, `/apps inspect [name|id]`, `/apps select <name|id>`"
+                .to_string(),
+        ),
+    }
+}
+
+fn parse_chat_request_intent(prompt: &str) -> Result<Option<ChatRequestComposerIntent>, String> {
+    let trimmed = prompt.trim();
+    if trimmed.is_empty() {
+        return Ok(None);
+    }
+    let words = parse_shell_like_words(trimmed)?;
+    let Some(command) = words.first().map(String::as_str) else {
+        return Ok(None);
+    };
+    match command {
+        "/requests" => {
+            if words.len() <= 2 && words.get(1).map(String::as_str).unwrap_or("list") == "list" {
+                Ok(Some(ChatRequestComposerIntent::Summary))
+            } else {
+                Err("Usage: `/requests`.".to_string())
+            }
+        }
+        "/approvals" | "/approval" => match words.get(1).map(String::as_str) {
+            None | Some("list") if words.len() <= 2 => Ok(Some(ChatRequestComposerIntent::Summary)),
+            Some("accept") if words.len() == 2 => Ok(Some(ChatRequestComposerIntent::Approval {
+                decision: ApprovalDecision::Accept,
+                label: "accept",
+            })),
+            Some("session") | Some("accept-session") if words.len() == 2 => {
+                Ok(Some(ChatRequestComposerIntent::Approval {
+                    decision: ApprovalDecision::AcceptForSession,
+                    label: "accept-for-session",
+                }))
+            }
+            Some("decline") if words.len() == 2 => Ok(Some(ChatRequestComposerIntent::Approval {
+                decision: ApprovalDecision::Decline,
+                label: "decline",
+            })),
+            Some("cancel") if words.len() == 2 => Ok(Some(ChatRequestComposerIntent::Approval {
+                decision: ApprovalDecision::Cancel,
+                label: "cancel",
+            })),
+            _ => Err(
+                "Approval commands: `/approvals`, `/approvals accept`, `/approvals session`, `/approvals decline`, `/approvals cancel`"
+                    .to_string(),
+            ),
+        },
+        "/tool" => match words.get(1).map(String::as_str) {
+            Some("respond") if words.len() == 2 => Ok(Some(ChatRequestComposerIntent::ToolCallRespond)),
+            Some("prompt") | Some("input") if words.len() == 2 => {
+                Ok(Some(ChatRequestComposerIntent::ToolUserInputRespond))
+            }
+            Some("prompt") | Some("input")
+                if words.get(2).map(String::as_str) == Some("respond") && words.len() == 3 =>
+            {
+                Ok(Some(ChatRequestComposerIntent::ToolUserInputRespond))
+            }
+            _ => Ok(None),
+        },
+        "/auth" => match words.get(1).map(String::as_str) {
+            Some("respond") if words.len() == 2 => Ok(Some(ChatRequestComposerIntent::AuthRefreshRespond)),
+            Some("refresh") if words.len() == 2 => {
+                Ok(Some(ChatRequestComposerIntent::AuthRefreshRespond))
+            }
+            Some("refresh")
+                if words.get(2).map(String::as_str) == Some("respond") && words.len() == 3 =>
+            {
+                Ok(Some(ChatRequestComposerIntent::AuthRefreshRespond))
+            }
+            _ => Ok(None),
+        },
+        _ => Ok(None),
+    }
+}
+
+fn resolve_discovered_skill_index(
+    state: &crate::app_state::RenderState,
+    query: Option<&str>,
+) -> Result<usize, String> {
+    if let Some(query) = query {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Err("Skill query cannot be empty.".to_string());
+        }
+        let normalized = trimmed.to_ascii_lowercase();
+        let mut fuzzy_matches = Vec::new();
+        for (index, skill) in state.skill_registry.discovered_skills.iter().enumerate() {
+            if skill.name.eq_ignore_ascii_case(trimmed) || skill.path == trimmed {
+                return Ok(index);
+            }
+            let path = skill.path.to_ascii_lowercase();
+            if path.ends_with(&normalized) || path.contains(&normalized) {
+                fuzzy_matches.push(index);
+            }
+        }
+        return match fuzzy_matches.as_slice() {
+            [index] => Ok(*index),
+            [] => Err(format!(
+                "No discovered skill matched `{trimmed}`. Use `/skills refresh` first if the cache is empty."
+            )),
+            matches => Err(format!(
+                "Skill query `{trimmed}` matched multiple entries: {}",
+                matches
+                    .iter()
+                    .filter_map(|index| state.skill_registry.discovered_skills.get(*index))
+                    .map(|skill| skill.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        };
+    }
+    state.skill_registry.selected_skill_index.ok_or_else(|| {
+        "No skill is selected. Use `/skills use <name>` or `/skills inspect <name>`.".to_string()
+    })
+}
+
+fn resolve_remote_skill_index(
+    state: &crate::app_state::RenderState,
+    query: &str,
+) -> Result<usize, String> {
+    let trimmed = query.trim();
+    if trimmed.is_empty() {
+        return Err("Remote skill query cannot be empty.".to_string());
+    }
+    let normalized = trimmed.to_ascii_lowercase();
+    let mut fuzzy_matches = Vec::new();
+    for (index, skill) in state.skill_registry.remote_skills.iter().enumerate() {
+        if skill.id == trimmed || skill.name.eq_ignore_ascii_case(trimmed) {
+            return Ok(index);
+        }
+        let name = skill.name.to_ascii_lowercase();
+        if name.contains(&normalized) {
+            fuzzy_matches.push(index);
+        }
+    }
+    match fuzzy_matches.as_slice() {
+        [index] => Ok(*index),
+        [] => Err(format!(
+            "No cached remote skill matched `{trimmed}`. Use `/skills remote list [scope]` first."
+        )),
+        matches => Err(format!(
+            "Remote skill query `{trimmed}` matched multiple entries: {}",
+            matches
+                .iter()
+                .filter_map(|index| state.skill_registry.remote_skills.get(*index))
+                .map(|skill| skill.name.clone())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )),
+    }
+}
+
+fn resolve_mcp_server_index(
+    state: &crate::app_state::RenderState,
+    query: Option<&str>,
+) -> Result<usize, String> {
+    if let Some(query) = query {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Err("MCP server query cannot be empty.".to_string());
+        }
+        let normalized = trimmed.to_ascii_lowercase();
+        let mut fuzzy_matches = Vec::new();
+        for (index, server) in state.codex_mcp.servers.iter().enumerate() {
+            if server.name.eq_ignore_ascii_case(trimmed) {
+                return Ok(index);
+            }
+            if server.name.to_ascii_lowercase().contains(&normalized) {
+                fuzzy_matches.push(index);
+            }
+        }
+        return match fuzzy_matches.as_slice() {
+            [index] => Ok(*index),
+            [] => Err(format!(
+                "No MCP server matched `{trimmed}`. Use `/mcp refresh` to reload the cache."
+            )),
+            matches => Err(format!(
+                "MCP query `{trimmed}` matched multiple servers: {}",
+                matches
+                    .iter()
+                    .filter_map(|index| state.codex_mcp.servers.get(*index))
+                    .map(|server| server.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        };
+    }
+    state
+        .codex_mcp
+        .selected_server_index
+        .ok_or_else(|| "No MCP server is selected. Use `/mcp select <server>` first.".to_string())
+}
+
+fn resolve_app_index(
+    state: &crate::app_state::RenderState,
+    query: Option<&str>,
+) -> Result<usize, String> {
+    if let Some(query) = query {
+        let trimmed = query.trim();
+        if trimmed.is_empty() {
+            return Err("App query cannot be empty.".to_string());
+        }
+        let normalized = trimmed.to_ascii_lowercase();
+        let mut fuzzy_matches = Vec::new();
+        for (index, app) in state.codex_apps.apps.iter().enumerate() {
+            if app.id == trimmed || app.name.eq_ignore_ascii_case(trimmed) {
+                return Ok(index);
+            }
+            let name = app.name.to_ascii_lowercase();
+            let id = app.id.to_ascii_lowercase();
+            if name.contains(&normalized) || id.contains(&normalized) {
+                fuzzy_matches.push(index);
+            }
+        }
+        return match fuzzy_matches.as_slice() {
+            [index] => Ok(*index),
+            [] => Err(format!(
+                "No cached app matched `{trimmed}`. Use `/apps refresh` to reload connectors."
+            )),
+            matches => Err(format!(
+                "App query `{trimmed}` matched multiple entries: {}",
+                matches
+                    .iter()
+                    .filter_map(|index| state.codex_apps.apps.get(*index))
+                    .map(|app| app.name.clone())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            )),
+        };
+    }
+    state
+        .codex_apps
+        .selected_app_index
+        .ok_or_else(|| "No app is selected. Use `/apps select <name|id>` first.".to_string())
+}
+
+fn format_skills_summary(state: &crate::app_state::RenderState) -> String {
+    let selected = state
+        .skill_registry
+        .selected_skill_index
+        .and_then(|index| state.skill_registry.discovered_skills.get(index))
+        .map(|skill| {
+            format!(
+                "Selected skill: {} [{}] {}",
+                skill.name, skill.scope, skill.path
+            )
+        })
+        .unwrap_or_else(|| "Selected skill: none".to_string());
+    let mut lines = vec![
+        format!(
+            "Local skills: {} discovered, {} discovery errors.",
+            state.skill_registry.discovered_skills.len(),
+            state.skill_registry.discovery_errors.len()
+        ),
+        format!(
+            "Repo root: {}",
+            state
+                .skill_registry
+                .repo_skills_root
+                .as_deref()
+                .unwrap_or("n/a")
+        ),
+        selected,
+        format!(
+            "Remote cache: {} skill(s) in {} scope.",
+            state.skill_registry.remote_skills.len(),
+            hazelnut_scope_label(state.skill_registry.remote_scope)
+        ),
+    ];
+    if let Some(path) = state.skill_registry.last_remote_export_path.as_deref() {
+        lines.push(format!(
+            "Last remote export: {} -> {}",
+            state
+                .skill_registry
+                .last_remote_export_id
+                .as_deref()
+                .unwrap_or("n/a"),
+            path
+        ));
+    }
+    if state.skill_registry.discovered_skills.is_empty() {
+        lines.push("No local skills are cached yet. Use `/skills refresh`.".to_string());
+    } else {
+        lines.push("Cached local skills:".to_string());
+        for skill in state.skill_registry.discovered_skills.iter().take(6) {
+            lines.push(format!(
+                "- {} [{}] scope={} deps={} path={}",
+                skill.name,
+                if skill.enabled { "enabled" } else { "disabled" },
+                skill.scope,
+                skill.dependency_count,
+                skill.path
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+fn format_skill_detail(
+    state: &crate::app_state::RenderState,
+    index: usize,
+) -> Result<String, String> {
+    let Some(skill) = state.skill_registry.discovered_skills.get(index) else {
+        return Err("Selected skill row is no longer valid.".to_string());
+    };
+    Ok(format!(
+        "Skill `{}`\n- status: {}\n- scope: {}\n- deps: {}\n- interface: {}\n- path: {}",
+        skill.name,
+        if skill.enabled { "enabled" } else { "disabled" },
+        skill.scope,
+        skill.dependency_count,
+        skill.interface_display_name.as_deref().unwrap_or("n/a"),
+        skill.path
+    ))
+}
+
+fn format_remote_skills_summary(state: &crate::app_state::RenderState) -> String {
+    let mut lines = vec![format!(
+        "Remote skills cache: {} item(s) in {} scope.",
+        state.skill_registry.remote_skills.len(),
+        hazelnut_scope_label(state.skill_registry.remote_scope)
+    )];
+    if state.skill_registry.remote_skills.is_empty() {
+        lines.push(
+            "No remote skills are cached yet. Use `/skills remote list [scope]`.".to_string(),
+        );
+    } else {
+        for skill in state.skill_registry.remote_skills.iter().take(8) {
+            lines.push(format!(
+                "- {} ({}) {}",
+                skill.name, skill.id, skill.description
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+fn format_mcp_summary(state: &crate::app_state::RenderState) -> String {
+    let authorized = state
+        .codex_mcp
+        .servers
+        .iter()
+        .filter(|server| {
+            let auth = server.auth_status.to_ascii_lowercase();
+            auth.contains("ok")
+                || auth.contains("ready")
+                || auth.contains("authorized")
+                || auth.contains("connected")
+        })
+        .count();
+    let tool_count = state
+        .codex_mcp
+        .servers
+        .iter()
+        .map(|server| server.tool_count)
+        .sum::<usize>();
+    let resource_count = state
+        .codex_mcp
+        .servers
+        .iter()
+        .map(|server| server.resource_count)
+        .sum::<usize>();
+    let template_count = state
+        .codex_mcp
+        .servers
+        .iter()
+        .map(|server| server.template_count)
+        .sum::<usize>();
+    let mut lines = vec![format!(
+        "MCP cache: {} server(s), {} authorized, {} tools, {} resources, {} templates.",
+        state.codex_mcp.servers.len(),
+        authorized,
+        tool_count,
+        resource_count,
+        template_count
+    )];
+    if let Some(index) = state.codex_mcp.selected_server_index
+        && let Some(server) = state.codex_mcp.servers.get(index)
+    {
+        lines.push(format!(
+            "Selected server: {} auth={} tools={} resources={} templates={}",
+            server.name,
+            server.auth_status,
+            server.tool_count,
+            server.resource_count,
+            server.template_count
+        ));
+    }
+    if let Some(result) = state.codex_mcp.last_oauth_result.as_deref() {
+        lines.push(format!("OAuth result: {result}"));
+    }
+    if let Some(url) = state.codex_mcp.last_oauth_url.as_deref() {
+        lines.push(format!("OAuth URL: {}", truncate_line(url, 96)));
+    }
+    if state.codex_mcp.servers.is_empty() {
+        lines.push("No MCP status is cached yet. Use `/mcp refresh`.".to_string());
+    } else {
+        for server in state.codex_mcp.servers.iter().take(6) {
+            lines.push(format!(
+                "- {} auth={} tools={} resources={} templates={}",
+                server.name,
+                server.auth_status,
+                server.tool_count,
+                server.resource_count,
+                server.template_count
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+fn format_apps_summary(state: &crate::app_state::RenderState) -> String {
+    let accessible = state
+        .codex_apps
+        .apps
+        .iter()
+        .filter(|app| app.is_accessible)
+        .count();
+    let enabled = state
+        .codex_apps
+        .apps
+        .iter()
+        .filter(|app| app.is_enabled)
+        .count();
+    let mut lines = vec![format!(
+        "Apps cache: {} connector(s), {} accessible, {} enabled, updates seen={}.",
+        state.codex_apps.apps.len(),
+        accessible,
+        enabled,
+        state.codex_apps.update_count
+    )];
+    if let Some(index) = state.codex_apps.selected_app_index
+        && let Some(app) = state.codex_apps.apps.get(index)
+    {
+        lines.push(format!(
+            "Selected app: {} ({}) accessible={} enabled={} desc={}",
+            app.name,
+            app.id,
+            app.is_accessible,
+            app.is_enabled,
+            app.description.as_deref().unwrap_or("n/a")
+        ));
+    }
+    if state.codex_apps.apps.is_empty() {
+        lines.push("No apps are cached yet. Use `/apps refresh`.".to_string());
+    } else {
+        for app in state.codex_apps.apps.iter().take(8) {
+            lines.push(format!(
+                "- {} ({}) accessible={} enabled={} desc={}",
+                app.name,
+                app.id,
+                app.is_accessible,
+                app.is_enabled,
+                app.description.as_deref().unwrap_or("n/a")
+            ));
+        }
+    }
+    lines.join("\n")
+}
+
+fn format_request_summary(state: &crate::app_state::RenderState) -> String {
+    let mut lines = vec![format!(
+        "Pending requests: command approvals={}, file approvals={}, tool calls={}, tool prompts={}, auth refresh={}.",
+        state.autopilot_chat.pending_command_approvals.len(),
+        state.autopilot_chat.pending_file_change_approvals.len(),
+        state.autopilot_chat.pending_tool_calls.len(),
+        state.autopilot_chat.pending_tool_user_input.len(),
+        state.autopilot_chat.pending_auth_refresh.len()
+    )];
+    if let Some(request) = state.autopilot_chat.pending_command_approvals.first() {
+        lines.push(format!(
+            "Next command approval: turn={} command={} cwd={} reason={}",
+            request.turn_id,
+            request.command.as_deref().unwrap_or("n/a"),
+            request.cwd.as_deref().unwrap_or("n/a"),
+            request.reason.as_deref().unwrap_or("n/a")
+        ));
+    }
+    if let Some(request) = state.autopilot_chat.pending_file_change_approvals.first() {
+        lines.push(format!(
+            "Next file approval: turn={} grant_root={} reason={}",
+            request.turn_id,
+            request.grant_root.as_deref().unwrap_or("n/a"),
+            request.reason.as_deref().unwrap_or("n/a")
+        ));
+    }
+    if let Some(request) = state.autopilot_chat.pending_tool_calls.first() {
+        lines.push(format!(
+            "Next tool call: {} ({})",
+            request.tool, request.call_id
+        ));
+    }
+    if let Some(request) = state.autopilot_chat.pending_tool_user_input.first() {
+        let headers = request
+            .questions
+            .iter()
+            .map(|question| question.header.clone())
+            .collect::<Vec<_>>()
+            .join(", ");
+        lines.push(format!(
+            "Next tool prompt: {} question(s) [{}]",
+            request.questions.len(),
+            headers
+        ));
+    }
+    if let Some(request) = state.autopilot_chat.pending_auth_refresh.first() {
+        lines.push(format!(
+            "Next auth refresh: reason={} account={}",
+            request.reason,
+            request.previous_account_id.as_deref().unwrap_or("n/a")
+        ));
+    }
+    if lines.len() == 1
+        && state.autopilot_chat.pending_command_approvals.is_empty()
+        && state
+            .autopilot_chat
+            .pending_file_change_approvals
+            .is_empty()
+        && state.autopilot_chat.pending_tool_calls.is_empty()
+        && state.autopilot_chat.pending_tool_user_input.is_empty()
+        && state.autopilot_chat.pending_auth_refresh.is_empty()
+    {
+        lines.push("No pending approvals or request-flow prompts.".to_string());
+    } else {
+        lines.push(
+            "Respond with `/approvals accept|session|decline|cancel`, `/tool respond`, `/tool prompt respond`, or `/auth respond`."
+                .to_string(),
+        );
+    }
+    lines.join("\n")
+}
+
+fn append_chat_command_result(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    response: String,
+    is_error: bool,
+) -> bool {
+    state
+        .autopilot_chat
+        .append_local_exchange(prompt, response, is_error);
+    true
+}
+
+fn run_chat_skills_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatSkillsComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    match intent {
+        ChatSkillsComposerIntent::Summary => {
+            append_chat_command_result(state, prompt, format_skills_summary(state), false)
+        }
+        ChatSkillsComposerIntent::Refresh => {
+            super::reducers::run_skill_registry_action(
+                state,
+                crate::pane_system::SkillRegistryPaneAction::DiscoverSkills,
+            );
+            let is_error = state.skill_registry.last_error.is_some();
+            let response = state.skill_registry.last_error.clone().unwrap_or_else(|| {
+                "Queued codex skills/list refresh for the current workspace.".to_string()
+            });
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatSkillsComposerIntent::Inspect { query } => {
+            match resolve_discovered_skill_index(state, query.as_deref()).and_then(|index| {
+                super::reducers::run_skill_registry_action(
+                    state,
+                    crate::pane_system::SkillRegistryPaneAction::SelectRow(index),
+                );
+                format_skill_detail(state, index)
+            }) {
+                Ok(response) => append_chat_command_result(state, prompt, response, false),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatSkillsComposerIntent::Use { query } => {
+            match resolve_discovered_skill_index(state, Some(query.as_str())) {
+                Ok(index) => {
+                    super::reducers::run_skill_registry_action(
+                        state,
+                        crate::pane_system::SkillRegistryPaneAction::SelectRow(index),
+                    );
+                    let response = format_skill_detail(state, index)
+                        .map(|detail| format!("{detail}\n\nNew turns will attach this skill by default until you run `/skills clear`."))
+                        .unwrap_or_else(|error| error);
+                    append_chat_command_result(state, prompt, response, false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatSkillsComposerIntent::Clear => {
+            state.skill_registry.selected_skill_index = None;
+            append_chat_command_result(
+                state,
+                prompt,
+                "Cleared the manually selected skill. Goal-policy and required skills still attach when applicable.".to_string(),
+                false,
+            )
+        }
+        ChatSkillsComposerIntent::SetEnabled { query, enabled } => {
+            match resolve_discovered_skill_index(state, Some(query.as_str())) {
+                Ok(index) => {
+                    let Some(skill) = state.skill_registry.discovered_skills.get(index).cloned()
+                    else {
+                        return append_chat_command_result(
+                            state,
+                            prompt,
+                            "Selected skill row is no longer valid.".to_string(),
+                            true,
+                        );
+                    };
+                    state.skill_registry.selected_skill_index = Some(index);
+                    if skill.enabled == enabled {
+                        return append_chat_command_result(
+                            state,
+                            prompt,
+                            format!(
+                                "Skill `{}` is already {}.",
+                                skill.name,
+                                if enabled { "enabled" } else { "disabled" }
+                            ),
+                            false,
+                        );
+                    }
+                    let path = std::path::PathBuf::from(skill.path.clone());
+                    if !path.is_absolute() {
+                        return append_chat_command_result(
+                            state,
+                            prompt,
+                            format!("Skill path is not absolute: {}", skill.path),
+                            true,
+                        );
+                    }
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Loading;
+                    state.skill_registry.last_error = None;
+                    state.skill_registry.last_action = Some(format!(
+                        "Queued codex skills/config/write for {}",
+                        skill.name
+                    ));
+                    let result = state.queue_codex_command(
+                        crate::codex_lane::CodexLaneCommand::SkillsConfigWrite(
+                            codex_client::SkillsConfigWriteParams { path, enabled },
+                        ),
+                    );
+                    match result {
+                        Ok(command_seq) => append_chat_command_result(
+                            state,
+                            prompt,
+                            format!(
+                                "Queued skills/config/write #{} to {} `{}`. Local skill cache will refresh after Codex applies it.",
+                                command_seq,
+                                if enabled { "enable" } else { "disable" },
+                                skill.name
+                            ),
+                            false,
+                        ),
+                        Err(error) => append_chat_command_result(state, prompt, error, true),
+                    }
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatSkillsComposerIntent::RemoteSummary => {
+            append_chat_command_result(state, prompt, format_remote_skills_summary(state), false)
+        }
+        ChatSkillsComposerIntent::RemoteList { scope } => {
+            state.skill_registry.remote_scope = scope;
+            state.skill_registry.load_state = crate::app_state::PaneLoadState::Loading;
+            state.skill_registry.last_error = None;
+            state.skill_registry.last_action = Some(format!(
+                "Queued skills/remote/list for {}",
+                hazelnut_scope_label(scope)
+            ));
+            match state.queue_codex_command(crate::codex_lane::CodexLaneCommand::SkillsRemoteList(
+                codex_client::SkillsRemoteReadParams {
+                    hazelnut_scope: scope,
+                    product_surface: codex_client::ProductSurface::Codex,
+                    enabled: false,
+                },
+            )) {
+                Ok(command_seq) => append_chat_command_result(
+                    state,
+                    prompt,
+                    format!(
+                        "Queued skills/remote/list #{} for {} scope.",
+                        command_seq,
+                        hazelnut_scope_label(scope)
+                    ),
+                    false,
+                ),
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatSkillsComposerIntent::RemoteExport { query } => {
+            match resolve_remote_skill_index(state, query.as_str()) {
+                Ok(index) => {
+                    let Some(skill) = state.skill_registry.remote_skills.get(index).cloned() else {
+                        return append_chat_command_result(
+                            state,
+                            prompt,
+                            "Selected remote skill is no longer cached.".to_string(),
+                            true,
+                        );
+                    };
+                    state.skill_registry.load_state = crate::app_state::PaneLoadState::Loading;
+                    state.skill_registry.last_error = None;
+                    state.skill_registry.last_action =
+                        Some(format!("Queued skills/remote/export for {}", skill.name));
+                    match state.queue_codex_command(
+                        crate::codex_lane::CodexLaneCommand::SkillsRemoteExport(
+                            codex_client::SkillsRemoteWriteParams {
+                                hazelnut_id: skill.id.clone(),
+                            },
+                        ),
+                    ) {
+                        Ok(command_seq) => append_chat_command_result(
+                            state,
+                            prompt,
+                            format!(
+                                "Queued skills/remote/export #{} for `{}` ({}). Local skills will refresh after the export completes.",
+                                command_seq, skill.name, skill.id
+                            ),
+                            false,
+                        ),
+                        Err(error) => append_chat_command_result(state, prompt, error, true),
+                    }
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+    }
+}
+
+fn run_chat_mcp_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatMcpComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    match intent {
+        ChatMcpComposerIntent::Summary => {
+            append_chat_command_result(state, prompt, format_mcp_summary(state), false)
+        }
+        ChatMcpComposerIntent::Refresh => {
+            run_codex_mcp_action(state, CodexMcpPaneAction::Refresh);
+            let is_error = state.codex_mcp.last_error.is_some();
+            let response = state.codex_mcp.last_error.clone().unwrap_or_else(|| {
+                "Queued mcpServerStatus/list refresh. Use `/mcp` again after Codex responds."
+                    .to_string()
+            });
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatMcpComposerIntent::Reload => {
+            run_codex_mcp_action(state, CodexMcpPaneAction::Reload);
+            let is_error = state.codex_mcp.last_error.is_some();
+            let response = state.codex_mcp.last_error.clone().unwrap_or_else(|| {
+                "Queued MCP config reload. Status will refresh when Codex acknowledges it."
+                    .to_string()
+            });
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatMcpComposerIntent::Select { query } => {
+            match resolve_mcp_server_index(state, Some(query.as_str())) {
+                Ok(index) => {
+                    run_codex_mcp_action(state, CodexMcpPaneAction::SelectRow(index));
+                    append_chat_command_result(state, prompt, format_mcp_summary(state), false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatMcpComposerIntent::Login { query } => {
+            match resolve_mcp_server_index(state, query.as_deref()) {
+                Ok(index) => {
+                    run_codex_mcp_action(state, CodexMcpPaneAction::SelectRow(index));
+                    run_codex_mcp_action(state, CodexMcpPaneAction::LoginSelected);
+                    let is_error = state.codex_mcp.last_error.is_some();
+                    let response = state.codex_mcp.last_error.clone().unwrap_or_else(|| {
+                        let server = state
+                            .codex_mcp
+                            .servers
+                            .get(index)
+                            .map(|entry| entry.name.as_str())
+                            .unwrap_or("selected server");
+                        format!(
+                            "Queued MCP OAuth login for {}. Check `/mcp` for the authorization URL and result.",
+                            server
+                        )
+                    });
+                    append_chat_command_result(state, prompt, response, is_error)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+    }
+}
+
+fn run_chat_apps_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatAppsComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    match intent {
+        ChatAppsComposerIntent::Summary => {
+            append_chat_command_result(state, prompt, format_apps_summary(state), false)
+        }
+        ChatAppsComposerIntent::Refresh => {
+            run_codex_apps_action(state, CodexAppsPaneAction::Refresh);
+            let is_error = state.codex_apps.last_error.is_some();
+            let response = state.codex_apps.last_error.clone().unwrap_or_else(|| {
+                "Queued app/list refresh for the active thread context.".to_string()
+            });
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatAppsComposerIntent::Inspect { query } => {
+            match resolve_app_index(state, query.as_deref()) {
+                Ok(index) => {
+                    run_codex_apps_action(state, CodexAppsPaneAction::SelectRow(index));
+                    append_chat_command_result(state, prompt, format_apps_summary(state), false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+        ChatAppsComposerIntent::Select { query } => {
+            match resolve_app_index(state, Some(query.as_str())) {
+                Ok(index) => {
+                    run_codex_apps_action(state, CodexAppsPaneAction::SelectRow(index));
+                    append_chat_command_result(state, prompt, format_apps_summary(state), false)
+                }
+                Err(error) => append_chat_command_result(state, prompt, error, true),
+            }
+        }
+    }
+}
+
+fn run_chat_request_action(
+    state: &mut crate::app_state::RenderState,
+    prompt: String,
+    intent: ChatRequestComposerIntent,
+) -> bool {
+    remember_chat_command_prompt(state, &prompt);
+    clear_chat_command_prompt(state);
+
+    match intent {
+        ChatRequestComposerIntent::Summary => {
+            append_chat_command_result(state, prompt, format_request_summary(state), false)
+        }
+        ChatRequestComposerIntent::Approval { decision, label } => {
+            let had_requests = !state.autopilot_chat.pending_command_approvals.is_empty()
+                || !state
+                    .autopilot_chat
+                    .pending_file_change_approvals
+                    .is_empty();
+            run_chat_approval_response_action(state, decision);
+            let is_error = state.autopilot_chat.last_error.is_some();
+            let response = if is_error {
+                state
+                    .autopilot_chat
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Approval response failed".to_string())
+            } else if had_requests {
+                format!("Submitted the next pending approval response: {label}.")
+            } else {
+                "No pending approval requests".to_string()
+            };
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatRequestComposerIntent::ToolCallRespond => {
+            let had_requests = !state.autopilot_chat.pending_tool_calls.is_empty();
+            run_chat_tool_call_response_action(state);
+            let is_error = state.autopilot_chat.last_error.is_some();
+            let response = if is_error {
+                state
+                    .autopilot_chat
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Tool-call response failed".to_string())
+            } else if had_requests {
+                "Submitted the next pending tool-call response.".to_string()
+            } else {
+                "No pending tool calls".to_string()
+            };
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatRequestComposerIntent::ToolUserInputRespond => {
+            let had_requests = !state.autopilot_chat.pending_tool_user_input.is_empty();
+            run_chat_tool_user_input_response_action(state);
+            let is_error = state.autopilot_chat.last_error.is_some();
+            let response = if is_error {
+                state
+                    .autopilot_chat
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Tool user-input response failed".to_string())
+            } else if had_requests {
+                "Submitted answers for the next pending tool user-input request.".to_string()
+            } else {
+                "No pending tool user-input requests".to_string()
+            };
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+        ChatRequestComposerIntent::AuthRefreshRespond => {
+            let had_requests = !state.autopilot_chat.pending_auth_refresh.is_empty();
+            run_chat_auth_refresh_response_action(state);
+            let is_error = state.autopilot_chat.last_error.is_some();
+            let response = if is_error {
+                state
+                    .autopilot_chat
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Auth-refresh response failed".to_string())
+            } else if had_requests {
+                "Submitted the next pending auth-refresh response.".to_string()
+            } else {
+                "No pending auth refresh requests".to_string()
+            };
+            append_chat_command_result(state, prompt, response, is_error)
+        }
+    }
 }
 
 fn active_terminal_thread_id(state: &crate::app_state::RenderState) -> Result<String, String> {
@@ -10793,18 +11999,21 @@ pub(super) fn parse_non_negative_amount_str(raw: &str, label: &str) -> Result<u6
 #[cfg(test)]
 mod tests {
     use super::{
-        ChatGitComposerIntent, ChatSpacetimeComposerIntent, ChatTerminalComposerIntent,
-        ChatWalletComposerIntent, ChatWalletMessagePayload, DirectMessageComposerIntent,
-        ManagedChatComposerIntent, build_direct_message_outbound_message,
-        build_managed_chat_join_request_event, build_managed_chat_leave_request_event,
-        build_managed_chat_moderation_event, build_managed_chat_outbound_message,
-        build_managed_chat_reaction_event, build_nip90_request_event_for_network_submission,
-        chat_wallet_payment_status_summary, classify_provider_failure, default_pr_base_branch,
-        extract_chat_wallet_payload, extract_target_provider_pubkeys, git_common_worktree_root,
-        git_current_branch, git_local_branch_exists, github_compare_url,
-        is_taxonomy_failure_detail, loop_integrity_alert_specs,
-        nip90_request_kind_for_request_type, parse_chat_git_intent, parse_chat_spacetime_intent,
-        parse_chat_terminal_intent, parse_chat_wallet_intent, parse_direct_message_creation_intent,
+        ChatAppsComposerIntent, ChatGitComposerIntent, ChatMcpComposerIntent,
+        ChatRequestComposerIntent, ChatSkillsComposerIntent, ChatSpacetimeComposerIntent,
+        ChatTerminalComposerIntent, ChatWalletComposerIntent, ChatWalletMessagePayload,
+        DirectMessageComposerIntent, ManagedChatComposerIntent,
+        build_direct_message_outbound_message, build_managed_chat_join_request_event,
+        build_managed_chat_leave_request_event, build_managed_chat_moderation_event,
+        build_managed_chat_outbound_message, build_managed_chat_reaction_event,
+        build_nip90_request_event_for_network_submission, chat_wallet_payment_status_summary,
+        classify_provider_failure, default_pr_base_branch, extract_chat_wallet_payload,
+        extract_target_provider_pubkeys, git_common_worktree_root, git_current_branch,
+        git_local_branch_exists, github_compare_url, is_taxonomy_failure_detail,
+        loop_integrity_alert_specs, nip90_request_kind_for_request_type, parse_chat_apps_intent,
+        parse_chat_git_intent, parse_chat_mcp_intent, parse_chat_request_intent,
+        parse_chat_skills_intent, parse_chat_spacetime_intent, parse_chat_terminal_intent,
+        parse_chat_wallet_intent, parse_direct_message_creation_intent,
         parse_direct_message_room_intent, parse_managed_chat_composer_intent,
         parse_managed_chat_mention_prefix, resolve_wallet_blink_env_from_secure_values,
         resolve_wallet_settlement_pointer_for_open_network_job,
@@ -11658,6 +12867,75 @@ mod tests {
             Some(ChatTerminalComposerIntent::CleanClosed)
         );
         assert!(parse_chat_terminal_intent("/term resize 140").is_err());
+    }
+
+    #[test]
+    fn chat_skills_commands_parse_local_and_remote_workflows() {
+        assert_eq!(
+            parse_chat_skills_intent("/skills").unwrap(),
+            Some(ChatSkillsComposerIntent::Summary)
+        );
+        assert_eq!(
+            parse_chat_skills_intent("/skills use blink").unwrap(),
+            Some(ChatSkillsComposerIntent::Use {
+                query: "blink".to_string(),
+            })
+        );
+        assert_eq!(
+            parse_chat_skills_intent("/skills disable skills/blink").unwrap(),
+            Some(ChatSkillsComposerIntent::SetEnabled {
+                query: "skills/blink".to_string(),
+                enabled: false,
+            })
+        );
+        assert_eq!(
+            parse_chat_skills_intent("/skills remote list personal").unwrap(),
+            Some(ChatSkillsComposerIntent::RemoteList {
+                scope: codex_client::HazelnutScope::Personal,
+            })
+        );
+        assert_eq!(
+            parse_chat_skills_intent("/skills remote export hazelnut-1").unwrap(),
+            Some(ChatSkillsComposerIntent::RemoteExport {
+                query: "hazelnut-1".to_string(),
+            })
+        );
+        assert!(parse_chat_skills_intent("/skills remote list nope").is_err());
+    }
+
+    #[test]
+    fn chat_codex_operator_commands_parse_mcp_apps_and_requests() {
+        assert_eq!(
+            parse_chat_mcp_intent("/mcp login github").unwrap(),
+            Some(ChatMcpComposerIntent::Login {
+                query: Some("github".to_string()),
+            })
+        );
+        assert_eq!(
+            parse_chat_apps_intent("/apps select GitHub").unwrap(),
+            Some(ChatAppsComposerIntent::Select {
+                query: "GitHub".to_string(),
+            })
+        );
+        assert!(matches!(
+            parse_chat_request_intent("/requests").unwrap(),
+            Some(ChatRequestComposerIntent::Summary)
+        ));
+        assert!(matches!(
+            parse_chat_request_intent("/approvals session").unwrap(),
+            Some(ChatRequestComposerIntent::Approval {
+                label: "accept-for-session",
+                ..
+            })
+        ));
+        assert!(matches!(
+            parse_chat_request_intent("/tool prompt respond").unwrap(),
+            Some(ChatRequestComposerIntent::ToolUserInputRespond)
+        ));
+        assert!(matches!(
+            parse_chat_request_intent("/auth respond").unwrap(),
+            Some(ChatRequestComposerIntent::AuthRefreshRespond)
+        ));
     }
 
     #[test]

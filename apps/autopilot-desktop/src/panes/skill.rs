@@ -108,12 +108,41 @@ pub fn paint_skill_registry_pane(
         "Repo skills root",
         pane_state.repo_skills_root.as_deref().unwrap_or("n/a"),
     );
-    let _ = paint_label_line(
+    y = paint_label_line(
         paint,
         content_bounds.origin.x + 12.0,
         y,
         "Discovered skills",
         &pane_state.discovered_skills.len().to_string(),
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote scope",
+        match pane_state.remote_scope {
+            codex_client::HazelnutScope::Example => "example",
+            codex_client::HazelnutScope::WorkspaceShared => "workspace-shared",
+            codex_client::HazelnutScope::AllShared => "all-shared",
+            codex_client::HazelnutScope::Personal => "personal",
+        },
+    );
+    y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Remote skills",
+        &pane_state.remote_skills.len().to_string(),
+    );
+    let _ = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        y,
+        "Last export",
+        pane_state
+            .last_remote_export_path
+            .as_deref()
+            .unwrap_or("n/a"),
     );
 
     let visible_rows = skill_registry_visible_row_count(pane_state.discovered_skills.len());
@@ -172,6 +201,11 @@ pub fn paint_skill_registry_pane(
             "Selected",
             &selected_details,
         );
+    }
+
+    for remote in pane_state.remote_skills.iter().take(3) {
+        let detail = format!("{} ({}) {}", remote.name, remote.id, remote.description);
+        y = paint_multiline_phrase(paint, content_bounds.origin.x + 12.0, y, "remote", &detail);
     }
 
     for error in pane_state.discovery_errors.iter().take(4) {
