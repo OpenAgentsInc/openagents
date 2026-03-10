@@ -24,7 +24,8 @@
 > `#3310` in `ac9dd2285`, after opening `PSI-202` through `PSI-205` as
 > `#3311` through `#3314` for the coordinator-authority multi-subnet follow-on
 > queue, after landing `PSI-202` / `#3311` in `1e65c56c9`, after landing
-> `PSI-203` / `#3312` in `ddc092cbb`, and after checking live
+> `PSI-203` / `#3312` in `ddc092cbb`, after landing `PSI-204` / `#3313` in
+> `313fbdc25`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -124,7 +125,7 @@ As of 2026-03-10, the current issue reality is:
   - the next follow-on queue is now open for coordinator-authority multi-subnet work
     - `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) is landed on `main`
     - `PSI-203` / [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) is landed on `main`
-    - `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) is open
+    - `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) is landed on `main`
     - `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) is open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
@@ -300,6 +301,13 @@ on:
     and an authoritative-state guard that refuses conflicting
     `LeadershipReconciled` events instead of silently switching coordinators in
     one term
+- `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313)
+  - landed in `313fbdc25`
+  - current clustered execution evidence now carries coordinator term, commit
+    index, fence token, and authority digest truth through `psionic-runtime`,
+    `psionic-cluster`, and `psionic-provider`, while sharded and whole-request
+    schedules now attach authority digests so stale coordinators cannot present
+    current commit authority implicitly after failover
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -526,9 +534,9 @@ Required outcome:
 ### Coordinator authority and failover follow-on
 
 Tracked by landed `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311),
-landed `PSI-203` / [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312), and
-open `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313)
-through open `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314).
+landed `PSI-203` / [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312),
+landed `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313), and
+open `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314).
 
 Current truth:
 
@@ -538,16 +546,16 @@ Current truth:
   leadership records, effective-versus-stale coordinator queries, stable
   stale-leader diagnostics, reusable election-term vote ledger, and same-term
   split-brain refusal on `main`
-- failover fencing and operator validation drills for coordinator turnover are
-  still not closed on `main`
+- clustered execution evidence now also carries coordinator term, commit index,
+  fence token, and authority digest truth on `main`
+- operator validation drills for fenced coordinator turnover are still not
+  closed on `main`
 - that means wider operator-managed clusters still depend on implicit
   coordinator turnover assumptions that should become machine-checkable before
   any stronger multi-subnet claim
 
 Required outcome:
 
-- surface failover fencing or commit-authority truth so stale coordinators
-  cannot keep looking current after turnover
 - extend the runbook and validation matrix so multi-subnet coordinator claims
   remain evidence-backed
 
@@ -644,7 +652,7 @@ clusters now that manifest, recovery, dial-health, and rotation truth exist on
 | --- | --- | --- | --- | --- | --- |
 | `PSI-202` | [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) | Closed | Add coordinator lease policy and stale-leader diagnostics | `psionic-cluster`, ordered-state/tests/docs | Landed in `1e65c56c9`: coordinator leadership now carries explicit lease policy and heartbeat ticks, `ClusterState` exposes effective-versus-stale leadership queries plus stale-leader diagnostics, snapshot digests now reflect lease turnover, and the operator runbook now has a coordinator lease drill. |
 | `PSI-203` | [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) | Closed | Add vote ledger and split-brain refusal semantics | `psionic-cluster`, ordered-state/tests | Landed in `ddc092cbb`: Psionic now has a reusable multi-term election ledger, deterministic refusal of conflicting vote grants and conflicting same-term leader heartbeats, and an authoritative-state guard that rejects conflicting same-term `LeadershipReconciled` events instead of silently changing leaders. |
-| `PSI-204` | [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) | Open | Add failover fencing tokens and commit authority truth | `psionic-cluster`, `psionic-runtime`, `psionic-provider`, docs | Once coordinators can expire or change, stale coordinators need a fencing token and explicit authority truth so recovery and scheduling evidence stay honest across turnover. |
+| `PSI-204` | [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) | Closed | Add failover fencing tokens and commit authority truth | `psionic-cluster`, `psionic-runtime`, `psionic-provider`, docs | Landed in `313fbdc25`: Psionic now derives stable coordinator fence tokens and authority digests from ordered leadership truth, threads commit-authority evidence through runtime/provider execution context, and attaches authority digests to whole-request and sharded schedules so stale coordinators cannot look current after failover. |
 | `PSI-205` | [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) | Open | Add coordinator failover validation drills and runbook gates | docs/tests/validation plus cluster crates | The next multi-subnet tranche should only widen coordinator claims if stale-leader, split-brain, and fenced-failover drills are repeatable and operator-visible. |
 
 ## Recommended Order
@@ -656,7 +664,6 @@ The shortest honest path from today's `main` is:
 2. Treat D1 as landed on `main`, with the operator-managed multi-subnet follow-
    on queue closing in `ac9dd2285`.
 3. Work the remaining D2 queue in dependency order:
-   [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) ->
    [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314).
 4. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
