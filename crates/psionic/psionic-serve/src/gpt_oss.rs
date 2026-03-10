@@ -5574,8 +5574,17 @@ impl GptOssCudaModelInner {
                     .copy_from_slice(cache_layer_key.as_slice());
                 cache_value[cache_offset..cache_offset + kv_width].copy_from_slice(v.as_slice());
 
+                let use_fused_hybrid_ffn_prep = hybrid_selected4_plan.is_some()
+                    && layer.attention_output_weight.storage.is_some()
+                    && layer.feed_forward_router_weight_transposed_device.is_some()
+                    && layer.feed_forward_norm_device.is_some()
+                    && layer.feed_forward_gate_up_experts_weight.host.is_some()
+                    && layer.feed_forward_down_experts_weight.host.is_some()
+                    && self.family_metadata.expert_used_count == Some(4)
+                    && can_use_q8_1_norm_fusion(hidden_size);
                 let attention_output_start = Instant::now();
                 let mut attention_out = Vec::new();
+                let mut attention_output_device_ready = false;
                 if let (Some(cuda_cache), Some(plan), Some(cache_write_index)) = (
                     cuda_cache.as_deref_mut(),
                     hybrid_selected4_plan.as_mut(),
@@ -5661,19 +5670,23 @@ impl GptOssCudaModelInner {
                         .kernel_launches
                         .saturating_add(report.encoded_operations);
                     if layer.attention_output_weight.storage.is_some() {
-                        attention_out = plan
-                            .output_buffer
-                            .read_f32_at_offset(0, layer.attention_output_weight.rows)
-                            .map_err(ReferenceTextGenerationError::Runtime)?;
-                        perf.cuda.device_to_host_bytes =
-                            perf.cuda.device_to_host_bytes.saturating_add(
-                                layer
-                                    .attention_output_weight
-                                    .rows
-                                    .saturating_mul(std::mem::size_of::<f32>())
-                                    .try_into()
-                                    .unwrap_or(u64::MAX),
-                            );
+                        if use_fused_hybrid_ffn_prep {
+                            attention_output_device_ready = true;
+                        } else {
+                            attention_out = plan
+                                .output_buffer
+                                .read_f32_at_offset(0, layer.attention_output_weight.rows)
+                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                            perf.cuda.device_to_host_bytes =
+                                perf.cuda.device_to_host_bytes.saturating_add(
+                                    layer
+                                        .attention_output_weight
+                                        .rows
+                                        .saturating_mul(std::mem::size_of::<f32>())
+                                        .try_into()
+                                        .unwrap_or(u64::MAX),
+                                );
+                        }
                     } else {
                         let attention = plan
                             .attention_input_buffer
@@ -5719,20 +5732,54 @@ impl GptOssCudaModelInner {
                         hybrid_selected4_plan.as_mut(),
                         layer.attention_output_weight.storage.as_ref(),
                     ) {
-                        let result = cuda_quantized_matvec_with_reused_buffers(
-                            backend,
-                            storage,
-                            0,
-                            layer.attention_output_weight.mode,
-                            layer.attention_output_weight.rows,
-                            layer.attention_output_weight.columns,
-                            attention.as_slice(),
-                            &mut plan.attention_input_host_buffer,
-                            &plan.attention_input_buffer,
-                            &plan.output_buffer,
-                        )?;
-                        attention_out = result.values;
-                        result.stats
+                        if use_fused_hybrid_ffn_prep {
+                            plan.attention_input_host_buffer
+                                .write_f32(attention.as_slice())
+                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                            let mut submission = backend.begin_submission()?;
+                            submission.copy_host_to_device(
+                                &plan.attention_input_host_buffer,
+                                &plan.attention_input_buffer,
+                            )?;
+                            submission.quantized_matvec(
+                                storage,
+                                0,
+                                layer.attention_output_weight.mode,
+                                layer.attention_output_weight.rows,
+                                layer.attention_output_weight.columns,
+                                &plan.attention_input_buffer,
+                                &plan.output_buffer,
+                            )?;
+                            let report = submission
+                                .commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                            attention_output_device_ready = true;
+                            CudaQuantizedMatvecStats {
+                                host_to_device_bytes: attention
+                                    .len()
+                                    .saturating_mul(std::mem::size_of::<f32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                                device_to_host_bytes: 0,
+                                submission_count: 1,
+                                sync_count: 1,
+                                kernel_launches: report.encoded_operations,
+                            }
+                        } else {
+                            let result = cuda_quantized_matvec_with_reused_buffers(
+                                backend,
+                                storage,
+                                0,
+                                layer.attention_output_weight.mode,
+                                layer.attention_output_weight.rows,
+                                layer.attention_output_weight.columns,
+                                attention.as_slice(),
+                                &mut plan.attention_input_host_buffer,
+                                &plan.attention_input_buffer,
+                                &plan.output_buffer,
+                            )?;
+                            attention_out = result.values;
+                            result.stats
+                        }
                     } else {
                         layer.attention_output_weight.matvec_profiled(
                             backend,
@@ -5742,121 +5789,243 @@ impl GptOssCudaModelInner {
                     };
                     accumulate_cuda_matvec_stats(&mut perf, &attention_out_stats);
                 }
-                if let Some(bias) = layer.attention_output_bias.as_ref() {
-                    add_bias_in_place(&mut attention_out, bias.as_slice());
+                if !attention_output_device_ready {
+                    if let Some(bias) = layer.attention_output_bias.as_ref() {
+                        add_bias_in_place(&mut attention_out, bias.as_slice());
+                    }
                 }
                 perf.stage_timings.attention_output_projection_ns = perf
                     .stage_timings
                     .attention_output_projection_ns
                     .saturating_add(duration_ns(attention_output_start));
-                hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
-
-                let ffn_residual = hidden.clone();
-                let feed_forward_norm_start = Instant::now();
-                let ffn_input = rms_norm(
-                    hidden.as_slice(),
-                    layer.feed_forward_norm.as_slice(),
-                    self.family_metadata.rms_norm_epsilon,
-                );
-                perf.stage_timings.feed_forward_norm_ns = perf
-                    .stage_timings
-                    .feed_forward_norm_ns
-                    .saturating_add(duration_ns(feed_forward_norm_start));
+                let mut ffn_residual = Vec::new();
+                let ffn_input = if attention_output_device_ready {
+                    Vec::new()
+                } else {
+                    hidden = add_vectors(attention_out.as_slice(), residual.as_slice())?;
+                    ffn_residual = hidden.clone();
+                    let feed_forward_norm_start = Instant::now();
+                    let ffn_input = rms_norm(
+                        hidden.as_slice(),
+                        layer.feed_forward_norm.as_slice(),
+                        self.family_metadata.rms_norm_epsilon,
+                    );
+                    perf.stage_timings.feed_forward_norm_ns = perf
+                        .stage_timings
+                        .feed_forward_norm_ns
+                        .saturating_add(duration_ns(feed_forward_norm_start));
+                    ffn_input
+                };
 
                 let router_start = Instant::now();
                 let selected_count_target = self.family_metadata.expert_used_count.unwrap_or(0);
-                let (selected, mut routing, routing_device_ready) = if let (
-                    Some(plan),
-                    Some(router_transposed),
-                ) = (
-                    hybrid_selected4_plan.as_mut(),
-                    layer.feed_forward_router_weight_transposed_device.as_ref(),
-                ) {
-                    plan.hidden_input_host_buffer
-                        .write_f32(ffn_input.as_slice())
-                        .map_err(ReferenceTextGenerationError::Runtime)?;
-                    let mut submission = backend.begin_submission()?;
-                    submission.copy_host_to_device(
-                        &plan.hidden_input_host_buffer,
-                        &plan.hidden_input_buffer,
-                    )?;
-                    submission.matmul(
-                        &plan.hidden_input_buffer,
-                        router_transposed,
-                        &plan.router_logits_buffer,
-                        1,
-                        layer.feed_forward_router_weight.columns,
-                        layer.feed_forward_router_weight.rows,
-                    )?;
-                    if let Some(bias) = layer.feed_forward_router_bias_device.as_ref() {
-                        submission.add_f32_in_place(
+                let (selected, mut routing, routing_device_ready, hidden_input_q8_1_ready) =
+                    if attention_output_device_ready {
+                        let plan = hybrid_selected4_plan.as_mut().expect("checked above");
+                        let router_transposed = layer
+                            .feed_forward_router_weight_transposed_device
+                            .as_ref()
+                            .expect("checked above");
+                        let feed_forward_norm = layer
+                            .feed_forward_norm_device
+                            .as_ref()
+                            .expect("checked above");
+                        plan.hidden_input_host_buffer
+                            .write_f32(residual.as_slice())
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        let mut submission = backend.begin_submission()?;
+                        submission.copy_host_to_device(
+                            &plan.hidden_input_host_buffer,
+                            &plan.hidden_input_buffer,
+                        )?;
+                        submission.add_residual_rms_norm_q8_1(
+                            &plan.output_buffer,
+                            &plan.hidden_input_buffer,
+                            layer.attention_output_bias_device.as_ref(),
+                            feed_forward_norm,
+                            &plan.output_buffer,
+                            &plan.projected_buffer,
+                            &plan.hidden_input_q8_1_buffer,
+                            hidden_size,
+                            self.family_metadata.rms_norm_epsilon,
+                        )?;
+                        submission.matmul(
+                            &plan.projected_buffer,
+                            router_transposed,
                             &plan.router_logits_buffer,
-                            0,
-                            bias,
+                            1,
+                            layer.feed_forward_router_weight.columns,
                             layer.feed_forward_router_weight.rows,
                         )?;
-                    }
-                    submission.router_topk_delayed_softmax(
-                        &plan.router_logits_buffer,
-                        layer.feed_forward_router_weight.rows,
-                        selected_count_target,
-                        &plan.selected_expert_ids_buffer,
-                        &plan.selected_weights_buffer,
-                    )?;
-                    let report =
-                        submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
-                    plan.selected_expert_ids_scratch = i32_ne_bytes_to_values(
-                        plan.selected_expert_ids_buffer.read_bytes()?.as_slice(),
-                    )
-                    .map_err(ReferenceTextGenerationError::Runtime)?;
-                    let selected = plan
-                        .selected_expert_ids_scratch
-                        .iter()
-                        .copied()
-                        .map(|index| {
-                            usize::try_from(index).map_err(|_| {
+                        if let Some(bias) = layer.feed_forward_router_bias_device.as_ref() {
+                            submission.add_f32_in_place(
+                                &plan.router_logits_buffer,
+                                0,
+                                bias,
+                                layer.feed_forward_router_weight.rows,
+                            )?;
+                        }
+                        submission.router_topk_delayed_softmax(
+                            &plan.router_logits_buffer,
+                            layer.feed_forward_router_weight.rows,
+                            selected_count_target,
+                            &plan.selected_expert_ids_buffer,
+                            &plan.selected_weights_buffer,
+                        )?;
+                        let report =
+                            submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                        ffn_residual = plan
+                            .output_buffer
+                            .read_f32_at_offset(0, hidden_size)
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        plan.selected_expert_ids_scratch = i32_ne_bytes_to_values(
+                            plan.selected_expert_ids_buffer.read_bytes()?.as_slice(),
+                        )
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                        let selected = plan
+                            .selected_expert_ids_scratch
+                            .iter()
+                            .copied()
+                            .map(|index| {
+                                usize::try_from(index).map_err(|_| {
+                                    ReferenceTextGenerationError::Runtime(
+                                        super::RuntimeError::Backend(format!(
+                                            "cuda router returned negative expert index {index}"
+                                        )),
+                                    )
+                                })
+                            })
+                            .collect::<Result<Vec<_>, _>>()?;
+                        perf.cuda.host_to_device_bytes =
+                            perf.cuda.host_to_device_bytes.saturating_add(
+                                residual
+                                    .len()
+                                    .saturating_mul(std::mem::size_of::<f32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                            );
+                        perf.cuda.device_to_host_bytes =
+                            perf.cuda.device_to_host_bytes.saturating_add(
+                                selected_count_target
+                                    .saturating_mul(std::mem::size_of::<i32>())
+                                    .saturating_add(
+                                        hidden_size.saturating_mul(std::mem::size_of::<f32>()),
+                                    )
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                            );
+                        perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                        perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                        perf.cuda.kernel_launches = perf
+                            .cuda
+                            .kernel_launches
+                            .saturating_add(report.encoded_operations);
+                        let fused_stage_ns = duration_ns(router_start);
+                        let norm_stage_ns = fused_stage_ns / 2;
+                        perf.stage_timings.feed_forward_norm_ns = perf
+                            .stage_timings
+                            .feed_forward_norm_ns
+                            .saturating_add(norm_stage_ns);
+                        perf.stage_timings.router_ns = perf
+                            .stage_timings
+                            .router_ns
+                            .saturating_add(fused_stage_ns.saturating_sub(norm_stage_ns));
+                        (selected, Vec::new(), true, true)
+                    } else if let (Some(plan), Some(router_transposed)) = (
+                        hybrid_selected4_plan.as_mut(),
+                        layer.feed_forward_router_weight_transposed_device.as_ref(),
+                    ) {
+                        plan.hidden_input_host_buffer
+                            .write_f32(ffn_input.as_slice())
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        let mut submission = backend.begin_submission()?;
+                        submission.copy_host_to_device(
+                            &plan.hidden_input_host_buffer,
+                            &plan.hidden_input_buffer,
+                        )?;
+                        submission.matmul(
+                            &plan.hidden_input_buffer,
+                            router_transposed,
+                            &plan.router_logits_buffer,
+                            1,
+                            layer.feed_forward_router_weight.columns,
+                            layer.feed_forward_router_weight.rows,
+                        )?;
+                        if let Some(bias) = layer.feed_forward_router_bias_device.as_ref() {
+                            submission.add_f32_in_place(
+                                &plan.router_logits_buffer,
+                                0,
+                                bias,
+                                layer.feed_forward_router_weight.rows,
+                            )?;
+                        }
+                        submission.router_topk_delayed_softmax(
+                            &plan.router_logits_buffer,
+                            layer.feed_forward_router_weight.rows,
+                            selected_count_target,
+                            &plan.selected_expert_ids_buffer,
+                            &plan.selected_weights_buffer,
+                        )?;
+                        let report =
+                            submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                        plan.selected_expert_ids_scratch = i32_ne_bytes_to_values(
+                            plan.selected_expert_ids_buffer.read_bytes()?.as_slice(),
+                        )
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                        let selected =
+                            plan.selected_expert_ids_scratch
+                                .iter()
+                                .copied()
+                                .map(|index| {
+                                    usize::try_from(index).map_err(|_| {
                                 ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
                                     format!("cuda router returned negative expert index {index}",),
                                 ))
                             })
-                        })
-                        .collect::<Result<Vec<_>, _>>()?;
-                    perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(
-                        ffn_input
-                            .len()
-                            .saturating_mul(std::mem::size_of::<f32>())
-                            .try_into()
-                            .unwrap_or(u64::MAX),
-                    );
-                    perf.cuda.device_to_host_bytes = perf.cuda.device_to_host_bytes.saturating_add(
-                        selected_count_target
-                            .saturating_mul(std::mem::size_of::<i32>())
-                            .try_into()
-                            .unwrap_or(u64::MAX),
-                    );
-                    perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
-                    perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
-                    perf.cuda.kernel_launches = perf
-                        .cuda
-                        .kernel_launches
-                        .saturating_add(report.encoded_operations);
-                    (selected, Vec::new(), true)
-                } else {
-                    let mut router_logits = Vec::new();
-                    layer
-                        .feed_forward_router_weight
-                        .matvec(ffn_input.as_slice(), &mut router_logits)?;
-                    if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
-                        add_bias_in_place(&mut router_logits, bias.as_slice());
-                    }
-                    let selected = top_k_indices(router_logits.as_slice(), selected_count_target);
-                    let routing = softmax_selected(router_logits.as_slice(), selected.as_slice());
-                    (selected, routing, false)
-                };
-                perf.stage_timings.router_ns = perf
-                    .stage_timings
-                    .router_ns
-                    .saturating_add(duration_ns(router_start));
+                                })
+                                .collect::<Result<Vec<_>, _>>()?;
+                        perf.cuda.host_to_device_bytes =
+                            perf.cuda.host_to_device_bytes.saturating_add(
+                                ffn_input
+                                    .len()
+                                    .saturating_mul(std::mem::size_of::<f32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                            );
+                        perf.cuda.device_to_host_bytes =
+                            perf.cuda.device_to_host_bytes.saturating_add(
+                                selected_count_target
+                                    .saturating_mul(std::mem::size_of::<i32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                            );
+                        perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                        perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                        perf.cuda.kernel_launches = perf
+                            .cuda
+                            .kernel_launches
+                            .saturating_add(report.encoded_operations);
+                        (selected, Vec::new(), true, false)
+                    } else {
+                        let mut router_logits = Vec::new();
+                        layer
+                            .feed_forward_router_weight
+                            .matvec(ffn_input.as_slice(), &mut router_logits)?;
+                        if let Some(bias) = layer.feed_forward_router_bias.as_ref() {
+                            add_bias_in_place(&mut router_logits, bias.as_slice());
+                        }
+                        let selected =
+                            top_k_indices(router_logits.as_slice(), selected_count_target);
+                        let routing =
+                            softmax_selected(router_logits.as_slice(), selected.as_slice());
+                        (selected, routing, false, false)
+                    };
+                if !attention_output_device_ready {
+                    perf.stage_timings.router_ns = perf
+                        .stage_timings
+                        .router_ns
+                        .saturating_add(duration_ns(router_start));
+                }
 
                 let mut moe_out = vec![0.0; hidden_size];
                 let mut used_staged_selected4_cuda_path = false;
@@ -6259,12 +6428,14 @@ impl GptOssCudaModelInner {
                                         submission.copy_host_to_device(host, device)?;
                                     }
                                 }
-                                submission.quantize_f32_to_q8_1(
-                                    &plan.hidden_input_buffer,
-                                    1,
-                                    ffn_input.len(),
-                                    &plan.hidden_input_q8_1_buffer,
-                                )?;
+                                if !hidden_input_q8_1_ready {
+                                    submission.quantize_f32_to_q8_1(
+                                        &plan.hidden_input_buffer,
+                                        1,
+                                        ffn_input.len(),
+                                        &plan.hidden_input_q8_1_buffer,
+                                    )?;
+                                }
                                 submission.moe_gate_up_swiglu_q8_1_selected4_quantized(
                                     gate_up_weights_device,
                                     layer.feed_forward_gate_up_experts_weight.mode,
@@ -12288,11 +12459,18 @@ mod tests {
         };
 
         let mut metal = MetalGgufGptOssTextGenerationService::from_gguf_path(&path)?;
-        let (prompt_only, prompt_only_wall) =
-            run_real_metal_text_request(&mut metal, "real-metal-short-text-prompt-only", "Hello", 0)?;
+        let (prompt_only, prompt_only_wall) = run_real_metal_text_request(
+            &mut metal,
+            "real-metal-short-text-prompt-only",
+            "Hello",
+            0,
+        )?;
         let (prompt_plus_one, prompt_plus_one_wall) =
             run_real_metal_text_request(&mut metal, "real-metal-short-text-plus-one", "Hello", 1)?;
-        let prompt_ns = prompt_only.metrics.prompt_eval_duration_ns.unwrap_or_default();
+        let prompt_ns = prompt_only
+            .metrics
+            .prompt_eval_duration_ns
+            .unwrap_or_default();
         let prompt_tps = if prompt_ns == 0 {
             0.0
         } else {
