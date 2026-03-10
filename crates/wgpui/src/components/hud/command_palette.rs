@@ -272,7 +272,11 @@ impl CommandPalette {
             .saturating_sub(self.max_visible_items) as isize;
         let mut row_delta = (delta_pixels / self.item_height.max(1.0)).round() as isize;
         if row_delta == 0 {
-            row_delta = if delta_pixels.is_sign_positive() { 1 } else { -1 };
+            row_delta = if delta_pixels.is_sign_positive() {
+                1
+            } else {
+                -1
+            };
         }
 
         let next_offset = (self.scroll_offset as isize + row_delta).clamp(0, max_scroll) as usize;

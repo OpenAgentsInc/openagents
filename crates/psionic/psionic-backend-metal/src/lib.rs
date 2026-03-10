@@ -4187,8 +4187,7 @@ fn validate_quantized_matvec_request(
             input.storage_kind()
         )));
     }
-    if output.storage_kind() != BufferStorageKind::DenseF32 || output.spec().dtype() != DType::F32
-    {
+    if output.storage_kind() != BufferStorageKind::DenseF32 || output.spec().dtype() != DType::F32 {
         return Err(RuntimeError::Backend(format!(
             "metal quantized matvec output requires dense f32 storage, actual {:?}",
             output.storage_kind()
@@ -4227,8 +4226,7 @@ fn validate_grouped_quantized_matvec_request(
             input.storage_kind()
         )));
     }
-    if output.storage_kind() != BufferStorageKind::DenseF32 || output.spec().dtype() != DType::F32
-    {
+    if output.storage_kind() != BufferStorageKind::DenseF32 || output.spec().dtype() != DType::F32 {
         return Err(RuntimeError::Backend(format!(
             "metal grouped matvec output requires dense f32 storage, actual {:?}",
             output.storage_kind()
@@ -4246,13 +4244,10 @@ fn validate_grouped_quantized_matvec_request(
             output.spec().storage_size()
         )));
     }
-    let _ = selected_expert_indices(selected_ids, validate_grouped_expert_layout(
-        weights,
-        mode,
-        row_stride,
-        rows_per_expert,
-        columns,
-    )?)?;
+    let _ = selected_expert_indices(
+        selected_ids,
+        validate_grouped_expert_layout(weights, mode, row_stride, rows_per_expert, columns)?,
+    )?;
     Ok(())
 }
 

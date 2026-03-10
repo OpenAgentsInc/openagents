@@ -11,10 +11,10 @@ use crate::app_state::{
 };
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
-    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_thread_row_bounds,
-    chat_composer_height_for_value, chat_composer_input_bounds_with_height,
-    chat_send_button_bounds, chat_thread_rail_bounds, chat_transcript_body_bounds_with_height,
-    chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
+    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_composer_height_for_value,
+    chat_composer_input_bounds_with_height, chat_send_button_bounds, chat_thread_rail_bounds,
+    chat_thread_row_bounds, chat_transcript_body_bounds_with_height, chat_transcript_bounds,
+    chat_workspace_rail_bounds, pane_content_bounds,
 };
 
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
@@ -1887,26 +1887,26 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
             .iter()
             .take(CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT)
             .map(|thread_id| {
-        let metadata = autopilot_chat.thread_metadata.get(thread_id);
-        let title = metadata
-            .and_then(|value| value.thread_name.as_ref())
-            .map(|name| compact_shell_label(name))
-            .unwrap_or_else(|| compact_shell_label(thread_id));
-        let subtitle = metadata
-            .and_then(|value| value.status.as_ref())
-            .map(|status| status.trim().to_ascii_lowercase())
-            .filter(|status| !status.is_empty())
-            .unwrap_or_else(|| "thread".to_string());
-        ChatShellChannelEntry {
-            title: format!("# {title}"),
-            subtitle,
-            active: autopilot_chat.active_thread_id.as_deref() == Some(thread_id.as_str()),
-            is_category: false,
-            collapsed: false,
-            badge_count: 0,
-            badge_urgent: false,
-        }
-    }),
+                let metadata = autopilot_chat.thread_metadata.get(thread_id);
+                let title = metadata
+                    .and_then(|value| value.thread_name.as_ref())
+                    .map(|name| compact_shell_label(name))
+                    .unwrap_or_else(|| compact_shell_label(thread_id));
+                let subtitle = metadata
+                    .and_then(|value| value.status.as_ref())
+                    .map(|status| status.trim().to_ascii_lowercase())
+                    .filter(|status| !status.is_empty())
+                    .unwrap_or_else(|| "thread".to_string());
+                ChatShellChannelEntry {
+                    title: format!("# {title}"),
+                    subtitle,
+                    active: autopilot_chat.active_thread_id.as_deref() == Some(thread_id.as_str()),
+                    is_category: false,
+                    collapsed: false,
+                    badge_count: 0,
+                    badge_urgent: false,
+                }
+            }),
     );
 
     entries.push(ChatShellChannelEntry {
@@ -2051,7 +2051,10 @@ fn paint_chat_shell(
         15.0,
         theme::text::PRIMARY,
     ));
-    for (index, entry) in shell_channel_entries(autopilot_chat).into_iter().enumerate() {
+    for (index, entry) in shell_channel_entries(autopilot_chat)
+        .into_iter()
+        .enumerate()
+    {
         let row_bounds = chat_thread_row_bounds(content_bounds, index);
         let background = if entry.is_category {
             theme::bg::APP.with_alpha(0.08)
