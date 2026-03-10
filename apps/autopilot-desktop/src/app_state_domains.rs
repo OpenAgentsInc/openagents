@@ -425,6 +425,10 @@ pub struct SkillRegistryPaneState {
     pub discovered_skills: Vec<SkillRegistryDiscoveredSkill>,
     pub discovery_errors: Vec<String>,
     pub selected_skill_index: Option<usize>,
+    pub remote_scope: codex_client::HazelnutScope,
+    pub remote_skills: Vec<SkillRegistryRemoteSkill>,
+    pub last_remote_export_id: Option<String>,
+    pub last_remote_export_path: Option<String>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -435,6 +439,13 @@ pub struct SkillRegistryDiscoveredSkill {
     pub enabled: bool,
     pub interface_display_name: Option<String>,
     pub dependency_count: usize,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct SkillRegistryRemoteSkill {
+    pub id: String,
+    pub name: String,
+    pub description: String,
 }
 
 impl Default for SkillRegistryPaneState {
@@ -455,6 +466,10 @@ impl Default for SkillRegistryPaneState {
             discovered_skills: Vec::new(),
             discovery_errors: Vec::new(),
             selected_skill_index: None,
+            remote_scope: codex_client::HazelnutScope::Example,
+            remote_skills: Vec::new(),
+            last_remote_export_id: None,
+            last_remote_export_path: None,
         }
     }
 }

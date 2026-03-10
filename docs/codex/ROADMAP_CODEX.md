@@ -178,6 +178,13 @@ than replace:
   desktop state; the chat surface shows that identity in thread rows, status,
   and saved plan/diff artifacts; `Open ws` opens the active project workspace;
   and the desktop keeps a minimal per-project defaults registry for new threads
+- `CX-10` landed on `main`: desktop chat now exposes app-owned `/skills`,
+  `/mcp`, `/apps`, `/requests`, and `/approvals` control flows; remote skills
+  are cached in app state instead of being discarded; MCP/apps summaries and
+  request-queue responses no longer require falling back to Codex TUI panes for
+  the common operator loop; and the chat operator surface now advertises and
+  counts pending approvals, tool prompts, and auth-refresh requests more
+  honestly
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -234,7 +241,7 @@ Status:
 
 Next:
 
-- `CX-10` is now the first open execution item for Codex replacement work
+- `CX-11` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -489,6 +496,18 @@ Acceptance:
 ### Phase D. Integrations And Automation Parity
 
 ### CX-10. Skills, MCP, Apps, And Request-Flow Parity ([#3367](https://github.com/OpenAgentsInc/openagents/issues/3367))
+
+Status:
+
+- shipped on `main`
+- desktop chat now exposes app-owned skills, remote-skill export/list, MCP,
+  apps, and request-flow commands directly in the main coding surface instead
+  of requiring separate Codex panes as the primary operator path
+- remote skills are now retained in desktop state and surfaced in both chat and
+  the skill registry, so `skills/remote/list` and `skills/remote/export` stop
+  being hidden lane capability
+- pending approvals, tool prompts, and auth-refresh requests are now counted
+  and advertised more coherently in the chat shell itself
 
 Scope:
 
