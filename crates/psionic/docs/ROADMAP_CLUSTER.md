@@ -21,7 +21,9 @@
 > operator-managed multi-subnet follow-on queue, after landing `PSI-198` /
 > `#3307` in `011e0452c`, after landing `PSI-199` / `#3308` in `87d428e43`,
 > after landing `PSI-200` / `#3309` in `86a2c920a`, after landing `PSI-201` /
-> `#3310` in `ac9dd2285`, and after checking live
+> `#3310` in `ac9dd2285`, after opening `PSI-202` through `PSI-205` as
+> `#3311` through `#3314` for the coordinator-authority multi-subnet follow-on
+> queue, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -113,12 +115,16 @@ As of 2026-03-10, the current issue reality is:
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
     `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) are landed on `main`
-  - the next follow-on queue is now open for operator-managed multi-subnet work
+  - the first multi-subnet follow-on queue is now landed on `main`
     - `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307) is landed on `main`
     - `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) is landed on `main`
     - `PSI-200` / [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) is landed on `main`
     - `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) is landed on `main`
-  - there are currently no remaining open cluster roadmap issues
+  - the next follow-on queue is now open for coordinator-authority multi-subnet work
+    - `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) is open
+    - `PSI-203` / [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) is open
+    - `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) is open
+    - `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) is open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -503,6 +509,31 @@ Required outcome:
 - keep the operator runbook authoritative for manifest, recovery, dial-health,
   and rotation drills rather than widening trust claims without evidence
 
+### Coordinator authority and failover follow-on
+
+Tracked by open `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311)
+through open `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314).
+
+Current truth:
+
+- operator-managed configured-peer clusters now have manifest, signed recovery,
+  dial-health, and trust-rollout truth
+- `ordered_state` has leadership records and election-message types, but there
+  is still no explicit lease, stale-leader expiry, split-brain refusal, or
+  failover fencing queue on `main`
+- that means wider operator-managed clusters still depend on implicit
+  coordinator freshness assumptions that should become machine-checkable before
+  any stronger multi-subnet claim
+
+Required outcome:
+
+- add explicit coordinator lease and stale-leader truth before failover
+- refuse conflicting authority within one term with stable diagnostics
+- surface failover fencing or commit-authority truth so stale coordinators
+  cannot keep looking current after turnover
+- extend the runbook and validation matrix so multi-subnet coordinator claims
+  remain evidence-backed
+
 ## GitHub-Backed Roadmap Items
 
 Phases C1 through C6 are now all landed on GitHub/main. The local `PSI-*` IDs
@@ -586,6 +617,19 @@ toward a more operationally robust multi-subnet substrate.
 | `PSI-200` | [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) | Closed | Add explicit multi-subnet peer dial policy and health truth | `psionic-cluster`, transport/docs | Landed in `86a2c920a`: Psionic now exposes configured-peer dial policy in the trust surface, tracks per-peer reachability and backoff truth, and validates degraded-to-reachable transitions in transport tests and the runbook. |
 | `PSI-201` | [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) | Closed | Add membership key rotation and rollout diagnostics | `psionic-cluster`, security/docs | Landed in `ac9dd2285`: Psionic now exposes trust-bundle version overlap, previous-key rotation windows, and rollout diagnostics for accepted overlap and stale-bundle refusal, with operator runbook coverage for both rotation and drift detection. |
 
+### Phase D2: coordinator authority and failover follow-on
+
+These issues are the next honest queue for operator-managed multi-subnet
+clusters now that manifest, recovery, dial-health, and rotation truth exist on
+`main`.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-202` | [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) | Open | Add coordinator lease policy and stale-leader diagnostics | `psionic-cluster`, ordered-state/tests/docs | Leadership records exist, but there is still no lease-aware freshness model; this issue makes stale coordinators expire explicitly instead of remaining implicitly authoritative. |
+| `PSI-203` | [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) | Open | Add vote ledger and split-brain refusal semantics | `psionic-cluster`, ordered-state/tests | Election message types already exist; this issue turns conflicting same-term authority into a machine-checkable refusal path instead of an undocumented edge case. |
+| `PSI-204` | [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) | Open | Add failover fencing tokens and commit authority truth | `psionic-cluster`, `psionic-runtime`, `psionic-provider`, docs | Once coordinators can expire or change, stale coordinators need a fencing token and explicit authority truth so recovery and scheduling evidence stay honest across turnover. |
+| `PSI-205` | [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) | Open | Add coordinator failover validation drills and runbook gates | docs/tests/validation plus cluster crates | The next multi-subnet tranche should only widen coordinator claims if stale-leader, split-brain, and fenced-failover drills are repeatable and operator-visible. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -594,17 +638,21 @@ The shortest honest path from today's `main` is:
    scope closing in `d424ab1cf`.
 2. Treat D1 as landed on `main`, with the operator-managed multi-subnet follow-
    on queue closing in `ac9dd2285`.
-3. Keep the active local CUDA throughput queue
+3. Work D2 in dependency order: [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311)
+   -> [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) ->
+   [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) ->
+   [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314).
+4. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-4. Treat closure of that local CUDA lane as the gate for widening cluster
+5. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
-5. Keep current authenticated configured-peer posture explicit and bounded;
+6. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-6. If stronger trust or wider network claims are needed, open a new GitHub-
+7. If stronger trust or wider network claims are needed beyond D2, open a new GitHub-
    backed queue instead of extending this roadmap with local placeholders.
-7. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+8. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
@@ -665,8 +713,8 @@ scope:
 
 - optional Exo interoperability experiments, only after Psionic's own cluster
   substrate is credible
-- operator-configured multi-subnet clusters with configured peers and stronger
-  membership policy
+- adversarial or compute-market trust hardening beyond the operator-managed D1
+  and D2 queues now tracked in this roadmap
 - Apple clustered execution, but only after the native Metal GPT-OSS roadmap is
   complete and cluster placement can express communication-class eligibility
   honestly
