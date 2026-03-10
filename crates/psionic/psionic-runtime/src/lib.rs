@@ -295,6 +295,8 @@ pub enum ClusterExecutionDisposition {
 pub enum ClusterPolicyDigestKind {
     /// Admission or namespace policy.
     Admission,
+    /// Coordinator term, fence, or commit-authority policy.
+    Authority,
     /// Placement and scheduling policy.
     Placement,
     /// Queueing, fairness, cancellation, or backpressure policy.
@@ -325,6 +327,41 @@ impl ClusterPolicyDigest {
         Self {
             kind,
             digest: digest.into(),
+        }
+    }
+}
+
+/// Explicit coordinator authority truth attached to one clustered execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCommitAuthorityEvidence {
+    /// Coordinator node that held commit authority for this clustered decision.
+    pub coordinator_node_id: String,
+    /// Election term that fenced this coordinator authority.
+    pub term: u64,
+    /// Highest committed authoritative event index visible to that coordinator.
+    pub committed_event_index: u64,
+    /// Stable fencing token used to distinguish this coordinator epoch from stale ones.
+    pub fence_token: String,
+    /// Stable digest of the effective coordinator authority record.
+    pub authority_digest: String,
+}
+
+impl ClusterCommitAuthorityEvidence {
+    /// Creates one coordinator-authority evidence record.
+    #[must_use]
+    pub fn new(
+        coordinator_node_id: impl Into<String>,
+        term: u64,
+        committed_event_index: u64,
+        fence_token: impl Into<String>,
+        authority_digest: impl Into<String>,
+    ) -> Self {
+        Self {
+            coordinator_node_id: coordinator_node_id.into(),
+            term,
+            committed_event_index,
+            fence_token: fence_token.into(),
+            authority_digest: authority_digest.into(),
         }
     }
 }
@@ -706,6 +743,9 @@ pub struct ClusterExecutionContext {
     /// Stable digest of replica warm-state facts used for replicated routing, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replica_state_digest: Option<String>,
+    /// Explicit coordinator authority that fenced this cluster decision, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub commit_authority: Option<ClusterCommitAuthorityEvidence>,
     /// Stable node identifier that admitted or scheduled the work.
     pub scheduler_node_id: String,
     /// Transport class used across the request path.
@@ -752,6 +792,7 @@ impl ClusterExecutionContext {
             topology_digest: topology_digest.into(),
             artifact_residency_digest: None,
             replica_state_digest: None,
+            commit_authority: None,
             scheduler_node_id: scheduler_node_id.into(),
             transport,
             disposition,
@@ -776,6 +817,16 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_replica_state_digest(mut self, digest: impl Into<String>) -> Self {
         self.replica_state_digest = Some(digest.into());
+        self
+    }
+
+    /// Attaches explicit coordinator-authority evidence.
+    #[must_use]
+    pub fn with_commit_authority(
+        mut self,
+        commit_authority: ClusterCommitAuthorityEvidence,
+    ) -> Self {
+        self.commit_authority = Some(commit_authority);
         self
     }
 
@@ -5253,17 +5304,19 @@ mod tests {
         BackendRuntimeResources, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
         BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
         CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterArtifactResidencyDisposition,
-        ClusterExecutionContext, ClusterExecutionDisposition, ClusterFallbackReason,
-        ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
-        ClusterTransportClass, DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext,
-        DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget,
-        DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
+        ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
+        ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest,
+        ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
+        DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery,
+        DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass,
+        DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
         ExecutionDeliveryProof, ExecutionMetrics, ExecutionPlanCachePolicy,
-        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
-        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
-        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
-        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
-        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
+        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult,
+        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
+        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
+        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState,
+        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
         MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
         ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
         NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
@@ -6665,6 +6718,17 @@ mod tests {
             ClusterExecutionDisposition::RemoteWholeRequest,
         )
         .with_artifact_residency_digest("artifact-residency-digest")
+        .with_commit_authority(ClusterCommitAuthorityEvidence::new(
+            "coordinator-a",
+            7,
+            41,
+            "authority-fence-token",
+            "authority-digest",
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Authority,
+            "authority-digest",
+        ))
         .with_policy_digest(ClusterPolicyDigest::new(
             ClusterPolicyDigestKind::Placement,
             "placement-policy-digest",
@@ -6693,6 +6757,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["cluster_state_digest"],
             json!("cluster-state-digest")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["commit_authority"]["fence_token"],
+            json!("authority-fence-token")
         );
         assert_eq!(
             encoded["cluster_execution"]["selected_nodes"][0]["artifact_residency"],

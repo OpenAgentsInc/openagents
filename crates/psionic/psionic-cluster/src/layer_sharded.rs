@@ -1,10 +1,11 @@
 use std::collections::BTreeSet;
 
 use psionic_runtime::{
-    ClusterExecutionContext, ClusterExecutionDisposition, ClusterPolicyDigest,
-    ClusterPolicyDigestKind, ClusterSelectedNode as RuntimeClusterSelectedNode,
-    ClusterShardHandoff, ClusterShardHandoffKind,
-    ClusterTransportClass as RuntimeClusterTransportClass, ExecutionTopologyPlan,
+    ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
+    ClusterPolicyDigest, ClusterPolicyDigestKind,
+    ClusterSelectedNode as RuntimeClusterSelectedNode, ClusterShardHandoff,
+    ClusterShardHandoffKind, ClusterTransportClass as RuntimeClusterTransportClass,
+    ExecutionTopologyPlan,
 };
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -469,6 +470,20 @@ pub fn schedule_layer_sharded_execution(
     if let Some(artifact_residency_digest) = artifact_residency_digest.clone() {
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
+    }
+    if let Some(commit_authority) = state.commit_authority() {
+        cluster_execution = cluster_execution
+            .with_commit_authority(ClusterCommitAuthorityEvidence::new(
+                commit_authority.leader_id.as_str(),
+                commit_authority.term.as_u64(),
+                commit_authority.committed_event_index.as_u64(),
+                commit_authority.fence_token.clone(),
+                commit_authority.authority_digest.clone(),
+            ))
+            .with_policy_digest(ClusterPolicyDigest::new(
+                ClusterPolicyDigestKind::Authority,
+                commit_authority.authority_digest,
+            ));
     }
     for policy_digest in &request.policy_digests {
         cluster_execution = cluster_execution.with_policy_digest(policy_digest.clone());

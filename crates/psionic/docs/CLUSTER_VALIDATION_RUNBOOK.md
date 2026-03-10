@@ -16,6 +16,8 @@ This runbook validates two cluster trust postures:
 - trust-bundle version overlap and stale-bundle refusal during key rotation
 - coordinator lease expiry and stale-leader diagnostics for operator-managed
   multi-subnet clusters
+- coordinator term/fence truth in clustered execution evidence for operator-
+  managed failover paths
 
 This runbook still does not claim internet-wide adversarial safety. It validates
 the current truthful cluster claims and the current homogeneous CUDA planning
@@ -139,6 +141,9 @@ Interpretation:
   authoritative to higher-level scheduling or failover logic
 - digest-change failure means lease turnover is no longer visible in stable
   cluster-state evidence
+- coordinator fence tokens and commit-authority digests should now be visible in
+  clustered execution evidence; the full fenced-failover drill still closes in
+  `#3314`
 
 ## Recovery Drill
 

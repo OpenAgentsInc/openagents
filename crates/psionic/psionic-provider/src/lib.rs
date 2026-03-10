@@ -2099,10 +2099,11 @@ mod tests {
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport, BackendProbeState,
         BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
-        ClusterArtifactResidencyDisposition, ClusterExecutionContext, ClusterExecutionDisposition,
-        ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
-        ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget,
-        DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
+        ClusterArtifactResidencyDisposition, ClusterCommitAuthorityEvidence,
+        ClusterExecutionContext, ClusterExecutionDisposition, ClusterFallbackReason,
+        ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
+        ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass,
+        DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
         ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
         KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
         LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
@@ -3339,6 +3340,10 @@ mod tests {
         assert_eq!(
             encoded["cluster_execution"]["cluster_state_digest"],
             json!("cluster-state-digest")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["commit_authority"]["fence_token"],
+            json!("authority-fence-token")
         );
         assert_eq!(
             encoded["cluster_execution"]["policy_digests"][0]["kind"],
@@ -5108,6 +5113,13 @@ mod tests {
             ClusterExecutionDisposition::RemoteWholeRequest,
         )
         .with_artifact_residency_digest("artifact-residency-digest")
+        .with_commit_authority(ClusterCommitAuthorityEvidence::new(
+            "coordinator-a",
+            7,
+            41,
+            "authority-fence-token",
+            "authority-digest",
+        ))
         .with_policy_digest(ClusterPolicyDigest::new(
             ClusterPolicyDigestKind::Admission,
             "admission-policy-digest",

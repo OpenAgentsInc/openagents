@@ -2,7 +2,8 @@ use std::collections::BTreeSet;
 
 use psionic_runtime::{
     ClusterArtifactResidencyDisposition as RuntimeArtifactResidencyDisposition,
-    ClusterExecutionContext, ClusterExecutionDisposition, ClusterPolicyDigest,
+    ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
+    ClusterPolicyDigest, ClusterPolicyDigestKind,
     ClusterSelectedNode as RuntimeClusterSelectedNode,
     ClusterTransportClass as RuntimeClusterTransportClass, DeviceInventoryQualifiers,
     DeviceMemoryClass, DevicePerformanceClass, ExecutionTopologyPlan,
@@ -607,6 +608,20 @@ pub fn schedule_remote_whole_request(
         cluster_execution =
             cluster_execution.with_artifact_residency_digest(artifact_residency_digest);
     }
+    if let Some(commit_authority) = state.commit_authority() {
+        cluster_execution = cluster_execution
+            .with_commit_authority(ClusterCommitAuthorityEvidence::new(
+                commit_authority.leader_id.as_str(),
+                commit_authority.term.as_u64(),
+                commit_authority.committed_event_index.as_u64(),
+                commit_authority.fence_token.clone(),
+                commit_authority.authority_digest.clone(),
+            ))
+            .with_policy_digest(ClusterPolicyDigest::new(
+                ClusterPolicyDigestKind::Authority,
+                commit_authority.authority_digest,
+            ));
+    }
     for policy_digest in &request.policy_digests {
         cluster_execution = cluster_execution.with_policy_digest(policy_digest.clone());
     }
@@ -880,10 +895,10 @@ mod tests {
 
     use crate::{
         AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyStatus,
-        ClusterBackendReadinessStatus, ClusterLink, ClusterLinkStatus, ClusterMembershipRecord,
-        ClusterMembershipStatus, ClusterNamespace, ClusterNodeIdentity, ClusterNodeTelemetry,
-        ClusterSnapshot, ClusterStabilityPosture, ClusterState, ClusterTransportClass, NodeEpoch,
-        NodeRole,
+        ClusterBackendReadinessStatus, ClusterLeadershipRecord, ClusterLink, ClusterLinkStatus,
+        ClusterMembershipRecord, ClusterMembershipStatus, ClusterNamespace, ClusterNodeIdentity,
+        ClusterNodeTelemetry, ClusterSnapshot, ClusterStabilityPosture, ClusterState, ClusterTerm,
+        ClusterTransportClass, NodeEpoch, NodeRole,
     };
 
     use super::{
@@ -986,6 +1001,11 @@ mod tests {
     fn whole_request_scheduler_prefers_resident_candidate_and_emits_single_device_topology()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut snapshot = sample_snapshot();
+        snapshot.leadership = Some(ClusterLeadershipRecord::new(
+            ClusterTerm::initial(),
+            crate::NodeId::new("scheduler"),
+            crate::ClusterEventIndex::initial(),
+        ));
         snapshot.artifact_residency.insert(
             crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
             crate::ClusterArtifactResidencyRecord::new(
@@ -1033,6 +1053,30 @@ mod tests {
                 .first()
                 .and_then(|node| node.stable_device_id.as_deref()),
             Some("cluster-node:worker-a:cuda")
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .commit_authority
+                .as_ref()
+                .map(|authority| authority.coordinator_node_id.as_str()),
+            Some("scheduler")
+        );
+        assert_eq!(
+            schedule
+                .cluster_execution
+                .commit_authority
+                .as_ref()
+                .map(|authority| authority.term),
+            Some(1)
+        );
+        assert!(
+            schedule
+                .cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Authority),
+            "cluster execution should carry authority policy truth"
         );
         assert_eq!(
             schedule
