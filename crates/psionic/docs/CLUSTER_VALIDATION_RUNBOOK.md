@@ -14,6 +14,8 @@ This runbook validates two cluster trust postures:
 - persisted operator manifests as the rollout artifact for authenticated
   configured-peer clusters
 - trust-bundle version overlap and stale-bundle refusal during key rotation
+- coordinator lease expiry and stale-leader diagnostics for operator-managed
+  multi-subnet clusters
 
 This runbook still does not claim internet-wide adversarial safety. It validates
 the current truthful cluster claims and the current homogeneous CUDA planning
@@ -41,6 +43,7 @@ What these cover:
   - authenticated boot from persisted operator manifests
   - explicit configured-peer health, backoff, and late-join recovery
   - key-rotation overlap acceptance and stale trust-bundle refusal diagnostics
+  - coordinator lease freshness, expiry, and stale-leader diagnostics
 - `cluster_validation_matrix`
   - compacted catchup and snapshot-install recovery
   - degraded whole-request scheduling with explicit artifact staging truth
@@ -117,6 +120,25 @@ Interpretation:
   implicit LAN retry behavior instead of explicit health and backoff state
 - late-join recovery failure means degraded configured-peer health is not
   recovering truthfully when the peer actually becomes reachable
+
+## Coordinator Lease Drill
+
+Use this sequence before claiming coordinator freshness or stale-leader expiry
+truth for operator-managed multi-subnet clusters:
+
+1. Run `cargo test -p psionic-cluster leadership_lease_reports_active_then_stale`.
+2. Run `cargo test -p psionic-cluster cluster_state_effective_leadership_expires_when_lease_goes_stale`.
+3. Run `cargo test -p psionic-cluster leadership_lease_changes_snapshot_digest`.
+4. If any step fails, do not claim coordinator lease or stale-leader truth for the current build.
+
+Interpretation:
+
+- active/stale lease failure means coordinator freshness is no longer
+  machine-checkable from ordered state
+- effective-leadership expiry failure means stale coordinators may still look
+  authoritative to higher-level scheduling or failover logic
+- digest-change failure means lease turnover is no longer visible in stable
+  cluster-state evidence
 
 ## Recovery Drill
 
