@@ -87,12 +87,15 @@ Interpretation:
 
 Use this sequence when validating recovery behavior intentionally:
 
-1. Run `cargo test -p psionic-cluster --test local_cluster_transport restarted_node_rejoins_cluster_with_advanced_epoch`.
-2. Run `cargo test -p psionic-cluster --test cluster_validation_matrix recovery_validation_installs_snapshot_after_compaction_boundary`.
-3. If either step fails, do not claim rejoin or catchup behavior for the current build.
+1. Run `cargo test -p psionic-cluster signed_catchup_response_verifies_and_recovers_current_state tampered_signed_catchup_response_is_refused replayed_signed_catchup_response_is_refused`.
+2. Run `cargo test -p psionic-cluster --test local_cluster_transport restarted_node_rejoins_cluster_with_advanced_epoch`.
+3. Run `cargo test -p psionic-cluster --test cluster_validation_matrix recovery_validation_installs_snapshot_after_compaction_boundary`.
+4. If any step fails, do not claim rejoin or catchup behavior for the current build.
 
 Interpretation:
 
+- signed recovery failure means catchup or snapshot payloads are no longer
+  authenticated and replay-checked truthfully
 - transport rejoin failure means the local membership seam is no longer proving
   epoch advancement truthfully
 - recovery matrix failure means ordered-state compaction/catchup is no longer

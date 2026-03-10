@@ -1,10 +1,16 @@
-use std::{collections::BTreeMap, net::SocketAddr};
+use std::{
+    collections::{BTreeMap, BTreeSet},
+    net::SocketAddr,
+};
 
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
 
-use crate::{ClusterId, ClusterJoinRefusal, ClusterNodeIdentity, NodeId, PeerSnapshot};
+use crate::{
+    ClusterId, ClusterJoinRefusal, ClusterNodeIdentity, ConfiguredClusterPeer, NodeId, PeerSnapshot,
+};
 
 /// Monotonic cluster-election term for the first ordered-control seam.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -694,6 +700,271 @@ pub struct ClusterCatchupResponse {
     pub disposition: ClusterRecoveryDisposition,
     /// Recovery payload.
     pub payload: ClusterCatchupPayload,
+}
+
+impl ClusterCatchupResponse {
+    /// Returns a stable digest for one recovery payload.
+    pub fn stable_digest(&self) -> Result<String, ClusterRecoveryEnvelopeError> {
+        let encoded = serde_json::to_vec(self)
+            .map_err(|error| ClusterRecoveryEnvelopeError::EnvelopeEncoding(error.to_string()))?;
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_catchup_response|");
+        hasher.update(encoded);
+        Ok(hex::encode(hasher.finalize()))
+    }
+
+    /// Signs one recovery payload for authenticated transport.
+    pub fn sign(
+        self,
+        signer: ClusterNodeIdentity,
+        signing_key: &SigningKey,
+        authenticated_counter: u64,
+    ) -> Result<AuthenticatedClusterCatchupResponse, ClusterRecoveryEnvelopeError> {
+        if signer.cluster_id != self.cluster_id {
+            return Err(ClusterRecoveryEnvelopeError::SignerClusterMismatch {
+                expected: self.cluster_id,
+                actual: signer.cluster_id,
+            });
+        }
+        let payload_digest = self.stable_digest()?;
+        let signing_payload =
+            recovery_signing_payload(&signer, authenticated_counter, &payload_digest)?;
+        let signature = signing_key.sign(&signing_payload);
+        Ok(AuthenticatedClusterCatchupResponse {
+            signer,
+            authenticated_counter,
+            payload_digest,
+            response: self,
+            signature_hex: hex::encode(signature.to_bytes()),
+        })
+    }
+}
+
+/// Signed recovery envelope for catchup or snapshot install.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthenticatedClusterCatchupResponse {
+    /// Node identity that signed the recovery payload.
+    pub signer: ClusterNodeIdentity,
+    /// Monotonic authenticated counter for replay protection.
+    pub authenticated_counter: u64,
+    /// Stable digest of the signed recovery payload.
+    pub payload_digest: String,
+    /// Recovery payload being authenticated.
+    pub response: ClusterCatchupResponse,
+    /// Hex-encoded ed25519 signature over the envelope metadata.
+    pub signature_hex: String,
+}
+
+impl AuthenticatedClusterCatchupResponse {
+    /// Verifies cluster, requester, signer, digest, signature, and replay state.
+    pub fn verify(
+        &self,
+        expected_cluster_id: &ClusterId,
+        expected_requester_id: &NodeId,
+        expected_signer: &ConfiguredClusterPeer,
+        replay_window: &mut ClusterRecoveryReplayWindow,
+    ) -> Result<(), ClusterRecoveryEnvelopeError> {
+        if self.response.cluster_id != *expected_cluster_id {
+            return Err(ClusterRecoveryEnvelopeError::ClusterIdMismatch {
+                expected: expected_cluster_id.clone(),
+                actual: self.response.cluster_id.clone(),
+            });
+        }
+        if self.signer.cluster_id != *expected_cluster_id {
+            return Err(ClusterRecoveryEnvelopeError::SignerClusterMismatch {
+                expected: expected_cluster_id.clone(),
+                actual: self.signer.cluster_id.clone(),
+            });
+        }
+        if self.response.requester_id != *expected_requester_id {
+            return Err(ClusterRecoveryEnvelopeError::RequesterIdMismatch {
+                expected: expected_requester_id.clone(),
+                actual: self.response.requester_id.clone(),
+            });
+        }
+        if self.signer.node_id != expected_signer.node_id {
+            return Err(ClusterRecoveryEnvelopeError::SignerNodeIdMismatch {
+                expected: expected_signer.node_id.clone(),
+                actual: self.signer.node_id.clone(),
+            });
+        }
+        if self.signer.auth_public_key != expected_signer.auth_public_key {
+            return Err(ClusterRecoveryEnvelopeError::SignerKeyMismatch {
+                expected: expected_signer.auth_public_key.clone(),
+                actual: self.signer.auth_public_key.clone(),
+            });
+        }
+        let actual_payload_digest = self.response.stable_digest()?;
+        if actual_payload_digest != self.payload_digest {
+            return Err(ClusterRecoveryEnvelopeError::PayloadDigestMismatch {
+                expected: self.payload_digest.clone(),
+                actual: actual_payload_digest,
+            });
+        }
+        let verifying_key = decode_recovery_verifying_key(&self.signer.auth_public_key)?;
+        let signature = decode_recovery_signature(&self.signature_hex)?;
+        let signing_payload = recovery_signing_payload(
+            &self.signer,
+            self.authenticated_counter,
+            &self.payload_digest,
+        )?;
+        verifying_key
+            .verify(&signing_payload, &signature)
+            .map_err(|_| ClusterRecoveryEnvelopeError::SignatureVerificationFailed)?;
+        replay_window.record(self.authenticated_counter)?;
+        Ok(())
+    }
+}
+
+/// Replay window for authenticated recovery envelopes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterRecoveryReplayWindow {
+    /// Highest authenticated counter already accepted.
+    pub highest_seen: u64,
+    /// Sliding set of accepted counters still in-window.
+    pub accepted_counters: BTreeSet<u64>,
+    /// Maximum number of counters retained for replay checks.
+    pub window_size: u64,
+}
+
+impl ClusterRecoveryReplayWindow {
+    /// Creates a replay window with one explicit retention size.
+    #[must_use]
+    pub fn new(window_size: u64) -> Self {
+        Self {
+            highest_seen: 0,
+            accepted_counters: BTreeSet::new(),
+            window_size,
+        }
+    }
+
+    /// Records one authenticated counter or returns replay refusal.
+    pub fn record(
+        &mut self,
+        authenticated_counter: u64,
+    ) -> Result<(), ClusterRecoveryEnvelopeError> {
+        if self.window_size == 0 {
+            return Ok(());
+        }
+        let oldest_allowed = self
+            .highest_seen
+            .saturating_sub(self.window_size.saturating_sub(1));
+        if authenticated_counter < oldest_allowed
+            || self.accepted_counters.contains(&authenticated_counter)
+        {
+            return Err(ClusterRecoveryEnvelopeError::ReplayDetected {
+                highest_seen: self.highest_seen,
+                attempted: authenticated_counter,
+            });
+        }
+        self.accepted_counters.insert(authenticated_counter);
+        self.highest_seen = self.highest_seen.max(authenticated_counter);
+        while self.accepted_counters.len() as u64 > self.window_size {
+            let _ = self.accepted_counters.pop_first();
+        }
+        Ok(())
+    }
+}
+
+/// Verification failures for authenticated recovery envelopes.
+#[derive(Clone, Debug, PartialEq, Eq, Error)]
+pub enum ClusterRecoveryEnvelopeError {
+    /// Recovery payload belongs to another cluster.
+    #[error("recovery payload belongs to cluster {actual:?} but {expected:?} was expected")]
+    ClusterIdMismatch {
+        /// Expected cluster identity.
+        expected: ClusterId,
+        /// Observed recovery cluster identity.
+        actual: ClusterId,
+    },
+    /// Signer identity belongs to another cluster.
+    #[error("recovery signer belongs to cluster {actual:?} but {expected:?} was expected")]
+    SignerClusterMismatch {
+        /// Expected cluster identity.
+        expected: ClusterId,
+        /// Observed signer cluster identity.
+        actual: ClusterId,
+    },
+    /// Recovery payload was signed for another requester.
+    #[error("recovery payload targets requester {actual:?} but {expected:?} was expected")]
+    RequesterIdMismatch {
+        /// Expected requester ID.
+        expected: NodeId,
+        /// Observed requester ID.
+        actual: NodeId,
+    },
+    /// Recovery payload was signed by an unexpected node.
+    #[error("recovery payload was signed by node {actual:?} but {expected:?} was expected")]
+    SignerNodeIdMismatch {
+        /// Expected signer node ID.
+        expected: NodeId,
+        /// Observed signer node ID.
+        actual: NodeId,
+    },
+    /// Recovery payload signer key did not match the configured trust bundle.
+    #[error("recovery payload signer key mismatch")]
+    SignerKeyMismatch {
+        /// Expected signer key.
+        expected: String,
+        /// Observed signer key.
+        actual: String,
+    },
+    /// Recovery payload digest no longer matches the signed response.
+    #[error("recovery payload digest mismatch")]
+    PayloadDigestMismatch {
+        /// Expected signed digest.
+        expected: String,
+        /// Observed digest.
+        actual: String,
+    },
+    /// Recovery signature could not be validated.
+    #[error("recovery signature verification failed")]
+    SignatureVerificationFailed,
+    /// Recovery envelope could not be encoded for signing or verification.
+    #[error("recovery envelope encoding failed: {0}")]
+    EnvelopeEncoding(String),
+    /// Recovery envelope replayed a prior authenticated counter.
+    #[error(
+        "recovery envelope replay detected: attempted {attempted}, highest seen {highest_seen}"
+    )]
+    ReplayDetected {
+        /// Highest authenticated counter already accepted.
+        highest_seen: u64,
+        /// Counter attempted by the replayed envelope.
+        attempted: u64,
+    },
+}
+
+fn recovery_signing_payload(
+    signer: &ClusterNodeIdentity,
+    authenticated_counter: u64,
+    payload_digest: &str,
+) -> Result<Vec<u8>, ClusterRecoveryEnvelopeError> {
+    serde_json::to_vec(&(signer, authenticated_counter, payload_digest))
+        .map_err(|error| ClusterRecoveryEnvelopeError::EnvelopeEncoding(error.to_string()))
+}
+
+fn decode_recovery_verifying_key(
+    auth_public_key: &str,
+) -> Result<VerifyingKey, ClusterRecoveryEnvelopeError> {
+    let bytes = hex::decode(auth_public_key)
+        .map_err(|_| ClusterRecoveryEnvelopeError::SignatureVerificationFailed)?;
+    let verifying_key_bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| ClusterRecoveryEnvelopeError::SignatureVerificationFailed)?;
+    VerifyingKey::from_bytes(&verifying_key_bytes)
+        .map_err(|_| ClusterRecoveryEnvelopeError::SignatureVerificationFailed)
+}
+
+fn decode_recovery_signature(
+    signature_hex: &str,
+) -> Result<Signature, ClusterRecoveryEnvelopeError> {
+    let bytes = hex::decode(signature_hex)
+        .map_err(|_| ClusterRecoveryEnvelopeError::SignatureVerificationFailed)?;
+    let signature_bytes: [u8; 64] = bytes
+        .try_into()
+        .map_err(|_| ClusterRecoveryEnvelopeError::SignatureVerificationFailed)?;
+    Ok(Signature::from_bytes(&signature_bytes))
 }
 
 /// Imperative cluster command submitted before the leader orders a result.
@@ -1640,6 +1911,8 @@ fn artifact_transfer_label(transfer_method: ClusterArtifactTransferMethod) -> &'
 mod tests {
     use std::net::SocketAddr;
 
+    use ed25519_dalek::SigningKey;
+
     use crate::{AdmissionToken, ClusterNamespace, NodeEpoch, NodeRole};
 
     use super::{
@@ -1648,9 +1921,10 @@ mod tests {
         ClusterCatchupRequest, ClusterEvent, ClusterEventIndex, ClusterEventLog,
         ClusterHistoryError, ClusterLeadershipRecord, ClusterLink, ClusterLinkClass,
         ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
-        ClusterRecoveryDisposition, ClusterRecoveryPolicy, ClusterRecoveryReason,
-        ClusterSchemaVersion, ClusterStabilityPosture, ClusterState, ClusterTerm,
-        ClusterTransportClass, IndexedClusterEvent,
+        ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError, ClusterRecoveryPolicy,
+        ClusterRecoveryReason, ClusterRecoveryReplayWindow, ClusterSchemaVersion, ClusterSnapshot,
+        ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass,
+        ConfiguredClusterPeer, IndexedClusterEvent,
     };
 
     fn sample_cluster_id() -> crate::ClusterId {
@@ -1684,6 +1958,25 @@ mod tests {
             max_events_per_response: 16,
             retain_tail_events: 2,
             full_resync_gap_threshold: 64,
+        }
+    }
+
+    fn sample_signing_key(byte: u8) -> SigningKey {
+        SigningKey::from_bytes(&[byte; 32])
+    }
+
+    fn recovery_signer(
+        cluster_id: &crate::ClusterId,
+        node_id: &str,
+        role: NodeRole,
+        signing_key: &SigningKey,
+    ) -> crate::ClusterNodeIdentity {
+        crate::ClusterNodeIdentity {
+            cluster_id: cluster_id.clone(),
+            node_id: crate::NodeId::new(node_id),
+            node_epoch: NodeEpoch::initial(),
+            role,
+            auth_public_key: hex::encode(signing_key.verifying_key().to_bytes()),
         }
     }
 
@@ -2149,5 +2442,198 @@ mod tests {
 
         assert_eq!(state.topology_digest(), topology_digest_before);
         assert_ne!(state.stable_digest(), stable_digest_before);
+    }
+
+    #[test]
+    fn signed_catchup_response_verifies_and_recovers_current_state() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4701,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let executor = sample_membership_record(
+            &cluster_id,
+            4702,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let _ = log.append_event(ClusterEvent::MembershipReconciled {
+            membership: coordinator.clone(),
+        });
+        let _ = log.append_event(ClusterEvent::MembershipReconciled {
+            membership: executor.clone(),
+        });
+
+        let request = ClusterCatchupRequest::new(
+            cluster_id.clone(),
+            crate::NodeId::new("recovering-node"),
+            None,
+            ClusterSchemaVersion::initial(),
+            8,
+        );
+        let response = log
+            .catchup_response(&request, &sample_recovery_policy())
+            .unwrap_or_else(|_| unreachable!("catchup response should build"));
+        let signing_key = sample_signing_key(19);
+        let signer = recovery_signer(
+            &cluster_id,
+            coordinator.identity.node_id.as_str(),
+            NodeRole::CoordinatorOnly,
+            &signing_key,
+        );
+        let expected_signer = ConfiguredClusterPeer::new(
+            signer.node_id.clone(),
+            SocketAddr::from(([127, 0, 0, 1], 4701)),
+            signer.auth_public_key.clone(),
+        );
+        let envelope = response
+            .clone()
+            .sign(signer, &signing_key, 7)
+            .unwrap_or_else(|_| unreachable!("recovery response should sign"));
+        let mut replay_window = ClusterRecoveryReplayWindow::new(8);
+
+        let verified = envelope.verify(
+            &cluster_id,
+            &request.requester_id,
+            &expected_signer,
+            &mut replay_window,
+        );
+        assert!(verified.is_ok(), "signed recovery should verify");
+
+        match envelope.response.payload {
+            ClusterCatchupPayload::Events { events } => {
+                let recovered = ClusterState::recover(ClusterSnapshot::new(cluster_id), &events)
+                    .unwrap_or_else(|_| unreachable!("verified catchup should recover"));
+                assert_eq!(recovered.memberships().len(), 2);
+            }
+            payload => panic!("expected events payload, got {payload:?}"),
+        }
+    }
+
+    #[test]
+    fn tampered_signed_catchup_response_is_refused() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4801,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let _ = log.append_event(ClusterEvent::MembershipReconciled {
+            membership: coordinator.clone(),
+        });
+        let request = ClusterCatchupRequest::new(
+            cluster_id.clone(),
+            crate::NodeId::new("recovering-node"),
+            None,
+            ClusterSchemaVersion::initial(),
+            8,
+        );
+        let response = log
+            .catchup_response(&request, &sample_recovery_policy())
+            .unwrap_or_else(|_| unreachable!("catchup response should build"));
+        let signing_key = sample_signing_key(23);
+        let signer = recovery_signer(
+            &cluster_id,
+            coordinator.identity.node_id.as_str(),
+            NodeRole::CoordinatorOnly,
+            &signing_key,
+        );
+        let expected_signer = ConfiguredClusterPeer::new(
+            signer.node_id.clone(),
+            SocketAddr::from(([127, 0, 0, 1], 4801)),
+            signer.auth_public_key.clone(),
+        );
+        let mut envelope = response
+            .sign(signer, &signing_key, 9)
+            .unwrap_or_else(|_| unreachable!("recovery response should sign"));
+        envelope.response.head_event_index = None;
+        let mut replay_window = ClusterRecoveryReplayWindow::new(8);
+
+        let verified = envelope.verify(
+            &cluster_id,
+            &request.requester_id,
+            &expected_signer,
+            &mut replay_window,
+        );
+        assert!(
+            matches!(
+                verified,
+                Err(ClusterRecoveryEnvelopeError::PayloadDigestMismatch { .. })
+            ),
+            "tampered recovery should be refused"
+        );
+    }
+
+    #[test]
+    fn replayed_signed_catchup_response_is_refused() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4901,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let _ = log.append_event(ClusterEvent::MembershipReconciled {
+            membership: coordinator.clone(),
+        });
+        let request = ClusterCatchupRequest::new(
+            cluster_id.clone(),
+            crate::NodeId::new("recovering-node"),
+            None,
+            ClusterSchemaVersion::initial(),
+            8,
+        );
+        let response = log
+            .catchup_response(&request, &sample_recovery_policy())
+            .unwrap_or_else(|_| unreachable!("catchup response should build"));
+        let signing_key = sample_signing_key(29);
+        let signer = recovery_signer(
+            &cluster_id,
+            coordinator.identity.node_id.as_str(),
+            NodeRole::CoordinatorOnly,
+            &signing_key,
+        );
+        let expected_signer = ConfiguredClusterPeer::new(
+            signer.node_id.clone(),
+            SocketAddr::from(([127, 0, 0, 1], 4901)),
+            signer.auth_public_key.clone(),
+        );
+        let envelope = response
+            .sign(signer, &signing_key, 11)
+            .unwrap_or_else(|_| unreachable!("recovery response should sign"));
+        let mut replay_window = ClusterRecoveryReplayWindow::new(8);
+
+        let first_verify = envelope.verify(
+            &cluster_id,
+            &request.requester_id,
+            &expected_signer,
+            &mut replay_window,
+        );
+        assert!(first_verify.is_ok(), "first verify should succeed");
+        let replayed = envelope.verify(
+            &cluster_id,
+            &request.requester_id,
+            &expected_signer,
+            &mut replay_window,
+        );
+        assert!(
+            matches!(
+                replayed,
+                Err(ClusterRecoveryEnvelopeError::ReplayDetected {
+                    highest_seen: 11,
+                    attempted: 11
+                })
+            ),
+            "replayed recovery should be refused"
+        );
     }
 }
