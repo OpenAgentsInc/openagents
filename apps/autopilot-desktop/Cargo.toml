@@ -55,9 +55,9 @@ hex = { workspace = true }
 base64 = "0.22"
 bitcoin = { workspace = true }
 clap = { version = "4.5", features = ["derive"] }
+futures-util = "0.3"
 
 [dev-dependencies]
-futures-util = "0.3"
 tempfile = "3"
 tokio-tungstenite = "0.24"
 

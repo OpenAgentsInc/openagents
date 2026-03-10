@@ -48,6 +48,23 @@ pub(super) fn local_inference_inputs_focused(state: &crate::app_state::RenderSta
         || state.local_inference_inputs.top_p.is_focused()
 }
 
+pub(super) fn apple_fm_workbench_inputs_focused(state: &crate::app_state::RenderState) -> bool {
+    state.apple_fm_workbench_inputs.instructions.is_focused()
+        || state.apple_fm_workbench_inputs.prompt.is_focused()
+        || state.apple_fm_workbench_inputs.model.is_focused()
+        || state.apple_fm_workbench_inputs.session_id.is_focused()
+        || state.apple_fm_workbench_inputs.max_tokens.is_focused()
+        || state.apple_fm_workbench_inputs.temperature.is_focused()
+        || state.apple_fm_workbench_inputs.top.is_focused()
+        || state
+            .apple_fm_workbench_inputs
+            .probability_threshold
+            .is_focused()
+        || state.apple_fm_workbench_inputs.seed.is_focused()
+        || state.apple_fm_workbench_inputs.schema_json.is_focused()
+        || state.apple_fm_workbench_inputs.transcript_json.is_focused()
+}
+
 pub(super) fn credentials_inputs_focused(state: &crate::app_state::RenderState) -> bool {
     state.credentials_inputs.variable_name.is_focused()
         || state.credentials_inputs.variable_value.is_focused()
@@ -62,6 +79,7 @@ pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> b
         || create_invoice_inputs_focused(state)
         || network_requests_inputs_focused(state)
         || local_inference_inputs_focused(state)
+        || apple_fm_workbench_inputs_focused(state)
         || settings_inputs_focused(state)
         || credentials_inputs_focused(state)
         || state.relay_connections_inputs.relay_url.is_focused()
@@ -92,6 +110,17 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.local_inference_inputs.temperature.blur();
     state.local_inference_inputs.top_k.blur();
     state.local_inference_inputs.top_p.blur();
+    state.apple_fm_workbench_inputs.instructions.blur();
+    state.apple_fm_workbench_inputs.prompt.blur();
+    state.apple_fm_workbench_inputs.model.blur();
+    state.apple_fm_workbench_inputs.session_id.blur();
+    state.apple_fm_workbench_inputs.max_tokens.blur();
+    state.apple_fm_workbench_inputs.temperature.blur();
+    state.apple_fm_workbench_inputs.top.blur();
+    state.apple_fm_workbench_inputs.probability_threshold.blur();
+    state.apple_fm_workbench_inputs.seed.blur();
+    state.apple_fm_workbench_inputs.schema_json.blur();
+    state.apple_fm_workbench_inputs.transcript_json.blur();
     state.settings_inputs.relay_url.blur();
     state.settings_inputs.wallet_default_send_sats.blur();
     state.settings_inputs.provider_max_queue_depth.blur();

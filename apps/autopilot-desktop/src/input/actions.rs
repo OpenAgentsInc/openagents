@@ -1,10 +1,16 @@
 use super::*;
+use crate::apple_fm_bridge::{
+    AppleFmBridgeCommand, AppleFmWorkbenchCommand, AppleFmWorkbenchOperation,
+    AppleFmWorkbenchToolMode,
+};
 use crate::bitcoin_display::format_sats_amount;
 use crate::local_inference_runtime::{LocalInferenceGenerateJob, LocalInferenceRuntimeCommand};
 use crate::pane_system::{
-    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction, MissionControlPaneAction,
+    AppleFmWorkbenchPaneAction, CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, LocalInferencePaneAction,
+    MissionControlPaneAction,
 };
 use crate::state::job_inbox::JobExecutionParam;
+use psionic_apple_fm::{AppleFmGenerationOptions, AppleFmSamplingMode};
 
 const MANAGED_CHAT_PUBLISH_TRANSPORT_UNWIRED: &str =
     "Managed chat relay publish transport is not wired yet; local echo saved for retry.";
@@ -8706,6 +8712,83 @@ pub(super) fn run_local_inference_action(
     }
 }
 
+pub(super) fn run_apple_fm_workbench_action(
+    state: &mut crate::app_state::RenderState,
+    action: AppleFmWorkbenchPaneAction,
+) -> bool {
+    match action {
+        AppleFmWorkbenchPaneAction::RefreshBridge => queue_apple_fm_pane_command(
+            state,
+            AppleFmBridgeCommand::Refresh,
+            "Queued Apple FM bridge refresh",
+        ),
+        AppleFmWorkbenchPaneAction::StartBridge => queue_apple_fm_pane_command(
+            state,
+            AppleFmBridgeCommand::EnsureBridgeRunning,
+            "Queued Apple FM bridge start",
+        ),
+        AppleFmWorkbenchPaneAction::CreateSession => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::CreateSession)
+        }
+        AppleFmWorkbenchPaneAction::InspectSession => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::InspectSession)
+        }
+        AppleFmWorkbenchPaneAction::ResetSession => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::ResetSession)
+        }
+        AppleFmWorkbenchPaneAction::DeleteSession => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::DeleteSession)
+        }
+        AppleFmWorkbenchPaneAction::RunText => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::RunText)
+        }
+        AppleFmWorkbenchPaneAction::RunChat => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::RunChat)
+        }
+        AppleFmWorkbenchPaneAction::RunSession => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::RunSession)
+        }
+        AppleFmWorkbenchPaneAction::RunStream => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::RunStream)
+        }
+        AppleFmWorkbenchPaneAction::RunStructured => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::RunStructured)
+        }
+        AppleFmWorkbenchPaneAction::ExportTranscript => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::ExportTranscript)
+        }
+        AppleFmWorkbenchPaneAction::RestoreTranscript => {
+            queue_apple_fm_workbench_operation(state, AppleFmWorkbenchOperation::RestoreTranscript)
+        }
+        AppleFmWorkbenchPaneAction::CycleToolProfile => {
+            state.apple_fm_workbench.tool_profile = state.apple_fm_workbench.tool_profile.cycle();
+            state.apple_fm_workbench.last_action = Some(format!(
+                "Apple FM workbench {}",
+                state
+                    .apple_fm_workbench
+                    .tool_profile
+                    .label()
+                    .to_ascii_lowercase()
+            ));
+            state.apple_fm_workbench.last_error = None;
+            true
+        }
+        AppleFmWorkbenchPaneAction::CycleSamplingMode => {
+            state.apple_fm_workbench.sampling_mode = state.apple_fm_workbench.sampling_mode.cycle();
+            state.apple_fm_workbench.last_action = Some(format!(
+                "Apple FM workbench sampling {}",
+                state
+                    .apple_fm_workbench
+                    .sampling_mode
+                    .label()
+                    .to_ascii_lowercase()
+            ));
+            state.apple_fm_workbench.last_error = None;
+            true
+        }
+    }
+}
+
 pub(super) fn run_mission_control_action(
     state: &mut crate::app_state::RenderState,
     action: MissionControlPaneAction,
@@ -8716,21 +8799,95 @@ pub(super) fn run_mission_control_action(
             true
         }
         MissionControlPaneAction::WarmLocalModel => {
-            crate::pane_system::PaneController::create_for_kind(
-                state,
-                crate::app_state::PaneKind::LocalInference,
-            );
-            let handled = run_local_inference_action(state, LocalInferencePaneAction::WarmModel);
-            if handled {
-                state
-                    .mission_control
-                    .record_action("Queued GPT-OSS 20B load");
-            } else {
-                state.mission_control.last_action = Some("Local model warm failed".to_string());
-                state.mission_control.last_error =
-                    Some("Failed to queue configured local model warm".to_string());
+            match crate::app_state::mission_control_local_runtime_lane(&state.ollama_execution) {
+                Some(crate::app_state::MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+                    crate::pane_system::PaneController::create_for_kind(
+                        state,
+                        crate::app_state::PaneKind::AppleFmWorkbench,
+                    );
+
+                    if state.provider_runtime.apple_fm.is_ready() {
+                        state
+                            .mission_control
+                            .record_action("Opened Apple FM workbench");
+                        state.mission_control.last_error = None;
+                        return true;
+                    }
+
+                    let bridge_starting = state.provider_runtime.apple_fm.bridge_status.as_deref()
+                        == Some("starting");
+                    let handled = if state.provider_runtime.apple_fm.reachable {
+                        run_apple_fm_workbench_action(
+                            state,
+                            AppleFmWorkbenchPaneAction::RefreshBridge,
+                        )
+                    } else if bridge_starting {
+                        true
+                    } else {
+                        run_apple_fm_workbench_action(
+                            state,
+                            AppleFmWorkbenchPaneAction::StartBridge,
+                        )
+                    };
+
+                    if bridge_starting {
+                        state
+                            .mission_control
+                            .record_action("Apple FM bridge start already in progress");
+                        state.mission_control.last_error = None;
+                    } else if state.apple_fm_workbench.last_error.is_none() {
+                        state.mission_control.record_action(
+                            if state.provider_runtime.apple_fm.reachable {
+                                "Queued Apple FM bridge refresh"
+                            } else {
+                                "Queued Apple FM bridge start"
+                            },
+                        );
+                    } else {
+                        state.mission_control.last_action =
+                            Some("Apple FM mission control action failed".to_string());
+                        state.mission_control.last_error =
+                            state.apple_fm_workbench.last_error.clone();
+                    }
+                    handled
+                }
+                Some(crate::app_state::MissionControlLocalRuntimeLane::NvidiaGptOss) => {
+                    crate::pane_system::PaneController::create_for_kind(
+                        state,
+                        crate::app_state::PaneKind::LocalInference,
+                    );
+
+                    if state.ollama_execution.is_ready() {
+                        state
+                            .mission_control
+                            .record_action("Opened GPT-OSS CUDA workbench");
+                        state.mission_control.last_error = None;
+                        return true;
+                    }
+
+                    let handled =
+                        run_local_inference_action(state, LocalInferencePaneAction::WarmModel);
+                    if state.local_inference.last_error.is_none() {
+                        state
+                            .mission_control
+                            .record_action("Queued GPT-OSS CUDA load");
+                    } else {
+                        state.mission_control.last_action =
+                            Some("Local model warm failed".to_string());
+                        state.mission_control.last_error = state.local_inference.last_error.clone();
+                    }
+                    handled
+                }
+                None => {
+                    state.mission_control.last_action =
+                        Some("No supported local runtime".to_string());
+                    state.mission_control.last_error = Some(
+                        "Mission Control needs Apple FM on macOS or GPT-OSS on NVIDIA CUDA."
+                            .to_string(),
+                    );
+                    true
+                }
             }
-            handled
         }
         MissionControlPaneAction::OpenDocumentation => {
             match open_mission_control_documentation() {
@@ -8867,6 +9024,165 @@ fn queue_local_inference_pane_command(
         }
     }
     true
+}
+
+fn queue_apple_fm_pane_command(
+    state: &mut crate::app_state::RenderState,
+    command: AppleFmBridgeCommand,
+    action_label: &str,
+) -> bool {
+    match state.queue_apple_fm_bridge_command(command) {
+        Ok(()) => {
+            state.apple_fm_workbench.load_state = crate::app_state::PaneLoadState::Loading;
+            state.apple_fm_workbench.last_error = None;
+            state.apple_fm_workbench.last_action = Some(action_label.to_string());
+            state.provider_runtime.last_result = Some(action_label.to_string());
+        }
+        Err(error) => {
+            state.apple_fm_workbench.load_state = crate::app_state::PaneLoadState::Error;
+            state.apple_fm_workbench.last_error = Some(error.clone());
+            state.apple_fm_workbench.last_action =
+                Some("Apple FM bridge enqueue failed".to_string());
+            state.provider_runtime.last_error_detail = Some(error);
+        }
+    }
+    true
+}
+
+fn queue_apple_fm_workbench_operation(
+    state: &mut crate::app_state::RenderState,
+    operation: AppleFmWorkbenchOperation,
+) -> bool {
+    let options = if apple_fm_workbench_operation_uses_options(operation) {
+        match build_apple_fm_workbench_options(state) {
+            Ok(value) => value,
+            Err(error) => {
+                state.apple_fm_workbench.load_state = crate::app_state::PaneLoadState::Error;
+                state.apple_fm_workbench.last_error = Some(error);
+                state.apple_fm_workbench.last_action =
+                    Some("Apple FM workbench action blocked".to_string());
+                return true;
+            }
+        }
+    } else {
+        None
+    };
+
+    let request_id = format!("apple-fm-workbench-{}", state.reserve_runtime_command_seq());
+    let request_id_for_state = request_id.clone();
+    let command = AppleFmWorkbenchCommand {
+        request_id,
+        operation,
+        instructions: normalize_optional_text(
+            state.apple_fm_workbench_inputs.instructions.get_value(),
+        ),
+        prompt: normalize_optional_text(state.apple_fm_workbench_inputs.prompt.get_value()),
+        requested_model: normalize_optional_text(state.apple_fm_workbench_inputs.model.get_value()),
+        session_id: normalize_optional_text(state.apple_fm_workbench_inputs.session_id.get_value()),
+        options,
+        schema_json: normalize_optional_text(
+            state.apple_fm_workbench_inputs.schema_json.get_value(),
+        ),
+        transcript_json: normalize_optional_text(
+            state.apple_fm_workbench_inputs.transcript_json.get_value(),
+        ),
+        tool_mode: apple_fm_workbench_tool_mode(state),
+    };
+
+    match state.queue_apple_fm_bridge_command(AppleFmBridgeCommand::Workbench(command)) {
+        Ok(()) => {
+            state.apple_fm_workbench.load_state = crate::app_state::PaneLoadState::Loading;
+            state.apple_fm_workbench.last_error = None;
+            state.apple_fm_workbench.last_action =
+                Some(format!("Queued Apple FM workbench {}", operation.label()));
+            state.apple_fm_workbench.pending_request_id = Some(request_id_for_state.clone());
+            state.apple_fm_workbench.last_request_id = Some(request_id_for_state.clone());
+            state.apple_fm_workbench.last_operation = Some(operation.label().to_string());
+            state.provider_runtime.last_result = Some(format!(
+                "Apple FM workbench queued request {}",
+                request_id_for_state
+            ));
+        }
+        Err(error) => {
+            state.apple_fm_workbench.load_state = crate::app_state::PaneLoadState::Error;
+            state.apple_fm_workbench.last_error = Some(error.clone());
+            state.apple_fm_workbench.last_action =
+                Some("Apple FM bridge enqueue failed".to_string());
+            state.provider_runtime.last_error_detail = Some(error);
+        }
+    }
+    true
+}
+
+fn apple_fm_workbench_tool_mode(state: &crate::app_state::RenderState) -> AppleFmWorkbenchToolMode {
+    match state.apple_fm_workbench.tool_profile {
+        crate::app_state::AppleFmWorkbenchToolProfile::None => AppleFmWorkbenchToolMode::None,
+        crate::app_state::AppleFmWorkbenchToolProfile::Demo => AppleFmWorkbenchToolMode::Demo,
+        crate::app_state::AppleFmWorkbenchToolProfile::Failing => AppleFmWorkbenchToolMode::Failing,
+    }
+}
+
+fn apple_fm_workbench_operation_uses_options(operation: AppleFmWorkbenchOperation) -> bool {
+    matches!(
+        operation,
+        AppleFmWorkbenchOperation::RunText
+            | AppleFmWorkbenchOperation::RunChat
+            | AppleFmWorkbenchOperation::RunSession
+            | AppleFmWorkbenchOperation::RunStream
+            | AppleFmWorkbenchOperation::RunStructured
+    )
+}
+
+fn build_apple_fm_workbench_options(
+    state: &crate::app_state::RenderState,
+) -> Result<Option<AppleFmGenerationOptions>, String> {
+    let maximum_response_tokens =
+        normalize_optional_text(state.apple_fm_workbench_inputs.max_tokens.get_value())
+            .map(|value| parse_positive_amount_str(value.as_str(), "Max tokens"))
+            .transpose()?
+            .map(|value| value as u32);
+
+    let temperature =
+        normalize_optional_text(state.apple_fm_workbench_inputs.temperature.get_value())
+            .map(|value| parse_local_inference_float(value.as_str(), "Temperature"))
+            .transpose()?;
+
+    let top = normalize_optional_text(state.apple_fm_workbench_inputs.top.get_value())
+        .map(|value| parse_positive_amount_str(value.as_str(), "Top-k"))
+        .transpose()?
+        .map(|value| value as u32);
+
+    let probability_threshold = normalize_optional_text(
+        state
+            .apple_fm_workbench_inputs
+            .probability_threshold
+            .get_value(),
+    )
+    .map(|value| parse_local_inference_float(value.as_str(), "Top-p"))
+    .transpose()?;
+
+    let seed = normalize_optional_text(state.apple_fm_workbench_inputs.seed.get_value())
+        .map(|value| parse_non_negative_amount_str(value.as_str(), "Seed"))
+        .transpose()?;
+
+    let sampling = match state.apple_fm_workbench.sampling_mode {
+        crate::app_state::AppleFmWorkbenchSamplingMode::Auto => None,
+        crate::app_state::AppleFmWorkbenchSamplingMode::Greedy => {
+            Some(AppleFmSamplingMode::greedy())
+        }
+        crate::app_state::AppleFmWorkbenchSamplingMode::Random => Some(
+            AppleFmSamplingMode::random(top, probability_threshold, seed)
+                .map_err(|error| error.to_string())?,
+        ),
+    };
+
+    if sampling.is_none() && temperature.is_none() && maximum_response_tokens.is_none() {
+        return Ok(None);
+    }
+
+    AppleFmGenerationOptions::new(sampling, temperature, maximum_response_tokens)
+        .map(Some)
+        .map_err(|error| error.to_string())
 }
 
 fn build_local_inference_pane_params(

@@ -88,7 +88,7 @@ pub fn startup_pane_kinds() -> Vec<PaneKind> {
         .collect()
 }
 
-const PANE_SPECS: [PaneSpec; 40] = [
+const PANE_SPECS: [PaneSpec; 41] = [
     PaneSpec {
         kind: PaneKind::Empty,
         title: "Pane",
@@ -280,6 +280,21 @@ const PANE_SPECS: [PaneSpec; 40] = [
             id: "pane.local_inference",
             label: "Local Inference",
             description: "Open the GPT-OSS local inference workbench and runtime controls",
+            keybinding: None,
+        }),
+        hotbar: None,
+    },
+    PaneSpec {
+        kind: PaneKind::AppleFmWorkbench,
+        title: "Apple FM Workbench",
+        default_width: 1180.0,
+        default_height: 760.0,
+        singleton: true,
+        startup: false,
+        command: Some(PaneCommandSpec {
+            id: "pane.apple_fm_workbench",
+            label: "Apple FM Workbench",
+            description: "Open the Apple Foundation Models API workbench and bridge controls",
             keybinding: None,
         }),
         hotbar: None,

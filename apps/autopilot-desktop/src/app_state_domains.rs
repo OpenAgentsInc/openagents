@@ -30,6 +30,98 @@ impl Default for LocalInferencePaneState {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchSamplingMode {
+    Auto,
+    Greedy,
+    Random,
+}
+
+impl AppleFmWorkbenchSamplingMode {
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::Auto => "AUTO",
+            Self::Greedy => "GREEDY",
+            Self::Random => "RANDOM",
+        }
+    }
+
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::Auto => Self::Greedy,
+            Self::Greedy => Self::Random,
+            Self::Random => Self::Auto,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchToolProfile {
+    None,
+    Demo,
+    Failing,
+}
+
+impl AppleFmWorkbenchToolProfile {
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::None => "TOOLS: NONE",
+            Self::Demo => "TOOLS: DEMO",
+            Self::Failing => "TOOLS: FAILING",
+        }
+    }
+
+    pub const fn cycle(self) -> Self {
+        match self {
+            Self::None => Self::Demo,
+            Self::Demo => Self::Failing,
+            Self::Failing => Self::None,
+        }
+    }
+}
+
+pub struct AppleFmWorkbenchPaneState {
+    pub load_state: PaneLoadState,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+    pub pending_request_id: Option<String>,
+    pub last_request_id: Option<String>,
+    pub last_operation: Option<String>,
+    pub active_session_id: Option<String>,
+    pub last_model: Option<String>,
+    pub sampling_mode: AppleFmWorkbenchSamplingMode,
+    pub tool_profile: AppleFmWorkbenchToolProfile,
+    pub output_preview: String,
+    pub output_chars: usize,
+    pub session_preview: String,
+    pub structured_preview: String,
+    pub usage_preview: String,
+    pub event_log: TerminalPane,
+}
+
+impl Default for AppleFmWorkbenchPaneState {
+    fn default() -> Self {
+        Self {
+            load_state: PaneLoadState::Loading,
+            last_error: None,
+            last_action: Some("Waiting for Apple FM bridge snapshot".to_string()),
+            pending_request_id: None,
+            last_request_id: None,
+            last_operation: None,
+            active_session_id: None,
+            last_model: None,
+            sampling_mode: AppleFmWorkbenchSamplingMode::Auto,
+            tool_profile: AppleFmWorkbenchToolProfile::None,
+            output_preview: String::new(),
+            output_chars: 0,
+            session_preview: String::new(),
+            structured_preview: String::new(),
+            usage_preview: String::new(),
+            event_log: TerminalPane::new().title("\\\\ EVENTS"),
+        }
+    }
+}
+
 pub struct CodexAccountPaneState {
     pub load_state: PaneLoadState,
     pub last_error: Option<String>,

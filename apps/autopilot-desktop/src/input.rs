@@ -58,6 +58,7 @@ use crate::pane_system::{
     RelayConnectionsPaneAction, SIDEBAR_DEFAULT_WIDTH, SettingsPaneAction, StarterJobsPaneAction,
     SyncHealthPaneAction, cad_demo_context_menu_bounds, cad_demo_context_menu_row_bounds,
     clamp_all_panes_to_window, dispatch_activity_feed_detail_scroll_event,
+    dispatch_apple_fm_workbench_input_event, dispatch_apple_fm_workbench_log_scroll_event,
     dispatch_calculator_input_event, dispatch_chat_input_event, dispatch_chat_scroll_event,
     dispatch_create_invoice_input_event, dispatch_credentials_input_event,
     dispatch_job_history_input_event, dispatch_local_inference_input_event,
@@ -2067,6 +2068,9 @@ fn dispatch_mouse_scroll(
         } else {
             handled |= dispatch_mission_control_log_scroll_event(state, point, event);
             if !handled {
+                handled |= dispatch_apple_fm_workbench_log_scroll_event(state, point, event);
+            }
+            if !handled {
                 handled |= dispatch_activity_feed_detail_scroll_event(state, point, *dy);
             }
             if !handled {
@@ -2357,6 +2361,7 @@ fn dispatch_text_inputs(state: &mut crate::app_state::RenderState, event: &Input
     handled |= dispatch_relay_connections_input_event(state, event);
     handled |= dispatch_network_requests_input_event(state, event);
     handled |= dispatch_local_inference_input_event(state, event);
+    handled |= dispatch_apple_fm_workbench_input_event(state, event);
     handled |= dispatch_settings_input_event(state, event);
     handled |= dispatch_credentials_input_event(state, event);
     handled |= dispatch_chat_input_event(state, event);
@@ -2635,6 +2640,7 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::SyncHealth(action) => run_sync_health_action(state, action),
         PaneHitAction::ProviderStatus(action) => run_provider_status_action(state, action),
         PaneHitAction::LocalInference(action) => run_local_inference_action(state, action),
+        PaneHitAction::AppleFmWorkbench(action) => run_apple_fm_workbench_action(state, action),
         PaneHitAction::NetworkRequests(action) => run_network_requests_action(state, action),
         PaneHitAction::StarterJobs(action) => run_starter_jobs_action(state, action),
         PaneHitAction::ReciprocalLoop(action) => run_reciprocal_loop_action(state, action),

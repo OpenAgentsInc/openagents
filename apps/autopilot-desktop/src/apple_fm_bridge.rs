@@ -1,18 +1,29 @@
 use crate::local_inference_runtime::{
     LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
 };
+use futures_util::StreamExt;
 use openagents_kernel_core::ids::sha256_prefixed_text;
 use psionic_apple_fm::{
-    AppleFmBridgeClient, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
+    AppleFmAsyncBridgeClient, AppleFmBridgeClient, AppleFmChatCompletionRequest,
+    AppleFmChatMessage, AppleFmChatMessageRole, AppleFmGeneratedContent, AppleFmGenerationOptions,
+    AppleFmGenerationSchema, AppleFmSessionCreateRequest, AppleFmSessionRespondRequest,
+    AppleFmSessionStructuredGenerationRequest, AppleFmStructuredGenerationRequest,
+    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
     AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
+    AppleFmTextGenerationRequest, AppleFmTextStreamEventKind, AppleFmTool, AppleFmToolCallError,
+    AppleFmToolDefinition,
 };
 use reqwest::Url;
 use reqwest::blocking::Client as HttpClient;
+use serde::Serialize;
+use serde_json::json;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
+use tokio::runtime::Builder as TokioRuntimeBuilder;
 
 const LANE_POLL: Duration = Duration::from_millis(120);
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -101,12 +112,115 @@ pub struct AppleFmGenerateJob {
     pub requested_model: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchOperation {
+    CreateSession,
+    InspectSession,
+    RunText,
+    RunChat,
+    RunSession,
+    RunStream,
+    RunStructured,
+    ExportTranscript,
+    RestoreTranscript,
+    ResetSession,
+    DeleteSession,
+}
+
+impl AppleFmWorkbenchOperation {
+    pub const fn label(&self) -> &'static str {
+        match self {
+            Self::CreateSession => "create_session",
+            Self::InspectSession => "inspect_session",
+            Self::RunText => "run_text",
+            Self::RunChat => "run_chat",
+            Self::RunSession => "run_session",
+            Self::RunStream => "run_stream",
+            Self::RunStructured => "run_structured",
+            Self::ExportTranscript => "export_transcript",
+            Self::RestoreTranscript => "restore_transcript",
+            Self::ResetSession => "reset_session",
+            Self::DeleteSession => "delete_session",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchToolMode {
+    None,
+    Demo,
+    Failing,
+}
+
+#[derive(Clone, Debug)]
+pub struct AppleFmWorkbenchCommand {
+    pub request_id: String,
+    pub operation: AppleFmWorkbenchOperation,
+    pub instructions: Option<String>,
+    pub prompt: Option<String>,
+    pub requested_model: Option<String>,
+    pub session_id: Option<String>,
+    pub options: Option<AppleFmGenerationOptions>,
+    pub schema_json: Option<String>,
+    pub transcript_json: Option<String>,
+    pub tool_mode: AppleFmWorkbenchToolMode,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchLogLevel {
+    Info,
+    Error,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmWorkbenchStarted {
+    pub request_id: String,
+    pub operation: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmWorkbenchEvent {
+    pub request_id: String,
+    pub level: AppleFmWorkbenchLogLevel,
+    pub line: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmWorkbenchCompleted {
+    pub request_id: String,
+    pub operation: String,
+    pub summary: String,
+    pub model: Option<String>,
+    pub session_id: Option<String>,
+    pub response_text: String,
+    pub session_json: Option<String>,
+    pub structured_json: Option<String>,
+    pub transcript_json: Option<String>,
+    pub usage_json: Option<String>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AppleFmWorkbenchFailed {
+    pub request_id: String,
+    pub operation: String,
+    pub error: String,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum AppleFmWorkbenchUpdate {
+    Started(AppleFmWorkbenchStarted),
+    Event(AppleFmWorkbenchEvent),
+    Completed(AppleFmWorkbenchCompleted),
+    Failed(AppleFmWorkbenchFailed),
+}
+
 #[derive(Clone, Debug)]
 pub enum AppleFmBridgeCommand {
     Refresh,
     EnsureBridgeRunning,
     StopBridge,
     Generate(AppleFmGenerateJob),
+    Workbench(AppleFmWorkbenchCommand),
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -136,6 +250,7 @@ pub enum AppleFmBridgeUpdate {
     Started(AppleFmExecutionStarted),
     Completed(AppleFmExecutionCompleted),
     Failed(AppleFmExecutionFailed),
+    Workbench(Box<AppleFmWorkbenchUpdate>),
 }
 
 pub struct AppleFmBridgeWorker {
@@ -521,6 +636,484 @@ impl AppleFmBridgeState {
             }
         }
     }
+
+    fn handle_workbench(
+        &mut self,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        command: AppleFmWorkbenchCommand,
+    ) {
+        let Some(client) = self.client.clone() else {
+            self.publish_workbench_failed(
+                update_tx,
+                command.request_id,
+                command.operation.label().to_string(),
+                self.client_error
+                    .clone()
+                    .unwrap_or_else(|| "Apple FM HTTP client unavailable".to_string()),
+            );
+            return;
+        };
+
+        if self.config.auto_start {
+            let _ = self
+                .bridge
+                .ensure_running(&self.config, &client, &mut self.snapshot);
+        }
+
+        self.publish_workbench_started(
+            update_tx,
+            command.request_id.as_str(),
+            command.operation.label(),
+        );
+
+        match self.execute_workbench_command(&client, update_tx, &command) {
+            Ok(completed) => {
+                self.snapshot.last_error = None;
+                self.snapshot.last_request_id = Some(completed.request_id.clone());
+                self.snapshot.last_action = Some(format!(
+                    "Apple FM workbench completed {}",
+                    completed.operation
+                ));
+                self.snapshot.refreshed_at = Some(Instant::now());
+                self.publish_snapshot(update_tx);
+                self.publish_workbench_update(
+                    update_tx,
+                    AppleFmWorkbenchUpdate::Completed(completed),
+                );
+            }
+            Err(error) => {
+                self.snapshot.last_error = Some(error.clone());
+                self.snapshot.last_request_id = Some(command.request_id.clone());
+                self.snapshot.last_action = Some(format!(
+                    "Apple FM workbench failed {}",
+                    command.operation.label()
+                ));
+                self.snapshot.refreshed_at = Some(Instant::now());
+                self.publish_snapshot(update_tx);
+                self.publish_workbench_failed(
+                    update_tx,
+                    command.request_id,
+                    command.operation.label().to_string(),
+                    error,
+                );
+            }
+        }
+    }
+
+    fn execute_workbench_command(
+        &mut self,
+        client: &AppleFmBridgeClient,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        command: &AppleFmWorkbenchCommand,
+    ) -> Result<AppleFmWorkbenchCompleted, String> {
+        match command.operation {
+            AppleFmWorkbenchOperation::CreateSession => {
+                let request = AppleFmSessionCreateRequest {
+                    instructions: command.instructions.clone(),
+                    model: requested_system_model(command.requested_model.as_deref()),
+                    tools: Vec::new(),
+                    tool_callback: None,
+                    transcript_json: None,
+                    transcript: None,
+                };
+                let session = match command.tool_mode {
+                    AppleFmWorkbenchToolMode::None => client.create_session(&request),
+                    mode => client.create_session_with_tools(&request, sample_tools(mode)?),
+                }
+                .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("created session {}", session.id),
+                    model: Some(session.model.id.clone()),
+                    session_id: Some(session.id.clone()),
+                    response_text: String::new(),
+                    session_json: Some(pretty_json(&session)),
+                    structured_json: None,
+                    transcript_json: None,
+                    usage_json: None,
+                })
+            }
+            AppleFmWorkbenchOperation::InspectSession => {
+                let session_id = required_session_id(command)?;
+                let session = client
+                    .session(session_id.as_str())
+                    .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("loaded session {}", session.id),
+                    model: Some(session.model.id.clone()),
+                    session_id: Some(session.id.clone()),
+                    response_text: String::new(),
+                    session_json: Some(pretty_json(&session)),
+                    structured_json: None,
+                    transcript_json: session.transcript_json.clone(),
+                    usage_json: None,
+                })
+            }
+            AppleFmWorkbenchOperation::RunText => {
+                let prompt = required_prompt(command)?;
+                let response = client
+                    .generate_text(&AppleFmTextGenerationRequest {
+                        model: command.requested_model.clone(),
+                        prompt,
+                        options: command.options.clone(),
+                    })
+                    .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("generated text via {}", response.model),
+                    model: Some(response.model.clone()),
+                    session_id: None,
+                    response_text: response.output.clone(),
+                    session_json: None,
+                    structured_json: None,
+                    transcript_json: None,
+                    usage_json: response.usage.as_ref().map(pretty_json),
+                })
+            }
+            AppleFmWorkbenchOperation::RunChat => {
+                let prompt = required_prompt(command)?;
+                let response = client
+                    .chat_completion(&AppleFmChatCompletionRequest {
+                        model: command.requested_model.clone(),
+                        messages: build_chat_messages(command.instructions.as_deref(), prompt),
+                        temperature: command
+                            .options
+                            .as_ref()
+                            .and_then(|options| options.temperature),
+                        max_tokens: command
+                            .options
+                            .as_ref()
+                            .and_then(|options| options.maximum_response_tokens),
+                        options: command.options.clone(),
+                        stream: false,
+                    })
+                    .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("generated chat completion via {}", response.model),
+                    model: Some(response.model.clone()),
+                    session_id: None,
+                    response_text: response
+                        .first_text_content()
+                        .unwrap_or_default()
+                        .to_string(),
+                    session_json: None,
+                    structured_json: None,
+                    transcript_json: None,
+                    usage_json: response.usage.as_ref().map(pretty_json),
+                })
+            }
+            AppleFmWorkbenchOperation::RunSession => {
+                let session_id = required_session_id(command)?;
+                let prompt = required_prompt(command)?;
+                let response = client
+                    .respond_in_session(
+                        session_id.as_str(),
+                        &AppleFmSessionRespondRequest {
+                            prompt,
+                            options: command.options.clone(),
+                        },
+                    )
+                    .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("session {} responded", response.session.id),
+                    model: Some(response.model.clone()),
+                    session_id: Some(response.session.id.clone()),
+                    response_text: response.output.clone(),
+                    session_json: Some(pretty_json(&response.session)),
+                    structured_json: None,
+                    transcript_json: response.session.transcript_json.clone(),
+                    usage_json: response.usage.as_ref().map(pretty_json),
+                })
+            }
+            AppleFmWorkbenchOperation::RunStream => {
+                let session_id = required_session_id(command)?;
+                let prompt = required_prompt(command)?;
+                let async_client = AppleFmAsyncBridgeClient::new(self.config.base_url.clone())
+                    .map_err(|error| error.to_string())?;
+                let runtime = TokioRuntimeBuilder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .map_err(|error| format!("build Apple FM stream runtime: {error}"))?;
+                let request = AppleFmSessionRespondRequest {
+                    prompt,
+                    options: command.options.clone(),
+                };
+                let mut stream = runtime
+                    .block_on(async_client.stream_session_response(session_id.as_str(), &request))
+                    .map_err(|error| error.to_string())?;
+                let request_id = command.request_id.clone();
+                let mut output = String::new();
+                let mut model = None::<String>;
+                let mut session_json = None::<String>;
+                let mut transcript_json = None::<String>;
+                let mut usage_json = None::<String>;
+                let mut last_chars = 0usize;
+                runtime.block_on(async {
+                    while let Some(event) = stream.next().await {
+                        match event {
+                            Ok(event) => {
+                                model = Some(event.model.clone());
+                                let chars = event.output.chars().count();
+                                let delta = if chars >= last_chars {
+                                    event.output.chars().skip(last_chars).collect::<String>()
+                                } else {
+                                    event.output.clone()
+                                };
+                                last_chars = chars;
+                                output = event.output.clone();
+                                if let Some(session) = event.session.as_ref() {
+                                    transcript_json = session.transcript_json.clone();
+                                    session_json = Some(pretty_json(session));
+                                }
+                                if let Some(usage) = event.usage.as_ref() {
+                                    usage_json = Some(pretty_json(usage));
+                                }
+                                let event_label = match event.kind {
+                                    AppleFmTextStreamEventKind::Snapshot => "snapshot",
+                                    AppleFmTextStreamEventKind::Completed => "completed",
+                                };
+                                let line = if delta.trim().is_empty() {
+                                    format!("{event_label} chars={chars}")
+                                } else {
+                                    format!("{event_label} delta: {}", delta.trim())
+                                };
+                                self.publish_workbench_event(
+                                    update_tx,
+                                    request_id.as_str(),
+                                    AppleFmWorkbenchLogLevel::Info,
+                                    line,
+                                );
+                            }
+                            Err(error) => {
+                                self.publish_workbench_event(
+                                    update_tx,
+                                    request_id.as_str(),
+                                    AppleFmWorkbenchLogLevel::Error,
+                                    format!("stream error: {error}"),
+                                );
+                                return Err::<(), String>(error.to_string());
+                            }
+                        }
+                    }
+                    Ok::<(), String>(())
+                })?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("stream completed for {}", session_id),
+                    model,
+                    session_id: Some(session_id),
+                    response_text: output,
+                    session_json,
+                    structured_json: None,
+                    transcript_json,
+                    usage_json,
+                })
+            }
+            AppleFmWorkbenchOperation::RunStructured => {
+                let schema = required_schema(command)?;
+                if let Some(session_id) = normalized_optional_text(command.session_id.as_deref()) {
+                    let prompt = required_prompt(command)?;
+                    let response = client
+                        .respond_structured_in_session(
+                            session_id.as_str(),
+                            &AppleFmSessionStructuredGenerationRequest {
+                                prompt,
+                                schema,
+                                options: command.options.clone(),
+                            },
+                        )
+                        .map_err(|error| error.to_string())?;
+                    Ok(AppleFmWorkbenchCompleted {
+                        request_id: command.request_id.clone(),
+                        operation: command.operation.label().to_string(),
+                        summary: format!(
+                            "session {} structured response completed",
+                            response.session.id
+                        ),
+                        model: Some(response.model.clone()),
+                        session_id: Some(response.session.id.clone()),
+                        response_text: String::new(),
+                        session_json: Some(pretty_json(&response.session)),
+                        structured_json: Some(pretty_json(&response.content.content)),
+                        transcript_json: response.session.transcript_json.clone(),
+                        usage_json: response.usage.as_ref().map(pretty_json),
+                    })
+                } else {
+                    let prompt = required_prompt(command)?;
+                    let response = client
+                        .generate_structured(&AppleFmStructuredGenerationRequest {
+                            model: command.requested_model.clone(),
+                            prompt,
+                            schema,
+                            options: command.options.clone(),
+                        })
+                        .map_err(|error| error.to_string())?;
+                    Ok(AppleFmWorkbenchCompleted {
+                        request_id: command.request_id.clone(),
+                        operation: command.operation.label().to_string(),
+                        summary: format!("one-shot structured response via {}", response.model),
+                        model: Some(response.model.clone()),
+                        session_id: None,
+                        response_text: String::new(),
+                        session_json: None,
+                        structured_json: Some(pretty_json(&response.content.content)),
+                        transcript_json: None,
+                        usage_json: response.usage.as_ref().map(pretty_json),
+                    })
+                }
+            }
+            AppleFmWorkbenchOperation::ExportTranscript => {
+                let session_id = required_session_id(command)?;
+                let transcript = client
+                    .session_transcript(session_id.as_str())
+                    .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("exported transcript for {}", session_id),
+                    model: None,
+                    session_id: Some(session_id),
+                    response_text: String::new(),
+                    session_json: None,
+                    structured_json: None,
+                    transcript_json: Some(pretty_json(&transcript)),
+                    usage_json: None,
+                })
+            }
+            AppleFmWorkbenchOperation::RestoreTranscript => {
+                let transcript_json = command
+                    .transcript_json
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .ok_or_else(|| "Transcript JSON is required for restore".to_string())?;
+                let request = AppleFmSessionCreateRequest::from_transcript_json(
+                    transcript_json,
+                    requested_system_model(command.requested_model.as_deref()),
+                    Vec::new(),
+                );
+                let session = match command.tool_mode {
+                    AppleFmWorkbenchToolMode::None => client.create_session(&request),
+                    mode => client.create_session_with_tools(&request, sample_tools(mode)?),
+                }
+                .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("restored session {}", session.id),
+                    model: Some(session.model.id.clone()),
+                    session_id: Some(session.id.clone()),
+                    response_text: String::new(),
+                    session_json: Some(pretty_json(&session)),
+                    structured_json: None,
+                    transcript_json: session.transcript_json.clone(),
+                    usage_json: None,
+                })
+            }
+            AppleFmWorkbenchOperation::ResetSession => {
+                let session_id = required_session_id(command)?;
+                let session = client
+                    .reset_session(session_id.as_str())
+                    .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("reset session {}", session.id),
+                    model: Some(session.model.id.clone()),
+                    session_id: Some(session.id.clone()),
+                    response_text: String::new(),
+                    session_json: Some(pretty_json(&session)),
+                    structured_json: None,
+                    transcript_json: session.transcript_json.clone(),
+                    usage_json: None,
+                })
+            }
+            AppleFmWorkbenchOperation::DeleteSession => {
+                let session_id = required_session_id(command)?;
+                client
+                    .delete_session(session_id.as_str())
+                    .map_err(|error| error.to_string())?;
+                Ok(AppleFmWorkbenchCompleted {
+                    request_id: command.request_id.clone(),
+                    operation: command.operation.label().to_string(),
+                    summary: format!("deleted session {}", session_id),
+                    model: None,
+                    session_id: None,
+                    response_text: String::new(),
+                    session_json: None,
+                    structured_json: None,
+                    transcript_json: None,
+                    usage_json: None,
+                })
+            }
+        }
+    }
+
+    fn publish_workbench_started(
+        &self,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        request_id: &str,
+        operation: &str,
+    ) {
+        self.publish_workbench_update(
+            update_tx,
+            AppleFmWorkbenchUpdate::Started(AppleFmWorkbenchStarted {
+                request_id: request_id.to_string(),
+                operation: operation.to_string(),
+            }),
+        );
+    }
+
+    fn publish_workbench_event(
+        &self,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        request_id: &str,
+        level: AppleFmWorkbenchLogLevel,
+        line: impl Into<String>,
+    ) {
+        self.publish_workbench_update(
+            update_tx,
+            AppleFmWorkbenchUpdate::Event(AppleFmWorkbenchEvent {
+                request_id: request_id.to_string(),
+                level,
+                line: line.into(),
+            }),
+        );
+    }
+
+    fn publish_workbench_failed(
+        &self,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        request_id: String,
+        operation: String,
+        error: String,
+    ) {
+        self.publish_workbench_update(
+            update_tx,
+            AppleFmWorkbenchUpdate::Failed(AppleFmWorkbenchFailed {
+                request_id,
+                operation,
+                error,
+            }),
+        );
+    }
+
+    fn publish_workbench_update(
+        &self,
+        update_tx: &Sender<AppleFmBridgeUpdate>,
+        update: AppleFmWorkbenchUpdate,
+    ) {
+        let _ = update_tx.send(AppleFmBridgeUpdate::Workbench(Box::new(update)));
+    }
 }
 
 fn run_apple_fm_loop(
@@ -548,6 +1141,9 @@ fn run_apple_fm_loop(
                 state.handle_refresh(&update_tx);
             }
             Ok(AppleFmBridgeCommand::Generate(job)) => state.handle_generate(&update_tx, job),
+            Ok(AppleFmBridgeCommand::Workbench(command)) => {
+                state.handle_workbench(&update_tx, command)
+            }
             Err(RecvTimeoutError::Timeout) => {}
             Err(RecvTimeoutError::Disconnected) => {
                 state.bridge.stop();
@@ -566,6 +1162,206 @@ fn wait_for_bridge_health(client: &AppleFmBridgeClient) -> Result<(), String> {
         std::thread::sleep(BRIDGE_HEALTH_POLL);
     }
     Err("Apple FM bridge health check timed out".to_string())
+}
+
+fn required_prompt(command: &AppleFmWorkbenchCommand) -> Result<String, String> {
+    command
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+        .ok_or_else(|| "Prompt is required for this Apple FM workbench action".to_string())
+}
+
+fn required_session_id(command: &AppleFmWorkbenchCommand) -> Result<String, String> {
+    normalized_optional_text(command.session_id.as_deref())
+        .ok_or_else(|| "Session id is required for this Apple FM workbench action".to_string())
+}
+
+fn required_schema(command: &AppleFmWorkbenchCommand) -> Result<AppleFmGenerationSchema, String> {
+    let schema_json = command
+        .schema_json
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .ok_or_else(|| "Schema JSON is required for this Apple FM workbench action".to_string())?;
+    AppleFmGenerationSchema::from_json_str(schema_json).map_err(|error| error.to_string())
+}
+
+fn normalized_optional_text(value: Option<&str>) -> Option<String> {
+    value
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToString::to_string)
+}
+
+fn requested_system_model(model: Option<&str>) -> Option<AppleFmSystemLanguageModel> {
+    normalized_optional_text(model).map(|id| AppleFmSystemLanguageModel {
+        id,
+        ..AppleFmSystemLanguageModel::default()
+    })
+}
+
+fn build_chat_messages(instructions: Option<&str>, prompt: String) -> Vec<AppleFmChatMessage> {
+    let mut messages = Vec::new();
+    if let Some(instructions) = normalized_optional_text(instructions) {
+        messages.push(AppleFmChatMessage {
+            role: AppleFmChatMessageRole::System,
+            content: instructions,
+        });
+    }
+    messages.push(AppleFmChatMessage {
+        role: AppleFmChatMessageRole::User,
+        content: prompt,
+    });
+    messages
+}
+
+fn pretty_json<T>(value: &T) -> String
+where
+    T: Serialize,
+{
+    serde_json::to_string_pretty(value).unwrap_or_else(|error| {
+        format!(
+            "{{\"error\":\"failed to serialize Apple FM workbench payload\",\"detail\":\"{}\"}}",
+            error
+        )
+    })
+}
+
+fn sample_tools(mode: AppleFmWorkbenchToolMode) -> Result<Vec<Arc<dyn AppleFmTool>>, String> {
+    match mode {
+        AppleFmWorkbenchToolMode::None => Ok(Vec::new()),
+        AppleFmWorkbenchToolMode::Demo => Ok(vec![
+            Arc::new(DemoSecretTool::new()?) as Arc<dyn AppleFmTool>,
+            Arc::new(DemoProfileTool::new()?) as Arc<dyn AppleFmTool>,
+        ]),
+        AppleFmWorkbenchToolMode::Failing => Ok(vec![
+            Arc::new(FailingSecretTool::new()?) as Arc<dyn AppleFmTool>
+        ]),
+    }
+}
+
+#[derive(Clone)]
+struct DemoSecretTool {
+    definition: AppleFmToolDefinition,
+}
+
+impl DemoSecretTool {
+    fn new() -> Result<Self, String> {
+        Ok(Self {
+            definition: AppleFmToolDefinition::new(
+                "lookup_secret_code",
+                Some("Return a deterministic secret code for a subject."),
+                AppleFmGenerationSchema::from_json_str(
+                    r#"{
+                        "type": "object",
+                        "properties": {
+                            "subject": { "type": "string" }
+                        },
+                        "required": ["subject"]
+                    }"#,
+                )
+                .map_err(|error| error.to_string())?,
+            ),
+        })
+    }
+}
+
+impl AppleFmTool for DemoSecretTool {
+    fn definition(&self) -> AppleFmToolDefinition {
+        self.definition.clone()
+    }
+
+    fn call(&self, arguments: AppleFmGeneratedContent) -> Result<String, AppleFmToolCallError> {
+        let subject = arguments
+            .property::<String>("subject")
+            .map_err(|error| AppleFmToolCallError::new("lookup_secret_code", error.to_string()))?
+            .unwrap_or_else(|| "unknown".to_string());
+        Ok(json!({
+            "subject": subject,
+            "secret_code": "OA-314159",
+            "source": "apple-fm-workbench",
+        })
+        .to_string())
+    }
+}
+
+#[derive(Clone)]
+struct DemoProfileTool {
+    definition: AppleFmToolDefinition,
+}
+
+impl DemoProfileTool {
+    fn new() -> Result<Self, String> {
+        Ok(Self {
+            definition: AppleFmToolDefinition::new(
+                "lookup_user_profile",
+                Some("Return a deterministic user profile record."),
+                AppleFmGenerationSchema::from_json_str(
+                    r#"{
+                        "type": "object",
+                        "properties": {
+                            "username": { "type": "string" }
+                        },
+                        "required": ["username"]
+                    }"#,
+                )
+                .map_err(|error| error.to_string())?,
+            ),
+        })
+    }
+}
+
+impl AppleFmTool for DemoProfileTool {
+    fn definition(&self) -> AppleFmToolDefinition {
+        self.definition.clone()
+    }
+
+    fn call(&self, arguments: AppleFmGeneratedContent) -> Result<String, AppleFmToolCallError> {
+        let username = arguments
+            .property::<String>("username")
+            .map_err(|error| AppleFmToolCallError::new("lookup_user_profile", error.to_string()))?
+            .unwrap_or_else(|| "unknown".to_string());
+        Ok(json!({
+            "username": username,
+            "reputation": "trusted",
+            "city": "Austin",
+            "source": "apple-fm-workbench",
+        })
+        .to_string())
+    }
+}
+
+#[derive(Clone)]
+struct FailingSecretTool {
+    definition: AppleFmToolDefinition,
+}
+
+impl FailingSecretTool {
+    fn new() -> Result<Self, String> {
+        Ok(Self {
+            definition: DemoSecretTool::new()?.definition,
+        })
+    }
+}
+
+impl AppleFmTool for FailingSecretTool {
+    fn definition(&self) -> AppleFmToolDefinition {
+        self.definition.clone()
+    }
+
+    fn call(&self, arguments: AppleFmGeneratedContent) -> Result<String, AppleFmToolCallError> {
+        let subject = arguments
+            .property::<String>("subject")
+            .map_err(|error| AppleFmToolCallError::new("lookup_secret_code", error.to_string()))?
+            .unwrap_or_else(|| "unknown".to_string());
+        Err(AppleFmToolCallError::new(
+            "lookup_secret_code",
+            format!("intentional Apple FM workbench failure for {subject}"),
+        ))
+    }
 }
 
 fn port_from_base_url(base_url: &str) -> Option<u16> {
@@ -605,11 +1401,14 @@ mod tests {
     use super::{
         AppleFmBridgeCommand, AppleFmBridgeConfig, AppleFmBridgeUpdate, AppleFmBridgeWorker,
         AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase,
+        AppleFmWorkbenchCommand, AppleFmWorkbenchOperation, AppleFmWorkbenchToolMode,
+        AppleFmWorkbenchUpdate,
     };
+    use psionic_apple_fm::AppleFmSamplingMode;
     use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
     use std::sync::Arc;
-    use std::sync::atomic::{AtomicBool, Ordering};
+    use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
     use std::thread::JoinHandle;
     use std::time::{Duration, Instant};
 
@@ -621,6 +1420,8 @@ mod tests {
         let address = listener.local_addr().expect("listener addr");
         let saw_chat_completion = Arc::new(AtomicBool::new(false));
         let saw_chat_completion_handle = Arc::clone(&saw_chat_completion);
+        let session_counter = Arc::new(AtomicUsize::new(0));
+        let session_counter_handle = Arc::clone(&session_counter);
 
         let handle = std::thread::spawn(move || {
             let deadline = Instant::now() + Duration::from_secs(2);
@@ -636,49 +1437,241 @@ mod tests {
                     }
                     Err(error) => panic!("accept mock apple fm request: {error}"),
                 };
-                let (method, path, _) = read_http_request(&mut stream);
-                let response_body = match (method.as_str(), path.as_str()) {
-                    ("GET", "/health") => serde_json::json!({
-                        "status": "ok",
-                        "model_available": true,
-                        "availability_message": null,
-                        "default_use_case": "general",
-                        "default_guardrails": "default",
-                        "supported_use_cases": ["general", "content_tagging"],
-                        "supported_guardrails": ["default", "permissive_content_transformations"],
-                    })
-                    .to_string(),
-                    ("GET", "/v1/models") => serde_json::json!({
-                        "data": [{
-                            "id": "apple-foundation-model",
+                stream
+                    .set_nonblocking(false)
+                    .expect("set mock apple fm stream blocking");
+                let (method, path, body) = read_http_request(&mut stream);
+                match (method.as_str(), path.as_str()) {
+                    ("GET", "/health") => write_http_response(
+                        &mut stream,
+                        200,
+                        serde_json::json!({
+                            "status": "ok",
+                            "model_available": true,
+                            "availability_message": null,
                             "default_use_case": "general",
                             "default_guardrails": "default",
                             "supported_use_cases": ["general", "content_tagging"],
                             "supported_guardrails": ["default", "permissive_content_transformations"],
-                            "available": true
-                        }],
-                    })
-                    .to_string(),
-                    ("POST", "/v1/chat/completions") => {
-                        saw_chat_completion_handle.store(true, Ordering::SeqCst);
-                        serde_json::json!({
-                            "model": "apple-foundation-model",
-                            "choices": [{
-                                "message": {
-                                    "role": "assistant",
-                                    "content": "hello from apple fm"
-                                }
-                            }],
-                            "usage": {
-                                "prompt_tokens": 9,
-                                "completion_tokens": 4
-                            }
                         })
                         .to_string()
+                        .as_str(),
+                    ),
+                    ("GET", "/v1/models") => write_http_response(
+                        &mut stream,
+                        200,
+                        serde_json::json!({
+                            "data": [{
+                                "id": "apple-foundation-model",
+                                "default_use_case": "general",
+                                "default_guardrails": "default",
+                                "supported_use_cases": ["general", "content_tagging"],
+                                "supported_guardrails": ["default", "permissive_content_transformations"],
+                                "available": true
+                            }],
+                        })
+                        .to_string()
+                        .as_str(),
+                    ),
+                    ("POST", "/v1/chat/completions") => {
+                        saw_chat_completion_handle.store(true, Ordering::SeqCst);
+                        write_http_response(
+                            &mut stream,
+                            200,
+                            serde_json::json!({
+                                "model": "apple-foundation-model",
+                                "choices": [{
+                                    "message": {
+                                        "role": "assistant",
+                                        "content": "hello from apple fm"
+                                    }
+                                }],
+                                "usage": {
+                                    "prompt_tokens": 9,
+                                    "completion_tokens": 4,
+                                    "total_tokens": 13
+                                }
+                            })
+                            .to_string()
+                            .as_str(),
+                        );
+                    }
+                    ("POST", "/v1/sessions") => {
+                        let request_json: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("session create body");
+                        let session_id = format!(
+                            "sess-{}",
+                            session_counter_handle.fetch_add(1, Ordering::SeqCst) + 1
+                        );
+                        let transcript_json = request_json["transcript_json"]
+                            .as_str()
+                            .map(ToString::to_string)
+                            .unwrap_or_else(empty_transcript_json);
+                        write_http_response(
+                            &mut stream,
+                            200,
+                            session_create_response(
+                                session_id.as_str(),
+                                request_json["instructions"].as_str(),
+                                tool_metadata_json(&request_json["tools"]),
+                                transcript_json.as_str(),
+                            )
+                            .to_string()
+                            .as_str(),
+                        );
+                    }
+                    ("GET", path)
+                        if path.starts_with("/v1/sessions/") && path.ends_with("/transcript") =>
+                    {
+                        let session_id = path
+                            .trim_start_matches("/v1/sessions/")
+                            .trim_end_matches("/transcript")
+                            .trim_end_matches('/');
+                        let transcript_json = if session_id == "sess-1" {
+                            empty_transcript_json()
+                        } else {
+                            non_empty_transcript_json()
+                        };
+                        write_http_response(&mut stream, 200, transcript_json.as_str());
+                    }
+                    ("GET", path) if path.starts_with("/v1/sessions/") => {
+                        let session_id = path.trim_start_matches("/v1/sessions/");
+                        let transcript_json = if session_id == "sess-1" {
+                            empty_transcript_json()
+                        } else {
+                            non_empty_transcript_json()
+                        };
+                        write_http_response(
+                            &mut stream,
+                            200,
+                            session_state_json(
+                                session_id,
+                                Some("You are a helper"),
+                                &[serde_json::json!({
+                                    "name": "lookup_secret_code",
+                                    "description": "Return a deterministic secret code for a subject."
+                                })],
+                                transcript_json.as_str(),
+                            )
+                            .to_string()
+                            .as_str(),
+                        );
+                    }
+                    ("POST", path)
+                        if path.starts_with("/v1/sessions/")
+                            && path.ends_with("/responses/structured") =>
+                    {
+                        let session_id = path
+                            .trim_start_matches("/v1/sessions/")
+                            .trim_end_matches("/responses/structured")
+                            .trim_end_matches('/');
+                        let request_json: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("structured body");
+                        assert_eq!(request_json["prompt"], "summarize this task");
+                        write_http_response(
+                            &mut stream,
+                            200,
+                            serde_json::json!({
+                                "session": session_state_json(
+                                    session_id,
+                                    Some("You are a helper"),
+                                    &[],
+                                    non_empty_transcript_json().as_str(),
+                                ),
+                                "model": "apple-foundation-model",
+                                "content": {
+                                    "generation_id": "gen-1",
+                                    "content": {
+                                        "summary": "Ship Apple FM",
+                                        "confidence": 0.94
+                                    },
+                                    "is_complete": true
+                                },
+                                "usage": {
+                                    "prompt_tokens": 7,
+                                    "completion_tokens": 6,
+                                    "total_tokens": 13
+                                }
+                            })
+                            .to_string()
+                            .as_str(),
+                        );
+                    }
+                    ("POST", path)
+                        if path.starts_with("/v1/sessions/")
+                            && path.ends_with("/responses/stream") =>
+                    {
+                        let response = "event: snapshot\n\
+data: {\"kind\":\"snapshot\",\"model\":\"apple-foundation-model\",\"output\":\"hello\"}\n\n\
+event: completed\n\
+data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"hello world\",\"usage\":{\"total_tokens\":11},\"session\":{\"id\":\"sess-1\",\"instructions\":\"You are a helper\",\"model\":{\"id\":\"apple-foundation-model\",\"use_case\":\"general\",\"guardrails\":\"default\"},\"tools\":[],\"is_responding\":false,\"transcript_json\":\"{\\\"version\\\":1,\\\"type\\\":\\\"FoundationModels.Transcript\\\",\\\"transcript\\\":{\\\"entries\\\":[{\\\"role\\\":\\\"assistant\\\",\\\"content\\\":\\\"hello world\\\"}]}}\"}}\n\n";
+                        write_http_response_with_content_type(
+                            &mut stream,
+                            200,
+                            "text/event-stream",
+                            response,
+                        );
+                    }
+                    ("POST", path)
+                        if path.starts_with("/v1/sessions/")
+                            && path.ends_with("/responses") =>
+                    {
+                        let session_id = path
+                            .trim_start_matches("/v1/sessions/")
+                            .trim_end_matches("/responses")
+                            .trim_end_matches('/');
+                        let request_json: serde_json::Value =
+                            serde_json::from_str(body.as_str()).expect("session response body");
+                        assert_eq!(request_json["prompt"], "hello");
+                        assert_eq!(request_json["options"]["temperature"], 0.4);
+                        assert_eq!(request_json["options"]["sampling"]["mode"], "random");
+                        assert_eq!(request_json["options"]["sampling"]["top_k"], 32);
+                        assert_eq!(request_json["options"]["sampling"]["seed"], 7);
+                        write_http_response(
+                            &mut stream,
+                            200,
+                            serde_json::json!({
+                                "session": session_state_json(
+                                    session_id,
+                                    Some("You are a helper"),
+                                    &[],
+                                    non_empty_transcript_json().as_str(),
+                                ),
+                                "model": "apple-foundation-model",
+                                "output": "session hello from apple fm",
+                                "usage": {
+                                    "prompt_tokens": 6,
+                                    "completion_tokens": 5,
+                                    "total_tokens": 11
+                                }
+                            })
+                            .to_string()
+                            .as_str(),
+                        );
+                    }
+                    ("POST", path) if path.starts_with("/v1/sessions/") && path.ends_with("/reset") => {
+                        let session_id = path
+                            .trim_start_matches("/v1/sessions/")
+                            .trim_end_matches("/reset")
+                            .trim_end_matches('/');
+                        write_http_response(
+                            &mut stream,
+                            200,
+                            session_state_json(
+                                session_id,
+                                Some("You are a helper"),
+                                &[],
+                                empty_transcript_json().as_str(),
+                            )
+                            .to_string()
+                            .as_str(),
+                        );
+                    }
+                    ("DELETE", path) if path.starts_with("/v1/sessions/") => {
+                        write_http_response(&mut stream, 200, "{}");
                     }
                     other => panic!("unexpected mock apple fm request {other:?}"),
-                };
-                write_http_response(&mut stream, 200, response_body.as_str());
+                }
             }
         });
 
@@ -722,8 +1715,17 @@ mod tests {
     }
 
     fn write_http_response(stream: &mut TcpStream, status_code: u16, body: &str) {
+        write_http_response_with_content_type(stream, status_code, "application/json", body);
+    }
+
+    fn write_http_response_with_content_type(
+        stream: &mut TcpStream,
+        status_code: u16,
+        content_type: &str,
+        body: &str,
+    ) {
         let response = format!(
-            "HTTP/1.1 {status_code} OK\r\ncontent-type: application/json\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
+            "HTTP/1.1 {status_code} OK\r\ncontent-type: {content_type}\r\ncontent-length: {}\r\nconnection: close\r\n\r\n{}",
             body.len(),
             body
         );
@@ -731,6 +1733,101 @@ mod tests {
             .write_all(response.as_bytes())
             .expect("write mock response");
         stream.flush().expect("flush mock response");
+    }
+
+    fn session_create_response(
+        session_id: &str,
+        instructions: Option<&str>,
+        tools: Vec<serde_json::Value>,
+        transcript_json: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "session": session_state_json(session_id, instructions, tools.as_slice(), transcript_json)
+        })
+    }
+
+    fn session_state_json(
+        session_id: &str,
+        instructions: Option<&str>,
+        tools: &[serde_json::Value],
+        transcript_json: &str,
+    ) -> serde_json::Value {
+        serde_json::json!({
+            "id": session_id,
+            "instructions": instructions,
+            "model": {
+                "id": "apple-foundation-model",
+                "use_case": "general",
+                "guardrails": "default"
+            },
+            "tools": tools,
+            "is_responding": false,
+            "transcript_json": transcript_json
+        })
+    }
+
+    fn tool_metadata_json(value: &serde_json::Value) -> Vec<serde_json::Value> {
+        value
+            .as_array()
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|tool| {
+                serde_json::json!({
+                    "name": tool["name"],
+                    "description": tool["description"],
+                })
+            })
+            .collect()
+    }
+
+    fn empty_transcript_json() -> String {
+        "{\"version\":1,\"type\":\"FoundationModels.Transcript\",\"transcript\":{\"entries\":[]}}"
+            .to_string()
+    }
+
+    fn non_empty_transcript_json() -> String {
+        "{\"version\":1,\"type\":\"FoundationModels.Transcript\",\"transcript\":{\"entries\":[{\"role\":\"assistant\",\"content\":\"hello world\"}]}}"
+            .to_string()
+    }
+
+    fn wait_for_workbench_completion(
+        worker: &mut AppleFmBridgeWorker,
+        request_id: &str,
+    ) -> (super::AppleFmWorkbenchCompleted, Vec<String>) {
+        let deadline = Instant::now() + Duration::from_secs(3);
+        let mut events = Vec::new();
+        while Instant::now() < deadline {
+            for update in worker.drain_updates() {
+                if let AppleFmBridgeUpdate::Workbench(update) = update {
+                    match *update {
+                        AppleFmWorkbenchUpdate::Started(_) => {}
+                        AppleFmWorkbenchUpdate::Event(event) if event.request_id == request_id => {
+                            events.push(event.line);
+                        }
+                        AppleFmWorkbenchUpdate::Completed(completed)
+                            if completed.request_id == request_id =>
+                        {
+                            return (completed, events);
+                        }
+                        AppleFmWorkbenchUpdate::Failed(failed)
+                            if failed.request_id == request_id =>
+                        {
+                            panic!(
+                                "expected workbench completion, got failure: {}",
+                                failed.error
+                            );
+                        }
+                        AppleFmWorkbenchUpdate::Event(_)
+                        | AppleFmWorkbenchUpdate::Completed(_)
+                        | AppleFmWorkbenchUpdate::Failed(_) => {}
+                    }
+                }
+            }
+            std::thread::sleep(Duration::from_millis(20));
+        }
+
+        panic!("timed out waiting for workbench completion {request_id}");
     }
 
     #[test]
@@ -774,7 +1871,9 @@ mod tests {
                         completed = Some(value);
                         break;
                     }
-                    AppleFmBridgeUpdate::Started(_) | AppleFmBridgeUpdate::Failed(_) => {}
+                    AppleFmBridgeUpdate::Started(_)
+                    | AppleFmBridgeUpdate::Failed(_)
+                    | AppleFmBridgeUpdate::Workbench(_) => {}
                 }
             }
             if completed.is_some() {
@@ -792,6 +1891,261 @@ mod tests {
         assert_eq!(completed.provenance.backend, "apple_foundation_models");
         assert_eq!(completed.provenance.base_url, base_url);
         assert!(saw_chat_completion.load(Ordering::SeqCst));
+
+        server_handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn worker_workbench_covers_text_chat_session_stream_and_transcript_flows() {
+        let (base_url, saw_chat_completion, server_handle) = spawn_mock_bridge();
+        let mut worker = AppleFmBridgeWorker::spawn_with_config(AppleFmBridgeConfig {
+            base_url,
+            auto_start: false,
+        });
+
+        let text_request_id = "wb-text-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: text_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::RunText,
+                instructions: None,
+                prompt: Some("Say hello".to_string()),
+                requested_model: Some("apple-foundation-model".to_string()),
+                session_id: None,
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue text workbench command");
+        let (text_completed, _) =
+            wait_for_workbench_completion(&mut worker, text_request_id.as_str());
+        assert_eq!(text_completed.response_text, "hello from apple fm");
+
+        let chat_request_id = "wb-chat-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: chat_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::RunChat,
+                instructions: Some("Be brief".to_string()),
+                prompt: Some("Say hello".to_string()),
+                requested_model: Some("apple-foundation-model".to_string()),
+                session_id: None,
+                options: Some(
+                    super::AppleFmGenerationOptions::new(
+                        Some(AppleFmSamplingMode::greedy()),
+                        Some(0.3),
+                        Some(128),
+                    )
+                    .expect("chat options"),
+                ),
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue chat workbench command");
+        let (chat_completed, _) =
+            wait_for_workbench_completion(&mut worker, chat_request_id.as_str());
+        assert_eq!(chat_completed.response_text, "hello from apple fm");
+        assert!(saw_chat_completion.load(Ordering::SeqCst));
+
+        let create_request_id = "wb-create-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: create_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::CreateSession,
+                instructions: Some("You are a helper".to_string()),
+                prompt: None,
+                requested_model: Some("apple-foundation-model".to_string()),
+                session_id: None,
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::Demo,
+            }))
+            .expect("queue create-session workbench command");
+        let (created, _) = wait_for_workbench_completion(&mut worker, create_request_id.as_str());
+        let session_id = created.session_id.clone().expect("session id");
+        let session_json = created.session_json.expect("session json");
+        assert!(session_json.contains("lookup_secret_code"));
+        assert!(session_json.contains("lookup_user_profile"));
+
+        let inspect_request_id = "wb-inspect-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: inspect_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::InspectSession,
+                instructions: None,
+                prompt: None,
+                requested_model: None,
+                session_id: Some(session_id.clone()),
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue inspect-session workbench command");
+        let (inspected, _) =
+            wait_for_workbench_completion(&mut worker, inspect_request_id.as_str());
+        assert_eq!(inspected.session_id.as_deref(), Some(session_id.as_str()));
+
+        let session_request_id = "wb-session-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: session_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::RunSession,
+                instructions: None,
+                prompt: Some("hello".to_string()),
+                requested_model: None,
+                session_id: Some(session_id.clone()),
+                options: Some(
+                    super::AppleFmGenerationOptions::new(
+                        Some(
+                            AppleFmSamplingMode::random(Some(32), None, Some(7))
+                                .expect("random options"),
+                        ),
+                        Some(0.4),
+                        Some(64),
+                    )
+                    .expect("session options"),
+                ),
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue run-session workbench command");
+        let (session_completed, _) =
+            wait_for_workbench_completion(&mut worker, session_request_id.as_str());
+        assert_eq!(
+            session_completed.response_text,
+            "session hello from apple fm"
+        );
+
+        let stream_request_id = "wb-stream-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: stream_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::RunStream,
+                instructions: None,
+                prompt: Some("stream me".to_string()),
+                requested_model: None,
+                session_id: Some("sess-1".to_string()),
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue stream workbench command");
+        let (stream_completed, stream_events) =
+            wait_for_workbench_completion(&mut worker, stream_request_id.as_str());
+        assert_eq!(stream_completed.response_text, "hello world");
+        assert!(stream_events.iter().any(|line| line.contains("snapshot")));
+        assert!(stream_events.iter().any(|line| line.contains("completed")));
+
+        let structured_request_id = "wb-structured-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: structured_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::RunStructured,
+                instructions: None,
+                prompt: Some("summarize this task".to_string()),
+                requested_model: None,
+                session_id: Some(session_id.clone()),
+                options: None,
+                schema_json: Some(
+                    "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"summary\": { \"type\": \"string\" },\n    \"confidence\": { \"type\": \"number\" }\n  },\n  \"required\": [\"summary\", \"confidence\"]\n}".to_string(),
+                ),
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue structured workbench command");
+        let (structured_completed, _) =
+            wait_for_workbench_completion(&mut worker, structured_request_id.as_str());
+        assert!(
+            structured_completed
+                .structured_json
+                .as_deref()
+                .is_some_and(|json| json.contains("Ship Apple FM"))
+        );
+
+        let export_request_id = "wb-export-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: export_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::ExportTranscript,
+                instructions: None,
+                prompt: None,
+                requested_model: None,
+                session_id: Some(session_id.clone()),
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue export workbench command");
+        let (exported, _) = wait_for_workbench_completion(&mut worker, export_request_id.as_str());
+        let transcript_json = exported.transcript_json.expect("transcript json");
+        assert!(transcript_json.contains("FoundationModels.Transcript"));
+
+        let restore_request_id = "wb-restore-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: restore_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::RestoreTranscript,
+                instructions: None,
+                prompt: None,
+                requested_model: Some("apple-foundation-model".to_string()),
+                session_id: None,
+                options: None,
+                schema_json: None,
+                transcript_json: Some(transcript_json),
+                tool_mode: AppleFmWorkbenchToolMode::Demo,
+            }))
+            .expect("queue restore workbench command");
+        let (restored, _) = wait_for_workbench_completion(&mut worker, restore_request_id.as_str());
+        assert!(restored.session_id.is_some());
+        assert!(
+            restored
+                .session_json
+                .as_deref()
+                .is_some_and(|json| json.contains("lookup_secret_code"))
+        );
+
+        let reset_request_id = "wb-reset-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: reset_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::ResetSession,
+                instructions: None,
+                prompt: None,
+                requested_model: None,
+                session_id: Some(session_id.clone()),
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue reset workbench command");
+        let (reset, _) = wait_for_workbench_completion(&mut worker, reset_request_id.as_str());
+        assert_eq!(reset.session_id.as_deref(), Some(session_id.as_str()));
+
+        let delete_request_id = "wb-delete-1".to_string();
+        worker
+            .enqueue(AppleFmBridgeCommand::Workbench(AppleFmWorkbenchCommand {
+                request_id: delete_request_id.clone(),
+                operation: AppleFmWorkbenchOperation::DeleteSession,
+                instructions: None,
+                prompt: None,
+                requested_model: None,
+                session_id: Some(session_id),
+                options: None,
+                schema_json: None,
+                transcript_json: None,
+                tool_mode: AppleFmWorkbenchToolMode::None,
+            }))
+            .expect("queue delete workbench command");
+        let (deleted, _) = wait_for_workbench_completion(&mut worker, delete_request_id.as_str());
+        assert_eq!(deleted.summary, "deleted session sess-1");
 
         server_handle.join().expect("mock bridge thread");
     }
