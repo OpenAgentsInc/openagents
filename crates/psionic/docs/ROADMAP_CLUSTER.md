@@ -36,7 +36,7 @@
 > `d0f3e7891`, after landing `PSI-213` / `#3322` in `b0601f662`, after
 > opening `PSI-214` through `PSI-216` as `#3323` through `#3325` for the
 > wider-network discovery follow-on queue, after landing `PSI-214` / `#3323`
-> in `1102bffa4`, and after checking live
+> in `1102bffa4`, after landing `PSI-215` / `#3324` in `47410298a`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -150,7 +150,7 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) is landed on `main`
   - the wider-network discovery follow-on queue now exists on GitHub
     - `PSI-214` / [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) is landed on `main`
-    - `PSI-215` / [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) is open
+    - `PSI-215` / [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) is landed on `main`
     - `PSI-216` / [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) is open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
@@ -801,7 +801,7 @@ into the cluster control plane itself.
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-214` | [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) | Closed | Add signed cluster introduction envelopes and policy digests | `psionic-cluster`, docs/tests | Landed in `1102bffa4`: Psionic now has `ClusterDiscoveryCandidate`, signed `SignedClusterIntroductionEnvelope`, explicit `ClusterIntroductionPolicy` digests, verification/refusal diagnostics for untrusted or malformed introduction artifacts, and manifest/config surfaces that keep future wider-network introductions separate from admitted membership truth. |
-| `PSI-215` | [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) | Open | Add bounded discovery-candidate ledger and admission reconciliation | `psionic-cluster`, ordered-state/tests | Wider-network discovery needs authoritative candidate state, expiry, refusal, and explicit reconciliation into admitted membership so discovery truth does not silently widen cluster membership. |
+| `PSI-215` | [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) | Closed | Add bounded discovery-candidate ledger and admission reconciliation | `psionic-cluster`, ordered-state/tests | Landed in `47410298a`: Psionic now keeps `ClusterDiscoveredCandidateRecord` state and provenance separate from admitted membership, exposes deterministic candidate status transitions for introduced/accepted/refused/expired discovery truth, and replays, compacts, and recovers explicit candidate admission into membership without silently widening cluster membership. |
 | `PSI-216` | [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) | Open | Add wider-network discovery validation drills and rollout gates | docs/tests/validation plus cluster crates | Broader distributed-discovery claims should not land without a validation matrix, operator drill, and explicit rollout gate comparable to the existing transport, recovery, and failover gates. |
 
 ## Recommended Order
@@ -821,8 +821,8 @@ The shortest honest path from today's `main` is:
 6. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-7. After that local CUDA gate closes, work the wider-network discovery queue in
-   order: `#3324` -> `#3325`.
+7. After that local CUDA gate closes, work the remaining wider-network
+   discovery queue in order: `#3325`.
 8. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
