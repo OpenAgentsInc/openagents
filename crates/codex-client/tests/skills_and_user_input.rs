@@ -114,6 +114,7 @@ fn session_override_params_serialize_service_tier_and_personality() {
         approval_policy: Some(AskForApproval::Never),
         sandbox: Some(SandboxMode::DangerFullAccess),
         personality: Some(Personality::Pragmatic),
+        ephemeral: Some(true),
         dynamic_tools: None,
     };
     let thread_value = serde_json::to_value(thread_params).expect("thread params should serialize");
@@ -125,6 +126,7 @@ fn session_override_params_serialize_service_tier_and_personality() {
         thread_value["personality"],
         Value::String("pragmatic".to_string())
     );
+    assert_eq!(thread_value["ephemeral"], Value::Bool(true));
 
     let turn_params = TurnStartParams {
         thread_id: "thread-1".to_string(),

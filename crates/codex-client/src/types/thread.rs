@@ -32,6 +32,8 @@ pub struct ThreadStartParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub personality: Option<Personality>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub ephemeral: Option<bool>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub dynamic_tools: Option<Vec<DynamicToolSpec>>,
 }
 
@@ -135,6 +137,12 @@ pub struct ThreadSnapshot {
     #[serde(default)]
     pub preview: String,
     #[serde(default)]
+    pub ephemeral: bool,
+    #[serde(default)]
+    pub path: Option<PathBuf>,
+    #[serde(default)]
+    pub cwd: Option<PathBuf>,
+    #[serde(default)]
     pub turns: Vec<ThreadTurn>,
 }
 
@@ -184,6 +192,8 @@ pub struct ThreadSummary {
     pub preview: String,
     #[serde(default)]
     pub name: Option<String>,
+    #[serde(default)]
+    pub ephemeral: bool,
     #[serde(default)]
     pub model_provider: String,
     #[serde(default)]

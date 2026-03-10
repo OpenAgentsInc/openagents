@@ -1014,6 +1014,7 @@ impl CodexLaneState {
                 approval_policy: config.approval_policy,
                 sandbox: Some(SandboxMode::DangerFullAccess),
                 personality: None,
+                ephemeral: None,
                 dynamic_tools: Some(
                     crate::openagents_dynamic_tools::openagents_dynamic_tool_specs(),
                 ),

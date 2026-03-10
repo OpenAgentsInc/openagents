@@ -8,6 +8,7 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
 2. [`CODEX_PANE_CAD_TOOLING.md`](/Users/christopherdavid/code/openagents/docs/codex/CODEX_PANE_CAD_TOOLING.md)
 3. [`CAD_CHAT_BUILD_RELEASE_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_CHAT_BUILD_RELEASE_RUNBOOK.md)
 4. [`CAD_PHASE2_DEMO_RUNBOOK.md`](/Users/christopherdavid/code/openagents/docs/codex/CAD_PHASE2_DEMO_RUNBOOK.md)
+5. [`EXEC.md`](/Users/christopherdavid/code/openagents/docs/codex/EXEC.md)
 
 ## Documents
 
@@ -26,6 +27,9 @@ This folder is the primary reference set for Codex integration in desktop MVP, w
   - phase-2 robotic hand demo choreography, capture checklist, and deterministic checkpoints.
 - [`LIVE_HARNESS.md`](/Users/christopherdavid/code/openagents/docs/codex/LIVE_HARNESS.md)
   - codex live harness probes and manual protocol debugging workflow.
+- [`EXEC.md`](/Users/christopherdavid/code/openagents/docs/codex/EXEC.md)
+  - app-owned non-interactive Codex execution contract for scripts and local
+    automation.
 
 ### Plans / Historical Backlog
 

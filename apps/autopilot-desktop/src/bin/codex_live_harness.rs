@@ -1032,6 +1032,7 @@ async fn run(args: HarnessArgs) -> Result<()> {
             approval_policy: Some(AskForApproval::Never),
             sandbox: Some(SandboxMode::DangerFullAccess),
             personality: None,
+            ephemeral: None,
             dynamic_tools: args
                 .include_openagents_dynamic_tools
                 .then(openagents_dynamic_tools::openagents_dynamic_tool_specs),

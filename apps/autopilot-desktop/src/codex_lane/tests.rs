@@ -1116,6 +1116,9 @@ fn thread_read_parser_handles_camel_case_items() {
     let thread = codex_client::ThreadSnapshot {
         id: "thread-1".to_string(),
         preview: "preview".to_string(),
+        ephemeral: false,
+        path: None,
+        cwd: None,
         turns: vec![codex_client::ThreadTurn {
             id: "turn-1".to_string(),
             items: vec![
@@ -1156,6 +1159,9 @@ fn thread_read_extracts_latest_plan_artifact() {
     let thread = codex_client::ThreadSnapshot {
         id: "thread-1".to_string(),
         preview: String::new(),
+        ephemeral: false,
+        path: None,
+        cwd: None,
         turns: vec![
             codex_client::ThreadTurn {
                 id: "turn-older".to_string(),
@@ -1190,6 +1196,9 @@ fn thread_read_extracts_latest_review_and_compaction_artifacts() {
     let thread = codex_client::ThreadSnapshot {
         id: "thread-1".to_string(),
         preview: String::new(),
+        ephemeral: false,
+        path: None,
+        cwd: None,
         turns: vec![
             codex_client::ThreadTurn {
                 id: "turn-older".to_string(),

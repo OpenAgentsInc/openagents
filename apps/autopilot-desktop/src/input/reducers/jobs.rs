@@ -900,6 +900,7 @@ fn queue_provider_execution_thread_start(state: &mut RenderState) -> Result<(), 
         approval_policy: super::super::actions::cad_turn_approval_policy(false),
         sandbox: super::super::actions::goal_scoped_thread_sandbox_mode(state),
         personality: None,
+        ephemeral: None,
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     let seq = state.queue_codex_command(command)?;

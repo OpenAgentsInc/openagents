@@ -5439,6 +5439,7 @@ pub(super) fn run_chat_new_thread_action(state: &mut crate::app_state::RenderSta
             .as_ref()
             .and_then(|defaults| defaults.personality.request_value())
             .or_else(|| chat_session_personality(state)),
+        ephemeral: None,
         dynamic_tools: Some(crate::openagents_dynamic_tools::openagents_dynamic_tool_specs()),
     });
     if let Err(error) = state.queue_codex_command(command) {

@@ -19,6 +19,10 @@ path = "src/bin/codex_live_harness.rs"
 name = "spark-wallet-cli"
 path = "src/bin/spark_wallet_cli.rs"
 
+[[bin]]
+name = "autopilot-codex-exec"
+path = "src/bin/autopilot_codex_exec.rs"
+
 [lints]
 workspace = true
 
@@ -50,6 +54,7 @@ chrono = { version = "0.4", default-features = true, features = ["clock"] }
 hex = { workspace = true }
 base64 = "0.22"
 bitcoin = { workspace = true }
+clap = { version = "4.5", features = ["derive"] }
 
 [dev-dependencies]
 futures-util = "0.3"
