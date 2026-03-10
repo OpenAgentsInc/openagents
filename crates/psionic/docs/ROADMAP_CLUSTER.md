@@ -23,7 +23,7 @@
 > after landing `PSI-200` / `#3309` in `86a2c920a`, after landing `PSI-201` /
 > `#3310` in `ac9dd2285`, after opening `PSI-202` through `PSI-205` as
 > `#3311` through `#3314` for the coordinator-authority multi-subnet follow-on
-> queue, and after checking live
+> queue, after landing `PSI-202` / `#3311` in `1e65c56c9`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -121,7 +121,7 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-200` / [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) is landed on `main`
     - `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) is landed on `main`
   - the next follow-on queue is now open for coordinator-authority multi-subnet work
-    - `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) is open
+    - `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) is landed on `main`
     - `PSI-203` / [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) is open
     - `PSI-204` / [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) is open
     - `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) is open
@@ -286,6 +286,12 @@ on:
     machine-checkable rollout diagnostics for accepted overlap and stale-bundle
     refusal, with transport coverage proving key rotation and stale-bundle
     drift are surfaced honestly
+- `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311)
+  - landed in `1e65c56c9`
+  - `ordered_state` now exposes explicit coordinator lease policy, lease-aware
+    leadership truth, effective-versus-stale coordinator queries, stable
+    stale-leader diagnostics, lease-aware state digests, and runbook-backed
+    validation for operator-managed multi-subnet coordinator freshness claims
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -511,23 +517,24 @@ Required outcome:
 
 ### Coordinator authority and failover follow-on
 
-Tracked by open `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311)
+Tracked by landed `PSI-202` / [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311)
 through open `PSI-205` / [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314).
 
 Current truth:
 
 - operator-managed configured-peer clusters now have manifest, signed recovery,
   dial-health, and trust-rollout truth
-- `ordered_state` has leadership records and election-message types, but there
-  is still no explicit lease, stale-leader expiry, split-brain refusal, or
-  failover fencing queue on `main`
+- `ordered_state` now has explicit coordinator lease policy, lease-aware
+  leadership records, effective-versus-stale coordinator queries, and stable
+  stale-leader diagnostics on `main`
+- election-message types still do not have explicit split-brain refusal or
+  failover fencing truth on `main`
 - that means wider operator-managed clusters still depend on implicit
-  coordinator freshness assumptions that should become machine-checkable before
+  coordinator turnover assumptions that should become machine-checkable before
   any stronger multi-subnet claim
 
 Required outcome:
 
-- add explicit coordinator lease and stale-leader truth before failover
 - refuse conflicting authority within one term with stable diagnostics
 - surface failover fencing or commit-authority truth so stale coordinators
   cannot keep looking current after turnover
@@ -625,7 +632,7 @@ clusters now that manifest, recovery, dial-health, and rotation truth exist on
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-202` | [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) | Open | Add coordinator lease policy and stale-leader diagnostics | `psionic-cluster`, ordered-state/tests/docs | Leadership records exist, but there is still no lease-aware freshness model; this issue makes stale coordinators expire explicitly instead of remaining implicitly authoritative. |
+| `PSI-202` | [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311) | Closed | Add coordinator lease policy and stale-leader diagnostics | `psionic-cluster`, ordered-state/tests/docs | Landed in `1e65c56c9`: coordinator leadership now carries explicit lease policy and heartbeat ticks, `ClusterState` exposes effective-versus-stale leadership queries plus stale-leader diagnostics, snapshot digests now reflect lease turnover, and the operator runbook now has a coordinator lease drill. |
 | `PSI-203` | [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) | Open | Add vote ledger and split-brain refusal semantics | `psionic-cluster`, ordered-state/tests | Election message types already exist; this issue turns conflicting same-term authority into a machine-checkable refusal path instead of an undocumented edge case. |
 | `PSI-204` | [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) | Open | Add failover fencing tokens and commit authority truth | `psionic-cluster`, `psionic-runtime`, `psionic-provider`, docs | Once coordinators can expire or change, stale coordinators need a fencing token and explicit authority truth so recovery and scheduling evidence stay honest across turnover. |
 | `PSI-205` | [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314) | Open | Add coordinator failover validation drills and runbook gates | docs/tests/validation plus cluster crates | The next multi-subnet tranche should only widen coordinator claims if stale-leader, split-brain, and fenced-failover drills are repeatable and operator-visible. |
@@ -638,8 +645,8 @@ The shortest honest path from today's `main` is:
    scope closing in `d424ab1cf`.
 2. Treat D1 as landed on `main`, with the operator-managed multi-subnet follow-
    on queue closing in `ac9dd2285`.
-3. Work D2 in dependency order: [#3311](https://github.com/OpenAgentsInc/openagents/issues/3311)
-   -> [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) ->
+3. Work the remaining D2 queue in dependency order:
+   [#3312](https://github.com/OpenAgentsInc/openagents/issues/3312) ->
    [#3313](https://github.com/OpenAgentsInc/openagents/issues/3313) ->
    [#3314](https://github.com/OpenAgentsInc/openagents/issues/3314).
 4. Keep the active local CUDA throughput queue
