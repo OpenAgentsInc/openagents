@@ -327,6 +327,24 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
                     .clone()
                     .unwrap_or_else(|| "turn/start rejected".to_string()),
             );
+            if let Some(thread_id) = state.autopilot_chat.active_thread_id.clone() {
+                super::super::actions::restore_last_submission_draft(state, &thread_id);
+            }
+        } else if response.command == CodexLaneCommandKind::TurnSteer {
+            let message = response
+                .error
+                .clone()
+                .unwrap_or_else(|| "turn/steer rejected".to_string());
+            if let Some((thread_id, prompt)) = state
+                .autopilot_chat
+                .take_pending_steer_submission(response.command_seq)
+            {
+                if state.autopilot_chat.is_active_thread(&thread_id) {
+                    state.chat_inputs.composer.set_value(prompt.clone());
+                    state.autopilot_chat.record_composer_draft(prompt);
+                }
+            }
+            state.autopilot_chat.last_error = Some(message);
         } else if response.command == CodexLaneCommandKind::ThreadResume {
             let message = response
                 .error
@@ -368,6 +386,24 @@ pub(super) fn apply_command_response(state: &mut RenderState, response: CodexLan
             response.command_seq,
             state.autopilot_chat.active_thread_id
         );
+        state.autopilot_chat.last_error = None;
+        state.codex_diagnostics.last_error = None;
+    } else if response.command == CodexLaneCommandKind::TurnSteer {
+        tracing::info!(
+            "codex turn/steer accepted seq={} active_thread={:?}",
+            response.command_seq,
+            state.autopilot_chat.active_thread_id
+        );
+        if let Some((thread_id, prompt)) = state
+            .autopilot_chat
+            .take_pending_steer_submission(response.command_seq)
+            && state.autopilot_chat.is_active_thread(&thread_id)
+        {
+            state.autopilot_chat.submit_steer_prompt(prompt.clone());
+            state
+                .autopilot_chat
+                .record_turn_timeline_event("turn steer accepted");
+        }
         state.autopilot_chat.last_error = None;
         state.codex_diagnostics.last_error = None;
     } else if response.command == CodexLaneCommandKind::SkillsList {
@@ -1219,6 +1255,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state
                         .autopilot_chat
                         .restore_session_preferences_from_thread(&thread_id);
+                    super::super::actions::restore_chat_composer_draft(state);
                     queue_thread_history_refresh(state);
                     let metadata = state
                         .autopilot_chat
@@ -1272,7 +1309,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 service_tier,
                 reasoning_effort,
             } => {
+                let adopt_detached_draft = state.autopilot_chat.active_thread_id.is_none();
                 state.autopilot_chat.ensure_thread(thread_id.clone());
+                if adopt_detached_draft {
+                    state
+                        .autopilot_chat
+                        .adopt_detached_composer_draft(&thread_id);
+                }
                 state
                     .autopilot_chat
                     .set_active_thread_transcript(&thread_id, Vec::new());
@@ -1288,6 +1331,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.autopilot_chat.startup_new_thread_bootstrap_pending = false;
                 state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
                 state.autopilot_chat.last_error = None;
+                super::super::actions::restore_chat_composer_draft(state);
                 queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadSessionConfigured {
@@ -1364,6 +1408,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     .set_thread_status(&thread_id, Some("archived".to_string()));
                 if state.autopilot_chat.thread_filter_archived == Some(false) {
                     state.autopilot_chat.remove_thread(&thread_id);
+                    super::super::actions::restore_chat_composer_draft(state);
                 }
                 queue_thread_history_refresh(state);
             }
@@ -1376,6 +1421,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
             }
             CodexLaneNotification::ThreadClosed { thread_id } => {
                 state.autopilot_chat.remove_thread(&thread_id);
+                super::super::actions::restore_chat_composer_draft(state);
                 queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadNameUpdated {

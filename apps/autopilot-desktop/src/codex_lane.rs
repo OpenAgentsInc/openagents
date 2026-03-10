@@ -24,7 +24,7 @@ use codex_client::{
     ThreadRealtimeAppendTextParams, ThreadRealtimeStartParams, ThreadRealtimeStopParams,
     ThreadResumeParams, ThreadRollbackParams, ThreadSetNameParams, ThreadStartParams,
     ThreadUnarchiveParams, ThreadUnsubscribeParams, ToolRequestUserInputParams,
-    ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams,
+    ToolRequestUserInputResponse, TurnInterruptParams, TurnStartParams, TurnSteerParams,
     WindowsSandboxSetupStartParams,
 };
 use serde_json::Value;
@@ -174,6 +174,7 @@ pub enum CodexLaneCommandKind {
     ThreadList,
     ThreadLoadedList,
     TurnStart,
+    TurnSteer,
     TurnInterrupt,
     ServerRequestCommandApprovalRespond,
     ServerRequestFileApprovalRespond,
@@ -229,6 +230,7 @@ impl CodexLaneCommandKind {
             Self::ThreadList => "thread/list",
             Self::ThreadLoadedList => "thread/loaded/list",
             Self::TurnStart => "turn/start",
+            Self::TurnSteer => "turn/steer",
             Self::TurnInterrupt => "turn/interrupt",
             Self::ServerRequestCommandApprovalRespond => {
                 "item/commandExecution/requestApproval:respond"
@@ -313,6 +315,7 @@ pub enum CodexLaneCommand {
     ThreadList(ThreadListParams),
     ThreadLoadedList(ThreadLoadedListParams),
     TurnStart(TurnStartParams),
+    TurnSteer(TurnSteerParams),
     TurnInterrupt(TurnInterruptParams),
     ServerRequestCommandApprovalRespond {
         request_id: AppServerRequestId,
@@ -383,6 +386,7 @@ impl CodexLaneCommand {
             Self::ThreadList(_) => CodexLaneCommandKind::ThreadList,
             Self::ThreadLoadedList(_) => CodexLaneCommandKind::ThreadLoadedList,
             Self::TurnStart(_) => CodexLaneCommandKind::TurnStart,
+            Self::TurnSteer(_) => CodexLaneCommandKind::TurnSteer,
             Self::TurnInterrupt(_) => CodexLaneCommandKind::TurnInterrupt,
             Self::ServerRequestCommandApprovalRespond { .. } => {
                 CodexLaneCommandKind::ServerRequestCommandApprovalRespond
@@ -1325,6 +1329,13 @@ impl CodexLaneState {
                         thread_id,
                         turn_id: response.turn.id,
                     }),
+                })
+            }
+            CodexLaneCommand::TurnSteer(params) => {
+                let _ = runtime.block_on(client.turn_steer(params))?;
+                Ok(CodexCommandEffect {
+                    active_thread_id: None,
+                    notification: None,
                 })
             }
             CodexLaneCommand::TurnInterrupt(params) => {

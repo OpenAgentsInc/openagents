@@ -903,6 +903,13 @@ pub struct AutopilotTurnMetadata {
     pub selected_skill_names: Vec<String>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct AutopilotPendingSteerSubmission {
+    command_seq: u64,
+    thread_id: String,
+    prompt: String,
+}
+
 #[derive(Clone)]
 pub struct AutopilotApprovalRequest {
     pub request_id: codex_client::AppServerRequestId,
@@ -1166,6 +1173,9 @@ pub struct AutopilotChatState {
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
     pub thread_transcript_cache: std::collections::HashMap<String, Vec<AutopilotMessage>>,
+    thread_composer_drafts: std::collections::HashMap<String, String>,
+    detached_composer_draft: String,
+    thread_submission_history: std::collections::HashMap<String, VecDeque<String>>,
     pub active_thread_id: Option<String>,
     pub selected_workspace: ChatWorkspaceSelection,
     pub managed_chat_projection: ManagedChatProjectionState,
@@ -1180,6 +1190,7 @@ pub struct AutopilotChatState {
     pub turn_assistant_message_ids: std::collections::HashMap<String, u64>,
     pub next_turn_submission_seq: u64,
     pub pending_turn_metadata: VecDeque<AutopilotTurnMetadata>,
+    pending_steer_submissions: VecDeque<AutopilotPendingSteerSubmission>,
     pub turn_metadata_by_turn_id: std::collections::HashMap<String, AutopilotTurnMetadata>,
     pub last_submitted_turn_metadata: Option<AutopilotTurnMetadata>,
     last_agent_item_ids: std::collections::HashMap<String, String>,
@@ -1230,6 +1241,9 @@ impl Default for AutopilotChatState {
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
             thread_transcript_cache: std::collections::HashMap::new(),
+            thread_composer_drafts: std::collections::HashMap::new(),
+            detached_composer_draft: String::new(),
+            thread_submission_history: std::collections::HashMap::new(),
             active_thread_id: None,
             selected_workspace: ChatWorkspaceSelection::Autopilot,
             managed_chat_projection: ManagedChatProjectionState::default(),
@@ -1244,6 +1258,7 @@ impl Default for AutopilotChatState {
             turn_assistant_message_ids: std::collections::HashMap::new(),
             next_turn_submission_seq: 1,
             pending_turn_metadata: VecDeque::new(),
+            pending_steer_submissions: VecDeque::new(),
             turn_metadata_by_turn_id: std::collections::HashMap::new(),
             last_submitted_turn_metadata: None,
             last_agent_item_ids: std::collections::HashMap::new(),
@@ -1363,6 +1378,89 @@ impl AutopilotChatState {
         self.thread_metadata
             .get(thread_id)
             .and_then(|metadata| metadata.cwd.as_deref())
+    }
+
+    pub fn record_composer_draft(&mut self, draft: impl Into<String>) {
+        let draft = draft.into();
+        if let Some(thread_id) = self.active_thread_id.clone() {
+            if draft.is_empty() {
+                self.thread_composer_drafts.remove(&thread_id);
+            } else {
+                self.thread_composer_drafts.insert(thread_id, draft);
+            }
+            return;
+        }
+        self.detached_composer_draft = draft;
+    }
+
+    pub fn active_composer_draft(&self) -> &str {
+        if let Some(thread_id) = self.active_thread_id.as_ref() {
+            return self
+                .thread_composer_drafts
+                .get(thread_id)
+                .map(String::as_str)
+                .unwrap_or("");
+        }
+        self.detached_composer_draft.as_str()
+    }
+
+    pub fn adopt_detached_composer_draft(&mut self, thread_id: &str) {
+        if self.detached_composer_draft.trim().is_empty() {
+            return;
+        }
+        let draft = self.detached_composer_draft.clone();
+        self.thread_composer_drafts
+            .entry(thread_id.to_string())
+            .or_insert(draft);
+    }
+
+    pub fn remember_submission_draft(&mut self, thread_id: &str, draft: impl Into<String>) {
+        let draft = draft.into();
+        if draft.trim().is_empty() {
+            return;
+        }
+        let history = self
+            .thread_submission_history
+            .entry(thread_id.to_string())
+            .or_default();
+        history.push_front(draft);
+        if history.len() > 16 {
+            history.truncate(16);
+        }
+    }
+
+    pub fn last_submission_draft(&self, thread_id: &str) -> Option<&str> {
+        self.thread_submission_history
+            .get(thread_id)
+            .and_then(|history| history.front())
+            .map(String::as_str)
+    }
+
+    pub fn enqueue_pending_steer_submission(
+        &mut self,
+        command_seq: u64,
+        thread_id: impl Into<String>,
+        prompt: impl Into<String>,
+    ) {
+        self.pending_steer_submissions
+            .push_back(AutopilotPendingSteerSubmission {
+                command_seq,
+                thread_id: thread_id.into(),
+                prompt: prompt.into(),
+            });
+        if self.pending_steer_submissions.len() > 32 {
+            let overflow = self.pending_steer_submissions.len().saturating_sub(32);
+            self.pending_steer_submissions.drain(0..overflow);
+        }
+    }
+
+    pub fn take_pending_steer_submission(&mut self, command_seq: u64) -> Option<(String, String)> {
+        let index = self
+            .pending_steer_submissions
+            .iter()
+            .position(|pending| pending.command_seq == command_seq)?;
+        let pending = self.pending_steer_submissions.remove(index)?;
+        Some((pending.thread_id, pending.prompt))
     }
 
     pub fn set_models(&mut self, models: Vec<String>, default_model: Option<String>) {
@@ -2372,8 +2470,12 @@ impl AutopilotChatState {
         self.threads.retain(|value| value != thread_id);
         self.thread_metadata.remove(thread_id);
         self.thread_transcript_cache.remove(thread_id);
+        self.thread_composer_drafts.remove(thread_id);
+        self.thread_submission_history.remove(thread_id);
         self.pending_turn_metadata
             .retain(|metadata| metadata.thread_id != thread_id);
+        self.pending_steer_submissions
+            .retain(|pending| pending.thread_id != thread_id);
         self.turn_metadata_by_turn_id
             .retain(|_, metadata| metadata.thread_id != thread_id);
         if self
@@ -2506,6 +2608,24 @@ impl AutopilotChatState {
         self.pending_assistant_message_ids
             .push_back(assistant_message_id);
         self.active_assistant_message_id = Some(assistant_message_id);
+    }
+
+    pub fn submit_steer_prompt(&mut self, prompt: String) {
+        self.last_error = None;
+        self.transcript_selection = None;
+        let trimmed = prompt.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.messages.push(AutopilotMessage {
+            id: self.next_message_id,
+            role: AutopilotRole::User,
+            status: AutopilotMessageStatus::Done,
+            content: trimmed.to_string(),
+            structured: None,
+        });
+        self.next_message_id = self.next_message_id.saturating_add(1);
+        self.last_turn_status = Some("inProgress".to_string());
     }
 
     pub fn record_turn_submission_metadata(
@@ -7882,6 +8002,62 @@ mod tests {
             chat.collaboration_mode,
             super::AutopilotChatCollaborationMode::Default
         );
+    }
+
+    #[test]
+    fn chat_state_tracks_composer_drafts_per_thread_and_detached() {
+        let mut chat = AutopilotChatState::default();
+        chat.record_composer_draft("detached draft".to_string());
+        assert_eq!(chat.active_composer_draft(), "detached draft");
+
+        chat.ensure_thread("thread-a".to_string());
+        chat.adopt_detached_composer_draft("thread-a");
+        assert_eq!(chat.active_composer_draft(), "detached draft");
+
+        chat.record_composer_draft("draft for a".to_string());
+        assert_eq!(chat.active_composer_draft(), "draft for a");
+
+        chat.ensure_thread("thread-b".to_string());
+        assert_eq!(chat.active_composer_draft(), "");
+        chat.record_composer_draft("draft for b".to_string());
+
+        chat.ensure_thread("thread-a".to_string());
+        assert_eq!(chat.active_composer_draft(), "draft for a");
+
+        chat.active_thread_id = None;
+        assert_eq!(chat.active_composer_draft(), "detached draft");
+    }
+
+    #[test]
+    fn chat_state_tracks_submission_history_and_pending_steers() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.remember_submission_draft("thread-a", "first draft".to_string());
+        chat.remember_submission_draft("thread-a", "second draft".to_string());
+        assert_eq!(chat.last_submission_draft("thread-a"), Some("second draft"));
+
+        chat.enqueue_pending_steer_submission(11, "thread-a", "continue".to_string());
+        assert_eq!(
+            chat.take_pending_steer_submission(11),
+            Some(("thread-a".to_string(), "continue".to_string()))
+        );
+        assert_eq!(chat.take_pending_steer_submission(11), None);
+    }
+
+    #[test]
+    fn chat_state_submit_steer_prompt_adds_user_message_without_assistant_placeholder() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.submit_prompt("initial".to_string());
+        let pending_before = chat.pending_assistant_message_ids.len();
+
+        chat.submit_steer_prompt("follow up".to_string());
+
+        assert_eq!(
+            chat.messages.last().map(|message| message.content.as_str()),
+            Some("follow up")
+        );
+        assert_eq!(chat.pending_assistant_message_ids.len(), pending_before);
     }
 
     #[test]
