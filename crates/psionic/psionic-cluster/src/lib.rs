@@ -184,6 +184,82 @@ impl ConfiguredClusterPeer {
     }
 }
 
+/// Dial and retry policy for configured peers in wider-network clusters.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfiguredPeerDialPolicy {
+    /// Base hello backoff measured in hello ticks.
+    pub base_backoff_ticks: u32,
+    /// Maximum hello backoff measured in hello ticks.
+    pub max_backoff_ticks: u32,
+    /// Unanswered hello attempts after which the peer is considered degraded.
+    pub degraded_after_unanswered_hellos: u32,
+    /// Unanswered hello attempts after which the peer is considered unreachable.
+    pub unreachable_after_unanswered_hellos: u32,
+}
+
+impl ConfiguredPeerDialPolicy {
+    /// Default dial policy for operator-managed multi-subnet configured peers.
+    #[must_use]
+    pub const fn operator_managed_default() -> Self {
+        Self {
+            base_backoff_ticks: 1,
+            max_backoff_ticks: 8,
+            degraded_after_unanswered_hellos: 2,
+            unreachable_after_unanswered_hellos: 4,
+        }
+    }
+}
+
+impl Default for ConfiguredPeerDialPolicy {
+    fn default() -> Self {
+        Self::operator_managed_default()
+    }
+}
+
+/// Explicit configured-peer reachability posture.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfiguredPeerReachability {
+    /// Peer is configured but not yet proven healthy.
+    Pending,
+    /// Peer has been reached successfully.
+    Reachable,
+    /// Peer is still configured but repeated unanswered attempts have degraded confidence.
+    Degraded,
+    /// Peer remains configured but is currently considered unreachable.
+    Unreachable,
+}
+
+/// Machine-checkable health snapshot for one configured peer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ConfiguredPeerHealthSnapshot {
+    /// Configured peer node ID.
+    pub node_id: NodeId,
+    /// Configured peer remote address.
+    pub remote_addr: SocketAddr,
+    /// Effective reachability posture.
+    pub reachability: ConfiguredPeerReachability,
+    /// Consecutive unanswered hello attempts.
+    pub unanswered_hello_attempts: u32,
+    /// Remaining hello ticks before the next dial attempt.
+    pub remaining_backoff_ticks: u32,
+    /// Count of successful hello/ping handshakes observed.
+    pub successful_handshakes: u32,
+}
+
+impl ConfiguredPeerHealthSnapshot {
+    fn new(peer: &ConfiguredClusterPeer) -> Self {
+        Self {
+            node_id: peer.node_id.clone(),
+            remote_addr: peer.remote_addr,
+            reachability: ConfiguredPeerReachability::Pending,
+            unanswered_hello_attempts: 0,
+            remaining_backoff_ticks: 0,
+            successful_handshakes: 0,
+        }
+    }
+}
+
 /// Machine-checkable trust policy for one local cluster transport.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterTrustPolicy {
@@ -196,6 +272,9 @@ pub struct ClusterTrustPolicy {
     /// Explicit authenticated peers when configured-peer posture is active.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub configured_peers: Vec<ConfiguredClusterPeer>,
+    /// Dial and retry policy for configured peers.
+    #[serde(default)]
+    pub configured_peer_dial_policy: ConfiguredPeerDialPolicy,
 }
 
 impl ClusterTrustPolicy {
@@ -207,6 +286,7 @@ impl ClusterTrustPolicy {
             require_message_authentication: false,
             replay_window_size: 0,
             configured_peers: Vec::new(),
+            configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
         }
     }
 
@@ -218,7 +298,18 @@ impl ClusterTrustPolicy {
             require_message_authentication: true,
             replay_window_size: DEFAULT_REPLAY_WINDOW_SIZE,
             configured_peers,
+            configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
         }
+    }
+
+    /// Overrides the dial policy for configured peers.
+    #[must_use]
+    pub fn with_configured_peer_dial_policy(
+        mut self,
+        configured_peer_dial_policy: ConfiguredPeerDialPolicy,
+    ) -> Self {
+        self.configured_peer_dial_policy = configured_peer_dial_policy;
+        self
     }
 
     /// Returns a stable digest for the effective trust policy.
@@ -250,6 +341,34 @@ impl ClusterTrustPolicy {
             hasher.update(b"|");
             hasher.update(peer.auth_public_key.as_bytes());
         }
+        hasher.update(b"|dial_policy|");
+        hasher.update(
+            self.configured_peer_dial_policy
+                .base_backoff_ticks
+                .to_string()
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            self.configured_peer_dial_policy
+                .max_backoff_ticks
+                .to_string()
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            self.configured_peer_dial_policy
+                .degraded_after_unanswered_hellos
+                .to_string()
+                .as_bytes(),
+        );
+        hasher.update(b"|");
+        hasher.update(
+            self.configured_peer_dial_policy
+                .unreachable_after_unanswered_hellos
+                .to_string()
+                .as_bytes(),
+        );
         hex::encode(hasher.finalize())
     }
 
@@ -439,6 +558,19 @@ impl LocalClusterConfig {
         self
     }
 
+    /// Overrides the configured-peer dial policy used for authenticated clusters.
+    #[must_use]
+    pub fn with_configured_peer_dial_policy(
+        mut self,
+        configured_peer_dial_policy: ConfiguredPeerDialPolicy,
+    ) -> Self {
+        self.trust_policy = self
+            .trust_policy
+            .clone()
+            .with_configured_peer_dial_policy(configured_peer_dial_policy);
+        self
+    }
+
     /// Builds local cluster config from one persisted operator manifest.
     #[must_use]
     pub fn from_operator_manifest(manifest: ClusterOperatorManifest) -> Self {
@@ -564,6 +696,7 @@ impl LocalClusterNode {
         let local_addr = socket.local_addr().map_err(ClusterError::LocalAddr)?;
         let state = Arc::new(Mutex::new(SharedState::new(
             transport_config.seed_peers.clone(),
+            &transport_config.trust_policy,
         )));
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
         let task = tokio::spawn(run_transport(
@@ -603,6 +736,11 @@ impl LocalClusterNode {
     /// Returns the currently discovered peers.
     pub async fn peer_snapshots(&self) -> Vec<PeerSnapshot> {
         self.state.lock().await.peer_snapshots()
+    }
+
+    /// Returns health snapshots for explicitly configured peers.
+    pub async fn configured_peer_health_snapshots(&self) -> Vec<ConfiguredPeerHealthSnapshot> {
+        self.state.lock().await.configured_peer_health_snapshots()
     }
 
     /// Returns machine-checkable join refusals observed by this node.
@@ -662,6 +800,7 @@ impl TransportConfig {
 #[derive(Default)]
 struct SharedState {
     peers: BTreeMap<NodeId, PeerSnapshot>,
+    configured_peer_health: BTreeMap<NodeId, ConfiguredPeerHealthSnapshot>,
     peer_replay_windows: BTreeMap<NodeId, PeerReplayWindow>,
     join_refusals: Vec<ClusterJoinRefusal>,
     seed_peers: BTreeSet<SocketAddr>,
@@ -670,9 +809,20 @@ struct SharedState {
 }
 
 impl SharedState {
-    fn new(seed_peers: BTreeSet<SocketAddr>) -> Self {
+    fn new(seed_peers: BTreeSet<SocketAddr>, trust_policy: &ClusterTrustPolicy) -> Self {
+        let configured_peer_health = trust_policy
+            .configured_peers
+            .iter()
+            .map(|peer| {
+                (
+                    peer.node_id.clone(),
+                    ConfiguredPeerHealthSnapshot::new(peer),
+                )
+            })
+            .collect();
         Self {
             peers: BTreeMap::new(),
+            configured_peer_health,
             peer_replay_windows: BTreeMap::new(),
             join_refusals: Vec::new(),
             seed_peers,
@@ -683,6 +833,10 @@ impl SharedState {
 
     fn peer_snapshots(&self) -> Vec<PeerSnapshot> {
         self.peers.values().cloned().collect()
+    }
+
+    fn configured_peer_health_snapshots(&self) -> Vec<ConfiguredPeerHealthSnapshot> {
+        self.configured_peer_health.values().cloned().collect()
     }
 
     fn join_refusals(&self) -> Vec<ClusterJoinRefusal> {
@@ -714,6 +868,37 @@ impl SharedState {
             .collect()
     }
 
+    fn configured_peers_due_for_dial(
+        &mut self,
+        trust_policy: &ClusterTrustPolicy,
+    ) -> Vec<SocketAddr> {
+        let mut due_peers = Vec::new();
+        for peer in &trust_policy.configured_peers {
+            if self.peers.contains_key(&peer.node_id) {
+                self.mark_configured_peer_reachable(&peer.node_id);
+                continue;
+            }
+            let Some(health) = self.configured_peer_health.get_mut(&peer.node_id) else {
+                continue;
+            };
+            if health.remaining_backoff_ticks > 0 {
+                health.remaining_backoff_ticks -= 1;
+                continue;
+            }
+            health.unanswered_hello_attempts = health.unanswered_hello_attempts.saturating_add(1);
+            health.reachability = classify_configured_peer_reachability(
+                health.unanswered_hello_attempts,
+                trust_policy.configured_peer_dial_policy,
+            );
+            health.remaining_backoff_ticks = next_configured_peer_backoff_ticks(
+                health.unanswered_hello_attempts,
+                trust_policy.configured_peer_dial_policy,
+            );
+            due_peers.push(peer.remote_addr);
+        }
+        due_peers
+    }
+
     fn discovered_peer_addrs(&self) -> Vec<SocketAddr> {
         self.peers.values().map(|peer| peer.remote_addr).collect()
     }
@@ -729,6 +914,7 @@ impl SharedState {
         if let Some(counter) = authenticated_counter {
             self.record_authenticated_counter(remote_addr, &identity, counter, replay_window_size)?;
         }
+        self.mark_configured_peer_reachable(&identity.node_id);
         let snapshot = self.ensure_peer_snapshot(remote_addr, identity);
         snapshot.handshake.saw_hello = true;
         Ok(outcome.should_reply_hello)
@@ -746,6 +932,7 @@ impl SharedState {
         if let Some(counter) = authenticated_counter {
             self.record_authenticated_counter(remote_addr, &identity, counter, replay_window_size)?;
         }
+        self.mark_configured_peer_reachable(&identity.node_id);
         let snapshot = self.ensure_peer_snapshot(remote_addr, identity);
         snapshot.handshake.last_ping_sequence = Some(sequence);
         Ok(())
@@ -776,6 +963,19 @@ impl SharedState {
         entry.remote_addr = remote_addr;
         entry.identity = identity;
         entry
+    }
+
+    fn mark_configured_peer_reachable(&mut self, node_id: &NodeId) {
+        if let Some(health) = self.configured_peer_health.get_mut(node_id) {
+            let was_reachable =
+                matches!(health.reachability, ConfiguredPeerReachability::Reachable);
+            health.reachability = ConfiguredPeerReachability::Reachable;
+            health.unanswered_hello_attempts = 0;
+            health.remaining_backoff_ticks = 0;
+            if !was_reachable {
+                health.successful_handshakes = health.successful_handshakes.saturating_add(1);
+            }
+        }
     }
 
     fn validate_peer_epoch(
@@ -1065,8 +1265,18 @@ async fn send_hello_to_seed_peers(
     config: &TransportConfig,
     state: &Arc<Mutex<SharedState>>,
 ) -> Result<(), String> {
-    let seed_peers = state.lock().await.undiscovered_seed_peers();
-    for remote_addr in seed_peers {
+    let remote_addrs = {
+        let mut guard = state.lock().await;
+        if matches!(
+            config.trust_policy.posture,
+            ClusterTrustPosture::AuthenticatedConfiguredPeers
+        ) {
+            guard.configured_peers_due_for_dial(&config.trust_policy)
+        } else {
+            guard.undiscovered_seed_peers()
+        }
+    };
+    for remote_addr in remote_addrs {
         let envelope = outbound_envelope(
             state,
             config,
@@ -1348,6 +1558,34 @@ fn wire_signing_payload(envelope: &WireEnvelope) -> Result<Vec<u8>, serde_json::
     ))
 }
 
+fn classify_configured_peer_reachability(
+    unanswered_hello_attempts: u32,
+    dial_policy: ConfiguredPeerDialPolicy,
+) -> ConfiguredPeerReachability {
+    if unanswered_hello_attempts >= dial_policy.unreachable_after_unanswered_hellos {
+        return ConfiguredPeerReachability::Unreachable;
+    }
+    if unanswered_hello_attempts >= dial_policy.degraded_after_unanswered_hellos {
+        return ConfiguredPeerReachability::Degraded;
+    }
+    ConfiguredPeerReachability::Pending
+}
+
+fn next_configured_peer_backoff_ticks(
+    unanswered_hello_attempts: u32,
+    dial_policy: ConfiguredPeerDialPolicy,
+) -> u32 {
+    if unanswered_hello_attempts == 0 {
+        return 0;
+    }
+    let exponent = unanswered_hello_attempts.saturating_sub(1).min(31);
+    let multiplier = 1_u32.checked_shl(exponent).unwrap_or(u32::MAX);
+    dial_policy
+        .base_backoff_ticks
+        .saturating_mul(multiplier)
+        .min(dial_policy.max_backoff_ticks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1428,6 +1666,15 @@ mod tests {
                 loopback_addr(31001),
                 "peer-key-a",
             )]);
+        let configured_other_policy =
+            configured
+                .clone()
+                .with_configured_peer_dial_policy(ConfiguredPeerDialPolicy {
+                    base_backoff_ticks: 2,
+                    max_backoff_ticks: 4,
+                    degraded_after_unanswered_hellos: 2,
+                    unreachable_after_unanswered_hellos: 3,
+                });
         let configured_other_addr =
             ClusterTrustPolicy::authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
                 NodeId::new("node-b"),
@@ -1439,6 +1686,10 @@ mod tests {
         assert_ne!(
             configured.stable_digest(),
             configured_other_addr.stable_digest()
+        );
+        assert_ne!(
+            configured.stable_digest(),
+            configured_other_policy.stable_digest()
         );
     }
 
@@ -1499,7 +1750,7 @@ mod tests {
             &remote_signing_key,
         );
         let remote_addr = loopback_addr(31003);
-        let mut state = SharedState::new(BTreeSet::new());
+        let mut state = SharedState::new(BTreeSet::new(), &ClusterTrustPolicy::trusted_lan());
 
         let hello = state.record_hello(remote_addr, remote_identity.clone(), Some(12), 8);
         assert!(

@@ -38,6 +38,7 @@ What these cover:
   - authenticated configured-peer discovery with signed control-plane messages
   - refusal of unknown peers under configured-peer posture
   - authenticated boot from persisted operator manifests
+  - explicit configured-peer health, backoff, and late-join recovery
 - `cluster_validation_matrix`
   - compacted catchup and snapshot-install recovery
   - degraded whole-request scheduling with explicit artifact staging truth
@@ -82,6 +83,22 @@ Interpretation:
   enough to support operator-managed rollout decisions
 - tamper or replay failure means widened cluster trust is not machine-checkable
   enough for multi-subnet posture claims
+
+## Multi-subnet Dial Health Drill
+
+Use this sequence before claiming explicit configured-peer reachability or
+degraded transport truth for wider-network clusters:
+
+1. Run `cargo test -p psionic-cluster --test local_cluster_transport unreachable_configured_peer_surfaces_explicit_health_and_backoff`.
+2. Run `cargo test -p psionic-cluster --test local_cluster_transport late_joining_configured_peer_recovers_health_after_degraded_attempts`.
+3. If either step fails, do not claim configured-peer dial policy or degraded reachability truth for the current build.
+
+Interpretation:
+
+- unreachable-peer failure means configured peers are still being explained by
+  implicit LAN retry behavior instead of explicit health and backoff state
+- late-join recovery failure means degraded configured-peer health is not
+  recovering truthfully when the peer actually becomes reachable
 
 ## Recovery Drill
 

@@ -6,7 +6,8 @@ use std::{
 
 use psionic_cluster::{
     ClusterJoinRefusalReason, ClusterOperatorManifest, ClusterTrustPosture, ConfiguredClusterPeer,
-    LocalClusterConfig, LocalClusterNode, NodeRole,
+    ConfiguredPeerDialPolicy, ConfiguredPeerReachability, LocalClusterConfig, LocalClusterNode,
+    NodeRole,
 };
 use tempfile::tempdir;
 use tokio::time::{Instant, sleep, timeout};
@@ -133,6 +134,28 @@ where
     })
     .await;
     assert!(wait.is_ok(), "expected join refusal was not observed");
+}
+
+async fn wait_for_configured_peer_health<F>(
+    node: &LocalClusterNode,
+    predicate: F,
+) -> psionic_cluster::ConfiguredPeerHealthSnapshot
+where
+    F: Fn(&psionic_cluster::ConfiguredPeerHealthSnapshot) -> bool,
+{
+    let wait = timeout(Duration::from_secs(3), async {
+        loop {
+            let snapshots = node.configured_peer_health_snapshots().await;
+            if let Some(snapshot) = snapshots.into_iter().find(|snapshot| predicate(snapshot)) {
+                return snapshot;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    assert!(wait.is_ok(), "configured peer health timed out");
+    wait.ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"))
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -671,6 +694,125 @@ async fn authenticated_nodes_can_boot_from_operator_manifest() {
         sender_peer.identity.node_id,
         receiver.local_identity().node_id
     );
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn unreachable_configured_peer_surfaces_explicit_health_and_backoff() {
+    let dial_policy = ConfiguredPeerDialPolicy {
+        base_backoff_ticks: 1,
+        max_backoff_ticks: 2,
+        degraded_after_unanswered_hellos: 2,
+        unreachable_after_unanswered_hellos: 3,
+    };
+    let node = LocalClusterNode::spawn(
+        base_config(loopback_addr(0), NodeRole::CoordinatorOnly)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                psionic_cluster::NodeId::new("missing-peer"),
+                reserve_loopback_addr(),
+                "00".repeat(32),
+            )])
+            .with_configured_peer_dial_policy(dial_policy),
+    )
+    .await;
+    assert!(node.is_ok(), "node should start");
+    let node = node
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let health = wait_for_configured_peer_health(&node, |snapshot| {
+        snapshot.node_id == psionic_cluster::NodeId::new("missing-peer")
+            && snapshot.reachability == ConfiguredPeerReachability::Unreachable
+            && snapshot.remaining_backoff_ticks > 0
+    })
+    .await;
+    assert!(health.unanswered_hello_attempts >= 3);
+
+    let shutdown = node.shutdown().await;
+    assert!(shutdown.is_ok(), "node should shut down cleanly");
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn late_joining_configured_peer_recovers_health_after_degraded_attempts() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-dial-identity.json");
+    let sender_identity_path = temp.path().join("sender-dial-identity.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+    let dial_policy = ConfiguredPeerDialPolicy {
+        base_backoff_ticks: 1,
+        max_backoff_ticks: 2,
+        degraded_after_unanswered_hellos: 2,
+        unreachable_after_unanswered_hellos: 4,
+    };
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+
+    let receiver = LocalClusterNode::spawn(
+        base_config(receiver_addr, NodeRole::CoordinatorOnly)
+            .with_file_backed_identity(receiver_identity_path.clone())
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                sender_bootstrap.node_id.clone(),
+                sender_addr,
+                sender_bootstrap.auth_public_key.clone(),
+            )])
+            .with_configured_peer_dial_policy(dial_policy),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let degraded = wait_for_configured_peer_health(&receiver, |snapshot| {
+        snapshot.node_id == sender_bootstrap.node_id
+            && snapshot.reachability == ConfiguredPeerReachability::Degraded
+    })
+    .await;
+    assert!(degraded.unanswered_hello_attempts >= 2);
+
+    let sender = LocalClusterNode::spawn(
+        base_config(sender_addr, NodeRole::ExecutorOnly)
+            .with_file_backed_identity(sender_identity_path)
+            .with_authenticated_configured_peers(vec![ConfiguredClusterPeer::new(
+                receiver_bootstrap.node_id.clone(),
+                receiver_addr,
+                receiver_bootstrap.auth_public_key.clone(),
+            )])
+            .with_configured_peer_dial_policy(dial_policy),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let recovered = wait_for_configured_peer_health(&receiver, |snapshot| {
+        snapshot.node_id == sender_bootstrap.node_id
+            && snapshot.reachability == ConfiguredPeerReachability::Reachable
+            && snapshot.successful_handshakes >= 1
+    })
+    .await;
+    assert_eq!(recovered.unanswered_hello_attempts, 0);
 
     let sender_shutdown = sender.shutdown().await;
     assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
