@@ -2,9 +2,9 @@ use crate::local_inference_runtime::{
     LocalInferenceExecutionMetrics, LocalInferenceExecutionProvenance,
 };
 use openagents_kernel_core::ids::sha256_prefixed_text;
+use psionic_apple_fm::{AppleFmBridgeClient, DEFAULT_APPLE_FM_MODEL_ID};
 use reqwest::Url;
-use reqwest::blocking::Client;
-use serde::{Deserialize, Serialize};
+use reqwest::blocking::Client as HttpClient;
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::mpsc::{self, Receiver, RecvTimeoutError, Sender};
@@ -16,7 +16,6 @@ const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
 const BRIDGE_HEALTH_POLL: Duration = Duration::from_millis(100);
 const BRIDGE_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
 const DEFAULT_APPLE_FM_BASE_URL: &str = "http://127.0.0.1:11435";
-const DEFAULT_APPLE_FM_MODEL: &str = "apple-foundation-model";
 const ENV_APPLE_FM_BASE_URL: &str = "OPENAGENTS_APPLE_FM_BASE_URL";
 const ENV_APPLE_FM_BRIDGE_BIN: &str = "OPENAGENTS_APPLE_FM_BRIDGE_BIN";
 
@@ -197,7 +196,7 @@ impl AppleFmLocalBridge {
     fn ensure_running(
         &mut self,
         config: &AppleFmBridgeConfig,
-        client: &Client,
+        client: &AppleFmBridgeClient,
         snapshot: &mut AppleFmBridgeSnapshot,
     ) -> Result<(), String> {
         if !cfg!(target_os = "macos") {
@@ -234,7 +233,7 @@ impl AppleFmLocalBridge {
             snapshot.bridge_status = Some(self.status.label().to_string());
             snapshot.last_action = Some("Starting Apple FM bridge".to_string());
         }
-        wait_for_bridge_health(client, config.base_url.as_str())?;
+        wait_for_bridge_health(client)?;
         self.status = AppleFmBridgeStatus::Running;
         snapshot.bridge_status = Some(self.status.label().to_string());
         Ok(())
@@ -252,17 +251,31 @@ impl AppleFmLocalBridge {
 struct AppleFmBridgeState {
     config: AppleFmBridgeConfig,
     snapshot: AppleFmBridgeSnapshot,
-    client: Option<Client>,
+    client: Option<AppleFmBridgeClient>,
+    client_error: Option<String>,
     bridge: AppleFmLocalBridge,
 }
 
 impl AppleFmBridgeState {
     fn new(config: AppleFmBridgeConfig) -> Self {
-        let client = Client::builder()
+        let (client, client_error) = match HttpClient::builder()
             .timeout(REQUEST_TIMEOUT)
             .no_proxy()
             .build()
-            .ok();
+        {
+            Ok(http_client) => {
+                match AppleFmBridgeClient::with_http_client(config.base_url.clone(), http_client) {
+                    Ok(client) => (Some(client), None),
+                    Err(error) => (None, Some(error.to_string())),
+                }
+            }
+            Err(error) => (
+                None,
+                Some(format!(
+                    "failed to initialize Apple FM HTTP client: {error}"
+                )),
+            ),
+        };
         let mut snapshot = AppleFmBridgeSnapshot {
             base_url: config.base_url.clone(),
             bridge_status: Some(if cfg!(target_os = "macos") {
@@ -277,13 +290,14 @@ impl AppleFmBridgeState {
             snapshot.last_error =
                 Some("Apple Foundation Models requires macOS 26+ on Apple Silicon".to_string());
         }
-        if client.is_none() {
-            snapshot.last_error = Some("Failed to initialize Apple FM HTTP client".to_string());
+        if let Some(error) = client_error.clone() {
+            snapshot.last_error = Some(error);
         }
         Self {
             config,
             snapshot,
             client,
+            client_error,
             bridge: AppleFmLocalBridge::default(),
         }
     }
@@ -315,12 +329,16 @@ impl AppleFmBridgeState {
 
         let Some(client) = self.client.as_ref() else {
             self.snapshot.last_action = Some("Apple FM refresh failed".to_string());
-            self.snapshot.last_error = Some("Apple FM HTTP client unavailable".to_string());
+            self.snapshot.last_error = Some(
+                self.client_error
+                    .clone()
+                    .unwrap_or_else(|| "Apple FM HTTP client unavailable".to_string()),
+            );
             self.publish_snapshot(update_tx);
             return;
         };
 
-        match fetch_health(client, self.config.base_url.as_str()) {
+        match client.health() {
             Ok(health) => {
                 self.snapshot.reachable = true;
                 self.snapshot.model_available = health.model_available;
@@ -329,24 +347,24 @@ impl AppleFmBridgeState {
                     Some(AppleFmBridgeStatus::Running.label().to_string());
                 self.snapshot.last_error = None;
                 self.snapshot.last_action = Some("Refreshed Apple FM bridge health".to_string());
-                match fetch_models(client, self.config.base_url.as_str()) {
+                match client.model_ids() {
                     Ok(models) => {
                         self.snapshot.available_models = models.clone();
                         self.snapshot.ready_model = health.model_available.then(|| {
                             models
                                 .first()
                                 .cloned()
-                                .unwrap_or_else(|| DEFAULT_APPLE_FM_MODEL.to_string())
+                                .unwrap_or_else(|| DEFAULT_APPLE_FM_MODEL_ID.to_string())
                         });
                     }
                     Err(error) => {
-                        self.snapshot.last_error = Some(error);
+                        self.snapshot.last_error = Some(error.to_string());
                     }
                 }
             }
             Err(error) => {
                 self.snapshot.bridge_status = Some(self.bridge.status.label().to_string());
-                self.snapshot.last_error = Some(error);
+                self.snapshot.last_error = Some(error.to_string());
                 self.snapshot.last_action = Some("Apple FM refresh failed".to_string());
             }
         }
@@ -355,7 +373,11 @@ impl AppleFmBridgeState {
 
     fn handle_ensure_bridge_running(&mut self, update_tx: &Sender<AppleFmBridgeUpdate>) {
         let Some(client) = self.client.as_ref() else {
-            self.snapshot.last_error = Some("Apple FM HTTP client unavailable".to_string());
+            self.snapshot.last_error = Some(
+                self.client_error
+                    .clone()
+                    .unwrap_or_else(|| "Apple FM HTTP client unavailable".to_string()),
+            );
             self.snapshot.last_action = Some("Apple FM bridge start failed".to_string());
             self.publish_snapshot(update_tx);
             return;
@@ -385,7 +407,10 @@ impl AppleFmBridgeState {
         let Some(client) = self.client.as_ref() else {
             let _ = update_tx.send(AppleFmBridgeUpdate::Failed(AppleFmExecutionFailed {
                 request_id: job.request_id,
-                error: "Apple FM HTTP client unavailable".to_string(),
+                error: self
+                    .client_error
+                    .clone()
+                    .unwrap_or_else(|| "Apple FM HTTP client unavailable".to_string()),
             }));
             return;
         };
@@ -400,7 +425,7 @@ impl AppleFmBridgeState {
             .requested_model
             .clone()
             .or_else(|| self.snapshot.ready_model.clone())
-            .unwrap_or_else(|| DEFAULT_APPLE_FM_MODEL.to_string());
+            .unwrap_or_else(|| DEFAULT_APPLE_FM_MODEL_ID.to_string());
 
         let _ = update_tx.send(AppleFmBridgeUpdate::Started(AppleFmExecutionStarted {
             request_id: job.request_id.clone(),
@@ -408,7 +433,12 @@ impl AppleFmBridgeState {
         }));
 
         let start = Instant::now();
-        match execute_completion(client, self.config.base_url.as_str(), &job, model.as_str()) {
+        match client.completion_from_prompt(
+            job.prompt.clone(),
+            Some(model.clone()),
+            Some(1024),
+            None,
+        ) {
             Ok(result) => {
                 let total_duration_ns =
                     Some(start.elapsed().as_nanos().min(u64::MAX as u128) as u64);
@@ -458,13 +488,13 @@ impl AppleFmBridgeState {
                 }));
             }
             Err(error) => {
-                self.snapshot.last_error = Some(error.clone());
+                self.snapshot.last_error = Some(error.to_string());
                 self.snapshot.last_action = Some("Apple FM generation failed".to_string());
                 self.snapshot.refreshed_at = Some(Instant::now());
                 self.publish_snapshot(update_tx);
                 let _ = update_tx.send(AppleFmBridgeUpdate::Failed(AppleFmExecutionFailed {
                     request_id: job.request_id,
-                    error,
+                    error: error.to_string(),
                 }));
             }
         }
@@ -505,167 +535,15 @@ fn run_apple_fm_loop(
     }
 }
 
-#[derive(Debug, Deserialize)]
-struct BridgeHealthResponse {
-    #[allow(dead_code)]
-    status: String,
-    model_available: bool,
-    #[serde(default)]
-    availability_message: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelsResponse {
-    data: Vec<ModelInfo>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ModelInfo {
-    id: String,
-}
-
-#[derive(Debug, Serialize)]
-struct ChatCompletionRequest {
-    model: Option<String>,
-    messages: Vec<ChatMessage>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    temperature: Option<f64>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    max_tokens: Option<u32>,
-    stream: bool,
-}
-
-#[derive(Debug, Serialize)]
-struct ChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatCompletionResponse {
-    model: String,
-    choices: Vec<ChatChoice>,
-    #[serde(default)]
-    usage: Option<ChatUsage>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatChoice {
-    message: ChatResponseMessage,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatResponseMessage {
-    #[allow(dead_code)]
-    role: String,
-    content: Option<String>,
-}
-
-#[derive(Debug, Deserialize)]
-struct ChatUsage {
-    #[serde(default)]
-    prompt_tokens: Option<u64>,
-    #[serde(default)]
-    completion_tokens: Option<u64>,
-}
-
-struct CompletionResult {
-    model: String,
-    output: String,
-    prompt_tokens: Option<u64>,
-    completion_tokens: Option<u64>,
-}
-
-fn fetch_health(client: &Client, base_url: &str) -> Result<BridgeHealthResponse, String> {
-    let endpoint = canonical_bridge_endpoint(base_url, "/health")?;
-    client
-        .get(endpoint)
-        .send()
-        .map_err(|error| format!("Apple FM health request failed: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("Apple FM health returned error: {error}"))?
-        .json::<BridgeHealthResponse>()
-        .map_err(|error| format!("Apple FM health decode failed: {error}"))
-}
-
-fn fetch_models(client: &Client, base_url: &str) -> Result<Vec<String>, String> {
-    let endpoint = canonical_bridge_endpoint(base_url, "/v1/models")?;
-    let models = client
-        .get(endpoint)
-        .send()
-        .map_err(|error| format!("Apple FM models request failed: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("Apple FM models returned error: {error}"))?
-        .json::<ModelsResponse>()
-        .map_err(|error| format!("Apple FM models decode failed: {error}"))?;
-    Ok(models.data.into_iter().map(|model| model.id).collect())
-}
-
-fn execute_completion(
-    client: &Client,
-    base_url: &str,
-    job: &AppleFmGenerateJob,
-    model: &str,
-) -> Result<CompletionResult, String> {
-    let endpoint = canonical_bridge_endpoint(base_url, "/v1/chat/completions")?;
-    let request = ChatCompletionRequest {
-        model: Some(model.to_string()),
-        messages: vec![ChatMessage {
-            role: "user".to_string(),
-            content: job.prompt.clone(),
-        }],
-        temperature: None,
-        max_tokens: Some(1024),
-        stream: false,
-    };
-    let response = client
-        .post(endpoint)
-        .json(&request)
-        .send()
-        .map_err(|error| format!("Apple FM completion request failed: {error}"))?
-        .error_for_status()
-        .map_err(|error| format!("Apple FM completion returned error: {error}"))?
-        .json::<ChatCompletionResponse>()
-        .map_err(|error| format!("Apple FM completion decode failed: {error}"))?;
-    let output = response
-        .choices
-        .first()
-        .and_then(|choice| choice.message.content.clone())
-        .unwrap_or_default();
-    Ok(CompletionResult {
-        model: response.model,
-        output,
-        prompt_tokens: response
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.prompt_tokens),
-        completion_tokens: response
-            .usage
-            .as_ref()
-            .and_then(|usage| usage.completion_tokens),
-    })
-}
-
-fn wait_for_bridge_health(client: &Client, base_url: &str) -> Result<(), String> {
+fn wait_for_bridge_health(client: &AppleFmBridgeClient) -> Result<(), String> {
     let deadline = Instant::now() + BRIDGE_STARTUP_TIMEOUT;
     while Instant::now() < deadline {
-        if fetch_health(client, base_url).is_ok() {
+        if client.health().is_ok() {
             return Ok(());
         }
         std::thread::sleep(BRIDGE_HEALTH_POLL);
     }
     Err("Apple FM bridge health check timed out".to_string())
-}
-
-fn canonical_bridge_endpoint(base_url: &str, path: &str) -> Result<Url, String> {
-    let trimmed_base = base_url.trim();
-    if trimmed_base.is_empty() {
-        return Err("Apple FM base URL is empty".to_string());
-    }
-    let url =
-        Url::parse(trimmed_base).map_err(|error| format!("invalid Apple FM base URL: {error}"))?;
-    url.join(path)
-        .map_err(|error| format!("invalid Apple FM endpoint path: {error}"))
 }
 
 fn port_from_base_url(base_url: &str) -> Option<u16> {

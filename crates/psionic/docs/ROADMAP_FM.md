@@ -151,6 +151,33 @@ guardrail configuration, and a real error taxonomy.
 That is a legitimate base to build on, but it is still only an initial bridge,
 not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
+## Shipped On Main
+
+`FM-1` is now landed on `main`.
+
+What shipped:
+
+- `crates/psionic/psionic-apple-fm` exists as the reusable Psionic crate for
+  the currently retained Apple FM bridge contract and client
+- the current bridge request/response models moved out of
+  `apps/autopilot-desktop` and into reusable Psionic-owned contract types
+- `psionic-apple-fm::AppleFmBridgeClient` now owns the reusable blocking
+  bridge client for `/health`, `/v1/models`, and `/v1/chat/completions`
+- `apps/autopilot-desktop/src/apple_fm_bridge.rs` now consumes the shared
+  Psionic Apple FM client instead of owning duplicate ad hoc JSON transport
+  shapes
+- `crates/psionic/docs/FM_API_COVERAGE_MATRIX.md` exists as the living
+  conformance matrix mapping the exported Python SDK surface and behavior
+  families to the Rust/Psionic roadmap
+
+What `FM-1` did not close:
+
+- typed system-model availability/use-case/guardrail coverage
+- sessions and transcript lifecycle
+- generation-options validation beyond the retained minimal bridge shape
+- streaming, structured generation, tools, and typed error taxonomy
+- desktop Mission Control cutover on macOS
+
 ## Mission Control Reality On Main
 
 Mission Control is now an explicit part of this roadmap, because the current
@@ -539,18 +566,17 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-Until this roadmap is updated after landed work, the next-item order is:
+After `FM-1`, the next-item order is:
 
-1. `FM-1` contract capture and reusable Psionic Apple FM crate
-2. `FM-2` model availability/configuration truth
-3. `FM-3` session lifecycle and isolation
-4. `FM-4` plain text generation plus generation-options coverage
-5. `FM-5` streaming
-6. `FM-6` transcripts and session restore
-7. `FM-7` structured generation and schema support
-8. `FM-8` tools
-9. `FM-9` typed errors and metrics truth
-10. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-2` model availability/configuration truth
+2. `FM-3` session lifecycle and isolation
+3. `FM-4` plain text generation plus generation-options coverage
+4. `FM-5` streaming
+5. `FM-6` transcripts and session restore
+6. `FM-7` structured generation and schema support
+7. `FM-8` tools
+8. `FM-9` typed errors and metrics truth
+9. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and
