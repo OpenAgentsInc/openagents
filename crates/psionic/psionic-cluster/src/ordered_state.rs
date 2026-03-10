@@ -1272,6 +1272,192 @@ pub enum ClusterElectionMessage {
     },
 }
 
+/// Machine-checkable vote-conflict diagnostic for one election term.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterVoteConflictDiagnostic {
+    /// Election term that observed the conflict.
+    pub term: ClusterTerm,
+    /// Voter that attempted to grant two different candidates in one term.
+    pub voter_id: NodeId,
+    /// Candidate that already held this voter's term grant.
+    pub current_candidate_id: NodeId,
+    /// Candidate that was attempted after the first grant.
+    pub attempted_candidate_id: NodeId,
+}
+
+/// Machine-checkable split-brain diagnostic for one election term.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterSplitBrainDiagnostic {
+    /// Election term with conflicting leader claims.
+    pub term: ClusterTerm,
+    /// Current leader already recorded for the term.
+    pub current_leader_id: NodeId,
+    /// New conflicting leader claim attempted for the same term.
+    pub attempted_leader_id: NodeId,
+}
+
+/// Election-ledger refusal for conflicting vote or leader claims.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ClusterElectionError {
+    /// One voter tried to grant different candidates within one term.
+    #[error("conflicting vote grant in term {diagnostic:?}")]
+    ConflictingVote {
+        /// Machine-checkable vote-conflict detail.
+        diagnostic: ClusterVoteConflictDiagnostic,
+    },
+    /// One term observed two different leader claims.
+    #[error("split-brain leader claim in term {diagnostic:?}")]
+    SplitBrainLeaderClaim {
+        /// Machine-checkable same-term conflicting-leader detail.
+        diagnostic: ClusterSplitBrainDiagnostic,
+    },
+}
+
+/// Election truth for one term kept separate from authoritative ordered facts.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterElectionTermLedger {
+    /// Term this ledger row belongs to.
+    pub term: ClusterTerm,
+    /// Candidates that requested votes in this term.
+    #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
+    pub requested_candidates: BTreeSet<NodeId>,
+    /// Vote grants keyed by voter ID.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub granted_votes: BTreeMap<NodeId, NodeId>,
+    /// Current leader claim for this term, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub leader_id: Option<NodeId>,
+}
+
+impl ClusterElectionTermLedger {
+    /// Creates an empty ledger for one term.
+    #[must_use]
+    pub fn new(term: ClusterTerm) -> Self {
+        Self {
+            term,
+            requested_candidates: BTreeSet::new(),
+            granted_votes: BTreeMap::new(),
+            leader_id: None,
+        }
+    }
+
+    /// Records that one candidate requested votes for this term.
+    pub fn record_vote_request(&mut self, candidate_id: NodeId) {
+        self.requested_candidates.insert(candidate_id);
+    }
+
+    /// Records one vote grant and refuses conflicting grants by the same voter.
+    pub fn record_vote_grant(
+        &mut self,
+        candidate_id: NodeId,
+        voter_id: NodeId,
+    ) -> Result<(), ClusterElectionError> {
+        match self.granted_votes.get(&voter_id) {
+            Some(current_candidate_id) if current_candidate_id != &candidate_id => {
+                Err(ClusterElectionError::ConflictingVote {
+                    diagnostic: ClusterVoteConflictDiagnostic {
+                        term: self.term,
+                        voter_id,
+                        current_candidate_id: current_candidate_id.clone(),
+                        attempted_candidate_id: candidate_id,
+                    },
+                })
+            }
+            _ => {
+                self.granted_votes.insert(voter_id, candidate_id);
+                Ok(())
+            }
+        }
+    }
+
+    /// Records one leader claim and refuses same-term conflicting claims.
+    pub fn record_leader_heartbeat(
+        &mut self,
+        leader_id: NodeId,
+    ) -> Result<(), ClusterElectionError> {
+        match self.leader_id.as_ref() {
+            Some(current_leader_id) if current_leader_id != &leader_id => {
+                Err(ClusterElectionError::SplitBrainLeaderClaim {
+                    diagnostic: ClusterSplitBrainDiagnostic {
+                        term: self.term,
+                        current_leader_id: current_leader_id.clone(),
+                        attempted_leader_id: leader_id,
+                    },
+                })
+            }
+            _ => {
+                self.leader_id = Some(leader_id);
+                Ok(())
+            }
+        }
+    }
+
+    /// Returns how many voters granted one candidate in this term.
+    #[must_use]
+    pub fn votes_for(&self, candidate_id: &NodeId) -> usize {
+        self.granted_votes
+            .values()
+            .filter(|current_candidate_id| *current_candidate_id == candidate_id)
+            .count()
+    }
+}
+
+/// Multi-term ledger for typed election traffic.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterElectionLedger {
+    /// Election truth keyed by term.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub terms: BTreeMap<ClusterTerm, ClusterElectionTermLedger>,
+}
+
+impl ClusterElectionLedger {
+    /// Creates an empty multi-term election ledger.
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Returns election truth for one explicit term.
+    #[must_use]
+    pub fn term(&self, term: ClusterTerm) -> Option<&ClusterElectionTermLedger> {
+        self.terms.get(&term)
+    }
+
+    /// Observes one typed election message and updates the per-term ledger.
+    pub fn observe(
+        &mut self,
+        message: &ClusterElectionMessage,
+    ) -> Result<(), ClusterElectionError> {
+        match message {
+            ClusterElectionMessage::RequestVotes {
+                term, candidate_id, ..
+            } => {
+                self.terms
+                    .entry(*term)
+                    .or_insert_with(|| ClusterElectionTermLedger::new(*term))
+                    .record_vote_request(candidate_id.clone());
+                Ok(())
+            }
+            ClusterElectionMessage::GrantVote {
+                term,
+                candidate_id,
+                voter_id,
+            } => self
+                .terms
+                .entry(*term)
+                .or_insert_with(|| ClusterElectionTermLedger::new(*term))
+                .record_vote_grant(candidate_id.clone(), voter_id.clone()),
+            ClusterElectionMessage::LeaderHeartbeat {
+                term, leader_id, ..
+            } => self
+                .terms
+                .entry(*term)
+                .or_insert_with(|| ClusterElectionTermLedger::new(*term))
+                .record_leader_heartbeat(leader_id.clone()),
+        }
+    }
+}
+
 /// Authoritative global cluster event ordered by one leader.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
@@ -1776,6 +1962,18 @@ impl ClusterState {
                 self.snapshot.artifact_residency.remove(&key);
             }
             ClusterEvent::LeadershipReconciled { leadership } => {
+                if let Some(current_leadership) = &self.snapshot.leadership
+                    && current_leadership.term == leadership.term
+                    && current_leadership.leader_id != leadership.leader_id
+                {
+                    return Err(ClusterHistoryError::SplitBrainLeadership {
+                        diagnostic: ClusterSplitBrainDiagnostic {
+                            term: leadership.term,
+                            current_leader_id: current_leadership.leader_id.clone(),
+                            attempted_leader_id: leadership.leader_id,
+                        },
+                    });
+                }
                 self.snapshot.leadership = Some(leadership);
             }
         }
@@ -2031,6 +2229,12 @@ pub enum ClusterHistoryError {
         /// Actual authoritative event index presented.
         actual: ClusterEventIndex,
     },
+    /// Same term attempted to reconcile two different leaders.
+    #[error("conflicting leadership claim in authoritative state: {diagnostic:?}")]
+    SplitBrainLeadership {
+        /// Machine-checkable split-brain detail.
+        diagnostic: ClusterSplitBrainDiagnostic,
+    },
 }
 
 fn validate_event_owner(
@@ -2186,14 +2390,15 @@ mod tests {
     use super::{
         ClusterArtifactReference, ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus,
         ClusterArtifactTransferMethod, ClusterBackendReadinessStatus, ClusterCatchupPayload,
-        ClusterCatchupRequest, ClusterEvent, ClusterEventIndex, ClusterEventLog,
-        ClusterHistoryError, ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus,
-        ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink, ClusterLinkClass,
-        ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
+        ClusterCatchupRequest, ClusterElectionError, ClusterElectionLedger, ClusterElectionMessage,
+        ClusterEvent, ClusterEventIndex, ClusterEventLog, ClusterHistoryError,
+        ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus, ClusterLeadershipRecord,
+        ClusterLeaseTick, ClusterLink, ClusterLinkClass, ClusterLinkStatus,
+        ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
         ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError, ClusterRecoveryPolicy,
         ClusterRecoveryReason, ClusterRecoveryReplayWindow, ClusterSchemaVersion, ClusterSnapshot,
-        ClusterStabilityPosture, ClusterState, ClusterTerm, ClusterTransportClass,
-        ConfiguredClusterPeer, IndexedClusterEvent,
+        ClusterSplitBrainDiagnostic, ClusterStabilityPosture, ClusterState, ClusterTerm,
+        ClusterTransportClass, ConfiguredClusterPeer, IndexedClusterEvent,
     };
 
     fn sample_cluster_id() -> crate::ClusterId {
@@ -2469,6 +2674,135 @@ mod tests {
             base_snapshot.stable_digest(),
             renewed_snapshot.stable_digest(),
             "leadership lease changes should affect snapshot digests"
+        );
+    }
+
+    #[test]
+    fn election_ledger_refuses_conflicting_votes_in_same_term() {
+        let term = ClusterTerm::initial();
+        let voter = crate::NodeId::new("voter-alpha");
+        let candidate_alpha = crate::NodeId::new("candidate-alpha");
+        let candidate_beta = crate::NodeId::new("candidate-beta");
+        let mut ledger = ClusterElectionLedger::new();
+
+        ledger
+            .observe(&ClusterElectionMessage::RequestVotes {
+                term,
+                candidate_id: candidate_alpha.clone(),
+                last_applied_event_index: None,
+            })
+            .expect("vote request should record");
+        ledger
+            .observe(&ClusterElectionMessage::GrantVote {
+                term,
+                candidate_id: candidate_alpha.clone(),
+                voter_id: voter.clone(),
+            })
+            .expect("first vote grant should record");
+
+        let conflict = ledger.observe(&ClusterElectionMessage::GrantVote {
+            term,
+            candidate_id: candidate_beta.clone(),
+            voter_id: voter.clone(),
+        });
+        assert!(
+            matches!(
+                conflict,
+                Err(ClusterElectionError::ConflictingVote { diagnostic })
+                    if diagnostic.term == term
+                        && diagnostic.voter_id == voter
+                        && diagnostic.current_candidate_id == candidate_alpha
+                        && diagnostic.attempted_candidate_id == candidate_beta
+            ),
+            "same voter should not grant two candidates in one term"
+        );
+        assert_eq!(
+            ledger
+                .term(term)
+                .map(|term_state| term_state.votes_for(&candidate_alpha)),
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn election_ledger_refuses_split_brain_leader_claims_in_same_term() {
+        let term = ClusterTerm::initial();
+        let leader_alpha = crate::NodeId::new("leader-alpha");
+        let leader_beta = crate::NodeId::new("leader-beta");
+        let mut ledger = ClusterElectionLedger::new();
+
+        ledger
+            .observe(&ClusterElectionMessage::LeaderHeartbeat {
+                term,
+                leader_id: leader_alpha.clone(),
+                committed_event_index: Some(ClusterEventIndex::initial()),
+            })
+            .expect("first leader claim should record");
+
+        let conflict = ledger.observe(&ClusterElectionMessage::LeaderHeartbeat {
+            term,
+            leader_id: leader_beta.clone(),
+            committed_event_index: Some(ClusterEventIndex::initial().next()),
+        });
+        assert!(
+            matches!(
+                conflict,
+                Err(ClusterElectionError::SplitBrainLeaderClaim { diagnostic })
+                    if diagnostic == ClusterSplitBrainDiagnostic {
+                        term,
+                        current_leader_id: leader_alpha,
+                        attempted_leader_id: leader_beta,
+                    }
+            ),
+            "same term should refuse conflicting leader claims"
+        );
+    }
+
+    #[test]
+    fn authoritative_state_refuses_conflicting_same_term_leadership() {
+        let cluster_id = sample_cluster_id();
+        let leader_alpha = crate::NodeId::new("leader-alpha");
+        let leader_beta = crate::NodeId::new("leader-beta");
+        let mut state = ClusterState::new(cluster_id.clone());
+
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial(),
+                ClusterEvent::LeadershipReconciled {
+                    leadership: ClusterLeadershipRecord::new(
+                        ClusterTerm::initial(),
+                        leader_alpha.clone(),
+                        ClusterEventIndex::initial(),
+                    )
+                    .with_lease_policy(ClusterLeaseTick::new(1), sample_leadership_lease_policy()),
+                },
+            ))
+            .expect("first leadership event should apply");
+
+        let conflicting = state.apply(IndexedClusterEvent::new(
+            cluster_id,
+            ClusterEventIndex::initial().next(),
+            ClusterEvent::LeadershipReconciled {
+                leadership: ClusterLeadershipRecord::new(
+                    ClusterTerm::initial(),
+                    leader_beta.clone(),
+                    ClusterEventIndex::initial().next(),
+                )
+                .with_lease_policy(ClusterLeaseTick::new(2), sample_leadership_lease_policy()),
+            },
+        ));
+        assert!(
+            matches!(
+                conflicting,
+                Err(ClusterHistoryError::SplitBrainLeadership { diagnostic })
+                    if diagnostic == ClusterSplitBrainDiagnostic {
+                        term: ClusterTerm::initial(),
+                        current_leader_id: leader_alpha,
+                        attempted_leader_id: leader_beta,
+                    }
+            ),
+            "authoritative state should refuse conflicting same-term leadership"
         );
     }
 
