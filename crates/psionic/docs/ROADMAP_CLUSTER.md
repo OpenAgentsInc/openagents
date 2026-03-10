@@ -9,7 +9,7 @@
 > remains `#3276` -> `#3288` -> `#3248`, after confirming that the active
 > native Metal GPT-OSS gate remains `#3286` -> `#3285` -> `#3269` -> `#3262`,
 > after landing `PSI-184` / `#3289` in `64c2a8fc6` and `PSI-185` / `#3290` in
-> `f2e758720`, after landing `PSI-186` / `#3291` in `4d2d8c82e`, after
+> `f2e758720`, after landing `PSI-186` / `#3291` in `cc60eea89`, after
 > confirming that `#3292` is now the only remaining C1 queue item, and after
 > checking live GitHub issue search and confirming that later cluster phases
 > `PSI-188` through `PSI-197` still do not appear to be opened yet.
@@ -150,7 +150,7 @@ on:
     admission-mismatch, and stale-epoch refusal diagnostics; and integration
     coverage proving node identity survives restart while epoch truth advances
 - `PSI-186` / [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291)
-  - landed in `4d2d8c82e`
+  - landed in `cc60eea89`
   - typed `ClusterCommand`, `LocalClusterEvent`, `ClusterEvent`,
     `ClusterElectionMessage`, and `ClusterConnectionFact` schemas plus a
     Psionic-owned `ClusterEventLog`, contiguous indexed apply discipline,
@@ -357,7 +357,7 @@ Already on `main`:
 | --- | --- | --- | --- | --- | --- |
 | `PSI-184` | [#3289](https://github.com/OpenAgentsInc/openagents/issues/3289) | Closed | Stand up a hello-world local cluster connection in `psionic-cluster` | `psionic-cluster`, docs/tests | Landed in `64c2a8fc6`: established the crate seam and proved that seeded local Psionic nodes can discover each other, exchange typed hello/ping state, and report explicit role truth without claiming execution behavior. |
 | `PSI-185` | [#3290](https://github.com/OpenAgentsInc/openagents/issues/3290) | Closed | Define cluster identity, node epoch, and admission policy | `psionic-cluster`, `psionic-runtime`, docs | Landed in `f2e758720`: persistent local node identity, explicit namespace/admission config, role-visible node epoch truth, and machine-checkable refusal of admission mismatch, cluster mismatch, and stale-node ambiguity. |
-| `PSI-186` | [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) | Closed | Add typed cluster commands, events, and authoritative ordered state | `psionic-cluster` | Landed in `4d2d8c82e`: typed control-plane schemas, contiguous indexed-event apply rules, replayable authoritative cluster state, and stable digests that later receipts and diagnostics can reference. |
+| `PSI-186` | [#3291](https://github.com/OpenAgentsInc/openagents/issues/3291) | Closed | Add typed cluster commands, events, and authoritative ordered state | `psionic-cluster` | Landed in `cc60eea89`: typed control-plane schemas, contiguous indexed-event apply rules, replayable authoritative cluster state, and stable digests that later receipts and diagnostics can reference. |
 | `PSI-187` | [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) | Open | Add catchup, snapshots, compaction, and recovery semantics | `psionic-cluster`, storage/tests | Event sourcing is not operationally real until replay bounds, catchup windows, and recovery semantics are explicit. |
 
 ### Phase C2: topology, staging, and evidence truth
