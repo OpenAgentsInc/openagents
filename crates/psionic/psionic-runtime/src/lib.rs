@@ -838,6 +838,128 @@ impl ClusterExecutionLane {
     }
 }
 
+/// Trust posture for one cluster transport configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTrustPosture {
+    /// Shared-admission trusted-LAN posture used for the first shipped scope.
+    TrustedLanSharedAdmission,
+    /// Authenticated configured-peer posture suitable for operator-managed wider networks.
+    AuthenticatedConfiguredPeers,
+    /// Attestation-aware configured-peer posture for stronger market-facing admission seams.
+    AttestedConfiguredPeers,
+}
+
+/// Discovery posture for one cluster transport configuration.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterDiscoveryPosture {
+    /// Discovery is limited to local seed peers on the first trusted-LAN seam.
+    TrustedLanSeedPeers,
+    /// Discovery is limited to explicitly configured operator-managed peers.
+    OperatorManagedConfiguredPeers,
+    /// A future wider-network discovery posture was requested explicitly.
+    ExplicitWiderNetworkRequested,
+}
+
+/// Current compute-market trust disposition derived from cluster policy truth.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterComputeMarketTrustDisposition {
+    /// The current cluster trust policy is not sufficient for compute-market claims.
+    Refused,
+    /// The current cluster trust policy is sufficient for compute-market claims.
+    Eligible,
+}
+
+/// Explicit refusal reasons for compute-market trust claims.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterComputeMarketTrustRefusalReason {
+    /// Shared admission on a trusted LAN is not a market-safe posture.
+    TrustedLanSharedAdmissionOnly,
+    /// Wider-network transport still lacks mandatory authenticated messaging.
+    MissingAuthenticatedTransport,
+    /// Configured peers remain operator-managed allowlist entries instead of market admission.
+    OperatorManagedConfiguredPeersOnly,
+    /// Node admission is not yet backed by attested node identity.
+    MissingAttestedNodeIdentityAdmission,
+    /// Discovery posture is not yet explicit for wider non-LAN environments.
+    MissingNonLanDiscoveryPosture,
+}
+
+/// Machine-checkable assessment for whether a cluster trust policy supports compute-market claims.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterComputeMarketTrustAssessment {
+    /// Trust posture active for the underlying cluster policy.
+    pub posture: ClusterTrustPosture,
+    /// Discovery posture active for the underlying cluster policy.
+    pub discovery_posture: ClusterDiscoveryPosture,
+    /// Stable digest of the underlying trust policy.
+    pub trust_policy_digest: String,
+    /// Effective compute-market disposition for the current policy.
+    pub disposition: ClusterComputeMarketTrustDisposition,
+    /// Explicit reasons why wider compute-market claims remain refused.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub refusal_reasons: Vec<ClusterComputeMarketTrustRefusalReason>,
+}
+
+impl ClusterComputeMarketTrustAssessment {
+    /// Returns a stable digest for the current compute-market trust assessment.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_compute_market_trust_assessment|");
+        hasher.update(match self.posture {
+            ClusterTrustPosture::TrustedLanSharedAdmission => {
+                b"trusted_lan_shared_admission".as_slice()
+            }
+            ClusterTrustPosture::AuthenticatedConfiguredPeers => {
+                b"authenticated_configured_peers".as_slice()
+            }
+            ClusterTrustPosture::AttestedConfiguredPeers => b"attested_configured_peers".as_slice(),
+        });
+        hasher.update(b"|");
+        hasher.update(match self.discovery_posture {
+            ClusterDiscoveryPosture::TrustedLanSeedPeers => b"trusted_lan_seed_peers".as_slice(),
+            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers => {
+                b"operator_managed_configured_peers".as_slice()
+            }
+            ClusterDiscoveryPosture::ExplicitWiderNetworkRequested => {
+                b"explicit_wider_network_requested".as_slice()
+            }
+        });
+        hasher.update(b"|");
+        hasher.update(self.trust_policy_digest.as_bytes());
+        hasher.update(b"|");
+        hasher.update(match self.disposition {
+            ClusterComputeMarketTrustDisposition::Refused => b"refused".as_slice(),
+            ClusterComputeMarketTrustDisposition::Eligible => b"eligible".as_slice(),
+        });
+        for refusal_reason in &self.refusal_reasons {
+            hasher.update(b"|refusal|");
+            hasher.update(match refusal_reason {
+                ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly => {
+                    b"trusted_lan_shared_admission_only".as_slice()
+                }
+                ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport => {
+                    b"missing_authenticated_transport".as_slice()
+                }
+                ClusterComputeMarketTrustRefusalReason::OperatorManagedConfiguredPeersOnly => {
+                    b"operator_managed_configured_peers_only".as_slice()
+                }
+                ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission => {
+                    b"missing_attested_node_identity_admission".as_slice()
+                }
+                ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture => {
+                    b"missing_non_lan_discovery_posture".as_slice()
+                }
+            });
+        }
+        format!("{:x}", hasher.finalize())
+    }
+}
+
 /// Runtime-owned declared clustered-lane capability contract for one backend.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterExecutionCapabilityProfile {
@@ -6043,14 +6165,17 @@ mod tests {
         CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterAdmissionFactKind,
         ClusterArtifactResidencyDisposition, ClusterCommandAuthorityScopeEvidence,
         ClusterCommandProvenanceEvidence, ClusterCommitAuthorityEvidence,
-        ClusterCommunicationClass, ClusterCommunicationEligibility, ClusterEvidenceBundlePayload,
-        ClusterEvidenceBundleStatus, ClusterEvidenceBundleVerificationError,
-        ClusterExecutionCapabilityProfile, ClusterExecutionContext, ClusterExecutionDisposition,
-        ClusterExecutionLane, ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest,
-        ClusterPolicyDigestKind, ClusterSelectedNode, ClusterSettlementProvenanceInput,
-        ClusterTransportClass, DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext,
-        DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget,
-        DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
+        ClusterCommunicationClass, ClusterCommunicationEligibility,
+        ClusterComputeMarketTrustAssessment, ClusterComputeMarketTrustDisposition,
+        ClusterComputeMarketTrustRefusalReason, ClusterDiscoveryPosture,
+        ClusterEvidenceBundlePayload, ClusterEvidenceBundleStatus,
+        ClusterEvidenceBundleVerificationError, ClusterExecutionCapabilityProfile,
+        ClusterExecutionContext, ClusterExecutionDisposition, ClusterExecutionLane,
+        ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
+        ClusterSelectedNode, ClusterSettlementProvenanceInput, ClusterTransportClass,
+        ClusterTrustPosture, DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor,
+        DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass,
+        DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
         ExecutionDeliveryProof, ExecutionMetrics, ExecutionPlanCachePolicy,
         ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
         ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
@@ -7654,6 +7779,60 @@ mod tests {
         );
         assert!(!replicated_only.supports_lane(ClusterExecutionLane::LayerSharded));
         assert!(layer_sharded.supports_lane(ClusterExecutionLane::LayerSharded));
+    }
+
+    #[test]
+    fn cluster_compute_market_trust_assessment_round_trips_with_stable_digest() {
+        let assessment = ClusterComputeMarketTrustAssessment {
+            posture: ClusterTrustPosture::AttestedConfiguredPeers,
+            discovery_posture: ClusterDiscoveryPosture::ExplicitWiderNetworkRequested,
+            trust_policy_digest: String::from("trust-policy-digest"),
+            disposition: ClusterComputeMarketTrustDisposition::Eligible,
+            refusal_reasons: Vec::new(),
+        };
+        let encoded = match serde_json::to_string(&assessment) {
+            Ok(value) => value,
+            Err(error) => panic!("cluster trust assessment should encode: {error}"),
+        };
+        let encoded_again = match serde_json::to_string(&assessment) {
+            Ok(value) => value,
+            Err(error) => {
+                panic!("cluster trust assessment should encode repeatably: {error}")
+            }
+        };
+        let decoded: ClusterComputeMarketTrustAssessment = match serde_json::from_str(&encoded) {
+            Ok(value) => value,
+            Err(error) => panic!("cluster trust assessment should decode: {error}"),
+        };
+
+        assert_eq!(encoded, encoded_again);
+        assert_eq!(decoded, assessment);
+        assert_eq!(decoded.stable_digest(), assessment.stable_digest());
+    }
+
+    #[test]
+    fn cluster_compute_market_trust_assessment_digest_changes_with_refusal_shape() {
+        let trusted_lan = ClusterComputeMarketTrustAssessment {
+            posture: ClusterTrustPosture::TrustedLanSharedAdmission,
+            discovery_posture: ClusterDiscoveryPosture::TrustedLanSeedPeers,
+            trust_policy_digest: String::from("trust-policy-a"),
+            disposition: ClusterComputeMarketTrustDisposition::Refused,
+            refusal_reasons: vec![
+                ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly,
+                ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport,
+            ],
+        };
+        let attested = ClusterComputeMarketTrustAssessment {
+            posture: ClusterTrustPosture::AttestedConfiguredPeers,
+            discovery_posture: ClusterDiscoveryPosture::OperatorManagedConfiguredPeers,
+            trust_policy_digest: String::from("trust-policy-a"),
+            disposition: ClusterComputeMarketTrustDisposition::Refused,
+            refusal_reasons: vec![
+                ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture,
+            ],
+        };
+
+        assert_ne!(trusted_lan.stable_digest(), attested.stable_digest());
     }
 
     #[test]
