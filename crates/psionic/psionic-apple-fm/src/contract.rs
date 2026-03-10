@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use thiserror::Error;
 
 /// Default model identifier exposed by the retained Swift bridge.
 pub const DEFAULT_APPLE_FM_MODEL_ID: &str = "apple-foundation-model";
@@ -160,6 +161,185 @@ impl AppleFmSystemLanguageModelAvailability {
     }
 }
 
+/// Sampling mode families exposed by the Apple FM SDK.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleFmSamplingModeType {
+    /// Deterministic highest-probability token selection.
+    Greedy,
+    /// Randomized sampling from constrained probability mass.
+    Random,
+}
+
+/// Rust-side equivalent of the Python SDK's `SamplingMode`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSamplingMode {
+    /// Sampling mode discriminator.
+    #[serde(rename = "mode")]
+    pub mode_type: AppleFmSamplingModeType,
+    /// Optional top-k candidate count for random sampling.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "top_k")]
+    pub top: Option<u32>,
+    /// Optional cumulative probability threshold for random sampling.
+    #[serde(default, skip_serializing_if = "Option::is_none", rename = "top_p")]
+    pub probability_threshold: Option<f64>,
+    /// Optional random seed for reproducible random sampling.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub seed: Option<u64>,
+}
+
+impl AppleFmSamplingMode {
+    /// Builds greedy deterministic sampling.
+    #[must_use]
+    pub const fn greedy() -> Self {
+        Self {
+            mode_type: AppleFmSamplingModeType::Greedy,
+            top: None,
+            probability_threshold: None,
+            seed: None,
+        }
+    }
+
+    /// Builds random sampling with optional top-k or probability-threshold constraints.
+    pub fn random(
+        top: Option<u32>,
+        probability_threshold: Option<f64>,
+        seed: Option<u64>,
+    ) -> Result<Self, AppleFmGenerationOptionsValidationError> {
+        let sampling = Self {
+            mode_type: AppleFmSamplingModeType::Random,
+            top,
+            probability_threshold,
+            seed,
+        };
+        sampling.validate()?;
+        Ok(sampling)
+    }
+
+    /// Validates sampling-mode semantics against the Python SDK contract.
+    pub fn validate(&self) -> Result<(), AppleFmGenerationOptionsValidationError> {
+        match self.mode_type {
+            AppleFmSamplingModeType::Greedy => {
+                if self.top.is_some() {
+                    return Err(AppleFmGenerationOptionsValidationError::GreedyTopNotAllowed);
+                }
+                if self.probability_threshold.is_some() {
+                    return Err(
+                        AppleFmGenerationOptionsValidationError::GreedyProbabilityThresholdNotAllowed,
+                    );
+                }
+                if self.seed.is_some() {
+                    return Err(AppleFmGenerationOptionsValidationError::GreedySeedNotAllowed);
+                }
+            }
+            AppleFmSamplingModeType::Random => {
+                if self.top == Some(0) {
+                    return Err(AppleFmGenerationOptionsValidationError::TopMustBePositive);
+                }
+                if self.top.is_some() && self.probability_threshold.is_some() {
+                    return Err(
+                        AppleFmGenerationOptionsValidationError::TopAndProbabilityThresholdConflict,
+                    );
+                }
+                if let Some(probability_threshold) = self.probability_threshold {
+                    if !(0.0..=1.0).contains(&probability_threshold) {
+                        return Err(
+                            AppleFmGenerationOptionsValidationError::ProbabilityThresholdOutOfRange,
+                        );
+                    }
+                }
+            }
+        }
+        Ok(())
+    }
+}
+
+impl Default for AppleFmSamplingModeType {
+    fn default() -> Self {
+        Self::Greedy
+    }
+}
+
+/// Rust-side equivalent of the Python SDK's `GenerationOptions`.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmGenerationOptions {
+    /// Optional sampling strategy.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sampling: Option<AppleFmSamplingMode>,
+    /// Optional temperature override.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
+    /// Optional maximum response token limit.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub maximum_response_tokens: Option<u32>,
+}
+
+impl AppleFmGenerationOptions {
+    /// Builds a validated generation-options value.
+    pub fn new(
+        sampling: Option<AppleFmSamplingMode>,
+        temperature: Option<f64>,
+        maximum_response_tokens: Option<u32>,
+    ) -> Result<Self, AppleFmGenerationOptionsValidationError> {
+        let options = Self {
+            sampling,
+            temperature,
+            maximum_response_tokens,
+        };
+        options.validate()?;
+        Ok(options)
+    }
+
+    /// Validates option semantics against the Python SDK contract.
+    pub fn validate(&self) -> Result<(), AppleFmGenerationOptionsValidationError> {
+        if let Some(temperature) = self.temperature {
+            if temperature < 0.0 {
+                return Err(AppleFmGenerationOptionsValidationError::NegativeTemperature);
+            }
+        }
+        if self.maximum_response_tokens == Some(0) {
+            return Err(
+                AppleFmGenerationOptionsValidationError::MaximumResponseTokensMustBePositive,
+            );
+        }
+        if let Some(sampling) = self.sampling.as_ref() {
+            sampling.validate()?;
+        }
+        Ok(())
+    }
+}
+
+/// Validation failures for Apple FM generation options.
+#[derive(Clone, Debug, Eq, Error, PartialEq)]
+pub enum AppleFmGenerationOptionsValidationError {
+    /// Temperature must be non-negative.
+    #[error("'temperature' must be non-negative")]
+    NegativeTemperature,
+    /// Maximum response tokens must be positive.
+    #[error("'maximum_response_tokens' must be positive")]
+    MaximumResponseTokensMustBePositive,
+    /// `top` and `probability_threshold` are mutually exclusive.
+    #[error(
+        "Cannot specify both 'top' and 'probability_threshold'. Choose one sampling constraint."
+    )]
+    TopAndProbabilityThresholdConflict,
+    /// Top-k must be positive.
+    #[error("'top' must be a positive integer")]
+    TopMustBePositive,
+    /// Probability threshold must stay inside 0.0...1.0.
+    #[error("'probability_threshold' must be between 0.0 and 1.0")]
+    ProbabilityThresholdOutOfRange,
+    /// Greedy sampling does not accept top-k.
+    #[error("greedy sampling does not accept 'top'")]
+    GreedyTopNotAllowed,
+    /// Greedy sampling does not accept probability-threshold sampling.
+    #[error("greedy sampling does not accept 'probability_threshold'")]
+    GreedyProbabilityThresholdNotAllowed,
+    /// Greedy sampling does not accept a random seed.
+    #[error("greedy sampling does not accept 'seed'")]
+    GreedySeedNotAllowed,
+}
+
 /// Request/response chat message role used by the current bridge.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
@@ -197,6 +377,9 @@ pub struct AppleFmChatCompletionRequest {
     /// Optional maximum response tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub max_tokens: Option<u32>,
+    /// Typed generation options carried through the bridge.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<AppleFmGenerationOptions>,
     /// Whether streaming is requested.
     pub stream: bool,
 }
@@ -210,6 +393,28 @@ impl AppleFmChatCompletionRequest {
         max_tokens: Option<u32>,
         temperature: Option<f64>,
     ) -> Self {
+        let options = match (temperature, max_tokens) {
+            (None, None) => None,
+            _ => Some(AppleFmGenerationOptions {
+                sampling: None,
+                temperature,
+                maximum_response_tokens: max_tokens,
+            }),
+        };
+        Self::from_user_prompt_with_options(prompt, model, options)
+    }
+
+    /// Builds a one-shot user-prompt request with typed generation options.
+    #[must_use]
+    pub fn from_user_prompt_with_options(
+        prompt: impl Into<String>,
+        model: Option<impl Into<String>>,
+        options: Option<AppleFmGenerationOptions>,
+    ) -> Self {
+        let (temperature, max_tokens) = match options.as_ref() {
+            Some(options) => (options.temperature, options.maximum_response_tokens),
+            None => (None, None),
+        };
         Self {
             model: model.map(Into::into),
             messages: vec![AppleFmChatMessage {
@@ -218,7 +423,41 @@ impl AppleFmChatCompletionRequest {
             }],
             temperature,
             max_tokens,
+            options,
             stream: false,
+        }
+    }
+
+    /// Validates chat-completion generation options before transport.
+    pub fn validate(&self) -> Result<(), AppleFmGenerationOptionsValidationError> {
+        let options = self.normalized_generation_options();
+        if let Some(options) = options.as_ref() {
+            options.validate()?;
+        }
+        Ok(())
+    }
+
+    /// Returns the normalized generation-options view across legacy and typed fields.
+    #[must_use]
+    pub fn normalized_generation_options(&self) -> Option<AppleFmGenerationOptions> {
+        match self.options.clone() {
+            Some(mut options) => {
+                if options.temperature.is_none() {
+                    options.temperature = self.temperature;
+                }
+                if options.maximum_response_tokens.is_none() {
+                    options.maximum_response_tokens = self.max_tokens;
+                }
+                Some(options)
+            }
+            None => match (self.temperature, self.max_tokens) {
+                (None, None) => None,
+                _ => Some(AppleFmGenerationOptions {
+                    sampling: None,
+                    temperature: self.temperature,
+                    maximum_response_tokens: self.max_tokens,
+                }),
+            },
         }
     }
 }
@@ -396,6 +635,7 @@ impl AppleFmChatCompletionResponse {
                 .as_ref()
                 .and_then(|usage| usage.completion_tokens),
             total_tokens: self.usage.as_ref().and_then(|usage| usage.total_tokens),
+            usage: self.usage.clone(),
         }
     }
 }
@@ -440,6 +680,65 @@ pub struct AppleFmChatUsage {
     /// Total token count.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub total_tokens: Option<u64>,
+    /// Truthful prompt-token count with exact-vs-estimated status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub prompt_tokens_detail: Option<AppleFmUsageMeasurement>,
+    /// Truthful completion-token count with exact-vs-estimated status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub completion_tokens_detail: Option<AppleFmUsageMeasurement>,
+    /// Truthful total-token count with exact-vs-estimated status.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub total_tokens_detail: Option<AppleFmUsageMeasurement>,
+}
+
+impl AppleFmChatUsage {
+    /// Returns the best available prompt-token count, exact or estimated.
+    #[must_use]
+    pub fn prompt_tokens_best_effort(&self) -> Option<u64> {
+        self.prompt_tokens.or_else(|| {
+            self.prompt_tokens_detail
+                .as_ref()
+                .map(|detail| detail.value)
+        })
+    }
+
+    /// Returns the best available completion-token count, exact or estimated.
+    #[must_use]
+    pub fn completion_tokens_best_effort(&self) -> Option<u64> {
+        self.completion_tokens.or_else(|| {
+            self.completion_tokens_detail
+                .as_ref()
+                .map(|detail| detail.value)
+        })
+    }
+
+    /// Returns the best available total-token count, exact or estimated.
+    #[must_use]
+    pub fn total_tokens_best_effort(&self) -> Option<u64> {
+        self.total_tokens
+            .or_else(|| self.total_tokens_detail.as_ref().map(|detail| detail.value))
+    }
+}
+
+/// Whether a usage value is exact or estimated.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleFmUsageTruth {
+    /// Value is exact and authoritative.
+    Exact,
+    /// Value is an estimate only.
+    #[default]
+    Estimated,
+}
+
+/// A truthful usage measurement with exact-versus-estimated metadata.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmUsageMeasurement {
+    /// Numeric measurement value.
+    pub value: u64,
+    /// Truthfulness of the measurement.
+    #[serde(default)]
+    pub truth: AppleFmUsageTruth,
 }
 
 /// Structured error payload returned by the current bridge.
@@ -474,6 +773,71 @@ pub struct AppleFmCompletionResult {
     pub completion_tokens: Option<u64>,
     /// Total token count if the bridge reported one.
     pub total_tokens: Option<u64>,
+    /// Full usage payload including estimated-vs-exact truth.
+    pub usage: Option<AppleFmChatUsage>,
+}
+
+/// First-class plain-text generation request for the reusable Rust lane.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmTextGenerationRequest {
+    /// Optional requested model identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// Plain user prompt.
+    pub prompt: String,
+    /// Typed generation options.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<AppleFmGenerationOptions>,
+}
+
+impl AppleFmTextGenerationRequest {
+    /// Validates generation options before transport.
+    pub fn validate(&self) -> Result<(), AppleFmGenerationOptionsValidationError> {
+        if let Some(options) = self.options.as_ref() {
+            options.validate()?;
+        }
+        Ok(())
+    }
+
+    /// Converts this request into the compatibility chat-completion shape.
+    #[must_use]
+    pub fn into_chat_completion_request(self) -> AppleFmChatCompletionRequest {
+        AppleFmChatCompletionRequest::from_user_prompt_with_options(
+            self.prompt,
+            self.model,
+            self.options,
+        )
+    }
+}
+
+/// First-class plain-text generation response for the reusable Rust lane.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmTextGenerationResponse {
+    /// Served model identifier.
+    pub model: String,
+    /// First assistant text payload.
+    pub output: String,
+    /// Optional usage details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<AppleFmChatUsage>,
+}
+
+impl AppleFmTextGenerationResponse {
+    /// Converts the response into the simplified completion result.
+    #[must_use]
+    pub fn completion_result(&self) -> AppleFmCompletionResult {
+        AppleFmCompletionResult {
+            model: self.model.clone(),
+            output: self.output.clone(),
+            prompt_tokens: self.usage.as_ref().and_then(|usage| usage.prompt_tokens),
+            completion_tokens: self
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.completion_tokens),
+            total_tokens: self.usage.as_ref().and_then(|usage| usage.total_tokens),
+            usage: self.usage.clone(),
+        }
+    }
 }
 
 /// Session-scoped tool metadata carried ahead of real tool-calling support.
@@ -549,10 +913,23 @@ pub struct AppleFmSessionCreateResponse {
 }
 
 /// Session-scoped prompt request.
-#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 pub struct AppleFmSessionRespondRequest {
     /// User-authored prompt content.
     pub prompt: String,
+    /// Typed generation options for this response.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<AppleFmGenerationOptions>,
+}
+
+impl AppleFmSessionRespondRequest {
+    /// Validates the request generation options.
+    pub fn validate(&self) -> Result<(), AppleFmGenerationOptionsValidationError> {
+        if let Some(options) = self.options.as_ref() {
+            options.validate()?;
+        }
+        Ok(())
+    }
 }
 
 /// Session-scoped response result.
@@ -573,10 +950,12 @@ pub struct AppleFmSessionRespondResponse {
 mod tests {
     use super::{
         AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessageRole,
-        AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSessionCreateRequest,
-        AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
-        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
-        AppleFmSystemLanguageModelUseCase, DEFAULT_APPLE_FM_MODEL_ID,
+        AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError, AppleFmHealthResponse,
+        AppleFmModelsResponse, AppleFmSamplingMode, AppleFmSamplingModeType,
+        AppleFmSessionCreateRequest, AppleFmSessionRespondRequest, AppleFmSessionToolMetadata,
+        AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
+        AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
+        AppleFmTextGenerationRequest, AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
     };
 
     #[test]
@@ -594,7 +973,59 @@ mod tests {
         assert_eq!(request.messages[0].content, "hello");
         assert_eq!(request.max_tokens, Some(256));
         assert_eq!(request.temperature, Some(0.2));
+        assert_eq!(
+            request.options,
+            Some(AppleFmGenerationOptions {
+                sampling: None,
+                temperature: Some(0.2),
+                maximum_response_tokens: Some(256),
+            })
+        );
         assert!(!request.stream);
+    }
+
+    #[test]
+    fn generation_options_validate_python_semantics() {
+        let greedy = AppleFmSamplingMode::greedy();
+        assert!(greedy.validate().is_ok());
+
+        let random_top =
+            AppleFmSamplingMode::random(Some(50), None, Some(42)).expect("valid top-k");
+        assert_eq!(random_top.mode_type, AppleFmSamplingModeType::Random);
+        assert_eq!(random_top.top, Some(50));
+        assert_eq!(random_top.seed, Some(42));
+
+        let random_threshold =
+            AppleFmSamplingMode::random(None, Some(0.9), Some(7)).expect("valid top-p");
+        assert_eq!(random_threshold.probability_threshold, Some(0.9));
+
+        let conflict = AppleFmSamplingMode::random(Some(10), Some(0.8), None)
+            .expect_err("top and threshold should conflict");
+        assert_eq!(
+            conflict,
+            AppleFmGenerationOptionsValidationError::TopAndProbabilityThresholdConflict
+        );
+
+        let zero_top =
+            AppleFmSamplingMode::random(Some(0), None, None).expect_err("top zero should fail");
+        assert_eq!(
+            zero_top,
+            AppleFmGenerationOptionsValidationError::TopMustBePositive
+        );
+
+        let negative_temperature = AppleFmGenerationOptions::new(None, Some(-0.1), None)
+            .expect_err("negative temperature should fail");
+        assert_eq!(
+            negative_temperature,
+            AppleFmGenerationOptionsValidationError::NegativeTemperature
+        );
+
+        let zero_limit = AppleFmGenerationOptions::new(None, None, Some(0))
+            .expect_err("zero maximum_response_tokens should fail");
+        assert_eq!(
+            zero_limit,
+            AppleFmGenerationOptionsValidationError::MaximumResponseTokensMustBePositive
+        );
     }
 
     #[test]
@@ -619,7 +1050,14 @@ mod tests {
             r#"{
                 "model":"apple-foundation-model",
                 "choices":[{"message":{"role":"assistant","content":"hello from bridge"}}],
-                "usage":{"prompt_tokens":12,"completion_tokens":5,"total_tokens":17}
+                "usage":{
+                    "prompt_tokens":12,
+                    "completion_tokens":5,
+                    "total_tokens":17,
+                    "prompt_tokens_detail":{"value":12,"truth":"exact"},
+                    "completion_tokens_detail":{"value":5,"truth":"estimated"},
+                    "total_tokens_detail":{"value":17,"truth":"estimated"}
+                }
             }"#,
         )
         .expect("decode completion response");
@@ -630,6 +1068,22 @@ mod tests {
         assert_eq!(result.prompt_tokens, Some(12));
         assert_eq!(result.completion_tokens, Some(5));
         assert_eq!(result.total_tokens, Some(17));
+        assert_eq!(
+            response
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.prompt_tokens_detail.as_ref())
+                .map(|detail| detail.truth),
+            Some(AppleFmUsageTruth::Exact)
+        );
+        assert_eq!(
+            response
+                .usage
+                .as_ref()
+                .and_then(|usage| usage.completion_tokens_detail.as_ref())
+                .map(|detail| detail.truth),
+            Some(AppleFmUsageTruth::Estimated)
+        );
     }
 
     #[test]
@@ -759,5 +1213,59 @@ mod tests {
         assert_eq!(request.model, Some(AppleFmSystemLanguageModel::default()));
         assert_eq!(request.tools.len(), 1);
         assert_eq!(request.tools[0].name, "search");
+    }
+
+    #[test]
+    fn text_generation_request_converts_to_chat_completion_contract() {
+        let request = AppleFmTextGenerationRequest {
+            model: Some("apple-foundation-model".to_string()),
+            prompt: "hello".to_string(),
+            options: Some(
+                AppleFmGenerationOptions::new(
+                    Some(AppleFmSamplingMode::greedy()),
+                    Some(0.3),
+                    Some(128),
+                )
+                .expect("valid generation options"),
+            ),
+        };
+
+        request.validate().expect("request should validate");
+        let chat_request = request.into_chat_completion_request();
+        assert_eq!(chat_request.messages.len(), 1);
+        assert_eq!(chat_request.messages[0].role, AppleFmChatMessageRole::User);
+        assert_eq!(
+            chat_request
+                .options
+                .as_ref()
+                .and_then(|options| options.temperature),
+            Some(0.3)
+        );
+        assert_eq!(chat_request.max_tokens, Some(128));
+    }
+
+    #[test]
+    fn session_respond_request_validates_options() {
+        let request = AppleFmSessionRespondRequest {
+            prompt: "hello".to_string(),
+            options: Some(AppleFmGenerationOptions {
+                sampling: Some(AppleFmSamplingMode {
+                    mode_type: AppleFmSamplingModeType::Greedy,
+                    top: Some(5),
+                    probability_threshold: None,
+                    seed: None,
+                }),
+                temperature: None,
+                maximum_response_tokens: None,
+            }),
+        };
+
+        let error = request
+            .validate()
+            .expect_err("invalid greedy top should fail");
+        assert_eq!(
+            error,
+            AppleFmGenerationOptionsValidationError::GreedyTopNotAllowed
+        );
     }
 }

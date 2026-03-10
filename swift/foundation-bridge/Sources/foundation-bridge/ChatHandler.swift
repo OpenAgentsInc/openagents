@@ -123,13 +123,13 @@ actor ChatHandler {
         sessions[sessionID] = record
 
         let startTime = Date()
+        let options = try bridgeGenerationOptions(from: request.options)
         do {
             let response: LanguageModelSession.Response<String> = try await record.session.respond(
-                to: request.prompt
+                to: request.prompt,
+                options: options
             )
             let content = response.content
-            let promptTokens = request.prompt.count / 4
-            let completionTokens = content.count / 4
 
             record.isResponding = false
             sessions[sessionID] = record
@@ -138,11 +138,7 @@ actor ChatHandler {
                 session: try sessionState(sessionID: sessionID),
                 model: record.model.id,
                 output: content,
-                usage: Usage(
-                    promptTokens: promptTokens,
-                    completionTokens: completionTokens,
-                    totalTokens: promptTokens + completionTokens
-                )
+                usage: estimatedUsage(prompt: request.prompt, output: content)
             )
         } catch let error as LanguageModelSession.GenerationError {
             record.isResponding = false
@@ -170,6 +166,19 @@ actor ChatHandler {
             throw FMError.modelUnavailable(message)
         }
 
+        if request.stream ?? false {
+            throw FMError.invalidRequest("Streaming is not supported by this bridge yet")
+        }
+
+        let model = try resolvedChatModelID(request.model)
+        let options = try bridgeGenerationOptions(
+            from: mergedGenerationOptions(
+                options: request.options,
+                legacyTemperature: request.temperature,
+                legacyMaxTokens: request.maxTokens
+            )
+        )
+
         let prompt = buildPrompt(from: request.messages)
         let session = try makeSession(
             instructions: nil,
@@ -180,7 +189,7 @@ actor ChatHandler {
         let startTime = Date()
         let response: LanguageModelSession.Response<String>
         do {
-            response = try await session.respond(to: prompt)
+            response = try await session.respond(to: prompt, options: options)
         } catch {
             throw FMError.requestFailed(
                 "Foundation Models request failed: \(error.localizedDescription)"
@@ -188,14 +197,12 @@ actor ChatHandler {
         }
 
         let content = response.content
-        let promptTokens = prompt.count / 4
-        let completionTokens = content.count / 4
 
         return ChatCompletionResponse(
             id: "fm-\(UUID().uuidString.lowercased())",
             object: "chat.completion",
             created: Int(startTime.timeIntervalSince1970),
-            model: defaultSessionModelConfiguration().id,
+            model: model,
             choices: [
                 Choice(
                     index: 0,
@@ -203,11 +210,7 @@ actor ChatHandler {
                     finishReason: "stop"
                 )
             ],
-            usage: Usage(
-                promptTokens: promptTokens,
-                completionTokens: completionTokens,
-                totalTokens: promptTokens + completionTokens
-            )
+            usage: estimatedUsage(prompt: prompt, output: content)
         )
     }
 
@@ -286,5 +289,141 @@ actor ChatHandler {
 
         parts.append("Assistant:")
         return parts.joined(separator: "\n\n")
+    }
+
+    private func resolvedChatModelID(_ requestedModel: String?) throws -> String {
+        let defaultModel = defaultSessionModelConfiguration().id
+        guard let requestedModel, !requestedModel.isEmpty else {
+            return defaultModel
+        }
+        guard requestedModel == defaultModel else {
+            throw FMError.invalidRequest(
+                "Unsupported Apple FM model '\(requestedModel)'. Only '\(defaultModel)' is available."
+            )
+        }
+        return defaultModel
+    }
+
+    private func mergedGenerationOptions(
+        options: GenerationOptionsPayload?,
+        legacyTemperature: Double?,
+        legacyMaxTokens: Int?
+    ) throws -> GenerationOptionsPayload? {
+        let mergedTemperature: Double?
+        if let payloadTemperature = options?.temperature, let legacyTemperature,
+            payloadTemperature != legacyTemperature
+        {
+            throw FMError.invalidRequest(
+                "Conflicting temperature values were provided in both 'options.temperature' and 'temperature'"
+            )
+        } else {
+            mergedTemperature = options?.temperature ?? legacyTemperature
+        }
+
+        let mergedMaxTokens: Int?
+        if let payloadMax = options?.maximumResponseTokens, let legacyMaxTokens,
+            payloadMax != legacyMaxTokens
+        {
+            throw FMError.invalidRequest(
+                "Conflicting maximum response token values were provided in both 'options.maximum_response_tokens' and 'max_tokens'"
+            )
+        } else {
+            mergedMaxTokens = options?.maximumResponseTokens ?? legacyMaxTokens
+        }
+
+        if options == nil && mergedTemperature == nil && mergedMaxTokens == nil {
+            return nil
+        }
+
+        return GenerationOptionsPayload(
+            sampling: options?.sampling,
+            temperature: mergedTemperature,
+            maximumResponseTokens: mergedMaxTokens
+        )
+    }
+
+    private func bridgeGenerationOptions(from payload: GenerationOptionsPayload?) throws -> GenerationOptions {
+        var options = GenerationOptions()
+        guard let payload else {
+            return options
+        }
+
+        if let temperature = payload.temperature {
+            guard temperature >= 0 else {
+                throw FMError.invalidRequest("'temperature' must be non-negative")
+            }
+            options.temperature = temperature
+        }
+
+        if let maximumResponseTokens = payload.maximumResponseTokens {
+            guard maximumResponseTokens > 0 else {
+                throw FMError.invalidRequest("'maximum_response_tokens' must be positive")
+            }
+            options.maximumResponseTokens = maximumResponseTokens
+        }
+
+        if let sampling = payload.sampling {
+            options.sampling = try foundationSampling(from: sampling)
+        }
+
+        return options
+    }
+
+    private func foundationSampling(
+        from sampling: SamplingMode
+    ) throws -> GenerationOptions.SamplingMode {
+        switch sampling.mode {
+        case .greedy:
+            if sampling.topK != nil {
+                throw FMError.invalidRequest("greedy sampling does not accept 'top'")
+            }
+            if sampling.topP != nil {
+                throw FMError.invalidRequest(
+                    "greedy sampling does not accept 'probability_threshold'"
+                )
+            }
+            if sampling.seed != nil {
+                throw FMError.invalidRequest("greedy sampling does not accept 'seed'")
+            }
+            return .greedy
+        case .random:
+            if let topK = sampling.topK, topK <= 0 {
+                throw FMError.invalidRequest("'top' must be a positive integer")
+            }
+            if sampling.topK != nil && sampling.topP != nil {
+                throw FMError.invalidRequest(
+                    "Cannot specify both 'top' and 'probability_threshold'. Choose one sampling constraint."
+                )
+            }
+            if let probabilityThreshold = sampling.topP,
+                probabilityThreshold < 0 || probabilityThreshold > 1
+            {
+                throw FMError.invalidRequest(
+                    "'probability_threshold' must be between 0.0 and 1.0"
+                )
+            }
+            if let topK = sampling.topK {
+                return .random(top: topK, seed: sampling.seed)
+            }
+            let probabilityThreshold = sampling.topP ?? 1.0
+            return .random(probabilityThreshold: probabilityThreshold, seed: sampling.seed)
+        }
+    }
+
+    private func estimatedUsage(prompt: String, output: String) -> Usage {
+        let promptTokens = (prompt.count + 3) / 4
+        let completionTokens = (output.count + 3) / 4
+        let totalTokens = promptTokens + completionTokens
+        return Usage(
+            promptTokens: nil,
+            completionTokens: nil,
+            totalTokens: nil,
+            promptTokensDetail: UsageMeasurement(value: promptTokens, truth: .estimated),
+            completionTokensDetail: UsageMeasurement(
+                value: completionTokens,
+                truth: .estimated
+            ),
+            totalTokensDetail: UsageMeasurement(value: totalTokens, truth: .estimated)
+        )
     }
 }

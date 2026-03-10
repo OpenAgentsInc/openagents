@@ -14,12 +14,15 @@ pub use contract::{
     APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, AppleFmChatChoice,
     AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessage,
     AppleFmChatMessageRole, AppleFmChatResponseMessage, AppleFmChatUsage, AppleFmCompletionResult,
-    AppleFmErrorDetail, AppleFmErrorResponse, AppleFmHealthResponse, AppleFmModelInfo,
-    AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
-    AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
-    AppleFmSessionToolMetadata, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
-    AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
-    AppleFmSystemLanguageModelUseCase, DEFAULT_APPLE_FM_MODEL_ID,
+    AppleFmErrorDetail, AppleFmErrorResponse, AppleFmGenerationOptions,
+    AppleFmGenerationOptionsValidationError, AppleFmHealthResponse, AppleFmModelInfo,
+    AppleFmModelsResponse, AppleFmSamplingMode, AppleFmSamplingModeType, AppleFmSession,
+    AppleFmSessionCreateRequest, AppleFmSessionCreateResponse, AppleFmSessionRespondRequest,
+    AppleFmSessionRespondResponse, AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
+    AppleFmSystemLanguageModelAvailability, AppleFmSystemLanguageModelGuardrails,
+    AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
+    AppleFmTextGenerationRequest, AppleFmTextGenerationResponse, AppleFmUsageMeasurement,
+    AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
 };
 
 /// Human-readable crate ownership summary.
