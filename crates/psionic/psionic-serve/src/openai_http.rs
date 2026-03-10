@@ -28,7 +28,7 @@ use psionic_catalog::{BlobIntegrityPolicy, LocalBlobOpenOptions};
 use psionic_models::{
     GgufBlobArtifact, GptOssHarmonyParseOptions, GptOssHarmonyParsedOutput,
     GptOssHarmonyRenderContext, GptOssTokenizer, PromptChannelConfig, PromptMessage,
-    PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, parse_gpt_oss_harmony_tokens,
+    PromptMessageRole, PromptReasoningEffort, PromptRenderOptions, parse_gpt_oss_harmony_text,
     render_gpt_oss_harmony_prompt,
 };
 use serde::{Deserialize, Serialize};
@@ -944,8 +944,8 @@ async fn handle_chat_completions(
     })?;
     let response = worker.generate(generation_request).await?;
     let parsed = if state.include_psionic_fields {
-        parse_gpt_oss_harmony_tokens(
-            response.output.tokens.as_slice(),
+        parse_gpt_oss_harmony_text(
+            response.output.text.as_str(),
             GptOssHarmonyParseOptions {
                 role_hint: Some(PromptMessageRole::Assistant),
                 strict: false,
@@ -1005,6 +1005,18 @@ async fn handle_chat_completions(
             .include_psionic_fields
             .then(|| response.metrics.gpt_oss_perf.clone())
             .flatten(),
+        psionic_output_text: state
+            .include_psionic_fields
+            .then(|| response.output.text.clone()),
+        psionic_output_tokens: state.include_psionic_fields.then(|| {
+            response
+                .output
+                .tokens
+                .as_slice()
+                .iter()
+                .map(|token| token.as_u32())
+                .collect()
+        }),
     })
     .into_response();
     insert_execution_headers(response.headers_mut(), state.as_ref());
@@ -1081,6 +1093,10 @@ struct ChatCompletionResponse {
     psionic_harmony: Option<GptOssHarmonyParsedOutput>,
     #[serde(skip_serializing_if = "Option::is_none")]
     psionic_perf: Option<GptOssPerformanceMetrics>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_output_text: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    psionic_output_tokens: Option<Vec<u32>>,
 }
 
 #[derive(Clone, Debug, Serialize)]
