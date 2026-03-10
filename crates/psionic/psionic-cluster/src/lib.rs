@@ -1,6 +1,7 @@
 //! Trusted-LAN cluster control-plane substrate for Psionic.
 
 mod ordered_state;
+mod replicated_serving;
 mod scheduler;
 mod serving_policy;
 
@@ -25,6 +26,7 @@ use tokio::{
 };
 
 pub use ordered_state::*;
+pub use replicated_serving::*;
 pub use scheduler::*;
 pub use serving_policy::*;
 

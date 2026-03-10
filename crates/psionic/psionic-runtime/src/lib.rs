@@ -299,6 +299,8 @@ pub enum ClusterPolicyDigestKind {
     Placement,
     /// Queueing, fairness, cancellation, or backpressure policy.
     Serving,
+    /// Replicated residency, warm-state, or load/unload policy.
+    Replication,
     /// Artifact staging or residency policy.
     Residency,
     /// Catchup, compaction, or recovery policy.
@@ -346,6 +348,9 @@ pub struct ClusterSelectedNode {
     pub node_id: String,
     /// Runtime backend promised or delivered on this node.
     pub runtime_backend: String,
+    /// Reusable selected-device inventory qualifiers when the scheduler can surface them.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub device_inventory: Option<DeviceInventoryQualifiers>,
     /// Stable selected-device identifier when the scheduler can surface one.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stable_device_id: Option<String>,
@@ -373,6 +378,7 @@ impl ClusterSelectedNode {
         Self {
             node_id: node_id.into(),
             runtime_backend: runtime_backend.into(),
+            device_inventory: None,
             stable_device_id: None,
             topology_key: None,
             role: None,
@@ -380,6 +386,13 @@ impl ClusterSelectedNode {
             served_artifact_digest: None,
             artifact_residency: None,
         }
+    }
+
+    /// Attaches reusable selected-device inventory qualifiers.
+    #[must_use]
+    pub fn with_device_inventory(mut self, device_inventory: DeviceInventoryQualifiers) -> Self {
+        self.device_inventory = Some(device_inventory);
+        self
     }
 
     /// Attaches a stable selected-device identifier.
@@ -424,6 +437,92 @@ impl ClusterSelectedNode {
         disposition: ClusterArtifactResidencyDisposition,
     ) -> Self {
         self.artifact_residency = Some(disposition);
+        self
+    }
+}
+
+/// Warm-state truth for one served replica node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterReplicaWarmState {
+    /// Replica is not currently loaded.
+    Cold,
+    /// Replica is loading or warming toward readiness.
+    Warming,
+    /// Replica is warm and routable.
+    Warm,
+    /// Replica is draining and should not receive new work.
+    Draining,
+    /// Replica was explicitly refused for routing.
+    Refused,
+}
+
+/// Routing posture for one replica node inside a replicated lane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterReplicaRoutingDisposition {
+    /// Replica is warm and available as standby capacity.
+    WarmStandby,
+    /// Replica was selected to serve the current request.
+    Selected,
+    /// Replica was evaluated but refused for routing.
+    Refused,
+}
+
+/// Explicit replica-node state inside clustered replicated serving.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterReplicaNode {
+    /// Stable replica index inside the replicated topology.
+    pub replica_index: usize,
+    /// Stable node and device identity for the replica.
+    pub node: ClusterSelectedNode,
+    /// Warm-state truth for the replica.
+    pub warm_state: ClusterReplicaWarmState,
+    /// Routing posture for the replica within this decision.
+    pub routing: ClusterReplicaRoutingDisposition,
+    /// Active requests currently admitted on the replica, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub active_requests: Option<usize>,
+    /// Queued requests currently waiting behind active work, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub queued_requests: Option<usize>,
+    /// Plain-language routing or refusal detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterReplicaNode {
+    /// Creates one replica-node entry from stable node identity and routing posture.
+    #[must_use]
+    pub fn new(
+        replica_index: usize,
+        node: ClusterSelectedNode,
+        warm_state: ClusterReplicaWarmState,
+        routing: ClusterReplicaRoutingDisposition,
+    ) -> Self {
+        Self {
+            replica_index,
+            node,
+            warm_state,
+            routing,
+            active_requests: None,
+            queued_requests: None,
+            detail: None,
+        }
+    }
+
+    /// Attaches active and queued request counts.
+    #[must_use]
+    pub const fn with_load(mut self, active_requests: usize, queued_requests: usize) -> Self {
+        self.active_requests = Some(active_requests);
+        self.queued_requests = Some(queued_requests);
+        self
+    }
+
+    /// Attaches plain-language routing detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
         self
     }
 }
@@ -506,18 +605,27 @@ pub struct ClusterExecutionContext {
     /// Stable digest of artifact residency facts used for the decision, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub artifact_residency_digest: Option<String>,
+    /// Stable digest of replica warm-state facts used for replicated routing, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replica_state_digest: Option<String>,
     /// Stable node identifier that admitted or scheduled the work.
     pub scheduler_node_id: String,
     /// Transport class used across the request path.
     pub transport: ClusterTransportClass,
     /// High-level cluster execution posture.
     pub disposition: ClusterExecutionDisposition,
+    /// Explicit cluster-owned execution topology when it differs from the local backend view.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub execution_topology: Option<ExecutionTopologyPlan>,
     /// Stable policy digests that constrained the decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
     /// Explicit selected nodes for the planned or realized path.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selected_nodes: Vec<ClusterSelectedNode>,
+    /// Explicit replica-node state when the served lane is replicated.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub replica_nodes: Vec<ClusterReplicaNode>,
     /// Explicit fallback history when the scheduler rerouted work.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallback_history: Vec<ClusterFallbackStep>,
@@ -542,11 +650,14 @@ impl ClusterExecutionContext {
             cluster_state_digest: cluster_state_digest.into(),
             topology_digest: topology_digest.into(),
             artifact_residency_digest: None,
+            replica_state_digest: None,
             scheduler_node_id: scheduler_node_id.into(),
             transport,
             disposition,
+            execution_topology: None,
             policy_digests: Vec::new(),
             selected_nodes: Vec::new(),
+            replica_nodes: Vec::new(),
             fallback_history: Vec::new(),
             degraded_reason: None,
         }
@@ -556,6 +667,20 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_artifact_residency_digest(mut self, digest: impl Into<String>) -> Self {
         self.artifact_residency_digest = Some(digest.into());
+        self
+    }
+
+    /// Attaches a replica-state digest.
+    #[must_use]
+    pub fn with_replica_state_digest(mut self, digest: impl Into<String>) -> Self {
+        self.replica_state_digest = Some(digest.into());
+        self
+    }
+
+    /// Attaches explicit cluster-owned execution topology.
+    #[must_use]
+    pub fn with_execution_topology(mut self, execution_topology: ExecutionTopologyPlan) -> Self {
+        self.execution_topology = Some(execution_topology);
         self
     }
 
@@ -573,6 +698,13 @@ impl ClusterExecutionContext {
         self
     }
 
+    /// Replaces the explicit replica-node set.
+    #[must_use]
+    pub fn with_replica_nodes(mut self, replica_nodes: Vec<ClusterReplicaNode>) -> Self {
+        self.replica_nodes = replica_nodes;
+        self
+    }
+
     /// Appends one fallback transition.
     #[must_use]
     pub fn with_fallback(mut self, fallback: ClusterFallbackStep) -> Self {
@@ -585,6 +717,23 @@ impl ClusterExecutionContext {
     pub fn with_degraded_reason(mut self, degraded_reason: impl Into<String>) -> Self {
         self.degraded_reason = Some(degraded_reason.into());
         self
+    }
+
+    /// Returns the best available device inventory view surfaced by cluster execution evidence.
+    #[must_use]
+    pub fn selected_devices_inventory(&self) -> Vec<DeviceInventoryQualifiers> {
+        let replica_devices = self
+            .replica_nodes
+            .iter()
+            .filter_map(|replica| replica.node.device_inventory.clone())
+            .collect::<Vec<_>>();
+        if !replica_devices.is_empty() {
+            return replica_devices;
+        }
+        self.selected_nodes
+            .iter()
+            .filter_map(|node| node.device_inventory.clone())
+            .collect()
     }
 }
 
@@ -1092,6 +1241,13 @@ impl DeliveredExecutionContext {
     /// Attaches explicit clustered execution facts.
     #[must_use]
     pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        if let Some(execution_topology) = &cluster_execution.execution_topology {
+            self.execution_topology = Some(execution_topology.clone());
+        }
+        let cluster_selected_devices = cluster_execution.selected_devices_inventory();
+        if !cluster_selected_devices.is_empty() {
+            self.selected_devices = cluster_selected_devices;
+        }
         self.cluster_execution = Some(cluster_execution);
         self
     }
@@ -6436,6 +6592,70 @@ mod tests {
         assert_eq!(
             serde_json::from_value::<DeliveredExecutionContext>(encoded)?,
             delivered
+        );
+        assert_eq!(delivered.cluster_execution, Some(cluster_execution));
+        Ok(())
+    }
+
+    #[test]
+    fn delivered_execution_context_prefers_replicated_cluster_topology()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let first = sample_cuda_device().inventory_qualifiers();
+        let mut second_device = sample_cuda_device();
+        second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        second_device.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let second = second_device.inventory_qualifiers();
+        let cluster_execution = ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::TrustedLanDatagram,
+            ClusterExecutionDisposition::ReplicaRouted,
+        )
+        .with_replica_state_digest("replica-state-digest")
+        .with_execution_topology(ExecutionTopologyPlan::replicated(
+            "cuda",
+            vec![first.clone(), second.clone()],
+        ))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda").with_device_inventory(first.clone()),
+            ClusterSelectedNode::new("worker-b", "cuda").with_device_inventory(second.clone()),
+        ])
+        .with_replica_nodes(vec![
+            crate::ClusterReplicaNode::new(
+                0,
+                ClusterSelectedNode::new("worker-a", "cuda").with_device_inventory(first.clone()),
+                crate::ClusterReplicaWarmState::Warm,
+                crate::ClusterReplicaRoutingDisposition::Selected,
+            )
+            .with_load(2, 0),
+            crate::ClusterReplicaNode::new(
+                1,
+                ClusterSelectedNode::new("worker-b", "cuda").with_device_inventory(second.clone()),
+                crate::ClusterReplicaWarmState::Warm,
+                crate::ClusterReplicaRoutingDisposition::WarmStandby,
+            )
+            .with_load(0, 0),
+        ]);
+        let delivered = DeliveredExecutionContext::new(
+            "cuda",
+            Some(ExecutionTopologyPlan::single_device("cuda", first.clone())),
+            vec![first.clone()],
+        )
+        .with_cluster_execution(cluster_execution.clone());
+
+        assert_eq!(
+            delivered.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(ExecutionTopologyKind::Replicated)
+        );
+        assert_eq!(delivered.selected_devices, vec![first, second]);
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .and_then(|cluster| cluster.replica_state_digest.as_deref()),
+            Some("replica-state-digest")
         );
         assert_eq!(delivered.cluster_execution, Some(cluster_execution));
         Ok(())
