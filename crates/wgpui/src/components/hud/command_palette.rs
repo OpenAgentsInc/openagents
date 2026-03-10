@@ -231,6 +231,39 @@ impl CommandPalette {
         )
     }
 
+    /// Truncate description text to fit within max_width, with "..." suffix.
+    fn truncate_description(
+        &self,
+        cx: &mut PaintContext,
+        desc: &str,
+        font_size: f32,
+        max_width: f32,
+    ) -> String {
+        if desc.is_empty() || max_width <= 0.0 {
+            return String::new();
+        }
+        let char_width = if self.mono {
+            cx.text.measure_styled_mono("W", font_size, FontStyle::default())
+        } else {
+            cx.text.measure("W", font_size)
+        };
+        let char_width = char_width.max(1.0);
+        let max_chars = (max_width / char_width).floor() as usize;
+        if max_chars == 0 {
+            return String::new();
+        }
+        let text_len = desc.chars().count();
+        if text_len <= max_chars {
+            return desc.to_string();
+        }
+        const ELLIPSIS: &str = "...";
+        if max_chars <= ELLIPSIS.len() {
+            return ELLIPSIS.chars().take(max_chars).collect();
+        }
+        let truncated = desc.chars().take(max_chars - ELLIPSIS.len()).collect::<String>();
+        format!("{}{}", truncated, ELLIPSIS)
+    }
+
     fn visible_item_count(&self) -> usize {
         self.filtered_commands.len().min(self.max_visible_items)
     }
@@ -376,13 +409,16 @@ impl Component for CommandPalette {
                 cx.scene.draw_text(label_run);
 
                 if let Some(desc) = &command.description {
+                    let desc_max_width = (item_bounds.size.width - 2.0 * theme::spacing::SM).max(0.0);
+                    let desc_truncated =
+                        self.truncate_description(cx, desc, theme::font_size::XS, desc_max_width);
                     let desc_origin = Point::new(
                         item_bounds.origin.x + theme::spacing::SM,
                         item_bounds.origin.y + theme::spacing::XS + theme::font_size::SM + 2.0,
                     );
                     let desc_run = if self.mono {
                         cx.text.layout_styled_mono(
-                            desc,
+                            &desc_truncated,
                             desc_origin,
                             theme::font_size::XS,
                             theme::text::MUTED,
@@ -390,7 +426,7 @@ impl Component for CommandPalette {
                         )
                     } else {
                         cx.text.layout_mono(
-                            desc,
+                            &desc_truncated,
                             desc_origin,
                             theme::font_size::XS,
                             theme::text::MUTED,
