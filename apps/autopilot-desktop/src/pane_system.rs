@@ -1,6 +1,6 @@
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use wgpui::components::hud::{PaneFrame, ResizeEdge};
+use wgpui::components::hud::{PaneFrame, ResizablePane, ResizeEdge};
 use wgpui::{Bounds, Component, InputEvent, Modifiers, MouseButton, Point, Size, theme};
 use winit::window::CursorIcon;
 
@@ -23,6 +23,7 @@ pub const PANE_MIN_HEIGHT: f32 = 140.0;
 /// Default target width for the global sidebar when open.
 pub const SIDEBAR_DEFAULT_WIDTH: f32 = 300.0;
 pub const RIGHT_SIDEBAR_ENABLED: bool = false;
+const PANE_FRAME_HORIZONTAL_CHROME: f32 = 2.0;
 const PANE_MARGIN: f32 = 18.0;
 const PANE_CASCADE_X: f32 = 26.0;
 const PANE_CASCADE_Y: f32 = 22.0;
@@ -810,6 +811,52 @@ impl PaneDescriptor {
     }
 }
 
+fn pane_minimum_size(kind: PaneKind) -> Size {
+    let spec = pane_spec(kind);
+    let pane_size_for_content = |content_width: f32, content_height: f32| {
+        Size::new(
+            content_width + PANE_FRAME_HORIZONTAL_CHROME,
+            content_height + PANE_TITLE_HEIGHT + 1.0,
+        )
+    };
+
+    match kind {
+        PaneKind::AutopilotChat => pane_size_for_content(900.0, 500.0),
+        PaneKind::CodexAccount
+        | PaneKind::CodexModels
+        | PaneKind::CodexConfig
+        | PaneKind::CodexMcp
+        | PaneKind::CodexApps
+        | PaneKind::CodexLabs
+        | PaneKind::CodexDiagnostics => pane_size_for_content(920.0, 420.0),
+        PaneKind::GoOnline => pane_size_for_content(560.0, 300.0),
+        PaneKind::LocalInference => pane_size_for_content(940.0, 520.0),
+        PaneKind::EarningsScoreboard => pane_size_for_content(640.0, 320.0),
+        PaneKind::RelayConnections | PaneKind::NetworkRequests => {
+            pane_size_for_content(900.0, 420.0)
+        }
+        PaneKind::SyncHealth => pane_size_for_content(760.0, 360.0),
+        PaneKind::StarterJobs | PaneKind::JobInbox | PaneKind::ActiveJob => {
+            pane_size_for_content(860.0, 420.0)
+        }
+        PaneKind::ReciprocalLoop | PaneKind::AgentProfileState | PaneKind::AgentScheduleTick => {
+            pane_size_for_content(860.0, 440.0)
+        }
+        PaneKind::ActivityFeed | PaneKind::AlertsRecovery | PaneKind::JobHistory => {
+            pane_size_for_content(900.0, 460.0)
+        }
+        PaneKind::NostrIdentity => pane_size_for_content(480.0, 220.0),
+        PaneKind::TrajectoryAudit
+        | PaneKind::CastControl
+        | PaneKind::SkillRegistry
+        | PaneKind::SkillTrustRevocation
+        | PaneKind::CreditDesk
+        | PaneKind::CreditSettlementLedger => pane_size_for_content(960.0, 480.0),
+        PaneKind::CadDemo => pane_size_for_content(860.0, 420.0),
+        _ => Size::new(spec.default_width, spec.default_height),
+    }
+}
+
 pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     if descriptor.singleton
         && let Some(existing_id) = state
@@ -830,10 +877,12 @@ pub fn create_pane(state: &mut RenderState, descriptor: PaneDescriptor) -> u64 {
     let tier = (id as usize - 1) % 10;
     let x = PANE_MARGIN + tier as f32 * PANE_CASCADE_X;
     let y = PANE_MARGIN + tier as f32 * PANE_CASCADE_Y;
+    let min_size = pane_minimum_size(descriptor.kind);
     let bounds = clamp_bounds_to_window(
         Bounds::new(x, y, descriptor.width, descriptor.height),
         logical,
         sidebar_width,
+        min_size,
     );
 
     let title = pane_title(descriptor.kind, id);
@@ -1025,13 +1074,14 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
             let dy = current_mouse.y - start_mouse.y;
 
             if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
+                let min_size = pane_minimum_size(pane.kind);
                 let next = Bounds::new(
                     start_bounds.origin.x + dx,
                     start_bounds.origin.y + dy,
                     start_bounds.size.width,
                     start_bounds.size.height,
                 );
-                pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width);
+                pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width, min_size);
                 return true;
             }
         }
@@ -1042,13 +1092,11 @@ pub fn update_drag(state: &mut RenderState, current_mouse: Point) -> bool {
             start_bounds,
         } => {
             if let Some(pane) = state.panes.iter_mut().find(|pane| pane.id == pane_id) {
-                let next = state.pane_resizer.resize_bounds(
-                    edge,
-                    start_bounds,
-                    start_mouse,
-                    current_mouse,
-                );
-                pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width);
+                let min_size = pane_minimum_size(pane.kind);
+                let next = ResizablePane::new()
+                    .min_size(min_size.width, min_size.height)
+                    .resize_bounds(edge, start_bounds, start_mouse, current_mouse);
+                pane.bounds = clamp_bounds_to_window(next, logical, sidebar_width, min_size);
                 return true;
             }
         }
@@ -4926,7 +4974,12 @@ pub fn clamp_all_panes_to_window(state: &mut RenderState) {
     let logical = logical_size(&state.config, state.scale_factor);
     let sidebar_width = sidebar_reserved_width(state);
     for pane in state.panes.iter_mut() {
-        pane.bounds = clamp_bounds_to_window(pane.bounds, logical, sidebar_width);
+        pane.bounds = clamp_bounds_to_window(
+            pane.bounds,
+            logical,
+            sidebar_width,
+            pane_minimum_size(pane.kind),
+        );
     }
 }
 
@@ -5017,7 +5070,7 @@ mod tests {
         trajectory_verify_button_bounds,
     };
     use crate::pane_registry::pane_specs;
-    use wgpui::{Bounds, Point};
+    use wgpui::{Bounds, Point, Size};
 
     #[test]
     fn pane_descriptor_singleton_matches_registry_specs() {
@@ -5029,6 +5082,31 @@ mod tests {
                 spec.kind
             );
         }
+    }
+
+    #[test]
+    fn mission_control_bounds_clamp_to_content_safe_minimum() {
+        let min_size = super::pane_minimum_size(crate::app_state::PaneKind::GoOnline);
+        let clamped = super::clamp_bounds_to_window(
+            Bounds::new(12.0, 16.0, 220.0, 140.0),
+            Size::new(1600.0, 900.0),
+            0.0,
+            min_size,
+        );
+
+        assert_eq!(clamped.size.width, min_size.width);
+        assert_eq!(clamped.size.height, min_size.height);
+    }
+
+    #[test]
+    fn mission_control_minimum_size_is_smaller_than_default_but_above_global_floor() {
+        let spec = crate::pane_registry::pane_spec(crate::app_state::PaneKind::GoOnline);
+        let min_size = super::pane_minimum_size(crate::app_state::PaneKind::GoOnline);
+
+        assert!(min_size.width > super::PANE_MIN_WIDTH);
+        assert!(min_size.height > super::PANE_MIN_HEIGHT);
+        assert!(min_size.width < spec.default_width);
+        assert!(min_size.height < spec.default_height);
     }
 
     #[test]
