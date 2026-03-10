@@ -2865,6 +2865,33 @@ fn gather_selected_expert_bias_rows_into(
     Ok(())
 }
 
+fn selected_expert_bias_rows<'a>(
+    values: &'a [f32],
+    rows_per_expert: usize,
+    expert_index: usize,
+) -> Result<&'a [f32], super::RuntimeError> {
+    if rows_per_expert == 0 {
+        return Ok(&[]);
+    }
+    if values.len() % rows_per_expert != 0 {
+        return Err(super::RuntimeError::Backend(format!(
+            "expert bias shape mismatch: {} values not divisible by rows_per_expert {}",
+            values.len(),
+            rows_per_expert
+        )));
+    }
+    let expert_count = values.len() / rows_per_expert;
+    if expert_index >= expert_count {
+        return Err(super::RuntimeError::Backend(format!(
+            "expert bias index {} exceeds expert count {}",
+            expert_index, expert_count
+        )));
+    }
+    let start = expert_index.saturating_mul(rows_per_expert);
+    let end = start.saturating_add(rows_per_expert);
+    Ok(&values[start..end])
+}
+
 impl From<ModelLoadError> for CudaGptOssTextGenerationError {
     fn from(value: ModelLoadError) -> Self {
         Self::Generation(ReferenceTextGenerationError::from(value))
@@ -5640,7 +5667,8 @@ impl GptOssCudaModelInner {
                             .map_err(ReferenceTextGenerationError::Runtime)?;
                         perf.cuda.device_to_host_bytes =
                             perf.cuda.device_to_host_bytes.saturating_add(
-                                layer.attention_output_weight
+                                layer
+                                    .attention_output_weight
                                     .rows
                                     .saturating_mul(std::mem::size_of::<f32>())
                                     .try_into()
@@ -5653,7 +5681,8 @@ impl GptOssCudaModelInner {
                             .map_err(ReferenceTextGenerationError::Runtime)?;
                         perf.cuda.device_to_host_bytes =
                             perf.cuda.device_to_host_bytes.saturating_add(
-                                layer.attention_output_weight
+                                layer
+                                    .attention_output_weight
                                     .columns
                                     .saturating_mul(std::mem::size_of::<f32>())
                                     .try_into()
@@ -5853,11 +5882,15 @@ impl GptOssCudaModelInner {
                                             )),
                                         )
                                     })?;
-                                let gate_up_expert_stride = gate_up_host
+                                let gate_stride = gate_up_host
                                     .gate
                                     .rows
-                                    .saturating_add(gate_up_host.up.rows)
                                     .saturating_mul(gate_up_host.gate.row_byte_len);
+                                let up_stride = gate_up_host
+                                    .up
+                                    .rows
+                                    .saturating_mul(gate_up_host.up.row_byte_len);
+                                let gate_up_expert_stride = gate_stride.saturating_add(up_stride);
                                 let down_expert_stride =
                                     down_host.rows.saturating_mul(down_host.row_byte_len);
                                 let mut staged_selected4_host_bytes = 0usize;
@@ -5909,44 +5942,46 @@ impl GptOssCudaModelInner {
                                                     .unwrap_or(0)
                                             });
                                         if layer_cache.cached_experts[slot] != Some(expert_index) {
-                                            gate_up_host.selected_packed_bytes_into(
-                                                &[expert_index],
-                                                &mut plan.gate_up_weights_scratch,
-                                            )?;
+                                            let (gate_bytes, up_bytes) = gate_up_host
+                                                .expert_projection_bytes(expert_index)?;
                                             layer_cache
                                                 .gate_up_weights_buffer
                                                 .write_bytes_at_offset(
                                                     slot.saturating_mul(gate_up_expert_stride),
-                                                    plan.gate_up_weights_scratch.as_slice(),
+                                                    gate_bytes,
+                                                )
+                                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                                            layer_cache
+                                                .gate_up_weights_buffer
+                                                .write_bytes_at_offset(
+                                                    slot.saturating_mul(gate_up_expert_stride)
+                                                        .saturating_add(gate_stride),
+                                                    up_bytes,
                                                 )
                                                 .map_err(ReferenceTextGenerationError::Runtime)?;
                                             staged_selected4_host_bytes =
                                                 staged_selected4_host_bytes.saturating_add(
-                                                    plan.gate_up_weights_scratch.len(),
+                                                    gate_bytes.len().saturating_add(up_bytes.len()),
                                                 );
-                                            down_host.selected_bytes_into(
-                                                &[expert_index],
-                                                &mut plan.down_weights_scratch,
-                                            )?;
+                                            let down_bytes =
+                                                down_host.expert_bytes(expert_index)?;
                                             layer_cache
                                                 .down_weights_buffer
                                                 .write_bytes_at_offset(
                                                     slot.saturating_mul(down_expert_stride),
-                                                    plan.down_weights_scratch.as_slice(),
+                                                    down_bytes,
                                                 )
                                                 .map_err(ReferenceTextGenerationError::Runtime)?;
                                             staged_selected4_host_bytes =
-                                                staged_selected4_host_bytes.saturating_add(
-                                                    plan.down_weights_scratch.len(),
-                                                );
+                                                staged_selected4_host_bytes
+                                                    .saturating_add(down_bytes.len());
                                             if let Some(values) =
                                                 layer.feed_forward_gate_experts_bias.as_ref()
                                             {
-                                                gather_selected_expert_bias_rows_into(
+                                                let bias = selected_expert_bias_rows(
                                                     values.as_slice(),
                                                     gate_rows,
-                                                    &[expert_index],
-                                                    &mut plan.gate_bias_scratch,
+                                                    expert_index,
                                                 )?;
                                                 let device = layer_cache
                                                     .gate_bias_buffer
@@ -5963,28 +5998,25 @@ impl GptOssCudaModelInner {
                                                 device
                                                     .write_f32_at_offset(
                                                         slot.saturating_mul(gate_rows),
-                                                        plan.gate_bias_scratch.as_slice(),
+                                                        bias,
                                                     )
                                                     .map_err(
                                                         ReferenceTextGenerationError::Runtime,
                                                     )?;
                                                 staged_selected4_host_bytes =
                                                     staged_selected4_host_bytes.saturating_add(
-                                                        plan.gate_bias_scratch
-                                                            .len()
-                                                            .saturating_mul(
-                                                                std::mem::size_of::<f32>(),
-                                                            ),
+                                                        bias.len().saturating_mul(
+                                                            std::mem::size_of::<f32>(),
+                                                        ),
                                                     );
                                             }
                                             if let Some(values) =
                                                 layer.feed_forward_up_experts_bias.as_ref()
                                             {
-                                                gather_selected_expert_bias_rows_into(
+                                                let bias = selected_expert_bias_rows(
                                                     values.as_slice(),
                                                     up_rows,
-                                                    &[expert_index],
-                                                    &mut plan.up_bias_scratch,
+                                                    expert_index,
                                                 )?;
                                                 let device = layer_cache
                                                     .up_bias_buffer
@@ -6001,14 +6033,14 @@ impl GptOssCudaModelInner {
                                                 device
                                                     .write_f32_at_offset(
                                                         slot.saturating_mul(up_rows),
-                                                        plan.up_bias_scratch.as_slice(),
+                                                        bias,
                                                     )
                                                     .map_err(
                                                         ReferenceTextGenerationError::Runtime,
                                                     )?;
                                                 staged_selected4_host_bytes =
                                                     staged_selected4_host_bytes.saturating_add(
-                                                        plan.up_bias_scratch.len().saturating_mul(
+                                                        bias.len().saturating_mul(
                                                             std::mem::size_of::<f32>(),
                                                         ),
                                                     );
@@ -6016,11 +6048,10 @@ impl GptOssCudaModelInner {
                                             if let Some(values) =
                                                 layer.feed_forward_down_experts_bias.as_ref()
                                             {
-                                                gather_selected_expert_bias_rows_into(
+                                                let bias = selected_expert_bias_rows(
                                                     values.as_slice(),
                                                     layer.feed_forward_down_experts_weight.rows,
-                                                    &[expert_index],
-                                                    &mut plan.down_bias_scratch,
+                                                    expert_index,
                                                 )?;
                                                 let device = layer_cache
                                                     .down_bias_buffer
@@ -6041,18 +6072,16 @@ impl GptOssCudaModelInner {
                                                                 .feed_forward_down_experts_weight
                                                                 .rows,
                                                         ),
-                                                        plan.down_bias_scratch.as_slice(),
+                                                        bias,
                                                     )
                                                     .map_err(
                                                         ReferenceTextGenerationError::Runtime,
                                                     )?;
                                                 staged_selected4_host_bytes =
                                                     staged_selected4_host_bytes.saturating_add(
-                                                        plan.down_bias_scratch
-                                                            .len()
-                                                            .saturating_mul(
-                                                                std::mem::size_of::<f32>(),
-                                                            ),
+                                                        bias.len().saturating_mul(
+                                                            std::mem::size_of::<f32>(),
+                                                        ),
                                                     );
                                             }
                                             layer_cache.cached_experts[slot] = Some(expert_index);
@@ -9566,6 +9595,20 @@ impl QuantizedExpertTensor {
         self.storage.byte_length()
     }
 
+    fn expert_bytes(&self, expert_index: usize) -> Result<&[u8], super::RuntimeError> {
+        if expert_index >= self.outer {
+            return Err(super::RuntimeError::Backend(format!(
+                "expert index {} exceeds expert count {}",
+                expert_index, self.outer
+            )));
+        }
+        let expert_stride = self.rows.saturating_mul(self.row_byte_len);
+        let offset = expert_index.saturating_mul(expert_stride);
+        self.storage
+            .read_range(offset, expert_stride)
+            .map_err(model_load_runtime_error)
+    }
+
     fn selected_bytes_into(
         &self,
         selected: &[usize],
@@ -9646,6 +9689,22 @@ impl QuantizedExpertProjectionGroup {
         self.gate
             .byte_length()
             .saturating_add(self.up.byte_length())
+    }
+
+    fn expert_projection_bytes(
+        &self,
+        expert_index: usize,
+    ) -> Result<(&[u8], &[u8]), super::RuntimeError> {
+        if expert_index >= self.outer {
+            return Err(super::RuntimeError::Backend(format!(
+                "expert index {} exceeds expert count {}",
+                expert_index, self.outer
+            )));
+        }
+        Ok((
+            self.gate.expert_bytes(expert_index)?,
+            self.up.expert_bytes(expert_index)?,
+        ))
     }
 
     fn selected_packed_bytes_into(
