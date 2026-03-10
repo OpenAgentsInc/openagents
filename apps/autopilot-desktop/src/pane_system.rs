@@ -753,6 +753,7 @@ pub enum PaneHitAction {
     ChatUnarchiveThread,
     ChatRenameThread,
     ChatReloadThread,
+    ChatOpenWorkspaceInEditor,
     ChatCopyLastOutput,
     ChatRollbackThread,
     ChatCompactThread,
@@ -1628,16 +1629,20 @@ pub fn chat_thread_action_reload_button_bounds(content_bounds: Bounds) -> Bounds
     chat_thread_action_grid_bounds(content_bounds, 4)
 }
 
-pub fn chat_thread_action_copy_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn chat_thread_action_open_editor_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_thread_action_grid_bounds(content_bounds, 5)
 }
 
-pub fn chat_thread_action_rollback_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn chat_thread_action_copy_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_thread_action_grid_bounds(content_bounds, 6)
 }
 
-pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> Bounds {
+pub fn chat_thread_action_rollback_button_bounds(content_bounds: Bounds) -> Bounds {
     chat_thread_action_grid_bounds(content_bounds, 7)
+}
+
+pub fn chat_thread_action_unsubscribe_button_bounds(content_bounds: Bounds) -> Bounds {
+    chat_thread_action_grid_bounds(content_bounds, 8)
 }
 
 pub fn chat_send_button_bounds(content_bounds: Bounds) -> Bounds {
@@ -3860,6 +3865,9 @@ fn pane_hit_action_for_pane(
                 }
                 if chat_thread_action_reload_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatReloadThread);
+                }
+                if chat_thread_action_open_editor_button_bounds(content_bounds).contains(point) {
+                    return Some(PaneHitAction::ChatOpenWorkspaceInEditor);
                 }
                 if chat_thread_action_copy_button_bounds(content_bounds).contains(point) {
                     return Some(PaneHitAction::ChatCopyLastOutput);

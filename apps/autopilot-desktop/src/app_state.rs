@@ -900,6 +900,11 @@ pub struct AutopilotPlanArtifact {
     pub steps: Vec<AutopilotTurnPlanStep>,
     pub workspace_cwd: Option<String>,
     pub workspace_path: Option<String>,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
     pub updated_at_epoch_ms: u64,
     pub restored_from_thread_read: bool,
 }
@@ -919,6 +924,11 @@ pub struct AutopilotDiffArtifact {
     pub added_line_count: u32,
     pub removed_line_count: u32,
     pub raw_diff: String,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
     pub updated_at_epoch_ms: u64,
 }
 
@@ -942,6 +952,28 @@ pub struct AutopilotCompactionArtifact {
     pub source_turn_id: String,
     pub updated_at_epoch_ms: u64,
     pub restored_from_thread_read: bool,
+}
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct AutopilotProjectDefaults {
+    pub model: Option<String>,
+    pub service_tier: AutopilotChatServiceTier,
+    pub reasoning_effort: Option<String>,
+    pub approval_policy: Option<codex_client::AskForApproval>,
+    pub sandbox_mode: Option<codex_client::SandboxMode>,
+    pub personality: AutopilotChatPersonality,
+    pub collaboration_mode: AutopilotChatCollaborationMode,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct AutopilotProjectIdentity {
+    pub project_id: String,
+    pub project_name: String,
+    pub workspace_root: String,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
+    pub thread_ids: Vec<String>,
+    pub defaults: AutopilotProjectDefaults,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -1132,6 +1164,11 @@ pub struct AutopilotThreadMetadata {
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub workspace_root: Option<String>,
+    pub project_id: Option<String>,
+    pub project_name: Option<String>,
+    pub git_branch: Option<String>,
+    pub git_dirty: Option<bool>,
     pub created_at: Option<i64>,
     pub updated_at: Option<i64>,
     pub model: Option<String>,
@@ -1152,6 +1189,11 @@ impl Default for AutopilotThreadMetadata {
             loaded: false,
             cwd: None,
             path: None,
+            workspace_root: None,
+            project_id: None,
+            project_name: None,
+            git_branch: None,
+            git_dirty: None,
             created_at: None,
             updated_at: None,
             model: None,
@@ -1225,12 +1267,12 @@ pub struct AutopilotChatState {
     pub sandbox_mode: codex_client::SandboxMode,
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
+    pub project_registry: std::collections::HashMap<String, AutopilotProjectIdentity>,
     pub thread_transcript_cache: std::collections::HashMap<String, Vec<AutopilotMessage>>,
     thread_plan_artifacts: std::collections::HashMap<String, AutopilotPlanArtifact>,
     thread_diff_artifacts: std::collections::HashMap<String, Vec<AutopilotDiffArtifact>>,
     thread_review_artifacts: std::collections::HashMap<String, AutopilotReviewArtifact>,
-    thread_compaction_artifacts:
-        std::collections::HashMap<String, AutopilotCompactionArtifact>,
+    thread_compaction_artifacts: std::collections::HashMap<String, AutopilotCompactionArtifact>,
     review_thread_source_map: std::collections::HashMap<String, String>,
     thread_composer_drafts: std::collections::HashMap<String, String>,
     detached_composer_draft: String,
@@ -1323,6 +1365,7 @@ impl Default for AutopilotChatState {
             sandbox_mode: codex_client::SandboxMode::DangerFullAccess,
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
+            project_registry: std::collections::HashMap::new(),
             thread_transcript_cache: std::collections::HashMap::new(),
             thread_plan_artifacts: std::collections::HashMap::new(),
             thread_diff_artifacts,
@@ -1463,7 +1506,9 @@ fn normalized_review_delivery(
         })
 }
 
-fn normalize_codex_diff_artifacts(mut artifacts: Vec<AutopilotDiffArtifact>) -> Vec<AutopilotDiffArtifact> {
+fn normalize_codex_diff_artifacts(
+    mut artifacts: Vec<AutopilotDiffArtifact>,
+) -> Vec<AutopilotDiffArtifact> {
     artifacts.sort_by(|lhs, rhs| {
         rhs.updated_at_epoch_ms
             .cmp(&lhs.updated_at_epoch_ms)
@@ -1472,7 +1517,10 @@ fn normalize_codex_diff_artifacts(mut artifacts: Vec<AutopilotDiffArtifact>) -> 
     });
     let mut seen_keys = HashSet::new();
     artifacts.retain(|artifact| {
-        seen_keys.insert(format!("{}|{}", artifact.thread_id, artifact.source_turn_id))
+        seen_keys.insert(format!(
+            "{}|{}",
+            artifact.thread_id, artifact.source_turn_id
+        ))
     });
     let mut thread_counts = HashMap::<String, usize>::new();
     artifacts.retain(|artifact| {
@@ -1635,8 +1683,7 @@ fn parse_diff_file_artifacts(raw_diff: &str) -> Vec<AutopilotDiffFileArtifact> {
             if line.starts_with('+') {
                 files[index].added_line_count = files[index].added_line_count.saturating_add(1);
             } else if line.starts_with('-') {
-                files[index].removed_line_count =
-                    files[index].removed_line_count.saturating_add(1);
+                files[index].removed_line_count = files[index].removed_line_count.saturating_add(1);
             }
         }
     }
@@ -1653,6 +1700,83 @@ fn ensure_diff_file_entry(files: &mut Vec<AutopilotDiffFileArtifact>, path: &str
         removed_line_count: 0,
     });
     files.len().saturating_sub(1)
+}
+
+fn normalized_optional_path(value: Option<&str>) -> Option<PathBuf> {
+    let trimmed = value?.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    let path = PathBuf::from(trimmed);
+    Some(std::fs::canonicalize(&path).unwrap_or(path))
+}
+
+fn workspace_root_for_thread_paths(cwd: Option<&str>, path: Option<&str>) -> Option<String> {
+    let base = normalized_optional_path(cwd).or_else(|| {
+        normalized_optional_path(path).and_then(|path| path.parent().map(Path::to_path_buf))
+    })?;
+    git_workspace_root(base.as_path())
+        .or_else(|| Some(base.display().to_string()))
+        .filter(|value| !value.trim().is_empty())
+}
+
+fn git_command_output(cwd: &Path, args: &[&str]) -> Option<String> {
+    let output = std::process::Command::new("git")
+        .arg("-C")
+        .arg(cwd)
+        .args(args)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    Some(stdout)
+}
+
+fn git_workspace_root(start: &Path) -> Option<String> {
+    git_command_output(start, &["rev-parse", "--show-toplevel"])
+        .and_then(|value| (!value.is_empty()).then_some(value))
+}
+
+fn git_branch_for_workspace_root(workspace_root: &str) -> Option<String> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["branch", "--show-current"])
+        .and_then(|value| (!value.is_empty()).then_some(value))
+        .or_else(|| {
+            git_command_output(root, &["rev-parse", "--short", "HEAD"])
+                .and_then(|value| (!value.is_empty()).then_some(value))
+        })
+}
+
+fn git_dirty_for_workspace_root(workspace_root: &str) -> Option<bool> {
+    let root = Path::new(workspace_root);
+    git_command_output(root, &["status", "--porcelain", "--untracked-files=normal"])
+        .map(|value| !value.is_empty())
+}
+
+fn project_name_for_workspace_root(workspace_root: &str) -> String {
+    Path::new(workspace_root)
+        .file_name()
+        .and_then(|value| value.to_str())
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| workspace_root.to_string())
+}
+
+fn project_defaults_from_thread_metadata(
+    metadata: &AutopilotThreadMetadata,
+) -> AutopilotProjectDefaults {
+    AutopilotProjectDefaults {
+        model: metadata.model.clone(),
+        service_tier: metadata.service_tier,
+        reasoning_effort: metadata.reasoning_effort.clone(),
+        approval_policy: metadata.approval_policy,
+        sandbox_mode: metadata.sandbox_mode,
+        personality: metadata.personality,
+        collaboration_mode: metadata.collaboration_mode,
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1761,6 +1885,151 @@ impl AutopilotChatState {
         self.thread_metadata
             .get(thread_id)
             .and_then(|metadata| metadata.cwd.as_deref())
+    }
+
+    pub fn active_thread_workspace_root(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.workspace_root.as_deref())
+    }
+
+    pub fn active_thread_project_name(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.project_name.as_deref())
+    }
+
+    pub fn active_thread_git_branch(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.git_branch.as_deref())
+    }
+
+    pub fn active_thread_git_dirty(&self) -> Option<bool> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.git_dirty)
+    }
+
+    pub fn project_for_thread(&self, thread_id: &str) -> Option<&AutopilotProjectIdentity> {
+        let project_id = self
+            .thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.project_id.as_deref())?;
+        self.project_registry.get(project_id)
+    }
+
+    pub fn active_project(&self) -> Option<&AutopilotProjectIdentity> {
+        self.active_thread_id
+            .as_deref()
+            .and_then(|thread_id| self.project_for_thread(thread_id))
+    }
+
+    fn rebuild_project_registry(&mut self) {
+        let previous_registry = self.project_registry.clone();
+        let active_thread_id = self.active_thread_id.clone();
+        let mut project_threads = HashMap::<String, Vec<String>>::new();
+        let mut git_state_by_project = HashMap::<String, (Option<String>, Option<bool>)>::new();
+
+        for (thread_id, metadata) in self.thread_metadata.iter_mut() {
+            let workspace_root =
+                workspace_root_for_thread_paths(metadata.cwd.as_deref(), metadata.path.as_deref());
+            metadata.workspace_root = workspace_root.clone();
+            metadata.project_id = workspace_root.clone();
+            metadata.project_name = workspace_root
+                .as_deref()
+                .map(project_name_for_workspace_root);
+            if let Some(project_id) = metadata.project_id.as_ref() {
+                project_threads
+                    .entry(project_id.clone())
+                    .or_default()
+                    .push(thread_id.clone());
+            } else {
+                metadata.git_branch = None;
+                metadata.git_dirty = None;
+            }
+        }
+
+        for project_id in project_threads.keys() {
+            let git_branch = git_branch_for_workspace_root(project_id);
+            let git_dirty = git_dirty_for_workspace_root(project_id);
+            git_state_by_project.insert(project_id.clone(), (git_branch, git_dirty));
+        }
+
+        for metadata in self.thread_metadata.values_mut() {
+            if let Some(project_id) = metadata.project_id.as_ref() {
+                let (git_branch, git_dirty) = git_state_by_project
+                    .get(project_id)
+                    .cloned()
+                    .unwrap_or((None, None));
+                metadata.git_branch = git_branch;
+                metadata.git_dirty = git_dirty;
+            }
+        }
+
+        let mut next_registry = HashMap::<String, AutopilotProjectIdentity>::new();
+        for (project_id, mut thread_ids) in project_threads {
+            thread_ids.sort();
+            let metadata = thread_ids
+                .iter()
+                .filter_map(|thread_id| self.thread_metadata.get(thread_id))
+                .find(|metadata| metadata.workspace_root.is_some());
+            let Some(metadata) = metadata else {
+                continue;
+            };
+            let defaults = if active_thread_id
+                .as_deref()
+                .is_some_and(|thread_id| thread_ids.iter().any(|candidate| candidate == thread_id))
+            {
+                active_thread_id
+                    .as_deref()
+                    .and_then(|thread_id| self.thread_metadata.get(thread_id))
+                    .map(project_defaults_from_thread_metadata)
+                    .unwrap_or_default()
+            } else {
+                previous_registry
+                    .get(&project_id)
+                    .map(|entry| entry.defaults.clone())
+                    .unwrap_or_else(|| project_defaults_from_thread_metadata(metadata))
+            };
+            let (git_branch, git_dirty) = git_state_by_project
+                .get(&project_id)
+                .cloned()
+                .unwrap_or((None, None));
+            next_registry.insert(
+                project_id.clone(),
+                AutopilotProjectIdentity {
+                    project_id,
+                    project_name: metadata
+                        .project_name
+                        .clone()
+                        .unwrap_or_else(|| "workspace".to_string()),
+                    workspace_root: metadata.workspace_root.clone().unwrap_or_default(),
+                    git_branch,
+                    git_dirty,
+                    thread_ids,
+                    defaults,
+                },
+            );
+        }
+        self.project_registry = next_registry;
+    }
+
+    fn sync_project_defaults_for_thread(&mut self, thread_id: &str) {
+        let Some(metadata) = self.thread_metadata.get(thread_id) else {
+            return;
+        };
+        let Some(project_id) = metadata.project_id.as_deref() else {
+            return;
+        };
+        let Some(project) = self.project_registry.get_mut(project_id) else {
+            return;
+        };
+        project.defaults = project_defaults_from_thread_metadata(metadata);
     }
 
     pub fn active_plan_artifact(&self) -> Option<&AutopilotPlanArtifact> {
@@ -2046,6 +2315,7 @@ impl AutopilotChatState {
             metadata.personality = personality;
             metadata.collaboration_mode = collaboration_mode;
         }
+        self.sync_project_defaults_for_thread(&thread_id);
     }
 
     pub fn apply_thread_session_configuration(
@@ -2069,6 +2339,7 @@ impl AutopilotChatState {
             .map(str::trim)
             .filter(|value| !value.is_empty())
             .map(|value| value.to_ascii_lowercase());
+        let cwd_changed = cwd.is_some();
 
         {
             let metadata = self
@@ -2091,6 +2362,12 @@ impl AutopilotChatState {
                 metadata.sandbox_mode = Some(value);
             }
             metadata.service_tier = service_tier_selection;
+        }
+
+        if cwd_changed {
+            self.rebuild_project_registry();
+        } else {
+            self.sync_project_defaults_for_thread(thread_id);
         }
 
         if self.is_active_thread(thread_id) {
@@ -2754,23 +3031,28 @@ impl AutopilotChatState {
                 AutopilotThreadMetadata {
                     thread_name: entry.thread_name,
                     preview: if entry.preview.trim().is_empty() {
-                        previous.preview
+                        previous.preview.clone()
                     } else {
                         Some(entry.preview)
                     },
                     status: entry.status,
                     loaded: entry.loaded,
-                    cwd: entry.cwd.or(previous.cwd),
-                    path: entry.path.or(previous.path),
+                    cwd: entry.cwd.or(previous.cwd.clone()),
+                    path: entry.path.or(previous.path.clone()),
+                    workspace_root: previous.workspace_root.clone(),
+                    project_id: previous.project_id.clone(),
+                    project_name: previous.project_name.clone(),
+                    git_branch: previous.git_branch.clone(),
+                    git_dirty: previous.git_dirty,
                     created_at: (entry.created_at > 0)
                         .then_some(entry.created_at)
                         .or(previous.created_at),
                     updated_at: (entry.updated_at > 0)
                         .then_some(entry.updated_at)
                         .or(previous.updated_at),
-                    model: previous.model,
+                    model: previous.model.clone(),
                     service_tier: previous.service_tier,
-                    reasoning_effort: previous.reasoning_effort,
+                    reasoning_effort: previous.reasoning_effort.clone(),
                     approval_policy: previous.approval_policy,
                     sandbox_mode: previous.sandbox_mode,
                     personality: previous.personality,
@@ -2793,6 +3075,7 @@ impl AutopilotChatState {
         } else {
             self.active_thread_id = self.threads.first().cloned();
         }
+        self.rebuild_project_registry();
     }
 
     fn cache_active_thread_transcript(&mut self) {
@@ -3828,6 +4111,11 @@ impl AutopilotChatState {
             steps,
             workspace_cwd: metadata.and_then(|value| value.cwd.clone()),
             workspace_path: metadata.and_then(|value| value.path.clone()),
+            workspace_root: metadata.and_then(|value| value.workspace_root.clone()),
+            project_id: metadata.and_then(|value| value.project_id.clone()),
+            project_name: metadata.and_then(|value| value.project_name.clone()),
+            git_branch: metadata.and_then(|value| value.git_branch.clone()),
+            git_dirty: metadata.and_then(|value| value.git_dirty),
             updated_at_epoch_ms,
             restored_from_thread_read,
         };
@@ -3999,6 +4287,26 @@ impl AutopilotChatState {
             added_line_count,
             removed_line_count,
             raw_diff: trimmed_diff.to_string(),
+            workspace_root: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.workspace_root.clone()),
+            project_id: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.project_id.clone()),
+            project_name: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.project_name.clone()),
+            git_branch: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.git_branch.clone()),
+            git_dirty: self
+                .thread_metadata
+                .get(thread_id)
+                .and_then(|metadata| metadata.git_dirty),
             updated_at_epoch_ms,
         };
         let artifacts = self
@@ -4031,16 +4339,14 @@ impl AutopilotChatState {
     ) {
         let source_turn_id = source_turn_id.into();
         let review_thread_id = review_thread_id.into();
-        let delivery = normalized_review_delivery(
-            Some(delivery.into()),
-            thread_id,
-            review_thread_id.as_str(),
-        );
+        let delivery =
+            normalized_review_delivery(Some(delivery.into()), thread_id, review_thread_id.as_str());
         let target = normalized_review_target(Some(target.into()));
         self.review_thread_source_map
             .insert(review_thread_id.clone(), thread_id.to_string());
 
-        for artifact_thread_id in review_artifact_thread_keys(thread_id, review_thread_id.as_str()) {
+        for artifact_thread_id in review_artifact_thread_keys(thread_id, review_thread_id.as_str())
+        {
             self.thread_review_artifacts.insert(
                 artifact_thread_id.clone(),
                 AutopilotReviewArtifact {
@@ -7286,19 +7592,18 @@ mod tests {
         AutopilotMessageStatus, AutopilotRole, AutopilotTurnPlanStep, BuyerResolutionMode,
         BuyerResolutionReason, CadBuildFailureClass, CadBuildSessionPhase, CadCameraViewSnap,
         CadContextMenuTargetKind, CadDemoPaneState, CadDemoWarningState, CadDrawingViewDirection,
-        CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode,
-        CadSectionAxis, CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode,
-        CadThreeDMouseProfile, EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState,
-        EarningsScoreboardState, JobDemandSource, JobHistoryState, JobHistoryStatus,
-        JobHistoryStatusFilter, JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest,
-        JobInboxState, JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState,
-        NetworkRequestStatus, NetworkRequestSubmission, NetworkRequestsState, NostrSecretState,
-        ProviderMode, ProviderRuntimeState, ReciprocalLoopDirection,
-        ReciprocalLoopFailureClass, ReciprocalLoopFailureDisposition, ReciprocalLoopState,
-        RecoveryAlertRow, RelayConnectionStatus, RelayConnectionsState, SettingsState,
-        SidebarState, SparkPaneState, StableSatsSimulationPaneState, StarterJobRow,
-        StarterJobStatus, StarterJobsState, SubmittedNetworkRequest, SyncHealthState,
-        SyncRecoveryPhase,
+        CadDrawingViewMode, CadHiddenLineMode, CadHotkeyAction, CadProjectionMode, CadSectionAxis,
+        CadSnapMode, CadThreeDMouseAxis, CadThreeDMouseMode, CadThreeDMouseProfile,
+        EarnJobLifecycleProjectionRow, EarnJobLifecycleProjectionState, EarningsScoreboardState,
+        JobDemandSource, JobHistoryState, JobHistoryStatus, JobHistoryStatusFilter,
+        JobHistoryTimeRange, JobInboxDecision, JobInboxNetworkRequest, JobInboxState,
+        JobInboxValidation, JobLifecycleStage, NetworkAggregateCountersState, NetworkRequestStatus,
+        NetworkRequestSubmission, NetworkRequestsState, NostrSecretState, ProviderMode,
+        ProviderRuntimeState, ReciprocalLoopDirection, ReciprocalLoopFailureClass,
+        ReciprocalLoopFailureDisposition, ReciprocalLoopState, RecoveryAlertRow,
+        RelayConnectionStatus, RelayConnectionsState, SettingsState, SidebarState, SparkPaneState,
+        StableSatsSimulationPaneState, StarterJobRow, StarterJobStatus, StarterJobsState,
+        SubmittedNetworkRequest, SyncHealthState, SyncRecoveryPhase,
     };
     use crate::bitcoin_display::BitcoinAmountDisplayMode;
     use chrono::TimeZone;
@@ -7320,6 +7625,60 @@ mod tests {
             "openagents-codex-artifacts-{label}-{}-{nanos}.json",
             std::process::id()
         ))
+    }
+
+    fn unique_temp_dir(label: &str) -> std::path::PathBuf {
+        let nanos = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or(0);
+        let path = std::env::temp_dir().join(format!(
+            "openagents-cx7-{label}-{}-{nanos}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&path).expect("temporary directory should be created");
+        path
+    }
+
+    fn init_git_workspace(label: &str) -> std::path::PathBuf {
+        let repo = unique_temp_dir(label);
+        let init_status = std::process::Command::new("git")
+            .arg("init")
+            .arg(&repo)
+            .status()
+            .expect("git init should launch");
+        assert!(init_status.success(), "git init should succeed");
+        let config_email = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["config", "user.email", "autopilot@example.com"])
+            .status()
+            .expect("git config email should launch");
+        assert!(config_email.success(), "git config email should succeed");
+        let config_name = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["config", "user.name", "Autopilot"])
+            .status()
+            .expect("git config name should launch");
+        assert!(config_name.success(), "git config name should succeed");
+        std::fs::create_dir_all(repo.join("src")).expect("git repo src dir should exist");
+        std::fs::write(repo.join("README.md"), "hello\n").expect("initial file should write");
+        let add_status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["add", "README.md"])
+            .status()
+            .expect("git add should launch");
+        assert!(add_status.success(), "git add should succeed");
+        let commit_status = std::process::Command::new("git")
+            .arg("-C")
+            .arg(&repo)
+            .args(["commit", "-m", "init"])
+            .status()
+            .expect("git commit should launch");
+        assert!(commit_status.success(), "git commit should succeed");
+        repo
     }
 
     fn fixture_inbox_request(
@@ -8733,14 +9092,15 @@ mod tests {
         assert_eq!(artifact.steps[1].status, "completed");
         assert!(artifact.restored_from_thread_read);
         assert_eq!(artifact.workspace_cwd.as_deref(), Some("/tmp/a"));
+        assert_eq!(artifact.workspace_root.as_deref(), Some("/tmp/a"));
+        assert_eq!(artifact.project_name.as_deref(), Some("a"));
     }
 
     #[test]
     fn chat_state_tracks_diff_artifacts_per_thread() {
         let projection_path = unique_codex_artifact_projection_path("diff-track");
-        let mut chat = AutopilotChatState::from_artifact_projection_path_for_tests(
-            projection_path.clone(),
-        );
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
         chat.set_thread_entries(vec![
             super::AutopilotThreadListEntry {
                 thread_id: "thread-a".to_string(),
@@ -8778,7 +9138,14 @@ mod tests {
                 .map(|artifact| artifact.source_turn_id.as_str()),
             Some("turn-a")
         );
-        assert!(chat.turn_diff.as_deref().is_some_and(|diff| diff.contains("+new")));
+        assert!(
+            chat.turn_diff
+                .as_deref()
+                .is_some_and(|diff| diff.contains("+new"))
+        );
+        let diff = chat.active_diff_artifact().expect("thread-a diff");
+        assert_eq!(diff.workspace_root.as_deref(), Some("/tmp/a"));
+        assert_eq!(diff.project_name.as_deref(), Some("a"));
 
         let selected_index = chat
             .threads
@@ -8807,9 +9174,8 @@ mod tests {
     #[test]
     fn chat_state_persists_codex_review_diff_and_compaction_artifacts() {
         let projection_path = unique_codex_artifact_projection_path("artifact-persist");
-        let mut chat = AutopilotChatState::from_artifact_projection_path_for_tests(
-            projection_path.clone(),
-        );
+        let mut chat =
+            AutopilotChatState::from_artifact_projection_path_for_tests(projection_path.clone());
         chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
             thread_id: "thread-a".to_string(),
             thread_name: Some("Alpha".to_string()),
@@ -8857,6 +9223,8 @@ mod tests {
         assert_eq!(reloaded_diff.added_line_count, 1);
         assert_eq!(reloaded_diff.removed_line_count, 1);
         assert_eq!(reloaded_diff.files.len(), 1);
+        assert_eq!(reloaded_diff.workspace_root.as_deref(), Some("/tmp/a"));
+        assert_eq!(reloaded_diff.project_name.as_deref(), Some("a"));
 
         let reloaded_review = reloaded
             .thread_review_artifacts
@@ -8930,6 +9298,20 @@ mod tests {
             chat.thread_metadata["thread-a"].preview.as_deref(),
             Some("first preview")
         );
+        assert_eq!(
+            chat.thread_metadata["thread-a"].workspace_root.as_deref(),
+            Some("/tmp/a")
+        );
+        assert_eq!(
+            chat.thread_metadata["thread-a"].project_name.as_deref(),
+            Some("a")
+        );
+        assert_eq!(
+            chat.project_registry
+                .get("/tmp/a")
+                .map(|project| project.project_name.as_str()),
+            Some("a")
+        );
         assert_eq!(chat.active_thread_updated_at(), Some(1_700_000_100));
 
         chat.cycle_thread_filter_archived();
@@ -8950,6 +9332,116 @@ mod tests {
         assert_eq!(params.model_providers, Some(vec!["openai".to_string()]));
         assert_eq!(params.search_term.as_deref(), Some("alpha"));
         assert_eq!(params.cwd.as_deref(), Some("/workspace"));
+    }
+
+    #[test]
+    fn chat_state_detects_git_workspace_identity_and_dirty_status() {
+        let repo = init_git_workspace("git-identity");
+        std::fs::write(repo.join("README.md"), "hello\nworld\n")
+            .expect("modified repo file should write");
+        let cwd = repo.join("src").display().to_string();
+
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-git".to_string(),
+            thread_name: Some("Git thread".to_string()),
+            preview: "git preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some(cwd),
+            path: None,
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        let repo_root = std::fs::canonicalize(&repo)
+            .expect("git repo root should canonicalize")
+            .display()
+            .to_string();
+        let metadata = chat
+            .thread_metadata
+            .get("thread-git")
+            .expect("git thread metadata");
+        assert_eq!(metadata.workspace_root.as_deref(), Some(repo_root.as_str()));
+        assert_eq!(
+            metadata.project_name.as_deref(),
+            repo.file_name().and_then(|value| value.to_str())
+        );
+        assert!(
+            metadata
+                .git_branch
+                .as_deref()
+                .is_some_and(|value| !value.is_empty())
+        );
+        assert_eq!(metadata.git_dirty, Some(true));
+
+        let project = chat
+            .project_registry
+            .get(repo_root.as_str())
+            .expect("project registry entry for git workspace");
+        assert_eq!(project.workspace_root, repo_root);
+        assert_eq!(project.git_dirty, Some(true));
+        assert_eq!(project.thread_ids, vec!["thread-git".to_string()]);
+
+        let _ = std::fs::remove_dir_all(repo);
+    }
+
+    #[test]
+    fn chat_state_tracks_project_defaults_from_active_thread_preferences() {
+        let workspace = unique_temp_dir("project-defaults");
+        let workspace_root = workspace.display().to_string();
+        let mut chat = AutopilotChatState::default();
+        chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
+            thread_id: "thread-a".to_string(),
+            thread_name: Some("Alpha".to_string()),
+            preview: "first preview".to_string(),
+            status: Some("idle".to_string()),
+            loaded: false,
+            cwd: Some(workspace_root.clone()),
+            path: None,
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
+        }]);
+
+        chat.apply_thread_session_configuration(
+            "thread-a",
+            Some("gpt-5.2-codex".to_string()),
+            None,
+            Some(codex_client::AskForApproval::OnRequest),
+            Some(codex_client::SandboxMode::ReadOnly),
+            Some(codex_client::ServiceTier::Flex),
+            Some("low".to_string()),
+        );
+        chat.cycle_personality();
+        chat.cycle_collaboration_mode();
+
+        let project = chat
+            .active_project()
+            .expect("project defaults should exist for active thread");
+        assert_eq!(project.defaults.model.as_deref(), Some("gpt-5.2-codex"));
+        assert_eq!(
+            project.defaults.service_tier,
+            super::AutopilotChatServiceTier::Flex
+        );
+        assert_eq!(project.defaults.reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(
+            project.defaults.approval_policy,
+            Some(codex_client::AskForApproval::OnRequest)
+        );
+        assert_eq!(
+            project.defaults.sandbox_mode,
+            Some(codex_client::SandboxMode::ReadOnly)
+        );
+        assert_eq!(
+            project.defaults.personality,
+            super::AutopilotChatPersonality::Friendly
+        );
+        assert_eq!(
+            project.defaults.collaboration_mode,
+            super::AutopilotChatCollaborationMode::Default
+        );
+
+        let _ = std::fs::remove_dir_all(workspace);
     }
 
     #[test]

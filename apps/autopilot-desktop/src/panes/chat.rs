@@ -1,35 +1,34 @@
 use reqwest::Url;
-use std::path::{Path, PathBuf};
 use wgpui::markdown::{MarkdownConfig, MarkdownParser, MarkdownRenderer};
 use wgpui::{Bounds, Component, InputEvent, PaintContext, Point, Quad, SvgQuad, theme};
 
 use crate::app_state::{
-    AutopilotChatState, AutopilotCompactionArtifact, AutopilotDiffArtifact,
-    AutopilotMessage, AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock,
-    AutopilotProgressRow, AutopilotReviewArtifact, AutopilotRole, ChatBrowseMode, ChatPaneInputs,
+    AutopilotChatState, AutopilotCompactionArtifact, AutopilotDiffArtifact, AutopilotMessage,
+    AutopilotMessageStatus, AutopilotPlanArtifact, AutopilotProgressBlock, AutopilotProgressRow,
+    AutopilotReviewArtifact, AutopilotRole, ChatBrowseMode, ChatPaneInputs,
     ChatTranscriptSelectionState, DirectMessageMessageProjection, DirectMessageRoomProjection,
     ManagedChatChannelProjection, ManagedChatDeliveryState, ManagedChatGroupProjection,
     ManagedChatMessageProjection, PaneKind, RenderState,
 };
 use crate::labor_orchestrator::CodexLaborBinding;
 use crate::pane_system::{
-    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_composer_height_for_value,
-    chat_composer_input_bounds_with_height, chat_cycle_approval_mode_button_bounds,
-    chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
-    chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
-    chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
-    chat_compact_button_bounds, chat_implement_plan_button_bounds, chat_interrupt_button_bounds,
-    chat_new_thread_button_bounds, chat_review_button_bounds,
-    chat_refresh_threads_button_bounds, chat_send_button_bounds,
+    CHAT_AUTOPILOT_THREAD_PREVIEW_LIMIT, chat_compact_button_bounds,
+    chat_composer_height_for_value, chat_composer_input_bounds_with_height,
+    chat_cycle_approval_mode_button_bounds, chat_cycle_collaboration_mode_button_bounds,
+    chat_cycle_model_button_bounds, chat_cycle_personality_button_bounds,
+    chat_cycle_reasoning_effort_button_bounds, chat_cycle_sandbox_mode_button_bounds,
+    chat_cycle_service_tier_button_bounds, chat_implement_plan_button_bounds,
+    chat_interrupt_button_bounds, chat_new_thread_button_bounds,
+    chat_refresh_threads_button_bounds, chat_review_button_bounds, chat_send_button_bounds,
     chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
-    chat_thread_action_fork_button_bounds, chat_thread_action_reload_button_bounds,
-    chat_thread_action_rename_button_bounds, chat_thread_action_rollback_button_bounds,
-    chat_thread_action_unarchive_button_bounds, chat_thread_action_unsubscribe_button_bounds,
-    chat_thread_filter_archived_button_bounds, chat_thread_filter_provider_button_bounds,
-    chat_thread_filter_sort_button_bounds, chat_thread_filter_source_button_bounds,
-    chat_thread_rail_bounds, chat_thread_row_bounds, chat_thread_search_input_bounds,
-    chat_transcript_body_bounds_with_height, chat_transcript_bounds, chat_workspace_rail_bounds,
-    pane_content_bounds,
+    chat_thread_action_fork_button_bounds, chat_thread_action_open_editor_button_bounds,
+    chat_thread_action_reload_button_bounds, chat_thread_action_rename_button_bounds,
+    chat_thread_action_rollback_button_bounds, chat_thread_action_unarchive_button_bounds,
+    chat_thread_action_unsubscribe_button_bounds, chat_thread_filter_archived_button_bounds,
+    chat_thread_filter_provider_button_bounds, chat_thread_filter_sort_button_bounds,
+    chat_thread_filter_source_button_bounds, chat_thread_rail_bounds, chat_thread_row_bounds,
+    chat_thread_search_input_bounds, chat_transcript_body_bounds_with_height,
+    chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
 };
 
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
@@ -1722,6 +1721,22 @@ fn active_thread_subtitle(
         },
         loaded.to_string(),
     ];
+    if let Some(project_name) = metadata.and_then(|metadata| metadata.project_name.as_deref()) {
+        parts.push(format!(
+            "project:{}",
+            compact_display_token(project_name, 18)
+        ));
+    }
+    if let Some(workspace_root) = metadata.and_then(|metadata| metadata.workspace_root.as_deref()) {
+        parts.push(format!("ws:{}", compact_display_token(workspace_root, 24)));
+    }
+    let git_state = git_state_summary(
+        metadata.and_then(|metadata| metadata.git_branch.as_deref()),
+        metadata.and_then(|metadata| metadata.git_dirty),
+    );
+    if git_state != "git:n/a" {
+        parts.push(git_state);
+    }
     if let Some(updated) = updated {
         parts.push(format!("updated:{updated}"));
     }
@@ -1749,13 +1764,25 @@ fn active_plan_meta_line(artifact: &AutopilotPlanArtifact) -> String {
         "turn:{}",
         compact_display_token(artifact.source_turn_id.as_str(), 18)
     )];
-    if let Some(workspace) = artifact.workspace_cwd.as_deref() {
+    if let Some(project_name) = artifact.project_name.as_deref() {
+        parts.push(format!(
+            "project:{}",
+            compact_display_token(project_name, 18)
+        ));
+    }
+    if let Some(workspace_root) = artifact.workspace_root.as_deref() {
+        parts.push(format!("ws:{}", compact_display_token(workspace_root, 28)));
+    } else if let Some(workspace) = artifact.workspace_cwd.as_deref() {
         parts.push(format!(
             "workspace:{}",
             compact_display_token(workspace, 28)
         ));
     } else if let Some(path) = artifact.workspace_path.as_deref() {
         parts.push(format!("path:{}", compact_display_token(path, 28)));
+    }
+    let git_state = git_state_summary(artifact.git_branch.as_deref(), artifact.git_dirty);
+    if git_state != "git:n/a" {
+        parts.push(git_state);
     }
     if let Some(updated) = format_thread_timestamp(artifact.updated_at_epoch_ms as i64) {
         parts.push(format!("updated:{updated}"));
@@ -1792,12 +1819,25 @@ fn active_diff_meta_line(artifact: &AutopilotDiffArtifact) -> String {
         "turn:{}",
         compact_display_token(artifact.source_turn_id.as_str(), 18)
     )];
+    if let Some(project_name) = artifact.project_name.as_deref() {
+        parts.push(format!(
+            "project:{}",
+            compact_display_token(project_name, 18)
+        ));
+    }
+    if let Some(workspace_root) = artifact.workspace_root.as_deref() {
+        parts.push(format!("ws:{}", compact_display_token(workspace_root, 24)));
+    }
     parts.push(format!(
         "files:{} +{} -{}",
         artifact.files.len(),
         artifact.added_line_count,
         artifact.removed_line_count
     ));
+    let git_state = git_state_summary(artifact.git_branch.as_deref(), artifact.git_dirty);
+    if git_state != "git:n/a" {
+        parts.push(git_state);
+    }
     if let Some(updated) = format_thread_timestamp(artifact.updated_at_epoch_ms as i64) {
         parts.push(format!("updated:{updated}"));
     }
@@ -1938,36 +1978,15 @@ fn sandbox_mode_label(mode: codex_client::SandboxMode) -> &'static str {
     }
 }
 
-fn resolve_git_dir(start: &Path) -> Option<PathBuf> {
-    let mut cursor = Some(start);
-    while let Some(path) = cursor {
-        let dot_git = path.join(".git");
-        if dot_git.is_dir() {
-            return Some(dot_git);
-        }
-        if dot_git.is_file() {
-            let raw = std::fs::read_to_string(&dot_git).ok()?;
-            let git_dir = raw.trim().strip_prefix("gitdir:")?.trim();
-            let git_dir_path = PathBuf::from(git_dir);
-            return Some(if git_dir_path.is_absolute() {
-                git_dir_path
-            } else {
-                path.join(git_dir_path)
-            });
-        }
-        cursor = path.parent();
+fn git_state_summary(branch: Option<&str>, dirty: Option<bool>) -> String {
+    match (branch, dirty) {
+        (Some(branch), Some(true)) => format!("git:{}/dirty", compact_display_token(branch, 14)),
+        (Some(branch), Some(false)) => format!("git:{}/clean", compact_display_token(branch, 14)),
+        (Some(branch), None) => format!("git:{}", compact_display_token(branch, 14)),
+        (None, Some(true)) => "git:dirty".to_string(),
+        (None, Some(false)) => "git:clean".to_string(),
+        (None, None) => "git:n/a".to_string(),
     }
-    None
-}
-
-fn git_branch_for_cwd(cwd: &str) -> Option<String> {
-    let git_dir = resolve_git_dir(Path::new(cwd))?;
-    let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
-    let trimmed = head.trim();
-    if let Some(reference) = trimmed.strip_prefix("ref:") {
-        return reference.trim().rsplit('/').next().map(ToOwned::to_owned);
-    }
-    (!trimmed.is_empty()).then(|| compact_display_token(trimmed, 12))
 }
 
 fn autopilot_status_lines(
@@ -1990,14 +2009,17 @@ fn autopilot_status_lines(
         .map(|value| compact_display_token(value, 28))
         .unwrap_or_else(|| "n/a".to_string());
     let workspace = autopilot_chat
-        .active_thread_cwd()
-        .and_then(|value| Path::new(value).file_name().and_then(|name| name.to_str()))
-        .map(ToOwned::to_owned)
-        .unwrap_or_else(|| "workspace".to_string());
-    let branch = autopilot_chat
-        .active_thread_cwd()
-        .and_then(git_branch_for_cwd)
+        .active_thread_workspace_root()
+        .map(|value| compact_display_token(value, 22))
         .unwrap_or_else(|| "n/a".to_string());
+    let project = autopilot_chat
+        .active_thread_project_name()
+        .map(|value| compact_display_token(value, 14))
+        .unwrap_or_else(|| "workspace".to_string());
+    let git = git_state_summary(
+        autopilot_chat.active_thread_git_branch(),
+        autopilot_chat.active_thread_git_dirty(),
+    );
     let permissions = format!(
         "{}/{}",
         approval_mode_label(autopilot_chat.approval_mode),
@@ -2022,10 +2044,11 @@ fn autopilot_status_lines(
             autopilot_chat.collaboration_mode.label()
         ),
         format!(
-            "ws:{}  cwd:{}  branch:{}  {}  perms:{}  {}",
-            compact_display_token(workspace.as_str(), 14),
+            "proj:{}  root:{}  cwd:{}  {}  {}  perms:{}  {}",
+            project,
+            workspace,
             cwd,
-            branch,
+            git,
             auth_summary_label(account_summary),
             permissions,
             token_usage
@@ -2345,7 +2368,7 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                     .and_then(|value| value.thread_name.as_ref())
                     .map(|name| compact_shell_label(name))
                     .unwrap_or_else(|| compact_shell_label(thread_id));
-                let subtitle = metadata
+                let summary = metadata
                     .and_then(|value| value.preview.as_deref())
                     .map(str::trim)
                     .filter(|preview| !preview.is_empty())
@@ -2357,6 +2380,12 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                             .filter(|status| !status.is_empty())
                     })
                     .unwrap_or_else(|| "thread".to_string());
+                let subtitle = metadata
+                    .and_then(|value| value.project_name.as_deref())
+                    .map(|project| {
+                        format!("{}  •  {}", compact_display_token(project, 12), summary)
+                    })
+                    .unwrap_or(summary);
                 ChatShellChannelEntry {
                     title: format!("# {title}"),
                     subtitle,
@@ -2620,6 +2649,15 @@ fn paint_chat_shell(
             theme::status::INFO,
             false,
             has_active_thread,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_open_editor_button_bounds(content_bounds),
+            "Open ws",
+            theme::accent::PRIMARY,
+            false,
+            autopilot_chat.active_thread_workspace_root().is_some()
+                || autopilot_chat.active_thread_cwd().is_some(),
             paint,
         );
         paint_thread_rail_button(
