@@ -20,6 +20,8 @@ This runbook validates two cluster trust postures:
   multi-subnet clusters
 - coordinator term/fence truth in clustered execution evidence for operator-
   managed failover paths
+- declared cluster execution capability profiles and their stable digest linkage
+  to planner refusals plus provider-facing execution evidence
 - command-authorization refusal truth and payout-facing cluster provenance
   surfaces for operator-managed multi-subnet clusters
 
@@ -57,6 +59,8 @@ What these cover:
   - wider-network discovery intake, refusal, expiry, and admission reconciliation
   - replicated serving reroute away from a slow replica
   - layer-sharded and tensor-sharded evidence surfaces
+  - declared capability-profile truth versus planner refusal and evidence digest
+    surfaces
   - allowed versus refused cluster-command authorization coverage
   - whole-request and sharded command provenance surfaced for settlement/audit use
   - fault-injected shard-mesh refusal
@@ -234,6 +238,38 @@ Interpretation:
 - provider receipt failure means settlement-facing JSON no longer preserves the
   cluster provenance required for later audit or dispute handling
 
+## Capability Profile Drill
+
+Use this sequence before claiming that declared cluster execution capability
+profiles, planner refusals, and provider-facing cluster evidence are still
+aligned:
+
+1. Run `cargo test -p psionic-runtime cluster_execution_capability_profile`.
+2. Run `cargo test -p psionic-runtime communication_eligibility_can_be_derived_from_capability_profile`.
+3. Run `cargo test -p psionic-runtime lane_communication_eligibility_refuses_undeclared_lane_even_when_profile_exists`.
+4. Run `cargo test -p psionic-cluster whole_request_scheduler_refuses_metal_cluster_dispatch_explicitly`.
+5. Run `cargo test -p psionic-cluster replicated_serving_builds_replicated_topology_and_selects_best_warm_replica`.
+6. Run `cargo test -p psionic-cluster layer_sharded_scheduler_builds_two_shard_cuda_plan`.
+7. Run `cargo test -p psionic-cluster tensor_sharded_scheduler_builds_two_shard_cuda_plan`.
+8. Run `cargo test -p psionic-provider capability_envelope_can_surface_cluster_execution_context`.
+9. Run `cargo test -p psionic-provider text_generation_receipt_preserves_cluster_execution_from_provenance`.
+10. If any step fails, do not claim declared capability-profile-backed cluster truth for the current build.
+
+Interpretation:
+
+- runtime profile round-trip or digest failure means the declared capability
+  contract is no longer stable enough to anchor downstream planner/evidence
+  claims
+- runtime eligibility failure means required communication classes or lane
+  refusals are no longer derived from declared capability truth
+- whole-request refusal failure means Metal or any other refused lane may be
+  widening from backend labels again instead of remaining bounded by declared
+  profile truth
+- replicated or sharded planner failure means clustered lane admission no
+  longer consumes the declared capability profile before producing a plan
+- provider capability or receipt failure means declared capability-profile
+  digests are no longer preserved through operator-facing execution evidence
+
 ## Recovery Drill
 
 Use this sequence when validating recovery behavior intentionally:
@@ -324,6 +360,8 @@ The current cluster claim remains evidence-backed only when:
 - the authenticated membership drill is green before any configured-peer or
   multi-subnet rollout claim
 - the coordinator failover drill is green before claiming fenced failover truth
+- the capability profile drill is green before claiming declared clustered-lane
+  support or refusal truth
 - the authorization and payout provenance drill is green before claiming
   stronger operator audit or payout/dispute posture
 - the benchmark receipt drill is green before claiming benchmark-backed
