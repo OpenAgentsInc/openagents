@@ -217,16 +217,14 @@ trap cleanup EXIT
 
 build_request_json() {
   local sentence=$1
+  # Keep the benchmark request in plain OpenAI chat form so both backends use
+  # their built-in GPT-OSS Harmony system contract instead of a duplicated one.
   jq -cn \
     --arg sentence "$sentence" \
     --argjson max_tokens "$MAX_TOKENS" \
     '{
       model: "gpt-oss-20b-mxfp4.gguf",
       messages: [
-        {
-          role: "system",
-          content: "You are ChatGPT, a large language model trained by OpenAI.\nKnowledge cutoff: 2024-06\nCurrent date: 2026-03-09\n\nReasoning: low\n\n# Valid channels: analysis, final. Channel must be included for every message."
-        },
         {
           role: "developer",
           content: "Be concise. Output exactly one sentence."
