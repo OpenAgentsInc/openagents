@@ -4,31 +4,32 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use psionic_runtime::{
+    validation_reference_for_served_product, validation_reference_for_text_generation_model,
     AcceleratorDeliverabilityReport, AcceleratorExecutionRequirement, AmdDeviceMetadata,
     AmdRecoveryProfile, AmdRiskProfile, AmdRuntimeMode, AmdTopologyInfo, BackendProbeState,
     BackendSelection, BackendToolchainIdentity, CacheAction, CacheInvalidationPolicy,
     CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterExecutionContext,
-    CompilePathEvidence, DeliveredExecutionContext, DeviceInventoryQualifiers,
-    ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionTopologyPlan, HealthStatus,
-    KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic, LocalRuntimeObservability,
-    MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy, NvidiaDeviceMetadata,
-    NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo, PrefixCacheIdentity,
-    PrefixCacheReusePolicy, PrefixCacheState, SandboxExecutionCapabilityProfile,
-    SandboxExecutionEvidence, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
-    ServedArtifactIdentity, SettlementLinkageInput, ValidationMatrixReference,
-    validation_reference_for_served_product, validation_reference_for_text_generation_model,
+    ClusterSettlementProvenanceInput, CompilePathEvidence, DeliveredExecutionContext,
+    DeviceInventoryQualifiers, ExecutionCapabilityProfile, ExecutionDeliveryProof,
+    ExecutionTopologyPlan, HealthStatus, KvCacheAccounting, KvCachePolicy, LocalRuntimeDiagnostic,
+    LocalRuntimeObservability, MemoryResidencySnapshot, ModelMemoryPlan, ModelResidencyPolicy,
+    NvidiaDeviceMetadata, NvidiaRecoveryProfile, NvidiaRiskProfile, NvidiaTopologyInfo,
+    PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+    SandboxExecutionCapabilityProfile, SandboxExecutionEvidence, SandboxExecutionExitKind,
+    SandboxExecutionRequestIdentity, ServedArtifactIdentity, SettlementLinkageInput,
+    ValidationMatrixReference,
 };
 use psionic_serve::{
-    DecoderModelDescriptor, EMBEDDINGS_PRODUCT_ID, EmbeddingModelDescriptor,
-    EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, GenerationInput,
-    GenerationLoadState, GenerationRequest, GenerationResponse, GenerationStreamStatus,
-    GenerationStreamTerminal, GenerationStreamingPolicy, ModelArtifactGovernance,
-    ModelArtifactProvenanceKind, QuantizationMode, SessionId, TEXT_GENERATION_PRODUCT_ID,
-    TerminationReason, WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
     cache_invalidation_policy, cache_observations_for_embedding_model,
     default_decoder_kv_cache_policy, default_embeddings_execution_profile,
     default_prefix_cache_policy, served_artifact_identity_for_decoder_model,
-    served_artifact_identity_for_embedding_model,
+    served_artifact_identity_for_embedding_model, DecoderModelDescriptor, EmbeddingModelDescriptor,
+    EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, GenerationInput,
+    GenerationLoadState, GenerationRequest, GenerationResponse, GenerationStreamStatus,
+    GenerationStreamTerminal, GenerationStreamingPolicy, ModelArtifactGovernance,
+    ModelArtifactProvenanceKind, QuantizationMode, SessionId, TerminationReason,
+    WeightArtifactMetadata, WeightBundleMetadata, WeightFormat, WeightSource,
+    EMBEDDINGS_PRODUCT_ID, TEXT_GENERATION_PRODUCT_ID,
 };
 
 /// Human-readable crate ownership summary.
@@ -184,28 +185,36 @@ fn generation_cluster_execution(response: &GenerationResponse) -> Option<Cluster
         .and_then(|value| value.cluster_execution.clone())
 }
 
-fn settlement_linkage(
-    request_digest: impl Into<String>,
-    product_id: &str,
-    model_id: &str,
-    served_artifact: &ServedArtifactIdentity,
-    runtime_backend: &str,
-    delivery_proof: &ExecutionDeliveryProof,
+struct SettlementLinkageContext<'a> {
+    request_digest: String,
+    product_id: &'a str,
+    model_id: &'a str,
+    served_artifact: &'a ServedArtifactIdentity,
+    runtime_backend: &'a str,
+    cluster_execution: Option<&'a ClusterExecutionContext>,
     output_tokens: Option<usize>,
+}
+
+fn settlement_linkage(
+    context: SettlementLinkageContext<'_>,
+    delivery_proof: &ExecutionDeliveryProof,
 ) -> SettlementLinkageInput {
     SettlementLinkageInput {
-        request_digest: request_digest.into(),
-        product_id: String::from(product_id),
-        model_id: String::from(model_id),
-        served_artifact_digest: served_artifact.served_artifact_digest.clone(),
+        request_digest: context.request_digest,
+        product_id: String::from(context.product_id),
+        model_id: String::from(context.model_id),
+        served_artifact_digest: context.served_artifact.served_artifact_digest.clone(),
         execution_plan_digest: delivery_proof.execution_plan_digest.clone(),
-        runtime_backend: String::from(runtime_backend),
+        runtime_backend: String::from(context.runtime_backend),
         kernel_count: delivery_proof.kernel_count,
         bytes_moved: delivery_proof.bytes_moved,
         plan_cache_hits: delivery_proof.plan_cache_hits,
         plan_cache_misses: delivery_proof.plan_cache_misses,
         kv_growth: delivery_proof.kv_growth.clone(),
-        output_tokens,
+        output_tokens: context.output_tokens,
+        cluster_provenance: context
+            .cluster_execution
+            .and_then(ClusterSettlementProvenanceInput::from_cluster_execution),
     }
 }
 
@@ -1046,13 +1055,16 @@ impl ExecutionReceipt {
         }
         let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
             settlement_linkage(
-                request_digest.clone(),
-                request.product_id.as_str(),
-                response.metadata.model_id.as_str(),
-                &served_artifact,
-                backend_selection.effective_backend.as_str(),
+                SettlementLinkageContext {
+                    request_digest: request_digest.clone(),
+                    product_id: request.product_id.as_str(),
+                    model_id: response.metadata.model_id.as_str(),
+                    served_artifact: &served_artifact,
+                    runtime_backend: backend_selection.effective_backend.as_str(),
+                    cluster_execution: cluster_execution.as_ref(),
+                    output_tokens: None,
+                },
                 delivery_proof,
-                None,
             )
         });
         Self {
@@ -1532,13 +1544,16 @@ impl TextGenerationReceipt {
         }
         let settlement_linkage = delivery_proof.as_ref().map(|delivery_proof| {
             settlement_linkage(
-                request_digest.clone(),
-                request.product_id.as_str(),
-                response.model_id.as_str(),
-                &served_artifact,
-                backend_selection.effective_backend.as_str(),
+                SettlementLinkageContext {
+                    request_digest: request_digest.clone(),
+                    product_id: request.product_id.as_str(),
+                    model_id: response.model_id.as_str(),
+                    served_artifact: &served_artifact,
+                    runtime_backend: backend_selection.effective_backend.as_str(),
+                    cluster_execution: cluster_execution.as_ref(),
+                    output_tokens: Some(response.usage.output_tokens),
+                },
                 delivery_proof,
-                Some(response.usage.output_tokens),
             )
         });
         Self {
@@ -2099,11 +2114,12 @@ mod tests {
         AmdRecoveryAction, AmdRecoveryProfile, AmdRiskLevel, AmdRiskProfile, AmdRuntimeMode,
         AmdTopologyInfo, BackendDegradedPolicy, BackendExtensionSupport, BackendProbeState,
         BackendRuntimeResources, BackendSelection, BackendToolchainIdentity,
-        ClusterArtifactResidencyDisposition, ClusterCommitAuthorityEvidence,
-        ClusterExecutionContext, ClusterExecutionDisposition, ClusterFallbackReason,
-        ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
-        ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget, DeviceMemoryClass,
-        DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
+        ClusterAdmissionFactKind, ClusterArtifactResidencyDisposition,
+        ClusterCommandAuthorityScopeEvidence, ClusterCommandProvenanceEvidence,
+        ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
+        ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind,
+        ClusterSelectedNode, ClusterTransportClass, DeviceDescriptor, DeviceMemoryBudget,
+        DeviceMemoryClass, DevicePerformanceClass, ExecutionDeliveryProof, ExecutionTopologyKind,
         ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
         KernelCacheState, KvCacheAccounting, LocalRuntimeDiagnostic, LocalRuntimeErrorCode,
         LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryResidencySnapshot,
@@ -2116,29 +2132,28 @@ mod tests {
         ServedProductBackendPolicy, ValidationCoverage,
     };
     use psionic_serve::{
-        ByteProjectionEmbedder, EmbeddingMetrics, EmbeddingNormalization, EmbeddingRequest,
-        EmbeddingResponse, EmbeddingVector, GenerationLoadState, GenerationMetrics,
-        GenerationOptions, GenerationProvenance, GenerationRequest, GenerationResponse,
-        GenerationStreamStatus, GenerationStreamTerminal, ModelArtifactGovernance,
-        ModelArtifactLicenseEntry, ModelArtifactLicenseFacts, ModelArtifactProvenance,
-        ModelArtifactProvenanceKind, ReferenceWordDecoder, SessionId, SmokeByteEmbedder,
-        TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
         default_decoder_kv_cache_policy, default_decoder_memory_plan,
         default_generation_streaming_policy, default_prefix_cache_policy,
-        default_text_generation_execution_profile,
+        default_text_generation_execution_profile, ByteProjectionEmbedder, EmbeddingMetrics,
+        EmbeddingNormalization, EmbeddingRequest, EmbeddingResponse, EmbeddingVector,
+        GenerationLoadState, GenerationMetrics, GenerationOptions, GenerationProvenance,
+        GenerationRequest, GenerationResponse, GenerationStreamStatus, GenerationStreamTerminal,
+        ModelArtifactGovernance, ModelArtifactLicenseEntry, ModelArtifactLicenseFacts,
+        ModelArtifactProvenance, ModelArtifactProvenanceKind, ReferenceWordDecoder, SessionId,
+        SmokeByteEmbedder, TerminationReason, TokenSequence, WeightArtifactMetadata, WeightSource,
     };
     use serde_json::json;
     use tempfile::tempdir;
 
     use super::{
-        CapabilityEnvelope, ComputeMarketSupplyViolationCode, ExecutionReceipt, KvCacheMode,
-        LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
-        SandboxExecutionCapabilityEnvelope, SandboxExecutionReceipt,
-        TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
         cache_invalidation_policy, compute_market_supply_refusal_diagnostic,
         default_compute_market_supply_policy, digest_embedding_request, digest_generation_request,
         digest_sandbox_execution_request, evaluate_compute_market_supply,
-        served_artifact_identity_for_decoder_model,
+        served_artifact_identity_for_decoder_model, CapabilityEnvelope,
+        ComputeMarketSupplyViolationCode, ExecutionReceipt, KvCacheMode,
+        LocalRuntimeObservabilityEnvelope, ProviderReadiness, ReceiptStatus,
+        SandboxExecutionCapabilityEnvelope, SandboxExecutionReceipt,
+        TextGenerationCapabilityEnvelope, TextGenerationReceipt, WeightBundleEvidence,
     };
 
     #[test]
@@ -2723,8 +2738,8 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_execution_receipt_can_surface_accelerator_deliverability()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sandbox_execution_receipt_can_surface_accelerator_deliverability(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = SandboxExecutionRequestIdentity {
             request_id: String::from("sandbox-req-2"),
             sandbox_profile_digest: SandboxExecutionCapabilityProfile::bounded_accelerated(
@@ -3129,8 +3144,8 @@ mod tests {
     }
 
     #[test]
-    fn metal_gpt_oss_text_generation_capability_reports_explicit_validation()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_gpt_oss_text_generation_capability_reports_explicit_validation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_gpt_oss_decoder_descriptor();
         let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
             metal_backend_selection(),
@@ -3156,8 +3171,8 @@ mod tests {
     }
 
     #[test]
-    fn metal_gpt_oss_text_generation_fallback_capability_reports_explicit_refusal_validation()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_gpt_oss_text_generation_fallback_capability_reports_explicit_refusal_validation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_gpt_oss_decoder_descriptor();
         let envelope = TextGenerationCapabilityEnvelope::from_decoder_model(
             metal_fallback_selection(),
@@ -3182,8 +3197,8 @@ mod tests {
     }
 
     #[test]
-    fn compute_market_supply_refuses_unlicensed_local_path_artifacts()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn compute_market_supply_refuses_unlicensed_local_path_artifacts(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let temp = tempdir()?;
         let path = temp.path().join("byte_projection.safetensors");
         ByteProjectionEmbedder::write_default_safetensors_artifact(&path)?;
@@ -3220,11 +3235,9 @@ mod tests {
         .expect("policy refusal diagnostic");
         assert_eq!(diagnostic.code, LocalRuntimeErrorCode::AdmissionRefused);
         assert_eq!(diagnostic.status, 403);
-        assert!(
-            diagnostic
-                .message
-                .contains("compute-market supply policy refused artifact")
-        );
+        assert!(diagnostic
+            .message
+            .contains("compute-market supply policy refused artifact"));
         Ok(())
     }
 
@@ -3261,8 +3274,8 @@ mod tests {
     }
 
     #[test]
-    fn capability_envelope_preserves_backend_runtime_resources()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn capability_envelope_preserves_backend_runtime_resources(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             cpu_backend_selection()
@@ -3285,7 +3298,8 @@ mod tests {
             json!("positive_execution")
         );
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]["max_cached_bytes"],
+            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]
+                ["max_cached_bytes"],
             json!(8 * 1024 * 1024)
         );
         assert_eq!(
@@ -3293,7 +3307,8 @@ mod tests {
             json!(false)
         );
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]["allocator_pool_budget_bytes"],
+            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]
+                ["allocator_pool_budget_bytes"],
             json!(8 * 1024 * 1024)
         );
         assert_eq!(
@@ -3325,8 +3340,8 @@ mod tests {
     }
 
     #[test]
-    fn capability_envelope_can_surface_cluster_execution_context()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn capability_envelope_can_surface_cluster_execution_context(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let cluster_execution = sample_cluster_execution_context();
         let envelope = CapabilityEnvelope::from_embedding_model(
@@ -3362,8 +3377,8 @@ mod tests {
     }
 
     #[test]
-    fn capability_envelope_overrides_surface_for_replicated_cluster_execution()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn capability_envelope_overrides_surface_for_replicated_cluster_execution(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let cluster_execution = sample_replicated_cluster_execution_context();
         let first = sample_cuda_device().inventory_qualifiers();
@@ -3430,8 +3445,8 @@ mod tests {
     }
 
     #[test]
-    fn capability_envelope_can_surface_multi_device_topology_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn capability_envelope_can_surface_multi_device_topology_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_multi_device_selection(),
@@ -3454,8 +3469,8 @@ mod tests {
     }
 
     #[test]
-    fn local_runtime_observability_envelope_serializes_stably()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn local_runtime_observability_envelope_serializes_stably(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = LocalRuntimeObservabilityEnvelope::new(LocalRuntimeObservability {
             isolation_policy: LocalServingIsolationPolicy::in_process_runtime(),
             cache_invalidation_policy: cache_invalidation_policy(),
@@ -3631,8 +3646,8 @@ mod tests {
     }
 
     #[test]
-    fn fallback_capability_reports_requested_metal_but_effective_cpu()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn fallback_capability_reports_requested_metal_but_effective_cpu(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let model = sample_embedding_descriptor();
         let envelope = CapabilityEnvelope::from_embedding_model(
             metal_fallback_selection(),
@@ -3674,8 +3689,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_kfd_capability_reports_mode_topology_and_recovery()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_kfd_capability_reports_mode_topology_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_kfd_selection(),
             &sample_embedding_descriptor(),
@@ -3709,8 +3724,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_kfd_execution_capability_preserves_runtime_resources()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_kfd_execution_capability_preserves_runtime_resources(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_kfd_execution_selection(),
             &sample_embedding_descriptor(),
@@ -3722,11 +3737,13 @@ mod tests {
 
         let encoded = serde_json::to_value(&envelope)?;
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]["max_cached_buffers"],
+            encoded["backend_selection"]["runtime_resources"]["allocator_pool"]["policy"]
+                ["max_cached_buffers"],
             json!(64)
         );
         assert_eq!(
-            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]["allocator_pool_budget_bytes"],
+            encoded["backend_selection"]["runtime_resources"]["device_memory_budget"]
+                ["allocator_pool_budget_bytes"],
             json!(8 * 1024 * 1024u64)
         );
         assert_eq!(
@@ -3737,8 +3754,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_userspace_capability_reports_disabled_risk_posture()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_userspace_capability_reports_disabled_risk_posture(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_userspace_selection(),
             &sample_embedding_descriptor(),
@@ -3775,8 +3792,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_userspace_execution_capability_preserves_runtime_resources()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_userspace_execution_capability_preserves_runtime_resources(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             amd_userspace_execution_selection(),
             &sample_embedding_descriptor(),
@@ -3800,8 +3817,8 @@ mod tests {
     }
 
     #[test]
-    fn cuda_capability_reports_topology_risk_and_recovery_without_amd_context()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn cuda_capability_reports_topology_risk_and_recovery_without_amd_context(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_backend_selection(),
             &sample_embedding_descriptor(),
@@ -3852,8 +3869,8 @@ mod tests {
     }
 
     #[test]
-    fn degraded_cuda_capability_reports_same_backend_degraded_state()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn degraded_cuda_capability_reports_same_backend_degraded_state(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             degraded_cuda_backend_selection(),
             &sample_embedding_descriptor(),
@@ -3885,8 +3902,8 @@ mod tests {
     }
 
     #[test]
-    fn cuda_fallback_capability_reports_requested_cuda_but_effective_cpu()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn cuda_fallback_capability_reports_requested_cuda_but_effective_cpu(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let envelope = CapabilityEnvelope::from_embedding_model(
             cuda_fallback_selection(),
             &sample_embedding_descriptor(),
@@ -3995,8 +4012,8 @@ mod tests {
     }
 
     #[test]
-    fn text_generation_receipt_preserves_cluster_execution_from_provenance()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn text_generation_receipt_preserves_cluster_execution_from_provenance(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "gen-cluster-1",
             sample_decoder_descriptor(),
@@ -4045,7 +4062,14 @@ mod tests {
                 prefix_cache_policy: Some(default_prefix_cache_policy()),
                 prefix_cache_identity: None,
                 compile_path: None,
-                delivery_proof: None,
+                delivery_proof: Some(ExecutionDeliveryProof {
+                    execution_plan_digest: String::from("cluster-plan"),
+                    kernel_count: 2,
+                    bytes_moved: 768,
+                    plan_cache_hits: 1,
+                    plan_cache_misses: 0,
+                    kv_growth: None,
+                }),
                 cache_observations: Vec::new(),
             },
         );
@@ -4059,6 +4083,22 @@ mod tests {
         );
 
         assert_eq!(receipt.cluster_execution, Some(cluster_execution.clone()));
+        assert_eq!(
+            receipt
+                .settlement_linkage
+                .as_ref()
+                .and_then(|value| value.cluster_provenance.as_ref())
+                .map(|value| value.cluster_id.as_str()),
+            Some("cluster-alpha")
+        );
+        assert_eq!(
+            receipt
+                .settlement_linkage
+                .as_ref()
+                .and_then(|value| value.cluster_provenance.as_ref())
+                .map(|value| value.command_provenance.len()),
+            Some(4)
+        );
         let encoded = serde_json::to_value(&receipt)?;
         assert_eq!(
             encoded["cluster_execution"]["selected_nodes"][0]["node_id"],
@@ -4069,6 +4109,15 @@ mod tests {
             json!("scheduler routed to the remaining healthy worker")
         );
         assert_eq!(
+            encoded["settlement_linkage"]["cluster_provenance"]["command_provenance"][0]
+                ["fact_kind"],
+            json!("scheduler_membership")
+        );
+        assert_eq!(
+            encoded["settlement_linkage"]["cluster_provenance"]["coordinator_authority_digest"],
+            json!("authority-digest")
+        );
+        assert_eq!(
             serde_json::from_value::<TextGenerationReceipt>(encoded)?,
             receipt
         );
@@ -4076,8 +4125,8 @@ mod tests {
     }
 
     #[test]
-    fn text_generation_receipt_surfaces_replicated_cluster_execution_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn text_generation_receipt_surfaces_replicated_cluster_execution_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "gen-cluster-replicated-1",
             sample_decoder_descriptor(),
@@ -4173,8 +4222,8 @@ mod tests {
     }
 
     #[test]
-    fn text_generation_receipt_surfaces_layer_sharded_cluster_execution_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn text_generation_receipt_surfaces_layer_sharded_cluster_execution_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "gen-cluster-sharded-1",
             sample_decoder_descriptor(),
@@ -4277,8 +4326,8 @@ mod tests {
     }
 
     #[test]
-    fn text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn text_generation_receipt_surfaces_tensor_sharded_cluster_execution_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "gen-cluster-tensor-sharded-1",
             sample_decoder_descriptor(),
@@ -4615,8 +4664,8 @@ mod tests {
     }
 
     #[test]
-    fn metal_gpt_oss_text_generation_receipt_reports_explicit_validation()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_gpt_oss_text_generation_receipt_reports_explicit_validation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "metal-gpt-oss-req",
             sample_gpt_oss_decoder_descriptor(),
@@ -4656,8 +4705,8 @@ mod tests {
     }
 
     #[test]
-    fn metal_gpt_oss_text_generation_failed_receipt_reports_explicit_refusal_validation()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn metal_gpt_oss_text_generation_failed_receipt_reports_explicit_refusal_validation(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let request = GenerationRequest::new_text(
             "metal-gpt-oss-req-fallback",
             sample_gpt_oss_decoder_descriptor(),
@@ -5128,6 +5177,7 @@ mod tests {
             ClusterPolicyDigestKind::Placement,
             "placement-policy-digest",
         ))
+        .with_command_provenance(sample_cluster_command_provenance(&["worker-a"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
                 .with_role("worker")
@@ -5169,6 +5219,7 @@ mod tests {
             ClusterPolicyDigestKind::Admission,
             "admission-policy-digest",
         ))
+        .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
                 .with_role("worker")
@@ -5230,6 +5281,7 @@ mod tests {
             ClusterPolicyDigestKind::Sharding,
             "sharding-policy-digest",
         ))
+        .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
                 .with_role("worker")
@@ -5290,6 +5342,7 @@ mod tests {
             ClusterPolicyDigestKind::Sharding,
             "tensor-sharding-policy-digest",
         ))
+        .with_command_provenance(sample_cluster_command_provenance(&["worker-a", "worker-b"]))
         .with_selected_nodes(vec![
             ClusterSelectedNode::new("worker-a", "cuda")
                 .with_role("worker")
@@ -5302,20 +5355,67 @@ mod tests {
                 .with_served_artifact_digest("served-artifact-digest")
                 .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
         ])
-        .with_shard_handoffs(vec![
-            psionic_runtime::ClusterShardHandoff::new(
-                0,
-                1,
-                "worker-a",
-                "worker-b",
-                psionic_runtime::ClusterShardHandoffKind::TensorCollective,
-                ClusterTransportClass::TrustedLanStream,
-                0,
-                16_384,
-            )
-            .with_tensor_partition(1, 0, 32)
-            .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh"),
-        ])
+        .with_shard_handoffs(vec![psionic_runtime::ClusterShardHandoff::new(
+            0,
+            1,
+            "worker-a",
+            "worker-b",
+            psionic_runtime::ClusterShardHandoffKind::TensorCollective,
+            ClusterTransportClass::TrustedLanStream,
+            0,
+            16_384,
+        )
+        .with_tensor_partition(1, 0, 32)
+        .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh")])
+    }
+
+    fn sample_cluster_command_provenance(
+        selected_node_ids: &[&str],
+    ) -> Vec<ClusterCommandProvenanceEvidence> {
+        let mut provenance = vec![ClusterCommandProvenanceEvidence::new(
+            ClusterAdmissionFactKind::SchedulerMembership,
+            "scheduler-node",
+            ClusterCommandAuthorityScopeEvidence::SelfNode,
+            "scheduler-membership-command",
+            "scheduler-membership-auth",
+            "command-authorization-policy",
+        )
+        .with_target_node_id("scheduler-node")];
+        for node_id in selected_node_ids {
+            provenance.push(
+                ClusterCommandProvenanceEvidence::new(
+                    ClusterAdmissionFactKind::SelectedMembership,
+                    *node_id,
+                    ClusterCommandAuthorityScopeEvidence::SelfNode,
+                    format!("{node_id}-membership-command"),
+                    format!("{node_id}-membership-auth"),
+                    "command-authorization-policy",
+                )
+                .with_target_node_id(*node_id),
+            );
+        }
+        if let Some(first_node_id) = selected_node_ids.first() {
+            provenance.push(
+                ClusterCommandProvenanceEvidence::new(
+                    ClusterAdmissionFactKind::ArtifactResidency,
+                    *first_node_id,
+                    ClusterCommandAuthorityScopeEvidence::SelfNode,
+                    format!("{first_node_id}-artifact-command"),
+                    format!("{first_node_id}-artifact-auth"),
+                    "command-authorization-policy",
+                )
+                .with_target_node_id(*first_node_id),
+            );
+        }
+        provenance.push(ClusterCommandProvenanceEvidence::new(
+            ClusterAdmissionFactKind::Leadership,
+            "scheduler-node",
+            ClusterCommandAuthorityScopeEvidence::ProposedLeader,
+            "leadership-command",
+            "leadership-auth",
+            "command-authorization-policy",
+        ));
+        provenance
     }
 
     fn sample_backend_runtime_resources() -> BackendRuntimeResources {

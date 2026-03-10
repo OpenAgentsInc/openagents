@@ -13,7 +13,7 @@ use psionic_core::{
     TensorId, TensorSpec,
 };
 use psionic_ir::ExecutionPlan;
-use rand::{Rng, SeedableRng, rngs::StdRng};
+use rand::{rngs::StdRng, Rng, SeedableRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -363,6 +363,129 @@ impl ClusterCommitAuthorityEvidence {
             fence_token: fence_token.into(),
             authority_digest: authority_digest.into(),
         }
+    }
+}
+
+/// Authority scope recorded for one cluster command provenance fact.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterCommandAuthorityScopeEvidence {
+    /// Only the current coordinator may authorize the mutation.
+    CoordinatorOnly,
+    /// Any allowed cluster member may authorize the command.
+    ClusterMember,
+    /// Only the targeted node may authorize the command.
+    SelfNode,
+    /// Only one endpoint of the link may authorize the command.
+    LinkPeer,
+    /// Only the proposed leader may authorize the command.
+    ProposedLeader,
+}
+
+/// Admission fact family that one provenance record describes.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterAdmissionFactKind {
+    /// Scheduler membership admitted the node that made the decision.
+    SchedulerMembership,
+    /// Selected execution-node membership admitted this worker into the plan.
+    SelectedMembership,
+    /// Artifact residency or staging fact admitted this worker/artifact pair.
+    ArtifactResidency,
+    /// Leadership truth admitted the current coordinator fence and term.
+    Leadership,
+}
+
+/// Runtime-owned provenance fact derived from one authorized cluster command.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterCommandProvenanceEvidence {
+    /// Admission fact family represented by this record.
+    pub fact_kind: ClusterAdmissionFactKind,
+    /// Node that submitted the authorizing command.
+    pub submitter_node_id: String,
+    /// Command authority scope enforced for this provenance fact.
+    pub authority_scope: ClusterCommandAuthorityScopeEvidence,
+    /// Stable digest of the command payload.
+    pub command_digest: String,
+    /// Stable digest of the authorization fact.
+    pub authorization_digest: String,
+    /// Stable digest of the policy used for authorization.
+    pub authorization_policy_digest: String,
+    /// Node this admission fact is attached to, when the fact is node-scoped.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub target_node_id: Option<String>,
+}
+
+impl ClusterCommandProvenanceEvidence {
+    /// Creates one runtime-owned cluster-command provenance fact.
+    #[must_use]
+    pub fn new(
+        fact_kind: ClusterAdmissionFactKind,
+        submitter_node_id: impl Into<String>,
+        authority_scope: ClusterCommandAuthorityScopeEvidence,
+        command_digest: impl Into<String>,
+        authorization_digest: impl Into<String>,
+        authorization_policy_digest: impl Into<String>,
+    ) -> Self {
+        Self {
+            fact_kind,
+            submitter_node_id: submitter_node_id.into(),
+            authority_scope,
+            command_digest: command_digest.into(),
+            authorization_digest: authorization_digest.into(),
+            authorization_policy_digest: authorization_policy_digest.into(),
+            target_node_id: None,
+        }
+    }
+
+    /// Attaches the node this provenance fact is about, when node-scoped.
+    #[must_use]
+    pub fn with_target_node_id(mut self, target_node_id: impl Into<String>) -> Self {
+        self.target_node_id = Some(target_node_id.into());
+        self
+    }
+}
+
+/// Settlement-facing cluster provenance retained alongside delivery-proof inputs.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterSettlementProvenanceInput {
+    /// Stable cluster identifier.
+    pub cluster_id: String,
+    /// Scheduler node that admitted or routed the work.
+    pub scheduler_node_id: String,
+    /// Stable coordinator authority digest for the request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coordinator_authority_digest: Option<String>,
+    /// Stable coordinator fence token for the request, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub coordinator_fence_token: Option<String>,
+    /// Authorized command provenance facts relevant to this request path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_provenance: Vec<ClusterCommandProvenanceEvidence>,
+}
+
+impl ClusterSettlementProvenanceInput {
+    /// Builds settlement provenance from one clustered execution context.
+    #[must_use]
+    pub fn from_cluster_execution(cluster_execution: &ClusterExecutionContext) -> Option<Self> {
+        if cluster_execution.command_provenance.is_empty()
+            && cluster_execution.commit_authority.is_none()
+        {
+            return None;
+        }
+        Some(Self {
+            cluster_id: cluster_execution.cluster_id.clone(),
+            scheduler_node_id: cluster_execution.scheduler_node_id.clone(),
+            coordinator_authority_digest: cluster_execution
+                .commit_authority
+                .as_ref()
+                .map(|authority| authority.authority_digest.clone()),
+            coordinator_fence_token: cluster_execution
+                .commit_authority
+                .as_ref()
+                .map(|authority| authority.fence_token.clone()),
+            command_provenance: cluster_execution.command_provenance.clone(),
+        })
     }
 }
 
@@ -767,6 +890,9 @@ pub struct ClusterExecutionContext {
     /// Explicit cross-node activation or KV handoffs for sharded execution.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub shard_handoffs: Vec<ClusterShardHandoff>,
+    /// Authorized command provenance facts that admitted or fenced this request path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub command_provenance: Vec<ClusterCommandProvenanceEvidence>,
     /// Explicit fallback history when the scheduler rerouted work.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallback_history: Vec<ClusterFallbackStep>,
@@ -801,6 +927,7 @@ impl ClusterExecutionContext {
             selected_nodes: Vec::new(),
             replica_nodes: Vec::new(),
             shard_handoffs: Vec::new(),
+            command_provenance: Vec::new(),
             fallback_history: Vec::new(),
             degraded_reason: None,
         }
@@ -862,6 +989,26 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_shard_handoffs(mut self, shard_handoffs: Vec<ClusterShardHandoff>) -> Self {
         self.shard_handoffs = shard_handoffs;
+        self
+    }
+
+    /// Replaces the command-provenance set for this clustered execution path.
+    #[must_use]
+    pub fn with_command_provenance(
+        mut self,
+        command_provenance: Vec<ClusterCommandProvenanceEvidence>,
+    ) -> Self {
+        self.command_provenance = command_provenance;
+        self
+    }
+
+    /// Appends one command-provenance fact.
+    #[must_use]
+    pub fn with_command_provenance_fact(
+        mut self,
+        command_provenance: ClusterCommandProvenanceEvidence,
+    ) -> Self {
+        self.command_provenance.push(command_provenance);
         self
     }
 
@@ -2011,6 +2158,9 @@ pub struct SettlementLinkageInput {
     /// Output token count when the product family emits tokens.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub output_tokens: Option<usize>,
+    /// Cluster command/admission provenance retained for settlement correlation, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_provenance: Option<ClusterSettlementProvenanceInput>,
 }
 
 /// Returns the current runtime cache invalidation policy.
@@ -5295,6 +5445,7 @@ mod tests {
     use serde_json::json;
 
     use super::{
+        apply_sampling_penalties, default_cache_invalidation_policy, plan_model_admission,
         AcceleratorDeliverabilityDifferenceCode, AcceleratorDeliverabilityStatus,
         AcceleratorExecutionRequirement, AdmissionRefusalReason, Allocator, AllocatorPoolPolicy,
         AllocatorPoolReport, AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata,
@@ -5303,27 +5454,26 @@ mod tests {
         BackendExtensionExecution, BackendExtensionSupport, BackendHealthTracker,
         BackendRuntimeResources, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
         BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
-        CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterArtifactResidencyDisposition,
-        ClusterCommitAuthorityEvidence, ClusterExecutionContext, ClusterExecutionDisposition,
-        ClusterFallbackReason, ClusterFallbackStep, ClusterPolicyDigest,
-        ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
-        DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery,
-        DeviceInventoryQualifiers, DeviceMemoryBudget, DeviceMemoryClass,
-        DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
-        ExecutionDeliveryProof, ExecutionMetrics, ExecutionPlanCachePolicy,
-        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult,
-        ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus, KernelCachePolicy,
-        KernelCacheReport, KernelCacheState, KvCacheAccounting, KvCacheDeviceScope,
-        KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState,
-        LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
-        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
-        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
-        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
-        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
-        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
-        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
-        ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterAdmissionFactKind,
+        ClusterArtifactResidencyDisposition, ClusterCommandAuthorityScopeEvidence,
+        ClusterCommandProvenanceEvidence, ClusterCommitAuthorityEvidence, ClusterExecutionContext,
+        ClusterExecutionDisposition, ClusterFallbackReason, ClusterFallbackStep,
+        ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
+        DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
+        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
+        ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
+        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
+        ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
+        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
+        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
+        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
+        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
+        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
+        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
+        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
+        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
+        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
+        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
         RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
         SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
         SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
@@ -5331,8 +5481,7 @@ mod tests {
         SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy,
         SandboxResourceLimits, ServedArtifactIdentity, ServedProductBackendPolicy,
         ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
-        ThroughputClass, TokenSampler, apply_sampling_penalties, default_cache_invalidation_policy,
-        plan_model_admission,
+        ThroughputClass, TokenSampler, DEFAULT_PENALTY_LOOKBACK,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -5499,8 +5648,8 @@ mod tests {
     }
 
     #[test]
-    fn backend_selection_helpers_capture_direct_and_fallback_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn backend_selection_helpers_capture_direct_and_fallback_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let direct = BackendSelection::from_backend(&MockRuntime, &["input", "matmul"])?;
         assert_eq!(direct.requested_backend, "mock");
         assert_eq!(direct.effective_backend, "mock");
@@ -5800,8 +5949,8 @@ mod tests {
     }
 
     #[test]
-    fn quantization_support_surfaces_storage_path_and_pending_execution_truth()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn quantization_support_surfaces_storage_path_and_pending_execution_truth(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let support = QuantizationSupport {
             mode: psionic_core::QuantizationMode::GgmlQ4_0,
             load_path: QuantizationLoadPath::BackendQuantized,
@@ -5895,8 +6044,8 @@ mod tests {
     }
 
     #[test]
-    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let copy = ModelArtifactStorage::in_memory_copy("weights.gguf", "abcd");
         let paged = ModelArtifactStorage::paged_local_blob(
             "weights.gguf",
@@ -5933,8 +6082,8 @@ mod tests {
     }
 
     #[test]
-    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let plan = PagedTensorStoragePlan {
             tensor_name: String::from("blk.0.attn_q.weight"),
             artifact_name: String::from("weights.gguf"),
@@ -6272,8 +6421,8 @@ mod tests {
     }
 
     #[test]
-    fn sampling_policy_serializes_supported_generation_controls()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sampling_policy_serializes_supported_generation_controls(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let policy = SamplingPolicy {
             strategy: SamplingStrategy::Sample,
             temperature: Some(0.7),
@@ -6356,8 +6505,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_backend_model_serializes_mode_topology_risk_and_recovery()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_backend_model_serializes_mode_topology_risk_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("amd_userspace"),
             device: Device::new(
@@ -6463,8 +6612,8 @@ mod tests {
     }
 
     #[test]
-    fn nvidia_backend_model_serializes_topology_risk_and_recovery()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn nvidia_backend_model_serializes_topology_risk_and_recovery(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("cuda"),
             device: Device::new(
@@ -6706,8 +6855,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_can_carry_cluster_evidence()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_can_carry_cluster_evidence(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let device = sample_cuda_device().inventory_qualifiers();
         let cluster_execution = ClusterExecutionContext::new(
             "cluster-alpha",
@@ -6733,13 +6882,30 @@ mod tests {
             ClusterPolicyDigestKind::Placement,
             "placement-policy-digest",
         ))
-        .with_selected_nodes(vec![
-            ClusterSelectedNode::new("worker-a", "cuda")
-                .with_role("worker")
-                .with_topology_digest("node-topology-digest")
-                .with_served_artifact_digest("served-artifact-digest")
-                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+        .with_command_provenance(vec![
+            ClusterCommandProvenanceEvidence::new(
+                ClusterAdmissionFactKind::SchedulerMembership,
+                "scheduler-node",
+                ClusterCommandAuthorityScopeEvidence::SelfNode,
+                "scheduler-membership-command",
+                "scheduler-membership-auth",
+                "command-authorization-policy",
+            )
+            .with_target_node_id("scheduler-node"),
+            ClusterCommandProvenanceEvidence::new(
+                ClusterAdmissionFactKind::Leadership,
+                "coordinator-a",
+                ClusterCommandAuthorityScopeEvidence::ProposedLeader,
+                "leadership-command",
+                "leadership-auth",
+                "command-authorization-policy",
+            ),
         ])
+        .with_selected_nodes(vec![ClusterSelectedNode::new("worker-a", "cuda")
+            .with_role("worker")
+            .with_topology_digest("node-topology-digest")
+            .with_served_artifact_digest("served-artifact-digest")
+            .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident)])
         .with_fallback(
             ClusterFallbackStep::new("worker-a", ClusterFallbackReason::BackendDegraded)
                 .from_node("worker-b")
@@ -6767,6 +6933,14 @@ mod tests {
             json!("resident")
         );
         assert_eq!(
+            encoded["cluster_execution"]["command_provenance"][0]["fact_kind"],
+            json!("scheduler_membership")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["command_provenance"][1]["authority_scope"],
+            json!("proposed_leader")
+        );
+        assert_eq!(
             serde_json::from_value::<DeliveredExecutionContext>(encoded)?,
             delivered
         );
@@ -6775,8 +6949,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_prefers_replicated_cluster_topology()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_prefers_replicated_cluster_topology(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -6839,8 +7013,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_surfaces_layer_sharded_handoffs()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_surfaces_layer_sharded_handoffs(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -6920,8 +7094,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_surfaces_tensor_sharded_collectives()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_surfaces_tensor_sharded_collectives(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -6948,20 +7122,18 @@ mod tests {
             ClusterSelectedNode::new("worker-a", "cuda").with_device_inventory(first.clone()),
             ClusterSelectedNode::new("worker-b", "cuda").with_device_inventory(second.clone()),
         ])
-        .with_shard_handoffs(vec![
-            crate::ClusterShardHandoff::new(
-                0,
-                1,
-                "worker-a",
-                "worker-b",
-                crate::ClusterShardHandoffKind::TensorCollective,
-                ClusterTransportClass::TrustedLanStream,
-                0,
-                16_384,
-            )
-            .with_tensor_partition(1, 0, 32)
-            .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh"),
-        ]);
+        .with_shard_handoffs(vec![crate::ClusterShardHandoff::new(
+            0,
+            1,
+            "worker-a",
+            "worker-b",
+            crate::ClusterShardHandoffKind::TensorCollective,
+            ClusterTransportClass::TrustedLanStream,
+            0,
+            16_384,
+        )
+        .with_tensor_partition(1, 0, 32)
+        .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh")]);
         let delivered = DeliveredExecutionContext::new(
             "cuda",
             Some(ExecutionTopologyPlan::single_device("cuda", first.clone())),
@@ -7396,8 +7568,8 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_execution_capability_profiles_are_machine_checkable()
-    -> Result<(), Box<dyn std::error::Error>> {
+    fn sandbox_execution_capability_profiles_are_machine_checkable(
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let profile = SandboxExecutionCapabilityProfile::bounded_accelerated("cuda", 2);
         assert!(profile.accelerator_access.requires_accelerator());
         assert_eq!(
