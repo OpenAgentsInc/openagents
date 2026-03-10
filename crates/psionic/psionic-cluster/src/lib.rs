@@ -166,6 +166,9 @@ pub struct ConfiguredClusterPeer {
     pub remote_addr: SocketAddr,
     /// Expected message-signing public key for the peer.
     pub auth_public_key: String,
+    /// Previously accepted keys during one explicit rotation overlap.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub previous_auth_public_keys: Vec<String>,
 }
 
 impl ConfiguredClusterPeer {
@@ -180,8 +183,43 @@ impl ConfiguredClusterPeer {
             node_id,
             remote_addr,
             auth_public_key: auth_public_key.into(),
+            previous_auth_public_keys: Vec::new(),
         }
     }
+
+    /// Allows one explicit previous-key overlap during operator rollout.
+    #[must_use]
+    pub fn with_previous_auth_public_keys(
+        mut self,
+        previous_auth_public_keys: Vec<String>,
+    ) -> Self {
+        self.previous_auth_public_keys = previous_auth_public_keys;
+        self
+    }
+
+    fn key_match(&self, auth_public_key: &str) -> Option<ConfiguredPeerKeyMatch> {
+        if self.auth_public_key == auth_public_key {
+            return Some(ConfiguredPeerKeyMatch::Current);
+        }
+        if self
+            .previous_auth_public_keys
+            .iter()
+            .any(|candidate| candidate == auth_public_key)
+        {
+            return Some(ConfiguredPeerKeyMatch::Previous);
+        }
+        None
+    }
+}
+
+/// Which configured-peer key matched during authentication.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ConfiguredPeerKeyMatch {
+    /// The peer authenticated with the currently expected key.
+    Current,
+    /// The peer authenticated with an explicitly overlapped previous key.
+    Previous,
 }
 
 /// Dial and retry policy for configured peers in wider-network clusters.
@@ -260,6 +298,35 @@ impl ConfiguredPeerHealthSnapshot {
     }
 }
 
+/// Rollout disposition observed while authenticating one configured peer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTrustRolloutDisposition {
+    /// Peer was accepted under an explicit overlap instead of the current bundle.
+    AcceptedOverlap,
+    /// Peer was refused because its trust bundle version is not currently accepted.
+    RefusedVersionMismatch,
+}
+
+/// Machine-checkable rollout diagnostic for configured-peer authentication.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterTrustRolloutDiagnostic {
+    /// Remote node participating in rollout.
+    pub remote_node_id: NodeId,
+    /// Remote socket address used for transport.
+    pub remote_addr: SocketAddr,
+    /// Current local trust-bundle version.
+    pub expected_trust_bundle_version: u64,
+    /// Remote trust-bundle version, when one was observed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub actual_trust_bundle_version: Option<u64>,
+    /// Which key matched during authentication, when one matched.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub key_match: Option<ConfiguredPeerKeyMatch>,
+    /// Rollout disposition associated with this observation.
+    pub disposition: ClusterTrustRolloutDisposition,
+}
+
 /// Machine-checkable trust policy for one local cluster transport.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterTrustPolicy {
@@ -269,6 +336,11 @@ pub struct ClusterTrustPolicy {
     pub require_message_authentication: bool,
     /// Sliding replay window size per authenticated peer.
     pub replay_window_size: u64,
+    /// Current trust-bundle version for this cluster config.
+    pub trust_bundle_version: u64,
+    /// Additional trust-bundle versions accepted during explicit rollout overlap.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub accepted_trust_bundle_versions: Vec<u64>,
     /// Explicit authenticated peers when configured-peer posture is active.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub configured_peers: Vec<ConfiguredClusterPeer>,
@@ -285,6 +357,8 @@ impl ClusterTrustPolicy {
             posture: ClusterTrustPosture::TrustedLanSharedAdmission,
             require_message_authentication: false,
             replay_window_size: 0,
+            trust_bundle_version: 1,
+            accepted_trust_bundle_versions: Vec::new(),
             configured_peers: Vec::new(),
             configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
         }
@@ -297,9 +371,30 @@ impl ClusterTrustPolicy {
             posture: ClusterTrustPosture::AuthenticatedConfiguredPeers,
             require_message_authentication: true,
             replay_window_size: DEFAULT_REPLAY_WINDOW_SIZE,
+            trust_bundle_version: 1,
+            accepted_trust_bundle_versions: Vec::new(),
             configured_peers,
             configured_peer_dial_policy: ConfiguredPeerDialPolicy::operator_managed_default(),
         }
+    }
+
+    /// Overrides the current trust-bundle version for this cluster config.
+    #[must_use]
+    pub fn with_trust_bundle_version(mut self, trust_bundle_version: u64) -> Self {
+        self.trust_bundle_version = trust_bundle_version;
+        self
+    }
+
+    /// Declares additional trust-bundle versions accepted during rollout overlap.
+    #[must_use]
+    pub fn with_accepted_trust_bundle_versions(
+        mut self,
+        mut accepted_trust_bundle_versions: Vec<u64>,
+    ) -> Self {
+        accepted_trust_bundle_versions.sort_unstable();
+        accepted_trust_bundle_versions.dedup();
+        self.accepted_trust_bundle_versions = accepted_trust_bundle_versions;
+        self
     }
 
     /// Overrides the dial policy for configured peers.
@@ -333,6 +428,12 @@ impl ClusterTrustPolicy {
         });
         hasher.update(b"|");
         hasher.update(self.replay_window_size.to_string().as_bytes());
+        hasher.update(b"|trust_bundle_version|");
+        hasher.update(self.trust_bundle_version.to_string().as_bytes());
+        for accepted_version in &self.accepted_trust_bundle_versions {
+            hasher.update(b"|accepted_version|");
+            hasher.update(accepted_version.to_string().as_bytes());
+        }
         for peer in &self.configured_peers {
             hasher.update(b"|peer|");
             hasher.update(peer.node_id.as_str().as_bytes());
@@ -340,6 +441,10 @@ impl ClusterTrustPolicy {
             hasher.update(peer.remote_addr.to_string().as_bytes());
             hasher.update(b"|");
             hasher.update(peer.auth_public_key.as_bytes());
+            for previous_key in &peer.previous_auth_public_keys {
+                hasher.update(b"|previous_key|");
+                hasher.update(previous_key.as_bytes());
+            }
         }
         hasher.update(b"|dial_policy|");
         hasher.update(
@@ -376,6 +481,13 @@ impl ClusterTrustPolicy {
         self.configured_peers
             .iter()
             .find(|peer| peer.node_id == *node_id)
+    }
+
+    fn accepts_trust_bundle_version(&self, trust_bundle_version: u64) -> bool {
+        self.trust_bundle_version == trust_bundle_version
+            || self
+                .accepted_trust_bundle_versions
+                .contains(&trust_bundle_version)
     }
 }
 
@@ -627,6 +739,16 @@ pub enum ClusterJoinRefusalReason {
     },
     /// The remote message lacked a valid signature or authentication payload.
     MessageAuthenticationFailed,
+    /// The remote peer used an unexpected trust-bundle version.
+    TrustBundleVersionMismatch {
+        /// Current local trust-bundle version.
+        expected: u64,
+        /// Observed remote trust-bundle version, when present.
+        actual: Option<u64>,
+        /// Additional bundle versions explicitly accepted during rollout.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        accepted: Vec<u64>,
+    },
     /// The remote message replayed an already-observed or expired authenticated counter.
     ReplayDetected {
         /// Highest authenticated counter already observed for this peer.
@@ -748,6 +870,11 @@ impl LocalClusterNode {
         self.state.lock().await.join_refusals()
     }
 
+    /// Returns machine-checkable trust-rollout diagnostics observed by this node.
+    pub async fn trust_rollout_diagnostics(&self) -> Vec<ClusterTrustRolloutDiagnostic> {
+        self.state.lock().await.trust_rollout_diagnostics()
+    }
+
     /// Shuts the local-cluster node down and waits for the background task.
     pub async fn shutdown(mut self) -> Result<(), ClusterError> {
         if let Some(shutdown_tx) = self.shutdown_tx.take() {
@@ -801,6 +928,7 @@ impl TransportConfig {
 struct SharedState {
     peers: BTreeMap<NodeId, PeerSnapshot>,
     configured_peer_health: BTreeMap<NodeId, ConfiguredPeerHealthSnapshot>,
+    trust_rollout_diagnostics: BTreeMap<NodeId, ClusterTrustRolloutDiagnostic>,
     peer_replay_windows: BTreeMap<NodeId, PeerReplayWindow>,
     join_refusals: Vec<ClusterJoinRefusal>,
     seed_peers: BTreeSet<SocketAddr>,
@@ -823,6 +951,7 @@ impl SharedState {
         Self {
             peers: BTreeMap::new(),
             configured_peer_health,
+            trust_rollout_diagnostics: BTreeMap::new(),
             peer_replay_windows: BTreeMap::new(),
             join_refusals: Vec::new(),
             seed_peers,
@@ -843,8 +972,17 @@ impl SharedState {
         self.join_refusals.clone()
     }
 
+    fn trust_rollout_diagnostics(&self) -> Vec<ClusterTrustRolloutDiagnostic> {
+        self.trust_rollout_diagnostics.values().cloned().collect()
+    }
+
     fn push_join_refusal(&mut self, refusal: ClusterJoinRefusal) {
         self.join_refusals.push(refusal);
+    }
+
+    fn push_trust_rollout_diagnostic(&mut self, diagnostic: ClusterTrustRolloutDiagnostic) {
+        self.trust_rollout_diagnostics
+            .insert(diagnostic.remote_node_id.clone(), diagnostic);
     }
 
     fn next_ping_sequence(&mut self) -> u64 {
@@ -1108,6 +1246,8 @@ struct WireEnvelope {
     namespace: ClusterNamespace,
     admission_digest: String,
     #[serde(skip_serializing_if = "Option::is_none")]
+    trust_bundle_version: Option<u64>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     authenticated_counter: Option<u64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     signature_hex: Option<String>,
@@ -1350,15 +1490,31 @@ async fn handle_incoming_message(
         return Ok(());
     }
 
-    if let Err(reason) = authenticate_incoming_envelope(&envelope, remote_addr, config) {
-        state.lock().await.push_join_refusal(ClusterJoinRefusal {
-            remote_addr,
-            remote_node_id: Some(envelope.message.sender().node_id.clone()),
-            remote_cluster_id: Some(envelope.message.sender().cluster_id.clone()),
-            remote_node_epoch: Some(envelope.message.sender().node_epoch),
-            reason,
-        });
-        return Ok(());
+    let trust_rollout_diagnostic =
+        match authenticate_incoming_envelope(&envelope, remote_addr, config) {
+            Ok(trust_rollout_diagnostic) => trust_rollout_diagnostic,
+            Err(reason) => {
+                let rollout_diagnostic =
+                    trust_rollout_diagnostic_from_refusal(&envelope, remote_addr, &reason, config);
+                let mut guard = state.lock().await;
+                if let Some(rollout_diagnostic) = rollout_diagnostic {
+                    guard.push_trust_rollout_diagnostic(rollout_diagnostic);
+                }
+                guard.push_join_refusal(ClusterJoinRefusal {
+                    remote_addr,
+                    remote_node_id: Some(envelope.message.sender().node_id.clone()),
+                    remote_cluster_id: Some(envelope.message.sender().cluster_id.clone()),
+                    remote_node_epoch: Some(envelope.message.sender().node_epoch),
+                    reason,
+                });
+                return Ok(());
+            }
+        };
+    if let Some(trust_rollout_diagnostic) = trust_rollout_diagnostic {
+        state
+            .lock()
+            .await
+            .push_trust_rollout_diagnostic(trust_rollout_diagnostic);
     }
 
     match envelope.message {
@@ -1466,6 +1622,10 @@ async fn outbound_envelope(
     let mut envelope = WireEnvelope {
         namespace: config.namespace.clone(),
         admission_digest: config.admission_digest.clone(),
+        trust_bundle_version: config
+            .trust_policy
+            .require_message_authentication
+            .then_some(config.trust_policy.trust_bundle_version),
         authenticated_counter,
         signature_hex: None,
         message,
@@ -1483,7 +1643,8 @@ fn authenticate_incoming_envelope(
     envelope: &WireEnvelope,
     remote_addr: SocketAddr,
     config: &TransportConfig,
-) -> Result<(), ClusterJoinRefusalReason> {
+) -> Result<Option<ClusterTrustRolloutDiagnostic>, ClusterJoinRefusalReason> {
+    let mut trust_rollout_diagnostic = None;
     if matches!(
         config.trust_policy.posture,
         ClusterTrustPosture::AuthenticatedConfiguredPeers
@@ -1500,15 +1661,46 @@ fn authenticate_incoming_envelope(
                 actual: remote_addr,
             });
         }
-        if configured_peer.auth_public_key != envelope.message.sender().auth_public_key {
+        let key_match = configured_peer.key_match(&envelope.message.sender().auth_public_key);
+        let Some(key_match) = key_match else {
             return Err(ClusterJoinRefusalReason::ConfiguredPeerKeyMismatch {
                 expected: configured_peer.auth_public_key.clone(),
                 actual: envelope.message.sender().auth_public_key.clone(),
             });
+        };
+        let actual_trust_bundle_version = envelope.trust_bundle_version;
+        let Some(actual_trust_bundle_version) = actual_trust_bundle_version else {
+            return Err(ClusterJoinRefusalReason::TrustBundleVersionMismatch {
+                expected: config.trust_policy.trust_bundle_version,
+                actual: None,
+                accepted: config.trust_policy.accepted_trust_bundle_versions.clone(),
+            });
+        };
+        if !config
+            .trust_policy
+            .accepts_trust_bundle_version(actual_trust_bundle_version)
+        {
+            return Err(ClusterJoinRefusalReason::TrustBundleVersionMismatch {
+                expected: config.trust_policy.trust_bundle_version,
+                actual: Some(actual_trust_bundle_version),
+                accepted: config.trust_policy.accepted_trust_bundle_versions.clone(),
+            });
+        }
+        if actual_trust_bundle_version != config.trust_policy.trust_bundle_version
+            || matches!(key_match, ConfiguredPeerKeyMatch::Previous)
+        {
+            trust_rollout_diagnostic = Some(ClusterTrustRolloutDiagnostic {
+                remote_node_id: envelope.message.sender().node_id.clone(),
+                remote_addr,
+                expected_trust_bundle_version: config.trust_policy.trust_bundle_version,
+                actual_trust_bundle_version: Some(actual_trust_bundle_version),
+                key_match: Some(key_match),
+                disposition: ClusterTrustRolloutDisposition::AcceptedOverlap,
+            });
         }
     }
     if !config.trust_policy.require_message_authentication {
-        return Ok(());
+        return Ok(trust_rollout_diagnostic);
     }
     let counter = envelope
         .authenticated_counter
@@ -1527,7 +1719,7 @@ fn authenticate_incoming_envelope(
         )
         .map_err(|_| ClusterJoinRefusalReason::MessageAuthenticationFailed)?;
     let _ = counter;
-    Ok(())
+    Ok(trust_rollout_diagnostic)
 }
 
 async fn send_message(
@@ -1553,6 +1745,7 @@ fn wire_signing_payload(envelope: &WireEnvelope) -> Result<Vec<u8>, serde_json::
     serde_json::to_vec(&(
         &envelope.namespace,
         &envelope.admission_digest,
+        envelope.trust_bundle_version,
         envelope.authenticated_counter,
         &envelope.message,
     ))
@@ -1584,6 +1777,30 @@ fn next_configured_peer_backoff_ticks(
         .base_backoff_ticks
         .saturating_mul(multiplier)
         .min(dial_policy.max_backoff_ticks)
+}
+
+fn trust_rollout_diagnostic_from_refusal(
+    envelope: &WireEnvelope,
+    remote_addr: SocketAddr,
+    reason: &ClusterJoinRefusalReason,
+    config: &TransportConfig,
+) -> Option<ClusterTrustRolloutDiagnostic> {
+    match reason {
+        ClusterJoinRefusalReason::TrustBundleVersionMismatch { actual, .. } => {
+            Some(ClusterTrustRolloutDiagnostic {
+                remote_node_id: envelope.message.sender().node_id.clone(),
+                remote_addr,
+                expected_trust_bundle_version: config.trust_policy.trust_bundle_version,
+                actual_trust_bundle_version: *actual,
+                key_match: config
+                    .trust_policy
+                    .configured_peer(&envelope.message.sender().node_id)
+                    .and_then(|peer| peer.key_match(&envelope.message.sender().auth_public_key)),
+                disposition: ClusterTrustRolloutDisposition::RefusedVersionMismatch,
+            })
+        }
+        _ => None,
+    }
 }
 
 #[cfg(test)]
@@ -1637,6 +1854,7 @@ mod tests {
     fn signed_ping_envelope(
         namespace: &ClusterNamespace,
         admission_digest: &str,
+        trust_bundle_version: Option<u64>,
         sender: ClusterNodeIdentity,
         signing_key: &SigningKey,
         authenticated_counter: u64,
@@ -1645,6 +1863,7 @@ mod tests {
         let mut envelope = WireEnvelope {
             namespace: namespace.clone(),
             admission_digest: admission_digest.to_owned(),
+            trust_bundle_version,
             authenticated_counter: Some(authenticated_counter),
             signature_hex: None,
             message: WireMessage::Ping(PingMessage { sender, sequence }),
@@ -1666,6 +1885,7 @@ mod tests {
                 loopback_addr(31001),
                 "peer-key-a",
             )]);
+        let configured_other_version = configured.clone().with_trust_bundle_version(2);
         let configured_other_policy =
             configured
                 .clone()
@@ -1690,6 +1910,10 @@ mod tests {
         assert_ne!(
             configured.stable_digest(),
             configured_other_policy.stable_digest()
+        );
+        assert_ne!(
+            configured.stable_digest(),
+            configured_other_version.stable_digest()
         );
     }
 
@@ -1723,6 +1947,7 @@ mod tests {
         let mut envelope = signed_ping_envelope(
             &config.namespace,
             &config.admission_digest,
+            Some(config.trust_policy.trust_bundle_version),
             remote_identity,
             &remote_signing_key,
             1,

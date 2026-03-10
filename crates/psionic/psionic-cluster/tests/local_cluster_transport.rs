@@ -4,9 +4,11 @@ use std::{
     time::Duration,
 };
 
+use ed25519_dalek::SigningKey;
 use psionic_cluster::{
-    ClusterJoinRefusalReason, ClusterOperatorManifest, ClusterTrustPosture, ConfiguredClusterPeer,
-    ConfiguredPeerDialPolicy, ConfiguredPeerReachability, LocalClusterConfig, LocalClusterNode,
+    ClusterJoinRefusalReason, ClusterOperatorManifest, ClusterTrustPolicy, ClusterTrustPosture,
+    ClusterTrustRolloutDisposition, ConfiguredClusterPeer, ConfiguredPeerDialPolicy,
+    ConfiguredPeerKeyMatch, ConfiguredPeerReachability, LocalClusterConfig, LocalClusterNode,
     NodeRole,
 };
 use tempfile::tempdir;
@@ -156,6 +158,36 @@ where
     assert!(wait.is_ok(), "configured peer health timed out");
     wait.ok()
         .unwrap_or_else(|| unreachable!("assert above ensures success"))
+}
+
+async fn wait_for_rollout_diagnostic<F>(
+    node: &LocalClusterNode,
+    predicate: F,
+) -> psionic_cluster::ClusterTrustRolloutDiagnostic
+where
+    F: Fn(&psionic_cluster::ClusterTrustRolloutDiagnostic) -> bool,
+{
+    let wait = timeout(Duration::from_secs(3), async {
+        loop {
+            let diagnostics = node.trust_rollout_diagnostics().await;
+            if let Some(diagnostic) = diagnostics
+                .into_iter()
+                .find(|diagnostic| predicate(diagnostic))
+            {
+                return diagnostic;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    assert!(wait.is_ok(), "trust rollout diagnostic timed out");
+    wait.ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"))
+}
+
+fn auth_public_key_for_test(byte: u8) -> String {
+    let signing_key = SigningKey::from_bytes(&[byte; 32]);
+    hex::encode(signing_key.verifying_key().to_bytes())
 }
 
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
@@ -813,6 +845,186 @@ async fn late_joining_configured_peer_recovers_health_after_degraded_attempts() 
     })
     .await;
     assert_eq!(recovered.unanswered_hello_attempts, 0);
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn rotated_key_overlap_is_surfaceable_during_bundle_rollout() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-rotation-identity.json");
+    let sender_identity_path = temp.path().join("sender-rotation-identity.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+    let sender_future_key = auth_public_key_for_test(61);
+
+    let receiver = LocalClusterNode::spawn(
+        base_config(receiver_addr, NodeRole::CoordinatorOnly)
+            .with_file_backed_identity(receiver_identity_path)
+            .with_trust_policy(
+                ClusterTrustPolicy::authenticated_configured_peers(vec![
+                    ConfiguredClusterPeer::new(
+                        sender_bootstrap.node_id.clone(),
+                        sender_addr,
+                        sender_future_key,
+                    )
+                    .with_previous_auth_public_keys(vec![sender_bootstrap.auth_public_key.clone()]),
+                ])
+                .with_trust_bundle_version(2)
+                .with_accepted_trust_bundle_versions(vec![1]),
+            ),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender = LocalClusterNode::spawn(
+        base_config(sender_addr, NodeRole::ExecutorOnly)
+            .with_file_backed_identity(sender_identity_path)
+            .with_trust_policy(
+                ClusterTrustPolicy::authenticated_configured_peers(vec![
+                    ConfiguredClusterPeer::new(
+                        receiver_bootstrap.node_id.clone(),
+                        receiver_addr,
+                        receiver_bootstrap.auth_public_key.clone(),
+                    ),
+                ])
+                .with_trust_bundle_version(1)
+                .with_accepted_trust_bundle_versions(vec![2]),
+            ),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let receiver_peer = wait_for_single_peer(&receiver).await;
+    assert_eq!(
+        receiver_peer.identity.node_id,
+        sender.local_identity().node_id
+    );
+    let diagnostic = wait_for_rollout_diagnostic(&receiver, |diagnostic| {
+        diagnostic.remote_node_id == sender.local_identity().node_id
+            && diagnostic.disposition == ClusterTrustRolloutDisposition::AcceptedOverlap
+            && diagnostic.actual_trust_bundle_version == Some(1)
+            && diagnostic.key_match == Some(ConfiguredPeerKeyMatch::Previous)
+    })
+    .await;
+    assert_eq!(diagnostic.expected_trust_bundle_version, 2);
+
+    let sender_shutdown = sender.shutdown().await;
+    assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn stale_trust_bundle_version_is_refused_and_diagnostic_is_recorded() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let receiver_identity_path = temp.path().join("receiver-stale-bundle-identity.json");
+    let sender_identity_path = temp.path().join("sender-stale-bundle-identity.json");
+    let receiver_addr = reserve_loopback_addr();
+    let sender_addr = reserve_loopback_addr();
+
+    let receiver_bootstrap = bootstrap_file_backed_identity(
+        &receiver_identity_path,
+        receiver_addr,
+        NodeRole::CoordinatorOnly,
+    )
+    .await;
+    let sender_bootstrap =
+        bootstrap_file_backed_identity(&sender_identity_path, sender_addr, NodeRole::ExecutorOnly)
+            .await;
+
+    let receiver = LocalClusterNode::spawn(
+        base_config(receiver_addr, NodeRole::CoordinatorOnly)
+            .with_file_backed_identity(receiver_identity_path)
+            .with_trust_policy(
+                ClusterTrustPolicy::authenticated_configured_peers(vec![
+                    ConfiguredClusterPeer::new(
+                        sender_bootstrap.node_id.clone(),
+                        sender_addr,
+                        sender_bootstrap.auth_public_key.clone(),
+                    ),
+                ])
+                .with_trust_bundle_version(2),
+            ),
+    )
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender = LocalClusterNode::spawn(
+        base_config(sender_addr, NodeRole::ExecutorOnly)
+            .with_file_backed_identity(sender_identity_path)
+            .with_trust_policy(
+                ClusterTrustPolicy::authenticated_configured_peers(vec![
+                    ConfiguredClusterPeer::new(
+                        receiver_bootstrap.node_id.clone(),
+                        receiver_addr,
+                        receiver_bootstrap.auth_public_key.clone(),
+                    ),
+                ])
+                .with_trust_bundle_version(1),
+            ),
+    )
+    .await;
+    assert!(sender.is_ok(), "sender should start");
+    let sender = sender
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    wait_for_refusal(&receiver, |refusal| {
+        refusal.remote_node_id.as_ref() == Some(&sender.local_identity().node_id)
+            && matches!(
+                refusal.reason,
+                ClusterJoinRefusalReason::TrustBundleVersionMismatch {
+                    expected: 2,
+                    actual: Some(1),
+                    ..
+                }
+            )
+    })
+    .await;
+    let diagnostic = wait_for_rollout_diagnostic(&receiver, |diagnostic| {
+        diagnostic.remote_node_id == sender.local_identity().node_id
+            && diagnostic.disposition == ClusterTrustRolloutDisposition::RefusedVersionMismatch
+            && diagnostic.actual_trust_bundle_version == Some(1)
+    })
+    .await;
+    assert_eq!(diagnostic.expected_trust_bundle_version, 2);
 
     let sender_shutdown = sender.shutdown().await;
     assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");

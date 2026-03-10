@@ -13,6 +13,7 @@ This runbook validates two cluster trust postures:
   multi-subnet or otherwise non-LAN-assumed deployments
 - persisted operator manifests as the rollout artifact for authenticated
   configured-peer clusters
+- trust-bundle version overlap and stale-bundle refusal during key rotation
 
 This runbook still does not claim internet-wide adversarial safety. It validates
 the current truthful cluster claims and the current homogeneous CUDA planning
@@ -39,6 +40,7 @@ What these cover:
   - refusal of unknown peers under configured-peer posture
   - authenticated boot from persisted operator manifests
   - explicit configured-peer health, backoff, and late-join recovery
+  - key-rotation overlap acceptance and stale trust-bundle refusal diagnostics
 - `cluster_validation_matrix`
   - compacted catchup and snapshot-install recovery
   - degraded whole-request scheduling with explicit artifact staging truth
@@ -83,6 +85,22 @@ Interpretation:
   enough to support operator-managed rollout decisions
 - tamper or replay failure means widened cluster trust is not machine-checkable
   enough for multi-subnet posture claims
+
+## Rotation Drill
+
+Use this sequence before claiming explicit key-rotation overlap or stale-bundle
+rollout diagnostics for operator-managed clusters:
+
+1. Run `cargo test -p psionic-cluster --test local_cluster_transport rotated_key_overlap_is_surfaceable_during_bundle_rollout`.
+2. Run `cargo test -p psionic-cluster --test local_cluster_transport stale_trust_bundle_version_is_refused_and_diagnostic_is_recorded`.
+3. If either step fails, do not claim trust-bundle rollout or key-rotation truth for the current build.
+
+Interpretation:
+
+- overlap acceptance failure means previous-key rollout is no longer
+  machine-checkable during an explicit version window
+- stale-bundle refusal failure means drifted or split-brain trust bundles are
+  no longer being surfaced honestly
 
 ## Multi-subnet Dial Health Drill
 
