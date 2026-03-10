@@ -1002,10 +1002,13 @@ impl CodexLaneState {
                             entries: vec![CodexThreadListEntry {
                                 thread_id,
                                 thread_name: None,
+                                preview: String::new(),
                                 status: Some("idle".to_string()),
                                 loaded: true,
                                 cwd: config.cwd.as_ref().map(|value| value.display().to_string()),
                                 path: None,
+                                created_at: 0,
+                                updated_at: 0,
                             }],
                         },
                     ));
@@ -1063,10 +1066,13 @@ impl CodexLaneState {
                 .map(|thread| CodexThreadListEntry {
                     thread_id: thread.id,
                     thread_name: thread.name,
+                    preview: thread.preview,
                     status: thread.status.as_ref().and_then(thread_status_label),
                     loaded: false,
                     cwd: thread.cwd.map(|value| value.display().to_string()),
                     path: thread.path.map(|value| value.display().to_string()),
+                    created_at: thread.created_at,
+                    updated_at: thread.updated_at,
                 })
                 .collect::<Vec<_>>();
             thread_count = entries.len();
@@ -1287,10 +1293,13 @@ impl CodexLaneState {
                     .map(|thread| CodexThreadListEntry {
                         thread_id: thread.id,
                         thread_name: thread.name,
+                        preview: thread.preview,
                         status: thread.status.as_ref().and_then(thread_status_label),
                         loaded: false,
                         cwd: thread.cwd.map(|value| value.display().to_string()),
                         path: thread.path.map(|value| value.display().to_string()),
+                        created_at: thread.created_at,
+                        updated_at: thread.updated_at,
                     })
                     .collect();
                 Ok(CodexCommandEffect {

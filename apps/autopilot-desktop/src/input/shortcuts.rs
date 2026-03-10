@@ -55,6 +55,7 @@ pub(super) fn credentials_inputs_focused(state: &crate::app_state::RenderState) 
 
 pub(super) fn any_text_input_focused(state: &crate::app_state::RenderState) -> bool {
     state.chat_inputs.composer.is_focused()
+        || state.chat_inputs.thread_search.is_focused()
         || state.calculator_inputs.expression.is_focused()
         || spark_inputs_focused(state)
         || pay_invoice_inputs_focused(state)
@@ -97,10 +98,12 @@ pub(super) fn blur_non_chat_text_inputs(state: &mut crate::app_state::RenderStat
     state.credentials_inputs.variable_name.blur();
     state.credentials_inputs.variable_value.blur();
     state.job_history_inputs.search_job_id.blur();
+    state.chat_inputs.thread_search.blur();
 }
 
 pub(super) fn focus_chat_composer(state: &mut crate::app_state::RenderState) {
     blur_non_chat_text_inputs(state);
+    state.chat_inputs.thread_search.blur();
     state.chat_inputs.composer.focus();
 }
 

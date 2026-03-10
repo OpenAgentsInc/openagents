@@ -2585,10 +2585,22 @@ pub(super) fn assemble_chat_turn_input(
     (input, joined_errors)
 }
 
+fn sync_chat_thread_search_term(state: &mut crate::app_state::RenderState) {
+    state.autopilot_chat.thread_filter_search_term = state
+        .chat_inputs
+        .thread_search
+        .get_value()
+        .trim()
+        .to_string();
+}
+
 pub(super) fn run_chat_refresh_threads_action(state: &mut crate::app_state::RenderState) -> bool {
-    let cwd = std::env::current_dir()
-        .ok()
-        .and_then(|value| value.into_os_string().into_string().ok());
+    sync_chat_thread_search_term(state);
+    let cwd = current_chat_session_cwd(state).or_else(|| {
+        std::env::current_dir()
+            .ok()
+            .and_then(|value| value.into_os_string().into_string().ok())
+    });
     let params = state.autopilot_chat.build_thread_list_params(cwd);
     let command = crate::codex_lane::CodexLaneCommand::ThreadList(params);
     if let Err(error) = state.queue_codex_command(command) {
@@ -2801,7 +2813,10 @@ pub(super) fn run_chat_rename_thread_action(state: &mut crate::app_state::Render
         state.autopilot_chat.last_error = Some("No active thread to rename".to_string());
         return true;
     };
-    let name = state.autopilot_chat.next_thread_name();
+    let name = state
+        .autopilot_chat
+        .suggested_thread_name(&thread_id)
+        .unwrap_or_else(|| state.autopilot_chat.next_thread_name());
     let command = crate::codex_lane::CodexLaneCommand::ThreadNameSet(ThreadSetNameParams {
         thread_id: thread_id.clone(),
         name: name.clone(),
@@ -2811,6 +2826,49 @@ pub(super) fn run_chat_rename_thread_action(state: &mut crate::app_state::Render
     } else {
         state.autopilot_chat.set_thread_name(&thread_id, Some(name));
     }
+    true
+}
+
+pub(super) fn run_chat_reload_thread_action(state: &mut crate::app_state::RenderState) -> bool {
+    let Some(thread_id) = active_thread_id(state) else {
+        state.autopilot_chat.last_error = Some("No active thread to reload".to_string());
+        return true;
+    };
+    let command = crate::codex_lane::CodexLaneCommand::ThreadRead(codex_client::ThreadReadParams {
+        thread_id,
+        include_turns: true,
+    });
+    if let Err(error) = state.queue_codex_command(command) {
+        state.autopilot_chat.last_error = Some(error);
+    } else {
+        state.autopilot_chat.last_error = None;
+    }
+    true
+}
+
+pub(super) fn run_chat_copy_last_output_action(state: &mut crate::app_state::RenderState) -> bool {
+    let now = std::time::Instant::now();
+    let latest_message_id = state
+        .autopilot_chat
+        .messages
+        .iter()
+        .rev()
+        .find(|message| {
+            message.role == crate::app_state::AutopilotRole::Codex
+                && !message.content.trim().is_empty()
+        })
+        .map(|message| message.id);
+    let Some(output) = latest_message_id.and_then(|message_id| {
+        crate::panes::chat::transcript_message_copy_text_by_id(state, message_id)
+    }) else {
+        state.autopilot_chat.last_error = Some("No assistant output available to copy".to_string());
+        return true;
+    };
+    let notice = match copy_to_clipboard(&output) {
+        Ok(()) => "Copied latest assistant output".to_string(),
+        Err(error) => format!("Failed to copy latest assistant output: {error}"),
+    };
+    state.autopilot_chat.set_copy_notice(now, notice);
     true
 }
 

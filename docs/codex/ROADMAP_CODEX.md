@@ -155,6 +155,10 @@ than replace:
   desktop lane now preserves thread-start/resume session truth from Codex
   responses, and Autopilot shows a compact always-visible coding status summary
   with workspace/git/auth/token context
+- `CX-3` landed on `main`: the chat rail now exposes refresh/search/filter
+  controls plus explicit thread lifecycle actions, thread history rows now show
+  preview metadata instead of raw ids alone, and desktop caches/restores
+  per-thread transcripts so resume/read/copy flows stop feeling lossy
 
 Many of the required primitives already exist in protocol or lane form. The
 roadmap is therefore primarily about productizing those primitives into a
@@ -224,7 +228,7 @@ Status:
 
 Next:
 
-- `CX-3` is now the first open execution item for Codex replacement work
+- `CX-4` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -256,7 +260,19 @@ Acceptance:
 - session state changes are persistent, truthful, and reflected in subsequent
   turns
 
-### CX-3. Thread Lifecycle And History Parity
+### CX-3. Thread Lifecycle And History Parity ([#3359](https://github.com/OpenAgentsInc/openagents/issues/3359))
+
+Status:
+
+- shipped on `main`
+- desktop chat now exposes a real thread history strip with refresh/search,
+  archived/source/provider/sort filters, and explicit thread lifecycle actions
+  for fork/archive/unarchive/rename/read/copy/rollback/unload
+- thread rows now show preview text and thread metadata is visible in the main
+  header, including status, load state, and update timestamp
+- active thread transcripts are cached per thread so switching around history
+  and reloading from `thread/read` no longer blanks the conversation unless the
+  thread truly has no transcript yet
 
 Scope:
 

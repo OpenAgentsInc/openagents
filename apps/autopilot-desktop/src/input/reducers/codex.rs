@@ -635,6 +635,27 @@ fn queue_new_thread(state: &mut RenderState, error_prefix: &str) -> bool {
     true
 }
 
+fn queue_thread_history_refresh(state: &mut RenderState) {
+    let cwd = super::super::actions::current_chat_session_cwd(state).or_else(|| {
+        std::env::current_dir()
+            .ok()
+            .and_then(|value| value.into_os_string().into_string().ok())
+    });
+    let params = state.autopilot_chat.build_thread_list_params(cwd);
+    if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadList(params)) {
+        state.autopilot_chat.last_error = Some(error);
+        return;
+    }
+    if let Err(error) = state.queue_codex_command(CodexLaneCommand::ThreadLoadedList(
+        codex_client::ThreadLoadedListParams {
+            cursor: None,
+            limit: Some(200),
+        },
+    )) {
+        state.autopilot_chat.last_error = Some(error);
+    }
+}
+
 pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLaneNotification) {
     let stored = notification.clone();
     let provider_owned = super::apply_active_job_codex_notification(state, &notification);
@@ -1106,10 +1127,13 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                         .map(|entry| crate::app_state::AutopilotThreadListEntry {
                             thread_id: entry.thread_id,
                             thread_name: entry.thread_name,
+                            preview: entry.preview,
                             status: entry.status,
                             loaded: entry.loaded,
                             cwd: entry.cwd,
                             path: entry.path,
+                            created_at: entry.created_at,
+                            updated_at: entry.updated_at,
                         })
                         .collect(),
                 );
@@ -1137,6 +1161,9 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                             (role, message.content)
                         })
                         .collect::<Vec<_>>();
+                    state
+                        .autopilot_chat
+                        .cache_thread_transcript(&thread_id, transcript.clone());
                     if state.autopilot_chat.has_pending_messages() {
                         tracing::info!(
                             "codex thread/read skipped id={} messages={} reason=pending-turn",
@@ -1156,6 +1183,24 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state
                         .autopilot_chat
                         .set_active_thread_transcript(&thread_id, transcript);
+                } else {
+                    let transcript = messages
+                        .into_iter()
+                        .map(|message| {
+                            let role = match message.role {
+                                CodexThreadTranscriptRole::User => {
+                                    crate::app_state::AutopilotRole::User
+                                }
+                                CodexThreadTranscriptRole::Codex => {
+                                    crate::app_state::AutopilotRole::Codex
+                                }
+                            };
+                            (role, message.content)
+                        })
+                        .collect::<Vec<_>>();
+                    state
+                        .autopilot_chat
+                        .cache_thread_transcript(&thread_id, transcript);
                 }
             }
             CodexLaneNotification::ThreadSelected { thread_id } => {
@@ -1174,6 +1219,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                     state
                         .autopilot_chat
                         .restore_session_preferences_from_thread(&thread_id);
+                    queue_thread_history_refresh(state);
                     let metadata = state
                         .autopilot_chat
                         .thread_metadata
@@ -1242,6 +1288,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state.autopilot_chat.startup_new_thread_bootstrap_pending = false;
                 state.autopilot_chat.startup_new_thread_bootstrap_sent = false;
                 state.autopilot_chat.last_error = None;
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadSessionConfigured {
                 thread_id,
@@ -1318,15 +1365,18 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 if state.autopilot_chat.thread_filter_archived == Some(false) {
                     state.autopilot_chat.remove_thread(&thread_id);
                 }
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadUnarchived { thread_id } => {
                 state
                     .autopilot_chat
                     .set_thread_status(&thread_id, Some("idle".to_string()));
                 state.autopilot_chat.remember_thread(thread_id);
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadClosed { thread_id } => {
                 state.autopilot_chat.remove_thread(&thread_id);
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::ThreadNameUpdated {
                 thread_id,
@@ -1335,6 +1385,7 @@ pub(super) fn apply_notification(state: &mut RenderState, notification: CodexLan
                 state
                     .autopilot_chat
                     .set_thread_name(&thread_id, thread_name);
+                queue_thread_history_refresh(state);
             }
             CodexLaneNotification::TurnStarted { thread_id, turn_id } => {
                 let thread_id = resolve_thread_id(state, thread_id);
