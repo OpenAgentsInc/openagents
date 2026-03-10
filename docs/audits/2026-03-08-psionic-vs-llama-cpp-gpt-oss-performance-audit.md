@@ -1424,6 +1424,18 @@ What the newest kept checkpoint proved:
   at `5`
 - on the exact contract that nudged the latest kept checkpoint to
   `2.26 / 6.51 / 10.57 tok/s`
+- that `10.57 tok/s` hit did not hold up as the reproducible floor: after the
+  later dead-end branches were reverted, fresh reruns on the same pushed code
+  kept clustering in the `10.48-10.50 tok/s` class, so the truthful current
+  reproducible checkpoint should still be treated as about
+  `2.25 / 6.45-6.50 / 10.50 tok/s`
+- more 120B follow-ups are now ruled out too:
+  an exact-prompt hybrid selected4 template-restore branch came back at about
+  `2.25 / 6.40 / 10.48 tok/s`, several more memory-neutral prompt-hit-driven
+  slot redistributions stayed in the `10.31-10.50 tok/s` band, a
+  previous-request protected-expert eviction policy landed around
+  `2.26 / 6.40 / 10.42 tok/s`, and simply shrinking the benchmark context to
+  `512` was effectively flat at about `2.25 / 6.48 / 10.48 tok/s`
 
 What the remaining gap now points to:
 
@@ -1483,6 +1495,17 @@ What the remaining gap now points to:
   staging itself. The new evidence argues against retrying small cache-geometry
   tweaks or scratch-copy rewrites blindly; those are now ruled-out branches on
   this host.
+- updated concrete next step:
+  the next credible engineering move is no longer another slot-layout tweak.
+  Psionic is missing the same kind of CUDA host-registration / host-buffer
+  alias path that `llama.cpp` uses for mmap-backed weights. The first tractable
+  version is narrower than a full kernel port:
+  add a CUDA-visible alias for existing mmap-backed GGUF expert pages, use it
+  first for the full host-backed down-expert tensor on 120B, and switch the
+  hybrid down projection onto the existing ids-driven grouped expert kernel
+  with real expert ids so one large staging leg disappears before tackling the
+  larger gate/up packed-kernel gap. That follow-up is now tracked explicitly in
+  `#3360`.
 
 Relevant `llama.cpp` references for that next step:
 
