@@ -6422,6 +6422,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "psionic-cluster"
+version = "0.1.0"
+dependencies = [
+ "hex",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "sha2",
+ "thiserror 2.0.17",
+ "tokio",
+]
+
+[[package]]
 name = "psionic-compiler"
 version = "0.1.0"
 dependencies = [
