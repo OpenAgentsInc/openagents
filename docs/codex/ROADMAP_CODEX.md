@@ -1,0 +1,524 @@
+# Codex Roadmap
+
+> Status: updated 2026-03-10 after auditing `~/code/t3code` against the current
+> OpenAgents Codex wrapper, after re-reading `docs/MVP.md` and
+> `docs/OWNERSHIP.md`, and after re-checking the current desktop lane, pane, and
+> turn-input surfaces on `main`.
+>
+> This is the live roadmap for Codex product work in OpenAgents Desktop. The
+> goal is not to clone T3 Code's TypeScript server/web/Electron architecture.
+> The goal is to adapt the highest-leverage product ideas around Codex while
+> keeping OpenAgents desktop-first, Rust-first, replay-safe, and truthful about
+> wallet/provider state.
+
+Agent execution instruction: implement this roadmap one slice at a time in the
+recommended dependency order below. Keep protocol types and app-server
+compatibility in `crates/codex-client`. Keep Codex product workflows, remote
+access control, workspace state, plan artifacts, and diff artifacts in
+`apps/autopilot-desktop`. Do not move product-specific orchestration into
+`crates/wgpui`.
+
+Roadmap hygiene rule: after each shipped roadmap slice, update this document so
+it reflects the new truthful state on `main`. Do not leave the roadmap stale.
+
+Primary reference: the comparison basis for this roadmap is
+`docs/audits/2026-03-10-t3code-codex-wrapper-gap-audit.md`.
+
+## Objective
+
+Make Autopilot good enough to replace the user's day-to-day `codex` CLI/TUI
+workflow on the same machine, while also borrowing the strongest workbench ideas
+from T3 Code.
+
+That means the roadmap must cover three layers, not just one:
+
+- Codex engine truth: auth, readiness, protocol coverage, approvals, config,
+  models, skills, MCP, apps
+- Codex interactive workflow parity: session lifecycle, composer behavior,
+  queued follow-up turns, review/diff/compact/plan flows, status/config
+  visibility, and non-interactive `exec`-style automation
+- coding-shell product parity: workspace identity, git/worktree/PR workflow,
+  terminal workflow, durable artifacts, and remote access into the same desktop
+  runtime
+
+This is not a plan to weaken the MVP promise in `docs/MVP.md`. The Codex
+surface should make Autopilot more useful and more operable on the same machine;
+it must not displace wallet truth, provider truth, or the earn loop.
+
+## Ownership Rules
+
+This roadmap must keep `docs/OWNERSHIP.md` intact:
+
+- `crates/codex-client` owns reusable Codex protocol types, method coverage,
+  normalization, and conformance truth.
+- `apps/autopilot-desktop` owns Codex product behavior, workspace identity,
+  plan/diff persistence, remote access, terminal/git orchestration if added,
+  and final UX wiring.
+- `crates/wgpui` owns product-agnostic UI primitives only.
+- Remote surfaces must consume app-owned state derived from desktop truth; they
+  must not become a second source of truth for threads, plans, workspace state,
+  provider state, or wallet state.
+
+## Product Rules
+
+- Desktop remains the canonical runtime.
+- Remote means "access the same local machine from another device", not "hosted
+  OpenAgents in the cloud".
+- Remote must be opt-in, disabled by default, authenticated, and safe on LAN or
+  Tailnet-style networks.
+- Provider and wallet state must remain explicit and authoritative.
+- Every new Codex feature must degrade honestly when prerequisites are missing.
+- Prefer narrow, verifiable slices over broad architecture expansion.
+
+## Replacement Standard
+
+Autopilot does not replace daily `codex` use until a user can stay inside
+OpenAgents for the full normal loop on the same machine:
+
+- start, resume, fork, rename, archive, unarchive, list, and inspect threads
+- submit a turn, interrupt it, and queue or steer a follow-up while a turn is
+  already running
+- choose model, reasoning effort, fast/service tier, personality, collaboration
+  mode, approval mode, and sandbox mode
+- see current session truth: cwd/workspace, branch, dirty state, model,
+  permissions, auth status, and token usage
+- mention files, attach images, reuse skills, and recover drafts/history
+- run review, diff, compact, and plan flows without dropping to the Codex TUI
+- use git/worktree/terminal flows needed for real coding work
+- use MCP tools, apps/connectors, approval prompts, tool user-input prompts,
+  and auth refresh flows
+- run one-shot automated tasks comparable to `codex exec`
+- optionally supervise and continue that same local session from another device
+
+If a user still needs to keep the Codex TUI open for core session control,
+coding-shell operations, or scripted one-shot tasks, the replacement bar has not
+been met.
+
+## Why Remote Belongs
+
+Remote access fits the desktop-first MVP when framed correctly:
+
+- the repo, toolchains, local files, Codex auth, wallet, and provider runtime
+  stay on the user's machine
+- the remote surface is only a control and observation layer into that machine
+- the user can continue a thread, answer approvals, or monitor earning state
+  from a phone, tablet, or second laptop without moving execution or custody to
+  a hosted service
+
+This is the part of T3 Code's remote story worth adapting. The correct model
+for OpenAgents is a personal remote companion, not a public multi-user web app.
+
+## What To Adapt From T3 Code
+
+The strongest ideas to borrow are product ideas, not architecture:
+
+- startup readiness checks for Codex install/auth/version truth
+- durable proposed-plan artifacts with an explicit "implement this plan" action
+- better diff visibility than a raw transient patch blob
+- richer turn input: image attachments and workspace/file mentions
+- minimal workspace identity around each Codex thread
+- remote access to the same local runtime over an authenticated web surface
+
+## What Not To Copy Blindly
+
+- Do not recreate T3 Code's server + web + Electron split as our default
+  architecture.
+- Do not add a broad web-first product branch with parity requirements across
+  desktop and browser.
+- Do not pull project/workspace orchestration into `crates/wgpui`.
+- Do not expose wallet send/withdraw or other high-risk actions on remote-v1.
+- Do not treat public-internet exposure as an MVP requirement.
+- Do not build multi-provider placeholder UX before we have a real second
+  provider.
+
+## Shipped On Main
+
+OpenAgents already has real strengths that this roadmap should build on rather
+than replace:
+
+- broad Codex app-server method coverage in `crates/codex-client`
+- protocol-conformance coverage in `crates/codex-client/tests`
+- a wide desktop lane in `apps/autopilot-desktop/src/codex_lane.rs`
+- dedicated Codex panes for account, models, config, MCP, apps, labs, and
+  diagnostics
+- explicit handling for approvals, tool calls, tool user input, and auth
+  refresh
+- richer OpenAgents-native dynamic tool bridging than T3 Code
+- live `turn/plan/updated` and `turn/diff/updated` handling in desktop state
+
+Many of the required primitives already exist in protocol or lane form. The
+roadmap is therefore primarily about productizing those primitives into a
+coherent desktop coding workflow instead of treating them as hidden capability.
+
+The roadmap below is about product-layer gaps around that existing strength.
+
+## Current Honest Gaps
+
+These are the current gaps that matter most:
+
+- we do not have a compact readiness/preflight surface that answers "is Codex
+  installed, authenticated, and usable right now?"
+- we do not expose many already-supported lane capabilities as a coherent
+  operator workflow in desktop chat; this is especially true for session
+  controls, status, and coding-shell actions
+- `crates/codex-client` supports `Image`, `LocalImage`, and `Mention`, but
+  `assemble_chat_turn_input` in
+  `apps/autopilot-desktop/src/input/actions.rs` currently emits text plus skill
+  attachments only
+- `crates/codex-client` supports `turn/steer`, but the desktop lane does not yet
+  expose a queued follow-up / steer workflow comparable to Codex TUI behavior
+- plans and diffs are live state, not durable first-class Codex artifacts, and
+  we do not have manual compact or review-centered artifact UX
+- we do not yet have an explicit local replacement for the main Codex TUI
+  session controls such as model/effort/personality/permission selection and
+  session-status visibility inside the main coding flow
+- we do not yet have minimal workspace identity, project identity, or git
+  context attached to Codex threads
+- we do not yet have the T3 Code-class coding shell: branch/worktree/PR
+  controls, thread-scoped PTY terminals, or checkpointed coding artifacts
+- we do not yet have an app-owned non-interactive `exec`-style surface for
+  one-shot automated tasks
+- we do not have personal remote access into the desktop runtime
+
+## Not Gating Initial Replacement
+
+The following Codex/TUI features are useful but should not block the first
+"Autopilot replaces Codex CLI for daily coding" milestone:
+
+- realtime voice mode and microphone/speaker settings
+- theme picker and status-line customization UI
+- feedback/log upload UI
+- debug-only commands such as rollout-path printing or test-approval
+- Windows-only sandbox elevation setup flows on non-Windows hosts
+- memory-debug commands
+
+We still need honest equivalents or explicit omissions for those later, but they
+are not the critical path for replacing normal coding sessions.
+
+## Current Execution Queue
+
+The queue below is ordered by dependency and by what is required to replace the
+Codex CLI/TUI in practice, not just by protocol completeness.
+
+### Phase A. Codex Session Parity
+
+### CX-1. Codex Readiness, Auth, And Config Truth
+
+Scope:
+
+- detect Codex binary presence, version shape, auth state, and local readiness
+- surface account, login/logout, pending login, and rate-limit truth in one
+  compact operator surface
+- surface config and config-requirement truth with clear explanations when a
+  chosen approval or sandbox mode is not allowed
+- make this readiness/config truth available to local desktop and future remote
+  surfaces
+
+Acceptance:
+
+- the user can tell whether Codex is usable before starting work
+- login, logout, rate-limit, and config-truth flows are visible without dropping
+  to external tooling
+- this closes the local equivalent of Codex `/status` plus `/debug-config`
+  ambiguity for basic operator questions
+
+### CX-2. Session Controls And Status Parity
+
+Scope:
+
+- expose model selection, reasoning effort, fast/service tier, personality, and
+  collaboration mode controls in the main coding flow
+- expose approval mode and sandbox mode controls in the same session-control
+  layer
+- show a compact always-visible status summary with model, effort, cwd/workspace,
+  branch, auth, permissions, and recent token usage
+- provide a clear desktop equivalent for the core Codex TUI controls behind
+  `/model`, `/fast`, `/personality`, `/plan`, `/approvals`, and `/status`
+
+Acceptance:
+
+- a user can change session behavior from desktop without falling back to the
+  Codex TUI
+- session state changes are persistent, truthful, and reflected in subsequent
+  turns
+
+### CX-3. Thread Lifecycle And History Parity
+
+Scope:
+
+- productize thread start, resume, fork, rename, archive, unarchive, read, and
+  list into a coherent desktop workflow
+- provide a resume/history picker that is good enough to replace Codex `/resume`
+- support output copy, thread metadata inspection, and clean transcript recovery
+- keep thread list behavior fast and legible enough for daily use
+
+Acceptance:
+
+- a user can manage Codex threads in Autopilot instead of the Codex TUI
+- resume/fork/rename flows no longer feel like hidden protocol features
+
+### CX-4. Composer Parity And Queued Follow-Up Turns
+
+Scope:
+
+- extend turn assembly to support local image attachment and mention attachment
+- add deterministic ordering and validation for image, mention, and skill inputs
+- add draft/history recovery comparable to normal interactive use
+- expose queued follow-up turns or steer behavior using `turn/steer` while a
+  turn is already in progress
+- preserve multiline paste and attachment behavior correctly
+
+Acceptance:
+
+- `TurnStartParams.input` can include text, skills, images, and mentions from
+  desktop chat
+- a user can continue steering a live task instead of waiting for completion
+- this closes the functional gap behind `/mention` and the Codex queued-message
+  workflow
+
+### Phase B. Coding Artifact Parity
+
+### CX-5. Durable Proposed-Plan Artifacts And Implement Handoff
+
+Scope:
+
+- persist the latest proposed plan for a thread as a first-class app object
+- store explanation, steps, source turn id, timestamp, and workspace context
+- show a compact plan card or pane entry in desktop
+- add an explicit "implement this plan" action that converts the artifact into a
+  follow-up turn on the same thread
+- add plan-mode-specific follow-up UX rather than treating plans as transient
+  stream text
+
+Acceptance:
+
+- the latest plan survives restart and reconnect
+- the user can reopen and act on the plan after the original turn scrolls away
+
+### CX-6. Review, Compact, And Structured Diff Parity
+
+Scope:
+
+- add a first-class review workflow equivalent to Codex `/review`
+- add manual compact flow equivalent to Codex `/compact`
+- persist per-turn diff artifacts instead of only transient text
+- derive at least: file list, added/removed line counts, raw diff body, and
+  source turn id
+- show compact review/diff summaries in desktop
+
+Acceptance:
+
+- the user can run review, compact, and diff workflows without dropping to the
+  Codex TUI
+- the latest diff and review context survive restart
+
+Later extension within this lane:
+
+- thread-scoped checkpoint capture
+- git hidden-ref capture and revert
+- full-thread diff rollups
+
+### Phase C. Coding Shell Parity
+
+### CX-7. Workspace And Project Identity
+
+Scope:
+
+- attach an explicit workspace root to each Codex thread
+- introduce a minimal project registry above raw threads
+- expose current branch and dirty/clean status when the workspace is a git repo
+- support open-in-editor and project-level defaults where appropriate
+- show workspace identity in desktop chat context, diff artifacts, and plan
+  artifacts
+
+Acceptance:
+
+- a thread truthfully reports which workspace and project it operates on
+- non-git workspaces degrade honestly
+
+### CX-8. Git, Branch, Worktree, And PR Workflow Parity
+
+Scope:
+
+- add git status, pull, branch list/create/checkout, and repo-init workflows
+- add worktree create/remove and worktree-aware thread context
+- add PR-prep actions comparable to T3 Code's coding shell
+- support branch/worktree context preservation when opening new threads in the
+  same project
+
+Acceptance:
+
+- the user can do the normal branch/worktree loop in Autopilot instead of
+  dropping to external tools for every state transition
+- this closes the most important T3 Code workbench gap
+
+### CX-9. Thread-Scoped Terminal And Background Command Lane
+
+Scope:
+
+- app-owned PTY session tied to a workspace or thread
+- open, write, resize, clear, restart, close
+- background terminal list/cleanup equivalents for the Codex `/ps` and `/clean`
+  workflow
+- desktop-first keybindings and focus rules
+
+Acceptance:
+
+- a thread can own a terminal session without confusing it with Codex protocol
+  state
+- a user can keep terminal-oriented coding work inside Autopilot
+
+### Phase D. Integrations And Automation Parity
+
+### CX-10. Skills, MCP, Apps, And Request-Flow Parity
+
+Scope:
+
+- make skills attach/list/config workflows easy in the main coding flow
+- keep existing remote-skill support and surface it cleanly
+- expose MCP status, OAuth login, reload, and tool visibility clearly
+- expose apps/connectors in a way that matches the useful part of Codex `/apps`
+- keep approvals, tool user input, auth refresh, and request-permissions-style
+  prompts coherent in desktop state
+
+Acceptance:
+
+- a user can rely on skills, MCP, apps, and approval flows from Autopilot
+  without needing the Codex TUI as a fallback control panel
+
+### CX-11. Non-Interactive `exec` Replacement
+
+Scope:
+
+- provide an app-owned one-shot Codex execution surface comparable to
+  `codex exec`
+- support prompt input, optional ephemeral mode, and structured event output
+- emit machine-readable event streams for automation, comparable to Codex JSONL
+  events such as `thread.started`, `turn.completed`, and item lifecycle events
+- document how this surface should be used from local scripts or automation
+
+Acceptance:
+
+- a user can replace normal `codex exec ...` habits with an OpenAgents-owned
+  equivalent
+- structured outputs are stable enough for local automation and regression tests
+
+### Phase E. Personal Remote Companion
+
+### CX-12. Personal Remote Companion V1
+
+Scope:
+
+- remote access is disabled by default
+- when enabled, the desktop app can bind to loopback, a LAN IP, or a
+  Tailnet-style IP
+- the desktop generates and rotates an auth token
+- the desktop shows a copyable URL and QR-friendly pairing string
+- the remote UI can show:
+  - thread list and current thread
+  - message history for the active thread
+  - pending approvals and tool user-input requests
+  - Codex readiness and session-status state
+  - current plan artifact and latest diff artifact
+  - wallet balance and provider online/offline truth
+  - a narrow follow-up composer and basic session controls
+
+Remote-v1 safety rules:
+
+- no wallet send/withdraw
+- no destructive config writes
+- no public unauthenticated exposure
+- no second independent state store in the browser
+
+Acceptance:
+
+- a second device on the same trusted network can open the remote UI and resume
+  or continue a Codex thread
+- approvals, tool user input, and basic session steering can be completed
+  remotely
+- disabling remote access tears down the listener and invalidates the prior
+  token
+
+Implementation note:
+
+- do not block remote-v1 on a large new web-stack commitment
+- the first version can be a narrow served web bundle owned by
+  `apps/autopilot-desktop`
+- if a separate companion web app later becomes justified, it must remain a thin
+  client over desktop-owned truth
+
+### CX-13. Personal Remote Companion V2
+
+Scope:
+
+- extend remote to expose workspace and git context
+- optionally add remote terminal visibility, then interactive terminal only if
+  the safety model is strong enough
+- expose branch/worktree context and more of the coding shell once local parity
+  exists
+
+Acceptance:
+
+- remote becomes good enough for real supervision and light coding continuation
+  away from the desk without pretending to be a hosted IDE
+
+## Remote Setup Direction
+
+The remote setup we should adapt is the local-first version:
+
+- run the desktop app on the main machine
+- optionally enable a remote listener from inside the desktop app
+- connect from a phone, tablet, or second laptop over LAN or Tailscale-style
+  networking
+- authenticate with a generated token
+
+This is valuable because it preserves the strongest part of the OpenAgents
+thesis:
+
+- the machine with the repo, local tools, wallet, and provider runtime remains
+  the machine doing the work
+- the remote device is only a window into that machine
+
+This is the opposite of pushing OpenAgents toward a hosted browser product.
+
+## Validation
+
+When implementing roadmap slices, keep the existing repo gates in the loop:
+
+- `scripts/lint/workspace-dependency-drift-check.sh`
+- `scripts/lint/ownership-boundary-check.sh`
+- `scripts/lint/touched-clippy-gate.sh`
+- `cargo test -p autopilot-desktop codex_lane`
+- `cargo test -p autopilot-desktop assemble_chat_turn_input`
+- `cargo test -p codex-client --test skills_and_user_input`
+
+Add slice-specific tests as the roadmap grows, especially for:
+
+- readiness state transitions
+- session-control state transitions
+- thread lifecycle and steer flows
+- turn-input assembly
+- durable plan/review/diff persistence
+- non-interactive exec event output
+- git/worktree/PTY orchestration
+- remote auth and listener lifecycle
+
+## Recommendation
+
+For the current product direction, the best sequence is:
+
+1. `CX-1` readiness/auth/config truth
+2. `CX-2` session controls and status parity
+3. `CX-3` thread lifecycle and history parity
+4. `CX-4` composer parity and queued follow-up turns
+5. `CX-5` durable plans
+6. `CX-6` review, compact, and structured diffs
+7. `CX-7` workspace/project identity
+8. `CX-8` git/branch/worktree/PR workflow
+9. `CX-9` thread-scoped terminal
+10. `CX-10` skills/MCP/apps/request-flow parity
+11. `CX-11` non-interactive exec replacement
+12. `CX-12` personal remote companion v1
+
+That path turns the roadmap into an actual Codex CLI replacement plan first,
+then a T3 Code-class local coding shell, then a safe personal remote surface.
