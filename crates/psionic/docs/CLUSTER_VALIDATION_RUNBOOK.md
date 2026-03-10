@@ -261,11 +261,19 @@ still within the expected envelope:
 crates/psionic/scripts/benchmark-cluster-gates.sh
 ```
 
-To persist summaries:
+To persist benchmark receipts:
 
 ```bash
 crates/psionic/scripts/benchmark-cluster-gates.sh --json-out /tmp/psionic-cluster-bench
 ```
+
+Stable receipt artifacts written into that directory:
+
+- `whole_request_scheduler.json`
+- `recovery_catchup.json`
+- `replicated_serving.json`
+- `layer_sharded_planner.json`
+- `tensor_sharded_planner.json`
 
 The benchmark gate covers:
 
