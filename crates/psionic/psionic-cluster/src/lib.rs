@@ -35,6 +35,10 @@ pub use benchmark_receipts::*;
 pub use layer_sharded::*;
 pub use operator_manifest::*;
 pub use ordered_state::*;
+pub use psionic_runtime::{
+    ClusterComputeMarketTrustAssessment, ClusterComputeMarketTrustDisposition,
+    ClusterComputeMarketTrustRefusalReason, ClusterDiscoveryPosture, ClusterTrustPosture,
+};
 pub use replicated_serving::*;
 pub use scheduler::*;
 pub use serving_policy::*;
@@ -148,30 +152,6 @@ impl ClusterAdmissionConfig {
             admission_token: AdmissionToken::new(admission_token),
         }
     }
-}
-
-/// Trust posture for one cluster transport configuration.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ClusterTrustPosture {
-    /// Shared-admission trusted-LAN posture used for the first shipped scope.
-    TrustedLanSharedAdmission,
-    /// Authenticated configured-peer posture suitable for operator-managed wider networks.
-    AuthenticatedConfiguredPeers,
-    /// Attestation-aware configured-peer posture for stronger market-facing admission seams.
-    AttestedConfiguredPeers,
-}
-
-/// Discovery posture for one cluster transport configuration.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ClusterDiscoveryPosture {
-    /// Discovery is limited to local seed peers on the first trusted-LAN seam.
-    TrustedLanSeedPeers,
-    /// Discovery is limited to explicitly configured operator-managed peers.
-    OperatorManagedConfiguredPeers,
-    /// A future wider-network discovery posture was requested explicitly.
-    ExplicitWiderNetworkRequested,
 }
 
 /// Expected attestation facts for one configured market-facing peer.
@@ -1157,104 +1137,6 @@ impl ClusterTrustPolicy {
 impl Default for ClusterTrustPolicy {
     fn default() -> Self {
         Self::trusted_lan()
-    }
-}
-
-/// Current compute-market trust disposition derived from cluster policy truth.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ClusterComputeMarketTrustDisposition {
-    /// The current cluster trust policy is not sufficient for compute-market claims.
-    Refused,
-    /// The current cluster trust policy is sufficient for compute-market claims.
-    Eligible,
-}
-
-/// Explicit refusal reasons for compute-market trust claims.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum ClusterComputeMarketTrustRefusalReason {
-    /// Shared admission on a trusted LAN is not a market-safe posture.
-    TrustedLanSharedAdmissionOnly,
-    /// Wider-network transport still lacks mandatory authenticated messaging.
-    MissingAuthenticatedTransport,
-    /// Configured peers remain operator-managed allowlist entries instead of market admission.
-    OperatorManagedConfiguredPeersOnly,
-    /// Node admission is not yet backed by attested node identity.
-    MissingAttestedNodeIdentityAdmission,
-    /// Discovery posture is not yet explicit for wider non-LAN environments.
-    MissingNonLanDiscoveryPosture,
-}
-
-/// Machine-checkable assessment for whether a cluster trust policy supports compute-market claims.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ClusterComputeMarketTrustAssessment {
-    /// Trust posture active for the underlying cluster policy.
-    pub posture: ClusterTrustPosture,
-    /// Discovery posture active for the underlying cluster policy.
-    pub discovery_posture: ClusterDiscoveryPosture,
-    /// Stable digest of the underlying trust policy.
-    pub trust_policy_digest: String,
-    /// Effective compute-market disposition for the current policy.
-    pub disposition: ClusterComputeMarketTrustDisposition,
-    /// Explicit reasons why wider compute-market claims remain refused.
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub refusal_reasons: Vec<ClusterComputeMarketTrustRefusalReason>,
-}
-
-impl ClusterComputeMarketTrustAssessment {
-    /// Returns a stable digest for the current compute-market trust assessment.
-    #[must_use]
-    pub fn stable_digest(&self) -> String {
-        let mut hasher = Sha256::new();
-        hasher.update(b"cluster_compute_market_trust_assessment|");
-        hasher.update(match self.posture {
-            ClusterTrustPosture::TrustedLanSharedAdmission => {
-                b"trusted_lan_shared_admission".as_slice()
-            }
-            ClusterTrustPosture::AuthenticatedConfiguredPeers => {
-                b"authenticated_configured_peers".as_slice()
-            }
-            ClusterTrustPosture::AttestedConfiguredPeers => b"attested_configured_peers".as_slice(),
-        });
-        hasher.update(b"|");
-        hasher.update(match self.discovery_posture {
-            ClusterDiscoveryPosture::TrustedLanSeedPeers => b"trusted_lan_seed_peers".as_slice(),
-            ClusterDiscoveryPosture::OperatorManagedConfiguredPeers => {
-                b"operator_managed_configured_peers".as_slice()
-            }
-            ClusterDiscoveryPosture::ExplicitWiderNetworkRequested => {
-                b"explicit_wider_network_requested".as_slice()
-            }
-        });
-        hasher.update(b"|");
-        hasher.update(self.trust_policy_digest.as_bytes());
-        hasher.update(b"|");
-        hasher.update(match self.disposition {
-            ClusterComputeMarketTrustDisposition::Refused => b"refused".as_slice(),
-            ClusterComputeMarketTrustDisposition::Eligible => b"eligible".as_slice(),
-        });
-        for refusal_reason in &self.refusal_reasons {
-            hasher.update(b"|refusal|");
-            hasher.update(match refusal_reason {
-                ClusterComputeMarketTrustRefusalReason::TrustedLanSharedAdmissionOnly => {
-                    b"trusted_lan_shared_admission_only".as_slice()
-                }
-                ClusterComputeMarketTrustRefusalReason::MissingAuthenticatedTransport => {
-                    b"missing_authenticated_transport".as_slice()
-                }
-                ClusterComputeMarketTrustRefusalReason::OperatorManagedConfiguredPeersOnly => {
-                    b"operator_managed_configured_peers_only".as_slice()
-                }
-                ClusterComputeMarketTrustRefusalReason::MissingAttestedNodeIdentityAdmission => {
-                    b"missing_attested_node_identity_admission".as_slice()
-                }
-                ClusterComputeMarketTrustRefusalReason::MissingNonLanDiscoveryPosture => {
-                    b"missing_non_lan_discovery_posture".as_slice()
-                }
-            });
-        }
-        hex::encode(hasher.finalize())
     }
 }
 
