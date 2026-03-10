@@ -36,6 +36,42 @@ impl ClusterTerm {
     }
 }
 
+/// Monotonic logical tick used for leadership lease freshness.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub struct ClusterLeaseTick(u64);
+
+impl ClusterLeaseTick {
+    /// Initial logical tick for a never-before-observed coordinator.
+    #[must_use]
+    pub const fn initial() -> Self {
+        Self(0)
+    }
+
+    /// Creates an explicit logical tick.
+    #[must_use]
+    pub const fn new(raw: u64) -> Self {
+        Self(raw)
+    }
+
+    /// Next logical tick after one already-observed heartbeat.
+    #[must_use]
+    pub const fn next(self) -> Self {
+        Self(self.0.saturating_add(1))
+    }
+
+    /// Returns the tick plus one explicit timeout window.
+    #[must_use]
+    pub const fn saturating_add(self, delta: u64) -> Self {
+        Self(self.0.saturating_add(delta))
+    }
+
+    /// Returns the raw logical tick value.
+    #[must_use]
+    pub const fn as_u64(self) -> u64 {
+        self.0
+    }
+}
+
 /// Monotonic ordered-event index for authoritative cluster facts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct ClusterEventIndex(u64);
@@ -531,6 +567,126 @@ impl ClusterArtifactResidencyRecord {
     }
 }
 
+/// Lease/timeout policy for coordinator authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterLeadershipLeasePolicy {
+    /// Number of logical ticks a coordinator stays fresh after one heartbeat.
+    pub heartbeat_timeout_ticks: u64,
+}
+
+impl Default for ClusterLeadershipLeasePolicy {
+    fn default() -> Self {
+        Self {
+            heartbeat_timeout_ticks: 3,
+        }
+    }
+}
+
+impl ClusterLeadershipLeasePolicy {
+    /// Creates an explicit coordinator lease policy.
+    #[must_use]
+    pub fn new(heartbeat_timeout_ticks: u64) -> Self {
+        Self {
+            heartbeat_timeout_ticks: heartbeat_timeout_ticks.max(1),
+        }
+    }
+
+    /// Returns the tick at which the current coordinator lease expires.
+    #[must_use]
+    pub const fn expires_at_tick(
+        self,
+        heartbeat_observed_tick: ClusterLeaseTick,
+    ) -> ClusterLeaseTick {
+        heartbeat_observed_tick.saturating_add(self.heartbeat_timeout_ticks)
+    }
+}
+
+/// Explicit freshness window for one coordinator heartbeat.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterLeadershipLease {
+    /// Logical tick of the latest accepted coordinator heartbeat.
+    pub heartbeat_observed_tick: ClusterLeaseTick,
+    /// Logical tick after which this coordinator is stale.
+    pub expires_at_tick: ClusterLeaseTick,
+}
+
+impl Default for ClusterLeadershipLease {
+    fn default() -> Self {
+        Self::from_policy(
+            ClusterLeaseTick::initial(),
+            ClusterLeadershipLeasePolicy::default(),
+        )
+    }
+}
+
+impl ClusterLeadershipLease {
+    /// Creates one lease from an observed heartbeat and explicit policy.
+    #[must_use]
+    pub const fn from_policy(
+        heartbeat_observed_tick: ClusterLeaseTick,
+        lease_policy: ClusterLeadershipLeasePolicy,
+    ) -> Self {
+        Self {
+            heartbeat_observed_tick,
+            expires_at_tick: lease_policy.expires_at_tick(heartbeat_observed_tick),
+        }
+    }
+
+    /// Returns whether the coordinator is still fresh at one observed tick.
+    #[must_use]
+    pub const fn status_at(self, observed_tick: ClusterLeaseTick) -> ClusterLeadershipLeaseStatus {
+        if observed_tick.as_u64() <= self.expires_at_tick.as_u64() {
+            ClusterLeadershipLeaseStatus::Active {
+                expires_at_tick: self.expires_at_tick,
+                remaining_ticks: self
+                    .expires_at_tick
+                    .as_u64()
+                    .saturating_sub(observed_tick.as_u64()),
+            }
+        } else {
+            ClusterLeadershipLeaseStatus::Stale {
+                expired_at_tick: self.expires_at_tick,
+                overdue_ticks: observed_tick
+                    .as_u64()
+                    .saturating_sub(self.expires_at_tick.as_u64()),
+            }
+        }
+    }
+}
+
+/// Machine-checkable freshness state for the current coordinator record.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ClusterLeadershipLeaseStatus {
+    /// Coordinator lease is still active.
+    Active {
+        expires_at_tick: ClusterLeaseTick,
+        remaining_ticks: u64,
+    },
+    /// Coordinator lease has gone stale.
+    Stale {
+        expired_at_tick: ClusterLeaseTick,
+        overdue_ticks: u64,
+    },
+}
+
+/// Diagnostic emitted when coordinator truth has gone stale.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterStaleLeadershipDiagnostic {
+    /// Node currently recorded as coordinator.
+    pub leader_id: NodeId,
+    /// Election term associated with the stale coordinator.
+    pub term: ClusterTerm,
+    /// Highest committed authoritative event visible to the stale coordinator.
+    pub committed_event_index: ClusterEventIndex,
+    /// Latest heartbeat tick recorded for the coordinator.
+    pub heartbeat_observed_tick: ClusterLeaseTick,
+    /// Tick at which the coordinator lease expired.
+    pub expired_at_tick: ClusterLeaseTick,
+    /// Tick that observed the staleness condition.
+    pub observed_tick: ClusterLeaseTick,
+}
+
 /// Leader/coordinator fact recorded in authoritative cluster state.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterLeadershipRecord {
@@ -540,6 +696,9 @@ pub struct ClusterLeadershipRecord {
     pub leader_id: NodeId,
     /// Highest committed global event index visible to the leader.
     pub committed_event_index: ClusterEventIndex,
+    /// Explicit freshness window for the current coordinator record.
+    #[serde(default)]
+    pub lease: ClusterLeadershipLease,
 }
 
 impl ClusterLeadershipRecord {
@@ -554,6 +713,59 @@ impl ClusterLeadershipRecord {
             term,
             leader_id,
             committed_event_index,
+            lease: ClusterLeadershipLease::default(),
+        }
+    }
+
+    /// Applies an explicit lease policy at one observed heartbeat tick.
+    #[must_use]
+    pub fn with_lease_policy(
+        mut self,
+        heartbeat_observed_tick: ClusterLeaseTick,
+        lease_policy: ClusterLeadershipLeasePolicy,
+    ) -> Self {
+        self.lease = ClusterLeadershipLease::from_policy(heartbeat_observed_tick, lease_policy);
+        self
+    }
+
+    /// Renews coordinator freshness at one later observed heartbeat tick.
+    #[must_use]
+    pub fn renewed_at(
+        mut self,
+        heartbeat_observed_tick: ClusterLeaseTick,
+        lease_policy: ClusterLeadershipLeasePolicy,
+    ) -> Self {
+        self.lease = ClusterLeadershipLease::from_policy(heartbeat_observed_tick, lease_policy);
+        self
+    }
+
+    /// Returns whether the coordinator is still effective at one observed tick.
+    #[must_use]
+    pub const fn lease_status_at(
+        &self,
+        observed_tick: ClusterLeaseTick,
+    ) -> ClusterLeadershipLeaseStatus {
+        self.lease.status_at(observed_tick)
+    }
+
+    /// Returns a stale-leadership diagnostic when the coordinator lease expired.
+    #[must_use]
+    pub fn stale_diagnostic_at(
+        &self,
+        observed_tick: ClusterLeaseTick,
+    ) -> Option<ClusterStaleLeadershipDiagnostic> {
+        match self.lease_status_at(observed_tick) {
+            ClusterLeadershipLeaseStatus::Active { .. } => None,
+            ClusterLeadershipLeaseStatus::Stale {
+                expired_at_tick, ..
+            } => Some(ClusterStaleLeadershipDiagnostic {
+                leader_id: self.leader_id.clone(),
+                term: self.term,
+                committed_event_index: self.committed_event_index,
+                heartbeat_observed_tick: self.lease.heartbeat_observed_tick,
+                expired_at_tick,
+                observed_tick,
+            }),
         }
     }
 }
@@ -1287,6 +1499,24 @@ impl ClusterSnapshot {
                     .to_string()
                     .as_bytes(),
             );
+            hasher.update(b"|");
+            hasher.update(
+                leadership
+                    .lease
+                    .heartbeat_observed_tick
+                    .as_u64()
+                    .to_string()
+                    .as_bytes(),
+            );
+            hasher.update(b"|");
+            hasher.update(
+                leadership
+                    .lease
+                    .expires_at_tick
+                    .as_u64()
+                    .to_string()
+                    .as_bytes(),
+            );
         }
         hex::encode(hasher.finalize())
     }
@@ -1433,6 +1663,44 @@ impl ClusterState {
     #[must_use]
     pub fn leadership(&self) -> Option<&ClusterLeadershipRecord> {
         self.snapshot.leadership.as_ref()
+    }
+
+    /// Returns the current leadership lease status, when one leader exists.
+    #[must_use]
+    pub fn leadership_lease_status_at(
+        &self,
+        observed_tick: ClusterLeaseTick,
+    ) -> Option<ClusterLeadershipLeaseStatus> {
+        self.snapshot
+            .leadership
+            .as_ref()
+            .map(|leadership| leadership.lease_status_at(observed_tick))
+    }
+
+    /// Returns the effective coordinator at one observed tick.
+    #[must_use]
+    pub fn effective_leadership_at(
+        &self,
+        observed_tick: ClusterLeaseTick,
+    ) -> Option<&ClusterLeadershipRecord> {
+        self.snapshot.leadership.as_ref().filter(|leadership| {
+            matches!(
+                leadership.lease_status_at(observed_tick),
+                ClusterLeadershipLeaseStatus::Active { .. }
+            )
+        })
+    }
+
+    /// Returns a stale-leadership diagnostic when the recorded coordinator expired.
+    #[must_use]
+    pub fn stale_leadership_diagnostic_at(
+        &self,
+        observed_tick: ClusterLeaseTick,
+    ) -> Option<ClusterStaleLeadershipDiagnostic> {
+        self.snapshot
+            .leadership
+            .as_ref()
+            .and_then(|leadership| leadership.stale_diagnostic_at(observed_tick))
     }
 
     /// Returns a cloned authoritative snapshot of the current state.
@@ -1919,7 +2187,8 @@ mod tests {
         ClusterArtifactReference, ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus,
         ClusterArtifactTransferMethod, ClusterBackendReadinessStatus, ClusterCatchupPayload,
         ClusterCatchupRequest, ClusterEvent, ClusterEventIndex, ClusterEventLog,
-        ClusterHistoryError, ClusterLeadershipRecord, ClusterLink, ClusterLinkClass,
+        ClusterHistoryError, ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus,
+        ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink, ClusterLinkClass,
         ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterNodeTelemetry,
         ClusterRecoveryDisposition, ClusterRecoveryEnvelopeError, ClusterRecoveryPolicy,
         ClusterRecoveryReason, ClusterRecoveryReplayWindow, ClusterSchemaVersion, ClusterSnapshot,
@@ -1959,6 +2228,10 @@ mod tests {
             retain_tail_events: 2,
             full_resync_gap_threshold: 64,
         }
+    }
+
+    fn sample_leadership_lease_policy() -> ClusterLeadershipLeasePolicy {
+        ClusterLeadershipLeasePolicy::new(4)
     }
 
     fn sample_signing_key(byte: u8) -> SigningKey {
@@ -2057,6 +2330,146 @@ mod tests {
 
         let snapshot_round_trip = ClusterState::from_snapshot(replayed.snapshot());
         assert_eq!(digest, snapshot_round_trip.stable_digest());
+    }
+
+    #[test]
+    fn leadership_lease_reports_active_then_stale() {
+        let lease_policy = sample_leadership_lease_policy();
+        let leadership = ClusterLeadershipRecord::new(
+            ClusterTerm::initial(),
+            crate::NodeId::new("leader-alpha"),
+            ClusterEventIndex::initial(),
+        )
+        .with_lease_policy(ClusterLeaseTick::new(10), lease_policy);
+
+        assert_eq!(
+            leadership.lease_status_at(ClusterLeaseTick::new(12)),
+            ClusterLeadershipLeaseStatus::Active {
+                expires_at_tick: ClusterLeaseTick::new(14),
+                remaining_ticks: 2,
+            }
+        );
+        assert_eq!(
+            leadership.lease_status_at(ClusterLeaseTick::new(15)),
+            ClusterLeadershipLeaseStatus::Stale {
+                expired_at_tick: ClusterLeaseTick::new(14),
+                overdue_ticks: 1,
+            }
+        );
+
+        let diagnostic = leadership
+            .stale_diagnostic_at(ClusterLeaseTick::new(15))
+            .expect("stale leadership should surface a diagnostic");
+        assert_eq!(diagnostic.leader_id, crate::NodeId::new("leader-alpha"));
+        assert_eq!(diagnostic.term, ClusterTerm::initial());
+        assert_eq!(
+            diagnostic.heartbeat_observed_tick,
+            ClusterLeaseTick::new(10)
+        );
+        assert_eq!(diagnostic.expired_at_tick, ClusterLeaseTick::new(14));
+        assert_eq!(diagnostic.observed_tick, ClusterLeaseTick::new(15));
+    }
+
+    #[test]
+    fn cluster_state_effective_leadership_expires_when_lease_goes_stale() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4111,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let lease_policy = sample_leadership_lease_policy();
+
+        let mut state = ClusterState::new(cluster_id.clone());
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial(),
+                ClusterEvent::MembershipReconciled {
+                    membership: coordinator.clone(),
+                },
+            ))
+            .expect("membership should apply");
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id,
+                ClusterEventIndex::initial().next(),
+                ClusterEvent::LeadershipReconciled {
+                    leadership: ClusterLeadershipRecord::new(
+                        ClusterTerm::initial(),
+                        coordinator.identity.node_id.clone(),
+                        ClusterEventIndex::initial(),
+                    )
+                    .with_lease_policy(ClusterLeaseTick::new(20), lease_policy),
+                },
+            ))
+            .expect("leadership should apply");
+
+        assert_eq!(
+            state
+                .effective_leadership_at(ClusterLeaseTick::new(23))
+                .map(|leadership| leadership.leader_id.clone()),
+            Some(coordinator.identity.node_id.clone())
+        );
+        assert_eq!(
+            state.leadership_lease_status_at(ClusterLeaseTick::new(24)),
+            Some(ClusterLeadershipLeaseStatus::Active {
+                expires_at_tick: ClusterLeaseTick::new(24),
+                remaining_ticks: 0,
+            })
+        );
+        assert!(
+            state
+                .effective_leadership_at(ClusterLeaseTick::new(25))
+                .is_none(),
+            "stale leadership should not remain effective"
+        );
+
+        let diagnostic = state
+            .stale_leadership_diagnostic_at(ClusterLeaseTick::new(25))
+            .expect("stale coordinator should produce a diagnostic");
+        assert_eq!(diagnostic.leader_id, coordinator.identity.node_id);
+        assert_eq!(diagnostic.expired_at_tick, ClusterLeaseTick::new(24));
+        assert_eq!(diagnostic.observed_tick, ClusterLeaseTick::new(25));
+    }
+
+    #[test]
+    fn leadership_lease_changes_snapshot_digest() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4112,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let base_leadership = ClusterLeadershipRecord::new(
+            ClusterTerm::initial(),
+            coordinator.identity.node_id.clone(),
+            ClusterEventIndex::initial(),
+        )
+        .with_lease_policy(ClusterLeaseTick::new(30), sample_leadership_lease_policy());
+        let renewed_leadership = base_leadership
+            .clone()
+            .renewed_at(ClusterLeaseTick::new(31), sample_leadership_lease_policy());
+
+        let mut base_snapshot = ClusterSnapshot::new(cluster_id.clone());
+        base_snapshot
+            .memberships
+            .insert(coordinator.identity.node_id.clone(), coordinator.clone());
+        base_snapshot.leadership = Some(base_leadership);
+
+        let mut renewed_snapshot = ClusterSnapshot::new(cluster_id);
+        renewed_snapshot
+            .memberships
+            .insert(coordinator.identity.node_id.clone(), coordinator);
+        renewed_snapshot.leadership = Some(renewed_leadership);
+
+        assert_ne!(
+            base_snapshot.stable_digest(),
+            renewed_snapshot.stable_digest(),
+            "leadership lease changes should affect snapshot digests"
+        );
     }
 
     #[test]
