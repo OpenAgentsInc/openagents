@@ -55,10 +55,12 @@ pub fn paint(
 
     let summary = format!(
         "Runtime: {}",
-        if pane_state.pending_request_id.is_some() {
+        if runtime.busy || pane_state.pending_request_id.is_some() {
             "running"
         } else if runtime.is_ready() {
             "ready"
+        } else if runtime.artifact_present {
+            "not loaded"
         } else if runtime.reachable {
             "reachable"
         } else {
@@ -166,6 +168,35 @@ pub fn paint(
         line_y,
         "Configured",
         runtime.configured_model.as_deref().unwrap_or("-"),
+    );
+    line_y = paint_multiline_phrase(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Model path",
+        runtime.configured_model_path.as_deref().unwrap_or("-"),
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Backend",
+        if runtime.backend_label.trim().is_empty() {
+            "-"
+        } else {
+            runtime.backend_label.as_str()
+        },
+    );
+    line_y = paint_label_line(
+        paint,
+        content_bounds.origin.x + 12.0,
+        line_y,
+        "Artifact",
+        if runtime.artifact_present {
+            "present"
+        } else {
+            "missing"
+        },
     );
     line_y = paint_label_line(
         paint,

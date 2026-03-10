@@ -578,6 +578,7 @@ impl MissionControlPaneState {
     pub fn sync_log_stream(
         &mut self,
         provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+        local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
         provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
         earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
         spark_wallet: &SparkPaneState,
@@ -589,6 +590,7 @@ impl MissionControlPaneState {
             self.last_action.as_deref(),
             self.last_error.as_deref(),
             provider_runtime,
+            local_inference_runtime,
             provider_blockers,
             earn_job_lifecycle_projection,
             spark_wallet,
@@ -612,6 +614,7 @@ fn build_mission_control_log_lines(
     mission_action: Option<&str>,
     mission_error: Option<&str>,
     provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
     provider_blockers: &[crate::state::provider_runtime::ProviderBlocker],
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     spark_wallet: &SparkPaneState,
@@ -661,17 +664,41 @@ fn build_mission_control_log_lines(
         }
     }
 
-    if provider_runtime.active_inference_backend().is_none() {
-        push_line(TerminalStream::Stderr, "No local model found.".to_string());
+    let model_status = if local_inference_runtime.busy {
+        "Local GPT-OSS 20B is loading.".to_string()
+    } else if local_inference_runtime.is_ready() {
+        format!(
+            "Local GPT-OSS 20B ready on Psionic {}.",
+            if local_inference_runtime.backend_label.trim().is_empty() {
+                "runtime"
+            } else {
+                local_inference_runtime.backend_label.as_str()
+            }
+        )
+    } else if !local_inference_runtime.artifact_present {
+        local_inference_runtime
+            .configured_model_path
+            .as_deref()
+            .map(|path| format!("Local GPT-OSS 20B missing at {}.", path))
+            .unwrap_or_else(|| "Local GPT-OSS 20B artifact missing.".to_string())
+    } else if provider_runtime.active_inference_backend().is_none() {
+        "Local GPT-OSS 20B is present but not loaded.".to_string()
     } else {
-        push_line(
-            TerminalStream::Stdout,
-            format!(
-                "Serving backend ready: {}",
-                provider_runtime.execution_backend_label()
-            ),
-        );
-    }
+        format!(
+            "Serving backend ready: {}",
+            provider_runtime.execution_backend_label()
+        )
+    };
+    push_line(
+        if local_inference_runtime.is_ready() {
+            TerminalStream::Stdout
+        } else if !local_inference_runtime.artifact_present {
+            TerminalStream::Stderr
+        } else {
+            TerminalStream::Stdout
+        },
+        model_status,
+    );
 
     if let Some(action) = mission_action {
         push_line(TerminalStream::Stdout, format!("UI: {action}"));
@@ -5754,6 +5781,17 @@ impl RenderState {
         self.apple_fm_execution_worker.enqueue(command)
     }
 
+    pub fn mission_control_gpt_oss_ready(&self) -> bool {
+        self.ollama_execution.is_ready()
+    }
+
+    pub fn mission_control_go_online_enabled(&self) -> bool {
+        !matches!(
+            self.provider_runtime.mode,
+            ProviderMode::Offline | ProviderMode::Degraded
+        ) || self.mission_control_gpt_oss_ready()
+    }
+
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
         let relays = self.settings.document.configured_relay_urls();
         if relays.is_empty() {
@@ -9734,6 +9772,7 @@ mod tests {
             Some("Amount display -> LEGACY (BTC)"),
             None,
             &provider,
+            &super::LocalInferenceExecutionSnapshot::default(),
             &[],
             &projection,
             &SparkPaneState::default(),

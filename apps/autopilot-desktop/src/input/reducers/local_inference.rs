@@ -94,7 +94,9 @@ fn pane_owns_request(state: &RenderState, request_id: &str) -> bool {
 }
 
 fn snapshot_load_state(snapshot: &LocalInferenceRuntimeSnapshot) -> PaneLoadState {
-    if snapshot.last_error.is_some() {
+    if snapshot.busy {
+        PaneLoadState::Loading
+    } else if snapshot.last_error.is_some() {
         PaneLoadState::Error
     } else if snapshot.reachable {
         PaneLoadState::Ready

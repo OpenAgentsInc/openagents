@@ -206,6 +206,7 @@ impl PaneRenderer {
                         content_bounds,
                         mission_control,
                         provider_runtime,
+                        local_inference_runtime,
                         earn_job_lifecycle_projection,
                         backend_kernel_authority,
                         sa_lane,
@@ -507,6 +508,7 @@ fn paint_go_online_pane(
     content_bounds: Bounds,
     mission_control: &mut MissionControlPaneState,
     provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
     earn_job_lifecycle_projection: &EarnJobLifecycleProjectionState,
     backend_kernel_authority: bool,
     sa_lane: &crate::runtime_lanes::SaLaneSnapshot,
@@ -521,6 +523,7 @@ fn paint_go_online_pane(
 ) {
     mission_control.sync_log_stream(
         provider_runtime,
+        local_inference_runtime,
         provider_blockers,
         earn_job_lifecycle_projection,
         spark_wallet,
@@ -579,15 +582,21 @@ fn paint_go_online_pane(
     );
 
     let toggle_bounds = go_online_toggle_button_bounds(content_bounds);
-    let toggle_label = if matches!(
+    let wants_online = matches!(
         provider_runtime.mode,
         crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
-    ) {
+    );
+    let go_online_enabled = !wants_online || local_inference_runtime.is_ready();
+    let toggle_label = if wants_online {
         "GO ONLINE"
     } else {
         "GO OFFLINE"
     };
-    paint_primary_button(toggle_bounds, toggle_label, paint);
+    if go_online_enabled {
+        paint_primary_button(toggle_bounds, toggle_label, paint);
+    } else {
+        paint_disabled_button(toggle_bounds, toggle_label, paint);
+    }
 
     let sell_clip = mission_control_section_clip_bounds(layout.sell_panel);
     let sell_value_chunk_len = mission_control_value_chunk_len(layout.sell_panel);
@@ -605,8 +614,24 @@ fn paint_go_online_pane(
         paint,
         layout.sell_panel.origin.x + 12.0,
         sell_y,
+        "Model",
+        &mission_control_primary_model_label(local_inference_runtime),
+        sell_value_chunk_len,
+    );
+    sell_y = paint_wrapped_label_line(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
         "Backend",
-        provider_runtime.execution_backend_label(),
+        &mission_control_backend_label(provider_runtime, local_inference_runtime),
+        sell_value_chunk_len,
+    );
+    sell_y = paint_wrapped_label_line(
+        paint,
+        layout.sell_panel.origin.x + 12.0,
+        sell_y,
+        "Load",
+        &mission_control_model_load_status(local_inference_runtime),
         sell_value_chunk_len,
     );
     sell_y = paint_wrapped_label_line(
@@ -661,7 +686,7 @@ fn paint_go_online_pane(
         );
     }
     if ac_lane.credit_available {
-        let _ = paint_wrapped_label_line(
+        sell_y = paint_wrapped_label_line(
             paint,
             layout.sell_panel.origin.x + 12.0,
             sell_y,
@@ -669,6 +694,23 @@ fn paint_go_online_pane(
             "available",
             sell_value_chunk_len,
         );
+    }
+    let load_hint = mission_control_go_online_hint(provider_runtime, local_inference_runtime);
+    if !load_hint.is_empty() {
+        for (index, line) in split_text_for_display(&load_hint, sell_value_chunk_len)
+            .into_iter()
+            .enumerate()
+        {
+            paint.scene.draw_text(paint.text.layout(
+                &line,
+                Point::new(
+                    layout.sell_panel.origin.x + 12.0,
+                    sell_y + index as f32 * 14.0,
+                ),
+                10.0,
+                theme::text::MUTED,
+            ));
+        }
     }
     paint.scene.pop_clip();
 
@@ -775,12 +817,13 @@ fn paint_go_online_pane(
     );
     paint.scene.pop_clip();
 
-    let download_label = mission_control_download_button_label(provider_runtime);
-    paint_secondary_button(
-        mission_control_download_model_button_bounds(content_bounds),
-        &download_label,
-        paint,
-    );
+    let download_bounds = mission_control_download_model_button_bounds(content_bounds);
+    let download_label = mission_control_download_button_label(local_inference_runtime);
+    if local_inference_runtime.busy || local_inference_runtime.is_ready() {
+        paint_disabled_button(download_bounds, &download_label, paint);
+    } else {
+        paint_secondary_button(download_bounds, &download_label, paint);
+    }
     paint_action_button(
         mission_control_documentation_button_bounds(content_bounds),
         "DOCUMENTATION",
@@ -896,16 +939,20 @@ fn paint_mission_control_amount_line(
     y + 20.0
 }
 
-fn mission_control_download_button_label(provider_runtime: &ProviderRuntimeState) -> String {
-    provider_runtime
-        .ollama
+fn mission_control_download_button_label(
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> String {
+    if local_inference_runtime.busy {
+        return String::from("LOADING GPT-OSS 20B");
+    }
+    if local_inference_runtime.is_ready() {
+        return String::from("GPT-OSS 20B READY");
+    }
+    let model = local_inference_runtime
         .configured_model
         .as_deref()
-        .or(provider_runtime.ollama.ready_model.as_deref())
-        .or(provider_runtime.apple_fm.ready_model.as_deref())
-        .filter(|model| !model.trim().is_empty())
-        .map(|model| format!("DOWNLOAD {}", mission_control_short_model_label(model)))
-        .unwrap_or_else(|| "DOWNLOAD MODEL".to_string())
+        .unwrap_or("gpt-oss-20b");
+    format!("LOAD {}", mission_control_short_model_label(model))
 }
 
 fn mission_control_short_model_label(model: &str) -> String {
@@ -915,6 +962,78 @@ fn mission_control_short_model_label(model: &str) -> String {
     }
     let prefix: String = trimmed.chars().take(15).collect();
     format!("{}...", prefix.to_ascii_uppercase())
+}
+
+fn mission_control_primary_model_label(
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> String {
+    local_inference_runtime
+        .ready_model
+        .as_deref()
+        .or(local_inference_runtime.configured_model.as_deref())
+        .map(mission_control_short_model_label)
+        .unwrap_or_else(|| String::from("GPT-OSS 20B"))
+}
+
+fn mission_control_backend_label(
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> String {
+    if local_inference_runtime.is_ready() || local_inference_runtime.configured_model.is_some() {
+        let backend = if local_inference_runtime.backend_label.trim().is_empty() {
+            "psionic"
+        } else {
+            local_inference_runtime.backend_label.as_str()
+        };
+        return format!("Psionic GPT-OSS ({backend})");
+    }
+    provider_runtime.execution_backend_label().to_string()
+}
+
+fn mission_control_model_load_status(
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> String {
+    if local_inference_runtime.busy {
+        String::from("loading")
+    } else if local_inference_runtime.is_ready() {
+        String::from("loaded")
+    } else if !local_inference_runtime.artifact_present {
+        String::from("artifact missing")
+    } else {
+        String::from("not loaded")
+    }
+}
+
+fn mission_control_go_online_hint(
+    provider_runtime: &ProviderRuntimeState,
+    local_inference_runtime: &LocalInferenceExecutionSnapshot,
+) -> String {
+    if !matches!(
+        provider_runtime.mode,
+        crate::app_state::ProviderMode::Offline | crate::app_state::ProviderMode::Degraded
+    ) {
+        return String::new();
+    }
+    if local_inference_runtime.busy {
+        return String::from(
+            "GPT-OSS 20B is loading. Go Online unlocks when the model is resident.",
+        );
+    }
+    if !local_inference_runtime.artifact_present {
+        return local_inference_runtime
+            .configured_model_path
+            .as_deref()
+            .map(|path| {
+                format!("Mission Control needs GPT-OSS 20B at {path} before you can go online.")
+            })
+            .unwrap_or_else(|| {
+                String::from("Mission Control needs GPT-OSS 20B before you can go online.")
+            });
+    }
+    if !local_inference_runtime.is_ready() {
+        return String::from("Load GPT-OSS 20B before you go online.");
+    }
+    String::new()
 }
 
 fn paint_first_sats_progress(

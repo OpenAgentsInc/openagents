@@ -5499,7 +5499,7 @@ pub(super) fn run_local_inference_action(
         LocalInferencePaneAction::WarmModel => queue_local_inference_pane_command(
             state,
             LocalInferenceRuntimeCommand::WarmConfiguredModel,
-            "Queued configured GPT-OSS model warm",
+            "Queued GPT-OSS 20B load",
         ),
         LocalInferencePaneAction::UnloadModel => queue_local_inference_pane_command(
             state,
@@ -5594,7 +5594,7 @@ pub(super) fn run_mission_control_action(
             if handled {
                 state
                     .mission_control
-                    .record_action("Queued configured local model warm");
+                    .record_action("Queued GPT-OSS 20B load");
             } else {
                 state.mission_control.last_action = Some("Local model warm failed".to_string());
                 state.mission_control.last_error =

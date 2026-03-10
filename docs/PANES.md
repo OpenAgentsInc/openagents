@@ -46,6 +46,7 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Codex protocol observability pane with raw events, method counters, failure snapshots, and wire-log controls.
 - `Go Online`
   - Provider mode toggle pane with explicit state machine (`offline`, `connecting`, `online`, `degraded`) and preflight blockers.
+  - Mission Control now owns the explicit GPT-OSS 20B local-model gate for provider mode: it shows configured model/backend/load truth, exposes the `LOAD GPT-OSS 20B` action, and keeps `GO ONLINE` disabled until the local Psionic runtime reports a loaded model.
   - `providers_online` is sourced from Spacetime presence snapshots (`spacetime.presence:*` source tags) with identity-cardinality semantics from ADR-0002.
   - Online mode never auto-restores on launch in MVP; each app session requires a fresh explicit click before work intake begins.
   - Action: toggle online/offline.
@@ -55,9 +56,9 @@ Target **Phase 2** semantics (live remote subscriptions/reducers for ADR-approve
   - Action: read-only operational visibility.
 - `Local Inference`
   - GPT-OSS local inference workbench for the app-owned runtime seam.
-  - Shows runtime reachability, configured/ready/loaded model state, pane-owned prompt runs, and the last output preview.
+  - Shows runtime reachability, configured model path, backend label, artifact presence, configured/ready/loaded model state, pane-owned prompt runs, and the last output preview.
   - Inputs: prompt, optional requested model, max tokens, temperature, top-k, and top-p.
-  - Actions: refresh runtime, warm configured model, unload configured model, run prompt.
+  - Actions: refresh runtime, load/warm configured model, unload configured model, run prompt.
   - Explicit pane state machine: `loading`, `ready`, `error`.
 - `Relay Connections`
   - Configured relay list with per-relay state (`connected`, `connecting`, `disconnected`, `error`), latency, last-seen, and last-error fields derived from provider-lane transport snapshots.

@@ -24,6 +24,8 @@ All Bitcoin amounts in Mission Control follow **BIP 177**: the protocol uses who
 
 Mission Control is a dark-themed dashboard with neon green/teal accents. It is used to sell compute, view earnings, manage wallet state, and monitor status via a log stream. The example state shown is **OFFLINE**.
 
+As of the current MVP desktop contract, Mission Control is also the explicit local-model gate for provider mode. The pane must show the status of the canonical GPT-OSS 20B GGUF, let the user load that model from the host machine, and keep `GO ONLINE` disabled until the model is actually resident in the local Psionic runtime.
+
 ---
 
 ## Header Bar
@@ -43,6 +45,9 @@ Mission Control is a dark-themed dashboard with neon green/teal accents. It is u
 - **Primary CTA:** "GO ONLINE" button
   - Glowing neon green/teal border and text
   - Used to start selling compute
+  - Disabled until GPT-OSS 20B is loaded into the local Psionic runtime
+- **Status rows:** show `Mode`, `Model`, `Backend`, `Load`, `Control`, and `Preflight`
+- **Load hint:** when the model is missing, not yet loaded, or still loading, the pane shows a short explanation directly under the SELL COMPUTE block instead of making the user guess why `GO ONLINE` is disabled
 
 ### // EARNINGS
 
@@ -71,7 +76,7 @@ Cryptocurrency earnings (BIP 177 integer view by default):
 
 ### Bottom Actions (Left Column)
 
-- **DOWNLOAD GPT-1234** — download client/model version (e.g. for local compute or integration).
+- **LOAD GPT-OSS 20B** — load the configured local GGUF into the app-owned Psionic runtime. When the model is already resident, the button renders as a disabled `GPT-OSS 20B READY` state. When the GGUF is missing, the pane keeps the action visible but the status copy and log stream must make the missing-artifact path explicit.
 - **DOCUMENTATION** — link to help/manuals for Mission Control.
 
 ---
@@ -91,6 +96,10 @@ A single pane on the right (roughly two-thirds of the right column) used only fo
 - **Purpose:** Display dynamic status output: log lines, status updates, notifications. No table, no job list—just a scrolling stream of text.
 - **Layout:** Large rectangular area with a clear border; most of the space is for the stream. Content flows from top (e.g. latest at bottom or top, per product choice).
 - **Example content when idle:** e.g. "No local model found." or similar status line.
+- **Required model lines:** the stream should include truthful GPT-OSS model lines such as:
+  - `Local GPT-OSS 20B missing at ...`
+  - `Local GPT-OSS 20B is loading.`
+  - `Local GPT-OSS 20B ready on Psionic cuda.`
 - **Style:** Same dark theme and monospace as the rest of Mission Control; readable, minimal chrome so the log is the focus.
 
 ---
@@ -112,10 +121,11 @@ A single pane on the right (roughly two-thirds of the right column) used only fo
 - **Title:** MISSION CONTROL
 - **Status label:** STATUS: OFFLINE
 - **Section labels:** // SELL COMPUTE, // EARNINGS, // WALLET, // ACTIVE JOBS, // LOG STREAM
-- **CTAs:** GO ONLINE, DOWNLOAD GPT-1234, DOCUMENTATION
+- **CTAs:** GO ONLINE, LOAD GPT-OSS 20B, DOCUMENTATION
 - **Empty state:** Go Online to Start Jobs.
 - **Right pane:** LOG STREAM — single pane for log/status stream only (no job table).
 - **Amount display:** BIP 177 integer (₿) by default; one-click toggle to Legacy (BTC).
+- **Provider gate:** `GO ONLINE` stays disabled until Mission Control shows GPT-OSS 20B as `loaded`.
 
 ---
 
@@ -165,7 +175,7 @@ A single pane on the right (roughly two-thirds of the right column) used only fo
 
 - **Chrome:** “MISSION CONTROL” title, STATUS: OFFLINE (or online) in header, close (X). Optional subtitle; “Go Online” as the primary CTA in content, not a tab.
 - **Layout:** Two columns, not three cards:
-  - **Left column:** // SELL COMPUTE (GO ONLINE button), // EARNINGS (Today / This Month / All Time in ₿), // WALLET (status, masked address, balance in ₿), DOWNLOAD GPT-1234, DOCUMENTATION.
+  - **Left column:** // SELL COMPUTE (GO ONLINE button + model rows), // EARNINGS (Today / This Month / All Time in ₿), // WALLET (status, masked address, balance in ₿), LOAD GPT-OSS 20B, DOCUMENTATION.
   - **Right column:** // ACTIVE JOBS (one-line summary or “Go Online to Start Jobs.”), then **// LOG STREAM** — a single scrolling log pane (e.g. TerminalPane), replacing the Job Flow card’s job rows. Status lines like “No local model found.” or provider/job events go here.
 
 **What to reuse vs replace:**
@@ -218,12 +228,15 @@ Goal: Refactor the existing Mission Control pane (`paint_go_online_pane`) to the
 ### 2. Layout within `paint_go_online_pane`
 
 - **Left column** (~1/3 width): // SELL COMPUTE (GO ONLINE button), // EARNINGS (Today / This Month / All Time in ₿), // WALLET (status, address, balance in ₿), DOWNLOAD GPT-1234, DOCUMENTATION. Use wgpui `Button` for actions; label/value lines with existing paint helpers; BIP 177 integer view by default.
+  - `GO ONLINE` must render disabled until the current `LocalInferenceRuntimeSnapshot` reports `ready_model`.
+  - The SELL COMPUTE section must surface the current GPT-OSS rows directly from the app-owned local-runtime seam: configured model, backend label, load status, and any missing-artifact or loading hint.
 - **Right column** (remainder): // ACTIVE JOBS summary line or "Go Online to Start Jobs."; **// LOG STREAM** — single pane using **wgpui `TerminalPane`**.
 
 ### 3. Log stream with `TerminalPane`
 
 - **Component:** `wgpui::components::sections::{TerminalPane, TerminalLine, TerminalStream}` — scrollable mono log, `push_line()`, `clear()`, `auto_scroll`, max_lines.
 - **State:** Add mission control log buffer in app state (e.g. `Vec<TerminalLine>` or state holding a `TerminalPane`). Feed lines from provider status ("No local model found.", blockers, mode changes), download progress, job lifecycle.
+- **Model truth:** the log stream must reflect the same app-owned GPT-OSS state used by the button gate, not a second inferred status path.
 - **Rendering:** In `paint_go_online_pane`, compute `log_stream_bounds` (right column, below ACTIVE JOBS); call `terminal_pane.paint(log_stream_bounds, paint)` (or equivalent from state).
 - **Events:** In `pane_system.rs`, when hit is inside log stream bounds, route scroll/mouse to TerminalPane so scroll works.
 
@@ -237,7 +250,7 @@ Goal: Refactor the existing Mission Control pane (`paint_go_online_pane`) to the
 | Area | Change |
 |------|--------|
 | `app_state.rs` | Add mission control log state (TerminalLine buffer or TerminalPane). Optional BIP 177 legacy toggle. |
-| `pane_renderer.rs` | Refactor `paint_go_online_pane`: two-column layout; left = GO ONLINE + earnings + wallet + actions; right = active job + TerminalPane log stream. Replace current three-card Job Flow with right-column log. |
+| `pane_renderer.rs` | Refactor `paint_go_online_pane`: two-column layout; left = GO ONLINE + GPT-OSS model rows + earnings + wallet + actions; right = active job + TerminalPane log stream. Replace current three-card Job Flow with right-column log. |
 | `pane_system.rs` | Hit-test and event routing for log stream bounds; forward scroll/events to TerminalPane. |
 | `pane_registry.rs` | No change. |
 | `crates/wgpui` | No change; use existing PaneFrame, Button, TerminalPane, TerminalLine, TerminalStream. |
@@ -246,6 +259,7 @@ Goal: Refactor the existing Mission Control pane (`paint_go_online_pane`) to the
 
 - Mission Control opens as startup pane; header "MISSION CONTROL" and status.
 - Left: GO ONLINE, earnings (₿), wallet (₿), download/docs.
+- Left: GO ONLINE is disabled until GPT-OSS 20B is loaded; SELL COMPUTE shows model/backend/load truth.
 - Right: active job summary + scrolling log (e.g. "No local model found." when idle).
 - Wallet and payout state explicit and truthful; sync/replay unchanged per MVP.
 
