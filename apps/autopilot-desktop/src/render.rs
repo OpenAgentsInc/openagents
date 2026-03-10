@@ -261,6 +261,7 @@ pub fn init_state(event_loop: &ActiveEventLoop) -> Result<RenderState> {
             event_context,
             input_modifiers: wgpui::Modifiers::default(),
             panes: Vec::new(),
+            pane_size_memory: crate::app_state::PaneSizeMemory::load_or_default(),
             nostr_identity,
             nostr_identity_error,
             nostr_secret_state: crate::app_state::NostrSecretState::default(),
