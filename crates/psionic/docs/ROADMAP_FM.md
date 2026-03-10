@@ -153,7 +153,7 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1`, `FM-2`, `FM-3`, `FM-4`, and `FM-5` are now landed on `main`.
+`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, and `FM-6` are now landed on `main`.
 
 What shipped:
 
@@ -212,13 +212,24 @@ What shipped:
   and only updates the visible session transcript after successful completion
 - early client-side stream cancellation now restores the session promptly so a
   same-session follow-up request can succeed without manual reset
+- `psionic-apple-fm` now exposes a reusable typed `AppleFmTranscript` surface
+  instead of treating transcripts as raw opaque strings only
+- the bridge now exposes `GET /v1/sessions/{id}/transcript` for explicit typed
+  transcript export
+- session creation now accepts either `transcript_json` or a typed `transcript`
+  dictionary payload for restore, while rejecting conflicting dual input
+- the reusable Rust client now supports typed transcript export plus
+  `from_transcript`-style session creation
+- invalid transcript input now fails as an explicit client/server validation
+  path instead of falling through as a generic server failure
+- the typed transcript restore path preserves the Python SDK rule that
+  historical tool mentions in transcript history do not enable new tool calls
+  unless tools are supplied again out-of-band
 
-What `FM-1` through `FM-5` did not close:
+What `FM-1` through `FM-6` did not close:
 
 - structured generation, tools, and typed error taxonomy
 - desktop Mission Control cutover on macOS
-- typed transcript import/export as a first-class Rust surface remains `FM-6`;
-  `FM-3` only landed raw transcript JSON restore as the bridge/session substrate
 - raw token counts are now truthfully marked as estimated, but the broader
   typed metrics/error taxonomy work still remains `FM-9`
 - the OpenAI-compatible `/v1/chat/completions` path remains a one-shot
@@ -483,6 +494,8 @@ Acceptance:
 
 - the Rust lane can round-trip transcript state
 - transcript-backed resume behavior matches the documented Python semantics
+- invalid transcript input fails explicitly instead of degrading to a generic
+  bridge error
 
 ### FM-7: Structured generation and schema coverage
 
@@ -613,13 +626,12 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-5`, the next-item order is:
+After `FM-6`, the next-item order is:
 
-1. `FM-6` transcripts and session restore
-2. `FM-7` structured generation and schema support
-3. `FM-8` tools
-4. `FM-9` typed errors and metrics truth
-5. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-7` structured generation and schema support
+2. `FM-8` tools
+3. `FM-9` typed errors and metrics truth
+4. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and

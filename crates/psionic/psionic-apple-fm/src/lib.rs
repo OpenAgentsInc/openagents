@@ -7,6 +7,7 @@
 
 pub mod client;
 pub mod contract;
+pub mod transcript;
 
 pub use client::{
     AppleFmAsyncBridgeClient, AppleFmBridgeClient, AppleFmBridgeClientError,
@@ -15,18 +16,23 @@ pub use client::{
 pub use contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
     APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, APPLE_FM_BRIDGE_STREAM_SUFFIX,
-    AppleFmChatChoice, AppleFmChatCompletionRequest, AppleFmChatCompletionResponse,
-    AppleFmChatMessage, AppleFmChatMessageRole, AppleFmChatResponseMessage, AppleFmChatUsage,
-    AppleFmCompletionResult, AppleFmErrorDetail, AppleFmErrorResponse, AppleFmGenerationOptions,
-    AppleFmGenerationOptionsValidationError, AppleFmHealthResponse, AppleFmModelInfo,
-    AppleFmModelsResponse, AppleFmSamplingMode, AppleFmSamplingModeType, AppleFmSession,
-    AppleFmSessionCreateRequest, AppleFmSessionCreateResponse, AppleFmSessionRespondRequest,
-    AppleFmSessionRespondResponse, AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
-    AppleFmSystemLanguageModelAvailability, AppleFmSystemLanguageModelGuardrails,
-    AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
-    AppleFmTextGenerationRequest, AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
-    AppleFmTextStreamEventKind, AppleFmUsageMeasurement, AppleFmUsageTruth,
+    APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX, AppleFmChatChoice, AppleFmChatCompletionRequest,
+    AppleFmChatCompletionResponse, AppleFmChatMessage, AppleFmChatMessageRole,
+    AppleFmChatResponseMessage, AppleFmChatUsage, AppleFmCompletionResult, AppleFmErrorDetail,
+    AppleFmErrorResponse, AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError,
+    AppleFmHealthResponse, AppleFmModelInfo, AppleFmModelsResponse, AppleFmSamplingMode,
+    AppleFmSamplingModeType, AppleFmSession, AppleFmSessionCreateRequest,
+    AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
+    AppleFmSessionToolMetadata, AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
+    AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
+    AppleFmSystemLanguageModelUseCase, AppleFmTextGenerationRequest, AppleFmTextGenerationResponse,
+    AppleFmTextStreamEvent, AppleFmTextStreamEventKind, AppleFmUsageMeasurement, AppleFmUsageTruth,
     DEFAULT_APPLE_FM_MODEL_ID,
+};
+pub use transcript::{
+    APPLE_FM_TRANSCRIPT_TYPE, APPLE_FM_TRANSCRIPT_VERSION, AppleFmTranscript,
+    AppleFmTranscriptContent, AppleFmTranscriptEntry, AppleFmTranscriptError,
+    AppleFmTranscriptPayload,
 };
 
 /// Human-readable crate ownership summary.

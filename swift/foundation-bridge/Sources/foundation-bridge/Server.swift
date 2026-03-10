@@ -226,6 +226,8 @@ actor HTTPServer {
                 return .buffered(await handleSessionRespond(sessionID: sessionID, body: request.body))
             case ("POST", "reset"):
                 return .buffered(await handleSessionReset(sessionID: sessionID))
+            case ("GET", "transcript"):
+                return .buffered(await handleSessionTranscript(sessionID: sessionID))
             default:
                 return .buffered(
                     buildErrorResponse(
@@ -328,6 +330,20 @@ actor HTTPServer {
         do {
             let session = try await chatHandler.resetSession(sessionID: sessionID)
             return buildJSONResponse(status: 200, body: session)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(error.localizedDescription).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionTranscript(sessionID: String) async -> Data {
+        do {
+            let transcript = try await chatHandler.sessionTranscript(sessionID: sessionID)
+            return buildJSONResponse(status: 200, body: transcript)
         } catch let error as FMError {
             return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
         } catch {

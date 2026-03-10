@@ -62,12 +62,14 @@ struct SessionCreateRequest: Codable {
     let model: SessionModelConfiguration?
     let tools: [SessionToolMetadata]
     let transcriptJSON: String?
+    let transcript: Transcript?
 
     enum CodingKeys: String, CodingKey {
         case instructions
         case model
         case tools
         case transcriptJSON = "transcript_json"
+        case transcript
     }
 }
 
