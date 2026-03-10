@@ -23,6 +23,7 @@ struct FoundationBridge {
           GET  /v1/sessions/{id}
           GET  /v1/sessions/{id}/transcript
           POST /v1/sessions/{id}/responses
+          POST /v1/sessions/{id}/responses/structured
           POST /v1/sessions/{id}/responses/stream
           POST /v1/sessions/{id}/reset
           DELETE /v1/sessions/{id}

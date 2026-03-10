@@ -107,6 +107,90 @@ struct SessionRespondResponse: Codable {
     let usage: Usage?
 }
 
+indirect enum JSONValue: Codable {
+    case string(String)
+    case integer(Int)
+    case number(Double)
+    case bool(Bool)
+    case object([String: JSONValue])
+    case array([JSONValue])
+    case null
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.singleValueContainer()
+        if container.decodeNil() {
+            self = .null
+        } else if let object = try? container.decode([String: JSONValue].self) {
+            self = .object(object)
+        } else if let array = try? container.decode([JSONValue].self) {
+            self = .array(array)
+        } else if let bool = try? container.decode(Bool.self) {
+            self = .bool(bool)
+        } else if let int = try? container.decode(Int.self) {
+            self = .integer(int)
+        } else if let double = try? container.decode(Double.self) {
+            self = .number(double)
+        } else if let string = try? container.decode(String.self) {
+            self = .string(string)
+        } else {
+            throw DecodingError.dataCorruptedError(
+                in: container,
+                debugDescription: "Unsupported JSON value"
+            )
+        }
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        switch self {
+        case .string(let value):
+            try container.encode(value)
+        case .integer(let value):
+            try container.encode(value)
+        case .number(let value):
+            try container.encode(value)
+        case .bool(let value):
+            try container.encode(value)
+        case .object(let value):
+            try container.encode(value)
+        case .array(let value):
+            try container.encode(value)
+        case .null:
+            try container.encodeNil()
+        }
+    }
+}
+
+struct GeneratedContentPayload: Codable {
+    let generationID: String
+    let content: JSONValue
+    let isComplete: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case generationID = "generation_id"
+        case content
+        case isComplete = "is_complete"
+    }
+
+    func contentJSONString() throws -> String {
+        let data = try JSONEncoder().encode(content)
+        return String(data: data, encoding: .utf8) ?? "null"
+    }
+}
+
+struct SessionStructuredResponseRequest: Codable {
+    let prompt: String
+    let schema: JSONValue
+    let options: GenerationOptionsPayload?
+}
+
+struct SessionStructuredResponseResponse: Codable {
+    let session: SessionState
+    let model: String
+    let content: GeneratedContentPayload
+    let usage: Usage?
+}
+
 struct ChatCompletionRequest: Codable {
     let model: String?
     let messages: [ChatMessage]
