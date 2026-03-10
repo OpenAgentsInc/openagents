@@ -301,6 +301,8 @@ pub enum ClusterPolicyDigestKind {
     Serving,
     /// Replicated residency, warm-state, or load/unload policy.
     Replication,
+    /// Shard partitioning, handoff, or transport policy.
+    Sharding,
     /// Artifact staging or residency policy.
     Residency,
     /// Catchup, compaction, or recovery policy.
@@ -527,6 +529,74 @@ impl ClusterReplicaNode {
     }
 }
 
+/// Explicit cross-node handoff kind inside a sharded execution lane.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterShardHandoffKind {
+    /// Forward activation state across a shard boundary.
+    Activation,
+    /// Forward or synchronize KV-cache state across a shard boundary.
+    KvCache,
+}
+
+/// Explicit cross-node handoff fact inside sharded cluster execution.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterShardHandoff {
+    /// Source shard index.
+    pub from_shard_id: usize,
+    /// Destination shard index.
+    pub to_shard_id: usize,
+    /// Source node that emitted the handoff.
+    pub from_node_id: String,
+    /// Destination node that receives the handoff.
+    pub to_node_id: String,
+    /// Handoff kind.
+    pub kind: ClusterShardHandoffKind,
+    /// Transport class used for the handoff.
+    pub transport: ClusterTransportClass,
+    /// Layer boundary crossed by the handoff.
+    pub layer_boundary: usize,
+    /// Estimated bytes transferred per token for this handoff.
+    pub estimated_bytes_per_token: u64,
+    /// Plain-language handoff detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterShardHandoff {
+    /// Creates one shard-handoff fact from explicit shard, node, and transfer truth.
+    #[must_use]
+    pub fn new(
+        from_shard_id: usize,
+        to_shard_id: usize,
+        from_node_id: impl Into<String>,
+        to_node_id: impl Into<String>,
+        kind: ClusterShardHandoffKind,
+        transport: ClusterTransportClass,
+        layer_boundary: usize,
+        estimated_bytes_per_token: u64,
+    ) -> Self {
+        Self {
+            from_shard_id,
+            to_shard_id,
+            from_node_id: from_node_id.into(),
+            to_node_id: to_node_id.into(),
+            kind,
+            transport,
+            layer_boundary,
+            estimated_bytes_per_token,
+            detail: None,
+        }
+    }
+
+    /// Attaches plain-language handoff detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
 /// Stable scheduler fallback reason for one clustered execution path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -626,6 +696,9 @@ pub struct ClusterExecutionContext {
     /// Explicit replica-node state when the served lane is replicated.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub replica_nodes: Vec<ClusterReplicaNode>,
+    /// Explicit cross-node activation or KV handoffs for sharded execution.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub shard_handoffs: Vec<ClusterShardHandoff>,
     /// Explicit fallback history when the scheduler rerouted work.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fallback_history: Vec<ClusterFallbackStep>,
@@ -658,6 +731,7 @@ impl ClusterExecutionContext {
             policy_digests: Vec::new(),
             selected_nodes: Vec::new(),
             replica_nodes: Vec::new(),
+            shard_handoffs: Vec::new(),
             fallback_history: Vec::new(),
             degraded_reason: None,
         }
@@ -702,6 +776,13 @@ impl ClusterExecutionContext {
     #[must_use]
     pub fn with_replica_nodes(mut self, replica_nodes: Vec<ClusterReplicaNode>) -> Self {
         self.replica_nodes = replica_nodes;
+        self
+    }
+
+    /// Replaces the explicit shard-handoff set.
+    #[must_use]
+    pub fn with_shard_handoffs(mut self, shard_handoffs: Vec<ClusterShardHandoff>) -> Self {
+        self.shard_handoffs = shard_handoffs;
         self
     }
 
@@ -6658,6 +6739,87 @@ mod tests {
             Some("replica-state-digest")
         );
         assert_eq!(delivered.cluster_execution, Some(cluster_execution));
+        Ok(())
+    }
+
+    #[test]
+    fn delivered_execution_context_surfaces_layer_sharded_handoffs()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let first = sample_cuda_device().inventory_qualifiers();
+        let mut second_device = sample_cuda_device();
+        second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
+        second_device.device_name = Some(String::from("NVIDIA CUDA Test Device 1"));
+        let second = second_device.inventory_qualifiers();
+        let cluster_execution = ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::Mixed,
+            ClusterExecutionDisposition::Sharded,
+        )
+        .with_execution_topology(ExecutionTopologyPlan::layer_sharded(
+            "cuda",
+            vec![(first.clone(), 0, 20), (second.clone(), 20, 40)],
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Sharding,
+            "sharding-policy-digest",
+        ))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda").with_device_inventory(first.clone()),
+            ClusterSelectedNode::new("worker-b", "cuda").with_device_inventory(second.clone()),
+        ])
+        .with_shard_handoffs(vec![
+            crate::ClusterShardHandoff::new(
+                0,
+                1,
+                "worker-a",
+                "worker-b",
+                crate::ClusterShardHandoffKind::Activation,
+                ClusterTransportClass::TrustedLanStream,
+                20,
+                8192,
+            )
+            .with_detail("forward activations across the shard boundary"),
+            crate::ClusterShardHandoff::new(
+                0,
+                1,
+                "worker-a",
+                "worker-b",
+                crate::ClusterShardHandoffKind::KvCache,
+                ClusterTransportClass::TrustedLanStream,
+                20,
+                4096,
+            )
+            .with_detail("forward kv cache across the shard boundary"),
+        ]);
+        let delivered = DeliveredExecutionContext::new(
+            "cuda",
+            Some(ExecutionTopologyPlan::single_device("cuda", first.clone())),
+            vec![first.clone()],
+        )
+        .with_cluster_execution(cluster_execution.clone());
+
+        assert_eq!(
+            delivered.execution_topology.as_ref().map(|plan| plan.kind),
+            Some(ExecutionTopologyKind::LayerSharded)
+        );
+        assert_eq!(delivered.selected_devices, vec![first, second]);
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .map(|cluster| cluster.shard_handoffs.len()),
+            Some(2)
+        );
+        assert_eq!(
+            delivered
+                .cluster_execution
+                .as_ref()
+                .map(|cluster| cluster.shard_handoffs[0].kind),
+            Some(crate::ClusterShardHandoffKind::Activation)
+        );
         Ok(())
     }
 
