@@ -26,8 +26,8 @@ use psionic_core::Shape;
 use psionic_models::{GgufBlobArtifact, GptOssTokenizer, PagedTensorStorage};
 use psionic_runtime::{
     CacheAction, CacheKind, CacheObservation, CompilePathEvidence, CompilePathTemperature,
-    DeviceDiscovery, GptOssDecodeGraph, HealthStatus, KvCachePageLayout, PrefixCacheIdentity,
-    build_gpt_oss_decode_graph,
+    DeviceDiscovery, GptOssDecodeGraph, HealthStatus, KvCachePageLayout, KvCachePolicy,
+    PrefixCacheIdentity, build_gpt_oss_decode_graph,
 };
 use sha2::{Digest, Sha256};
 
@@ -2193,7 +2193,7 @@ fn run_metal_generation_request(
             None
         };
         let exact_prompt_cache_hit = exact_prefix_hit.is_some() && exact_metal_lookup.is_some();
-        let mut cache = if shared_prefix_eligible {
+        let cache = if shared_prefix_eligible {
             if let Some(hit) = exact_prefix_hit.filter(|_| exact_prompt_cache_hit) {
                 prefix_state = super::PrefixCacheState::Hit;
                 prefix_tokens_reused = prompt_tokens.len();
@@ -2226,6 +2226,20 @@ fn run_metal_generation_request(
                 loaded_model.descriptor().config.max_context,
                 expected_kv_width,
             )
+        };
+        let mut token_history = if exact_prompt_cache_hit {
+            prompt_tokens
+                .as_slice()
+                .iter()
+                .copied()
+                .map(|token| token.as_u32())
+                .collect::<Vec<_>>()
+        } else {
+            cache
+                .entries()
+                .iter()
+                .map(|entry| entry.token.as_u32())
+                .collect::<Vec<_>>()
         };
         if cache.width() != expected_kv_width {
             return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
@@ -2354,7 +2368,7 @@ fn run_metal_generation_request(
             kernel_count = kernel_count.saturating_add(step.kernel_count);
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
-            cache.append(*token, step.key.clone(), step.value.clone())?;
+            token_history.push(token.as_u32());
             if is_last_prompt_token {
                 last_logits = step.logits;
                 prompt_logits.push(last_logits.clone());
@@ -2362,7 +2376,6 @@ fn run_metal_generation_request(
         }
         let should_record_prompt_prefix =
             shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
-        let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
         let prompt_layer_caches = should_record_prompt_prefix.then(|| layer_caches.clone());
 
         let mut sampler = super::GenerationSampler::new(&request.options);
@@ -2376,7 +2389,7 @@ fn run_metal_generation_request(
             } else {
                 Some(
                     sampler
-                        .select_next_token(&last_logits, &cache)
+                        .select_next_token_from_history(&last_logits, &token_history)
                         .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
                 )
             };
@@ -2384,14 +2397,18 @@ fn run_metal_generation_request(
             if generated_tokens.len() >= request.options.max_output_tokens {
                 break super::TerminationReason::MaxOutputTokens;
             }
-            if cache.len() >= cache.max_context() {
+            let current_cache_tokens = layer_caches
+                .first()
+                .map(MetalKvCacheMirror::len)
+                .unwrap_or(cache.len());
+            if current_cache_tokens >= cache.max_context() {
                 break super::TerminationReason::ContextLimit;
             }
             let next_token = if let Some(token) = pending_token.take() {
                 token
             } else {
                 sampler
-                    .select_next_token(&last_logits, &cache)
+                    .select_next_token_from_history(&last_logits, &token_history)
                     .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?
             };
             if loaded_model.is_end_of_sequence(next_token) {
@@ -2424,7 +2441,7 @@ fn run_metal_generation_request(
                     ))
                 })?,
                 MetalStepOutputMode::Logits(decode_output_mode),
-                false,
+                true,
             )?;
             if execution_plan_digest.is_none() {
                 execution_plan_digest = Some(loaded_model.plan_digest().to_string());
@@ -2444,7 +2461,7 @@ fn run_metal_generation_request(
             kernel_count = kernel_count.saturating_add(step.kernel_count);
             bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
             super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
-            cache.append(next_token, step.key.clone(), step.value.clone())?;
+            token_history.push(next_token.as_u32());
 
             if super::truncate_generated_text(
                 loaded_model.tokenizer(),
@@ -2462,21 +2479,26 @@ fn run_metal_generation_request(
                 last_logits = step.logits;
                 pending_token = Some(
                     sampler
-                        .select_next_token(&last_logits, &cache)
+                        .select_next_token_from_history(&last_logits, &token_history)
                         .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?,
                 );
             }
         };
 
         if should_record_prompt_prefix {
-            if let (Some(prompt_cache), Some(prompt_layer_caches)) =
-                (prompt_cache.as_ref(), prompt_layer_caches.as_ref())
-            {
+            if let Some(prompt_layer_caches) = prompt_layer_caches.as_ref() {
+                let prompt_cache = build_host_cache_from_metal_layer_caches(
+                    prompt_token_ids.as_slice(),
+                    prompt_layer_caches,
+                    cache.max_context(),
+                    layer_kv_width,
+                    cache.policy(),
+                )?;
                 let recorded_identity = shared_prefixes.record(
                     compatibility,
                     &prompt_tokens,
                     &prompt_logits,
-                    prompt_cache,
+                    &prompt_cache,
                 );
                 metal_shared_prefixes.record(
                     &metal_compatibility,
@@ -2500,6 +2522,13 @@ fn run_metal_generation_request(
         }
 
         let generated = TokenSequence::new(generated_tokens);
+        let final_cache = build_host_cache_from_metal_layer_caches(
+            token_history.as_slice(),
+            layer_caches.as_slice(),
+            cache.max_context(),
+            layer_kv_width,
+            cache.policy(),
+        )?;
         if let Some(session_id) = &request.session_id {
             session_tokens.extend_from_slice(prompt_tokens.as_slice());
             session_tokens.extend_from_slice(generated.as_slice());
@@ -2507,18 +2536,24 @@ fn run_metal_generation_request(
                 session_id,
                 loaded_model.descriptor(),
                 served_artifact.served_artifact_digest.as_str(),
-                cache.clone(),
+                final_cache.clone(),
                 TokenSequence::new(session_tokens),
             )?;
         }
         let text = loaded_model.tokenizer().decode(generated.as_slice());
+        let current_cache_tokens = layer_caches
+            .first()
+            .map(MetalKvCacheMirror::len)
+            .unwrap_or(final_cache.len());
         let usage = super::GenerationUsage {
             input_tokens: prompt_tokens.len(),
             output_tokens: generated.len(),
-            cache_tokens: cache.len(),
+            cache_tokens: current_cache_tokens,
         };
-        let kv_cache =
-            psionic_runtime::KvCacheAccounting::from_states(&previous_kv_state, cache.state());
+        let kv_cache = psionic_runtime::KvCacheAccounting::from_states(
+            &previous_kv_state,
+            psionic_runtime::KvCacheState::paged(cache.page_layout(), current_cache_tokens),
+        );
         let total_duration_ns = generation_start
             .elapsed()
             .as_nanos()
@@ -2665,6 +2700,64 @@ fn build_metal_layer_caches_from_host_cache(
                 .map_err(ReferenceTextGenerationError::Runtime)
         })
         .collect()
+}
+
+fn build_host_cache_from_metal_layer_caches(
+    tokens: &[u32],
+    layer_caches: &[MetalKvCacheMirror],
+    max_context: usize,
+    layer_kv_width: usize,
+    policy: &KvCachePolicy,
+) -> Result<super::InMemoryKvCache, ReferenceTextGenerationError> {
+    if layer_caches.is_empty() {
+        if tokens.is_empty() {
+            return Ok(super::InMemoryKvCache::with_policy(
+                max_context,
+                0,
+                policy.clone(),
+            ));
+        }
+        return Err(ReferenceTextGenerationError::Runtime(
+            super::RuntimeError::Backend(String::from(
+                "cannot rebuild host cache from an empty metal layer cache set",
+            )),
+        ));
+    }
+    let layer_count = layer_caches.len();
+    let token_count = tokens.len();
+    let width = layer_count.saturating_mul(layer_kv_width);
+    let mut cache = super::InMemoryKvCache::with_policy(max_context, width, policy.clone());
+    for (layer_index, layer_cache) in layer_caches.iter().enumerate() {
+        if layer_cache.width() != layer_kv_width {
+            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                expected_kv_width: layer_kv_width,
+                kv_width: layer_cache.width(),
+            });
+        }
+        if layer_cache.len() != token_count {
+            return Err(ReferenceTextGenerationError::Runtime(
+                super::RuntimeError::Backend(format!(
+                    "metal layer cache {layer_index} token length mismatch while rebuilding host cache: expected {token_count}, actual {}",
+                    layer_cache.len()
+                )),
+            ));
+        }
+    }
+    for (token_index, token) in tokens.iter().copied().enumerate() {
+        let mut key = vec![0.0; width];
+        let mut value = vec![0.0; width];
+        for (layer_index, layer_cache) in layer_caches.iter().enumerate() {
+            let (layer_key, layer_value) = layer_cache
+                .read_entry(token_index)
+                .map_err(ReferenceTextGenerationError::Runtime)?;
+            let layer_offset = layer_index.saturating_mul(layer_kv_width);
+            key[layer_offset..layer_offset + layer_kv_width].copy_from_slice(layer_key.as_slice());
+            value[layer_offset..layer_offset + layer_kv_width]
+                .copy_from_slice(layer_value.as_slice());
+        }
+        cache.append(TokenId(token), key, value)?;
+    }
+    Ok(cache)
 }
 
 fn metal_layer_cache_state(layer_caches: &[MetalKvCacheMirror]) -> psionic_runtime::KvCacheState {
@@ -11772,9 +11865,17 @@ mod tests {
         CacheAction, CacheKind, CompilePathTemperature, DeviceDiscovery, HealthStatus,
         PrefixCacheState,
     };
-    use std::{fs, path::Path};
+    use std::{fs, path::Path, path::PathBuf, time::Instant};
     #[cfg(target_os = "macos")]
     use tempfile::tempdir;
+
+    #[cfg(target_os = "macos")]
+    fn real_gpt_oss_gguf_path() -> Option<PathBuf> {
+        ["/Users/christopherdavid/models/gpt-oss/gpt-oss-20b-mxfp4.gguf"]
+            .into_iter()
+            .map(PathBuf::from)
+            .find(|candidate| candidate.exists())
+    }
 
     #[test]
     fn packed_projection_bytes_preserve_projection_order() {
@@ -12097,6 +12198,48 @@ mod tests {
         );
         assert!(metrics.readback_bytes >= std::mem::size_of::<f32>() as u64);
         assert_eq!(metrics.raw_logits_materialized, true);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "loads the local GPT-OSS GGUF and prints a direct native Metal receipt"]
+    fn metal_real_gpt_oss_direct_short_text_receipt() -> Result<(), Box<dyn std::error::Error>> {
+        let Some(path) = real_gpt_oss_gguf_path() else {
+            return Ok(());
+        };
+
+        let mut metal = MetalGgufGptOssTextGenerationService::from_gguf_path(&path)?;
+        let request = GenerationRequest::new_text(
+            "real-metal-short-text",
+            metal.model_descriptor().clone(),
+            None,
+            "Hello",
+            GenerationOptions::greedy(1),
+        );
+        let started = Instant::now();
+        let response = metal.generate(&request)?;
+        let wall = started.elapsed().as_secs_f64();
+        let prompt_ns = response.metrics.prompt_eval_duration_ns.unwrap_or_default();
+        let eval_ns = response.metrics.eval_duration_ns.unwrap_or_default();
+        let prompt_tps = if prompt_ns == 0 {
+            0.0
+        } else {
+            response.usage.input_tokens as f64 / (prompt_ns as f64 / 1_000_000_000.0)
+        };
+        let eval_tps = if eval_ns == 0 {
+            0.0
+        } else {
+            response.usage.output_tokens as f64 / (eval_ns as f64 / 1_000_000_000.0)
+        };
+
+        eprintln!(
+            "real metal short-text receipt: prompt_tokens={} output_tokens={} wall_s={wall:.3} prompt_tps={prompt_tps:.3} eval_tps={eval_tps:.3} termination={:?} output={:?}",
+            response.usage.input_tokens,
+            response.usage.output_tokens,
+            response.termination,
+            response.output.text,
+        );
         Ok(())
     }
 
