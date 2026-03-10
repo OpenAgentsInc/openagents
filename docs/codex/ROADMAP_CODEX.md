@@ -319,7 +319,7 @@ Acceptance:
 
 ### Phase B. Coding Artifact Parity
 
-### CX-5. Durable Proposed-Plan Artifacts And Implement Handoff
+### CX-5. Durable Proposed-Plan Artifacts And Implement Handoff ([#3362](https://github.com/OpenAgentsInc/openagents/issues/3362))
 
 Scope:
 
@@ -336,7 +336,7 @@ Acceptance:
 - the latest plan survives restart and reconnect
 - the user can reopen and act on the plan after the original turn scrolls away
 
-### CX-6. Review, Compact, And Structured Diff Parity
+### CX-6. Review, Compact, And Structured Diff Parity ([#3363](https://github.com/OpenAgentsInc/openagents/issues/3363))
 
 Scope:
 
@@ -361,7 +361,7 @@ Later extension within this lane:
 
 ### Phase C. Coding Shell Parity
 
-### CX-7. Workspace And Project Identity
+### CX-7. Workspace And Project Identity ([#3364](https://github.com/OpenAgentsInc/openagents/issues/3364))
 
 Scope:
 
@@ -377,7 +377,7 @@ Acceptance:
 - a thread truthfully reports which workspace and project it operates on
 - non-git workspaces degrade honestly
 
-### CX-8. Git, Branch, Worktree, And PR Workflow Parity
+### CX-8. Git, Branch, Worktree, And PR Workflow Parity ([#3365](https://github.com/OpenAgentsInc/openagents/issues/3365))
 
 Scope:
 
@@ -393,7 +393,7 @@ Acceptance:
   dropping to external tools for every state transition
 - this closes the most important T3 Code workbench gap
 
-### CX-9. Thread-Scoped Terminal And Background Command Lane
+### CX-9. Thread-Scoped Terminal And Background Command Lane ([#3366](https://github.com/OpenAgentsInc/openagents/issues/3366))
 
 Scope:
 
@@ -411,7 +411,7 @@ Acceptance:
 
 ### Phase D. Integrations And Automation Parity
 
-### CX-10. Skills, MCP, Apps, And Request-Flow Parity
+### CX-10. Skills, MCP, Apps, And Request-Flow Parity ([#3367](https://github.com/OpenAgentsInc/openagents/issues/3367))
 
 Scope:
 
@@ -427,7 +427,7 @@ Acceptance:
 - a user can rely on skills, MCP, apps, and approval flows from Autopilot
   without needing the Codex TUI as a fallback control panel
 
-### CX-11. Non-Interactive `exec` Replacement
+### CX-11. Non-Interactive `exec` Replacement ([#3368](https://github.com/OpenAgentsInc/openagents/issues/3368))
 
 Scope:
 
@@ -446,7 +446,7 @@ Acceptance:
 
 ### Phase E. Personal Remote Companion
 
-### CX-12. Personal Remote Companion V1
+### CX-12. Personal Remote Companion V1 ([#3369](https://github.com/OpenAgentsInc/openagents/issues/3369))
 
 Scope:
 
@@ -488,7 +488,7 @@ Implementation note:
 - if a separate companion web app later becomes justified, it must remain a thin
   client over desktop-owned truth
 
-### CX-13. Personal Remote Companion V2
+### CX-13. Personal Remote Companion V2 ([#3370](https://github.com/OpenAgentsInc/openagents/issues/3370))
 
 Scope:
 
