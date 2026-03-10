@@ -4,8 +4,8 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
-    ClusterAdmissionConfig, ClusterError, ClusterTrustPolicy, LocalClusterConfig,
-    NodeAttestationEvidence, NodeRole,
+    ClusterAdmissionConfig, ClusterError, ClusterIntroductionPolicy, ClusterTrustPolicy,
+    LocalClusterConfig, NodeAttestationEvidence, NodeRole,
 };
 
 /// Schema version for persisted operator cluster manifests.
@@ -27,6 +27,9 @@ pub struct ClusterOperatorManifest {
     /// Optional attestation facts attached to the local node identity.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub node_attestation: Option<NodeAttestationEvidence>,
+    /// Optional policy for accepted wider-network introduction sources.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub introduction_policy: Option<ClusterIntroductionPolicy>,
     /// Machine-checkable trust policy for the node.
     pub trust_policy: ClusterTrustPolicy,
 }
@@ -45,6 +48,7 @@ impl ClusterOperatorManifest {
             seed_peers,
             role: config.role,
             node_attestation: config.node_attestation.clone(),
+            introduction_policy: config.introduction_policy.clone(),
             trust_policy: config.trust_policy.clone(),
         }
     }
@@ -76,6 +80,10 @@ impl ClusterOperatorManifest {
                 hasher.update(b"|node_device_identity_digest|");
                 hasher.update(device_identity_digest.as_bytes());
             }
+        }
+        if let Some(introduction_policy) = &self.introduction_policy {
+            hasher.update(b"|introduction_policy|");
+            hasher.update(introduction_policy.stable_digest().as_bytes());
         }
         for seed_peer in &self.seed_peers {
             hasher.update(b"|seed|");
@@ -126,6 +134,7 @@ impl From<ClusterOperatorManifest> for LocalClusterConfig {
             role: manifest.role,
             identity_persistence: crate::NodeIdentityPersistence::Ephemeral,
             node_attestation: manifest.node_attestation,
+            introduction_policy: manifest.introduction_policy,
             trust_policy: manifest.trust_policy,
         }
     }
@@ -138,7 +147,10 @@ mod tests {
     use tempfile::tempdir;
 
     use super::*;
-    use crate::{ClusterTrustPosture, ConfiguredClusterPeer, NodeAttestationRequirement, NodeId};
+    use crate::{
+        ClusterIntroductionPolicy, ClusterIntroductionSource, ClusterTrustPosture,
+        ConfiguredClusterPeer, NodeAttestationRequirement, NodeId,
+    };
 
     fn loopback_addr(port: u16) -> SocketAddr {
         SocketAddr::from(([127, 0, 0, 1], port))
@@ -155,6 +167,13 @@ mod tests {
                 NodeAttestationEvidence::new("issuer-a", "attestation-a")
                     .with_device_identity_digest("device-a"),
             ),
+            introduction_policy: Some(ClusterIntroductionPolicy::new(
+                vec![ClusterIntroductionSource::new(
+                    "introducer-a",
+                    "introducer-key-a",
+                )],
+                30_000,
+            )),
             trust_policy: ClusterTrustPolicy::attested_configured_peers(vec![
                 ConfiguredClusterPeer::new(NodeId::new("peer-b"), loopback_addr(31012), "peer-key")
                     .with_attestation_requirement(
@@ -206,6 +225,7 @@ mod tests {
         assert_eq!(config.seed_peers, manifest.seed_peers);
         assert_eq!(config.role, manifest.role);
         assert_eq!(config.node_attestation, manifest.node_attestation);
+        assert_eq!(config.introduction_policy, manifest.introduction_policy);
         assert_eq!(config.trust_policy, manifest.trust_policy);
         assert_eq!(
             config.trust_policy.posture,
