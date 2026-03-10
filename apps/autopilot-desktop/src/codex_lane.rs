@@ -52,6 +52,10 @@ fn default_opt_out_notification_methods() -> Vec<String> {
         .collect()
 }
 
+fn is_pre_materialization_thread_read_error(message: &str) -> bool {
+    message.contains("not materialized yet") && message.contains("includeTurns is unavailable")
+}
+
 #[derive(Clone, Debug)]
 pub struct CodexLaneConfig {
     pub cwd: Option<PathBuf>,
@@ -1072,7 +1076,14 @@ impl CodexLaneState {
             }
             Err(error) => {
                 let message = error.to_string();
-                if is_disconnect_error(&error) {
+                if kind == CodexLaneCommandKind::ThreadRead
+                    && is_pre_materialization_thread_read_error(&message)
+                {
+                    tracing::info!(
+                        "codex thread/read unavailable before first user message: {}",
+                        message
+                    );
+                } else if is_disconnect_error(&error) {
                     self.client = None;
                     self.channels = None;
                     self.set_error(
