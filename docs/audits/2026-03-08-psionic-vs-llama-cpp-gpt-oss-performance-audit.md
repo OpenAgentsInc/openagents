@@ -1274,3 +1274,24 @@ Interpretation:
   `llama.cpp` control.
 - That is why `#3295` was closed instead of forcing more CUDA churn into the
   path just to satisfy a previously-planned intermediate issue.
+
+## 2026-03-10 Attention-Dispatch Issue Closure
+
+`#3296` was closed for the same reason: it stopped being the next honest
+blocker on the tracked host contract.
+
+Why it was closed:
+
+- the older short decode-hotspot samples still had attention at about
+  `4.7 us`, far below the router and expert stages that actually dominated the
+  path before `#3293` and `#3294`
+- after those landings, Psionic was already in the same or better throughput
+  class than the current `llama.cpp` control on the exact benchmark
+
+Interpretation:
+
+- a `fattn.cu`-style attention rewrite may still be good future headroom work
+- it is not required to close the current parity contract honestly on this host
+- the only remaining open issue in the tracked chain is now `#3248`, which is
+  about making the benchmark contract itself fully clean and then closing the
+  throughput umbrella
