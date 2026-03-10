@@ -116,16 +116,14 @@ What the retained tree has today:
 
 What the retained tree does not have today:
 
-- a reusable Psionic Apple FM crate or Rust SDK surface
-- session handles or transcript restore semantics
-- streaming
-- structured generation
 - tools
 - typed error mapping
-- truthful generation options coverage
 - Apple FM as the default Mac local inference lane
 - a Mission Control pane that speaks Apple FM truth on macOS instead of
   hard-coded GPT-OSS 20B load semantics
+- desktop chat/workbench cutover onto the same Apple FM runtime truth the
+  provider path already consumes
+- exact or richer typed usage truth beyond today's explicitly estimated counts
 
 The Python SDK makes the gap unmistakable: Apple FM is not just "one endpoint
 that returns a string." It is a full sessioned API with streaming, transcript
@@ -153,7 +151,8 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, and `FM-6` are now landed on `main`.
+`FM-1`, `FM-2`, `FM-3`, `FM-4`, `FM-5`, `FM-6`, and `FM-7` are now landed on
+`main`.
 
 What shipped:
 
@@ -225,10 +224,31 @@ What shipped:
 - the typed transcript restore path preserves the Python SDK rule that
   historical tool mentions in transcript history do not enable new tool calls
   unless tools are supplied again out-of-band
+- `psionic-apple-fm` now exposes reusable structured-generation types:
+  `AppleFmGenerationSchema`, `AppleFmGeneratedContent`, `AppleFmGenerationId`,
+  and the Rust-native `AppleFmStructuredType` marker trait
+- typed structured-generation schemas now derive from Rust types through
+  `schemars::JsonSchema`, which is the Rust-native equivalent of the Python
+  SDK's `Generable` / `generable` / `GenerationGuide` surface
+- the reusable Rust client now supports all three structured-generation modes:
+  typed Rust generation, explicit schema objects, and raw JSON-schema input
+- the Swift bridge now exposes a real Apple FM structured-generation route at
+  `POST /v1/sessions/{id}/responses/structured`
+- structured generation now uses Apple's `LanguageModelSession.respond(...,
+  schema: ...)` path instead of asking for JSON in the prompt
+- constraint families now covered in the Rust lane include enum/choice,
+  numeric-range, list-count, and regex-guided schema metadata where the
+  underlying Apple contract supports them
+- structured-generation tests now cover nested objects, lists, validation
+  errors, typed conversion, and a real ignored live-bridge receipt against the
+  in-tree Swift bridge binary
+- a live local receipt now exists for both explicit-schema and typed
+  structured generation through the retained Swift bridge on macOS with Apple
+  FM availability
 
-What `FM-1` through `FM-6` did not close:
+What `FM-1` through `FM-7` did not close:
 
-- structured generation, tools, and typed error taxonomy
+- tools and typed error taxonomy
 - desktop Mission Control cutover on macOS
 - raw token counts are now truthfully marked as estimated, but the broader
   typed metrics/error taxonomy work still remains `FM-9`
@@ -332,23 +352,17 @@ streaming truth.
 Relative to the Python SDK target, the retained repo is currently missing at
 least the following:
 
-- no reusable `crates/psionic/*` Apple FM SDK surface
-- no typed bridge protocol beyond minimal model listing and one-shot chat
-- no session handles or explicit request-isolation contract
-- the current Swift bridge keeps a shared `LanguageModelSession`, which is not
-  the right base for a full SDK
-- no transcript export/import endpoints
-- no structured generation endpoints
 - no tool registration or tool-call/result protocol
-- no streaming contract
-- generation parameters are only partially surfaced and mostly ignored
-- usage metrics are approximate and not clearly marked as such
 - no typed Rust error taxonomy aligned to the Apple FM model contract
+- usage metrics are still explicitly estimated rather than exact, and the
+  broader typed evidence/error work still remains
 - the desktop still defaults local inference to Psionic GPT-OSS rather than
   Apple FM on macOS
 - Mission Control still gates `GO ONLINE`, button copy, log copy, and model
   status around GPT-OSS-specific local-runtime fields instead of Apple FM
   readiness on macOS
+- desktop chat/workbench paths are not yet fully cut over to the same Apple FM
+  runtime truth on macOS
 
 ## Marching Orders
 
@@ -626,12 +640,11 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-6`, the next-item order is:
+After `FM-7`, the next-item order is:
 
-1. `FM-7` structured generation and schema support
-2. `FM-8` tools
-3. `FM-9` typed errors and metrics truth
-4. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-8` tools
+2. `FM-9` typed errors and metrics truth
+3. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and

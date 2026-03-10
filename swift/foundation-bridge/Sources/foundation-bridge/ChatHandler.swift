@@ -179,6 +179,66 @@ actor ChatHandler {
         }
     }
 
+    func respondStructured(
+        sessionID: String,
+        request: SessionStructuredResponseRequest
+    ) async throws -> SessionStructuredResponseResponse {
+        guard var record = sessions[sessionID] else {
+            throw FMError.invalidRequest("Unknown Apple FM session '\(sessionID)'")
+        }
+        if record.isResponding {
+            throw FMError.concurrentRequests(
+                "Apple FM session '\(sessionID)' already has an in-flight request"
+            )
+        }
+
+        record.isResponding = true
+        sessions[sessionID] = record
+
+        let startTime = Date()
+        let options = try bridgeGenerationOptions(from: request.options)
+        let schema = try generationSchema(from: request.schema)
+        do {
+            let response: LanguageModelSession.Response<GeneratedContent> = try await record.session
+                .respond(
+                    to: request.prompt,
+                    schema: schema,
+                    options: options
+                )
+            let payload = try generatedContentPayload(from: response.content)
+            let outputJSON = try payload.contentJSONString()
+
+            record.isResponding = false
+            record.transcriptJSONSnapshot = try transcriptJSONString(for: record.session)
+            sessions[sessionID] = record
+
+            return SessionStructuredResponseResponse(
+                session: try sessionState(sessionID: sessionID),
+                model: record.model.id,
+                content: payload,
+                usage: estimatedUsage(prompt: request.prompt, output: outputJSON)
+            )
+        } catch let error as LanguageModelSession.GenerationError {
+            sessions[sessionID] = recoveryRecord(afterFailureOf: record)
+            if case .concurrentRequests = error {
+                throw FMError.concurrentRequests(
+                    "Apple FM session '\(sessionID)' rejected overlapping requests"
+                )
+            }
+            throw FMError.requestFailed(
+                "Foundation Models structured request failed after \(Date().timeIntervalSince(startTime))s: \(error.localizedDescription)"
+            )
+        } catch let error as FMError {
+            sessions[sessionID] = recoveryRecord(afterFailureOf: record)
+            throw error
+        } catch {
+            sessions[sessionID] = recoveryRecord(afterFailureOf: record)
+            throw FMError.requestFailed(
+                "Foundation Models structured request failed: \(error.localizedDescription)"
+            )
+        }
+    }
+
     func streamResponse(
         sessionID: String,
         request: SessionRespondRequest
@@ -376,6 +436,40 @@ actor ChatHandler {
     private func transcriptJSONString(for session: LanguageModelSession) throws -> String? {
         let transcriptData = try JSONEncoder().encode(session.transcript)
         return String(data: transcriptData, encoding: .utf8)
+    }
+
+    private func generationSchema(from value: JSONValue) throws -> GenerationSchema {
+        let schemaData = try JSONEncoder().encode(value)
+        do {
+            return try JSONDecoder().decode(GenerationSchema.self, from: schemaData)
+        } catch {
+            throw FMError.invalidRequest(
+                "Invalid Apple FM generation schema: \(error.localizedDescription)"
+            )
+        }
+    }
+
+    private func generatedContentPayload(from content: GeneratedContent) throws -> GeneratedContentPayload {
+        let jsonString = content.jsonString
+        let jsonValue = try decodedJSONValue(fromJSONString: jsonString)
+        return GeneratedContentPayload(
+            generationID: "gen-\(UUID().uuidString.lowercased())",
+            content: jsonValue,
+            isComplete: content.isComplete
+        )
+    }
+
+    private func decodedJSONValue(fromJSONString jsonString: String) throws -> JSONValue {
+        do {
+            return try JSONDecoder().decode(
+                JSONValue.self,
+                from: Data(jsonString.utf8)
+            )
+        } catch {
+            throw FMError.serverError(
+                "Failed to decode Apple FM structured content: \(error.localizedDescription)"
+            )
+        }
     }
 
     private func decodedTranscript(fromJSONString transcriptJSON: String) throws -> Transcript {

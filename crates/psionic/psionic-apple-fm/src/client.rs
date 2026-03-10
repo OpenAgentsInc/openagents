@@ -9,14 +9,18 @@ use tokio_stream::wrappers::ReceiverStream;
 use crate::contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
     APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, APPLE_FM_BRIDGE_STREAM_SUFFIX,
-    APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX, AppleFmChatCompletionRequest, AppleFmChatCompletionResponse,
-    AppleFmCompletionResult, AppleFmErrorResponse, AppleFmGenerationOptions,
-    AppleFmGenerationOptionsValidationError, AppleFmHealthResponse, AppleFmModelsResponse,
-    AppleFmSession, AppleFmSessionCreateRequest, AppleFmSessionCreateResponse,
-    AppleFmSessionRespondRequest, AppleFmSessionRespondResponse, AppleFmSessionToolMetadata,
-    AppleFmSystemLanguageModel, AppleFmSystemLanguageModelAvailability,
-    AppleFmTextGenerationRequest, AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
+    APPLE_FM_BRIDGE_STRUCTURED_SUFFIX, APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX,
+    AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmCompletionResult,
+    AppleFmErrorResponse, AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError,
+    AppleFmHealthResponse, AppleFmModelsResponse, AppleFmSession, AppleFmSessionCreateRequest,
+    AppleFmSessionCreateResponse, AppleFmSessionRespondRequest, AppleFmSessionRespondResponse,
+    AppleFmSessionStructuredGenerationRequest, AppleFmSessionStructuredGenerationResponse,
+    AppleFmSessionToolMetadata, AppleFmStructuredGenerationRequest,
+    AppleFmStructuredGenerationResponse, AppleFmSystemLanguageModel,
+    AppleFmSystemLanguageModelAvailability, AppleFmTextGenerationRequest,
+    AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
 };
+use crate::structured::{AppleFmStructuredType, AppleFmStructuredValueError};
 use crate::transcript::{AppleFmTranscript, AppleFmTranscriptError};
 
 /// Reusable blocking client for the current Apple FM bridge contract.
@@ -287,6 +291,38 @@ impl AppleFmBridgeClient {
             })
     }
 
+    /// Executes a structured-generation prompt inside a persistent Apple FM session.
+    pub fn respond_structured_in_session(
+        &self,
+        session_id: &str,
+        request: &AppleFmSessionStructuredGenerationRequest,
+    ) -> Result<AppleFmSessionStructuredGenerationResponse, AppleFmBridgeClientError> {
+        request
+            .validate()
+            .map_err(|error| AppleFmBridgeClientError::StructuredValidation {
+                operation: "respond_structured_in_session",
+                error,
+            })?;
+        self.client
+            .post(self.endpoint(&session_structured_responses_path(session_id))?)
+            .json(request)
+            .send()
+            .map_err(|error| AppleFmBridgeClientError::Transport {
+                operation: "respond_structured_in_session",
+                error: error.to_string(),
+            })?
+            .error_for_status()
+            .map_err(|error| AppleFmBridgeClientError::Status {
+                operation: "respond_structured_in_session",
+                error: error.to_string(),
+            })?
+            .json::<AppleFmSessionStructuredGenerationResponse>()
+            .map_err(|error| AppleFmBridgeClientError::Decode {
+                operation: "respond_structured_in_session",
+                error: error.to_string(),
+            })
+    }
+
     /// Executes a raw chat-completion request against the bridge.
     pub fn chat_completion(
         &self,
@@ -372,6 +408,77 @@ impl AppleFmBridgeClient {
             options,
         };
         Ok(self.generate_text(&request)?.completion_result())
+    }
+
+    /// Executes one-shot structured generation using an ephemeral Apple FM session.
+    pub fn generate_structured(
+        &self,
+        request: &AppleFmStructuredGenerationRequest,
+    ) -> Result<AppleFmStructuredGenerationResponse, AppleFmBridgeClientError> {
+        request
+            .validate()
+            .map_err(|error| AppleFmBridgeClientError::StructuredValidation {
+                operation: "generate_structured",
+                error,
+            })?;
+        let session = self.create_session(&AppleFmSessionCreateRequest {
+            instructions: None,
+            model: request
+                .model
+                .clone()
+                .map(|model_id| AppleFmSystemLanguageModel {
+                    id: model_id,
+                    ..Default::default()
+                }),
+            tools: Vec::new(),
+            transcript_json: None,
+            transcript: None,
+        })?;
+        let response = self.respond_structured_in_session(
+            session.id.as_str(),
+            &AppleFmSessionStructuredGenerationRequest {
+                prompt: request.prompt.clone(),
+                schema: request.schema.clone(),
+                options: request.options.clone(),
+            },
+        );
+        let _ = self.delete_session(session.id.as_str());
+        response.map(|response| AppleFmStructuredGenerationResponse {
+            model: response.model,
+            content: response.content,
+            usage: response.usage,
+        })
+    }
+
+    /// Executes one-shot structured generation and decodes it into a Rust type.
+    pub fn generate_typed<T>(
+        &self,
+        prompt: impl Into<String>,
+        model: Option<impl Into<String>>,
+        options: Option<AppleFmGenerationOptions>,
+    ) -> Result<T, AppleFmBridgeClientError>
+    where
+        T: AppleFmStructuredType,
+    {
+        let schema =
+            crate::structured::AppleFmGenerationSchema::from_type::<T>().map_err(|error| {
+                AppleFmBridgeClientError::StructuredValidation {
+                    operation: "generate_typed",
+                    error,
+                }
+            })?;
+        let response = self.generate_structured(&AppleFmStructuredGenerationRequest {
+            model: model.map(Into::into),
+            prompt: prompt.into(),
+            schema,
+            options,
+        })?;
+        response.content.to_typed::<T>().map_err(|error| {
+            AppleFmBridgeClientError::StructuredDecode {
+                operation: "generate_typed",
+                error,
+            }
+        })
     }
 }
 
@@ -525,6 +632,14 @@ fn session_transcript_path(session_id: &str) -> String {
     )
 }
 
+fn session_structured_responses_path(session_id: &str) -> String {
+    format!(
+        "{}{}",
+        session_responses_path(session_id),
+        APPLE_FM_BRIDGE_STRUCTURED_SUFFIX
+    )
+}
+
 #[derive(Default)]
 struct PendingSseEvent {
     event_name: Option<String>,
@@ -670,6 +785,22 @@ pub enum AppleFmBridgeClientError {
         /// Transcript validation detail.
         error: AppleFmTranscriptError,
     },
+    /// Local structured-generation validation failed before transport.
+    #[error("Apple FM {operation} structured validation failed: {error}")]
+    StructuredValidation {
+        /// Bridge operation label.
+        operation: &'static str,
+        /// Structured validation detail.
+        error: AppleFmStructuredValueError,
+    },
+    /// Local structured-content decode failed after transport.
+    #[error("Apple FM {operation} structured decode failed: {error}")]
+    StructuredDecode {
+        /// Bridge operation label.
+        operation: &'static str,
+        /// Structured decode detail.
+        error: AppleFmStructuredValueError,
+    },
     /// Stream endpoint returned the wrong content type.
     #[error("Apple FM {operation} returned non-stream content type: {content_type}")]
     InvalidStreamContentType {
@@ -709,8 +840,12 @@ pub enum AppleFmBridgeStreamError {
 
 #[cfg(test)]
 mod tests {
+    use schemars::JsonSchema;
+    use serde::{Deserialize, Serialize};
     use std::io::{ErrorKind, Read, Write};
     use std::net::{TcpListener, TcpStream};
+    use std::path::PathBuf;
+    use std::process::{Child, Command, Stdio};
     use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
     use std::thread::JoinHandle;
@@ -720,13 +855,22 @@ mod tests {
     use super::{AppleFmAsyncBridgeClient, AppleFmBridgeClient, AppleFmBridgeClientError};
     use crate::contract::{
         AppleFmGenerationOptions, AppleFmSamplingMode, AppleFmSessionCreateRequest,
-        AppleFmSessionRespondRequest, AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
+        AppleFmSessionRespondRequest, AppleFmSessionStructuredGenerationRequest,
+        AppleFmSessionToolMetadata, AppleFmStructuredGenerationRequest, AppleFmSystemLanguageModel,
         AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUseCase, AppleFmUsageTruth,
     };
+    use crate::structured::AppleFmGenerationSchema;
     use crate::transcript::{
         APPLE_FM_TRANSCRIPT_TYPE, AppleFmTranscript, AppleFmTranscriptContent,
         AppleFmTranscriptEntry, AppleFmTranscriptPayload,
     };
+
+    #[derive(Clone, Debug, Deserialize, JsonSchema, PartialEq, Serialize)]
+    struct TaskSummary {
+        title: String,
+        completed: bool,
+        tags: Vec<String>,
+    }
 
     fn empty_transcript_json() -> String {
         serde_json::json!({
@@ -956,6 +1100,52 @@ mod tests {
                     )
                 } else if method == "POST"
                     && path.starts_with("/v1/sessions/sess-")
+                    && path.ends_with("/responses/structured")
+                {
+                    let request_json: serde_json::Value =
+                        serde_json::from_str(request_body.as_str())
+                            .expect("structured request json");
+                    assert_eq!(request_json["prompt"], "summarize this task");
+                    assert!(request_json["schema"]["properties"].is_object());
+                    let session_id = path
+                        .trim_start_matches("/v1/sessions/")
+                        .trim_end_matches("/responses/structured")
+                        .trim_end_matches('/');
+                    (
+                        200,
+                        serde_json::json!({
+                            "session": {
+                                "id": session_id,
+                                "instructions": "You are a helper",
+                                "model": {
+                                    "id": "apple-foundation-model",
+                                    "use_case": "general",
+                                    "guardrails": "default"
+                                },
+                                "tools": [],
+                                "is_responding": false,
+                                "transcript_json": non_empty_transcript_json()
+                            },
+                            "model": "apple-foundation-model",
+                            "content": {
+                                "generation_id": "gen-1",
+                                "content": {
+                                    "title": "Ship Apple FM",
+                                    "completed": false,
+                                    "tags": ["fm", "swift", "schema"]
+                                },
+                                "is_complete": true
+                            },
+                            "usage": {
+                                "prompt_tokens_detail": { "value": 7, "truth": "estimated" },
+                                "completion_tokens_detail": { "value": 9, "truth": "estimated" },
+                                "total_tokens_detail": { "value": 16, "truth": "estimated" }
+                            }
+                        })
+                        .to_string(),
+                    )
+                } else if method == "POST"
+                    && path.starts_with("/v1/sessions/sess-")
                     && path.ends_with("/responses/stream")
                 {
                     let response = "event: snapshot\n\
@@ -1031,6 +1221,69 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
 
     fn write_response(stream: &mut TcpStream, status_code: u16, body: &str) {
         write_response_with_content_type(stream, status_code, "application/json", body);
+    }
+
+    #[cfg(target_os = "macos")]
+    struct LiveFoundationBridge {
+        child: Child,
+    }
+
+    #[cfg(target_os = "macos")]
+    impl Drop for LiveFoundationBridge {
+        fn drop(&mut self) {
+            let _ = self.child.kill();
+            let _ = self.child.wait();
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    fn foundation_bridge_binary() -> Option<PathBuf> {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        manifest_dir
+            .ancestors()
+            .flat_map(|root| {
+                [
+                    root.join("bin/foundation-bridge"),
+                    root.join("swift/foundation-bridge/.build/release/foundation-bridge"),
+                    root.join(
+                        "swift/foundation-bridge/.build/arm64-apple-macosx/release/foundation-bridge",
+                    ),
+                ]
+            })
+            .find(|path| path.is_file())
+    }
+
+    #[cfg(target_os = "macos")]
+    fn spawn_live_foundation_bridge() -> (AppleFmBridgeClient, LiveFoundationBridge) {
+        let listener = TcpListener::bind("127.0.0.1:0").expect("reserve live bridge port");
+        let port = listener.local_addr().expect("live bridge addr").port();
+        drop(listener);
+
+        let binary = foundation_bridge_binary().expect("foundation-bridge binary");
+        let child = Command::new(binary)
+            .arg(port.to_string())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .expect("spawn live foundation bridge");
+        let client = AppleFmBridgeClient::new(format!("http://127.0.0.1:{port}"))
+            .expect("live bridge client");
+        let deadline = Instant::now() + Duration::from_secs(30);
+        loop {
+            if let Ok(health) = client.health() {
+                assert!(
+                    health.model_available,
+                    "Foundation Models must be available for the live structured-generation receipt"
+                );
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "timed out waiting for live foundation bridge health"
+            );
+            std::thread::sleep(Duration::from_millis(250));
+        }
+        (client, LiveFoundationBridge { child })
     }
 
     fn write_response_with_content_type(
@@ -1342,6 +1595,152 @@ data: {\"kind\":\"completed\",\"model\":\"apple-foundation-model\",\"output\":\"
         ));
 
         handle.join().expect("mock bridge thread");
+    }
+
+    #[test]
+    fn client_supports_structured_generation_and_typed_decode() {
+        let (base_url, handle) = spawn_mock_bridge();
+        let client = AppleFmBridgeClient::new(base_url).expect("bridge client");
+
+        let session = client
+            .create_session(&AppleFmSessionCreateRequest {
+                instructions: None,
+                model: Some(AppleFmSystemLanguageModel::default()),
+                tools: vec![],
+                transcript_json: None,
+                transcript: None,
+            })
+            .expect("create session");
+
+        let raw_schema = AppleFmGenerationSchema::from_json_str(
+            r#"{
+                "type":"object",
+                "properties":{
+                    "title":{"type":"string"},
+                    "completed":{"type":"boolean"},
+                    "tags":{"type":"array","items":{"type":"string"}}
+                },
+                "required":["title","completed","tags"]
+            }"#,
+        )
+        .expect("raw schema");
+
+        let structured = client
+            .respond_structured_in_session(
+                session.id.as_str(),
+                &AppleFmSessionStructuredGenerationRequest {
+                    prompt: "summarize this task".to_string(),
+                    schema: raw_schema,
+                    options: Some(
+                        AppleFmGenerationOptions::new(
+                            Some(AppleFmSamplingMode::greedy()),
+                            Some(0.1),
+                            Some(64),
+                        )
+                        .expect("valid structured options"),
+                    ),
+                },
+            )
+            .expect("structured response");
+        assert_eq!(structured.model, "apple-foundation-model");
+        assert_eq!(
+            structured
+                .content
+                .property::<String>("title")
+                .expect("decode title"),
+            Some("Ship Apple FM".to_string())
+        );
+        assert!(structured.content.is_complete);
+
+        let one_shot = client
+            .generate_structured(&AppleFmStructuredGenerationRequest {
+                model: Some("apple-foundation-model".to_string()),
+                prompt: "summarize this task".to_string(),
+                schema: AppleFmGenerationSchema::from_type::<TaskSummary>().expect("typed schema"),
+                options: None,
+            })
+            .expect("one-shot structured response");
+        assert_eq!(
+            one_shot
+                .content
+                .property::<Vec<String>>("tags")
+                .expect("decode tags"),
+            Some(vec![
+                "fm".to_string(),
+                "swift".to_string(),
+                "schema".to_string()
+            ])
+        );
+
+        let typed = client
+            .generate_typed::<TaskSummary>(
+                "summarize this task",
+                Some("apple-foundation-model"),
+                None,
+            )
+            .expect("typed structured response");
+        assert_eq!(
+            typed,
+            TaskSummary {
+                title: "Ship Apple FM".to_string(),
+                completed: false,
+                tags: vec!["fm".to_string(), "swift".to_string(), "schema".to_string()],
+            }
+        );
+
+        handle.join().expect("mock bridge thread");
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    #[ignore = "requires local Foundation Models bridge binary and Apple FM availability"]
+    fn live_structured_generation_receipt() {
+        let (client, _bridge) = spawn_live_foundation_bridge();
+
+        let age = client
+            .generate_structured(&AppleFmStructuredGenerationRequest {
+                model: Some("apple-foundation-model".to_string()),
+                prompt: "Generate the age of an elderly house cat.".to_string(),
+                schema: AppleFmGenerationSchema::from_json_str(
+                    r#"{
+                        "additionalProperties": false,
+                        "properties": {
+                            "months": { "type": "integer" },
+                            "years": { "type": "integer" }
+                        },
+                        "required": ["years", "months"],
+                        "title": "Age",
+                        "type": "object",
+                        "x-order": ["years", "months"]
+                    }"#,
+                )
+                .expect("age schema"),
+                options: None,
+            })
+            .expect("live age structured generation");
+        assert!(age.content.is_complete);
+        assert!(
+            age.content
+                .property::<i64>("years")
+                .expect("decode years")
+                .is_some()
+        );
+        assert!(
+            age.content
+                .property::<i64>("months")
+                .expect("decode months")
+                .is_some()
+        );
+
+        let typed = client
+            .generate_typed::<TaskSummary>(
+                "Summarize the Apple Foundation Models integration work with a short title, a completed flag, and a few tags.",
+                Some("apple-foundation-model"),
+                None,
+            )
+            .expect("live typed structured generation");
+        assert!(!typed.title.trim().is_empty());
+        assert!(!typed.tags.is_empty());
     }
 
     #[test]

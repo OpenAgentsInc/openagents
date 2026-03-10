@@ -1,3 +1,6 @@
+use crate::structured::{
+    AppleFmGeneratedContent, AppleFmGenerationSchema, AppleFmStructuredValueError,
+};
 use crate::transcript::{AppleFmTranscript, AppleFmTranscriptError};
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -22,6 +25,9 @@ pub const APPLE_FM_BRIDGE_STREAM_SUFFIX: &str = "/stream";
 
 /// Session-transcript export suffix exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_TRANSCRIPT_SUFFIX: &str = "/transcript";
+
+/// Session-structured-response suffix exposed by the retained Swift bridge.
+pub const APPLE_FM_BRIDGE_STRUCTURED_SUFFIX: &str = "/structured";
 
 /// Typed system-model use cases exposed by Apple's Foundation Models surface.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
@@ -1048,6 +1054,89 @@ pub struct AppleFmSessionRespondResponse {
     pub usage: Option<AppleFmChatUsage>,
 }
 
+/// One-shot structured-generation request supported by the reusable client surface.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmStructuredGenerationRequest {
+    /// Optional requested model identifier.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub model: Option<String>,
+    /// User-authored prompt content.
+    pub prompt: String,
+    /// Structured generation schema.
+    pub schema: AppleFmGenerationSchema,
+    /// Typed generation options.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<AppleFmGenerationOptions>,
+}
+
+impl AppleFmStructuredGenerationRequest {
+    /// Validates options and schema shape before transport.
+    pub fn validate(&self) -> Result<(), AppleFmStructuredValueError> {
+        self.schema.validate()?;
+        if let Some(options) = self.options.as_ref() {
+            options
+                .validate()
+                .map_err(|error| AppleFmStructuredValueError::OptionsValidation {
+                    error: error.to_string(),
+                })?;
+        }
+        Ok(())
+    }
+}
+
+/// One-shot structured-generation result.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmStructuredGenerationResponse {
+    /// Served model identifier.
+    pub model: String,
+    /// Structured generated content.
+    pub content: AppleFmGeneratedContent,
+    /// Optional usage details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<AppleFmChatUsage>,
+}
+
+/// Session-scoped structured-generation request.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSessionStructuredGenerationRequest {
+    /// User-authored prompt content.
+    pub prompt: String,
+    /// Structured generation schema.
+    pub schema: AppleFmGenerationSchema,
+    /// Typed generation options.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub options: Option<AppleFmGenerationOptions>,
+}
+
+impl AppleFmSessionStructuredGenerationRequest {
+    /// Validates options and schema shape before transport.
+    pub fn validate(&self) -> Result<(), AppleFmStructuredValueError> {
+        self.schema.validate()?;
+        if let Some(options) = self.options.as_ref() {
+            options
+                .validate()
+                .map_err(|error| AppleFmStructuredValueError::OptionsValidation {
+                    error: error.to_string(),
+                })?;
+        }
+        Ok(())
+    }
+}
+
+/// Session-scoped structured-generation result.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmSessionStructuredGenerationResponse {
+    /// Updated session state after the response completes.
+    pub session: AppleFmSession,
+    /// Served model identifier.
+    pub model: String,
+    /// Structured generated content.
+    pub content: AppleFmGeneratedContent,
+    /// Optional usage details.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<AppleFmChatUsage>,
+}
+
 #[cfg(test)]
 mod tests {
     use super::{
@@ -1055,10 +1144,12 @@ mod tests {
         AppleFmGenerationOptions, AppleFmGenerationOptionsValidationError, AppleFmHealthResponse,
         AppleFmModelsResponse, AppleFmSamplingMode, AppleFmSamplingModeType,
         AppleFmSessionCreateRequest, AppleFmSessionRespondRequest, AppleFmSessionToolMetadata,
-        AppleFmSystemLanguageModel, AppleFmSystemLanguageModelGuardrails,
-        AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
-        AppleFmTextGenerationRequest, AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
+        AppleFmStructuredGenerationRequest, AppleFmSystemLanguageModel,
+        AppleFmSystemLanguageModelGuardrails, AppleFmSystemLanguageModelUnavailableReason,
+        AppleFmSystemLanguageModelUseCase, AppleFmTextGenerationRequest, AppleFmUsageTruth,
+        DEFAULT_APPLE_FM_MODEL_ID,
     };
+    use crate::structured::{AppleFmGenerationSchema, AppleFmStructuredValueError};
     use crate::transcript::{
         APPLE_FM_TRANSCRIPT_TYPE, AppleFmTranscript, AppleFmTranscriptContent,
         AppleFmTranscriptEntry, AppleFmTranscriptError, AppleFmTranscriptPayload,
@@ -1443,5 +1534,44 @@ mod tests {
             error,
             AppleFmGenerationOptionsValidationError::GreedyTopNotAllowed
         );
+    }
+
+    #[test]
+    fn structured_generation_request_validates_schema_and_options() {
+        let request = AppleFmStructuredGenerationRequest {
+            model: None,
+            prompt: "classify this".to_string(),
+            schema: AppleFmGenerationSchema::from_json_str(
+                r#"{"type":"object","properties":{"label":{"enum":["a","b"]}}}"#,
+            )
+            .expect("valid schema"),
+            options: Some(AppleFmGenerationOptions {
+                sampling: Some(AppleFmSamplingMode {
+                    mode_type: AppleFmSamplingModeType::Greedy,
+                    top: Some(3),
+                    probability_threshold: None,
+                    seed: None,
+                }),
+                temperature: None,
+                maximum_response_tokens: None,
+            }),
+        };
+
+        let error = request
+            .validate()
+            .expect_err("invalid structured options should fail");
+        assert_eq!(
+            error,
+            AppleFmStructuredValueError::OptionsValidation {
+                error: "greedy sampling does not accept 'top'".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn generation_schema_rejects_non_object_schema() {
+        let error = AppleFmGenerationSchema::new(serde_json::json!([]))
+            .expect_err("non-object schema should fail");
+        assert_eq!(error, AppleFmStructuredValueError::InvalidSchemaRoot);
     }
 }

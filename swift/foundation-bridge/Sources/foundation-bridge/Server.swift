@@ -245,6 +245,13 @@ actor HTTPServer {
                     sessionID: sessionID,
                     body: request.body
                 )
+            case ("POST", "responses", "structured"):
+                return .buffered(
+                    await handleSessionStructuredRespond(
+                        sessionID: sessionID,
+                        body: request.body
+                    )
+                )
             default:
                 return .buffered(
                     buildErrorResponse(
@@ -372,6 +379,47 @@ actor HTTPServer {
         do {
             let request = try JSONDecoder().decode(SessionRespondRequest.self, from: bodyData)
             let response = try await chatHandler.respond(sessionID: sessionID, request: request)
+            return buildJSONResponse(status: 200, body: response)
+        } catch let error as FMError {
+            return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
+        } catch let error as DecodingError {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Invalid JSON: \(error.localizedDescription)")
+                    .errorResponse
+            )
+        } catch {
+            return buildJSONResponse(
+                status: 500,
+                body: FMError.serverError(error.localizedDescription).errorResponse
+            )
+        }
+    }
+
+    private func handleSessionStructuredRespond(sessionID: String, body: String?) async -> Data {
+        guard let bodyString = body, !bodyString.isEmpty else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Missing request body").errorResponse
+            )
+        }
+
+        guard let bodyData = bodyString.data(using: .utf8) else {
+            return buildJSONResponse(
+                status: 400,
+                body: FMError.invalidRequest("Invalid body encoding").errorResponse
+            )
+        }
+
+        do {
+            let request = try JSONDecoder().decode(
+                SessionStructuredResponseRequest.self,
+                from: bodyData
+            )
+            let response = try await chatHandler.respondStructured(
+                sessionID: sessionID,
+                request: request
+            )
             return buildJSONResponse(status: 200, body: response)
         } catch let error as FMError {
             return buildJSONResponse(status: statusCode(for: error), body: error.errorResponse)
