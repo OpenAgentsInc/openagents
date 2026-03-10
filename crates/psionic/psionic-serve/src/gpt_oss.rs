@@ -1843,18 +1843,29 @@ fn run_cuda_hybrid_generation_request(
                 kv_width: cache.width(),
             });
         }
+        let reserve_tokens = request.options.max_output_tokens.saturating_add(1);
+        let mut cuda_cache = CudaKvCacheMirror::from_host_cache(backend, &cache, reserve_tokens)?;
         for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
-            let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
-            super::accumulate_generation_step_counters(
-                &step,
-                &mut execution_plan_digest,
-                &mut compile_path,
-                &mut kernel_count,
-                &mut bytes_moved,
-                &mut plan_cache_hits,
-                &mut plan_cache_misses,
-                &mut gpt_oss_perf,
-            );
+            let step_start = Instant::now();
+            let step = loaded_model.inner.forward_step_with_output_mode(
+                backend,
+                *token,
+                cache.len(),
+                &cache,
+                CudaStepOutputMode::FullLogits,
+                Some(&mut cuda_cache),
+            )?;
+            let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+            perf.stage_timings.step_wall_ns = perf
+                .stage_timings
+                .step_wall_ns
+                .saturating_add(duration_ns(step_start));
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = Some(loaded_model.plan_digest().to_string());
+            }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
             cache.append(*token, step.key, step.value)?;
             token_history.push(token.as_u32());
             last_logits = step.logits;
@@ -1898,6 +1909,7 @@ fn run_cuda_hybrid_generation_request(
                 } else {
                     CudaStepOutputMode::FullLogits
                 },
+                Some(&mut cuda_cache),
             )?;
             let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
             perf.stage_timings.step_wall_ns = perf
@@ -3646,6 +3658,8 @@ struct GptOssCudaHybridSelected4Plan {
     hidden_input_host_buffer: CudaHostBuffer,
     hidden_input_buffer: CudaBuffer,
     hidden_input_q8_1_buffer: CudaBuffer,
+    qkv_host_buffer: CudaHostBuffer,
+    qkv_buffer: CudaBuffer,
     attention_input_host_buffer: CudaHostBuffer,
     attention_input_buffer: CudaBuffer,
     router_logits_buffer: CudaBuffer,
@@ -3671,6 +3685,7 @@ struct GptOssCudaHybridSelected4Plan {
     next_token_buffer: CudaBuffer,
     argmax_state_host_buffer: CudaHostBuffer,
     argmax_state_buffer: CudaBuffer,
+    qkv_scratch: Vec<f32>,
     gate_up_weights_scratch: Vec<u8>,
     down_weights_scratch: Vec<u8>,
     gate_bias_scratch: Vec<f32>,
@@ -3798,6 +3813,7 @@ impl GptOssCudaModelInner {
 
         let mut gate_up_bytes = 0usize;
         let mut down_bytes = 0usize;
+        let mut qkv_values = 0usize;
         let mut attention_input_values = hidden_size;
         let mut router_rows = 0usize;
         let mut gate_bias_values = 0usize;
@@ -3817,6 +3833,7 @@ impl GptOssCudaModelInner {
             has_host_backed_selected4 = true;
             let gate_rows = gate_up_host.gate.rows;
             let up_rows = gate_up_host.up.rows;
+            qkv_values = qkv_values.max(layer.attention_qkv_weight.total_rows());
             attention_input_values =
                 attention_input_values.max(layer.attention_output_weight.columns);
             router_rows = router_rows.max(layer.feed_forward_router_weight.rows);
@@ -3855,6 +3872,10 @@ impl GptOssCudaModelInner {
             ));
         }
 
+        let vector_q8_1_columns = hidden_size
+            .max(attention_input_values)
+            .max(self.output.columns);
+
         let hidden_input_host_buffer = backend
             .host_buffer(hidden_size.saturating_mul(std::mem::size_of::<f32>()))
             .map_err(ReferenceTextGenerationError::Runtime)?;
@@ -3864,9 +3885,15 @@ impl GptOssCudaModelInner {
         let hidden_input_q8_1_buffer = backend
             .byte_buffer(&vec![
                 0_u8;
-                ggml_q8_1_storage_bytes(1, hidden_size)
+                ggml_q8_1_storage_bytes(1, vector_q8_1_columns)
                     .map_err(ReferenceTextGenerationError::Runtime)?
             ])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let qkv_host_buffer = backend
+            .host_buffer(qkv_values.saturating_mul(std::mem::size_of::<f32>()))
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let qkv_buffer = backend
+            .f32_buffer(qkv_values)
             .map_err(ReferenceTextGenerationError::Runtime)?;
         let attention_input_host_buffer = backend
             .host_buffer(attention_input_values.saturating_mul(std::mem::size_of::<f32>()))
@@ -4065,6 +4092,8 @@ impl GptOssCudaModelInner {
             hidden_input_host_buffer,
             hidden_input_buffer,
             hidden_input_q8_1_buffer,
+            qkv_host_buffer,
+            qkv_buffer,
             attention_input_host_buffer,
             attention_input_buffer,
             router_logits_buffer,
@@ -4090,6 +4119,7 @@ impl GptOssCudaModelInner {
             next_token_buffer,
             argmax_state_host_buffer,
             argmax_state_buffer,
+            qkv_scratch: Vec::with_capacity(qkv_values),
             gate_up_weights_scratch: Vec::with_capacity(gate_up_bytes),
             down_weights_scratch: Vec::with_capacity(down_bytes),
             gate_bias_scratch: Vec::with_capacity(gate_bias_values),
@@ -5291,6 +5321,7 @@ impl GptOssCudaModelInner {
         position: usize,
         cache: &super::InMemoryKvCache,
         output_mode: CudaStepOutputMode,
+        mut cuda_cache: Option<&mut CudaKvCacheMirror>,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
         let mut hybrid_selected4_plan = if self.family_metadata.expert_used_count == Some(4)
             && self.layers.iter().any(|layer| {
@@ -5304,6 +5335,12 @@ impl GptOssCudaModelInner {
         let result = (|| -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
             let hidden_size = self.descriptor.config.hidden_size;
             let kv_width = self.descriptor.config.kv_width();
+            let head_count = self.descriptor.config.block.attention.head_count;
+            let kv_head_count = self.descriptor.config.block.attention.kv_head_count;
+            let head_dim = self.descriptor.config.block.attention.head_dim;
+            let rotary_dim = self.descriptor.config.block.attention.rotary_dim;
+            let (freq_scale, ext_factor, corr_dims, theta_scale) =
+                rope_runtime_parameters(rotary_dim, &self.family_metadata);
             let mut bytes_moved = 0_u64;
             let mut kernel_count = 0_usize;
             let mut perf = GptOssPerformanceMetrics {
@@ -5324,6 +5361,13 @@ impl GptOssCudaModelInner {
 
             let mut cache_key = vec![0.0; self.cache_width()];
             let mut cache_value = vec![0.0; self.cache_width()];
+            let cache_write_index = if let Some(cuda_cache) = cuda_cache.as_deref_mut() {
+                let index = cuda_cache.len();
+                cuda_cache.ensure_capacity(backend, index.saturating_add(1))?;
+                Some(index)
+            } else {
+                None
+            };
 
             for (layer_index, layer) in self.layers.iter().enumerate() {
                 let residual = hidden.clone();
@@ -5381,20 +5425,24 @@ impl GptOssCudaModelInner {
                     .qkv_projection_ns
                     .saturating_add(duration_ns(qkv_start));
 
+                let cache_offset = layer_index.saturating_mul(kv_width);
+                let mut cache_layer_key = k.clone();
                 let rope_start = Instant::now();
+                if cuda_cache.is_none() {
+                    apply_rope_neox(
+                        &mut q,
+                        head_count,
+                        head_dim,
+                        rotary_dim,
+                        position,
+                        &self.family_metadata,
+                    );
+                }
                 apply_rope_neox(
-                    &mut q,
-                    self.descriptor.config.block.attention.head_count,
-                    self.descriptor.config.block.attention.head_dim,
-                    self.descriptor.config.block.attention.rotary_dim,
-                    position,
-                    &self.family_metadata,
-                );
-                apply_rope_neox(
-                    &mut k,
-                    self.descriptor.config.block.attention.kv_head_count,
-                    self.descriptor.config.block.attention.head_dim,
-                    self.descriptor.config.block.attention.rotary_dim,
+                    &mut cache_layer_key,
+                    kv_head_count,
+                    head_dim,
+                    rotary_dim,
                     position,
                     &self.family_metadata,
                 );
@@ -5402,54 +5450,176 @@ impl GptOssCudaModelInner {
                     .stage_timings
                     .rope_ns
                     .saturating_add(duration_ns(rope_start));
-
-                let cache_offset = layer_index.saturating_mul(kv_width);
-                cache_key[cache_offset..cache_offset + kv_width].copy_from_slice(k.as_slice());
+                cache_key[cache_offset..cache_offset + kv_width]
+                    .copy_from_slice(cache_layer_key.as_slice());
                 cache_value[cache_offset..cache_offset + kv_width].copy_from_slice(v.as_slice());
-
-                let attention_start = Instant::now();
-                let attention = layer.attend(
-                    layer_index,
-                    q.as_slice(),
-                    k.as_slice(),
-                    v.as_slice(),
-                    cache,
-                    &self.descriptor,
-                    self.family_metadata.sliding_window,
-                );
-                perf.stage_timings.attention_ns = perf
-                    .stage_timings
-                    .attention_ns
-                    .saturating_add(duration_ns(attention_start));
 
                 let attention_output_start = Instant::now();
                 let mut attention_out = Vec::new();
-                let attention_out_stats = if let (Some(plan), Some(storage)) = (
+                if let (Some(cuda_cache), Some(plan), Some(cache_write_index)) = (
+                    cuda_cache.as_deref_mut(),
                     hybrid_selected4_plan.as_mut(),
-                    layer.attention_output_weight.storage.as_ref(),
+                    cache_write_index,
                 ) {
-                    let result = cuda_quantized_matvec_with_reused_buffers(
-                        backend,
-                        storage,
+                    let q_rows = layer.attention_qkv_weight.rows_per_projection[0];
+                    let k_rows = layer.attention_qkv_weight.rows_per_projection[1];
+                    plan.qkv_scratch.clear();
+                    plan.qkv_scratch.extend_from_slice(q.as_slice());
+                    plan.qkv_scratch.extend_from_slice(k.as_slice());
+                    plan.qkv_scratch.extend_from_slice(v.as_slice());
+                    plan.qkv_host_buffer
+                        .write_f32(plan.qkv_scratch.as_slice())
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                    let mut submission = backend.begin_submission()?;
+                    submission.copy_host_to_device(&plan.qkv_host_buffer, &plan.qkv_buffer)?;
+                    submission.attention_decode_rope_cache_f16_kv(
+                        &plan.qkv_buffer,
                         0,
-                        layer.attention_output_weight.mode,
-                        layer.attention_output_weight.rows,
-                        layer.attention_output_weight.columns,
-                        attention.as_slice(),
-                        &mut plan.attention_input_host_buffer,
+                        q_rows,
+                        q_rows.saturating_add(k_rows),
+                        &cuda_cache.key_buffer,
+                        &cuda_cache.value_buffer,
+                        cuda_cache.width,
+                        cache_offset,
+                        cache_write_index,
+                        self.family_metadata.sliding_window.unwrap_or(0),
+                        head_count,
+                        kv_head_count,
+                        head_dim,
+                        rotary_dim,
+                        position,
+                        freq_scale,
+                        ext_factor,
+                        corr_dims,
+                        theta_scale,
+                        layer.attention_sinks_device.as_ref(),
                         &plan.attention_input_buffer,
-                        &plan.output_buffer,
                     )?;
-                    attention_out = result.values;
-                    result.stats
+                    if let Some(storage) = layer.attention_output_weight.storage.as_ref() {
+                        if can_use_q8_1_mmvq(layer.attention_output_weight.mode) {
+                            submission.quantize_f32_to_q8_1(
+                                &plan.attention_input_buffer,
+                                1,
+                                layer.attention_output_weight.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                            )?;
+                            submission.quantized_matvec_q8_1(
+                                storage,
+                                0,
+                                layer.attention_output_weight.mode,
+                                layer.attention_output_weight.rows,
+                                layer.attention_output_weight.columns,
+                                &plan.hidden_input_q8_1_buffer,
+                                None,
+                                &plan.output_buffer,
+                            )?;
+                        } else {
+                            submission.quantized_matvec(
+                                storage,
+                                0,
+                                layer.attention_output_weight.mode,
+                                layer.attention_output_weight.rows,
+                                layer.attention_output_weight.columns,
+                                &plan.attention_input_buffer,
+                                &plan.output_buffer,
+                            )?;
+                        }
+                    }
+                    let report =
+                        submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                    perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(
+                        plan.qkv_scratch
+                            .len()
+                            .saturating_mul(std::mem::size_of::<f32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                    );
+                    perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                    perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                    perf.cuda.kernel_launches = perf
+                        .cuda
+                        .kernel_launches
+                        .saturating_add(report.encoded_operations);
+                    if layer.attention_output_weight.storage.is_some() {
+                        attention_out = plan
+                            .output_buffer
+                            .read_f32_at_offset(0, layer.attention_output_weight.rows)
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        perf.cuda.device_to_host_bytes =
+                            perf.cuda.device_to_host_bytes.saturating_add(
+                                layer.attention_output_weight
+                                    .rows
+                                    .saturating_mul(std::mem::size_of::<f32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                            );
+                    } else {
+                        let attention = plan
+                            .attention_input_buffer
+                            .read_f32_at_offset(0, layer.attention_output_weight.columns)
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        perf.cuda.device_to_host_bytes =
+                            perf.cuda.device_to_host_bytes.saturating_add(
+                                layer.attention_output_weight
+                                    .columns
+                                    .saturating_mul(std::mem::size_of::<f32>())
+                                    .try_into()
+                                    .unwrap_or(u64::MAX),
+                            );
+                        let attention_out_stats = layer.attention_output_weight.matvec_profiled(
+                            backend,
+                            attention.as_slice(),
+                            &mut attention_out,
+                        )?;
+                        accumulate_cuda_matvec_stats(&mut perf, &attention_out_stats);
+                    }
+                    perf.stage_timings.attention_ns = perf
+                        .stage_timings
+                        .attention_ns
+                        .saturating_add(duration_ns(attention_output_start));
                 } else {
-                    layer.attention_output_weight.matvec_profiled(
-                        backend,
-                        attention.as_slice(),
-                        &mut attention_out,
-                    )?
-                };
-                accumulate_cuda_matvec_stats(&mut perf, &attention_out_stats);
+                    let attention_start = Instant::now();
+                    let attention = layer.attend(
+                        layer_index,
+                        q.as_slice(),
+                        cache_layer_key.as_slice(),
+                        v.as_slice(),
+                        cache,
+                        &self.descriptor,
+                        self.family_metadata.sliding_window,
+                    );
+                    perf.stage_timings.attention_ns = perf
+                        .stage_timings
+                        .attention_ns
+                        .saturating_add(duration_ns(attention_start));
+
+                    let attention_out_stats = if let (Some(plan), Some(storage)) = (
+                        hybrid_selected4_plan.as_mut(),
+                        layer.attention_output_weight.storage.as_ref(),
+                    ) {
+                        let result = cuda_quantized_matvec_with_reused_buffers(
+                            backend,
+                            storage,
+                            0,
+                            layer.attention_output_weight.mode,
+                            layer.attention_output_weight.rows,
+                            layer.attention_output_weight.columns,
+                            attention.as_slice(),
+                            &mut plan.attention_input_host_buffer,
+                            &plan.attention_input_buffer,
+                            &plan.output_buffer,
+                        )?;
+                        attention_out = result.values;
+                        result.stats
+                    } else {
+                        layer.attention_output_weight.matvec_profiled(
+                            backend,
+                            attention.as_slice(),
+                            &mut attention_out,
+                        )?
+                    };
+                    accumulate_cuda_matvec_stats(&mut perf, &attention_out_stats);
+                }
                 if let Some(bias) = layer.attention_output_bias.as_ref() {
                     add_bias_in_place(&mut attention_out, bias.as_slice());
                 }
@@ -6349,6 +6519,12 @@ impl GptOssCudaModelInner {
                 kernel_count = kernel_count.saturating_add(5 + selected.len().saturating_mul(2));
             }
 
+            if let (Some(cuda_cache), Some(cache_write_index)) =
+                (cuda_cache.as_deref_mut(), cache_write_index)
+            {
+                cuda_cache.len = cache_write_index.saturating_add(1);
+            }
+
             let output_norm_start = Instant::now();
             let final_hidden = rms_norm(
                 hidden.as_slice(),
@@ -6542,6 +6718,7 @@ impl GptOssCudaModelInner {
             position,
             cache,
             CudaStepOutputMode::FullLogits,
+            None,
         )
     }
 }
