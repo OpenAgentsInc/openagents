@@ -13,8 +13,9 @@
 > opening `PSI-188` through `PSI-197` as `#3297` through `#3306`, after
 > landing `PSI-187` / `#3292` through `PSI-190` / `#3299` in `2acc2ecf6`,
 > after landing `PSI-191` / `#3300` in `ad6891b82`, after confirming that
-> `PSI-192` / `#3301` in `327944c08`, after confirming that `#3302` is now the
-> next open cluster queue item, and after checking live
+> `PSI-192` / `#3301` in `327944c08`, after landing `PSI-193` / `#3302` in
+> `d88d284c5`, after confirming that `#3303` is now the next open cluster
+> queue item, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -105,8 +106,8 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is landed on `main`
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
-    `PSI-192` / [#3301](https://github.com/OpenAgentsInc/openagents/issues/3301) are landed on `main`
-  - `PSI-193` / [#3302](https://github.com/OpenAgentsInc/openagents/issues/3302) through
+    `PSI-193` / [#3302](https://github.com/OpenAgentsInc/openagents/issues/3302) are landed on `main`
+  - `PSI-194` / [#3303](https://github.com/OpenAgentsInc/openagents/issues/3303) through
     `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) remain open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
@@ -198,6 +199,16 @@ on:
     slow-node backpressure, and reroute behavior on top of truthful
     whole-request scheduling, while `psionic-runtime` now carries serving
     policy digests and fallback reasons for those cluster-routing outcomes
+- `PSI-193` / [#3302](https://github.com/OpenAgentsInc/openagents/issues/3302)
+  - landed in `d88d284c5`
+  - `psionic-cluster` now provides truthful replicated serving for one lane,
+    including stable replica-lane identity, warm-state snapshots, lifecycle
+    policy digests, warm-standby versus selected routing truth, deterministic
+    refusal when warm replica count is insufficient, and replicated
+    `ExecutionTopologyPlan` output; `psionic-runtime` and `psionic-provider`
+    now surface replica-state digests, replica-node evidence, and replicated
+    topology/device truth consistently through delivered execution, capability,
+    and receipt surfaces
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -217,9 +228,9 @@ one:
   machine-checkable join refusals, replayable ordered state, catchup,
   snapshots, compaction, recovery, topology and telemetry facts, artifact
   residency truth, cluster execution evidence seams, truthful remote
-  whole-request scheduling, and explicit cluster queue/fairness/backpressure
-  policy, but there is still no replicated serving or real sharded execution
-  path
+  whole-request scheduling, explicit cluster queue/fairness/backpressure
+  policy, and truthful replicated serving for one lane, but there is still no
+  real sharded execution path
 - the first honest cluster scope is still a trusted same-network LAN cluster
   with explicit namespace/admission policy, not an adversarial compute-market
   fabric
@@ -232,9 +243,9 @@ one:
 
 That means the next cluster work is not "make sharding happen somehow." It is:
 
-- create a real control plane
-- make placement and scheduling truthful
-- reuse existing evidence seams
+- keep the replicated lane truthful and measurable
+- add one real homogeneous CUDA sharded lane with explicit refusal boundaries
+- reuse the existing evidence seams instead of inventing a side channel
 - widen execution claims only after the corresponding backend truth exists
 
 ## Lessons Now Baked Into This Roadmap
@@ -328,8 +339,7 @@ Required outcome:
 
 ### Cluster-aware scheduling and serving policy
 
-Tracked by `PSI-191` through `PSI-193`, with `PSI-191` and `PSI-192` now landed
-on `main`.
+Tracked by `PSI-191` through `PSI-193`, now landed on `main`.
 
 Current truth:
 
@@ -338,19 +348,22 @@ Current truth:
 - cluster serving policy is now explicit for queue discipline, decode fairness,
   cancellation propagation, slow-node backpressure, and reroute/refusal
   behavior across whole-request candidates
-- replicated serving is still absent, so cluster routing does not yet select
-  among true model replicas
+- replicated serving now exists for one lane with stable replica identity,
+  warm-state snapshots, lifecycle-policy digests, and explicit selected versus
+  warm-standby routing truth reflected in runtime and provider evidence
 
 Required outcome:
 
-- replicated serving remains the next operationally useful scale-out behavior
-  after truthful whole-request scheduling and serving policy
-- degraded replica routing should become real replica-routing behavior once
-  replicated residency exists rather than remaining same-request reroute policy
+- keep replicated routing truthful as the baseline operational scale-out mode
+  while the next phase adds real sharded execution rather than overloading
+  replica evidence with sharding claims
+- preserve explicit degraded and refusal diagnostics when replica warm-state or
+  lifecycle policy is insufficient for honest replicated service
 
 ### Real sharded execution
 
-Tracked by proposed `PSI-194` and `PSI-195`.
+Tracked by `PSI-194` / [#3303](https://github.com/OpenAgentsInc/openagents/issues/3303)
+and `PSI-195` / [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304).
 
 Current truth:
 
@@ -366,7 +379,8 @@ Required outcome:
 
 ### Validation, security, and rollout
 
-Tracked by proposed `PSI-196` and `PSI-197`.
+Tracked by `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305)
+and `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306).
 
 Current truth:
 
@@ -431,7 +445,7 @@ Already on `main`:
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-193` | [#3302](https://github.com/OpenAgentsInc/openagents/issues/3302) | Open | Ship replicated cluster serving for one validated backend lane | `psionic-cluster`, `psionic-runtime`, `psionic-serve`, `psionic-provider` | Replication is the first operationally useful scale-out story and should land before true sharding. |
+| `PSI-193` | [#3302](https://github.com/OpenAgentsInc/openagents/issues/3302) | Closed | Ship replicated cluster serving for one validated backend lane | `psionic-cluster`, `psionic-runtime`, `psionic-serve`, `psionic-provider` | Landed in `d88d284c5`: Psionic now has a truthful replicated-serving lane with replica warm-state and lifecycle-policy truth, deterministic warm-replica routing and refusal behavior, replicated execution topology output, and consistent capability/receipt evidence for replica selection and standby state. |
 
 ### Phase C5: first truthful sharded execution lane
 
@@ -454,18 +468,16 @@ The shortest honest path from today's `main` is:
 1. Treat C1 and C2 as landed on `main` in `2acc2ecf6`.
 2. Keep the opened later-phase queue aligned to the roadmap and only pull work
    forward when its dependency notes are actually satisfied:
-   `#3302` -> `#3303` -> `#3304` -> `#3305` -> `#3306`.
+   `#3303` -> `#3304` -> `#3305` -> `#3306`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
 4. Treat closure of that local CUDA lane as the gate for widening cluster
-   execution claims beyond truthful whole-request scheduling into replicated
-   and sharded delivery.
-5. Execute `#3302`.
-6. Execute `#3303` then `#3304` only for one homogeneous CUDA lane.
-7. Execute `#3305` and `#3306` before widening scope beyond the first
+   execution claims beyond truthful replicated serving into sharded delivery.
+5. Execute `#3303` then `#3304` only for one homogeneous CUDA lane.
+6. Execute `#3305` and `#3306` before widening scope beyond the first
    trusted-LAN cluster claim.
-8. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+7. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
