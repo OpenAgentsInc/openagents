@@ -27,6 +27,31 @@ async fn wait_for_single_peer(node: &LocalClusterNode) -> psionic_cluster::PeerS
         .unwrap_or_else(|| unreachable!("assert above ensures success"))
 }
 
+async fn wait_for_peer_epoch(
+    node: &LocalClusterNode,
+    remote_node_id: &psionic_cluster::NodeId,
+    remote_epoch: u64,
+) -> psionic_cluster::PeerSnapshot {
+    let wait = timeout(Duration::from_secs(3), async {
+        loop {
+            let peers = node.peer_snapshots().await;
+            if let Some(peer) = peers.into_iter().find(|peer| {
+                peer.identity.node_id == *remote_node_id
+                    && peer.identity.node_epoch.as_u64() == remote_epoch
+                    && peer.handshake.saw_hello
+                    && peer.handshake.last_ping_sequence.is_some()
+            }) {
+                return peer;
+            }
+            sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await;
+    assert!(wait.is_ok(), "peer epoch update timed out");
+    wait.ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"))
+}
+
 async fn wait_for_no_peers(node: &LocalClusterNode, duration: Duration) {
     let deadline = Instant::now() + duration;
     loop {
@@ -216,6 +241,89 @@ async fn mismatched_admission_token_prevents_discovery_and_records_refusal() {
 
     let sender_shutdown = sender.shutdown().await;
     assert!(sender_shutdown.is_ok(), "sender should shut down cleanly");
+    let receiver_shutdown = receiver.shutdown().await;
+    assert!(
+        receiver_shutdown.is_ok(),
+        "receiver should shut down cleanly"
+    );
+}
+
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn restarted_node_rejoins_cluster_with_advanced_epoch() {
+    let temp = tempdir();
+    assert!(temp.is_ok(), "temp dir should exist");
+    let temp = temp
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+    let identity_path = temp.path().join("rejoin-node.json");
+
+    let receiver = LocalClusterNode::spawn(LocalClusterConfig::new(
+        "lan-alpha",
+        "shared-secret",
+        loopback_addr(0),
+        NodeRole::CoordinatorOnly,
+    ))
+    .await;
+    assert!(receiver.is_ok(), "receiver should start");
+    let receiver = receiver
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let sender_epoch_one = LocalClusterNode::spawn(
+        LocalClusterConfig::new(
+            "lan-alpha",
+            "shared-secret",
+            loopback_addr(0),
+            NodeRole::ExecutorOnly,
+        )
+        .with_seed_peers(vec![receiver.local_addr()])
+        .with_file_backed_identity(identity_path.clone()),
+    )
+    .await;
+    assert!(sender_epoch_one.is_ok(), "first sender should start");
+    let sender_epoch_one = sender_epoch_one
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let first_identity = sender_epoch_one.local_identity().clone();
+    let first_peer = wait_for_peer_epoch(&receiver, &first_identity.node_id, 1).await;
+    assert_eq!(first_peer.identity.node_epoch.as_u64(), 1);
+
+    let sender_epoch_one_shutdown = sender_epoch_one.shutdown().await;
+    assert!(
+        sender_epoch_one_shutdown.is_ok(),
+        "first sender should shut down cleanly"
+    );
+
+    let sender_epoch_two = LocalClusterNode::spawn(
+        LocalClusterConfig::new(
+            "lan-alpha",
+            "shared-secret",
+            loopback_addr(0),
+            NodeRole::ExecutorOnly,
+        )
+        .with_seed_peers(vec![receiver.local_addr()])
+        .with_file_backed_identity(identity_path),
+    )
+    .await;
+    assert!(sender_epoch_two.is_ok(), "second sender should start");
+    let sender_epoch_two = sender_epoch_two
+        .ok()
+        .unwrap_or_else(|| unreachable!("assert above ensures success"));
+
+    let second_identity = sender_epoch_two.local_identity().clone();
+    assert_eq!(second_identity.node_id, first_identity.node_id);
+    assert_eq!(second_identity.node_epoch.as_u64(), 2);
+
+    let second_peer = wait_for_peer_epoch(&receiver, &second_identity.node_id, 2).await;
+    assert_eq!(second_peer.identity.node_id, first_identity.node_id);
+    assert_eq!(second_peer.identity.node_epoch.as_u64(), 2);
+
+    let sender_epoch_two_shutdown = sender_epoch_two.shutdown().await;
+    assert!(
+        sender_epoch_two_shutdown.is_ok(),
+        "second sender should shut down cleanly"
+    );
     let receiver_shutdown = receiver.shutdown().await;
     assert!(
         receiver_shutdown.is_ok(),
