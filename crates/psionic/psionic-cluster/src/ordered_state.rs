@@ -9,7 +9,9 @@ use sha2::{Digest, Sha256};
 use thiserror::Error;
 
 use crate::{
-    ClusterId, ClusterJoinRefusal, ClusterNodeIdentity, ConfiguredClusterPeer, NodeId, PeerSnapshot,
+    ClusterDiscoveryCandidate, ClusterId, ClusterIntroductionPolicy,
+    ClusterIntroductionVerificationError, ClusterJoinRefusal, ClusterNodeIdentity,
+    ConfiguredClusterPeer, NodeId, PeerSnapshot, SignedClusterIntroductionEnvelope,
 };
 
 /// Monotonic cluster-election term for the first ordered-control seam.
@@ -158,6 +160,76 @@ impl ClusterMembershipRecord {
             advertised_addr,
             status,
         }
+    }
+}
+
+/// Authoritative status for one discovered wider-network candidate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterDiscoveredCandidateStatus {
+    /// Candidate has been introduced but not yet admitted.
+    Introduced,
+    /// Candidate has been promoted into explicit membership truth.
+    Accepted,
+    /// Candidate was refused under current admission policy.
+    Refused,
+    /// Candidate introduction expired before admission.
+    Expired,
+}
+
+/// Cluster-visible discovery candidate record kept separate from admitted membership.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterDiscoveredCandidateRecord {
+    /// Candidate node introduced by the signed discovery artifact.
+    pub candidate: ClusterDiscoveryCandidate,
+    /// Stable source identifier that introduced the candidate.
+    pub introduced_by_source_id: String,
+    /// Stable digest of the introduction policy used to admit the artifact.
+    pub introduction_policy_digest: String,
+    /// Stable digest of the signed introduction payload.
+    pub introduction_payload_digest: String,
+    /// Inclusive issuance timestamp for the introduction.
+    pub introduced_at_ms: u64,
+    /// Inclusive expiry timestamp for the introduction.
+    pub expires_at_ms: u64,
+    /// Current discovery-candidate status.
+    pub status: ClusterDiscoveredCandidateStatus,
+    /// Machine-checkable detail for the current status, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterDiscoveredCandidateRecord {
+    /// Builds a discovery candidate record from one verified introduction artifact.
+    pub fn from_signed_introduction(
+        envelope: &SignedClusterIntroductionEnvelope,
+        policy: &ClusterIntroductionPolicy,
+    ) -> Result<Self, ClusterIntroductionVerificationError> {
+        envelope.verify(policy)?;
+        Ok(Self {
+            candidate: envelope.payload.candidate.clone(),
+            introduced_by_source_id: envelope.signature.source_id.clone(),
+            introduction_policy_digest: policy.stable_digest(),
+            introduction_payload_digest: envelope.payload.stable_digest(),
+            introduced_at_ms: envelope.payload.issued_at_ms,
+            expires_at_ms: envelope.payload.expires_at_ms,
+            status: ClusterDiscoveredCandidateStatus::Introduced,
+            detail: None,
+        })
+    }
+
+    /// Attaches an explicit candidate status.
+    #[must_use]
+    pub const fn with_status(mut self, status: ClusterDiscoveredCandidateStatus) -> Self {
+        self.status = status;
+        self
+    }
+
+    /// Attaches a machine-checkable detail string.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
     }
 }
 
@@ -1250,6 +1322,18 @@ pub enum ClusterCommand {
     ReconcileMembership { membership: ClusterMembershipRecord },
     /// Request that the leader remove one node from authoritative state.
     RemoveMember { node_id: NodeId, reason: String },
+    /// Request that the leader reconcile one discovered candidate record.
+    ReconcileDiscoveryCandidate {
+        candidate: ClusterDiscoveredCandidateRecord,
+    },
+    /// Request that the leader remove one discovered candidate from authoritative state.
+    RemoveDiscoveryCandidate { node_id: NodeId, reason: String },
+    /// Request that the leader promote one discovered candidate into explicit membership truth.
+    AdmitDiscoveryCandidate {
+        node_id: NodeId,
+        advertised_addr: Option<SocketAddr>,
+        membership_status: ClusterMembershipStatus,
+    },
     /// Request that the leader reconcile one connection fact.
     ReconcileConnection { link: ClusterLink },
     /// Request that the leader reconcile one node telemetry record.
@@ -1455,9 +1539,12 @@ impl ClusterCommand {
             | Self::ReconcileNodeTelemetry { .. }
             | Self::ReconcileArtifactResidency { .. }
             | Self::RequestCatchup { .. } => ClusterCommandAuthorityScope::SelfNode,
+            Self::ReconcileDiscoveryCandidate { .. }
+            | Self::RemoveDiscoveryCandidate { .. }
+            | Self::AdmitDiscoveryCandidate { .. }
+            | Self::RemoveMember { .. } => ClusterCommandAuthorityScope::CoordinatorOnly,
             Self::ReconcileConnection { .. } => ClusterCommandAuthorityScope::LinkPeer,
             Self::UpdateLeadership { .. } => ClusterCommandAuthorityScope::ProposedLeader,
-            Self::RemoveMember { .. } => ClusterCommandAuthorityScope::CoordinatorOnly,
             Self::RequestSnapshot => ClusterCommandAuthorityScope::ClusterMember,
         }
     }
@@ -1729,6 +1816,17 @@ pub enum ClusterEvent {
     MembershipReconciled { membership: ClusterMembershipRecord },
     /// Remove one node from authoritative state.
     MembershipRemoved { node_id: NodeId, reason: String },
+    /// Insert or replace one discovered candidate record.
+    DiscoveryCandidateReconciled {
+        candidate: ClusterDiscoveredCandidateRecord,
+    },
+    /// Remove one discovered candidate from authoritative state.
+    DiscoveryCandidateRemoved { node_id: NodeId, reason: String },
+    /// Promote one discovered candidate into explicit membership truth.
+    DiscoveryCandidateAdmitted {
+        node_id: NodeId,
+        membership: ClusterMembershipRecord,
+    },
     /// Insert or replace one connection/link fact.
     ConnectionReconciled { link: ClusterLink },
     /// Remove one connection/link fact.
@@ -1797,6 +1895,12 @@ pub struct ClusterSnapshot {
     /// Command provenance for the current membership map.
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     pub membership_provenance: BTreeMap<NodeId, ClusterCommandAuthorization>,
+    /// Current discovered wider-network candidates by node ID.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub discovery_candidates: BTreeMap<NodeId, ClusterDiscoveredCandidateRecord>,
+    /// Command provenance for the current discovery-candidate map.
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub discovery_candidate_provenance: BTreeMap<NodeId, ClusterCommandAuthorization>,
     /// Current cluster links by canonical node pair.
     pub links: BTreeMap<ClusterLinkKey, ClusterLink>,
     /// Command provenance for the current link map.
@@ -1839,6 +1943,8 @@ impl ClusterSnapshot {
             last_applied_event_index: None,
             memberships: BTreeMap::new(),
             membership_provenance: BTreeMap::new(),
+            discovery_candidates: BTreeMap::new(),
+            discovery_candidate_provenance: BTreeMap::new(),
             links: BTreeMap::new(),
             link_provenance: BTreeMap::new(),
             telemetry: BTreeMap::new(),
@@ -1968,10 +2074,18 @@ impl ClusterSnapshot {
                 .to_string()
                 .as_bytes(),
         );
+        hasher.update(b"|");
+        hasher.update(self.discovery_candidate_digest().as_bytes());
         hasher.update(self.artifact_residency_digest().as_bytes());
         hasher.update(b"|");
         for (node_id, authorization) in &self.membership_provenance {
             hasher.update(b"|membership_provenance|");
+            hasher.update(node_id.as_str().as_bytes());
+            hasher.update(b"|");
+            hasher.update(authorization.stable_digest().as_bytes());
+        }
+        for (node_id, authorization) in &self.discovery_candidate_provenance {
+            hasher.update(b"|discovery_candidate_provenance|");
             hasher.update(node_id.as_str().as_bytes());
             hasher.update(b"|");
             hasher.update(authorization.stable_digest().as_bytes());
@@ -2091,6 +2205,21 @@ impl ClusterSnapshot {
         }
         hex::encode(hasher.finalize())
     }
+
+    /// Returns a stable digest of discovery-candidate facts only.
+    #[must_use]
+    pub fn discovery_candidate_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(self.cluster_id.as_str().as_bytes());
+        hasher.update(b"|discovery_candidates|");
+        for candidate in self.discovery_candidates.values() {
+            hasher.update(b"|candidate|");
+            hasher.update(
+                stable_json_digest("cluster_discovered_candidate_record", candidate).as_bytes(),
+            );
+        }
+        hex::encode(hasher.finalize())
+    }
 }
 
 /// Deterministic cluster state rebuilt from authoritative global events.
@@ -2156,6 +2285,12 @@ impl ClusterState {
         &self.snapshot.memberships
     }
 
+    /// Returns the current discovered-candidate map.
+    #[must_use]
+    pub fn discovery_candidates(&self) -> &BTreeMap<NodeId, ClusterDiscoveredCandidateRecord> {
+        &self.snapshot.discovery_candidates
+    }
+
     /// Returns the current cluster link map.
     #[must_use]
     pub fn links(&self) -> &BTreeMap<ClusterLinkKey, ClusterLink> {
@@ -2180,6 +2315,15 @@ impl ClusterState {
     #[must_use]
     pub fn membership_provenance(&self, node_id: &NodeId) -> Option<&ClusterCommandAuthorization> {
         self.snapshot.membership_provenance.get(node_id)
+    }
+
+    /// Returns the command provenance for one discovered candidate, when known.
+    #[must_use]
+    pub fn discovery_candidate_provenance(
+        &self,
+        node_id: &NodeId,
+    ) -> Option<&ClusterCommandAuthorization> {
+        self.snapshot.discovery_candidate_provenance.get(node_id)
     }
 
     /// Returns the command provenance for one link record, when known.
@@ -2387,7 +2531,10 @@ impl ClusterState {
                     ));
                 }
             }
-            ClusterCommand::RemoveMember { .. } => {
+            ClusterCommand::RemoveMember { .. }
+            | ClusterCommand::ReconcileDiscoveryCandidate { .. }
+            | ClusterCommand::RemoveDiscoveryCandidate { .. }
+            | ClusterCommand::AdmitDiscoveryCandidate { .. } => {
                 return Err(refused_command_authorization(
                     ClusterCommandAuthorizationRefusalCode::CoordinatorRequired,
                     submitter_node_id.clone(),
@@ -2542,6 +2689,71 @@ impl ClusterState {
                 {
                     self.snapshot.leadership = None;
                     self.snapshot.leadership_provenance = None;
+                }
+            }
+            ClusterEvent::DiscoveryCandidateReconciled { candidate } => {
+                let node_id = candidate.candidate.node_id.clone();
+                self.snapshot
+                    .discovery_candidates
+                    .insert(node_id.clone(), candidate);
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .insert(node_id, command_authorization);
+                } else {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .remove(&node_id);
+                }
+            }
+            ClusterEvent::DiscoveryCandidateRemoved { node_id, .. } => {
+                self.snapshot.discovery_candidates.remove(&node_id);
+                self.snapshot
+                    .discovery_candidate_provenance
+                    .remove(&node_id);
+            }
+            ClusterEvent::DiscoveryCandidateAdmitted {
+                node_id,
+                membership,
+            } => {
+                let Some(candidate_record) =
+                    self.snapshot.discovery_candidates.get(&node_id).cloned()
+                else {
+                    return Err(ClusterHistoryError::DiscoveryCandidateMissing { node_id });
+                };
+
+                if candidate_record.status != ClusterDiscoveredCandidateStatus::Introduced {
+                    return Err(ClusterHistoryError::DiscoveryCandidateAdmissionRefused {
+                        node_id,
+                        status: candidate_record.status,
+                    });
+                }
+
+                self.snapshot.discovery_candidates.insert(
+                    node_id.clone(),
+                    candidate_record
+                        .with_status(ClusterDiscoveredCandidateStatus::Accepted)
+                        .with_detail("admitted_into_membership"),
+                );
+                if let Some(command_authorization) = command_authorization.clone() {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .insert(node_id.clone(), command_authorization);
+                } else {
+                    self.snapshot
+                        .discovery_candidate_provenance
+                        .remove(&node_id);
+                }
+
+                self.snapshot
+                    .memberships
+                    .insert(node_id.clone(), membership);
+                if let Some(command_authorization) = command_authorization {
+                    self.snapshot
+                        .membership_provenance
+                        .insert(node_id, command_authorization);
+                } else {
+                    self.snapshot.membership_provenance.remove(&node_id);
                 }
             }
             ClusterEvent::ConnectionReconciled { link } => {
@@ -2925,6 +3137,20 @@ pub enum ClusterHistoryError {
         /// Machine-checkable split-brain detail.
         diagnostic: ClusterSplitBrainDiagnostic,
     },
+    /// Discovery-candidate admission referenced a node not present in the candidate ledger.
+    #[error("discovery candidate `{node_id:?}` is not present in authoritative state")]
+    DiscoveryCandidateMissing {
+        /// Candidate node ID that was required.
+        node_id: NodeId,
+    },
+    /// Discovery-candidate admission referenced a candidate that is no longer eligible.
+    #[error("discovery candidate `{node_id:?}` cannot be admitted while status is `{status:?}`")]
+    DiscoveryCandidateAdmissionRefused {
+        /// Candidate node ID that was refused.
+        node_id: NodeId,
+        /// Current status recorded for the candidate.
+        status: ClusterDiscoveredCandidateStatus,
+    },
 }
 
 fn validate_event_owner(
@@ -3105,14 +3331,15 @@ mod tests {
 
     use ed25519_dalek::SigningKey;
 
-    use crate::{AdmissionToken, ClusterNamespace, NodeEpoch, NodeRole};
+    use crate::{AdmissionToken, ClusterDiscoveryCandidate, ClusterNamespace, NodeEpoch, NodeRole};
 
     use super::{
         ClusterArtifactReference, ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus,
         ClusterArtifactTransferMethod, ClusterBackendReadinessStatus, ClusterCatchupPayload,
         ClusterCatchupRequest, ClusterCommand, ClusterCommandAuthorityScope,
         ClusterCommandAuthorizationError, ClusterCommandAuthorizationPolicy,
-        ClusterCommandAuthorizationRefusalCode, ClusterElectionError, ClusterElectionLedger,
+        ClusterCommandAuthorizationRefusalCode, ClusterDiscoveredCandidateRecord,
+        ClusterDiscoveredCandidateStatus, ClusterElectionError, ClusterElectionLedger,
         ClusterElectionMessage, ClusterEvent, ClusterEventIndex, ClusterEventLog,
         ClusterHistoryError, ClusterLeadershipLeasePolicy, ClusterLeadershipLeaseStatus,
         ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink, ClusterLinkClass,
@@ -3160,6 +3387,89 @@ mod tests {
 
     fn sample_leadership_lease_policy() -> ClusterLeadershipLeasePolicy {
         ClusterLeadershipLeasePolicy::new(4)
+    }
+
+    fn sample_discovery_candidate_record(
+        cluster_id: &crate::ClusterId,
+        node_id: crate::NodeId,
+        port: u16,
+        role: NodeRole,
+    ) -> ClusterDiscoveredCandidateRecord {
+        ClusterDiscoveredCandidateRecord {
+            candidate: ClusterDiscoveryCandidate::new(
+                cluster_id.clone(),
+                ClusterNamespace::new("lan-alpha"),
+                node_id,
+                role,
+                format!("candidate-public-key-{port}"),
+                vec![SocketAddr::from(([10, 0, 0, 1], port))],
+            ),
+            introduced_by_source_id: "operator-source".to_string(),
+            introduction_policy_digest: format!("policy-digest-{port}"),
+            introduction_payload_digest: format!("payload-digest-{port}"),
+            introduced_at_ms: 10_000,
+            expires_at_ms: 20_000,
+            status: ClusterDiscoveredCandidateStatus::Introduced,
+            detail: None,
+        }
+    }
+
+    fn sample_state_with_coordinator_authority(
+        cluster_id: &crate::ClusterId,
+        coordinator: &ClusterMembershipRecord,
+        policy: &ClusterCommandAuthorizationPolicy,
+    ) -> ClusterState {
+        let mut state = ClusterState::new(cluster_id.clone());
+        let membership_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileMembership {
+                    membership: coordinator.clone(),
+                },
+                policy,
+            )
+            .expect("coordinator membership authorization should succeed");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial(),
+                    ClusterEvent::MembershipReconciled {
+                        membership: coordinator.clone(),
+                    },
+                )
+                .with_command_authorization(membership_authorization),
+            )
+            .expect("coordinator membership should apply");
+
+        let leadership_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::UpdateLeadership {
+                    leader_id: coordinator.identity.node_id.clone(),
+                    term: ClusterTerm::initial(),
+                },
+                policy,
+            )
+            .expect("coordinator leadership authorization should succeed");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial().next(),
+                    ClusterEvent::LeadershipReconciled {
+                        leadership: ClusterLeadershipRecord::new(
+                            ClusterTerm::initial(),
+                            coordinator.identity.node_id.clone(),
+                            ClusterEventIndex::initial(),
+                        ),
+                    },
+                )
+                .with_command_authorization(leadership_authorization),
+            )
+            .expect("coordinator leadership should apply");
+
+        state
     }
 
     fn sample_signing_key(byte: u8) -> SigningKey {
@@ -4510,6 +4820,373 @@ mod tests {
 
         assert_eq!(state.topology_digest(), topology_digest_before);
         assert_ne!(state.stable_digest(), stable_digest_before);
+    }
+
+    #[test]
+    fn replay_keeps_discovery_candidates_separate_from_membership_truth() {
+        let cluster_id = sample_cluster_id();
+        let candidate = sample_discovery_candidate_record(
+            &cluster_id,
+            crate::NodeId::new("candidate-a"),
+            4751,
+            NodeRole::ExecutorOnly,
+        );
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let event = log.append_event(ClusterEvent::DiscoveryCandidateReconciled {
+            candidate: candidate.clone(),
+        });
+
+        let replayed = log.replay().expect("candidate ledger should replay");
+        assert_eq!(replayed.last_applied_event_index(), Some(event.index));
+        assert_eq!(replayed.memberships().len(), 0);
+        assert_eq!(
+            replayed
+                .discovery_candidates()
+                .get(&candidate.candidate.node_id),
+            Some(&candidate)
+        );
+    }
+
+    #[test]
+    fn admitting_discovery_candidate_promotes_membership_without_dropping_candidate_truth() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4752,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let policy = ClusterCommandAuthorizationPolicy::default();
+        let mut state = sample_state_with_coordinator_authority(&cluster_id, &coordinator, &policy);
+        let candidate_membership = sample_membership_record(
+            &cluster_id,
+            4753,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Joining,
+        );
+        let candidate = sample_discovery_candidate_record(
+            &cluster_id,
+            candidate_membership.identity.node_id.clone(),
+            5753,
+            candidate_membership.identity.role,
+        );
+
+        let candidate_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileDiscoveryCandidate {
+                    candidate: candidate.clone(),
+                },
+                &policy,
+            )
+            .expect("coordinator should authorize candidate reconciliation");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial().next().next(),
+                    ClusterEvent::DiscoveryCandidateReconciled {
+                        candidate: candidate.clone(),
+                    },
+                )
+                .with_command_authorization(candidate_authorization),
+            )
+            .expect("candidate reconcile should apply");
+
+        let admission_authorization = state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::AdmitDiscoveryCandidate {
+                    node_id: candidate.candidate.node_id.clone(),
+                    advertised_addr: candidate_membership.advertised_addr,
+                    membership_status: candidate_membership.status,
+                },
+                &policy,
+            )
+            .expect("coordinator should authorize candidate admission");
+        state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial().next().next().next(),
+                    ClusterEvent::DiscoveryCandidateAdmitted {
+                        node_id: candidate.candidate.node_id.clone(),
+                        membership: candidate_membership.clone(),
+                    },
+                )
+                .with_command_authorization(admission_authorization.clone()),
+            )
+            .expect("candidate admission should apply");
+
+        assert_eq!(
+            state.memberships().get(&candidate.candidate.node_id),
+            Some(&candidate_membership)
+        );
+        assert_eq!(
+            state
+                .discovery_candidates()
+                .get(&candidate.candidate.node_id)
+                .map(|candidate| candidate.status),
+            Some(ClusterDiscoveredCandidateStatus::Accepted)
+        );
+        assert_eq!(
+            state
+                .discovery_candidates()
+                .get(&candidate.candidate.node_id)
+                .and_then(|candidate| candidate.detail.as_deref()),
+            Some("admitted_into_membership")
+        );
+        assert_eq!(
+            state.discovery_candidate_provenance(&candidate.candidate.node_id),
+            Some(&admission_authorization)
+        );
+        assert_eq!(
+            state.membership_provenance(&candidate.candidate.node_id),
+            Some(&admission_authorization)
+        );
+    }
+
+    #[test]
+    fn admitting_missing_discovery_candidate_is_refused() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4754,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let policy = ClusterCommandAuthorizationPolicy::default();
+        let mut state = sample_state_with_coordinator_authority(&cluster_id, &coordinator, &policy);
+        let candidate_membership = sample_membership_record(
+            &cluster_id,
+            4755,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Joining,
+        );
+        let candidate_node_id = candidate_membership.identity.node_id.clone();
+
+        let result = state.apply(IndexedClusterEvent::new(
+            cluster_id,
+            ClusterEventIndex::initial().next().next(),
+            ClusterEvent::DiscoveryCandidateAdmitted {
+                node_id: candidate_node_id.clone(),
+                membership: candidate_membership,
+            },
+        ));
+
+        assert_eq!(
+            result,
+            Err(ClusterHistoryError::DiscoveryCandidateMissing {
+                node_id: candidate_node_id,
+            })
+        );
+    }
+
+    #[test]
+    fn expired_discovery_candidate_cannot_be_admitted() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4756,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let policy = ClusterCommandAuthorizationPolicy::default();
+        let mut state = sample_state_with_coordinator_authority(&cluster_id, &coordinator, &policy);
+        let candidate_membership = sample_membership_record(
+            &cluster_id,
+            4757,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Joining,
+        );
+        let candidate_node_id = candidate_membership.identity.node_id.clone();
+        let candidate = sample_discovery_candidate_record(
+            &cluster_id,
+            candidate_node_id.clone(),
+            5757,
+            candidate_membership.identity.role,
+        )
+        .with_status(ClusterDiscoveredCandidateStatus::Expired)
+        .with_detail("introduction_expired");
+        state
+            .apply(IndexedClusterEvent::new(
+                cluster_id.clone(),
+                ClusterEventIndex::initial().next().next(),
+                ClusterEvent::DiscoveryCandidateReconciled { candidate },
+            ))
+            .expect("expired candidate should reconcile");
+
+        let result = state.apply(IndexedClusterEvent::new(
+            cluster_id,
+            ClusterEventIndex::initial().next().next().next(),
+            ClusterEvent::DiscoveryCandidateAdmitted {
+                node_id: candidate_membership.identity.node_id.clone(),
+                membership: candidate_membership,
+            },
+        ));
+
+        assert_eq!(
+            result,
+            Err(ClusterHistoryError::DiscoveryCandidateAdmissionRefused {
+                node_id: candidate_node_id,
+                status: ClusterDiscoveredCandidateStatus::Expired,
+            })
+        );
+    }
+
+    #[test]
+    fn snapshot_recovery_preserves_discovery_candidate_truth_and_provenance() {
+        let cluster_id = sample_cluster_id();
+        let coordinator = sample_membership_record(
+            &cluster_id,
+            4758,
+            NodeRole::CoordinatorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let policy = ClusterCommandAuthorizationPolicy::default();
+        let mut authorization_state =
+            sample_state_with_coordinator_authority(&cluster_id, &coordinator, &policy);
+        let candidate_membership = sample_membership_record(
+            &cluster_id,
+            4759,
+            NodeRole::ExecutorOnly,
+            ClusterMembershipStatus::Ready,
+        );
+        let candidate = sample_discovery_candidate_record(
+            &cluster_id,
+            candidate_membership.identity.node_id.clone(),
+            5759,
+            candidate_membership.identity.role,
+        );
+        let candidate_authorization = authorization_state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileDiscoveryCandidate {
+                    candidate: candidate.clone(),
+                },
+                &policy,
+            )
+            .expect("candidate authorization should succeed");
+        authorization_state
+            .apply(
+                IndexedClusterEvent::new(
+                    cluster_id.clone(),
+                    ClusterEventIndex::initial().next().next(),
+                    ClusterEvent::DiscoveryCandidateReconciled {
+                        candidate: candidate.clone(),
+                    },
+                )
+                .with_command_authorization(candidate_authorization.clone()),
+            )
+            .expect("candidate event should apply");
+        let admission_authorization = authorization_state
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::AdmitDiscoveryCandidate {
+                    node_id: candidate.candidate.node_id.clone(),
+                    advertised_addr: candidate_membership.advertised_addr,
+                    membership_status: candidate_membership.status,
+                },
+                &policy,
+            )
+            .expect("admission authorization should succeed");
+
+        let mut log = ClusterEventLog::new(cluster_id.clone());
+        let coordinator_membership_authorization = ClusterState::new(cluster_id.clone())
+            .authorize_command(
+                &coordinator.identity.node_id,
+                &ClusterCommand::ReconcileMembership {
+                    membership: coordinator.clone(),
+                },
+                &policy,
+            )
+            .expect("coordinator membership authorization should succeed");
+        let coordinator_leadership_authorization =
+            sample_state_with_coordinator_authority(&cluster_id, &coordinator, &policy)
+                .leadership_provenance()
+                .cloned()
+                .expect("coordinator leadership provenance should exist");
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::MembershipReconciled {
+                membership: coordinator.clone(),
+            },
+            coordinator_membership_authorization,
+        );
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::LeadershipReconciled {
+                leadership: ClusterLeadershipRecord::new(
+                    ClusterTerm::initial(),
+                    coordinator.identity.node_id.clone(),
+                    ClusterEventIndex::initial(),
+                ),
+            },
+            coordinator_leadership_authorization,
+        );
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::DiscoveryCandidateReconciled {
+                candidate: candidate.clone(),
+            },
+            candidate_authorization.clone(),
+        );
+        let _ = log.append_event_with_authorization(
+            ClusterEvent::DiscoveryCandidateAdmitted {
+                node_id: candidate.candidate.node_id.clone(),
+                membership: candidate_membership.clone(),
+            },
+            admission_authorization.clone(),
+        );
+        let _ = log.append_event(ClusterEvent::NodeTelemetryReconciled {
+            telemetry: ClusterNodeTelemetry::new(candidate.candidate.node_id.clone())
+                .with_backend_readiness("cuda", ClusterBackendReadinessStatus::Ready),
+        });
+
+        let full_digest = log.snapshot().expect("full snapshot").stable_digest();
+        let compacted_snapshot = log
+            .compact(&sample_recovery_policy())
+            .expect("compaction should work")
+            .expect("compaction should produce snapshot");
+        assert_eq!(
+            compacted_snapshot
+                .discovery_candidate_provenance
+                .get(&candidate.candidate.node_id),
+            Some(&candidate_authorization)
+        );
+
+        let response = log
+            .catchup_response(
+                &ClusterCatchupRequest::new(
+                    cluster_id.clone(),
+                    candidate.candidate.node_id.clone(),
+                    compacted_snapshot.last_applied_event_index,
+                    ClusterSchemaVersion::initial(),
+                    8,
+                ),
+                &sample_recovery_policy(),
+            )
+            .expect("catchup response should build");
+        match response.payload {
+            ClusterCatchupPayload::Events { events } => {
+                let recovered = ClusterState::recover(compacted_snapshot, &events)
+                    .expect("snapshot plus tail should recover discovery state");
+                assert_eq!(recovered.stable_digest(), full_digest);
+                assert_eq!(
+                    recovered
+                        .discovery_candidates()
+                        .get(&candidate.candidate.node_id)
+                        .map(|candidate| candidate.status),
+                    Some(ClusterDiscoveredCandidateStatus::Accepted)
+                );
+                assert_eq!(
+                    recovered.discovery_candidate_provenance(&candidate.candidate.node_id),
+                    Some(&admission_authorization)
+                );
+                assert_eq!(
+                    recovered.membership_provenance(&candidate.candidate.node_id),
+                    Some(&admission_authorization)
+                );
+            }
+            payload => panic!("expected event payload, got {payload:?}"),
+        }
     }
 
     #[test]
