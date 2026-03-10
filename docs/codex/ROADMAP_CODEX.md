@@ -234,7 +234,7 @@ Status:
 
 Next:
 
-- `CX-8` is now the first open execution item for Codex replacement work
+- `CX-9` is now the first open execution item for Codex replacement work
 
 ### CX-2. Session Controls And Status Parity ([#3358](https://github.com/OpenAgentsInc/openagents/issues/3358))
 
@@ -427,6 +427,20 @@ Acceptance:
 - non-git workspaces degrade honestly
 
 ### CX-8. Git, Branch, Worktree, And PR Workflow Parity ([#3365](https://github.com/OpenAgentsInc/openagents/issues/3365))
+
+Status:
+
+- shipped on `main`
+- desktop chat now recognizes app-owned `/git ...` and `/pr prep` commands for
+  status, pull, repo init, branch list/create/checkout, worktree list/add/remove,
+  and PR summary generation directly inside the main coding transcript
+- worktree creation now updates the active thread workspace context so new
+  threads inherit the branch/worktree they were spun up for, and local command
+  results are preserved in the thread transcript just like normal coding turns
+- PR prep now emits a desktop-owned summary with suggested title/body, compare
+  URL when `origin` is GitHub, current status, commit list, and diff stat so
+  branch-to-PR handoff stays inside Autopilot instead of bouncing back to the
+  Codex CLI or external shell
 
 Scope:
 
