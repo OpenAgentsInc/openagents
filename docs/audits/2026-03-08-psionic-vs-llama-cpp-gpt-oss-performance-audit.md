@@ -1345,9 +1345,9 @@ Current truthful 120B floor on the exact cold / warm-non-hit /
 prompt-cache-hit contract:
 
 - Psionic:
-  - `2.23 tok/s`
-  - `6.34 tok/s`
-  - `10.07 tok/s`
+  - `2.24 tok/s`
+  - `6.43 tok/s`
+  - `10.42 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1359,6 +1359,9 @@ What is already landed on the kept hybrid branch:
   `Q8_1` prep, and router prep on CUDA before the selected4 path
 - selected-expert cache fills no longer do an extra single-expert scratch
   repack before writing into the per-layer CUDA caches
+- generation-only decode steps now keep the hidden state on CUDA across dense
+  attention/router plus staged selected4 accumulation, instead of reading the
+  FFN residual and MoE output back to host before the next CUDA-capable substep
 
 What we re-tested and ruled out after those landings:
 
@@ -1380,14 +1383,26 @@ What we re-tested and ruled out after the original addendum:
   removed one mid-layer readback:
   effectively flat at `10.07-10.09 tok/s`, so it was not kept
 
+What the newest kept checkpoint proved:
+
+- the hidden-state-residency direction was real, but only modest on its first
+  landing: repeated exact-contract runs moved prompt-cache-hit from the
+  documented `10.07 tok/s` floor to `10.42` and `10.44 tok/s`
+- that means the old host hidden-vector bounce was part of the problem, but it
+  was not the whole problem
+
 What the remaining gap now points to:
 
 - the heavy cost is no longer well-described as only "expert staging" in the
   abstract; the hybrid path is still bouncing the full hidden-state vector back
   to the CPU between CUDA-capable substeps inside the host-backed MoE lane
-- the next honest direction is therefore `#3345`: keep the hybrid hidden state
-  resident on CUDA across the host-backed selected4 lane and only materialize
-  back to host when a real host-only dependency forces it
+- after the first hidden-state-residency landing, the remaining concrete
+  materializations are now clearer: stateless host-KV readback on decode and
+  the surviving host-backed selected4 staging traffic
+- the next honest direction is therefore still `#3345`, but narrowed:
+  keep the hybrid hidden state resident on CUDA across the host-backed
+  selected4 lane and now remove the remaining host readback/staging that still
+  forces per-token PCIe traffic
 
 Relevant `llama.cpp` references for that next step:
 
