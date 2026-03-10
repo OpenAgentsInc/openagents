@@ -602,6 +602,7 @@ pub enum MetalGptOssTextGenerationError {
 #[derive(Clone, Debug)]
 struct MetalLayerPrefixLookup {
     state: super::PrefixCacheState,
+    reused_tokens: usize,
     identity: Option<PrefixCacheIdentity>,
     caches: Option<Vec<MetalKvCacheMirror>>,
 }
@@ -629,6 +630,7 @@ impl MetalLayerSharedPrefixStore {
         if layer_count == 0 {
             return MetalLayerPrefixLookup {
                 state: super::PrefixCacheState::None,
+                reused_tokens: 0,
                 identity: None,
                 caches: Some(Vec::new()),
             };
@@ -644,6 +646,7 @@ impl MetalLayerSharedPrefixStore {
             .iter()
             .all(|lookup| lookup.state == super::PrefixCacheState::Hit)
         {
+            let reused_tokens = lookups.first().map_or(0, |lookup| lookup.reused_tokens);
             let identity = lookups.iter().find_map(|lookup| lookup.identity.clone());
             let caches = lookups
                 .into_iter()
@@ -660,11 +663,13 @@ impl MetalLayerSharedPrefixStore {
             return match caches {
                 Ok(caches) => MetalLayerPrefixLookup {
                     state: super::PrefixCacheState::Hit,
+                    reused_tokens,
                     identity,
                     caches: Some(caches),
                 },
                 Err(_) => MetalLayerPrefixLookup {
                     state: super::PrefixCacheState::Rebuilt,
+                    reused_tokens: 0,
                     identity: None,
                     caches: None,
                 },
@@ -686,6 +691,7 @@ impl MetalLayerSharedPrefixStore {
         };
         MetalLayerPrefixLookup {
             state,
+            reused_tokens: 0,
             identity: None,
             caches: None,
         }
@@ -710,6 +716,76 @@ impl MetalLayerSharedPrefixStore {
     }
 }
 
+#[derive(Clone, Debug)]
+struct MetalPromptPrefixExactLookup {
+    identity: PrefixCacheIdentity,
+    last_logits: Vec<f32>,
+    greedy_token: Option<u32>,
+}
+
+#[derive(Clone, Debug)]
+struct MetalPromptPrefixEntry {
+    compatibility: super::SharedPrefixCompatibility,
+    prompt_tokens: TokenSequence,
+    last_prompt_logits: Vec<f32>,
+    greedy_prompt_token: Option<u32>,
+}
+
+#[derive(Clone, Debug, Default)]
+struct MetalPromptPrefixStore {
+    entries: Vec<MetalPromptPrefixEntry>,
+}
+
+impl MetalPromptPrefixStore {
+    fn lookup_exact_prompt(
+        &self,
+        compatibility: &super::SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+    ) -> Option<MetalPromptPrefixExactLookup> {
+        self.entries
+            .iter()
+            .find(|entry| {
+                &entry.compatibility == compatibility
+                    && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
+                    && !entry.last_prompt_logits.is_empty()
+            })
+            .map(|entry| MetalPromptPrefixExactLookup {
+                identity: super::prefix_identity(compatibility, prompt_tokens.as_slice()),
+                last_logits: entry.last_prompt_logits.clone(),
+                greedy_token: entry.greedy_prompt_token,
+            })
+    }
+
+    fn record(
+        &mut self,
+        compatibility: super::SharedPrefixCompatibility,
+        prompt_tokens: &TokenSequence,
+        last_prompt_logits: &[f32],
+    ) -> PrefixCacheIdentity {
+        let identity = super::prefix_identity(&compatibility, prompt_tokens.as_slice());
+        let greedy_prompt_token = super::select_argmax_token(last_prompt_logits);
+        if let Some(existing) = self.entries.iter_mut().find(|entry| {
+            entry.compatibility == compatibility
+                && entry.prompt_tokens.as_slice() == prompt_tokens.as_slice()
+        }) {
+            existing.last_prompt_logits = last_prompt_logits.to_vec();
+            existing.greedy_prompt_token = greedy_prompt_token;
+        } else {
+            self.entries.push(MetalPromptPrefixEntry {
+                compatibility,
+                prompt_tokens: prompt_tokens.clone(),
+                last_prompt_logits: last_prompt_logits.to_vec(),
+                greedy_prompt_token,
+            });
+        }
+        identity
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+    }
+}
+
 pub struct MetalGgufGptOssTextGenerationService {
     backend: MetalBackend,
     backend_selection: psionic_runtime::BackendSelection,
@@ -717,6 +793,7 @@ pub struct MetalGgufGptOssTextGenerationService {
     sessions: InMemoryGenerationSessionStore,
     shared_prefixes: SharedPrefixStore,
     metal_shared_prefixes: MetalLayerSharedPrefixStore,
+    metal_prompt_prefixes: MetalPromptPrefixStore,
     backend_health: BackendHealthTracker,
     model_descriptor: DecoderModelDescriptor,
 }
@@ -770,6 +847,7 @@ impl MetalGgufGptOssTextGenerationService {
             sessions: InMemoryGenerationSessionStore::new(),
             shared_prefixes: SharedPrefixStore::default(),
             metal_shared_prefixes: MetalLayerSharedPrefixStore::default(),
+            metal_prompt_prefixes: MetalPromptPrefixStore::default(),
             backend_health,
             model_descriptor,
         })
@@ -861,6 +939,7 @@ impl MetalGgufGptOssTextGenerationService {
         model_id: &str,
     ) -> Result<LoadedModelView, MetalGptOssTextGenerationError> {
         self.metal_shared_prefixes.clear();
+        self.metal_prompt_prefixes.clear();
         Ok(self.models.unload_view(model_id, current_time_millis())?)
     }
 }
@@ -878,6 +957,7 @@ impl TextGenerationExecutor for MetalGgufGptOssTextGenerationService {
             &mut self.sessions,
             &mut self.shared_prefixes,
             &mut self.metal_shared_prefixes,
+            &mut self.metal_prompt_prefixes,
             request,
         )
         .map_err(Into::into)
@@ -906,6 +986,7 @@ impl ManagedTextGenerationRuntime for MetalGgufGptOssTextGenerationService {
         model_id: &str,
     ) -> Result<LoadedModelView, <Self as TextGenerationExecutor>::Error> {
         self.metal_shared_prefixes.clear();
+        self.metal_prompt_prefixes.clear();
         MetalGgufGptOssTextGenerationService::unload_model(self, model_id)
     }
 }
@@ -1405,6 +1486,12 @@ fn run_cuda_generation_request(
         let mut token_history = if exact_prompt_cache_hit {
             prompt_tokens
                 .as_slice()
+                .iter()
+                .copied()
+                .map(|token| token.as_u32())
+                .collect::<Vec<_>>()
+        } else if request.session_id.is_none() && prefix_tokens_reused > 0 {
+            prompt_tokens.as_slice()[..prefix_tokens_reused]
                 .iter()
                 .copied()
                 .map(|token| token.as_u32())
@@ -2075,6 +2162,7 @@ fn run_metal_generation_request(
     sessions: &mut InMemoryGenerationSessionStore,
     shared_prefixes: &mut SharedPrefixStore,
     metal_shared_prefixes: &mut MetalLayerSharedPrefixStore,
+    metal_prompt_prefixes: &mut MetalPromptPrefixStore,
     request: &super::GenerationRequest,
 ) -> Result<GenerationResponse, ReferenceTextGenerationError> {
     if request.product_id != super::TEXT_GENERATION_PRODUCT_ID {
@@ -2179,46 +2267,53 @@ fn run_metal_generation_request(
         let mut decode_step_plan = None;
         let mut exact_prompt_token = None;
         let prompt_token_ids = metal_prompt_token_ids(&prompt_tokens);
-        let exact_prefix_hit = if shared_prefix_eligible && request.session_id.is_none() {
-            shared_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens)
-        } else {
-            None
-        };
-        let exact_metal_lookup = if exact_prefix_hit.is_some() {
-            let lookup =
-                metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count);
-            (lookup.state == super::PrefixCacheState::Hit && lookup.caches.is_some())
-                .then_some(lookup)
-        } else {
-            None
-        };
-        let exact_prompt_cache_hit = exact_prefix_hit.is_some() && exact_metal_lookup.is_some();
-        let cache = if shared_prefix_eligible {
-            if let Some(hit) = exact_prefix_hit.filter(|_| exact_prompt_cache_hit) {
-                prefix_state = super::PrefixCacheState::Hit;
-                prefix_tokens_reused = prompt_tokens.len();
-                prefix_identity = Some(hit.identity);
-                last_logits = hit.last_logits;
-                exact_prompt_token = hit.greedy_token.map(TokenId);
-                hit.cache
-            } else {
-                let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+        let sessionless_metal_lookup = (shared_prefix_eligible && request.session_id.is_none())
+            .then(|| {
+                metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
+            });
+        let sessionless_exact_prefix_hit =
+            (shared_prefix_eligible && request.session_id.is_none())
+                .then(|| metal_prompt_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens))
+                .flatten();
+        let exact_prompt_cache_hit = sessionless_exact_prefix_hit.is_some()
+            && sessionless_metal_lookup.as_ref().is_some_and(|lookup| {
+                lookup.state == super::PrefixCacheState::Hit
+                    && lookup.reused_tokens == prompt_tokens.len()
+                    && lookup.caches.is_some()
+            });
+        let cache = if shared_prefix_eligible && request.session_id.is_none() {
+            if let Some(lookup) = sessionless_metal_lookup.as_ref() {
                 prefix_state = lookup.state;
                 prefix_tokens_reused = lookup.reused_tokens;
-                prefix_identity = lookup.identity;
-                prompt_logits = lookup.prompt_logits;
-                last_logits = if lookup.last_logits.is_empty() {
-                    prompt_logits.last().cloned().unwrap_or_default()
-                } else {
-                    lookup.last_logits
-                };
-                lookup.cache.unwrap_or_else(|| {
-                    super::InMemoryKvCache::new(
-                        loaded_model.descriptor().config.max_context,
-                        expected_kv_width,
-                    )
-                })
+                prefix_identity = lookup.identity.clone();
             }
+            if let Some(hit) = sessionless_exact_prefix_hit.as_ref().filter(|_| exact_prompt_cache_hit)
+            {
+                prefix_identity = Some(hit.identity.clone());
+                last_logits = hit.last_logits.clone();
+                exact_prompt_token = hit.greedy_token.map(TokenId);
+            }
+            super::InMemoryKvCache::new(
+                loaded_model.descriptor().config.max_context,
+                expected_kv_width,
+            )
+        } else if shared_prefix_eligible {
+            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            prefix_state = lookup.state;
+            prefix_tokens_reused = lookup.reused_tokens;
+            prefix_identity = lookup.identity;
+            prompt_logits = lookup.prompt_logits;
+            last_logits = if lookup.last_logits.is_empty() {
+                prompt_logits.last().cloned().unwrap_or_default()
+            } else {
+                lookup.last_logits
+            };
+            lookup.cache.unwrap_or_else(|| {
+                super::InMemoryKvCache::new(
+                    loaded_model.descriptor().config.max_context,
+                    expected_kv_width,
+                )
+            })
         } else if let Some(session_id) = &request.session_id {
             sessions.state(session_id)?.cache().clone()
         } else {
@@ -2248,8 +2343,8 @@ fn run_metal_generation_request(
             });
         }
 
-        let metal_lookup = if exact_prompt_cache_hit {
-            exact_metal_lookup.clone()
+        let metal_lookup = if request.session_id.is_none() {
+            sessionless_metal_lookup.clone()
         } else {
             (shared_prefix_eligible && prefix_tokens_reused > 0).then(|| {
                 metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
@@ -2487,19 +2582,31 @@ fn run_metal_generation_request(
 
         if should_record_prompt_prefix {
             if let Some(prompt_layer_caches) = prompt_layer_caches.as_ref() {
-                let prompt_cache = build_host_cache_from_metal_layer_caches(
-                    prompt_token_ids.as_slice(),
-                    prompt_layer_caches,
-                    cache.max_context(),
-                    layer_kv_width,
-                    cache.policy(),
-                )?;
-                let recorded_identity = shared_prefixes.record(
-                    compatibility,
-                    &prompt_tokens,
-                    &prompt_logits,
-                    &prompt_cache,
-                );
+                let last_prompt_logits = prompt_logits
+                    .last()
+                    .cloned()
+                    .unwrap_or_else(|| last_logits.clone());
+                let recorded_identity = if request.session_id.is_none() {
+                    metal_prompt_prefixes.record(
+                        compatibility.clone(),
+                        &prompt_tokens,
+                        last_prompt_logits.as_slice(),
+                    )
+                } else {
+                    let prompt_cache = build_host_cache_from_metal_layer_caches(
+                        prompt_token_ids.as_slice(),
+                        prompt_layer_caches,
+                        cache.max_context(),
+                        layer_kv_width,
+                        cache.policy(),
+                    )?;
+                    shared_prefixes.record(
+                        compatibility.clone(),
+                        &prompt_tokens,
+                        &prompt_logits,
+                        &prompt_cache,
+                    )
+                };
                 metal_shared_prefixes.record(
                     &metal_compatibility,
                     &prompt_token_ids,
@@ -2522,13 +2629,17 @@ fn run_metal_generation_request(
         }
 
         let generated = TokenSequence::new(generated_tokens);
-        let final_cache = build_host_cache_from_metal_layer_caches(
-            token_history.as_slice(),
-            layer_caches.as_slice(),
-            cache.max_context(),
-            layer_kv_width,
-            cache.policy(),
-        )?;
+        let final_cache = if request.session_id.is_some() {
+            Some(build_host_cache_from_metal_layer_caches(
+                token_history.as_slice(),
+                layer_caches.as_slice(),
+                cache.max_context(),
+                layer_kv_width,
+                cache.policy(),
+            )?)
+        } else {
+            None
+        };
         if let Some(session_id) = &request.session_id {
             session_tokens.extend_from_slice(prompt_tokens.as_slice());
             session_tokens.extend_from_slice(generated.as_slice());
@@ -2536,7 +2647,13 @@ fn run_metal_generation_request(
                 session_id,
                 loaded_model.descriptor(),
                 served_artifact.served_artifact_digest.as_str(),
-                final_cache.clone(),
+                final_cache.clone().ok_or_else(|| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                        String::from(
+                            "missing rebuilt host cache for metal session update",
+                        ),
+                    ))
+                })?,
                 TokenSequence::new(session_tokens),
             )?;
         }
@@ -2544,7 +2661,7 @@ fn run_metal_generation_request(
         let current_cache_tokens = layer_caches
             .first()
             .map(MetalKvCacheMirror::len)
-            .unwrap_or(final_cache.len());
+            .unwrap_or_else(|| final_cache.as_ref().map_or(0, super::InMemoryKvCache::len));
         let usage = super::GenerationUsage {
             input_tokens: prompt_tokens.len(),
             output_tokens: generated.len(),
@@ -12476,6 +12593,8 @@ mod tests {
         } else {
             prompt_only.usage.input_tokens as f64 / (prompt_ns as f64 / 1_000_000_000.0)
         };
+        let prompt_perf = prompt_only.metrics.gpt_oss_perf.as_ref();
+        let plus_one_perf = prompt_plus_one.metrics.gpt_oss_perf.as_ref();
 
         eprintln!(
             "real metal short-text receipt: prompt_only_tokens={} prompt_only_wall_s={prompt_only_wall:.3} prompt_only_prompt_tps={prompt_tps:.3} exact_hit_plus_one_output_tokens={} exact_hit_plus_one_wall_s={prompt_plus_one_wall:.3} exact_hit_prefix_tokens_reused={:?} plus_one_termination={:?} plus_one_output={:?}",
@@ -12485,6 +12604,32 @@ mod tests {
             prompt_plus_one.termination,
             prompt_plus_one.output.text,
         );
+        if let Some(perf) = prompt_perf {
+            eprintln!(
+                "real metal prompt-only perf: step_count={} step_wall_s={:.3} attention_s={:.3} expert_projection_s={:.3} submissions={} kernels={} h2d_mb={:.3} d2h_mb={:.3}",
+                perf.step_count,
+                perf.stage_timings.step_wall_ns as f64 / 1_000_000_000.0,
+                perf.stage_timings.attention_ns as f64 / 1_000_000_000.0,
+                perf.stage_timings.expert_projection_ns as f64 / 1_000_000_000.0,
+                perf.metal.submission_count,
+                perf.metal.kernel_launches,
+                perf.metal.host_to_device_bytes as f64 / (1024.0 * 1024.0),
+                perf.metal.device_to_host_bytes as f64 / (1024.0 * 1024.0),
+            );
+        }
+        if let Some(perf) = plus_one_perf {
+            eprintln!(
+                "real metal plus-one perf: step_count={} step_wall_s={:.3} attention_s={:.3} expert_projection_s={:.3} submissions={} kernels={} h2d_mb={:.3} d2h_mb={:.3}",
+                perf.step_count,
+                perf.stage_timings.step_wall_ns as f64 / 1_000_000_000.0,
+                perf.stage_timings.attention_ns as f64 / 1_000_000_000.0,
+                perf.stage_timings.expert_projection_ns as f64 / 1_000_000_000.0,
+                perf.metal.submission_count,
+                perf.metal.kernel_launches,
+                perf.metal.host_to_device_bytes as f64 / (1024.0 * 1024.0),
+                perf.metal.device_to_host_bytes as f64 / (1024.0 * 1024.0),
+            );
+        }
         Ok(())
     }
 
