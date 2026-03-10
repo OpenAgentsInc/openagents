@@ -29,7 +29,9 @@
 > opening `PSI-206` through `PSI-209` as `#3315` through `#3318` for the
 > command-authorization and payout-provenance follow-on queue, after landing
 > `PSI-206` / `#3315` in `e6888aaa0`, after landing `PSI-207` / `#3316` in
-> `7b7b681f7`, and after checking live
+> `7b7b681f7`, after opening `PSI-210` through `PSI-213` as `#3319` through
+> `#3322` for the compute-market trust hardening follow-on queue, after
+> landing `PSI-210` / `#3319` in `37fb246f1`, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -136,8 +138,8 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-207` / [#3316](https://github.com/OpenAgentsInc/openagents/issues/3316) is landed on `main`
     - `PSI-208` / [#3317](https://github.com/OpenAgentsInc/openagents/issues/3317) is landed on `main`
     - `PSI-209` / [#3318](https://github.com/OpenAgentsInc/openagents/issues/3318) is landed on `main`
-  - the next follow-on queue is now open for compute-market trust hardening
-    - `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) is open
+  - the compute-market trust hardening follow-on queue is now in flight
+    - `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) is landed on `main`
     - `PSI-211` / [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) is open
     - `PSI-212` / [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) is open
     - `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) is open
@@ -627,7 +629,8 @@ Required outcome:
 
 ### Compute-market trust hardening follow-on
 
-Tracked by open `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319)
+Tracked by landed `PSI-210` / [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319)
+plus open `PSI-211` / [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320)
 through `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322).
 
 Current truth:
@@ -637,15 +640,16 @@ Current truth:
 - current cluster trust postures are still trusted-LAN or authenticated
   configured-peer only, which is truthful for one operator or one lab but not a
   wider compute-market
-- there is still no market-facing trust refusal contract, signed cluster
-  evidence bundle export, attested node-identity seam, or non-LAN discovery
-  posture suitable for a distributed-cluster claim
+- `ClusterTrustPolicy` now exposes a machine-checkable compute-market refusal
+  contract, but there is still no signed cluster evidence bundle export,
+  attested node-identity seam, or non-LAN discovery posture suitable for a
+  distributed-cluster claim
 - any compute-market distributed-cluster language would still outrun the code
   unless that boundary is made machine-checkable
 
 Required outcome:
 
-- make current non-market-safe postures refusal-capable instead of doc-only
+- keep current non-market-safe postures refusal-capable instead of doc-only
 - bind clustered execution evidence into signed exportable bundles before
   talking about audit or dispute handling outside operator-managed posture
 - add attestation-aware admission and explicit non-LAN discovery posture before
@@ -764,7 +768,7 @@ clusters now that signed transport and coordinator authority truth exist on
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
-| `PSI-210` | [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) | Open | Define compute-market trust posture and refusal diagnostics | `psionic-cluster`, docs/tests | D3 made operator-managed clusters explicit and provenance-aware, but the code still needs a machine-checkable refusal contract for any broader compute-market trust claim. |
+| `PSI-210` | [#3319](https://github.com/OpenAgentsInc/openagents/issues/3319) | Closed | Define compute-market trust posture and refusal diagnostics | `psionic-cluster`, docs/tests | Landed in `37fb246f1`: `ClusterTrustPolicy` now derives a stable `ClusterComputeMarketTrustAssessment` with explicit refusal reasons for current non-market-safe trust postures and the remaining D4 hardening gaps. |
 | `PSI-211` | [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) | Open | Add signed cluster evidence bundle export | `psionic-runtime`, `psionic-provider`, `psionic-cluster` | Cluster provenance exists, but there is still no immutable signed bundle that packages clustered execution evidence for later audit or dispute handling. |
 | `PSI-212` | [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) | Open | Add attested node-identity admission seams | `psionic-cluster`, docs/tests | Configured-peer keys are enough for operator-managed rollout, but not enough for market-facing node admission claims. |
 | `PSI-213` | [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) | Open | Add non-LAN discovery posture diagnostics | `psionic-cluster`, docs/tests | Current discovery assumptions are still LAN or configured-peer shaped, so a future distributed-cluster claim needs an explicit wider-network posture and refusal boundary. |
@@ -781,9 +785,9 @@ The shortest honest path from today's `main` is:
    closing in `4732fbc26`.
 4. Treat D3 as landed on `main`, with the authorization and payout-provenance
    queue closing in `715539147`.
-5. Open D4 explicitly instead of widening cluster claims implicitly; work the
-   compute-market hardening queue in order as bounded refusal/hardening work:
-   `#3319` -> `#3320` -> `#3321` -> `#3322`.
+5. Treat `#3319` as the D4 refusal-contract floor on `main`; finish the
+   remaining compute-market hardening queue in order:
+   `#3320` -> `#3321` -> `#3322`.
 6. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
