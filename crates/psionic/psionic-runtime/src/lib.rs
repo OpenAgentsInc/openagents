@@ -259,6 +259,305 @@ impl ExecutionDevicePlacement {
     }
 }
 
+/// Stable transport class used between cluster nodes for one advertised or realized path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterTransportClass {
+    /// No cross-node transport is involved.
+    LocalOnly,
+    /// In-process loopback handoff between colocated components.
+    Loopback,
+    /// Trusted-LAN datagram transport such as UDP.
+    TrustedLanDatagram,
+    /// Trusted-LAN stream transport such as TCP or QUIC.
+    TrustedLanStream,
+    /// Multiple transport classes participated in the request path.
+    Mixed,
+}
+
+/// High-level clustered execution posture for one planned or realized path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterExecutionDisposition {
+    /// Work remained on the admitting node only.
+    LocalOnly,
+    /// The entire request was scheduled onto one remote execution node.
+    RemoteWholeRequest,
+    /// One of multiple serving replicas handled the request.
+    ReplicaRouted,
+    /// Model execution was partitioned across multiple nodes.
+    Sharded,
+}
+
+/// Stable policy family whose digest contributed to one cluster decision.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterPolicyDigestKind {
+    /// Admission or namespace policy.
+    Admission,
+    /// Placement and scheduling policy.
+    Placement,
+    /// Artifact staging or residency policy.
+    Residency,
+    /// Catchup, compaction, or recovery policy.
+    Recovery,
+}
+
+/// One stable policy digest referenced by a clustered execution context.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterPolicyDigest {
+    /// Stable policy family.
+    pub kind: ClusterPolicyDigestKind,
+    /// Stable digest for the effective policy instance.
+    pub digest: String,
+}
+
+impl ClusterPolicyDigest {
+    /// Creates a cluster policy digest reference.
+    #[must_use]
+    pub fn new(kind: ClusterPolicyDigestKind, digest: impl Into<String>) -> Self {
+        Self {
+            kind,
+            digest: digest.into(),
+        }
+    }
+}
+
+/// Artifact readiness posture for one selected cluster node.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterArtifactResidencyDisposition {
+    /// Required artifacts were already resident on the node.
+    Resident,
+    /// Admission requires a local copy from a neighboring node.
+    CopyRequired,
+    /// Admission requires an artifact pull from a backing store.
+    PullRequired,
+    /// The scheduler refused the node because artifacts were unavailable.
+    Refused,
+}
+
+/// One explicit cluster node selected or considered for a provider lane.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterSelectedNode {
+    /// Stable node identifier emitted by the cluster control plane.
+    pub node_id: String,
+    /// Runtime backend promised or delivered on this node.
+    pub runtime_backend: String,
+    /// Stable node role when the scheduler can surface it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub role: Option<String>,
+    /// Stable topology digest attributed to this node when it differs from the cluster aggregate.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub topology_digest: Option<String>,
+    /// Stable served-artifact digest pinned to this node when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub served_artifact_digest: Option<String>,
+    /// Explicit artifact residency posture for the node, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_residency: Option<ClusterArtifactResidencyDisposition>,
+}
+
+impl ClusterSelectedNode {
+    /// Creates one selected-node record from stable identifiers.
+    #[must_use]
+    pub fn new(node_id: impl Into<String>, runtime_backend: impl Into<String>) -> Self {
+        Self {
+            node_id: node_id.into(),
+            runtime_backend: runtime_backend.into(),
+            role: None,
+            topology_digest: None,
+            served_artifact_digest: None,
+            artifact_residency: None,
+        }
+    }
+
+    /// Attaches a stable node role.
+    #[must_use]
+    pub fn with_role(mut self, role: impl Into<String>) -> Self {
+        self.role = Some(role.into());
+        self
+    }
+
+    /// Attaches a node-scoped topology digest.
+    #[must_use]
+    pub fn with_topology_digest(mut self, digest: impl Into<String>) -> Self {
+        self.topology_digest = Some(digest.into());
+        self
+    }
+
+    /// Attaches a served-artifact digest for the node.
+    #[must_use]
+    pub fn with_served_artifact_digest(mut self, digest: impl Into<String>) -> Self {
+        self.served_artifact_digest = Some(digest.into());
+        self
+    }
+
+    /// Attaches the artifact residency posture for this node.
+    #[must_use]
+    pub fn with_artifact_residency(
+        mut self,
+        disposition: ClusterArtifactResidencyDisposition,
+    ) -> Self {
+        self.artifact_residency = Some(disposition);
+        self
+    }
+}
+
+/// Stable scheduler fallback reason for one clustered execution path.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterFallbackReason {
+    /// The candidate node failed admission policy.
+    AdmissionRefused,
+    /// The candidate node lacked required artifacts.
+    ArtifactUnavailable,
+    /// The candidate node or backend was degraded.
+    BackendDegraded,
+    /// The candidate node became unavailable.
+    NodeUnavailable,
+    /// The candidate node no longer matched required topology facts.
+    TopologyMismatch,
+    /// Cross-node transport degraded below policy.
+    TransportDegraded,
+}
+
+/// One explicit scheduler fallback transition for a clustered execution path.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterFallbackStep {
+    /// Preferred source node or previously selected node, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub from_node_id: Option<String>,
+    /// Replacement or final selected node.
+    pub to_node_id: String,
+    /// Stable scheduler fallback reason.
+    pub reason: ClusterFallbackReason,
+    /// Optional plain-language detail.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ClusterFallbackStep {
+    /// Creates one scheduler fallback transition.
+    #[must_use]
+    pub fn new(to_node_id: impl Into<String>, reason: ClusterFallbackReason) -> Self {
+        Self {
+            from_node_id: None,
+            to_node_id: to_node_id.into(),
+            reason,
+            detail: None,
+        }
+    }
+
+    /// Attaches the previously selected node.
+    #[must_use]
+    pub fn from_node(mut self, node_id: impl Into<String>) -> Self {
+        self.from_node_id = Some(node_id.into());
+        self
+    }
+
+    /// Attaches plain-language fallback detail.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+}
+
+/// Runtime-owned clustered execution evidence shared by capability, provenance, and receipt types.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterExecutionContext {
+    /// Stable cluster identifier.
+    pub cluster_id: String,
+    /// Stable digest of the authoritative cluster-state snapshot.
+    pub cluster_state_digest: String,
+    /// Stable digest of the cluster topology facts used for the decision.
+    pub topology_digest: String,
+    /// Stable digest of artifact residency facts used for the decision, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub artifact_residency_digest: Option<String>,
+    /// Stable node identifier that admitted or scheduled the work.
+    pub scheduler_node_id: String,
+    /// Transport class used across the request path.
+    pub transport: ClusterTransportClass,
+    /// High-level cluster execution posture.
+    pub disposition: ClusterExecutionDisposition,
+    /// Stable policy digests that constrained the decision.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Explicit selected nodes for the planned or realized path.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub selected_nodes: Vec<ClusterSelectedNode>,
+    /// Explicit fallback history when the scheduler rerouted work.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fallback_history: Vec<ClusterFallbackStep>,
+    /// Plain-language degraded-routing reason when the path was not the ideal placement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub degraded_reason: Option<String>,
+}
+
+impl ClusterExecutionContext {
+    /// Creates a clustered execution context from stable digests and routing facts.
+    #[must_use]
+    pub fn new(
+        cluster_id: impl Into<String>,
+        cluster_state_digest: impl Into<String>,
+        topology_digest: impl Into<String>,
+        scheduler_node_id: impl Into<String>,
+        transport: ClusterTransportClass,
+        disposition: ClusterExecutionDisposition,
+    ) -> Self {
+        Self {
+            cluster_id: cluster_id.into(),
+            cluster_state_digest: cluster_state_digest.into(),
+            topology_digest: topology_digest.into(),
+            artifact_residency_digest: None,
+            scheduler_node_id: scheduler_node_id.into(),
+            transport,
+            disposition,
+            policy_digests: Vec::new(),
+            selected_nodes: Vec::new(),
+            fallback_history: Vec::new(),
+            degraded_reason: None,
+        }
+    }
+
+    /// Attaches an artifact residency digest.
+    #[must_use]
+    pub fn with_artifact_residency_digest(mut self, digest: impl Into<String>) -> Self {
+        self.artifact_residency_digest = Some(digest.into());
+        self
+    }
+
+    /// Appends one policy digest reference.
+    #[must_use]
+    pub fn with_policy_digest(mut self, policy_digest: ClusterPolicyDigest) -> Self {
+        self.policy_digests.push(policy_digest);
+        self
+    }
+
+    /// Replaces the explicit selected-node set.
+    #[must_use]
+    pub fn with_selected_nodes(mut self, selected_nodes: Vec<ClusterSelectedNode>) -> Self {
+        self.selected_nodes = selected_nodes;
+        self
+    }
+
+    /// Appends one fallback transition.
+    #[must_use]
+    pub fn with_fallback(mut self, fallback: ClusterFallbackStep) -> Self {
+        self.fallback_history.push(fallback);
+        self
+    }
+
+    /// Attaches a degraded-routing reason.
+    #[must_use]
+    pub fn with_degraded_reason(mut self, degraded_reason: impl Into<String>) -> Self {
+        self.degraded_reason = Some(degraded_reason.into());
+        self
+    }
+}
+
 /// High-level topology mode for one compiled or advertised execution path.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -717,6 +1016,9 @@ pub struct DeliveredExecutionContext {
     /// Delivered device inventory qualifiers.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selected_devices: Vec<DeviceInventoryQualifiers>,
+    /// Explicit clustered execution facts when the request crossed node boundaries.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub cluster_execution: Option<ClusterExecutionContext>,
 }
 
 impl DeliveredExecutionContext {
@@ -731,6 +1033,7 @@ impl DeliveredExecutionContext {
             runtime_backend: runtime_backend.into(),
             execution_topology,
             selected_devices,
+            cluster_execution: None,
         }
     }
 
@@ -754,6 +1057,13 @@ impl DeliveredExecutionContext {
         self.selected_devices.iter().try_fold(0u64, |acc, device| {
             device.total_memory_bytes.map(|value| acc + value)
         })
+    }
+
+    /// Attaches explicit clustered execution facts.
+    #[must_use]
+    pub fn with_cluster_execution(mut self, cluster_execution: ClusterExecutionContext) -> Self {
+        self.cluster_execution = Some(cluster_execution);
+        self
     }
 }
 
@@ -4647,22 +4957,25 @@ mod tests {
         BackendExtensionExecution, BackendExtensionSupport, BackendHealthTracker,
         BackendRuntimeResources, BackendSelection, BackendSelectionState, BackendToolchainIdentity,
         BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
-        CacheInvalidationTrigger, CacheKind, CacheObservation, DEFAULT_PENALTY_LOOKBACK,
-        DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
-        DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
-        ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
-        ExecutionPlanCachePolicy, ExecutionPlanCacheReport, ExecutionPlanCacheState,
-        ExecutionResult, ExecutionTopologyKind, ExecutionTopologyPlan, HealthStatus,
-        KernelCachePolicy, KernelCacheReport, KernelCacheState, KvCacheAccounting,
-        KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy, KvCacheSpillPolicy, KvCacheState,
-        LoadedModelMemoryState, LoadedModelResidency, LoadedModelState, LocalRuntimeObservability,
-        LocalServingIsolationPolicy, MemoryBudget, MemoryResidencySnapshot, ModelAdmissionDecision,
-        ModelArtifactBlobKind, ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan,
-        ModelResidencyPolicy, NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction,
-        NvidiaRecoveryProfile, NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo,
-        PagedTensorStoragePlan, PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState,
-        QuantizationExecution, QuantizationLoadPath, QuantizationSupport, QueueDiscipline,
-        QueuePolicy, ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
+        CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterArtifactResidencyDisposition,
+        ClusterExecutionContext, ClusterExecutionDisposition, ClusterFallbackReason,
+        ClusterFallbackStep, ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
+        ClusterTransportClass, DEFAULT_PENALTY_LOOKBACK, DeliveredExecutionContext,
+        DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers, DeviceMemoryBudget,
+        DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend, ExecutionCapabilityProfile,
+        ExecutionDeliveryProof, ExecutionMetrics, ExecutionPlanCachePolicy,
+        ExecutionPlanCacheReport, ExecutionPlanCacheState, ExecutionResult, ExecutionTopologyKind,
+        ExecutionTopologyPlan, HealthStatus, KernelCachePolicy, KernelCacheReport,
+        KernelCacheState, KvCacheAccounting, KvCacheDeviceScope, KvCachePageLayout, KvCachePolicy,
+        KvCacheSpillPolicy, KvCacheState, LoadedModelMemoryState, LoadedModelResidency,
+        LoadedModelState, LocalRuntimeObservability, LocalServingIsolationPolicy, MemoryBudget,
+        MemoryResidencySnapshot, ModelAdmissionDecision, ModelArtifactBlobKind,
+        ModelArtifactStorage, ModelArtifactStorageKind, ModelMemoryPlan, ModelResidencyPolicy,
+        NvidiaBackendReport, NvidiaDeviceMetadata, NvidiaRecoveryAction, NvidiaRecoveryProfile,
+        NvidiaRiskLevel, NvidiaRiskProfile, NvidiaTopologyInfo, PagedTensorStoragePlan,
+        PrefixCacheIdentity, PrefixCacheReusePolicy, PrefixCacheState, QuantizationExecution,
+        QuantizationLoadPath, QuantizationSupport, QueueDiscipline, QueuePolicy,
+        ResidencyPressureAction, RuntimeError, RuntimeHealth, RuntimeTransitionEvent,
         RuntimeTransitionKind, RuntimeTransitionLog, SamplingPolicy, SamplingStrategy,
         SandboxAcceleratorAccess, SandboxExecutionCapabilityProfile, SandboxExecutionEvidence,
         SandboxExecutionExit, SandboxExecutionExitKind, SandboxExecutionRequestIdentity,
@@ -6042,6 +6355,60 @@ mod tests {
                 .map(|plan| plan.assignments.len()),
             Some(2)
         );
+    }
+
+    #[test]
+    fn delivered_execution_context_can_carry_cluster_evidence()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let device = sample_cuda_device().inventory_qualifiers();
+        let cluster_execution = ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::TrustedLanDatagram,
+            ClusterExecutionDisposition::RemoteWholeRequest,
+        )
+        .with_artifact_residency_digest("artifact-residency-digest")
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Placement,
+            "placement-policy-digest",
+        ))
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda")
+                .with_role("worker")
+                .with_topology_digest("node-topology-digest")
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+        ])
+        .with_fallback(
+            ClusterFallbackStep::new("worker-a", ClusterFallbackReason::BackendDegraded)
+                .from_node("worker-b")
+                .with_detail("rerouted after health downgrade"),
+        )
+        .with_degraded_reason("healthy replica substituted after backend degradation");
+        let delivered = DeliveredExecutionContext::new(
+            "cuda",
+            Some(ExecutionTopologyPlan::single_device("cuda", device.clone())),
+            vec![device],
+        )
+        .with_cluster_execution(cluster_execution.clone());
+
+        let encoded = serde_json::to_value(&delivered)?;
+        assert_eq!(
+            encoded["cluster_execution"]["cluster_state_digest"],
+            json!("cluster-state-digest")
+        );
+        assert_eq!(
+            encoded["cluster_execution"]["selected_nodes"][0]["artifact_residency"],
+            json!("resident")
+        );
+        assert_eq!(
+            serde_json::from_value::<DeliveredExecutionContext>(encoded)?,
+            delivered
+        );
+        assert_eq!(delivered.cluster_execution, Some(cluster_execution));
+        Ok(())
     }
 
     #[test]

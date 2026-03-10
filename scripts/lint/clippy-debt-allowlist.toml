@@ -93,3 +93,4 @@ crates/wgpui/src/tools.rs | owner:wgpui | added:2026-02-26 | reason: pre-existin
 crates/psionic/psionic-runtime/src/lib.rs | owner:psionic | added:2026-03-07 | reason: phase-2 touched-file large_err warnings | review_cadence:weekly | expires_on:2026-04-30
 crates/psionic/psionic-backend-cpu/src/lib.rs | owner:psionic | added:2026-03-07 | reason: phase-2 touched-file large_err warnings | review_cadence:weekly | expires_on:2026-04-30
 crates/psionic/psionic-serve/src/lib.rs | owner:psionic | added:2026-03-07 | reason: phase-2 touched-file large_err warnings | review_cadence:weekly | expires_on:2026-04-30
+crates/psionic/psionic-serve/src/gpt_oss.rs | owner:psionic | added:2026-03-10 | reason: pre-existing gpt_oss pedantic warnings in touched serving lane | review_cadence:weekly | expires_on:2026-04-30

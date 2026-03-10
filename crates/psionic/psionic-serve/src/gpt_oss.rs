@@ -1615,6 +1615,7 @@ fn run_cuda_generation_request(
         let provenance = super::GenerationProvenance {
             served_artifact,
             execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
             load_state,
             isolation_policy: super::LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: None,
@@ -2149,6 +2150,7 @@ fn run_metal_generation_request(
         let provenance = super::GenerationProvenance {
             served_artifact,
             execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
             load_state,
             isolation_policy: super::LocalServingIsolationPolicy::in_process_runtime(),
             streaming_policy: None,
@@ -3964,62 +3966,65 @@ impl GptOssCudaModelInner {
             )?;
             submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?
         };
-        let (logits_values, selected_token, logits_readback_bytes) =
-            match output_mode {
-                CudaStepOutputMode::FullLogits => (
-                    plan.logits_buffer.read_f32()?,
-                    None,
-                    self.output
-                        .rows
-                        .saturating_mul(std::mem::size_of::<f32>())
-                        .try_into()
-                        .unwrap_or(u64::MAX),
-                ),
-                CudaStepOutputMode::DeviceArgmax => {
-                    let token =
-                        if can_use_q8_1_mmvq(self.output.mode)
-                            && self.output.transposed_f16.is_none()
-                        {
-                            let bytes = plan.argmax_state_host_buffer.read_bytes().map_err(|error| {
+        let (logits_values, selected_token, logits_readback_bytes) = match output_mode {
+            CudaStepOutputMode::FullLogits => (
+                plan.logits_buffer.read_f32()?,
+                None,
+                self.output
+                    .rows
+                    .saturating_mul(std::mem::size_of::<f32>())
+                    .try_into()
+                    .unwrap_or(u64::MAX),
+            ),
+            CudaStepOutputMode::DeviceArgmax => {
+                let token = if can_use_q8_1_mmvq(self.output.mode)
+                    && self.output.transposed_f16.is_none()
+                {
+                    let bytes = plan
+                        .argmax_state_host_buffer
+                        .read_bytes()
+                        .map_err(|error| {
+                            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                                format!(
+                                    "cuda argmax returned an invalid packed host buffer: {error}"
+                                ),
+                            ))
+                        })?;
+                    let packed = u64::from_ne_bytes(
+                        bytes[..std::mem::size_of::<u64>()]
+                            .try_into()
+                            .map_err(|_| {
+                                ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                                    String::from(
+                                        "cuda argmax returned invalid packed argmax bytes",
+                                    ),
+                                ))
+                            })?,
+                    );
+                    (packed >> 32) as i32
+                } else {
+                    plan.next_token_host_buffer.read_i32().map_err(|error| {
                         ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
-                            format!("cuda argmax returned an invalid packed host buffer: {error}"),
+                            format!("cuda argmax returned an invalid host token buffer: {error}",),
                         ))
-                    })?;
-                            let packed = u64::from_ne_bytes(
-                                bytes[..std::mem::size_of::<u64>()]
-                                    .try_into()
-                                    .map_err(|_| {
-                                        ReferenceTextGenerationError::Runtime(
-                                            super::RuntimeError::Backend(String::from(
-                                                "cuda argmax returned invalid packed argmax bytes",
-                                            )),
-                                        )
-                                    })?,
-                            );
-                            (packed >> 32) as i32
-                        } else {
-                            plan.next_token_host_buffer.read_i32().map_err(|error| {
-                        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
-                            "cuda argmax returned an invalid host token buffer: {error}",
-                        )))
                     })?
-                        };
-                    let token = u32::try_from(token).map(TokenId).map_err(|_| {
-                        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
-                            format!("cuda argmax returned a negative token id {token}",),
-                        ))
-                    })?;
-                    (
-                        Vec::new(),
-                        Some(token),
-                        if can_use_q8_1_mmvq(self.output.mode) {
-                            std::mem::size_of::<u64>().try_into().unwrap_or(u64::MAX)
-                        } else {
-                            std::mem::size_of::<i32>().try_into().unwrap_or(u64::MAX)
-                        },
-                    )
-                }
-            };
+                };
+                let token = u32::try_from(token).map(TokenId).map_err(|_| {
+                    ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+                        "cuda argmax returned a negative token id {token}",
+                    )))
+                })?;
+                (
+                    Vec::new(),
+                    Some(token),
+                    if can_use_q8_1_mmvq(self.output.mode) {
+                        std::mem::size_of::<u64>().try_into().unwrap_or(u64::MAX)
+                    } else {
+                        std::mem::size_of::<i32>().try_into().unwrap_or(u64::MAX)
+                    },
+                )
+            }
+        };
         cuda_cache.len = cache_write_index.saturating_add(1);
         accumulate_cuda_submission_report(&mut perf, &submission_report, 0, logits_readback_bytes);
         kernel_count = kernel_count.saturating_add(submission_report.encoded_operations);
