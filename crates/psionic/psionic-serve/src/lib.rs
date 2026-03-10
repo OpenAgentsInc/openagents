@@ -1071,6 +1071,24 @@ pub struct GptOssCudaRuntimeMetrics {
     /// Whether any decode step used the ids-driven grouped expert path.
     #[serde(default, skip_serializing_if = "is_false")]
     pub grouped_expert_ids_path: bool,
+    /// Number of hybrid selected4 cache hits across staged expert slots.
+    #[serde(default, skip_serializing_if = "is_zero_usize")]
+    pub hybrid_selected4_cache_hits: usize,
+    /// Number of hybrid selected4 cache misses across staged expert slots.
+    #[serde(default, skip_serializing_if = "is_zero_usize")]
+    pub hybrid_selected4_cache_misses: usize,
+    /// Bytes staged into hybrid selected4 CUDA caches on miss.
+    #[serde(default, skip_serializing_if = "is_zero_u64")]
+    pub hybrid_selected4_cache_staged_bytes: u64,
+    /// Per-layer hybrid selected4 cache hits across staged expert slots.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hybrid_selected4_layer_cache_hits: Vec<usize>,
+    /// Per-layer hybrid selected4 cache misses across staged expert slots.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hybrid_selected4_layer_cache_misses: Vec<usize>,
+    /// Per-layer bytes staged into hybrid selected4 CUDA caches on miss.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub hybrid_selected4_layer_cache_staged_bytes: Vec<u64>,
 }
 
 impl GptOssCudaRuntimeMetrics {
@@ -1085,11 +1103,58 @@ impl GptOssCudaRuntimeMetrics {
         self.sync_count = self.sync_count.saturating_add(other.sync_count);
         self.kernel_launches = self.kernel_launches.saturating_add(other.kernel_launches);
         self.grouped_expert_ids_path |= other.grouped_expert_ids_path;
+        self.hybrid_selected4_cache_hits = self
+            .hybrid_selected4_cache_hits
+            .saturating_add(other.hybrid_selected4_cache_hits);
+        self.hybrid_selected4_cache_misses = self
+            .hybrid_selected4_cache_misses
+            .saturating_add(other.hybrid_selected4_cache_misses);
+        self.hybrid_selected4_cache_staged_bytes = self
+            .hybrid_selected4_cache_staged_bytes
+            .saturating_add(other.hybrid_selected4_cache_staged_bytes);
+        accumulate_usize_vec(
+            &mut self.hybrid_selected4_layer_cache_hits,
+            other.hybrid_selected4_layer_cache_hits.as_slice(),
+        );
+        accumulate_usize_vec(
+            &mut self.hybrid_selected4_layer_cache_misses,
+            other.hybrid_selected4_layer_cache_misses.as_slice(),
+        );
+        accumulate_u64_vec(
+            &mut self.hybrid_selected4_layer_cache_staged_bytes,
+            other.hybrid_selected4_layer_cache_staged_bytes.as_slice(),
+        );
     }
 }
 
 fn is_false(value: &bool) -> bool {
     !*value
+}
+
+fn is_zero_usize(value: &usize) -> bool {
+    *value == 0
+}
+
+fn is_zero_u64(value: &u64) -> bool {
+    *value == 0
+}
+
+fn accumulate_usize_vec(target: &mut Vec<usize>, other: &[usize]) {
+    if target.len() < other.len() {
+        target.resize(other.len(), 0);
+    }
+    for (index, value) in other.iter().copied().enumerate() {
+        target[index] = target[index].saturating_add(value);
+    }
+}
+
+fn accumulate_u64_vec(target: &mut Vec<u64>, other: &[u64]) {
+    if target.len() < other.len() {
+        target.resize(other.len(), 0);
+    }
+    for (index, value) in other.iter().copied().enumerate() {
+        target[index] = target[index].saturating_add(value);
+    }
 }
 
 /// Metal-side counters surfaced by the GPT-OSS runtime.

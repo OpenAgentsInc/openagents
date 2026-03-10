@@ -1345,9 +1345,9 @@ Current truthful 120B floor on the exact cold / warm-non-hit /
 prompt-cache-hit contract:
 
 - Psionic:
-  - `2.23 tok/s`
-  - `6.42-6.46 tok/s`
-  - `10.44 tok/s`
+  - `2.24 tok/s`
+  - `6.47 tok/s`
+  - `10.50 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1402,6 +1402,15 @@ What the newest kept checkpoint proved:
 - the prompt-cache-hit lane itself stays around `10.44 tok/s`, which is still
   strong evidence that the remaining limiter is no longer the stateless
   host-KV readback
+- adding truthful hybrid selected4 cache metrics showed why the old static
+  cache-shape intuition was missing: the prompt-hit lane was still restaging
+  about `52 GB` of selected experts per request, with per-layer misses proving
+  that the old "expand the last 15 layers" rule was not the best use of the
+  limited sixth-slot budget on 120B
+- the kept follow-up from that measurement is a profiled 120B-specific
+  expanded-slot layer set
+  (`10, 12, 18, 21, 22, 23, 25, 26, 28, 29, 31, 32, 33, 34, 35`), which
+  nudged the exact-contract floor to `2.24 / 6.47 / 10.50 tok/s`
 
 What the remaining gap now points to:
 

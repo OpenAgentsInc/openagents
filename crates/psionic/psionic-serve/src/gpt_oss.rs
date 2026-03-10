@@ -74,6 +74,8 @@ fn experimental_fused_selected4_moe_down_enabled() -> bool {
 const HYBRID_SELECTED4_LAYER_CACHE_SLOTS: usize = 5;
 const HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS: usize = 6;
 const HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_TAIL_LAYERS: usize = 15;
+const HYBRID_SELECTED4_LAYER_CACHE_PROFILED_EXPANDED_LAYERS_120B: &[usize] =
+    &[10, 12, 18, 21, 22, 23, 25, 26, 28, 29, 31, 32, 33, 34, 35];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CudaStepOutputMode {
@@ -137,6 +139,22 @@ fn has_sampling_penalties(options: &GenerationOptions) -> bool {
     options.repeat_penalty.is_some()
         || options.presence_penalty.is_some()
         || options.frequency_penalty.is_some()
+}
+
+fn hybrid_selected4_layer_cache_slots_for_model(layer_index: usize, layer_count: usize) -> usize {
+    if layer_count == 36 {
+        if HYBRID_SELECTED4_LAYER_CACHE_PROFILED_EXPANDED_LAYERS_120B.contains(&layer_index) {
+            HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS
+        } else {
+            HYBRID_SELECTED4_LAYER_CACHE_SLOTS
+        }
+    } else if layer_index
+        >= layer_count.saturating_sub(HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_TAIL_LAYERS)
+    {
+        HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS
+    } else {
+        HYBRID_SELECTED4_LAYER_CACHE_SLOTS
+    }
 }
 
 fn can_use_metal_greedy_logits_output(options: &GenerationOptions) -> bool {
@@ -4294,10 +4312,6 @@ impl GptOssCudaModelInner {
             .map_err(ReferenceTextGenerationError::Runtime)?;
         let mut layer_caches = Vec::with_capacity(self.layers.len());
         let mut layer_cache_oom = false;
-        let expanded_tail_start = self
-            .layers
-            .len()
-            .saturating_sub(HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_TAIL_LAYERS);
         for (layer_index, layer) in self.layers.iter().enumerate() {
             let (Some(gate_up_host), Some(down_host)) = (
                 layer.feed_forward_gate_up_experts_weight.host.as_ref(),
@@ -4310,11 +4324,8 @@ impl GptOssCudaModelInner {
                 layer_caches.push(None);
                 continue;
             }
-            let layer_cache_slots = if layer_index >= expanded_tail_start {
-                HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS
-            } else {
-                HYBRID_SELECTED4_LAYER_CACHE_SLOTS
-            };
+            let layer_cache_slots =
+                hybrid_selected4_layer_cache_slots_for_model(layer_index, self.layers.len());
             let gate_rows = gate_up_host.gate.rows;
             let up_rows = gate_up_host.up.rows;
             let gate_up_bytes = layer_cache_slots
@@ -6002,6 +6013,8 @@ impl GptOssCudaModelInner {
                             down_host.rows.saturating_mul(down_host.row_byte_len);
                         let mut staged_selected4_host_bytes = 0usize;
                         let mut selected_slot_ids = [0_i32, 1_i32, 2_i32, 3_i32];
+                        let mut selected4_cache_hits = 0usize;
+                        let mut selected4_cache_misses = 0usize;
                         let using_layer_cache = if let Some(layer_cache) = plan
                             .layer_caches
                             .get_mut(layer_index)
@@ -6041,6 +6054,8 @@ impl GptOssCudaModelInner {
                                             .unwrap_or(0)
                                     });
                                 if layer_cache.cached_experts[slot] != Some(expert_index) {
+                                    selected4_cache_misses =
+                                        selected4_cache_misses.saturating_add(1);
                                     let (gate_bytes, up_bytes) =
                                         gate_up_host.expert_projection_bytes(expert_index)?;
                                     layer_cache
@@ -6162,6 +6177,8 @@ impl GptOssCudaModelInner {
                                             );
                                     }
                                     layer_cache.cached_experts[slot] = Some(expert_index);
+                                } else {
+                                    selected4_cache_hits = selected4_cache_hits.saturating_add(1);
                                 }
                                 reserved_slots[slot] = true;
                                 layer_cache.slot_last_used[slot] = layer_cache.usage_clock;
@@ -6370,6 +6387,47 @@ impl GptOssCudaModelInner {
                                 .try_into()
                                 .unwrap_or(u64::MAX),
                             );
+                        perf.cuda.hybrid_selected4_cache_hits = perf
+                            .cuda
+                            .hybrid_selected4_cache_hits
+                            .saturating_add(selected4_cache_hits);
+                        perf.cuda.hybrid_selected4_cache_misses = perf
+                            .cuda
+                            .hybrid_selected4_cache_misses
+                            .saturating_add(selected4_cache_misses);
+                        perf.cuda.hybrid_selected4_cache_staged_bytes = perf
+                            .cuda
+                            .hybrid_selected4_cache_staged_bytes
+                            .saturating_add(
+                                staged_selected4_host_bytes.try_into().unwrap_or(u64::MAX),
+                            );
+                        if perf.cuda.hybrid_selected4_layer_cache_hits.len() <= layer_index {
+                            perf.cuda
+                                .hybrid_selected4_layer_cache_hits
+                                .resize(layer_index.saturating_add(1), 0);
+                        }
+                        perf.cuda.hybrid_selected4_layer_cache_hits[layer_index] =
+                            perf.cuda.hybrid_selected4_layer_cache_hits[layer_index]
+                                .saturating_add(selected4_cache_hits);
+                        if perf.cuda.hybrid_selected4_layer_cache_misses.len() <= layer_index {
+                            perf.cuda
+                                .hybrid_selected4_layer_cache_misses
+                                .resize(layer_index.saturating_add(1), 0);
+                        }
+                        perf.cuda.hybrid_selected4_layer_cache_misses[layer_index] =
+                            perf.cuda.hybrid_selected4_layer_cache_misses[layer_index]
+                                .saturating_add(selected4_cache_misses);
+                        if perf.cuda.hybrid_selected4_layer_cache_staged_bytes.len() <= layer_index
+                        {
+                            perf.cuda
+                                .hybrid_selected4_layer_cache_staged_bytes
+                                .resize(layer_index.saturating_add(1), 0);
+                        }
+                        perf.cuda.hybrid_selected4_layer_cache_staged_bytes[layer_index] =
+                            perf.cuda.hybrid_selected4_layer_cache_staged_bytes[layer_index]
+                                .saturating_add(
+                                    staged_selected4_host_bytes.try_into().unwrap_or(u64::MAX),
+                                );
                         perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
                         perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
                         perf.cuda.kernel_launches = perf
@@ -6969,6 +7027,8 @@ impl GptOssCudaModelInner {
                                     down_host.rows.saturating_mul(down_host.row_byte_len);
                                 let mut staged_selected4_host_bytes = 0usize;
                                 let mut selected_slot_ids = [0_i32, 1_i32, 2_i32, 3_i32];
+                                let mut selected4_cache_hits = 0usize;
+                                let mut selected4_cache_misses = 0usize;
                                 if !routing_device_ready {
                                     plan.hidden_input_host_buffer
                                         .write_f32(ffn_input.as_slice())
@@ -7016,6 +7076,8 @@ impl GptOssCudaModelInner {
                                                     .unwrap_or(0)
                                             });
                                         if layer_cache.cached_experts[slot] != Some(expert_index) {
+                                            selected4_cache_misses =
+                                                selected4_cache_misses.saturating_add(1);
                                             let (gate_bytes, up_bytes) = gate_up_host
                                                 .expert_projection_bytes(expert_index)?;
                                             layer_cache
@@ -7159,6 +7221,9 @@ impl GptOssCudaModelInner {
                                                     );
                                             }
                                             layer_cache.cached_experts[slot] = Some(expert_index);
+                                        } else {
+                                            selected4_cache_hits =
+                                                selected4_cache_hits.saturating_add(1);
                                         }
                                         reserved_slots[slot] = true;
                                         layer_cache.slot_last_used[slot] = layer_cache.usage_clock;
@@ -7399,6 +7464,54 @@ impl GptOssCudaModelInner {
                                             + staged_selected4_host_bytes)
                                             as u64,
                                     );
+                                perf.cuda.hybrid_selected4_cache_hits = perf
+                                    .cuda
+                                    .hybrid_selected4_cache_hits
+                                    .saturating_add(selected4_cache_hits);
+                                perf.cuda.hybrid_selected4_cache_misses = perf
+                                    .cuda
+                                    .hybrid_selected4_cache_misses
+                                    .saturating_add(selected4_cache_misses);
+                                perf.cuda.hybrid_selected4_cache_staged_bytes = perf
+                                    .cuda
+                                    .hybrid_selected4_cache_staged_bytes
+                                    .saturating_add(
+                                        staged_selected4_host_bytes.try_into().unwrap_or(u64::MAX),
+                                    );
+                                if perf.cuda.hybrid_selected4_layer_cache_hits.len() <= layer_index
+                                {
+                                    perf.cuda
+                                        .hybrid_selected4_layer_cache_hits
+                                        .resize(layer_index.saturating_add(1), 0);
+                                }
+                                perf.cuda.hybrid_selected4_layer_cache_hits[layer_index] =
+                                    perf.cuda.hybrid_selected4_layer_cache_hits[layer_index]
+                                        .saturating_add(selected4_cache_hits);
+                                if perf.cuda.hybrid_selected4_layer_cache_misses.len()
+                                    <= layer_index
+                                {
+                                    perf.cuda
+                                        .hybrid_selected4_layer_cache_misses
+                                        .resize(layer_index.saturating_add(1), 0);
+                                }
+                                perf.cuda.hybrid_selected4_layer_cache_misses[layer_index] =
+                                    perf.cuda.hybrid_selected4_layer_cache_misses[layer_index]
+                                        .saturating_add(selected4_cache_misses);
+                                if perf.cuda.hybrid_selected4_layer_cache_staged_bytes.len()
+                                    <= layer_index
+                                {
+                                    perf.cuda
+                                        .hybrid_selected4_layer_cache_staged_bytes
+                                        .resize(layer_index.saturating_add(1), 0);
+                                }
+                                perf.cuda.hybrid_selected4_layer_cache_staged_bytes[layer_index] =
+                                    perf.cuda.hybrid_selected4_layer_cache_staged_bytes
+                                        [layer_index]
+                                        .saturating_add(
+                                            staged_selected4_host_bytes
+                                                .try_into()
+                                                .unwrap_or(u64::MAX),
+                                        );
                                 perf.cuda.device_to_host_bytes =
                                     perf.cuda.device_to_host_bytes.saturating_add(
                                         hidden_size
