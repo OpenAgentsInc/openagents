@@ -2271,10 +2271,9 @@ fn run_metal_generation_request(
             .then(|| {
                 metal_shared_prefixes.lookup(&metal_compatibility, &prompt_token_ids, layer_count)
             });
-        let sessionless_exact_prefix_hit =
-            (shared_prefix_eligible && request.session_id.is_none())
-                .then(|| metal_prompt_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens))
-                .flatten();
+        let sessionless_exact_prefix_hit = (shared_prefix_eligible && request.session_id.is_none())
+            .then(|| metal_prompt_prefixes.lookup_exact_prompt(&compatibility, &prompt_tokens))
+            .flatten();
         let exact_prompt_cache_hit = sessionless_exact_prefix_hit.is_some()
             && sessionless_metal_lookup.as_ref().is_some_and(|lookup| {
                 lookup.state == super::PrefixCacheState::Hit
@@ -2287,7 +2286,9 @@ fn run_metal_generation_request(
                 prefix_tokens_reused = lookup.reused_tokens;
                 prefix_identity = lookup.identity.clone();
             }
-            if let Some(hit) = sessionless_exact_prefix_hit.as_ref().filter(|_| exact_prompt_cache_hit)
+            if let Some(hit) = sessionless_exact_prefix_hit
+                .as_ref()
+                .filter(|_| exact_prompt_cache_hit)
             {
                 prefix_identity = Some(hit.identity.clone());
                 last_logits = hit.last_logits.clone();
@@ -2649,9 +2650,7 @@ fn run_metal_generation_request(
                 served_artifact.served_artifact_digest.as_str(),
                 final_cache.clone().ok_or_else(|| {
                     ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
-                        String::from(
-                            "missing rebuilt host cache for metal session update",
-                        ),
+                        String::from("missing rebuilt host cache for metal session update"),
                     ))
                 })?,
                 TokenSequence::new(session_tokens),
@@ -7468,8 +7467,8 @@ struct GptOssMetalStepPlan {
     key_buffer: MetalBuffer,
     value_buffer: MetalBuffer,
     gate_up_output_buffer: MetalBuffer,
-    expert_input_buffer: MetalBuffer,
-    expert_output_buffer: MetalBuffer,
+    expert_input_rows_buffer: MetalBuffer,
+    expert_output_rows_buffer: MetalBuffer,
     final_hidden_buffer: MetalBuffer,
     logits_buffer: MetalBuffer,
     q_values: Vec<f32>,
@@ -7477,7 +7476,8 @@ struct GptOssMetalStepPlan {
     v_values: Vec<f32>,
     attention_values: Vec<f32>,
     gate_up_values: Vec<f32>,
-    expert_values: Vec<f32>,
+    expert_input_values: Vec<f32>,
+    expert_projected_values: Vec<f32>,
     cache_key: Vec<f32>,
     cache_value: Vec<f32>,
 }
@@ -7623,14 +7623,17 @@ impl GptOssMetalModelInner {
                     vec![0.0; selected_count.saturating_mul(max_gate_up_rows)],
                 )
                 .map_err(ReferenceTextGenerationError::Runtime)?,
-            expert_input_buffer: backend
+            expert_input_rows_buffer: backend
                 .input_buffer(
-                    Shape::new(vec![max_down_columns]),
-                    vec![0.0; max_down_columns],
+                    Shape::new(vec![selected_count.saturating_mul(max_down_columns)]),
+                    vec![0.0; selected_count.saturating_mul(max_down_columns)],
                 )
                 .map_err(ReferenceTextGenerationError::Runtime)?,
-            expert_output_buffer: backend
-                .input_buffer(Shape::new(vec![max_down_rows]), vec![0.0; max_down_rows])
+            expert_output_rows_buffer: backend
+                .input_buffer(
+                    Shape::new(vec![selected_count.saturating_mul(max_down_rows)]),
+                    vec![0.0; selected_count.saturating_mul(max_down_rows)],
+                )
                 .map_err(ReferenceTextGenerationError::Runtime)?,
             final_hidden_buffer: backend
                 .input_buffer(Shape::new(vec![hidden_size]), vec![0.0; hidden_size])
@@ -7646,7 +7649,10 @@ impl GptOssMetalModelInner {
             v_values: vec![0.0; kv_rows],
             attention_values: vec![0.0; q_rows],
             gate_up_values: vec![0.0; selected_count.saturating_mul(max_gate_up_rows)],
-            expert_values: vec![0.0; max_down_rows],
+            expert_input_values: Vec::with_capacity(
+                selected_count.saturating_mul(max_down_columns),
+            ),
+            expert_projected_values: vec![0.0; selected_count.saturating_mul(max_down_rows)],
             cache_key: vec![0.0; self.cache_width()],
             cache_value: vec![0.0; self.cache_width()],
         })
@@ -8611,13 +8617,6 @@ impl GptOssMetalModelInner {
 
             let mut moe_out = vec![0.0; hidden_size];
             if !selected.is_empty() {
-                let expert_projection_start = Instant::now();
-                write_metal_buffer_prefix(
-                    &mut plan.hidden_norm_buffer,
-                    ffn_input.as_slice(),
-                    &mut perf,
-                )?;
-                let mut gate_up_submission = backend.begin_submission("psionic.gpt_oss.gate_up")?;
                 let selected_ids = selected
                     .iter()
                     .copied()
@@ -8631,6 +8630,13 @@ impl GptOssMetalModelInner {
                         })
                     })
                     .collect::<Result<Vec<_>, _>>()?;
+                let expert_projection_start = Instant::now();
+                write_metal_buffer_prefix(
+                    &mut plan.hidden_norm_buffer,
+                    ffn_input.as_slice(),
+                    &mut perf,
+                )?;
+                let mut gate_up_submission = backend.begin_submission("psionic.gpt_oss.gate_up")?;
                 backend.encode_grouped_quantized_matvec_submission(
                     &mut gate_up_submission,
                     &layer.feed_forward_gate_up_experts_weight.storage,
@@ -8666,6 +8672,7 @@ impl GptOssMetalModelInner {
                 let up_rows = layer
                     .feed_forward_gate_up_experts_weight
                     .rows_per_projection[1];
+                plan.expert_input_values.clear();
                 for (selected_index, expert_index) in selected.iter().copied().enumerate() {
                     let base = selected_index.saturating_mul(per_selected_rows);
                     let gate_end = base.saturating_add(gate_rows);
@@ -8691,57 +8698,78 @@ impl GptOssMetalModelInner {
                         .stage_timings
                         .expert_activation_ns
                         .saturating_add(duration_ns(expert_activation_start));
+                    plan.expert_input_values
+                        .extend_from_slice(activated.as_slice());
+                }
 
-                    let expert_down_start = Instant::now();
-                    write_metal_buffer_prefix(
-                        &mut plan.expert_input_buffer,
-                        activated.as_slice(),
-                        &mut perf,
-                    )?;
-                    let mut expert_down_submission =
-                        backend.begin_submission("psionic.gpt_oss.expert_down")?;
-                    let byte_offset = expert_index
-                        .saturating_mul(layer.feed_forward_down_experts_weight.rows)
-                        .saturating_mul(layer.feed_forward_down_experts_weight.row_byte_len);
-                    backend.encode_quantized_matvec_submission(
-                        &mut expert_down_submission,
-                        &layer.feed_forward_down_experts_weight.storage,
-                        byte_offset,
-                        layer.feed_forward_down_experts_weight.mode,
-                        layer.feed_forward_down_experts_weight.rows,
-                        layer.feed_forward_down_experts_weight.columns,
-                        &plan.expert_input_buffer,
-                        &plan.expert_output_buffer,
-                    )?;
-                    expert_down_submission.synchronize_buffer(&plan.expert_output_buffer)?;
-                    let expert_down_report = expert_down_submission
-                        .commit(psionic_backend_metal::MetalCommandWait::Completed)
-                        .map_err(ReferenceTextGenerationError::Runtime)?;
-                    accumulate_metal_submission_report(&mut perf, &expert_down_report);
-                    kernel_count =
-                        kernel_count.saturating_add(expert_down_report.encoded_operations);
-                    read_metal_buffer_prefix_into(
-                        &plan.expert_output_buffer,
-                        layer.feed_forward_down_experts_weight.rows,
-                        &mut plan.expert_values,
-                        &mut perf,
-                    )?;
+                let expected_expert_inputs = selected
+                    .len()
+                    .saturating_mul(layer.feed_forward_down_experts_weight.columns);
+                if plan.expert_input_values.len() != expected_expert_inputs {
+                    return Err(ReferenceTextGenerationError::Runtime(
+                        super::RuntimeError::Backend(format!(
+                            "metal grouped expert inputs length mismatch: expected {expected_expert_inputs}, actual {}",
+                            plan.expert_input_values.len()
+                        )),
+                    ));
+                }
+
+                let expert_down_start = Instant::now();
+                write_metal_buffer_prefix(
+                    &mut plan.expert_input_rows_buffer,
+                    plan.expert_input_values.as_slice(),
+                    &mut perf,
+                )?;
+                let mut expert_down_submission =
+                    backend.begin_submission("psionic.gpt_oss.expert_down_ids")?;
+                backend.encode_expert_matvec_f32_ids_submission(
+                    &mut expert_down_submission,
+                    &layer.feed_forward_down_experts_weight.storage,
+                    layer.feed_forward_down_experts_weight.mode,
+                    layer.feed_forward_down_experts_weight.row_byte_len,
+                    layer.feed_forward_down_experts_weight.rows,
+                    layer.feed_forward_down_experts_weight.columns,
+                    selected_ids.as_slice(),
+                    &plan.expert_input_rows_buffer,
+                    &plan.expert_output_rows_buffer,
+                )?;
+                expert_down_submission.synchronize_buffer(&plan.expert_output_rows_buffer)?;
+                let expert_down_report = expert_down_submission
+                    .commit(psionic_backend_metal::MetalCommandWait::Completed)
+                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                perf.metal.grouped_expert_ids_path = true;
+                accumulate_metal_submission_report(&mut perf, &expert_down_report);
+                kernel_count = kernel_count.saturating_add(expert_down_report.encoded_operations);
+                read_metal_buffer_prefix_into(
+                    &plan.expert_output_rows_buffer,
+                    selected
+                        .len()
+                        .saturating_mul(layer.feed_forward_down_experts_weight.rows),
+                    &mut plan.expert_projected_values,
+                    &mut perf,
+                )?;
+                perf.stage_timings.expert_projection_ns = perf
+                    .stage_timings
+                    .expert_projection_ns
+                    .saturating_add(duration_ns(expert_down_start));
+
+                for (selected_index, expert_index) in selected.iter().copied().enumerate() {
+                    let base =
+                        selected_index.saturating_mul(layer.feed_forward_down_experts_weight.rows);
+                    let end = base.saturating_add(layer.feed_forward_down_experts_weight.rows);
+                    let expert_values = &mut plan.expert_projected_values[base..end];
                     if let Some(bias) = layer.feed_forward_down_experts_bias.as_ref() {
                         add_expert_bias_in_place(
-                            &mut plan.expert_values,
+                            expert_values,
                             bias.as_slice(),
                             expert_index,
                             layer.feed_forward_down_experts_weight.rows,
                         );
                     }
-                    perf.stage_timings.expert_projection_ns = perf
-                        .stage_timings
-                        .expert_projection_ns
-                        .saturating_add(duration_ns(expert_down_start));
 
                     let route = routing[selected_index];
                     let expert_aggregation_start = Instant::now();
-                    for (dst, value) in moe_out.iter_mut().zip(plan.expert_values.iter().copied()) {
+                    for (dst, value) in moe_out.iter_mut().zip(expert_values.iter().copied()) {
                         *dst += value * route;
                     }
                     perf.stage_timings.expert_aggregation_ns = perf
@@ -12488,9 +12516,10 @@ mod tests {
 
         assert_eq!(perf.step_count, 2);
         assert_eq!(perf.layer_visit_count, 2);
-        assert_eq!(perf.metal.kernel_launches, 16);
-        assert_eq!(perf.metal.submission_count, 12);
+        assert_eq!(perf.metal.kernel_launches, 14);
+        assert_eq!(perf.metal.submission_count, 10);
         assert!(perf.metal.submission_count < perf.metal.kernel_launches);
+        assert!(perf.metal.grouped_expert_ids_path);
         assert!(perf.metal.host_to_device_bytes > 0);
         assert!(perf.metal.device_to_host_bytes > 0);
         Ok(())

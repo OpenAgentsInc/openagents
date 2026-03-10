@@ -73,6 +73,8 @@ pub const TEXT_GENERATION_SUPPORTED_OPS: &[&str] = &[
     "top_k_f32",
     "mul_mv_id_q8_0",
     "mul_mv_id_mxfp4",
+    "expert_matvec_f32_ids_q8_0",
+    "expert_matvec_f32_ids_mxfp4",
 ];
 
 /// Metal buffer storage mode visible to Psionic.
@@ -1561,6 +1563,127 @@ impl MetalBackend {
         })
     }
 
+    /// Executes one ids-driven grouped expert projection from per-selected
+    /// `f32` activation rows into expert-specific `f32` output rows.
+    pub fn expert_matvec_f32_ids(
+        &mut self,
+        weights: &MetalBuffer,
+        mode: psionic_core::QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        selected_ids: &[i32],
+        input: &MetalBuffer,
+    ) -> Result<MetalGroupedExpertMatvecResult, RuntimeError> {
+        if rows_per_expert == 0 {
+            return Err(RuntimeError::Backend(String::from(
+                "metal expert_matvec_f32_ids requires at least one row per expert",
+            )));
+        }
+        if selected_ids.is_empty() {
+            return Ok(MetalGroupedExpertMatvecResult {
+                values: Vec::new(),
+                stats: MetalGroupedExpertStats {
+                    grouped_path: true,
+                    expert_count: 0,
+                    selected_count: 0,
+                    rows_per_expert,
+                    row_stride,
+                },
+            });
+        }
+        let expert_count =
+            validate_grouped_expert_layout(weights, mode, row_stride, rows_per_expert, columns)?;
+        let selected_experts = selected_expert_indices(selected_ids, expert_count)?;
+        let quantized_weights = match weights.storage_kind() {
+            BufferStorageKind::QuantizedBlocks {
+                mode: stored_mode, ..
+            } => {
+                if stored_mode != mode {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal expert_matvec_f32_ids mode mismatch: requested {mode:?}, stored {stored_mode:?}",
+                    )));
+                }
+                true
+            }
+            BufferStorageKind::DenseF32 => {
+                if mode != psionic_core::QuantizationMode::None {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal expert_matvec_f32_ids requested quantized mode {mode:?} for dense expert weights",
+                    )));
+                }
+                false
+            }
+            storage_kind => {
+                return Err(RuntimeError::Backend(format!(
+                    "metal expert_matvec_f32_ids does not support expert storage {:?}",
+                    storage_kind
+                )));
+            }
+        };
+
+        if quantized_weights {
+            let Some(backend) = self.selected_backend_mut() else {
+                return Err(RuntimeError::Backend(String::from(
+                    "metal backend unavailable: no selected execution device",
+                )));
+            };
+            let values = backend.run_expert_matvec_f32_ids(
+                weights,
+                mode,
+                row_stride,
+                rows_per_expert,
+                columns,
+                selected_ids,
+                input,
+            )?;
+            return Ok(MetalGroupedExpertMatvecResult {
+                values,
+                stats: MetalGroupedExpertStats {
+                    grouped_path: true,
+                    expert_count,
+                    selected_count: selected_ids.len(),
+                    rows_per_expert,
+                    row_stride,
+                },
+            });
+        }
+
+        let dense_weights = if !quantized_weights {
+            Some(weights.read_f32()?)
+        } else {
+            None
+        };
+        let input_values = dense_row_major_values(
+            input,
+            selected_ids.len(),
+            columns,
+            "metal expert_matvec_f32_ids input",
+        )?;
+        let mut output = vec![0.0; selected_ids.len().saturating_mul(rows_per_expert)];
+        if let Some(dense_weights) = dense_weights.as_ref() {
+            grouped_dense_expert_dot_rows_into(
+                rows_per_expert,
+                columns,
+                selected_experts.as_slice(),
+                input_values.as_slice(),
+                dense_weights.as_slice(),
+                output.as_mut_slice(),
+            )?;
+        }
+
+        Ok(MetalGroupedExpertMatvecResult {
+            values: output,
+            stats: MetalGroupedExpertStats {
+                grouped_path: true,
+                expert_count,
+                selected_count: selected_ids.len(),
+                rows_per_expert,
+                row_stride,
+            },
+        })
+    }
+
     /// Begins an explicit command submission on the selected Metal device.
     pub fn begin_submission(
         &self,
@@ -1648,6 +1771,50 @@ impl MetalBackend {
             )));
         };
         backend.platform.encode_grouped_quantized_matvec(
+            &mut submission.platform,
+            weights,
+            mode,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids,
+            input,
+            output,
+        )?;
+        submission.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Encodes one ids-driven grouped expert projection from per-selected
+    /// activation rows into expert-specific output rows.
+    pub fn encode_expert_matvec_f32_ids_submission(
+        &mut self,
+        submission: &mut MetalSubmission,
+        weights: &MetalBuffer,
+        mode: psionic_core::QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        selected_ids: &[i32],
+        input: &MetalBuffer,
+        output: &MetalBuffer,
+    ) -> Result<(), RuntimeError> {
+        validate_expert_matvec_f32_ids_request(
+            weights,
+            mode,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids,
+            input,
+            output,
+        )?;
+        let Some(backend) = self.selected_backend_mut() else {
+            return Err(RuntimeError::Backend(String::from(
+                "metal backend unavailable: no selected execution device",
+            )));
+        };
+        backend.platform.encode_expert_matvec_f32_ids(
             &mut submission.platform,
             weights,
             mode,
@@ -2815,6 +2982,51 @@ impl AvailableMetalBackend {
                 .begin_submission(String::from("psionic.mul_mv_id"))?,
         };
         self.platform.encode_grouped_quantized_matvec(
+            &mut submission.platform,
+            weights,
+            mode,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids,
+            input,
+            &output,
+        )?;
+        submission.encoded_operations += 1;
+        if self
+            .platform
+            .synchronize_output(&mut submission.platform, &output)?
+        {
+            submission.synchronized_buffers += 1;
+        }
+        submission.commit(MetalCommandWait::Completed)?;
+        output.read_f32()
+    }
+
+    fn run_expert_matvec_f32_ids(
+        &mut self,
+        weights: &MetalBuffer,
+        mode: psionic_core::QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        selected_ids: &[i32],
+        input: &MetalBuffer,
+    ) -> Result<Vec<f32>, RuntimeError> {
+        let total_rows = selected_ids.len().saturating_mul(rows_per_expert);
+        let output = self.allocate(&TensorSpec::new(
+            Shape::new(vec![total_rows]),
+            DType::F32,
+            self.descriptor.device.clone(),
+        ))?;
+        let mut submission = MetalSubmission {
+            encoded_operations: 0,
+            synchronized_buffers: 0,
+            platform: self
+                .platform
+                .begin_submission(String::from("psionic.expert_matvec_f32_ids"))?,
+        };
+        self.platform.encode_expert_matvec_f32_ids(
             &mut submission.platform,
             weights,
             mode,
@@ -4251,6 +4463,50 @@ fn validate_grouped_quantized_matvec_request(
     Ok(())
 }
 
+fn validate_expert_matvec_f32_ids_request(
+    weights: &MetalBuffer,
+    mode: psionic_core::QuantizationMode,
+    row_stride: usize,
+    rows_per_expert: usize,
+    columns: usize,
+    selected_ids: &[i32],
+    input: &MetalBuffer,
+    output: &MetalBuffer,
+) -> Result<(), RuntimeError> {
+    validate_grouped_expert_layout(weights, mode, row_stride, rows_per_expert, columns)?;
+    let total_rows = rows_per_expert.saturating_mul(selected_ids.len());
+    let total_inputs = columns.saturating_mul(selected_ids.len());
+    if input.storage_kind() != BufferStorageKind::DenseF32 || input.spec().dtype() != DType::F32 {
+        return Err(RuntimeError::Backend(format!(
+            "metal expert_matvec_f32_ids input requires dense f32 storage, actual {:?}",
+            input.storage_kind()
+        )));
+    }
+    if output.storage_kind() != BufferStorageKind::DenseF32 || output.spec().dtype() != DType::F32 {
+        return Err(RuntimeError::Backend(format!(
+            "metal expert_matvec_f32_ids output requires dense f32 storage, actual {:?}",
+            output.storage_kind()
+        )));
+    }
+    if input.spec().storage_size() < total_inputs {
+        return Err(RuntimeError::Backend(format!(
+            "metal expert_matvec_f32_ids input size mismatch: required at least {total_inputs}, actual {}",
+            input.spec().storage_size()
+        )));
+    }
+    if output.spec().storage_size() < total_rows {
+        return Err(RuntimeError::Backend(format!(
+            "metal expert_matvec_f32_ids output size mismatch: required at least {total_rows}, actual {}",
+            output.spec().storage_size()
+        )));
+    }
+    let _ = selected_expert_indices(
+        selected_ids,
+        validate_grouped_expert_layout(weights, mode, row_stride, rows_per_expert, columns)?,
+    )?;
+    Ok(())
+}
+
 fn quantized_row_stride(
     mode: psionic_core::QuantizationMode,
     columns: usize,
@@ -4391,6 +4647,81 @@ fn grouped_dense_expert_dot_into(
     })
 }
 
+fn grouped_dense_expert_dot_rows_into(
+    rows_per_expert: usize,
+    columns: usize,
+    selected_experts: &[usize],
+    input_rows: &[f32],
+    dense_weights: &[f32],
+    output: &mut [f32],
+) -> Result<(), RuntimeError> {
+    if input_rows.len() != selected_experts.len().saturating_mul(columns) {
+        return Err(RuntimeError::Backend(format!(
+            "metal dense expert_matvec_f32_ids input length mismatch: expected {}, actual {}",
+            selected_experts.len().saturating_mul(columns),
+            input_rows.len()
+        )));
+    }
+    if output.len() != selected_experts.len().saturating_mul(rows_per_expert) {
+        return Err(RuntimeError::Backend(format!(
+            "metal dense expert_matvec_f32_ids output length mismatch: expected {}, actual {}",
+            selected_experts.len().saturating_mul(rows_per_expert),
+            output.len()
+        )));
+    }
+    let thread_count = host_parallelism(selected_experts.len());
+    if thread_count == 1 {
+        for ((output_chunk, expert_index), input_chunk) in output
+            .chunks_mut(rows_per_expert)
+            .zip(selected_experts.iter().copied())
+            .zip(input_rows.chunks_exact(columns))
+        {
+            for (row, row_value) in output_chunk.iter_mut().enumerate() {
+                let row_index = expert_index
+                    .saturating_mul(rows_per_expert)
+                    .saturating_add(row);
+                let row_start = row_index.saturating_mul(columns);
+                let row_end = row_start.saturating_add(columns);
+                *row_value = dense_row_dot(input_chunk, &dense_weights[row_start..row_end])?;
+            }
+        }
+        return Ok(());
+    }
+
+    let experts_per_thread = selected_experts.len().div_ceil(thread_count);
+    thread::scope(|scope| {
+        let mut workers = Vec::new();
+        for ((output_chunk, expert_chunk), input_chunk) in output
+            .chunks_mut(experts_per_thread.saturating_mul(rows_per_expert))
+            .zip(selected_experts.chunks(experts_per_thread))
+            .zip(input_rows.chunks(experts_per_thread.saturating_mul(columns)))
+        {
+            workers.push(scope.spawn(move || {
+                for ((selected_output, expert_index), selected_input) in output_chunk
+                    .chunks_mut(rows_per_expert)
+                    .zip(expert_chunk.iter().copied())
+                    .zip(input_chunk.chunks_exact(columns))
+                {
+                    for (row, row_value) in selected_output.iter_mut().enumerate() {
+                        let row_index = expert_index
+                            .saturating_mul(rows_per_expert)
+                            .saturating_add(row);
+                        let row_start = row_index.saturating_mul(columns);
+                        let row_end = row_start.saturating_add(columns);
+                        *row_value =
+                            dense_row_dot(selected_input, &dense_weights[row_start..row_end])?;
+                    }
+                }
+                Ok(())
+            }));
+        }
+        for worker in workers {
+            join_worker(worker)?;
+        }
+        Ok(())
+    })
+}
+
 fn f32_slice_to_bytes(values: &[f32]) -> Vec<u8> {
     let mut bytes = Vec::with_capacity(values.len().saturating_mul(std::mem::size_of::<f32>()));
     for value in values {
@@ -4512,6 +4843,8 @@ mod platform {
         quantized_matvec_mxfp4: ComputePipelineState,
         grouped_quantized_matvec_q8_0: ComputePipelineState,
         grouped_quantized_matvec_mxfp4: ComputePipelineState,
+        expert_matvec_f32_ids_q8_0: ComputePipelineState,
+        expert_matvec_f32_ids_mxfp4: ComputePipelineState,
     }
 
     impl PlatformBuffer {
@@ -4832,6 +5165,71 @@ mod platform {
             Ok(())
         }
 
+        pub(super) fn encode_expert_matvec_f32_ids(
+            &mut self,
+            pipeline: &ComputePipelineState,
+            weights: &PlatformBuffer,
+            input: &PlatformBuffer,
+            output: &PlatformBuffer,
+            rows_per_expert: usize,
+            columns: usize,
+            row_stride: usize,
+            selected_ids: &[i32],
+        ) -> Result<(), RuntimeError> {
+            let total_rows = selected_ids.len().saturating_mul(rows_per_expert);
+            let encoder = self.command_buffer.new_compute_command_encoder();
+            encoder.set_compute_pipeline_state(pipeline);
+            encoder.set_buffer(0, Some(&weights.raw), 0);
+            encoder.set_buffer(1, Some(&input.raw), 0);
+            encoder.set_buffer(2, Some(&output.raw), 0);
+
+            let rows_per_expert = u32::try_from(rows_per_expert).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "metal expert_matvec_f32_ids rows per expert overflow",
+                ))
+            })?;
+            let columns = u32::try_from(columns).map_err(|_| {
+                RuntimeError::Backend(String::from("metal expert_matvec_f32_ids columns overflow"))
+            })?;
+            let row_stride = u32::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "metal expert_matvec_f32_ids row stride overflow",
+                ))
+            })?;
+            let selected_count = u32::try_from(selected_ids.len()).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "metal expert_matvec_f32_ids selected count overflow",
+                ))
+            })?;
+            encoder.set_bytes(3, 4, (&rows_per_expert as *const u32).cast());
+            encoder.set_bytes(4, 4, (&columns as *const u32).cast());
+            encoder.set_bytes(5, 4, (&row_stride as *const u32).cast());
+            encoder.set_bytes(6, 4, (&selected_count as *const u32).cast());
+            encoder.set_bytes(
+                7,
+                selected_ids
+                    .len()
+                    .saturating_mul(std::mem::size_of::<i32>()) as u64,
+                selected_ids.as_ptr().cast(),
+            );
+
+            let threadgroup_size = quantized_row_threadgroup_size(pipeline)?;
+            encoder.dispatch_thread_groups(
+                MTLSize::new(
+                    u64::try_from(total_rows).map_err(|_| {
+                        RuntimeError::Backend(String::from(
+                            "metal expert_matvec_f32_ids row count conversion overflow",
+                        ))
+                    })?,
+                    1,
+                    1,
+                ),
+                threadgroup_size,
+            );
+            encoder.end_encoding();
+            Ok(())
+        }
+
         pub(super) fn commit(
             self,
             wait: MetalCommandWait,
@@ -5071,6 +5469,46 @@ mod platform {
                 }
             };
             submission.encode_grouped_quantized_matvec(
+                pipeline,
+                &weights.platform,
+                &input.platform,
+                &output.platform,
+                rows_per_expert,
+                columns,
+                row_stride,
+                selected_ids,
+            )
+        }
+
+        pub(super) fn encode_expert_matvec_f32_ids(
+            &mut self,
+            submission: &mut PlatformSubmission,
+            weights: &MetalBuffer,
+            mode: QuantizationMode,
+            row_stride: usize,
+            rows_per_expert: usize,
+            columns: usize,
+            selected_ids: &[i32],
+            input: &MetalBuffer,
+            output: &MetalBuffer,
+        ) -> Result<(), RuntimeError> {
+            let expected_row_stride = quantized_row_stride(mode, columns)?;
+            if row_stride != expected_row_stride {
+                return Err(RuntimeError::Backend(format!(
+                    "metal expert_matvec_f32_ids row stride mismatch: expected {expected_row_stride}, actual {row_stride}",
+                )));
+            }
+            let pipelines = self.pipelines()?;
+            let pipeline = match mode {
+                QuantizationMode::GgmlQ8_0 => &pipelines.expert_matvec_f32_ids_q8_0,
+                QuantizationMode::GgmlMxfp4 => &pipelines.expert_matvec_f32_ids_mxfp4,
+                _ => {
+                    return Err(RuntimeError::Backend(format!(
+                        "metal expert_matvec_f32_ids does not support mode {mode:?}",
+                    )));
+                }
+            };
+            submission.encode_expert_matvec_f32_ids(
                 pipeline,
                 &weights.platform,
                 &input.platform,
@@ -5368,6 +5806,20 @@ mod platform {
                     "missing Metal mxfp4 grouped matvec kernel: {error}"
                 ))
             })?;
+        let expert_matvec_f32_ids_q8_0 = library
+            .get_function("psionic_expert_matvec_f32_ids_q8_0", None)
+            .map_err(|error| {
+                RuntimeError::Backend(format!(
+                    "missing Metal q8_0 expert_matvec_f32_ids kernel: {error}"
+                ))
+            })?;
+        let expert_matvec_f32_ids_mxfp4 = library
+            .get_function("psionic_expert_matvec_f32_ids_mxfp4", None)
+            .map_err(|error| {
+                RuntimeError::Backend(format!(
+                    "missing Metal mxfp4 expert_matvec_f32_ids kernel: {error}"
+                ))
+            })?;
 
         Ok(DensePipelines {
             add: device
@@ -5406,6 +5858,20 @@ mod platform {
                 .map_err(|error| {
                     RuntimeError::Backend(format!(
                         "metal mxfp4 grouped matvec pipeline build failed: {error}"
+                    ))
+                })?,
+            expert_matvec_f32_ids_q8_0: device
+                .new_compute_pipeline_state_with_function(&expert_matvec_f32_ids_q8_0)
+                .map_err(|error| {
+                    RuntimeError::Backend(format!(
+                        "metal q8_0 expert_matvec_f32_ids pipeline build failed: {error}"
+                    ))
+                })?,
+            expert_matvec_f32_ids_mxfp4: device
+                .new_compute_pipeline_state_with_function(&expert_matvec_f32_ids_mxfp4)
+                .map_err(|error| {
+                    RuntimeError::Backend(format!(
+                        "metal mxfp4 expert_matvec_f32_ids pipeline build failed: {error}"
                     ))
                 })?,
         })
@@ -5697,6 +6163,102 @@ kernel void psionic_mul_mv_id_mxfp4(
         output[row] = partial[0];
     }
 }
+
+kernel void psionic_expert_matvec_f32_ids_q8_0(
+    const device uchar* weights [[buffer(0)]],
+    const device float* input [[buffer(1)]],
+    device float* output [[buffer(2)]],
+    constant uint& rows_per_expert [[buffer(3)]],
+    constant uint& columns [[buffer(4)]],
+    constant uint& row_stride [[buffer(5)]],
+    constant uint& selected_count [[buffer(6)]],
+    constant int* selected_ids [[buffer(7)]],
+    uint3 tgpig [[threadgroup_position_in_grid]],
+    uint tid [[thread_index_in_threadgroup]]
+) {
+    uint total_rows = rows_per_expert * selected_count;
+    uint row = tgpig.x;
+    if (row >= total_rows) {
+        return;
+    }
+    threadgroup float partial[PSIONIC_QUANTIZED_ROW_THREADS];
+    uint selected_index = row / rows_per_expert;
+    uint row_in_expert = row % rows_per_expert;
+    int expert_id = selected_ids[selected_index];
+    if (expert_id < 0) {
+        if (tid == 0) {
+            output[row] = 0.0f;
+        }
+        return;
+    }
+    ulong row_base = (ulong(expert_id) * ulong(rows_per_expert) + ulong(row_in_expert)) * ulong(row_stride);
+    uint block_count = columns / 32;
+    const device float* input_row = input + ulong(selected_index) * ulong(columns);
+    float sum = 0.0f;
+    for (uint block_index = tid; block_index < block_count; block_index += PSIONIC_QUANTIZED_ROW_THREADS) {
+        const device uchar* block = weights + row_base + ulong(block_index) * 34ul;
+        sum += psionic_q8_0_block_dot(block, input_row + block_index * 32);
+    }
+    partial[tid] = sum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint stride = PSIONIC_QUANTIZED_ROW_THREADS / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            partial[tid] += partial[tid + stride];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    if (tid == 0) {
+        output[row] = partial[0];
+    }
+}
+
+kernel void psionic_expert_matvec_f32_ids_mxfp4(
+    const device uchar* weights [[buffer(0)]],
+    const device float* input [[buffer(1)]],
+    device float* output [[buffer(2)]],
+    constant uint& rows_per_expert [[buffer(3)]],
+    constant uint& columns [[buffer(4)]],
+    constant uint& row_stride [[buffer(5)]],
+    constant uint& selected_count [[buffer(6)]],
+    constant int* selected_ids [[buffer(7)]],
+    uint3 tgpig [[threadgroup_position_in_grid]],
+    uint tid [[thread_index_in_threadgroup]]
+) {
+    uint total_rows = rows_per_expert * selected_count;
+    uint row = tgpig.x;
+    if (row >= total_rows) {
+        return;
+    }
+    threadgroup float partial[PSIONIC_QUANTIZED_ROW_THREADS];
+    uint selected_index = row / rows_per_expert;
+    uint row_in_expert = row % rows_per_expert;
+    int expert_id = selected_ids[selected_index];
+    if (expert_id < 0) {
+        if (tid == 0) {
+            output[row] = 0.0f;
+        }
+        return;
+    }
+    ulong row_base = (ulong(expert_id) * ulong(rows_per_expert) + ulong(row_in_expert)) * ulong(row_stride);
+    uint block_count = columns / 32;
+    const device float* input_row = input + ulong(selected_index) * ulong(columns);
+    float sum = 0.0f;
+    for (uint block_index = tid; block_index < block_count; block_index += PSIONIC_QUANTIZED_ROW_THREADS) {
+        const device uchar* block = weights + row_base + ulong(block_index) * 17ul;
+        sum += psionic_mxfp4_block_dot(block, input_row + block_index * 32);
+    }
+    partial[tid] = sum;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    for (uint stride = PSIONIC_QUANTIZED_ROW_THREADS / 2; stride > 0; stride >>= 1) {
+        if (tid < stride) {
+            partial[tid] += partial[tid + stride];
+        }
+        threadgroup_barrier(mem_flags::mem_threadgroup);
+    }
+    if (tid == 0) {
+        output[row] = partial[0];
+    }
+}
 "#;
 }
 
@@ -5833,6 +6395,22 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_expert_matvec_f32_ids(
+            &mut self,
+            _pipeline: &(),
+            _weights: &PlatformBuffer,
+            _input: &PlatformBuffer,
+            _output: &PlatformBuffer,
+            _rows_per_expert: usize,
+            _columns: usize,
+            _row_stride: usize,
+            _selected_ids: &[i32],
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
+
         pub(super) fn commit(
             self,
             _wait: MetalCommandWait,
@@ -5926,6 +6504,23 @@ mod platform {
         }
 
         pub(super) fn encode_grouped_quantized_matvec(
+            &mut self,
+            _submission: &mut PlatformSubmission,
+            _weights: &MetalBuffer,
+            _mode: QuantizationMode,
+            _row_stride: usize,
+            _rows_per_expert: usize,
+            _columns: usize,
+            _selected_ids: &[i32],
+            _input: &MetalBuffer,
+            _output: &MetalBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "metal backend is only available on macOS",
+            )))
+        }
+
+        pub(super) fn encode_expert_matvec_f32_ids(
             &mut self,
             _submission: &mut PlatformSubmission,
             _weights: &MetalBuffer,
@@ -6096,6 +6691,51 @@ mod tests {
         Ok(output)
     }
 
+    fn expected_grouped_expert_row_outputs(
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        selected_ids: &[i32],
+        inputs: &[f32],
+        columns: usize,
+        bytes: &[u8],
+    ) -> Result<Vec<f32>, RuntimeError> {
+        if inputs.len() != selected_ids.len().saturating_mul(columns) {
+            return Err(RuntimeError::Backend(format!(
+                "expected grouped expert row inputs length mismatch: expected {}, actual {}",
+                selected_ids.len().saturating_mul(columns),
+                inputs.len()
+            )));
+        }
+        let mut output = Vec::with_capacity(selected_ids.len().saturating_mul(rows_per_expert));
+        for (&selected_id, input_row) in selected_ids.iter().zip(inputs.chunks_exact(columns)) {
+            let expert_index = usize::try_from(selected_id).map_err(|_| {
+                RuntimeError::Backend(format!("negative selected expert id {selected_id}"))
+            })?;
+            for row in 0..rows_per_expert {
+                let row_index = expert_index
+                    .saturating_mul(rows_per_expert)
+                    .saturating_add(row);
+                let start = row_index.saturating_mul(row_stride);
+                let end = start.saturating_add(row_stride);
+                let mut decoded = Vec::with_capacity(input_row.len());
+                psionic_backend_cpu::decode_quantized_row_into(
+                    mode,
+                    &bytes[start..end],
+                    &mut decoded,
+                )?;
+                output.push(
+                    input_row
+                        .iter()
+                        .zip(decoded.iter())
+                        .map(|(left, right)| left * right)
+                        .sum(),
+                );
+            }
+        }
+        Ok(output)
+    }
+
     fn f32_to_f16_bits(value: f32) -> u16 {
         let bits = value.to_bits();
         let sign = ((bits >> 16) & 0x8000) as u16;
@@ -6190,6 +6830,8 @@ mod tests {
                 "top_k_f32",
                 "mul_mv_id_q8_0",
                 "mul_mv_id_mxfp4",
+                "expert_matvec_f32_ids_q8_0",
+                "expert_matvec_f32_ids_mxfp4",
             ]
         );
         let budget = BackendParityPolicy::default().embedding_budget(QuantizationMode::None);
@@ -7296,6 +7938,135 @@ mod tests {
             rows_per_expert,
             selected_ids.as_slice(),
             input.as_slice(),
+            weights.as_slice(),
+        )?;
+        assert_eq!(result.values, expected);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_expert_matvec_f32_ids_matches_grouped_q8_0_reference_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let rows_per_expert = 2;
+        let expert_count = 3;
+        let columns = 32;
+        let row_stride = 34;
+        let selected_ids = vec![2_i32, 0_i32];
+        let weights = [
+            sample_q8_0_row(0.25, 1),
+            sample_q8_0_row(0.5, -1),
+            sample_q8_0_row(0.125, -1),
+            sample_q8_0_row(0.375, 1),
+            sample_q8_0_row(0.625, 1),
+            sample_q8_0_row(0.75, -1),
+        ]
+        .concat();
+        let inputs = [sample_reference_vector(), vec![0.5; columns]].concat();
+
+        let weight_buffer = backend.quantized_buffer(
+            Shape::new(vec![expert_count * rows_per_expert, columns]),
+            QuantizationMode::GgmlQ8_0,
+            weights.clone(),
+        )?;
+        let input_buffer = backend.input_buffer(
+            Shape::new(vec![selected_ids.len(), columns]),
+            inputs.clone(),
+        )?;
+        let result = backend.expert_matvec_f32_ids(
+            &weight_buffer,
+            QuantizationMode::GgmlQ8_0,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids.as_slice(),
+            &input_buffer,
+        )?;
+
+        assert_eq!(
+            result.stats,
+            super::MetalGroupedExpertStats {
+                grouped_path: true,
+                expert_count,
+                selected_count: selected_ids.len(),
+                rows_per_expert,
+                row_stride,
+            }
+        );
+        let expected = expected_grouped_expert_row_outputs(
+            QuantizationMode::GgmlQ8_0,
+            row_stride,
+            rows_per_expert,
+            selected_ids.as_slice(),
+            inputs.as_slice(),
+            columns,
+            weights.as_slice(),
+        )?;
+        assert_eq!(result.values, expected);
+        Ok(())
+    }
+
+    #[cfg(target_os = "macos")]
+    #[test]
+    fn metal_backend_expert_matvec_f32_ids_matches_grouped_mxfp4_reference_on_supported_hardware()
+    -> Result<(), RuntimeError> {
+        let mut backend = MetalBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_ne!(backend.health().status, HealthStatus::Ready);
+            return Ok(());
+        };
+
+        let rows_per_expert = 2;
+        let expert_count = 3;
+        let columns = 32;
+        let row_stride = 17;
+        let selected_ids = vec![1_i32, 2_i32];
+        let weights = [
+            sample_mxfp4_row(4),
+            sample_mxfp4_row(5),
+            sample_mxfp4_row(6),
+            sample_mxfp4_row(7),
+            sample_mxfp4_row(5),
+            sample_mxfp4_row(4),
+        ]
+        .concat();
+        let inputs = [sample_reference_vector(), vec![0.25; columns]].concat();
+
+        let weight_buffer = backend.quantized_buffer(
+            Shape::new(vec![expert_count * rows_per_expert, columns]),
+            QuantizationMode::GgmlMxfp4,
+            weights.clone(),
+        )?;
+        let input_buffer = backend.input_buffer(
+            Shape::new(vec![selected_ids.len(), columns]),
+            inputs.clone(),
+        )?;
+        let result = backend.expert_matvec_f32_ids(
+            &weight_buffer,
+            QuantizationMode::GgmlMxfp4,
+            row_stride,
+            rows_per_expert,
+            columns,
+            selected_ids.as_slice(),
+            &input_buffer,
+        )?;
+
+        assert_eq!(result.stats.grouped_path, true);
+        assert_eq!(result.stats.expert_count, expert_count);
+        assert_eq!(result.stats.selected_count, selected_ids.len());
+        let expected = expected_grouped_expert_row_outputs(
+            QuantizationMode::GgmlMxfp4,
+            row_stride,
+            rows_per_expert,
+            selected_ids.as_slice(),
+            inputs.as_slice(),
+            columns,
             weights.as_slice(),
         )?;
         assert_eq!(result.values, expected);
