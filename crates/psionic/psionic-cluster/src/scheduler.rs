@@ -11,13 +11,78 @@ use psionic_runtime::{
     DeviceMemoryClass, DevicePerformanceClass, ExecutionTopologyPlan,
 };
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 use crate::{
     ClusterArtifactResidencyKey, ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus,
-    ClusterLink, ClusterLinkKey, ClusterLinkStatus, ClusterMembershipRecord,
+    ClusterId, ClusterLink, ClusterLinkKey, ClusterLinkStatus, ClusterMembershipRecord,
     ClusterMembershipStatus, ClusterNodeTelemetry, ClusterStabilityPosture, ClusterState,
     ClusterTransportClass, NodeId, NodeRole,
 };
+
+/// Optional Exo-derived placement input for bounded scheduler experimentation.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ExoPlacementHint {
+    /// Cluster this hint was derived for.
+    pub cluster_id: ClusterId,
+    /// Stable source identifier for the orchestrator or peer that emitted the hint.
+    pub source_id: String,
+    /// Stable topology digest the hint expects.
+    pub topology_digest: String,
+    /// Ordered candidate node set suggested by the hint.
+    pub suggested_node_ids: Vec<NodeId>,
+    /// Plain-language detail explaining the hint, when one exists.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
+}
+
+impl ExoPlacementHint {
+    /// Creates a bounded Exo placement hint.
+    #[must_use]
+    pub fn new(
+        cluster_id: ClusterId,
+        source_id: impl Into<String>,
+        topology_digest: impl Into<String>,
+        suggested_node_ids: Vec<NodeId>,
+    ) -> Self {
+        let mut suggested_node_ids = suggested_node_ids;
+        suggested_node_ids.sort_unstable();
+        suggested_node_ids.dedup();
+        Self {
+            cluster_id,
+            source_id: source_id.into(),
+            topology_digest: topology_digest.into(),
+            suggested_node_ids,
+            detail: None,
+        }
+    }
+
+    /// Attaches plain-language detail for the hint.
+    #[must_use]
+    pub fn with_detail(mut self, detail: impl Into<String>) -> Self {
+        self.detail = Some(detail.into());
+        self
+    }
+
+    /// Returns a stable digest for this hint.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let mut hasher = Sha256::new();
+        hasher.update(b"exo_placement_hint|");
+        hasher.update(self.cluster_id.as_str().as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.source_id.as_bytes());
+        hasher.update(b"|");
+        hasher.update(self.topology_digest.as_bytes());
+        for node_id in &self.suggested_node_ids {
+            hasher.update(b"|node|");
+            hasher.update(node_id.as_str().as_bytes());
+        }
+        hasher.update(b"|");
+        hasher.update(self.detail.as_deref().unwrap_or_default().as_bytes());
+        hex::encode(hasher.finalize())
+    }
+}
 
 /// Request for whole-request remote scheduling onto one cluster node.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -41,6 +106,9 @@ pub struct WholeRequestSchedulingRequest {
     /// Stable policy digests that constrained the decision.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub policy_digests: Vec<ClusterPolicyDigest>,
+    /// Optional bounded Exo-derived placement hint.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub exo_placement_hint: Option<ExoPlacementHint>,
     /// Explicit nodes that this scheduling attempt must exclude.
     #[serde(default, skip_serializing_if = "BTreeSet::is_empty")]
     pub excluded_node_ids: BTreeSet<NodeId>,
@@ -59,6 +127,7 @@ impl WholeRequestSchedulingRequest {
             allow_copy_staging: true,
             allow_pull_staging: true,
             policy_digests: Vec::new(),
+            exo_placement_hint: None,
             excluded_node_ids: BTreeSet::new(),
         }
     }
@@ -103,6 +172,13 @@ impl WholeRequestSchedulingRequest {
     #[must_use]
     pub fn with_policy_digest(mut self, policy_digest: ClusterPolicyDigest) -> Self {
         self.policy_digests.push(policy_digest);
+        self
+    }
+
+    /// Attaches an optional bounded Exo-derived placement hint.
+    #[must_use]
+    pub fn with_exo_placement_hint(mut self, exo_placement_hint: ExoPlacementHint) -> Self {
+        self.exo_placement_hint = Some(exo_placement_hint);
         self
     }
 
@@ -190,6 +266,10 @@ impl WholeRequestSchedulingRefusal {
 pub enum WholeRequestSchedulingSelectionCode {
     /// The scheduler selected the best fully ready remote candidate.
     SelectedBestCandidate,
+    /// An Exo-derived hint matched the final selected node without widening eligibility.
+    ExoPlacementHintAccepted,
+    /// An Exo-derived hint was ignored under current authoritative cluster truth.
+    ExoPlacementHintIgnored,
     /// The winning node requires a peer copy before execution.
     ArtifactCopyRequired,
     /// The winning node requires a pull before execution.
@@ -328,6 +408,8 @@ pub fn schedule_remote_whole_request(
         }));
     }
 
+    let exo_placement_hint =
+        evaluate_exo_placement_hint(state, request.exo_placement_hint.as_ref());
     let mut refusals = Vec::new();
     let mut candidates = Vec::new();
     for (node_id, membership) in state.memberships() {
@@ -544,6 +626,7 @@ pub fn schedule_remote_whole_request(
             link,
             backend_readiness,
             artifact_status,
+            exo_hint_match: exo_hint_matches(&exo_placement_hint, node_id),
         });
     }
 
@@ -588,10 +671,18 @@ pub fn schedule_remote_whole_request(
         selected_node = selected_node.with_served_artifact_digest(served_artifact_digest.clone());
     }
 
-    let selection_notes = selection_notes_for_candidate(&best);
+    let exo_selection_note = exo_selection_note(&exo_placement_hint, &best);
+    let selection_notes = selection_notes_for_candidate(&best, exo_selection_note.as_ref());
     let degraded_reason = selection_notes
         .iter()
-        .filter(|note| note.code != WholeRequestSchedulingSelectionCode::SelectedBestCandidate)
+        .filter(|note| {
+            !matches!(
+                note.code,
+                WholeRequestSchedulingSelectionCode::SelectedBestCandidate
+                    | WholeRequestSchedulingSelectionCode::ExoPlacementHintAccepted
+                    | WholeRequestSchedulingSelectionCode::ExoPlacementHintIgnored
+            )
+        })
         .map(|note| note.detail.as_str())
         .collect::<Vec<_>>()
         .join("; ");
@@ -629,6 +720,16 @@ pub fn schedule_remote_whole_request(
     for policy_digest in &request.policy_digests {
         cluster_execution = cluster_execution.with_policy_digest(policy_digest.clone());
     }
+    if let EvaluatedExoPlacementHint::Valid(valid_hint) = &exo_placement_hint {
+        cluster_execution = cluster_execution.with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Placement,
+            valid_hint.hint.stable_digest(),
+        ));
+    }
+    if let Some(exo_selection_note) = &exo_selection_note {
+        cluster_execution =
+            cluster_execution.with_placement_diagnostic(exo_selection_note.detail.clone());
+    }
     if !degraded_reason.is_empty() {
         cluster_execution = cluster_execution.with_degraded_reason(degraded_reason);
     }
@@ -653,6 +754,7 @@ struct SchedulerCandidate<'a> {
     link: &'a ClusterLink,
     backend_readiness: ClusterBackendReadinessStatus,
     artifact_status: Option<ClusterArtifactResidencyStatus>,
+    exo_hint_match: bool,
 }
 
 fn candidate_order(
@@ -670,6 +772,7 @@ fn candidate_order(
             candidate_stability_rank(left.telemetry.stability)
                 .cmp(&candidate_stability_rank(right.telemetry.stability)),
         )
+        .then(exo_hint_rank(left.exo_hint_match).cmp(&exo_hint_rank(right.exo_hint_match)))
         .then_with(|| {
             right
                 .telemetry
@@ -808,6 +911,10 @@ const fn candidate_stability_rank(stability: ClusterStabilityPosture) -> u8 {
     }
 }
 
+const fn exo_hint_rank(exo_hint_match: bool) -> u8 {
+    if exo_hint_match { 0 } else { 1 }
+}
+
 const fn transport_is_schedulable(link: &ClusterLink) -> bool {
     matches!(
         link.status,
@@ -892,6 +999,7 @@ fn remote_memory_class(
 
 fn selection_notes_for_candidate(
     candidate: &SchedulerCandidate<'_>,
+    exo_selection_note: Option<&WholeRequestSchedulingSelectionNote>,
 ) -> Vec<WholeRequestSchedulingSelectionNote> {
     let mut notes = vec![WholeRequestSchedulingSelectionNote::new(
         WholeRequestSchedulingSelectionCode::SelectedBestCandidate,
@@ -900,6 +1008,9 @@ fn selection_notes_for_candidate(
             candidate.node_id.as_str()
         ),
     )];
+    if let Some(exo_selection_note) = exo_selection_note {
+        notes.push(exo_selection_note.clone());
+    }
     match candidate.artifact_status {
         Some(ClusterArtifactResidencyStatus::CopyRequired) => {
             notes.push(WholeRequestSchedulingSelectionNote::new(
@@ -954,6 +1065,117 @@ fn selection_notes_for_candidate(
     notes
 }
 
+#[derive(Clone, Debug)]
+enum EvaluatedExoPlacementHint {
+    None,
+    Ignored { detail: String },
+    Valid(ValidatedExoPlacementHint),
+}
+
+#[derive(Clone, Debug)]
+struct ValidatedExoPlacementHint {
+    hint: ExoPlacementHint,
+    suggested_node_ids: BTreeSet<NodeId>,
+}
+
+fn evaluate_exo_placement_hint(
+    state: &ClusterState,
+    exo_placement_hint: Option<&ExoPlacementHint>,
+) -> EvaluatedExoPlacementHint {
+    let Some(exo_placement_hint) = exo_placement_hint else {
+        return EvaluatedExoPlacementHint::None;
+    };
+    if &exo_placement_hint.cluster_id != state.cluster_id() {
+        return EvaluatedExoPlacementHint::Ignored {
+            detail: format!(
+                "ignored Exo placement hint from `{}` because it targeted cluster `{}` instead of `{}`",
+                exo_placement_hint.source_id,
+                exo_placement_hint.cluster_id.as_str(),
+                state.cluster_id().as_str()
+            ),
+        };
+    }
+    let current_topology_digest = state.topology_digest();
+    if exo_placement_hint.topology_digest != current_topology_digest {
+        return EvaluatedExoPlacementHint::Ignored {
+            detail: format!(
+                "ignored Exo placement hint from `{}` because topology digest `{}` no longer matches current `{}`",
+                exo_placement_hint.source_id,
+                exo_placement_hint.topology_digest,
+                current_topology_digest
+            ),
+        };
+    }
+    if exo_placement_hint.suggested_node_ids.is_empty() {
+        return EvaluatedExoPlacementHint::Ignored {
+            detail: format!(
+                "ignored Exo placement hint from `{}` because it contained no suggested nodes",
+                exo_placement_hint.source_id
+            ),
+        };
+    }
+    EvaluatedExoPlacementHint::Valid(ValidatedExoPlacementHint {
+        hint: exo_placement_hint.clone(),
+        suggested_node_ids: exo_placement_hint
+            .suggested_node_ids
+            .iter()
+            .cloned()
+            .collect(),
+    })
+}
+
+fn exo_hint_matches(exo_placement_hint: &EvaluatedExoPlacementHint, node_id: &NodeId) -> bool {
+    match exo_placement_hint {
+        EvaluatedExoPlacementHint::Valid(valid_hint) => {
+            valid_hint.suggested_node_ids.contains(node_id)
+        }
+        EvaluatedExoPlacementHint::None | EvaluatedExoPlacementHint::Ignored { .. } => false,
+    }
+}
+
+fn exo_selection_note(
+    exo_placement_hint: &EvaluatedExoPlacementHint,
+    best: &SchedulerCandidate<'_>,
+) -> Option<WholeRequestSchedulingSelectionNote> {
+    match exo_placement_hint {
+        EvaluatedExoPlacementHint::None => None,
+        EvaluatedExoPlacementHint::Ignored { detail } => {
+            Some(WholeRequestSchedulingSelectionNote::new(
+                WholeRequestSchedulingSelectionCode::ExoPlacementHintIgnored,
+                detail.clone(),
+            ))
+        }
+        EvaluatedExoPlacementHint::Valid(valid_hint) if best.exo_hint_match => {
+            Some(WholeRequestSchedulingSelectionNote::new(
+                WholeRequestSchedulingSelectionCode::ExoPlacementHintAccepted,
+                format!(
+                    "accepted Exo placement hint from `{}` for selected node `{}` without widening eligibility",
+                    valid_hint.hint.source_id,
+                    best.node_id.as_str()
+                ),
+            ))
+        }
+        EvaluatedExoPlacementHint::Valid(valid_hint) => {
+            let hinted_nodes = valid_hint
+                .hint
+                .suggested_node_ids
+                .iter()
+                .map(|node_id| node_id.as_str())
+                .collect::<Vec<_>>()
+                .join(", ");
+            Some(WholeRequestSchedulingSelectionNote::new(
+                WholeRequestSchedulingSelectionCode::ExoPlacementHintIgnored,
+                format!(
+                    "ignored Exo placement hint from `{}` because authoritative local ordering kept `{}` ahead of hinted nodes [{}]",
+                    valid_hint.hint.source_id,
+                    best.node_id.as_str(),
+                    hinted_nodes
+                ),
+            ))
+        }
+    }
+}
+
 const fn node_role_name(role: NodeRole) -> &'static str {
     match role {
         NodeRole::CoordinatorOnly => "coordinator_only",
@@ -992,7 +1214,7 @@ mod tests {
     };
 
     use super::{
-        WholeRequestClusterSchedule, WholeRequestSchedulingFailureCode,
+        ExoPlacementHint, WholeRequestClusterSchedule, WholeRequestSchedulingFailureCode,
         WholeRequestSchedulingRefusalCode, WholeRequestSchedulingRequest,
         schedule_remote_whole_request,
     };
@@ -1284,6 +1506,137 @@ mod tests {
         } = schedule_remote_whole_request(&state, &request)
             .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
         assert_eq!(selected_node_id, crate::NodeId::new("worker-a"));
+        Ok(())
+    }
+
+    #[test]
+    fn whole_request_scheduler_accepts_bounded_exo_hint_for_tie_break()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot
+            .links
+            .get_mut(&crate::ClusterLinkKey::new(
+                crate::NodeId::new("scheduler"),
+                crate::NodeId::new("worker-a"),
+            ))
+            .ok_or_else(|| fixture_error("worker-a link"))?
+            .latency_us = Some(500);
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-a"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-b"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-b"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot.telemetry.insert(
+            crate::NodeId::new("worker-b"),
+            ready_cuda_telemetry("worker-b", 32 * 1024 * 1024 * 1024),
+        );
+
+        let state = ClusterState::from_snapshot(snapshot);
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_served_artifact_digest("artifact-1")
+            .with_exo_placement_hint(
+                ExoPlacementHint::new(
+                    sample_cluster_id(),
+                    "exo-coordinator",
+                    state.topology_digest(),
+                    vec![crate::NodeId::new("worker-b")],
+                )
+                .with_detail("prefer the lower-latency remote worker"),
+            );
+
+        let WholeRequestClusterSchedule {
+            selected_node_id,
+            selection_notes,
+            cluster_execution,
+            ..
+        } = schedule_remote_whole_request(&state, &request)
+            .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
+        assert_eq!(selected_node_id, crate::NodeId::new("worker-b"));
+        assert!(selection_notes.iter().any(|note| {
+            note.code == super::WholeRequestSchedulingSelectionCode::ExoPlacementHintAccepted
+        }));
+        assert!(
+            cluster_execution
+                .policy_digests
+                .iter()
+                .any(|digest| digest.kind == ClusterPolicyDigestKind::Placement),
+            "cluster execution should retain the accepted placement hint digest"
+        );
+        assert!(
+            cluster_execution
+                .placement_diagnostics
+                .iter()
+                .any(|detail| detail.contains("accepted Exo placement hint")),
+            "cluster execution should surface accepted hint diagnostics"
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn whole_request_scheduler_ignores_stale_exo_hint_and_preserves_local_choice()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut snapshot = sample_snapshot();
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-a"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-a"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+        snapshot.artifact_residency.insert(
+            crate::ClusterArtifactResidencyKey::new(crate::NodeId::new("worker-b"), "artifact-1"),
+            crate::ClusterArtifactResidencyRecord::new(
+                crate::NodeId::new("worker-b"),
+                ClusterArtifactReference::new("decoder", "artifact-1"),
+                ClusterArtifactResidencyStatus::Resident,
+            ),
+        );
+
+        let state = ClusterState::from_snapshot(snapshot);
+        let request = WholeRequestSchedulingRequest::new(crate::NodeId::new("scheduler"), "cuda")
+            .with_served_artifact_digest("artifact-1")
+            .with_exo_placement_hint(ExoPlacementHint::new(
+                sample_cluster_id(),
+                "exo-coordinator",
+                "stale-topology-digest",
+                vec![crate::NodeId::new("worker-a")],
+            ));
+
+        let WholeRequestClusterSchedule {
+            selected_node_id,
+            selection_notes,
+            cluster_execution,
+            ..
+        } = schedule_remote_whole_request(&state, &request)
+            .map_err(|err| fixture_error(&format!("schedule should succeed: {err:?}")))?;
+        assert_eq!(selected_node_id, crate::NodeId::new("worker-b"));
+        assert!(selection_notes.iter().any(|note| {
+            note.code == super::WholeRequestSchedulingSelectionCode::ExoPlacementHintIgnored
+                && note.detail.contains("stale-topology-digest")
+        }));
+        assert!(
+            cluster_execution.policy_digests.is_empty(),
+            "ignored hint should not add placement digests"
+        );
+        assert!(
+            cluster_execution
+                .placement_diagnostics
+                .iter()
+                .any(|detail| detail.contains("ignored Exo placement hint")),
+            "cluster execution should surface ignored hint diagnostics"
+        );
         Ok(())
     }
 
