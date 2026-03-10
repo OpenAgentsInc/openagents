@@ -1726,7 +1726,7 @@ The right near-term target is smaller:
   local `/home/christopherdavid/models/gpt-oss/gpt-oss-120b-mxfp4.gguf` path.
 - Current truthful 120B floor on the exact cold / warm-non-hit /
   prompt-cache-hit contract on the current kept branch:
-  Psionic `2.24-2.26 tok/s`, `6.43-6.47 tok/s`, and `10.41-10.55 tok/s`.
+  Psionic `2.24-2.30 tok/s`, `6.43-6.64 tok/s`, and `10.41-10.75 tok/s`.
 - Current kept implementation direction:
   the hybrid 120B path already keeps more of feed-forward prep and decode
   attention on CUDA, trims single-expert cache repacking, and reuses hybrid
@@ -1827,6 +1827,18 @@ The right near-term target is smaller:
   dead-end branches keep clustering in the `10.48-10.50 tok/s` class, so the
   truthful reproducible checkpoint for the current pushed branch should still
   be treated as about `2.25 / 6.45-6.50 / 10.50 tok/s`.
+- Newest kept 120B checkpoint after adding truthful per-layer cache telemetry:
+  one prompt-cache-hit debug trace showed the last hybrid MoE layer was still
+  running without any cache at all. Its per-layer staged bytes were about
+  `10.34 GB` with zero cache hits or misses, which means that layer had fallen
+  off the cache plan and was restaging every selected expert through the
+  no-cache path. The kept fix rebalanced the cache map so layers
+  `14, 15, 19, 20, 32` drop to `4` slots, layers `23, 25, 28, 29` stay at
+  `8`, layers `10, 18, 21, 22, 26, 31, 33` stay at `6`, and layer `35`
+  regains a real `5`-slot cache. On the exact contract that moved the current
+  kept floor to about `2.30 / 6.64 / 10.75 tok/s`. The matching debug rerun
+  dropped layer `35` staged bytes to about `2.03 GB` and restored real cache
+  activity there (`43` hits / `153` misses).
 - More ruled-out 120B follow-ups after that:
   an exact-prompt hybrid selected4 template-restore branch came back at about
   `2.25 / 6.40 / 10.48 tok/s`, several more memory-neutral prompt-hit-driven
@@ -1834,11 +1846,10 @@ The right near-term target is smaller:
   previous-request protected-expert eviction policy landed around
   `2.26 / 6.40 / 10.42 tok/s`, and simply shrinking the benchmark context to
   `512` was effectively flat at about `2.25 / 6.48 / 10.48 tok/s`.
-- Updated next honest step after those reruns:
-  stop cycling on cache-shape policy alone. The real missing substrate is a
-  CUDA host-registration / alias path for existing mmap-backed GGUF expert
-  pages, so Psionic can try the first direct host-visible down-expert path:
-  alias the full host-backed down tensor into a CUDA-visible buffer, switch the
-  hybrid 120B down projection onto the existing ids-driven grouped expert
-  kernel with real expert ids, and measure how much selected4 staging traffic
-  disappears before attempting the larger gate/up kernel port.
+- Updated next honest step after the tail-layer cache restore:
+  keep the next branch pinned to reducing selected-expert staging itself, not
+  another blind slot shuffle. The tail-layer fix proves there was still real
+  cache-allocation waste to recover, but the surviving wall is still the same
+  host-backed MoE staging path tracked in `#3360`: eliminate one of the large
+  selected4 upload legs, starting with the full host-backed down tensor, before
+  revisiting broader gate/up changes.

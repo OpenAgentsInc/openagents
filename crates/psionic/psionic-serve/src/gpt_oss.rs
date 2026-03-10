@@ -72,6 +72,7 @@ fn experimental_fused_selected4_moe_down_enabled() -> bool {
 }
 
 const HYBRID_SELECTED4_LAYER_CACHE_SLOTS: usize = 5;
+const HYBRID_SELECTED4_LAYER_CACHE_REDUCED_SLOTS: usize = 4;
 const HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS: usize = 6;
 const HYBRID_SELECTED4_LAYER_CACHE_HOT_SLOTS: usize = 8;
 const HYBRID_SELECTED4_LAYER_CACHE_MAX_SLOTS: usize = HYBRID_SELECTED4_LAYER_CACHE_HOT_SLOTS;
@@ -79,6 +80,8 @@ const HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_TAIL_LAYERS: usize = 15;
 const HYBRID_SELECTED4_LAYER_CACHE_PROFILED_EXPANDED_LAYERS_120B: &[usize] =
     &[10, 18, 21, 22, 26, 31, 33];
 const HYBRID_SELECTED4_LAYER_CACHE_HOT_LAYERS_120B: &[usize] = &[23, 25, 28, 29];
+const HYBRID_SELECTED4_LAYER_CACHE_REDUCED_LAYERS_120B: &[usize] = &[14, 15, 19, 20, 32];
+const HYBRID_SELECTED4_LAYER_CACHE_TAIL_RESTORE_LAYERS_120B: &[usize] = &[35];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CudaStepOutputMode {
@@ -148,10 +151,13 @@ fn hybrid_selected4_layer_cache_slots_for_model(layer_index: usize, layer_count:
     if layer_count == 36 {
         if HYBRID_SELECTED4_LAYER_CACHE_HOT_LAYERS_120B.contains(&layer_index) {
             HYBRID_SELECTED4_LAYER_CACHE_HOT_SLOTS
-        } else if HYBRID_SELECTED4_LAYER_CACHE_PROFILED_EXPANDED_LAYERS_120B
-            .contains(&layer_index)
+        } else if HYBRID_SELECTED4_LAYER_CACHE_TAIL_RESTORE_LAYERS_120B.contains(&layer_index) {
+            HYBRID_SELECTED4_LAYER_CACHE_SLOTS
+        } else if HYBRID_SELECTED4_LAYER_CACHE_PROFILED_EXPANDED_LAYERS_120B.contains(&layer_index)
         {
             HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS
+        } else if HYBRID_SELECTED4_LAYER_CACHE_REDUCED_LAYERS_120B.contains(&layer_index) {
+            HYBRID_SELECTED4_LAYER_CACHE_REDUCED_SLOTS
         } else {
             HYBRID_SELECTED4_LAYER_CACHE_SLOTS
         }
