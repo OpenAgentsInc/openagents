@@ -71,6 +71,10 @@ fn experimental_fused_selected4_moe_down_enabled() -> bool {
         .unwrap_or(false)
 }
 
+const HYBRID_SELECTED4_LAYER_CACHE_SLOTS: usize = 5;
+const HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS: usize = 6;
+const HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_TAIL_LAYERS: usize = 15;
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CudaStepOutputMode {
     FullLogits,
@@ -3237,6 +3241,19 @@ struct GptOssCudaStepPlan {
 }
 
 #[derive(Debug)]
+struct GptOssCudaHybridSelected4LayerCache {
+    slot_count: usize,
+    gate_up_weights_buffer: CudaBuffer,
+    down_weights_buffer: CudaBuffer,
+    gate_bias_buffer: Option<CudaBuffer>,
+    up_bias_buffer: Option<CudaBuffer>,
+    down_bias_buffer: Option<CudaBuffer>,
+    cached_experts: Vec<Option<usize>>,
+    slot_last_used: Vec<u64>,
+    usage_clock: u64,
+}
+
+#[derive(Debug)]
 struct GptOssCudaHybridSelected4Plan {
     hidden_input_host_buffer: CudaHostBuffer,
     hidden_input_buffer: CudaBuffer,
@@ -3268,6 +3285,7 @@ struct GptOssCudaHybridSelected4Plan {
     up_bias_scratch: Vec<f32>,
     down_bias_scratch: Vec<f32>,
     selected_expert_ids_scratch: Vec<i32>,
+    layer_caches: Vec<Option<GptOssCudaHybridSelected4LayerCache>>,
 }
 
 impl GptOssCudaModelInner {
@@ -3566,6 +3584,78 @@ impl GptOssCudaModelInner {
         let logits_buffer = backend
             .f32_buffer(self.output.rows)
             .map_err(ReferenceTextGenerationError::Runtime)?;
+        let mut layer_caches = Vec::with_capacity(self.layers.len());
+        let mut layer_cache_oom = false;
+        let expanded_tail_start = self
+            .layers
+            .len()
+            .saturating_sub(HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_TAIL_LAYERS);
+        for (layer_index, layer) in self.layers.iter().enumerate() {
+            let (Some(gate_up_host), Some(down_host)) = (
+                layer.feed_forward_gate_up_experts_weight.host.as_ref(),
+                layer.feed_forward_down_experts_weight.host.as_ref(),
+            ) else {
+                layer_caches.push(None);
+                continue;
+            };
+            if layer_cache_oom {
+                layer_caches.push(None);
+                continue;
+            }
+            let layer_cache_slots = if layer_index >= expanded_tail_start {
+                HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS
+            } else {
+                HYBRID_SELECTED4_LAYER_CACHE_SLOTS
+            };
+            let gate_rows = gate_up_host.gate.rows;
+            let up_rows = gate_up_host.up.rows;
+            let gate_up_bytes = layer_cache_slots
+                .saturating_mul(gate_rows.saturating_add(up_rows))
+                .saturating_mul(gate_up_host.gate.row_byte_len);
+            let down_bytes = layer_cache_slots
+                .saturating_mul(down_host.rows)
+                .saturating_mul(down_host.row_byte_len);
+            let layer_cache: Result<GptOssCudaHybridSelected4LayerCache, super::RuntimeError> =
+                (|| {
+                    Ok(GptOssCudaHybridSelected4LayerCache {
+                        slot_count: layer_cache_slots,
+                        gate_up_weights_buffer: backend.byte_buffer(&vec![0_u8; gate_up_bytes])?,
+                        down_weights_buffer: backend.byte_buffer(&vec![0_u8; down_bytes])?,
+                        gate_bias_buffer: if layer.feed_forward_gate_experts_bias.is_some() {
+                            Some(backend.f32_buffer(layer_cache_slots.saturating_mul(gate_rows))?)
+                        } else {
+                            None
+                        },
+                        up_bias_buffer: if layer.feed_forward_up_experts_bias.is_some() {
+                            Some(backend.f32_buffer(layer_cache_slots.saturating_mul(up_rows))?)
+                        } else {
+                            None
+                        },
+                        down_bias_buffer: if layer.feed_forward_down_experts_bias.is_some() {
+                            Some(
+                                backend
+                                    .f32_buffer(layer_cache_slots.saturating_mul(down_host.rows))?,
+                            )
+                        } else {
+                            None
+                        },
+                        cached_experts: vec![None; layer_cache_slots],
+                        slot_last_used: vec![0; layer_cache_slots],
+                        usage_clock: 1,
+                    })
+                })();
+            match layer_cache {
+                Ok(layer_cache) => layer_caches.push(Some(layer_cache)),
+                Err(error) => {
+                    if error.to_string().contains("out of memory") {
+                        layer_cache_oom = true;
+                        layer_caches.push(None);
+                    } else {
+                        return Err(ReferenceTextGenerationError::Runtime(error));
+                    }
+                }
+            }
+        }
 
         Ok(GptOssCudaHybridSelected4Plan {
             hidden_input_host_buffer,
@@ -3598,6 +3688,7 @@ impl GptOssCudaModelInner {
             up_bias_scratch: Vec::with_capacity(up_bias_values),
             down_bias_scratch: Vec::with_capacity(down_bias_values),
             selected_expert_ids_scratch: Vec::with_capacity(selected_count),
+            layer_caches,
         })
     }
 
@@ -5082,14 +5173,23 @@ impl GptOssCudaModelInner {
                         let selected_count = selected.len();
                         if selected_count == 4 {
                             if let Some(plan) = hybrid_selected4_plan.as_mut() {
-                                gate_up_host.selected_packed_bytes_into(
-                                    selected.as_slice(),
-                                    &mut plan.gate_up_weights_scratch,
-                                )?;
-                                down_host.selected_bytes_into(
-                                    selected.as_slice(),
-                                    &mut plan.down_weights_scratch,
-                                )?;
+                                let selected_key = <[usize; 4]>::try_from(selected.as_slice())
+                                    .map_err(|_| {
+                                        ReferenceTextGenerationError::Runtime(
+                                            super::RuntimeError::Backend(String::from(
+                                                "hybrid selected4 path received a non-4 expert set",
+                                            )),
+                                        )
+                                    })?;
+                                let gate_up_expert_stride = gate_up_host
+                                    .gate
+                                    .rows
+                                    .saturating_add(gate_up_host.up.rows)
+                                    .saturating_mul(gate_up_host.gate.row_byte_len);
+                                let down_expert_stride =
+                                    down_host.rows.saturating_mul(down_host.row_byte_len);
+                                let mut staged_selected4_host_bytes = 0usize;
+                                let mut selected_slot_ids = [0_i32, 1_i32, 2_i32, 3_i32];
                                 if !routing_device_ready {
                                     plan.hidden_input_host_buffer
                                         .write_f32(ffn_input.as_slice())
@@ -5098,80 +5198,328 @@ impl GptOssCudaModelInner {
                                         .write_f32(routing.as_slice())
                                         .map_err(ReferenceTextGenerationError::Runtime)?;
                                 }
-                                plan.gate_up_weights_host_buffer
-                                    .write_bytes(plan.gate_up_weights_scratch.as_slice())
-                                    .map_err(ReferenceTextGenerationError::Runtime)?;
-                                plan.down_weights_host_buffer
-                                    .write_bytes(plan.down_weights_scratch.as_slice())
-                                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                                let using_layer_cache = if let Some(layer_cache) = plan
+                                    .layer_caches
+                                    .get_mut(layer_index)
+                                    .and_then(Option::as_mut)
+                                {
+                                    let mut reserved_slots =
+                                        [false; HYBRID_SELECTED4_LAYER_CACHE_EXPANDED_SLOTS];
+                                    let slot_count = layer_cache.slot_count;
+                                    for (selected_index, expert_index) in
+                                        selected_key.iter().copied().enumerate()
+                                    {
+                                        let slot = layer_cache
+                                            .cached_experts
+                                            .iter()
+                                            .enumerate()
+                                            .find(|(slot, cached)| {
+                                                *slot < slot_count
+                                                    && !reserved_slots[*slot]
+                                                    && **cached == Some(expert_index)
+                                            })
+                                            .map(|(slot, _)| slot)
+                                            .unwrap_or_else(|| {
+                                                layer_cache
+                                                    .cached_experts
+                                                    .iter()
+                                                    .enumerate()
+                                                    .filter(|(slot, _)| {
+                                                        *slot < slot_count && !reserved_slots[*slot]
+                                                    })
+                                                    .min_by_key(|(slot, cached)| {
+                                                        (
+                                                            cached.is_some(),
+                                                            layer_cache.slot_last_used[*slot],
+                                                        )
+                                                    })
+                                                    .map(|(slot, _)| slot)
+                                                    .unwrap_or(0)
+                                            });
+                                        if layer_cache.cached_experts[slot] != Some(expert_index) {
+                                            gate_up_host.selected_packed_bytes_into(
+                                                &[expert_index],
+                                                &mut plan.gate_up_weights_scratch,
+                                            )?;
+                                            layer_cache
+                                                .gate_up_weights_buffer
+                                                .write_bytes_at_offset(
+                                                    slot.saturating_mul(gate_up_expert_stride),
+                                                    plan.gate_up_weights_scratch.as_slice(),
+                                                )
+                                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                                            staged_selected4_host_bytes =
+                                                staged_selected4_host_bytes.saturating_add(
+                                                    plan.gate_up_weights_scratch.len(),
+                                                );
+                                            down_host.selected_bytes_into(
+                                                &[expert_index],
+                                                &mut plan.down_weights_scratch,
+                                            )?;
+                                            layer_cache
+                                                .down_weights_buffer
+                                                .write_bytes_at_offset(
+                                                    slot.saturating_mul(down_expert_stride),
+                                                    plan.down_weights_scratch.as_slice(),
+                                                )
+                                                .map_err(ReferenceTextGenerationError::Runtime)?;
+                                            staged_selected4_host_bytes =
+                                                staged_selected4_host_bytes.saturating_add(
+                                                    plan.down_weights_scratch.len(),
+                                                );
+                                            if let Some(values) =
+                                                layer.feed_forward_gate_experts_bias.as_ref()
+                                            {
+                                                gather_selected_expert_bias_rows_into(
+                                                    values.as_slice(),
+                                                    gate_rows,
+                                                    &[expert_index],
+                                                    &mut plan.gate_bias_scratch,
+                                                )?;
+                                                let device = layer_cache
+                                                    .gate_bias_buffer
+                                                    .as_mut()
+                                                    .ok_or_else(|| {
+                                                        ReferenceTextGenerationError::Runtime(
+                                                            super::RuntimeError::Backend(
+                                                                String::from(
+                                                                    "missing hybrid selected4 gate bias buffer",
+                                                                ),
+                                                            ),
+                                                        )
+                                                    })?;
+                                                device
+                                                    .write_f32_at_offset(
+                                                        slot.saturating_mul(gate_rows),
+                                                        plan.gate_bias_scratch.as_slice(),
+                                                    )
+                                                    .map_err(
+                                                        ReferenceTextGenerationError::Runtime,
+                                                    )?;
+                                                staged_selected4_host_bytes =
+                                                    staged_selected4_host_bytes.saturating_add(
+                                                        plan.gate_bias_scratch
+                                                            .len()
+                                                            .saturating_mul(
+                                                                std::mem::size_of::<f32>(),
+                                                            ),
+                                                    );
+                                            }
+                                            if let Some(values) =
+                                                layer.feed_forward_up_experts_bias.as_ref()
+                                            {
+                                                gather_selected_expert_bias_rows_into(
+                                                    values.as_slice(),
+                                                    up_rows,
+                                                    &[expert_index],
+                                                    &mut plan.up_bias_scratch,
+                                                )?;
+                                                let device = layer_cache
+                                                    .up_bias_buffer
+                                                    .as_mut()
+                                                    .ok_or_else(|| {
+                                                        ReferenceTextGenerationError::Runtime(
+                                                            super::RuntimeError::Backend(
+                                                                String::from(
+                                                                    "missing hybrid selected4 up bias buffer",
+                                                                ),
+                                                            ),
+                                                        )
+                                                    })?;
+                                                device
+                                                    .write_f32_at_offset(
+                                                        slot.saturating_mul(up_rows),
+                                                        plan.up_bias_scratch.as_slice(),
+                                                    )
+                                                    .map_err(
+                                                        ReferenceTextGenerationError::Runtime,
+                                                    )?;
+                                                staged_selected4_host_bytes =
+                                                    staged_selected4_host_bytes.saturating_add(
+                                                        plan.up_bias_scratch.len().saturating_mul(
+                                                            std::mem::size_of::<f32>(),
+                                                        ),
+                                                    );
+                                            }
+                                            if let Some(values) =
+                                                layer.feed_forward_down_experts_bias.as_ref()
+                                            {
+                                                gather_selected_expert_bias_rows_into(
+                                                    values.as_slice(),
+                                                    layer.feed_forward_down_experts_weight.rows,
+                                                    &[expert_index],
+                                                    &mut plan.down_bias_scratch,
+                                                )?;
+                                                let device = layer_cache
+                                                    .down_bias_buffer
+                                                    .as_mut()
+                                                    .ok_or_else(|| {
+                                                        ReferenceTextGenerationError::Runtime(
+                                                            super::RuntimeError::Backend(
+                                                                String::from(
+                                                                    "missing hybrid selected4 down bias buffer",
+                                                                ),
+                                                            ),
+                                                        )
+                                                    })?;
+                                                device
+                                                    .write_f32_at_offset(
+                                                        slot.saturating_mul(
+                                                            layer
+                                                                .feed_forward_down_experts_weight
+                                                                .rows,
+                                                        ),
+                                                        plan.down_bias_scratch.as_slice(),
+                                                    )
+                                                    .map_err(
+                                                        ReferenceTextGenerationError::Runtime,
+                                                    )?;
+                                                staged_selected4_host_bytes =
+                                                    staged_selected4_host_bytes.saturating_add(
+                                                        plan.down_bias_scratch
+                                                            .len()
+                                                            .saturating_mul(
+                                                                std::mem::size_of::<f32>(),
+                                                            ),
+                                                    );
+                                            }
+                                            layer_cache.cached_experts[slot] = Some(expert_index);
+                                        }
+                                        reserved_slots[slot] = true;
+                                        layer_cache.slot_last_used[slot] = layer_cache.usage_clock;
+                                        layer_cache.usage_clock =
+                                            layer_cache.usage_clock.saturating_add(1);
+                                        selected_slot_ids[selected_index] =
+                                            i32::try_from(slot).map_err(|_| {
+                                                ReferenceTextGenerationError::Runtime(
+                                                    super::RuntimeError::Backend(format!(
+                                                        "hybrid selected4 slot {slot} exceeds i32 range",
+                                                    )),
+                                                )
+                                            })?;
+                                    }
+                                    true
+                                } else {
+                                    gate_up_host.selected_packed_bytes_into(
+                                        selected.as_slice(),
+                                        &mut plan.gate_up_weights_scratch,
+                                    )?;
+                                    down_host.selected_bytes_into(
+                                        selected.as_slice(),
+                                        &mut plan.down_weights_scratch,
+                                    )?;
+                                    plan.gate_up_weights_host_buffer
+                                        .write_bytes(plan.gate_up_weights_scratch.as_slice())
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    plan.down_weights_host_buffer
+                                        .write_bytes(plan.down_weights_scratch.as_slice())
+                                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                                    staged_selected4_host_bytes = staged_selected4_host_bytes
+                                        .saturating_add(plan.gate_up_weights_scratch.len())
+                                        .saturating_add(plan.down_weights_scratch.len());
 
-                                let gate_bias_device = if let Some(values) =
-                                    layer.feed_forward_gate_experts_bias.as_ref()
-                                {
-                                    gather_selected_expert_bias_rows_into(
-                                        values.as_slice(),
-                                        gate_rows,
-                                        selected.as_slice(),
-                                        &mut plan.gate_bias_scratch,
-                                    )?;
-                                    let host = plan.gate_bias_host_buffer.as_mut().ok_or_else(|| {
-                                    ReferenceTextGenerationError::Runtime(
-                                        super::RuntimeError::Backend(String::from(
-                                            "missing hybrid selected4 gate bias host buffer",
-                                        )),
-                                    )
-                                })?;
-                                    host.write_f32(plan.gate_bias_scratch.as_slice())
-                                        .map_err(ReferenceTextGenerationError::Runtime)?;
-                                    plan.gate_bias_buffer.as_ref()
-                                } else {
-                                    None
+                                    if let Some(values) =
+                                        layer.feed_forward_gate_experts_bias.as_ref()
+                                    {
+                                        gather_selected_expert_bias_rows_into(
+                                            values.as_slice(),
+                                            gate_rows,
+                                            selected.as_slice(),
+                                            &mut plan.gate_bias_scratch,
+                                        )?;
+                                        let host =
+                                            plan.gate_bias_host_buffer.as_mut().ok_or_else(|| {
+                                                ReferenceTextGenerationError::Runtime(
+                                                    super::RuntimeError::Backend(String::from(
+                                                        "missing hybrid selected4 gate bias host buffer",
+                                                    )),
+                                                )
+                                            })?;
+                                        host.write_f32(plan.gate_bias_scratch.as_slice())
+                                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                                        staged_selected4_host_bytes = staged_selected4_host_bytes
+                                            .saturating_add(
+                                                plan.gate_bias_scratch
+                                                    .len()
+                                                    .saturating_mul(std::mem::size_of::<f32>()),
+                                            );
+                                    }
+                                    if let Some(values) =
+                                        layer.feed_forward_up_experts_bias.as_ref()
+                                    {
+                                        gather_selected_expert_bias_rows_into(
+                                            values.as_slice(),
+                                            up_rows,
+                                            selected.as_slice(),
+                                            &mut plan.up_bias_scratch,
+                                        )?;
+                                        let host =
+                                            plan.up_bias_host_buffer.as_mut().ok_or_else(|| {
+                                                ReferenceTextGenerationError::Runtime(
+                                                    super::RuntimeError::Backend(String::from(
+                                                        "missing hybrid selected4 up bias host buffer",
+                                                    )),
+                                                )
+                                            })?;
+                                        host.write_f32(plan.up_bias_scratch.as_slice())
+                                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                                        staged_selected4_host_bytes = staged_selected4_host_bytes
+                                            .saturating_add(
+                                                plan.up_bias_scratch
+                                                    .len()
+                                                    .saturating_mul(std::mem::size_of::<f32>()),
+                                            );
+                                    }
+                                    if let Some(values) =
+                                        layer.feed_forward_down_experts_bias.as_ref()
+                                    {
+                                        gather_selected_expert_bias_rows_into(
+                                            values.as_slice(),
+                                            layer.feed_forward_down_experts_weight.rows,
+                                            selected.as_slice(),
+                                            &mut plan.down_bias_scratch,
+                                        )?;
+                                        let host =
+                                            plan.down_bias_host_buffer.as_mut().ok_or_else(|| {
+                                                ReferenceTextGenerationError::Runtime(
+                                                    super::RuntimeError::Backend(String::from(
+                                                        "missing hybrid selected4 down bias host buffer",
+                                                    )),
+                                                )
+                                            })?;
+                                        host.write_f32(plan.down_bias_scratch.as_slice())
+                                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                                        staged_selected4_host_bytes = staged_selected4_host_bytes
+                                            .saturating_add(
+                                                plan.down_bias_scratch
+                                                    .len()
+                                                    .saturating_mul(std::mem::size_of::<f32>()),
+                                            );
+                                    }
+                                    false
                                 };
-                                let up_bias_device = if let Some(values) =
-                                    layer.feed_forward_up_experts_bias.as_ref()
-                                {
-                                    gather_selected_expert_bias_rows_into(
-                                        values.as_slice(),
-                                        up_rows,
-                                        selected.as_slice(),
-                                        &mut plan.up_bias_scratch,
-                                    )?;
-                                    let host =
-                                        plan.up_bias_host_buffer.as_mut().ok_or_else(|| {
-                                            ReferenceTextGenerationError::Runtime(
-                                                super::RuntimeError::Backend(String::from(
-                                                    "missing hybrid selected4 up bias host buffer",
-                                                )),
-                                            )
-                                        })?;
-                                    host.write_f32(plan.up_bias_scratch.as_slice())
-                                        .map_err(ReferenceTextGenerationError::Runtime)?;
-                                    plan.up_bias_buffer.as_ref()
-                                } else {
-                                    None
-                                };
-                                let down_bias_device = if let Some(values) =
-                                    layer.feed_forward_down_experts_bias.as_ref()
-                                {
-                                    gather_selected_expert_bias_rows_into(
-                                        values.as_slice(),
-                                        layer.feed_forward_down_experts_weight.rows,
-                                        selected.as_slice(),
-                                        &mut plan.down_bias_scratch,
-                                    )?;
-                                    let host = plan.down_bias_host_buffer.as_mut().ok_or_else(|| {
-                                    ReferenceTextGenerationError::Runtime(
-                                        super::RuntimeError::Backend(String::from(
-                                            "missing hybrid selected4 down bias host buffer",
-                                        )),
-                                    )
-                                })?;
-                                    host.write_f32(plan.down_bias_scratch.as_slice())
-                                        .map_err(ReferenceTextGenerationError::Runtime)?;
-                                    plan.down_bias_buffer.as_ref()
-                                } else {
-                                    None
-                                };
+                                let selected_id_bytes =
+                                    i32_slice_to_ne_bytes(selected_slot_ids.as_slice());
+                                plan.selected_ids_buffer
+                                    .write_bytes(selected_id_bytes.as_slice())
+                                    .map_err(ReferenceTextGenerationError::Runtime)?;
+                                let layer_cache =
+                                    plan.layer_caches.get(layer_index).and_then(Option::as_ref);
+                                let gate_up_weights_device = layer_cache
+                                    .map(|cache| &cache.gate_up_weights_buffer)
+                                    .unwrap_or(&plan.gate_up_weights_buffer);
+                                let down_weights_device = layer_cache
+                                    .map(|cache| &cache.down_weights_buffer)
+                                    .unwrap_or(&plan.down_weights_buffer);
+                                let gate_bias_device = layer_cache
+                                    .and_then(|cache| cache.gate_bias_buffer.as_ref())
+                                    .or_else(|| plan.gate_bias_buffer.as_ref());
+                                let up_bias_device = layer_cache
+                                    .and_then(|cache| cache.up_bias_buffer.as_ref())
+                                    .or_else(|| plan.up_bias_buffer.as_ref());
+                                let down_bias_device = layer_cache
+                                    .and_then(|cache| cache.down_bias_buffer.as_ref())
+                                    .or_else(|| plan.down_bias_buffer.as_ref());
 
                                 let expert_projection_start = Instant::now();
                                 let mut submission = backend.begin_submission()?;
@@ -5185,28 +5533,30 @@ impl GptOssCudaModelInner {
                                         &plan.selected_weights_buffer,
                                     )?;
                                 }
-                                submission.copy_host_to_device(
-                                    &plan.gate_up_weights_host_buffer,
-                                    &plan.gate_up_weights_buffer,
-                                )?;
-                                submission.copy_host_to_device(
-                                    &plan.down_weights_host_buffer,
-                                    &plan.down_weights_buffer,
-                                )?;
-                                if let (Some(host), Some(device)) =
-                                    (plan.gate_bias_host_buffer.as_ref(), gate_bias_device)
-                                {
-                                    submission.copy_host_to_device(host, device)?;
-                                }
-                                if let (Some(host), Some(device)) =
-                                    (plan.up_bias_host_buffer.as_ref(), up_bias_device)
-                                {
-                                    submission.copy_host_to_device(host, device)?;
-                                }
-                                if let (Some(host), Some(device)) =
-                                    (plan.down_bias_host_buffer.as_ref(), down_bias_device)
-                                {
-                                    submission.copy_host_to_device(host, device)?;
+                                if !using_layer_cache {
+                                    submission.copy_host_to_device(
+                                        &plan.gate_up_weights_host_buffer,
+                                        gate_up_weights_device,
+                                    )?;
+                                    submission.copy_host_to_device(
+                                        &plan.down_weights_host_buffer,
+                                        down_weights_device,
+                                    )?;
+                                    if let (Some(host), Some(device)) =
+                                        (plan.gate_bias_host_buffer.as_ref(), gate_bias_device)
+                                    {
+                                        submission.copy_host_to_device(host, device)?;
+                                    }
+                                    if let (Some(host), Some(device)) =
+                                        (plan.up_bias_host_buffer.as_ref(), up_bias_device)
+                                    {
+                                        submission.copy_host_to_device(host, device)?;
+                                    }
+                                    if let (Some(host), Some(device)) =
+                                        (plan.down_bias_host_buffer.as_ref(), down_bias_device)
+                                    {
+                                        submission.copy_host_to_device(host, device)?;
+                                    }
                                 }
                                 submission.quantize_f32_to_q8_1(
                                     &plan.hidden_input_buffer,
@@ -5215,7 +5565,7 @@ impl GptOssCudaModelInner {
                                     &plan.hidden_input_q8_1_buffer,
                                 )?;
                                 submission.moe_gate_up_swiglu_q8_1_selected4_quantized(
-                                    &plan.gate_up_weights_buffer,
+                                    gate_up_weights_device,
                                     layer.feed_forward_gate_up_experts_weight.mode,
                                     layer.feed_forward_gate_up_experts_weight.row_byte_len,
                                     layer.feed_forward_gate_up_experts_weight.total_rows(),
@@ -5230,7 +5580,7 @@ impl GptOssCudaModelInner {
                                     &plan.activated_q8_1_buffer,
                                 )?;
                                 submission.moe_down_project_q8_1_selected4(
-                                    &plan.down_weights_buffer,
+                                    down_weights_device,
                                     layer.feed_forward_down_experts_weight.mode,
                                     layer.feed_forward_down_experts_weight.row_byte_len,
                                     layer.feed_forward_down_experts_weight.rows,
@@ -5268,20 +5618,8 @@ impl GptOssCudaModelInner {
                                             0
                                         } else {
                                             routing.len().saturating_mul(std::mem::size_of::<f32>())
-                                        } + plan.gate_up_weights_scratch.len()
-                                            + plan.down_weights_scratch.len()
-                                            + plan
-                                                .gate_bias_scratch
-                                                .len()
-                                                .saturating_mul(std::mem::size_of::<f32>())
-                                            + plan
-                                                .up_bias_scratch
-                                                .len()
-                                                .saturating_mul(std::mem::size_of::<f32>())
-                                            + plan
-                                                .down_bias_scratch
-                                                .len()
-                                                .saturating_mul(std::mem::size_of::<f32>()))
+                                        } + selected_id_bytes.len()
+                                            + staged_selected4_host_bytes)
                                             as u64,
                                     );
                                 perf.cuda.device_to_host_bytes =
