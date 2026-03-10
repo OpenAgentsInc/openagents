@@ -1347,7 +1347,7 @@ prompt-cache-hit contract:
 - Psionic:
   - `2.23 tok/s`
   - `6.34 tok/s`
-  - `10.01 tok/s`
+  - `10.07 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1370,15 +1370,24 @@ What we re-tested and ruled out after those landings:
 - mapped-host selected-expert caches:
   - slower than the kept branch
 
+What we re-tested and ruled out after the original addendum:
+
+- direct selected4 execution from CUDA-registered host-backed GGUF pages:
+  prompt-cache-hit regressed into the `6.4 tok/s` class
+- using those registered host pages only as cache-fill copy sources:
+  still in the same losing `6.4 tok/s` class
+- a follow-up branch that kept the fused hybrid FFN residual on CUDA and
+  removed one mid-layer readback:
+  effectively flat at `10.07-10.09 tok/s`, so it was not kept
+
 What the remaining gap now points to:
 
-- the heavy cost is still host-backed selected-expert staging on each decode
-  step, not another small cache-slot tweak
-- the next honest direction is therefore `#3338`: port a `llama.cpp`-style
-  registered host-buffer path for the real host-backed MoE weights so the
-  selected4 decode lane can read truthful host-backed expert tensors directly,
-  instead of repacking selected experts into fresh CUDA cache slices every
-  decode step
+- the heavy cost is no longer well-described as only "expert staging" in the
+  abstract; the hybrid path is still bouncing the full hidden-state vector back
+  to the CPU between CUDA-capable substeps inside the host-backed MoE lane
+- the next honest direction is therefore `#3345`: keep the hybrid hidden state
+  resident on CUDA across the host-backed selected4 lane and only materialize
+  back to host when a real host-only dependency forces it
 
 Relevant `llama.cpp` references for that next step:
 
@@ -1388,3 +1397,6 @@ Relevant `llama.cpp` references for that next step:
   - `ggml_backend_cuda_unregister_host_buffer(...)`
 - `~/code/llama.cpp/src/llama-model-loader.cpp`
   - host-buffer / async upload setup around the loader path
+- `~/code/llama.cpp/src/llama-graph.cpp`
+  - decode graph construction and how intermediate state stays backend-owned
+    across substeps instead of round-tripping through host vectors
