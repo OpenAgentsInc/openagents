@@ -1141,6 +1141,16 @@ fn thread_read_parser_handles_camel_case_items() {
 }
 
 #[test]
+fn pre_materialization_thread_read_errors_are_benign() {
+    assert!(super::is_pre_materialization_thread_read_error(
+        "App-server error -32600: thread 019cd4a8-680d-7b32-970d-3bdaae6d5d12 is not materialized yet; includeTurns is unavailable before first user message"
+    ));
+    assert!(!super::is_pre_materialization_thread_read_error(
+        "App-server error -32600: thread/read failed for another reason"
+    ));
+}
+
+#[test]
 fn apps_and_remote_skill_export_emit_notifications() {
     let (client_stream, server_stream) = tokio::io::duplex(16 * 1024);
     let (client_read, client_write) = tokio::io::split(client_stream);

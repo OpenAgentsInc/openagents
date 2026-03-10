@@ -1886,6 +1886,7 @@ impl AutopilotChatState {
         self.active_thread_id = Some(thread_id.clone());
         self.reset_transcript_scroll();
         self.last_error = None;
+        self.set_active_thread_transcript(&thread_id, Vec::new());
         let metadata = self.thread_metadata.get(&thread_id).cloned();
         Some(AutopilotThreadResumeTarget {
             thread_id,
@@ -7134,6 +7135,29 @@ mod tests {
                 .and_then(|metadata| metadata.thread_name.as_deref()),
             Some("Active")
         );
+    }
+
+    #[test]
+    fn chat_state_selecting_thread_clears_previous_transcript() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.set_active_thread_transcript(
+            "thread-a",
+            vec![(AutopilotRole::User, "previous thread".to_string())],
+        );
+        chat.remember_thread("thread-b");
+        let selected_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-b")
+            .expect("thread-b should exist");
+
+        let selected = chat
+            .select_thread_by_index(selected_index)
+            .expect("known thread should select");
+
+        assert_eq!(selected.thread_id, "thread-b");
+        assert!(chat.messages.is_empty());
     }
 
     #[test]
