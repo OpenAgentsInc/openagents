@@ -53,7 +53,8 @@
 > through `PSI-228` as `#3341`, `#3339`, and `#3340` for the advertised
 > capability-profile publication follow-on queue, after opening `PSI-229`
 > through `PSI-231` as `#3343`, `#3344`, and `#3342` for the cluster trust-
-> publication follow-on queue, and after checking live
+> publication follow-on queue, after landing `PSI-230` / `#3344` in
+> `0dc54768f`, and after checking live
 > GitHub issue search so this roadmap reflects
 > the current GitHub queue rather than local placeholders.
 >
@@ -187,7 +188,7 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-228` / [#3340](https://github.com/OpenAgentsInc/openagents/issues/3340) is landed on `main`
   - the cluster trust-publication follow-on queue is now open on GitHub
     - `PSI-229` / [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) is landed on `main`
-    - `PSI-230` / [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) is open
+    - `PSI-230` / [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) is landed on `main`
     - `PSI-231` / [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) is open
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
@@ -909,7 +910,7 @@ cluster trust posture and compute-market trust refusal truth.
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-229` | [#3343](https://github.com/OpenAgentsInc/openagents/issues/3343) | Closed | Add runtime-owned cluster trust publication types | `psionic-runtime`, `psionic-cluster`, tests | Landed in `f1e40e88d`: `psionic-runtime` now owns `ClusterTrustPosture`, `ClusterDiscoveryPosture`, and `ClusterComputeMarketTrustAssessment` plus its stable digest, while `psionic-cluster` now derives and re-exports those runtime-owned publication types instead of keeping a private duplicate model. |
-| `PSI-230` | [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) | Open | Publish cluster trust assessments through provider capability surfaces | `psionic-provider`, `psionic-cluster`, tests | Advertised cluster capability claims are still missing the trust posture that bounds them. Provider capability surfaces need to publish whether cluster support is trusted-LAN-only, operator-managed, attested, or otherwise refused for compute-market claims. |
+| `PSI-230` | [#3344](https://github.com/OpenAgentsInc/openagents/issues/3344) | Closed | Publish cluster trust assessments through provider capability surfaces | `psionic-provider`, `psionic-cluster`, tests | Landed in `0dc54768f`: `BackendSelection` and provider capability envelopes now publish `cluster_compute_market_trust_assessment` independently of realized execution, and provider tests prove trusted-LAN and attested-configured-peer postures surface bounded refusal truth without fabricating `cluster_execution` evidence. |
 | `PSI-231` | [#3342](https://github.com/OpenAgentsInc/openagents/issues/3342) | Open | Add cluster trust-publication validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Once trust posture publishes through capability surfaces, the runbook and roadmap need explicit validation commands and closeout criteria so those bounded trust claims remain repeatable instead of doc-only. |
 
 ## Recommended Order
@@ -940,10 +941,10 @@ The shortest honest path from today's `main` is:
     and queue closeout now anchored in `efa52005e`.
 11. Treat H2 as landed on `main`, with the advertised capability-publication
     validation drill and queue closeout now anchored in `478387b58`.
-12. Work the rest of H3 in order: land `#3344`, then `#3342`, now that
-    `#3343` has moved the trust-publication model into a runtime-owned seam
-    that capability-side consumers can use without depending directly on
-    `psionic-cluster`.
+12. Treat `#3344` as landed on `main` in `0dc54768f`, then close H3 by
+    landing `#3342` so the new provider-published trust posture has an
+    explicit validation drill and roadmap closeout rather than remaining an
+    undocumented surface.
 13. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 14. If stronger trust or wider network claims are needed beyond H3, open a new
