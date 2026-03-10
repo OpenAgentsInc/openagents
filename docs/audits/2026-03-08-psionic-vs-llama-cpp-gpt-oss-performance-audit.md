@@ -1345,9 +1345,9 @@ Current truthful 120B floor on the exact cold / warm-non-hit /
 prompt-cache-hit contract:
 
 - Psionic:
-  - `2.24 tok/s`
-  - `6.45-6.47 tok/s`
-  - `10.41-10.50 tok/s`
+  - `2.24-2.26 tok/s`
+  - `6.43-6.47 tok/s`
+  - `10.41-10.55 tok/s`
 
 What is already landed on the kept hybrid branch:
 
@@ -1411,6 +1411,12 @@ What the newest kept checkpoint proved:
   expanded-slot layer set
   (`10, 12, 18, 21, 22, 23, 25, 26, 28, 29, 31, 32, 33, 34, 35`), which
   nudged the exact-contract floor to `2.24 / 6.47 / 10.50 tok/s`
+- the newest kept follow-up after that is a narrower hot-layer bump on top of
+  the profiled layout:
+  layers `23, 25, 28, 29` now keep `7` cache slots, the earlier expanded set
+  stays at `6`, and the remaining hybrid layers stay at `5`
+- on the exact contract that moved the latest kept checkpoint to
+  `2.26 / 6.43 / 10.55 tok/s`
 
 What the remaining gap now points to:
 
