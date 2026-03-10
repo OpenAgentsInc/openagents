@@ -33,8 +33,9 @@
 > `#3322` for the compute-market trust hardening follow-on queue, after
 > landing `PSI-210` / `#3319` in `37fb246f1`, after landing `PSI-211` /
 > `#3320` in `4a21d6947`, after landing `PSI-212` / `#3321` in
-> `d0f3e7891`, after landing `PSI-213` / `#3322` in `b0601f662`, and after
-> checking live
+> `d0f3e7891`, after landing `PSI-213` / `#3322` in `b0601f662`, after
+> opening `PSI-214` through `PSI-216` as `#3323` through `#3325` for the
+> wider-network discovery follow-on queue, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -146,6 +147,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-211` / [#3320](https://github.com/OpenAgentsInc/openagents/issues/3320) is landed on `main`
     - `PSI-212` / [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) is landed on `main`
     - `PSI-213` / [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) is landed on `main`
+  - the wider-network discovery follow-on queue now exists on GitHub
+    - `PSI-214` / [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) is open
+    - `PSI-215` / [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) is open
+    - `PSI-216` / [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) is open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -784,6 +789,20 @@ clusters now that signed transport and coordinator authority truth exist on
 | `PSI-212` | [#3321](https://github.com/OpenAgentsInc/openagents/issues/3321) | Closed | Add attested node-identity admission seams | `psionic-cluster`, docs/tests | Landed in `d0f3e7891`: Psionic now has explicit attested configured-peer posture, persisted node-attestation evidence, configured-peer attestation requirements, and machine-checkable refusal diagnostics for missing or mismatched attestation during market-facing cluster admission. |
 | `PSI-213` | [#3322](https://github.com/OpenAgentsInc/openagents/issues/3322) | Closed | Add non-LAN discovery posture diagnostics | `psionic-cluster`, docs/tests | Landed in `b0601f662`: Psionic now carries explicit `ClusterDiscoveryPosture`, a stable `ClusterNonLanDiscoveryAssessment`, config/node helpers that report current discovery truth, and validation coverage that keeps LAN-only, operator-managed configured-peer, and explicitly requested-but-unimplemented wider-network discovery claims machine-checkably bounded. |
 
+### Phase E1: wider-network discovery substrate follow-on
+
+These issues are the next honest queue after D4, but they remain blocked on the
+active local CUDA truth gate `#3276` -> `#3288` -> `#3248`. The point of this
+queue is to replace the current explicit discovery refusal boundary with real,
+bounded wider-network discovery truth without turning the discovery substrate
+into the cluster control plane itself.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-214` | [#3323](https://github.com/OpenAgentsInc/openagents/issues/3323) | Open | Add signed cluster introduction envelopes and policy digests | `psionic-cluster`, docs/tests | `#3322` made discovery posture explicit, but wider-network discovery still needs a signed reusable discovery artifact and operator policy digest before any broader discovery claim is honest. |
+| `PSI-215` | [#3324](https://github.com/OpenAgentsInc/openagents/issues/3324) | Open | Add bounded discovery-candidate ledger and admission reconciliation | `psionic-cluster`, ordered-state/tests | Wider-network discovery needs authoritative candidate state, expiry, refusal, and explicit reconciliation into admitted membership so discovery truth does not silently widen cluster membership. |
+| `PSI-216` | [#3325](https://github.com/OpenAgentsInc/openagents/issues/3325) | Open | Add wider-network discovery validation drills and rollout gates | docs/tests/validation plus cluster crates | Broader distributed-discovery claims should not land without a validation matrix, operator drill, and explicit rollout gate comparable to the existing transport, recovery, and failover gates. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
@@ -801,14 +820,16 @@ The shortest honest path from today's `main` is:
 6. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-7. Treat closure of that local CUDA lane as the gate for widening cluster
+7. After that local CUDA gate closes, work the wider-network discovery queue in
+   order: `#3323` -> `#3324` -> `#3325`.
+8. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
-8. Keep current authenticated configured-peer posture explicit and bounded;
+9. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
-9. If stronger trust or wider network claims are needed beyond D4, open a new GitHub-
+10. If stronger trust or wider network claims are needed beyond E1, open a new GitHub-
    backed queue instead of extending this roadmap with local placeholders.
-10. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+11. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
@@ -862,15 +883,13 @@ true:
 - downstream OpenAgents systems can tell exactly what cluster topology was
   promised, selected, delivered, and degraded
 
-## Likely Follow-On Beyond D4
+## Likely Follow-On Beyond E1
 
-There are three likely follow-ons that should remain outside the current D4
-queue:
+There are still two likely follow-ons that should remain outside the current
+roadmap queue:
 
 - optional Exo interoperability experiments, only after Psionic's own cluster
   substrate is credible
-- full compute-market distributed-cluster rollout, but only after D4 and the
-  local CUDA truth gate both close
 - Apple clustered execution, but only after the native Metal GPT-OSS roadmap is
   complete and cluster placement can express communication-class eligibility
   honestly
