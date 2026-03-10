@@ -48,8 +48,9 @@
 > landing `PSI-222` / `#3333` in `3fe872c96`, after opening `PSI-223`
 > through `PSI-225` as `#3335` through `#3337` for the declared cluster
 > capability-profile follow-on queue, after landing `PSI-223` / `#3335` in
-> `37183c6cb`, after landing `PSI-224` / `#3336` in `9aad9af8d`, and after
-> checking live GitHub issue search so this roadmap reflects
+> `37183c6cb`, after landing `PSI-224` / `#3336` in `9aad9af8d`, after
+> landing `PSI-225` / `#3337` in `efa52005e`, and after checking live GitHub
+> issue search so this roadmap reflects
 > the current GitHub queue rather than local placeholders.
 >
 > This is the live roadmap for truthful Psionic cluster support in
@@ -172,10 +173,10 @@ As of 2026-03-10, the current issue reality is:
     - `PSI-220` / [#3332](https://github.com/OpenAgentsInc/openagents/issues/3332) is landed on `main`
     - `PSI-221` / [#3334](https://github.com/OpenAgentsInc/openagents/issues/3334) is landed on `main`
     - `PSI-222` / [#3333](https://github.com/OpenAgentsInc/openagents/issues/3333) is landed on `main`
-  - the declared cluster capability-profile follow-on queue is now open on GitHub
+  - the declared cluster capability-profile follow-on queue is now landed on `main`
     - `PSI-223` / [#3335](https://github.com/OpenAgentsInc/openagents/issues/3335) is landed on `main`
     - `PSI-224` / [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) is landed on `main`
-    - `PSI-225` / [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) is open
+    - `PSI-225` / [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) is landed on `main`
 - the current backend execution gates are still real and must remain visible
   - former NVIDIA gate: `#3276` -> `#3288` -> `#3248` is closed on `main`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -862,16 +863,16 @@ claims be tied to explicit machine-checkable benchmark receipts.
 
 ### Phase H1: declared cluster capability-profile follow-on
 
-This is the current active post-G1 queue. `#3335` and `#3336` are now landed on
-`main`, and `#3337` remains open to close the remaining gap between typed
-cluster execution evidence and the current backend-name-based planner
-heuristics by introducing a declared capability contract for clustered lanes.
+This queue is now landed on `main`. It closes the remaining post-G1 gap between
+typed cluster execution evidence, planner eligibility, and operator-facing
+validation by making declared capability profiles authoritative for clustered
+lanes and by adding an explicit validation drill for those claims.
 
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-223` | [#3335](https://github.com/OpenAgentsInc/openagents/issues/3335) | Closed | Add runtime-owned cluster execution capability profile | `psionic-runtime`, tests | Landed in `37183c6cb`: `psionic-runtime` now exposes typed `ClusterExecutionCapabilityProfile` and `ClusterExecutionLane` models, stable profile digests, and profile-derived `ClusterCommunicationEligibility` helpers so clustered lane support can be declared explicitly instead of starting from backend-name heuristics alone. |
 | `PSI-224` | [#3336](https://github.com/OpenAgentsInc/openagents/issues/3336) | Closed | Make cluster planners consume declared execution capability profiles | `psionic-cluster`, `psionic-runtime`, `psionic-provider` | Landed in `9aad9af8d`: whole-request, replicated, layer-sharded, and tensor-sharded planners now consume declared `ClusterExecutionCapabilityProfile` truth instead of widening lane support from backend labels; `ClusterCommunicationEligibility` now carries the stable capability-profile digest it was derived from; and provider/runtime evidence surfaces now preserve that declared-profile digest alongside cluster execution context. |
-| `PSI-225` | [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) | Open | Add capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | The queue is not complete until the runbook and roadmap make the declared capability contract operator-repeatable and close the follow-on queue explicitly. |
+| `PSI-225` | [#3337](https://github.com/OpenAgentsInc/openagents/issues/3337) | Closed | Add capability-profile validation drill and roadmap closeout | docs/tests/validation plus cluster crates | Landed in `efa52005e`: `CLUSTER_VALIDATION_RUNBOOK.md` now defines an explicit capability-profile drill with exact runtime, cluster, and provider commands plus failure interpretation, and this roadmap now closes the H1 queue explicitly instead of leaving declared capability-profile validation as a vague follow-on. |
 
 ## Recommended Order
 
@@ -897,9 +898,8 @@ The shortest honest path from today's `main` is:
 9. Treat G1 as landed on `main` in `3fe872c96`, so benchmark-backed
    performance claims now have typed receipts, a script-level output contract,
    and an operator drill instead of a vague follow-on gap.
-10. Finish H1 by landing `#3337`, so the operator drill and roadmap closeout
-    catch up to the declared cluster capability truth now consumed by planners
-    and evidence surfaces in `9aad9af8d`.
+10. Treat H1 as landed on `main`, with the capability-profile validation drill
+    and queue closeout now anchored in `efa52005e`.
 11. Keep current authenticated configured-peer posture explicit and bounded;
    it is operator-managed, not market-safe.
 12. If stronger trust or wider network claims are needed beyond H1, open a new
