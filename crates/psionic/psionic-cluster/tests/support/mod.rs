@@ -2,14 +2,15 @@ use psionic_cluster::{
     AdmissionToken, ClusterArtifactReference, ClusterArtifactResidencyKey,
     ClusterArtifactResidencyRecord, ClusterArtifactResidencyStatus, ClusterBackendReadinessStatus,
     ClusterCatchupRequest, ClusterEvent, ClusterEventIndex, ClusterEventLog, ClusterId,
-    ClusterLink, ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus, ClusterMembershipRecord,
+    ClusterLeadershipLeasePolicy, ClusterLeadershipRecord, ClusterLeaseTick, ClusterLink,
+    ClusterLinkClass, ClusterLinkKey, ClusterLinkStatus, ClusterMembershipRecord,
     ClusterMembershipStatus, ClusterNamespace, ClusterNodeIdentity, ClusterNodeServiceHealth,
     ClusterNodeServiceLoad, ClusterNodeTelemetry, ClusterRecoveryPolicy, ClusterReplicaLaneKey,
     ClusterReplicaRecord, ClusterReplicaSnapshot, ClusterServingLoadSnapshot,
     ClusterServingRequest, ClusterServingWorkClass, ClusterSnapshot, ClusterStabilityPosture,
-    ClusterState, ClusterTransportClass, LayerShardedExecutionPolicy, LayerShardedExecutionRequest,
-    NodeEpoch, NodeId, NodeRole, TensorShardedExecutionRequest, TensorShardedModelEligibility,
-    TensorShardedTransportPolicy, WholeRequestSchedulingRequest,
+    ClusterState, ClusterTerm, ClusterTransportClass, LayerShardedExecutionPolicy,
+    LayerShardedExecutionRequest, NodeEpoch, NodeId, NodeRole, TensorShardedExecutionRequest,
+    TensorShardedModelEligibility, TensorShardedTransportPolicy, WholeRequestSchedulingRequest,
 };
 use psionic_runtime::ClusterReplicaWarmState;
 
@@ -185,6 +186,27 @@ impl ClusterValidationFixture {
     }
 
     #[allow(dead_code)]
+    pub fn set_leadership(
+        &mut self,
+        leader_id: &str,
+        term: ClusterTerm,
+        committed_event_index: u64,
+        heartbeat_tick: u64,
+    ) {
+        self.snapshot.leadership = Some(
+            ClusterLeadershipRecord::new(
+                term,
+                NodeId::new(leader_id),
+                cluster_event_index(committed_event_index),
+            )
+            .with_lease_policy(
+                ClusterLeaseTick::new(heartbeat_tick),
+                ClusterLeadershipLeasePolicy::new(4),
+            ),
+        );
+    }
+
+    #[allow(dead_code)]
     pub fn inject(&mut self, fault: ClusterValidationFault) {
         match fault {
             ClusterValidationFault::ArtifactStatus { node_id, status } => {
@@ -325,6 +347,16 @@ pub fn worker_free_memory_bytes(worker: &str) -> u64 {
         "worker-c" => 32 * 1024 * 1024 * 1024,
         _ => 24 * 1024 * 1024 * 1024,
     }
+}
+
+#[allow(dead_code)]
+#[must_use]
+pub fn cluster_event_index(raw: u64) -> ClusterEventIndex {
+    let mut index = ClusterEventIndex::initial();
+    for _ in 1..raw.max(1) {
+        index = index.next();
+    }
+    index
 }
 
 #[must_use]

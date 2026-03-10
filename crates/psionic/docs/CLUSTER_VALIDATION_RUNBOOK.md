@@ -52,6 +52,7 @@ What these cover:
   - replicated serving reroute away from a slow replica
   - layer-sharded and tensor-sharded evidence surfaces
   - fault-injected shard-mesh refusal
+  - stale-leader diagnostics, split-brain refusal, and failover fence rotation
 
 ## Fault-Injection Coverage
 
@@ -145,6 +146,23 @@ Interpretation:
   clustered execution evidence; the full fenced-failover drill still closes in
   `#3314`
 
+## Coordinator Failover Drill
+
+Use this sequence before claiming fenced coordinator failover readiness for
+operator-managed multi-subnet clusters:
+
+1. Run `cargo test -p psionic-cluster --test cluster_validation_matrix coordinator_authority_validation_surfaces_stale_leader_and_failover_fence_rotation`.
+2. Run `cargo test -p psionic-cluster --test cluster_validation_matrix split_brain_validation_refuses_conflicting_same_term_leadership`.
+3. If either step fails, do not claim fenced coordinator failover readiness for the current build.
+
+Interpretation:
+
+- stale-leader and failover-rotation failure means operator validation no longer
+  proves that current authority differs from stale coordinator truth after
+  turnover
+- split-brain refusal failure means the ordered-state failover path can no
+  longer reject conflicting same-term authority explicitly
+
 ## Recovery Drill
 
 Use this sequence when validating recovery behavior intentionally:
@@ -204,5 +222,6 @@ The current cluster claim remains evidence-backed only when:
 - the baseline validation commands are green
 - the authenticated membership drill is green before any configured-peer or
   multi-subnet rollout claim
+- the coordinator failover drill is green before claiming fenced failover truth
 - the release benchmark gate is green
 - roadmap and issue comments reference the exact tests and runbook paths above

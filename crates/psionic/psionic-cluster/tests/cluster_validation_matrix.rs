@@ -3,14 +3,16 @@ mod support;
 use std::io::Error;
 
 use psionic_cluster::{
-    ClusterArtifactResidencyStatus, ClusterCatchupPayload, ClusterRecoveryDisposition,
-    ClusterRecoveryReason, ClusterReplicaLifecyclePolicy, ClusterServingPolicy,
+    ClusterArtifactResidencyStatus, ClusterCatchupPayload, ClusterEvent, ClusterEventIndex,
+    ClusterHistoryError, ClusterLeaseTick, ClusterRecoveryDisposition, ClusterRecoveryReason,
+    ClusterReplicaLifecyclePolicy, ClusterServingPolicy, ClusterTerm, IndexedClusterEvent,
     LayerShardedSchedulingFailureCode, TensorShardedSchedulingFailureCode, plan_replicated_serving,
     schedule_layer_sharded_execution, schedule_remote_whole_request,
     schedule_tensor_sharded_execution,
 };
 use psionic_runtime::{
-    ClusterReplicaRoutingDisposition, ClusterShardHandoffKind, ExecutionTopologyKind,
+    ClusterPolicyDigestKind, ClusterReplicaRoutingDisposition, ClusterShardHandoffKind,
+    ExecutionTopologyKind,
 };
 use support::{
     ClusterValidationFault, ClusterValidationFixture, recovery_policy, sample_cluster_id,
@@ -242,6 +244,97 @@ fn fault_injection_covers_mesh_refusal_for_sharded_paths() -> Result<(), Box<dyn
     assert_eq!(
         tensor_failure.code,
         TensorShardedSchedulingFailureCode::MeshLinkUnsuitable
+    );
+    Ok(())
+}
+
+#[test]
+fn coordinator_authority_validation_surfaces_stale_leader_and_failover_fence_rotation()
+-> Result<(), Box<dyn std::error::Error>> {
+    let mut fixture = ClusterValidationFixture::new();
+    fixture.set_leadership("scheduler", ClusterTerm::initial(), 4, 10);
+
+    let stale_state = fixture.state();
+    let stale_diagnostic = stale_state
+        .stale_leadership_diagnostic_at(ClusterLeaseTick::new(15))
+        .ok_or_else(|| fixture_error("stale leadership should surface a diagnostic"))?;
+    let stale_authority = stale_state
+        .commit_authority()
+        .ok_or_else(|| fixture_error("stale state should still expose last authority truth"))?;
+    assert_eq!(stale_diagnostic.leader_id.as_str(), "scheduler");
+    assert_eq!(stale_diagnostic.term.as_u64(), 1);
+
+    fixture.set_leadership("worker-a", ClusterTerm::initial().next(), 5, 15);
+    let schedule = schedule_remote_whole_request(&fixture.state(), &fixture.whole_request())
+        .map_err(|err| {
+            fixture_error(format!("whole-request scheduling should succeed: {err:?}"))
+        })?;
+    let authority = schedule
+        .cluster_execution
+        .commit_authority
+        .ok_or_else(|| fixture_error("cluster execution should surface commit authority"))?;
+
+    assert_eq!(authority.coordinator_node_id, "worker-a");
+    assert_eq!(authority.term, 2);
+    assert_ne!(authority.fence_token, stale_authority.fence_token);
+    assert!(
+        schedule
+            .cluster_execution
+            .policy_digests
+            .iter()
+            .any(|digest| digest.kind == ClusterPolicyDigestKind::Authority),
+        "validation schedule should carry authority digest truth"
+    );
+    Ok(())
+}
+
+#[test]
+fn split_brain_validation_refuses_conflicting_same_term_leadership()
+-> Result<(), Box<dyn std::error::Error>> {
+    let cluster_id = sample_cluster_id();
+    let mut state = psionic_cluster::ClusterState::new(cluster_id.clone());
+    let first = IndexedClusterEvent::new(
+        cluster_id.clone(),
+        ClusterEventIndex::initial(),
+        ClusterEvent::LeadershipReconciled {
+            leadership: psionic_cluster::ClusterLeadershipRecord::new(
+                ClusterTerm::initial(),
+                psionic_cluster::NodeId::new("leader-alpha"),
+                ClusterEventIndex::initial(),
+            )
+            .with_lease_policy(
+                ClusterLeaseTick::new(1),
+                psionic_cluster::ClusterLeadershipLeasePolicy::new(4),
+            ),
+        },
+    );
+    state.apply(first)?;
+
+    let conflicting = state.apply(IndexedClusterEvent::new(
+        cluster_id,
+        ClusterEventIndex::initial().next(),
+        ClusterEvent::LeadershipReconciled {
+            leadership: psionic_cluster::ClusterLeadershipRecord::new(
+                ClusterTerm::initial(),
+                psionic_cluster::NodeId::new("leader-beta"),
+                ClusterEventIndex::initial().next(),
+            )
+            .with_lease_policy(
+                ClusterLeaseTick::new(2),
+                psionic_cluster::ClusterLeadershipLeasePolicy::new(4),
+            ),
+        },
+    ));
+
+    assert!(
+        matches!(
+            conflicting,
+            Err(ClusterHistoryError::SplitBrainLeadership { diagnostic })
+                if diagnostic.current_leader_id.as_str() == "leader-alpha"
+                    && diagnostic.attempted_leader_id.as_str() == "leader-beta"
+                    && diagnostic.term.as_u64() == 1
+        ),
+        "validation should refuse conflicting same-term leadership"
     );
     Ok(())
 }
