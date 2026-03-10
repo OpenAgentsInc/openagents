@@ -15,8 +15,8 @@
 > after landing `PSI-191` / `#3300` in `ad6891b82`, after confirming that
 > `PSI-192` / `#3301` in `327944c08`, after landing `PSI-193` / `#3302` in
 > `d88d284c5`, after landing `PSI-194` / `#3303` in `fa7523ada`, after
-> confirming that `#3304` is now the next open cluster
-> queue item, and after checking live
+> landing `PSI-195` / `#3304` in `1cdcf3058`, after confirming that `#3305`
+> is now the next open cluster queue item, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -107,8 +107,8 @@ As of 2026-03-10, the current issue reality is:
   - `PSI-187` / [#3292](https://github.com/OpenAgentsInc/openagents/issues/3292) is landed on `main`
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
-    `PSI-194` / [#3303](https://github.com/OpenAgentsInc/openagents/issues/3303) are landed on `main`
-  - `PSI-195` / [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304) through
+    `PSI-195` / [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304) are landed on `main`
+  - `PSI-196` / [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) and
     `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) remain open
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
@@ -219,6 +219,16 @@ on:
     `ExecutionTopologyPlan::layer_sharded` output; `psionic-runtime` and
     `psionic-provider` now preserve shard handoff evidence and layer-sharded
     topology truth through delivered execution and receipt surfaces
+- `PSI-195` / [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304)
+  - landed in `1cdcf3058`
+  - `psionic-cluster` now provides a first homogeneous CUDA tensor-sharded
+    lane with deterministic tensor-axis partitioning, explicit model-
+    eligibility and mesh-transport policy truth, transport-policy digests,
+    tensor-collective handoff evidence, refusal when backend, geometry, or
+    mesh policy is insufficient, and truthful
+    `ExecutionTopologyPlan::tensor_sharded` output; `psionic-runtime` and
+    `psionic-provider` now preserve tensor partition facts through delivered
+    execution and receipt surfaces
 
 This is a real baseline. The cluster roadmap is not starting from zero.
 
@@ -239,9 +249,9 @@ one:
   snapshots, compaction, recovery, topology and telemetry facts, artifact
   residency truth, cluster execution evidence seams, truthful remote
   whole-request scheduling, explicit cluster queue/fairness/backpressure
-  policy, truthful replicated serving for one lane, and a first homogeneous
-  CUDA layer-sharded lane with explicit handoff truth, but there is still no
-  tensor-sharded or widened-backend sharding path
+  policy, truthful replicated serving for one lane, and first homogeneous CUDA
+  layer-sharded and tensor-sharded lanes with explicit handoff truth, but
+  there is still no widened-backend sharding path
 - the first honest cluster scope is still a trusted same-network LAN cluster
   with explicit namespace/admission policy, not an adversarial compute-market
   fabric
@@ -255,7 +265,7 @@ one:
 That means the next cluster work is not "make sharding happen somehow." It is:
 
 - keep the replicated and layer-sharded lanes truthful and measurable
-- add tensor sharding only with explicit transport and model-eligibility
+- keep tensor sharding bounded by explicit transport and model-eligibility
   refusal boundaries
 - reuse the existing evidence seams instead of inventing a side channel
 - widen execution claims only after the corresponding backend truth exists
@@ -383,15 +393,16 @@ Current truth:
   placement, explicit activation and KV handoff truth, bytes-per-token
   estimates, and provider/runtime evidence for layer boundaries and handoff
   transport
-- tensor sharding is still absent, so the current sharded scope ends at
-  layer-partitioned execution with explicit refusal of unsuitable links or
-  artifact readiness
+- one homogeneous CUDA tensor-sharded lane now also exists with deterministic
+  tensor-axis partitioning, explicit model-eligibility truth, explicit mesh
+  transport policy, tensor-collective handoff evidence, and refusal of
+  unsupported backend, ineligible tensor geometry, or unsuitable shard mesh
 
 Required outcome:
 
-- keep the layer-sharded lane honest while extending the next phase to
-  tensor-axis partitioning only when transport policy and model eligibility can
-  be expressed explicitly
+- keep both sharded lanes honest while the next phase adds validation,
+  fault-injection, and performance gates around the claims now present on
+  `main`
 - continue refusing unsupported cluster sharding explicitly instead of
   collapsing to whole-request or replica-routed claims
 
@@ -470,7 +481,7 @@ Already on `main`:
 | Local ID | GitHub | State | Issue | Scope | Why it exists |
 | --- | --- | --- | --- | --- | --- |
 | `PSI-194` | [#3303](https://github.com/OpenAgentsInc/openagents/issues/3303) | Closed | Add homogeneous CUDA layer-sharded execution | `psionic-backend-cuda`, `psionic-runtime`, `psionic-cluster`, `psionic-provider` | Landed in `fa7523ada`: Psionic now has a first homogeneous CUDA layer-sharded lane with deterministic shard placement, explicit activation/KV handoff evidence and bytes-per-token estimates, truthful `ExecutionTopologyPlan::layer_sharded` reporting, provider receipt propagation, and refusal coverage for non-CUDA, unsuitable inter-shard links, and insufficient artifact readiness. |
-| `PSI-195` | [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304) | Open | Add homogeneous CUDA tensor-sharded execution and transport policy | `psionic-backend-cuda`, `psionic-runtime`, `psionic-cluster`, `psionic-provider` | Tensor sharding requires explicit transport requirements, model eligibility gates, and refusal semantics instead of aspirational topology claims. |
+| `PSI-195` | [#3304](https://github.com/OpenAgentsInc/openagents/issues/3304) | Closed | Add homogeneous CUDA tensor-sharded execution and transport policy | `psionic-backend-cuda`, `psionic-runtime`, `psionic-cluster`, `psionic-provider` | Landed in `1cdcf3058`: Psionic now has a first homogeneous CUDA tensor-sharded lane with explicit tensor-axis partition geometry, model-eligibility truth, transport-policy digests, tensor-collective handoff evidence, and refusal coverage for unsupported backend, ineligible geometry, and unsuitable shard mesh transport. |
 
 ### Phase C6: validation, security, and rollout hardening
 
@@ -486,17 +497,16 @@ The shortest honest path from today's `main` is:
 1. Treat C1 and C2 as landed on `main` in `2acc2ecf6`.
 2. Keep the opened later-phase queue aligned to the roadmap and only pull work
    forward when its dependency notes are actually satisfied:
-   `#3304` -> `#3305` -> `#3306`.
+   `#3305` -> `#3306`.
 3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
 4. Treat closure of that local CUDA lane as the gate for widening cluster
-   execution claims beyond the current replicated and layer-sharded lanes into
-   broader sharded delivery.
-5. Execute `#3304` only for the next homogeneous CUDA lane.
-6. Execute `#3305` and `#3306` before widening scope beyond the first
+   execution claims beyond the current replicated, layer-sharded, and
+   tensor-sharded lanes into broader sharded delivery.
+5. Execute `#3305` and `#3306` before widening scope beyond the first
    trusted-LAN cluster claim.
-7. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+6. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
