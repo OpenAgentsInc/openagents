@@ -6543,6 +6543,7 @@ dependencies = [
 name = "psionic-provider"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
  "hex",
  "psionic-core",
  "psionic-runtime",
@@ -6557,6 +6558,8 @@ dependencies = [
 name = "psionic-runtime"
 version = "0.1.0"
 dependencies = [
+ "ed25519-dalek",
+ "hex",
  "psionic-core",
  "psionic-ir",
  "rand 0.9.2",

@@ -6,6 +6,7 @@ mod validation;
 
 use std::collections::{BTreeMap, VecDeque};
 
+use ed25519_dalek::{Signature, Signer, SigningKey, Verifier, VerifyingKey};
 pub use gpt_oss::*;
 pub use parity::*;
 use psionic_core::{
@@ -13,7 +14,7 @@ use psionic_core::{
     TensorId, TensorSpec,
 };
 use psionic_ir::ExecutionPlan;
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use thiserror::Error;
@@ -2161,6 +2162,246 @@ pub struct SettlementLinkageInput {
     /// Cluster command/admission provenance retained for settlement correlation, when known.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub cluster_provenance: Option<ClusterSettlementProvenanceInput>,
+}
+
+/// Terminal receipt posture carried into a signed cluster evidence bundle.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ClusterEvidenceBundleStatus {
+    /// The clustered request completed successfully.
+    Succeeded,
+    /// The clustered request was cancelled by the caller.
+    Cancelled,
+    /// The clustered request stopped because the client disconnected.
+    Disconnected,
+    /// The clustered request failed before successful completion.
+    Failed,
+}
+
+/// Stable export payload for one clustered execution receipt.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterEvidenceBundlePayload {
+    /// Product family executed for the request.
+    pub product_id: String,
+    /// Stable request identifier.
+    pub request_id: String,
+    /// Stable request digest.
+    pub request_digest: String,
+    /// Stable model identifier executed for the request.
+    pub model_id: String,
+    /// Stable model revision executed for the request.
+    pub model_revision: String,
+    /// Runtime backend that realized the request.
+    pub runtime_backend: String,
+    /// Stable served-artifact digest for the realized path.
+    pub served_artifact_digest: String,
+    /// Stable weight-bundle digest for the realized path.
+    pub weight_bundle_digest: String,
+    /// Terminal receipt posture for the bundled execution.
+    pub status: ClusterEvidenceBundleStatus,
+    /// Runtime-owned clustered execution evidence for the request path.
+    pub cluster_execution: ClusterExecutionContext,
+    /// Delivery-proof facts surfaced for the request path, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub delivery_proof: Option<ExecutionDeliveryProof>,
+    /// Settlement-linkage facts derived from the request path, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub settlement_linkage: Option<SettlementLinkageInput>,
+    /// Failure detail when the bundled receipt did not succeed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub failure_reason: Option<String>,
+    /// Structured runtime diagnostic retained for audit/export, when known.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub diagnostic: Option<LocalRuntimeDiagnostic>,
+}
+
+impl ClusterEvidenceBundlePayload {
+    /// Creates a new cluster evidence bundle payload from receipt-facing facts.
+    #[must_use]
+    pub fn new(
+        product_id: impl Into<String>,
+        request_id: impl Into<String>,
+        request_digest: impl Into<String>,
+        model_id: impl Into<String>,
+        model_revision: impl Into<String>,
+        runtime_backend: impl Into<String>,
+        served_artifact_digest: impl Into<String>,
+        weight_bundle_digest: impl Into<String>,
+        status: ClusterEvidenceBundleStatus,
+        cluster_execution: ClusterExecutionContext,
+    ) -> Self {
+        Self {
+            product_id: product_id.into(),
+            request_id: request_id.into(),
+            request_digest: request_digest.into(),
+            model_id: model_id.into(),
+            model_revision: model_revision.into(),
+            runtime_backend: runtime_backend.into(),
+            served_artifact_digest: served_artifact_digest.into(),
+            weight_bundle_digest: weight_bundle_digest.into(),
+            status,
+            cluster_execution,
+            delivery_proof: None,
+            settlement_linkage: None,
+            failure_reason: None,
+            diagnostic: None,
+        }
+    }
+
+    /// Attaches delivery-proof facts to the bundle payload.
+    #[must_use]
+    pub fn with_delivery_proof(mut self, delivery_proof: ExecutionDeliveryProof) -> Self {
+        self.delivery_proof = Some(delivery_proof);
+        self
+    }
+
+    /// Attaches settlement-linkage facts to the bundle payload.
+    #[must_use]
+    pub fn with_settlement_linkage(mut self, settlement_linkage: SettlementLinkageInput) -> Self {
+        self.settlement_linkage = Some(settlement_linkage);
+        self
+    }
+
+    /// Attaches failure detail to the bundle payload.
+    #[must_use]
+    pub fn with_failure_reason(mut self, failure_reason: impl Into<String>) -> Self {
+        self.failure_reason = Some(failure_reason.into());
+        self
+    }
+
+    /// Attaches a structured runtime diagnostic to the bundle payload.
+    #[must_use]
+    pub fn with_diagnostic(mut self, diagnostic: LocalRuntimeDiagnostic) -> Self {
+        self.diagnostic = Some(diagnostic);
+        self
+    }
+
+    /// Returns a stable digest for the export payload.
+    #[must_use]
+    pub fn stable_digest(&self) -> String {
+        let encoded = serde_json::to_vec(self)
+            .unwrap_or_else(|_| unreachable!("cluster evidence bundle should serialize"));
+        let mut hasher = Sha256::new();
+        hasher.update(b"cluster_evidence_bundle_payload|");
+        hasher.update(encoded);
+        hex::encode(hasher.finalize())
+    }
+
+    /// Signs this payload for later audit or dispute export.
+    #[must_use]
+    pub fn sign(
+        self,
+        signer_node_id: impl Into<String>,
+        signing_key: &SigningKey,
+    ) -> SignedClusterEvidenceBundle {
+        let bundle_digest = self.stable_digest();
+        let signature = signing_key.sign(&cluster_evidence_bundle_signing_payload(
+            bundle_digest.as_str(),
+        ));
+        SignedClusterEvidenceBundle {
+            bundle_digest,
+            payload: self,
+            signature: ClusterEvidenceBundleSignature {
+                signer_node_id: signer_node_id.into(),
+                signer_public_key: hex::encode(signing_key.verifying_key().to_bytes()),
+                signature_hex: hex::encode(signature.to_bytes()),
+            },
+        }
+    }
+}
+
+/// Signed export signature for one bundled cluster execution payload.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterEvidenceBundleSignature {
+    /// Stable node identifier that signed the bundle.
+    pub signer_node_id: String,
+    /// Hex-encoded Ed25519 verifying key used for the signature.
+    pub signer_public_key: String,
+    /// Hex-encoded Ed25519 signature over the bundle digest.
+    pub signature_hex: String,
+}
+
+/// Signed cluster execution evidence bundle suitable for later export.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SignedClusterEvidenceBundle {
+    /// Stable digest of the bundled payload.
+    pub bundle_digest: String,
+    /// Export payload retained for audit or dispute handling.
+    pub payload: ClusterEvidenceBundlePayload,
+    /// Signature over the stable payload digest.
+    pub signature: ClusterEvidenceBundleSignature,
+}
+
+impl SignedClusterEvidenceBundle {
+    /// Verifies that the payload digest and signature are both intact.
+    pub fn verify(&self) -> Result<(), ClusterEvidenceBundleVerificationError> {
+        let expected_digest = self.payload.stable_digest();
+        if self.bundle_digest != expected_digest {
+            return Err(ClusterEvidenceBundleVerificationError::DigestMismatch {
+                expected: expected_digest,
+                actual: self.bundle_digest.clone(),
+            });
+        }
+        let verifying_key =
+            decode_cluster_evidence_verifying_key(self.signature.signer_public_key.as_str())?;
+        let signature = decode_cluster_evidence_signature(self.signature.signature_hex.as_str())?;
+        verifying_key
+            .verify(
+                &cluster_evidence_bundle_signing_payload(self.bundle_digest.as_str()),
+                &signature,
+            )
+            .map_err(|_| ClusterEvidenceBundleVerificationError::SignatureInvalid)?;
+        Ok(())
+    }
+}
+
+/// Verification failure while checking one signed cluster evidence bundle.
+#[derive(Clone, Debug, Error, PartialEq, Eq)]
+pub enum ClusterEvidenceBundleVerificationError {
+    /// The bundled payload digest no longer matches the payload bytes.
+    #[error("cluster evidence bundle digest mismatch: expected {expected}, found {actual}")]
+    DigestMismatch {
+        /// Stable digest recomputed from the payload.
+        expected: String,
+        /// Stable digest claimed by the signed bundle.
+        actual: String,
+    },
+    /// The bundled public key could not be decoded.
+    #[error("cluster evidence bundle signer key is invalid")]
+    SignerKeyInvalid,
+    /// The bundled signature could not be decoded or did not verify.
+    #[error("cluster evidence bundle signature is invalid")]
+    SignatureInvalid,
+}
+
+fn cluster_evidence_bundle_signing_payload(bundle_digest: &str) -> Vec<u8> {
+    let mut payload = Vec::with_capacity(bundle_digest.len() + 31);
+    payload.extend_from_slice(b"cluster_evidence_bundle_signature|");
+    payload.extend_from_slice(bundle_digest.as_bytes());
+    payload
+}
+
+fn decode_cluster_evidence_verifying_key(
+    signer_public_key: &str,
+) -> Result<VerifyingKey, ClusterEvidenceBundleVerificationError> {
+    let bytes = hex::decode(signer_public_key)
+        .map_err(|_| ClusterEvidenceBundleVerificationError::SignerKeyInvalid)?;
+    let verifying_key_bytes: [u8; 32] = bytes
+        .try_into()
+        .map_err(|_| ClusterEvidenceBundleVerificationError::SignerKeyInvalid)?;
+    VerifyingKey::from_bytes(&verifying_key_bytes)
+        .map_err(|_| ClusterEvidenceBundleVerificationError::SignerKeyInvalid)
+}
+
+fn decode_cluster_evidence_signature(
+    signature_hex: &str,
+) -> Result<Signature, ClusterEvidenceBundleVerificationError> {
+    let bytes = hex::decode(signature_hex)
+        .map_err(|_| ClusterEvidenceBundleVerificationError::SignatureInvalid)?;
+    let signature_bytes: [u8; 64] = bytes
+        .try_into()
+        .map_err(|_| ClusterEvidenceBundleVerificationError::SignatureInvalid)?;
+    Ok(Signature::from_bytes(&signature_bytes))
 }
 
 /// Returns the current runtime cache invalidation policy.
@@ -5438,6 +5679,7 @@ pub struct ExecutionResult<B> {
 mod tests {
     use std::collections::BTreeMap;
 
+    use ed25519_dalek::SigningKey;
     use psionic_core::{
         BackendExtensionKind, DType, Device, DeviceKind, QuantizationMode, Shape, TensorSpec,
     };
@@ -5445,7 +5687,6 @@ mod tests {
     use serde_json::json;
 
     use super::{
-        apply_sampling_penalties, default_cache_invalidation_policy, plan_model_admission,
         AcceleratorDeliverabilityDifferenceCode, AcceleratorDeliverabilityStatus,
         AcceleratorExecutionRequirement, AdmissionRefusalReason, Allocator, AllocatorPoolPolicy,
         AllocatorPoolReport, AllocatorPoolState, AmdBackendReport, AmdDeviceMetadata,
@@ -5456,9 +5697,12 @@ mod tests {
         BatchExecutionPosture, BufferHandle, BufferResidency, BufferStorageKind, CacheAction,
         CacheInvalidationTrigger, CacheKind, CacheObservation, ClusterAdmissionFactKind,
         ClusterArtifactResidencyDisposition, ClusterCommandAuthorityScopeEvidence,
-        ClusterCommandProvenanceEvidence, ClusterCommitAuthorityEvidence, ClusterExecutionContext,
+        ClusterCommandProvenanceEvidence, ClusterCommitAuthorityEvidence,
+        ClusterEvidenceBundlePayload, ClusterEvidenceBundleStatus,
+        ClusterEvidenceBundleVerificationError, ClusterExecutionContext,
         ClusterExecutionDisposition, ClusterFallbackReason, ClusterFallbackStep,
-        ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode, ClusterTransportClass,
+        ClusterPolicyDigest, ClusterPolicyDigestKind, ClusterSelectedNode,
+        ClusterSettlementProvenanceInput, ClusterTransportClass, DEFAULT_PENALTY_LOOKBACK,
         DeliveredExecutionContext, DeviceDescriptor, DeviceDiscovery, DeviceInventoryQualifiers,
         DeviceMemoryBudget, DeviceMemoryClass, DevicePerformanceClass, ExecutionBackend,
         ExecutionCapabilityProfile, ExecutionDeliveryProof, ExecutionMetrics,
@@ -5481,7 +5725,8 @@ mod tests {
         SandboxIsolationBoundary, SandboxNetworkMode, SandboxNetworkPolicy, SandboxProcessPolicy,
         SandboxResourceLimits, ServedArtifactIdentity, ServedProductBackendPolicy,
         ServedProductFallbackAction, ServedProductFallbackLattice, ServedProductFallbackTrigger,
-        ThroughputClass, TokenSampler, DEFAULT_PENALTY_LOOKBACK,
+        SettlementLinkageInput, SignedClusterEvidenceBundle, ThroughputClass, TokenSampler,
+        apply_sampling_penalties, default_cache_invalidation_policy, plan_model_admission,
     };
 
     #[derive(Clone, Debug, PartialEq, Eq)]
@@ -5648,8 +5893,8 @@ mod tests {
     }
 
     #[test]
-    fn backend_selection_helpers_capture_direct_and_fallback_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn backend_selection_helpers_capture_direct_and_fallback_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let direct = BackendSelection::from_backend(&MockRuntime, &["input", "matmul"])?;
         assert_eq!(direct.requested_backend, "mock");
         assert_eq!(direct.effective_backend, "mock");
@@ -5949,8 +6194,8 @@ mod tests {
     }
 
     #[test]
-    fn quantization_support_surfaces_storage_path_and_pending_execution_truth(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn quantization_support_surfaces_storage_path_and_pending_execution_truth()
+    -> Result<(), Box<dyn std::error::Error>> {
         let support = QuantizationSupport {
             mode: psionic_core::QuantizationMode::GgmlQ4_0,
             load_path: QuantizationLoadPath::BackendQuantized,
@@ -6044,8 +6289,8 @@ mod tests {
     }
 
     #[test]
-    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn runtime_model_storage_truth_distinguishes_paged_blobs_from_copies()
+    -> Result<(), Box<dyn std::error::Error>> {
         let copy = ModelArtifactStorage::in_memory_copy("weights.gguf", "abcd");
         let paged = ModelArtifactStorage::paged_local_blob(
             "weights.gguf",
@@ -6082,8 +6327,8 @@ mod tests {
     }
 
     #[test]
-    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn paged_tensor_storage_plan_serializes_byte_window_and_page_counts()
+    -> Result<(), Box<dyn std::error::Error>> {
         let plan = PagedTensorStoragePlan {
             tensor_name: String::from("blk.0.attn_q.weight"),
             artifact_name: String::from("weights.gguf"),
@@ -6421,8 +6666,8 @@ mod tests {
     }
 
     #[test]
-    fn sampling_policy_serializes_supported_generation_controls(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn sampling_policy_serializes_supported_generation_controls()
+    -> Result<(), Box<dyn std::error::Error>> {
         let policy = SamplingPolicy {
             strategy: SamplingStrategy::Sample,
             temperature: Some(0.7),
@@ -6505,8 +6750,8 @@ mod tests {
     }
 
     #[test]
-    fn amd_backend_model_serializes_mode_topology_risk_and_recovery(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn amd_backend_model_serializes_mode_topology_risk_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("amd_userspace"),
             device: Device::new(
@@ -6612,8 +6857,8 @@ mod tests {
     }
 
     #[test]
-    fn nvidia_backend_model_serializes_topology_risk_and_recovery(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn nvidia_backend_model_serializes_topology_risk_and_recovery()
+    -> Result<(), Box<dyn std::error::Error>> {
         let device = DeviceDescriptor {
             backend: String::from("cuda"),
             device: Device::new(
@@ -6855,8 +7100,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_can_carry_cluster_evidence(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_can_carry_cluster_evidence()
+    -> Result<(), Box<dyn std::error::Error>> {
         let device = sample_cuda_device().inventory_qualifiers();
         let cluster_execution = ClusterExecutionContext::new(
             "cluster-alpha",
@@ -6901,11 +7146,13 @@ mod tests {
                 "command-authorization-policy",
             ),
         ])
-        .with_selected_nodes(vec![ClusterSelectedNode::new("worker-a", "cuda")
-            .with_role("worker")
-            .with_topology_digest("node-topology-digest")
-            .with_served_artifact_digest("served-artifact-digest")
-            .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident)])
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda")
+                .with_role("worker")
+                .with_topology_digest("node-topology-digest")
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+        ])
         .with_fallback(
             ClusterFallbackStep::new("worker-a", ClusterFallbackReason::BackendDegraded)
                 .from_node("worker-b")
@@ -6949,8 +7196,140 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_prefers_replicated_cluster_topology(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn signed_cluster_evidence_bundle_round_trips_and_verifies()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let cluster_execution = ClusterExecutionContext::new(
+            "cluster-alpha",
+            "cluster-state-digest",
+            "cluster-topology-digest",
+            "scheduler-node",
+            ClusterTransportClass::TrustedLanDatagram,
+            ClusterExecutionDisposition::RemoteWholeRequest,
+        )
+        .with_commit_authority(ClusterCommitAuthorityEvidence::new(
+            "coordinator-a",
+            7,
+            41,
+            "authority-fence-token",
+            "authority-digest",
+        ))
+        .with_policy_digest(ClusterPolicyDigest::new(
+            ClusterPolicyDigestKind::Authority,
+            "authority-digest",
+        ))
+        .with_command_provenance(vec![ClusterCommandProvenanceEvidence::new(
+            ClusterAdmissionFactKind::SchedulerMembership,
+            "scheduler-node",
+            ClusterCommandAuthorityScopeEvidence::SelfNode,
+            "scheduler-membership-command",
+            "scheduler-membership-auth",
+            "command-authorization-policy",
+        )])
+        .with_selected_nodes(vec![
+            ClusterSelectedNode::new("worker-a", "cuda")
+                .with_role("worker")
+                .with_served_artifact_digest("served-artifact-digest")
+                .with_artifact_residency(ClusterArtifactResidencyDisposition::Resident),
+        ]);
+        let settlement_linkage = SettlementLinkageInput {
+            request_digest: String::from("request-digest"),
+            product_id: String::from("text_generation"),
+            model_id: String::from("fixture-decoder-v0"),
+            served_artifact_digest: String::from("served-artifact-digest"),
+            execution_plan_digest: String::from("execution-plan-digest"),
+            runtime_backend: String::from("cuda"),
+            kernel_count: 4,
+            bytes_moved: 1024,
+            plan_cache_hits: 1,
+            plan_cache_misses: 0,
+            kv_growth: None,
+            output_tokens: Some(2),
+            cluster_provenance: ClusterSettlementProvenanceInput::from_cluster_execution(
+                &cluster_execution,
+            ),
+        };
+        let payload = ClusterEvidenceBundlePayload::new(
+            "text_generation",
+            "request-1",
+            "request-digest",
+            "fixture-decoder-v0",
+            "v0",
+            "cuda",
+            "served-artifact-digest",
+            "weight-bundle-digest",
+            ClusterEvidenceBundleStatus::Succeeded,
+            cluster_execution,
+        )
+        .with_delivery_proof(ExecutionDeliveryProof {
+            execution_plan_digest: String::from("execution-plan-digest"),
+            kernel_count: 4,
+            bytes_moved: 1024,
+            plan_cache_hits: 1,
+            plan_cache_misses: 0,
+            kv_growth: None,
+        })
+        .with_settlement_linkage(settlement_linkage);
+        let signing_key = SigningKey::from_bytes(&[17; 32]);
+
+        let bundle = payload.clone().sign("scheduler-node", &signing_key);
+
+        assert_eq!(bundle.bundle_digest, payload.stable_digest());
+        assert!(bundle.verify().is_ok(), "bundle should verify");
+        let encoded = serde_json::to_value(&bundle)?;
+        assert_eq!(
+            encoded["signature"]["signer_node_id"],
+            json!("scheduler-node")
+        );
+        assert_eq!(
+            encoded["payload"]["cluster_execution"]["commit_authority"]["authority_digest"],
+            json!("authority-digest")
+        );
+        assert_eq!(
+            serde_json::from_value::<SignedClusterEvidenceBundle>(encoded)?,
+            bundle
+        );
+        Ok(())
+    }
+
+    #[test]
+    fn signed_cluster_evidence_bundle_refuses_tampered_payload() {
+        let payload = ClusterEvidenceBundlePayload::new(
+            "text_generation",
+            "request-1",
+            "request-digest",
+            "fixture-decoder-v0",
+            "v0",
+            "cuda",
+            "served-artifact-digest",
+            "weight-bundle-digest",
+            ClusterEvidenceBundleStatus::Succeeded,
+            ClusterExecutionContext::new(
+                "cluster-alpha",
+                "cluster-state-digest",
+                "cluster-topology-digest",
+                "scheduler-node",
+                ClusterTransportClass::TrustedLanDatagram,
+                ClusterExecutionDisposition::RemoteWholeRequest,
+            ),
+        );
+        let signing_key = SigningKey::from_bytes(&[19; 32]);
+        let mut bundle = payload.sign("scheduler-node", &signing_key);
+        bundle.payload.request_digest = String::from("tampered-request-digest");
+
+        let verification = bundle.verify();
+
+        assert!(
+            matches!(
+                verification,
+                Err(ClusterEvidenceBundleVerificationError::DigestMismatch { .. })
+            ),
+            "tampered bundle should be refused"
+        );
+    }
+
+    #[test]
+    fn delivered_execution_context_prefers_replicated_cluster_topology()
+    -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -7013,8 +7392,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_surfaces_layer_sharded_handoffs(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_surfaces_layer_sharded_handoffs()
+    -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -7094,8 +7473,8 @@ mod tests {
     }
 
     #[test]
-    fn delivered_execution_context_surfaces_tensor_sharded_collectives(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn delivered_execution_context_surfaces_tensor_sharded_collectives()
+    -> Result<(), Box<dyn std::error::Error>> {
         let first = sample_cuda_device().inventory_qualifiers();
         let mut second_device = sample_cuda_device();
         second_device.device = Device::new(DeviceKind::Cuda, 1, Some(String::from("cuda:1")));
@@ -7122,18 +7501,20 @@ mod tests {
             ClusterSelectedNode::new("worker-a", "cuda").with_device_inventory(first.clone()),
             ClusterSelectedNode::new("worker-b", "cuda").with_device_inventory(second.clone()),
         ])
-        .with_shard_handoffs(vec![crate::ClusterShardHandoff::new(
-            0,
-            1,
-            "worker-a",
-            "worker-b",
-            crate::ClusterShardHandoffKind::TensorCollective,
-            ClusterTransportClass::TrustedLanStream,
-            0,
-            16_384,
-        )
-        .with_tensor_partition(1, 0, 32)
-        .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh")]);
+        .with_shard_handoffs(vec![
+            crate::ClusterShardHandoff::new(
+                0,
+                1,
+                "worker-a",
+                "worker-b",
+                crate::ClusterShardHandoffKind::TensorCollective,
+                ClusterTransportClass::TrustedLanStream,
+                0,
+                16_384,
+            )
+            .with_tensor_partition(1, 0, 32)
+            .with_detail("synchronize tensor shard [0..32) on axis 1 across the CUDA mesh"),
+        ]);
         let delivered = DeliveredExecutionContext::new(
             "cuda",
             Some(ExecutionTopologyPlan::single_device("cuda", first.clone())),
@@ -7568,8 +7949,8 @@ mod tests {
     }
 
     #[test]
-    fn sandbox_execution_capability_profiles_are_machine_checkable(
-    ) -> Result<(), Box<dyn std::error::Error>> {
+    fn sandbox_execution_capability_profiles_are_machine_checkable()
+    -> Result<(), Box<dyn std::error::Error>> {
         let profile = SandboxExecutionCapabilityProfile::bounded_accelerated("cuda", 2);
         assert!(profile.accelerator_access.requires_accelerator());
         assert_eq!(
