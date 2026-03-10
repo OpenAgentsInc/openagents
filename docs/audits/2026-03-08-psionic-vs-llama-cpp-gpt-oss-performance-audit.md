@@ -1250,3 +1250,27 @@ Interpretation:
 - The next remaining direct-alignment work is now `#3295` fused ids-driven
   gate/up `+ GLU`, and only after that should the queue revisit `#3296`
   attention dispatch.
+
+## 2026-03-10 Fused-Gate-Up Issue Closure
+
+After the `#3294` landing, the tracked parity contract on this host no longer
+needed `#3295`.
+
+Why it was closed:
+
+- Psionic stayed in the same low `170 tok/s` class:
+  - `173.05 tok/s`
+  - `170.05 tok/s`
+- the same-script `llama.cpp` control on those runs was:
+  - `166.80 tok/s`
+  - `167.89 tok/s`
+
+Interpretation:
+
+- `#3295` was still a plausible structural cleanup, but it was no longer the
+  next honest blocker to parity on this host.
+- For the tracked benchmark contract, a riskier fused gate/up rewrite stopped
+  being justified once Psionic was already at or above the current
+  `llama.cpp` control.
+- That is why `#3295` was closed instead of forcing more CUDA churn into the
+  path just to satisfy a previously-planned intermediate issue.
