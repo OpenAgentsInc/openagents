@@ -96,6 +96,32 @@ fn initial_cuda_argmax_pair_bytes() -> [u8; std::mem::size_of::<u64>()] {
     packed.to_ne_bytes()
 }
 
+fn cuda_argmax_token_id(token: i32) -> Result<TokenId, ReferenceTextGenerationError> {
+    u32::try_from(token).map(TokenId).map_err(|_| {
+        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+            "cuda argmax returned a negative token id {token}",
+        )))
+    })
+}
+
+fn cuda_argmax_token_from_packed_host_buffer(
+    host_buffer: &CudaHostBuffer,
+) -> Result<TokenId, ReferenceTextGenerationError> {
+    let bytes = host_buffer.read_bytes().map_err(|error| {
+        ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(format!(
+            "cuda argmax returned an invalid packed host buffer: {error}",
+        )))
+    })?;
+    let packed = u64::from_ne_bytes(bytes[..std::mem::size_of::<u64>()].try_into().map_err(
+        |_| {
+            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(String::from(
+                "cuda argmax returned invalid packed argmax bytes",
+            )))
+        },
+    )?);
+    cuda_argmax_token_id((packed >> 32) as i32)
+}
+
 fn can_use_cuda_argmax_fast_path(options: &GenerationOptions) -> bool {
     options.decode_strategy == DecodeStrategy::Greedy
         && options.repeat_penalty.is_none()
@@ -1232,7 +1258,13 @@ fn run_cuda_generation_request(
         .unwrap_or(false)
     {
         let _ = cuda_shared_prefixes;
-        return run_generation_request(backend, models, sessions, shared_prefixes, request);
+        return run_cuda_hybrid_generation_request(
+            backend,
+            models,
+            sessions,
+            shared_prefixes,
+            request,
+        );
     }
 
     let loaded_model = models
@@ -1603,6 +1635,356 @@ fn run_cuda_generation_request(
             &previous_kv_state,
             psionic_runtime::KvCacheState::paged(cache.page_layout(), cuda_cache.len()),
         );
+        let total_duration_ns = generation_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+        let metrics = super::GenerationMetrics {
+            total_duration_ns: Some(total_duration_ns),
+            load_duration_ns: Some(match load_state {
+                super::GenerationLoadState::Cold => loaded_model.load_duration_ns(),
+                super::GenerationLoadState::Warm => 0,
+            }),
+            prompt_eval_count: Some(usage.input_tokens),
+            prompt_eval_duration_ns: Some(prompt_eval_duration_ns),
+            context_window: Some(context_window),
+            eval_count: Some(usage.output_tokens),
+            eval_duration_ns: Some(total_duration_ns.saturating_sub(prompt_eval_duration_ns)),
+            kv_cache: Some(kv_cache),
+            prefix_tokens_reused: Some(prefix_tokens_reused),
+            gpt_oss_perf: gpt_oss_perf.filter(|perf| !perf.is_zero()),
+        };
+        let delivery_plan_digest = execution_plan_digest
+            .clone()
+            .unwrap_or_else(|| loaded_model.plan_digest().to_string());
+        let provenance = super::GenerationProvenance {
+            served_artifact,
+            execution_plan_digest: delivery_plan_digest.clone(),
+            cluster_execution: None,
+            load_state,
+            isolation_policy: super::LocalServingIsolationPolicy::in_process_runtime(),
+            streaming_policy: None,
+            memory_plan,
+            residency_policy,
+            residency_snapshot,
+            kv_cache_policy: Some(cache.policy().clone()),
+            prefix_cache_state: Some(prefix_state),
+            prefix_cache_policy: Some(prefix_policy),
+            prefix_cache_identity: prefix_identity,
+            compile_path: compile_path.clone(),
+            delivery_proof: super::build_delivery_proof(
+                delivery_plan_digest,
+                kernel_count,
+                bytes_moved,
+                plan_cache_hits,
+                plan_cache_misses,
+                metrics.kv_cache.as_ref().map(|value| value.growth.clone()),
+            ),
+            cache_observations: super::generation_cache_observations(
+                loaded_model.descriptor(),
+                compile_path.as_ref(),
+                load_state,
+                request.session_id.as_ref(),
+                request.reset_session,
+                &previous_kv_state,
+                prefix_state,
+            ),
+        };
+        Ok(GenerationResponse::new(
+            request,
+            request.session_id.clone(),
+            generated,
+            text,
+            usage.input_tokens,
+            usage.cache_tokens,
+            termination,
+        )
+        .with_metrics_and_provenance(metrics, provenance))
+    })();
+
+    let _ = models.finish_request(model_id, current_time_millis());
+    result
+}
+
+fn run_cuda_hybrid_generation_request(
+    backend: &mut CudaBackend,
+    models: &mut InMemoryGenerationModelRegistry<CudaGgufGptOssGenerationModel>,
+    sessions: &mut InMemoryGenerationSessionStore,
+    shared_prefixes: &mut SharedPrefixStore,
+    request: &super::GenerationRequest,
+) -> Result<GenerationResponse, ReferenceTextGenerationError> {
+    if request.product_id != super::TEXT_GENERATION_PRODUCT_ID {
+        return Err(ReferenceTextGenerationError::UnsupportedProduct(
+            request.product_id.clone(),
+        ));
+    }
+
+    let loaded_model = models
+        .active(request.model.model.model_id.as_str())
+        .ok_or_else(|| {
+            ReferenceTextGenerationError::UnsupportedModel(request.model.model.model_id.clone())
+        })?
+        .clone();
+    if loaded_model.descriptor() != &request.model {
+        return Err(ReferenceTextGenerationError::UnsupportedModel(
+            request.model.model.model_id.clone(),
+        ));
+    }
+
+    let model_id = request.model.model.model_id.as_str();
+    let load_state = models
+        .load_state(model_id)
+        .unwrap_or(super::GenerationLoadState::Warm);
+    let request_start = current_time_millis();
+    let generation_start = Instant::now();
+    models.begin_request(model_id, request_start)?;
+    let memory_plan = models.memory_plan(model_id).cloned();
+    let residency_policy = Some(models.residency_policy().clone());
+    let residency_snapshot = Some(models.memory_snapshot());
+    let served_artifact = super::served_artifact_identity_for_decoder_backend(
+        loaded_model.descriptor(),
+        loaded_model.backend_compatibility(),
+        &[],
+    );
+
+    let result = (|| -> Result<GenerationResponse, ReferenceTextGenerationError> {
+        let prompt_eval_start = Instant::now();
+        let tokenizer = loaded_model.tokenizer();
+        let prompt_tokens = loaded_model.encode_prompt_input(&request.prompt)?;
+        if prompt_tokens.is_empty() {
+            return Err(ReferenceTextGenerationError::EmptyPrompt);
+        }
+
+        let expected_kv_width = loaded_model.cache_width();
+        let mut session_tokens = Vec::new();
+        let compatibility = prefix_compatibility(&loaded_model);
+        let prefix_policy = default_prefix_cache_policy();
+        let mut prefix_state = super::PrefixCacheState::None;
+        let mut prefix_tokens_reused = 0usize;
+        let mut prefix_identity = None;
+        let mut shared_prefix_eligible = false;
+        let previous_kv_state = if let Some(session_id) = &request.session_id {
+            if request.reset_session {
+                sessions.reset(session_id)?;
+            }
+            let state = sessions.state(session_id)?;
+            super::validate_session_model(
+                state,
+                session_id,
+                loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
+            )?;
+            session_tokens = state.tokens().to_vec();
+            if state.cache().is_empty() {
+                shared_prefix_eligible = true;
+            } else {
+                prefix_state = super::PrefixCacheState::Bypassed;
+            }
+            state.cache().state()
+        } else {
+            shared_prefix_eligible = true;
+            psionic_runtime::KvCacheState::default()
+        };
+        let preserve_prefix_tokens = usize::from(
+            prompt_tokens.as_slice().first().copied() == Some(tokenizer.vocabulary().bos_id()),
+        );
+        let (prompt_tokens, context_window) = super::apply_context_window(
+            &prompt_tokens,
+            loaded_model.descriptor().config.max_context,
+            previous_kv_state.tokens,
+            request.options.max_output_tokens,
+            request.options.context_overflow_policy,
+            preserve_prefix_tokens,
+        )?;
+        let mut prompt_logits = Vec::new();
+        let mut last_logits = Vec::new();
+        let mut execution_plan_digest = None;
+        let mut compile_path = None;
+        let mut kernel_count = 0usize;
+        let mut bytes_moved = 0u64;
+        let mut plan_cache_hits = 0usize;
+        let mut plan_cache_misses = 0usize;
+        let mut gpt_oss_perf: Option<GptOssPerformanceMetrics> = None;
+        let use_cuda_argmax_fast_path = can_use_cuda_argmax_fast_path(&request.options);
+        let mut cache = if shared_prefix_eligible {
+            let lookup = shared_prefixes.lookup(&compatibility, &prompt_tokens);
+            prefix_state = lookup.state;
+            prefix_tokens_reused = lookup.reused_tokens;
+            prefix_identity = lookup.identity;
+            prompt_logits = lookup.prompt_logits;
+            last_logits = if lookup.last_logits.is_empty() {
+                prompt_logits.last().cloned().unwrap_or_default()
+            } else {
+                lookup.last_logits
+            };
+            lookup.cache.unwrap_or_else(|| {
+                super::InMemoryKvCache::new(
+                    loaded_model.descriptor().config.max_context,
+                    expected_kv_width,
+                )
+            })
+        } else if let Some(session_id) = &request.session_id {
+            sessions.state(session_id)?.cache().clone()
+        } else {
+            super::InMemoryKvCache::new(
+                loaded_model.descriptor().config.max_context,
+                expected_kv_width,
+            )
+        };
+        let mut token_history = cache
+            .entries()
+            .iter()
+            .map(|entry| entry.token.as_u32())
+            .collect::<Vec<_>>();
+        if cache.width() != expected_kv_width {
+            return Err(ReferenceTextGenerationError::UnsupportedCacheGeometry {
+                expected_kv_width,
+                kv_width: cache.width(),
+            });
+        }
+        for token in &prompt_tokens.as_slice()[prefix_tokens_reused..] {
+            let step = loaded_model.execute_step(backend, *token, cache.len(), &cache)?;
+            super::accumulate_generation_step_counters(
+                &step,
+                &mut execution_plan_digest,
+                &mut compile_path,
+                &mut kernel_count,
+                &mut bytes_moved,
+                &mut plan_cache_hits,
+                &mut plan_cache_misses,
+                &mut gpt_oss_perf,
+            );
+            cache.append(*token, step.key, step.value)?;
+            token_history.push(token.as_u32());
+            last_logits = step.logits;
+            prompt_logits.push(last_logits.clone());
+        }
+        let should_record_prompt_prefix =
+            shared_prefix_eligible && prefix_tokens_reused != prompt_tokens.len();
+        let prompt_cache = should_record_prompt_prefix.then(|| cache.clone());
+
+        let mut sampler = super::GenerationSampler::new(&request.options);
+        let mut generated_tokens = Vec::new();
+        let sampling_start = Instant::now();
+        let mut pending_token = sampler
+            .select_next_token_from_history(&last_logits, &token_history)
+            .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+        let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+        perf.stage_timings.sampling_ns = perf
+            .stage_timings
+            .sampling_ns
+            .saturating_add(duration_ns(sampling_start));
+        let termination = loop {
+            if generated_tokens.len() >= request.options.max_output_tokens {
+                break super::TerminationReason::MaxOutputTokens;
+            }
+            if cache.len() >= cache.max_context() {
+                break super::TerminationReason::ContextLimit;
+            }
+            if loaded_model.is_end_of_sequence(pending_token) {
+                break super::TerminationReason::EndOfSequence;
+            }
+
+            generated_tokens.push(pending_token);
+            let step_start = Instant::now();
+            let step = loaded_model.inner.forward_step_with_output_mode(
+                backend,
+                pending_token,
+                cache.len(),
+                &cache,
+                if use_cuda_argmax_fast_path {
+                    CudaStepOutputMode::DeviceArgmax
+                } else {
+                    CudaStepOutputMode::FullLogits
+                },
+            )?;
+            let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+            perf.stage_timings.step_wall_ns = perf
+                .stage_timings
+                .step_wall_ns
+                .saturating_add(duration_ns(step_start));
+            if execution_plan_digest.is_none() {
+                execution_plan_digest = Some(loaded_model.plan_digest().to_string());
+            }
+            kernel_count = kernel_count.saturating_add(step.kernel_count);
+            bytes_moved = bytes_moved.saturating_add(step.bytes_moved);
+            super::accumulate_optional_gpt_oss_perf(&mut gpt_oss_perf, step.perf.as_ref());
+            cache.append(pending_token, step.key.clone(), step.value.clone())?;
+            token_history.push(pending_token.as_u32());
+
+            let stop_check_start = Instant::now();
+            let stop_hit = super::truncate_generated_text(
+                loaded_model.tokenizer(),
+                &mut generated_tokens,
+                &request.options.stop_sequences,
+            )
+            .is_some();
+            let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+            perf.stage_timings.stop_check_ns = perf
+                .stage_timings
+                .stop_check_ns
+                .saturating_add(duration_ns(stop_check_start));
+            if stop_hit {
+                break super::TerminationReason::EndOfSequence;
+            }
+
+            if let Some(token) = step.selected_token {
+                pending_token = token;
+            } else {
+                last_logits = step.logits;
+                let sampling_start = Instant::now();
+                pending_token = sampler
+                    .select_next_token_from_history(&last_logits, &token_history)
+                    .ok_or(ReferenceTextGenerationError::MissingOutput("next_token"))?;
+                let perf = gpt_oss_perf.get_or_insert_with(GptOssPerformanceMetrics::default);
+                perf.stage_timings.sampling_ns = perf
+                    .stage_timings
+                    .sampling_ns
+                    .saturating_add(duration_ns(sampling_start));
+            }
+        };
+
+        if should_record_prompt_prefix {
+            if let Some(prompt_cache) = prompt_cache.as_ref() {
+                let recorded_identity = shared_prefixes.record(
+                    compatibility,
+                    &prompt_tokens,
+                    &prompt_logits,
+                    prompt_cache,
+                );
+                if prefix_state != super::PrefixCacheState::Hit || prefix_identity.is_none() {
+                    prefix_identity = Some(recorded_identity);
+                }
+            }
+        }
+
+        let prompt_eval_duration_ns = prompt_eval_start
+            .elapsed()
+            .as_nanos()
+            .try_into()
+            .unwrap_or(u64::MAX);
+
+        let generated = TokenSequence::new(generated_tokens);
+        if let Some(session_id) = &request.session_id {
+            session_tokens.extend_from_slice(prompt_tokens.as_slice());
+            session_tokens.extend_from_slice(generated.as_slice());
+            sessions.replace_cache(
+                session_id,
+                loaded_model.descriptor(),
+                served_artifact.served_artifact_digest.as_str(),
+                cache.clone(),
+                TokenSequence::new(session_tokens),
+            )?;
+        }
+        let text = loaded_model.tokenizer().decode(generated.as_slice());
+        let usage = super::GenerationUsage {
+            input_tokens: prompt_tokens.len(),
+            output_tokens: generated.len(),
+            cache_tokens: cache.len(),
+        };
+        let kv_cache =
+            psionic_runtime::KvCacheAccounting::from_states(&previous_kv_state, cache.state());
         let total_duration_ns = generation_start
             .elapsed()
             .as_nanos()
@@ -2847,6 +3229,12 @@ impl CudaLoadPlacementPolicy {
                 .unwrap_or(false)
     }
 
+    fn should_keep_aux_dense_on_host(&self, projected_device_bytes: usize) -> bool {
+        self.remaining_device_bytes
+            .map(|remaining| remaining < projected_device_bytes as u64)
+            .unwrap_or(false)
+    }
+
     fn force_host_backed_moe(&mut self) {
         self.host_backed_moe = true;
     }
@@ -3279,6 +3667,10 @@ struct GptOssCudaHybridSelected4Plan {
     projected_buffer: CudaBuffer,
     output_buffer: CudaBuffer,
     logits_buffer: CudaBuffer,
+    next_token_host_buffer: CudaHostBuffer,
+    next_token_buffer: CudaBuffer,
+    argmax_state_host_buffer: CudaHostBuffer,
+    argmax_state_buffer: CudaBuffer,
     gate_up_weights_scratch: Vec<u8>,
     down_weights_scratch: Vec<u8>,
     gate_bias_scratch: Vec<f32>,
@@ -3584,6 +3976,18 @@ impl GptOssCudaModelInner {
         let logits_buffer = backend
             .f32_buffer(self.output.rows)
             .map_err(ReferenceTextGenerationError::Runtime)?;
+        let next_token_host_buffer = backend
+            .host_buffer(std::mem::size_of::<i32>())
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let next_token_buffer = backend
+            .byte_buffer(&vec![0_u8; std::mem::size_of::<i32>()])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let argmax_state_host_buffer = backend
+            .host_buffer(std::mem::size_of::<u64>())
+            .map_err(ReferenceTextGenerationError::Runtime)?;
+        let argmax_state_buffer = backend
+            .byte_buffer(&vec![0_u8; std::mem::size_of::<u64>()])
+            .map_err(ReferenceTextGenerationError::Runtime)?;
         let mut layer_caches = Vec::with_capacity(self.layers.len());
         let mut layer_cache_oom = false;
         let expanded_tail_start = self
@@ -3682,6 +4086,10 @@ impl GptOssCudaModelInner {
             projected_buffer,
             output_buffer,
             logits_buffer,
+            next_token_host_buffer,
+            next_token_buffer,
+            argmax_state_host_buffer,
+            argmax_state_buffer,
             gate_up_weights_scratch: Vec::with_capacity(gate_up_bytes),
             down_weights_scratch: Vec::with_capacity(down_bytes),
             gate_bias_scratch: Vec::with_capacity(gate_bias_values),
@@ -4876,12 +5284,13 @@ impl GptOssCudaModelInner {
         })
     }
 
-    fn forward_step(
+    fn forward_step_with_output_mode(
         &self,
         backend: &mut CudaBackend,
         token: TokenId,
         position: usize,
         cache: &super::InMemoryKvCache,
+        output_mode: CudaStepOutputMode,
     ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
         let mut hybrid_selected4_plan = if self.family_metadata.expert_used_count == Some(4)
             && self.layers.iter().any(|layer| {
@@ -5953,30 +6362,152 @@ impl GptOssCudaModelInner {
 
             let logits_projection_start = Instant::now();
             let mut logits = Vec::new();
-            let logits_stats = if let (Some(plan), Some(storage)) =
-                (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
-            {
-                let result = cuda_quantized_matvec_with_reused_buffers(
-                    backend,
-                    storage,
-                    0,
-                    self.output.mode,
-                    self.output.rows,
-                    self.output.columns,
-                    final_hidden.as_slice(),
-                    &mut plan.hidden_input_host_buffer,
-                    &plan.hidden_input_buffer,
-                    &plan.logits_buffer,
-                )?;
-                logits = result.values;
-                result.stats
+            let mut selected_token = None;
+            if output_mode == CudaStepOutputMode::DeviceArgmax {
+                if let (Some(plan), Some(storage)) =
+                    (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
+                {
+                    plan.hidden_input_host_buffer
+                        .write_f32(final_hidden.as_slice())
+                        .map_err(ReferenceTextGenerationError::Runtime)?;
+                    let mut submission = backend.begin_submission()?;
+                    submission.copy_host_to_device(
+                        &plan.hidden_input_host_buffer,
+                        &plan.hidden_input_buffer,
+                    )?;
+                    if can_use_q8_1_mmvq(self.output.mode) {
+                        plan.argmax_state_host_buffer
+                            .write_bytes(initial_cuda_argmax_pair_bytes().as_slice())
+                            .map_err(ReferenceTextGenerationError::Runtime)?;
+                        submission.quantize_f32_to_q8_1(
+                            &plan.hidden_input_buffer,
+                            1,
+                            self.output.columns,
+                            &plan.hidden_input_q8_1_buffer,
+                        )?;
+                        submission.copy_host_to_device(
+                            &plan.argmax_state_host_buffer,
+                            &plan.argmax_state_buffer,
+                        )?;
+                        submission.quantized_matvec_q8_1_argmax(
+                            storage,
+                            0,
+                            self.output.mode,
+                            self.output.rows,
+                            self.output.columns,
+                            &plan.hidden_input_q8_1_buffer,
+                            None,
+                            &plan.argmax_state_buffer,
+                        )?;
+                        submission.copy_device_to_host(
+                            &plan.argmax_state_buffer,
+                            &plan.argmax_state_host_buffer,
+                        )?;
+                    } else {
+                        submission.quantized_matvec(
+                            storage,
+                            0,
+                            self.output.mode,
+                            self.output.rows,
+                            self.output.columns,
+                            &plan.hidden_input_buffer,
+                            &plan.logits_buffer,
+                        )?;
+                        submission.argmax_f32(
+                            &plan.logits_buffer,
+                            1,
+                            self.output.rows,
+                            &plan.next_token_buffer,
+                        )?;
+                        submission.copy_device_to_host(
+                            &plan.next_token_buffer,
+                            &plan.next_token_host_buffer,
+                        )?;
+                    }
+                    let report =
+                        submission.commit(psionic_backend_cuda::CudaCommandWait::Completed)?;
+                    perf.cuda.host_to_device_bytes = perf.cuda.host_to_device_bytes.saturating_add(
+                        final_hidden
+                            .len()
+                            .saturating_mul(std::mem::size_of::<f32>())
+                            .try_into()
+                            .unwrap_or(u64::MAX),
+                    );
+                    perf.cuda.device_to_host_bytes = perf.cuda.device_to_host_bytes.saturating_add(
+                        if can_use_q8_1_mmvq(self.output.mode) {
+                            std::mem::size_of::<u64>()
+                        } else {
+                            std::mem::size_of::<i32>()
+                        }
+                        .try_into()
+                        .unwrap_or(u64::MAX),
+                    );
+                    if can_use_q8_1_mmvq(self.output.mode) {
+                        perf.cuda.host_to_device_bytes =
+                            perf.cuda.host_to_device_bytes.saturating_add(
+                                std::mem::size_of::<u64>().try_into().unwrap_or(u64::MAX),
+                            );
+                        selected_token = Some(cuda_argmax_token_from_packed_host_buffer(
+                            &plan.argmax_state_host_buffer,
+                        )?);
+                    } else {
+                        let token = plan.next_token_host_buffer.read_i32().map_err(|error| {
+                            ReferenceTextGenerationError::Runtime(super::RuntimeError::Backend(
+                                format!(
+                                    "cuda argmax returned an invalid host token buffer: {error}",
+                                ),
+                            ))
+                        })?;
+                        selected_token = Some(cuda_argmax_token_id(token)?);
+                    }
+                    perf.cuda.submission_count = perf.cuda.submission_count.saturating_add(1);
+                    perf.cuda.sync_count = perf.cuda.sync_count.saturating_add(1);
+                    perf.cuda.kernel_launches = perf
+                        .cuda
+                        .kernel_launches
+                        .saturating_add(report.encoded_operations);
+                    kernel_count = kernel_count.saturating_add(report.encoded_operations);
+                } else {
+                    let logits_stats = self.output.matvec_profiled(
+                        backend,
+                        final_hidden.as_slice(),
+                        &mut logits,
+                    )?;
+                    accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
+                    selected_token = logits
+                        .iter()
+                        .copied()
+                        .enumerate()
+                        .max_by(|(_, left), (_, right)| left.total_cmp(right))
+                        .and_then(|(index, _)| u32::try_from(index).ok().map(TokenId));
+                    kernel_count = kernel_count.saturating_add(1);
+                }
             } else {
-                self.output
-                    .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?
-            };
-            accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
+                let logits_stats = if let (Some(plan), Some(storage)) =
+                    (hybrid_selected4_plan.as_mut(), self.output.storage.as_ref())
+                {
+                    let result = cuda_quantized_matvec_with_reused_buffers(
+                        backend,
+                        storage,
+                        0,
+                        self.output.mode,
+                        self.output.rows,
+                        self.output.columns,
+                        final_hidden.as_slice(),
+                        &mut plan.hidden_input_host_buffer,
+                        &plan.hidden_input_buffer,
+                        &plan.logits_buffer,
+                    )?;
+                    logits = result.values;
+                    result.stats
+                } else {
+                    self.output
+                        .matvec_profiled(backend, final_hidden.as_slice(), &mut logits)?
+                };
+                accumulate_cuda_matvec_stats(&mut perf, &logits_stats);
+                kernel_count = kernel_count.saturating_add(1);
+            }
             bytes_moved = bytes_moved.saturating_add(self.output.byte_length() as u64);
-            kernel_count = kernel_count.saturating_add(1);
             perf.stage_timings.logits_projection_ns = perf
                 .stage_timings
                 .logits_projection_ns
@@ -5986,7 +6517,7 @@ impl GptOssCudaModelInner {
                 key: cache_key,
                 value: cache_value,
                 logits,
-                selected_token: None,
+                selected_token,
                 kernel_count,
                 bytes_moved,
                 perf: Some(perf),
@@ -5996,6 +6527,22 @@ impl GptOssCudaModelInner {
             self.release_hybrid_selected4_plan(plan);
         }
         result
+    }
+
+    fn forward_step(
+        &self,
+        backend: &mut CudaBackend,
+        token: TokenId,
+        position: usize,
+        cache: &super::InMemoryKvCache,
+    ) -> Result<GptOssForwardStep, ReferenceTextGenerationError> {
+        self.forward_step_with_output_mode(
+            backend,
+            token,
+            position,
+            cache,
+            CudaStepOutputMode::FullLogits,
+        )
     }
 }
 
@@ -6134,18 +6681,23 @@ impl GptOssCudaLayer {
                 "feed_forward_router_weight",
             )?,
         )?;
-        let feed_forward_router_weight_device = upload_optional_cuda_dense_buffer(
-            backend,
-            "feed_forward_router_weight",
-            feed_forward_router_weight.values.as_slice(),
-            placement,
-        )?;
+        let hybrid_dense_mode = placement.host_backed_dense_tail || placement.host_backed_moe;
+        let feed_forward_router_weight_device = if hybrid_dense_mode {
+            None
+        } else {
+            upload_optional_cuda_aux_dense_buffer(
+                backend,
+                "feed_forward_router_weight",
+                feed_forward_router_weight.values.as_slice(),
+                placement,
+            )?
+        };
         if let Some(buffer) = feed_forward_router_weight_device.as_ref() {
             placement.reserve_device_bytes(buffer.byte_len());
         }
         let feed_forward_router_weight_transposed =
             transpose_dense_matrix_f32(&feed_forward_router_weight);
-        let feed_forward_router_weight_transposed_device = upload_optional_cuda_dense_buffer(
+        let feed_forward_router_weight_transposed_device = upload_optional_cuda_aux_dense_buffer(
             backend,
             "feed_forward_router_weight_transposed",
             feed_forward_router_weight_transposed.as_slice(),
@@ -6161,7 +6713,7 @@ impl GptOssCudaLayer {
             .transpose()?;
         let feed_forward_router_bias_device =
             if let Some(values) = feed_forward_router_bias.as_ref() {
-                upload_optional_cuda_dense_buffer(
+                upload_optional_cuda_aux_dense_buffer(
                     backend,
                     "feed_forward_router_bias",
                     values.as_slice(),
@@ -10499,6 +11051,27 @@ fn upload_optional_cuda_dense_buffer(
             if message.contains("out of memory") =>
         {
             placement.force_host_backed_dense_tail();
+            Ok(None)
+        }
+        Err(error) => Err(error),
+    }
+}
+
+fn upload_optional_cuda_aux_dense_buffer(
+    backend: &mut CudaBackend,
+    name: &str,
+    values: &[f32],
+    placement: &mut CudaLoadPlacementPolicy,
+) -> Result<Option<CudaBuffer>, ModelLoadError> {
+    let projected_device_bytes = values.len().saturating_mul(std::mem::size_of::<f32>());
+    if placement.should_keep_aux_dense_on_host(projected_device_bytes) {
+        return Ok(None);
+    }
+    match upload_cuda_f32_buffer(backend, name, values) {
+        Ok(buffer) => Ok(Some(buffer)),
+        Err(ModelLoadError::ArtifactFormat { message, .. })
+            if message.contains("out of memory") =>
+        {
             Ok(None)
         }
         Err(error) => Err(error),
