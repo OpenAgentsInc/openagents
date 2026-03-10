@@ -568,6 +568,7 @@ pub(super) fn apply_active_job_apple_fm_update(
             apply_apple_fm_execution_completed(state, completed)
         }
         AppleFmBridgeUpdate::Failed(failed) => apply_apple_fm_execution_failed(state, failed),
+        AppleFmBridgeUpdate::Workbench(_) => false,
     }
 }
 

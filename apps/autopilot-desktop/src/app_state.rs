@@ -91,6 +91,7 @@ pub enum PaneKind {
     GoOnline,
     ProviderStatus,
     LocalInference,
+    AppleFmWorkbench,
     EarningsScoreboard,
     RelayConnections,
     SyncHealth,
@@ -460,6 +461,50 @@ impl Default for LocalInferencePaneInputs {
     }
 }
 
+pub struct AppleFmWorkbenchPaneInputs {
+    pub instructions: TextInput,
+    pub prompt: TextInput,
+    pub model: TextInput,
+    pub session_id: TextInput,
+    pub max_tokens: TextInput,
+    pub temperature: TextInput,
+    pub top: TextInput,
+    pub probability_threshold: TextInput,
+    pub seed: TextInput,
+    pub schema_json: TextInput,
+    pub transcript_json: TextInput,
+}
+
+impl Default for AppleFmWorkbenchPaneInputs {
+    fn default() -> Self {
+        Self {
+            instructions: TextInput::new()
+                .value("You are the OpenAgents Apple FM workbench. Be concise and literal.")
+                .placeholder("Optional session instructions"),
+            prompt: TextInput::new()
+                .value("Say hello from the Apple FM workbench in one short sentence.")
+                .placeholder("Prompt to send to Apple FM"),
+            model: TextInput::new().placeholder("Optional Apple FM model override"),
+            session_id: TextInput::new().placeholder("Bridge session id"),
+            max_tokens: TextInput::new().value("128").placeholder("Max tokens"),
+            temperature: TextInput::new().value("0.2").placeholder("Temperature"),
+            top: TextInput::new().placeholder("Random sampling top-k"),
+            probability_threshold: TextInput::new()
+                .placeholder("Random sampling probability threshold"),
+            seed: TextInput::new().placeholder("Random sampling seed"),
+            schema_json: TextInput::new()
+                .value(
+                    "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"summary\": { \"type\": \"string\" },\n    \"confidence\": { \"type\": \"number\" }\n  },\n  \"required\": [\"summary\", \"confidence\"]\n}",
+                )
+                .placeholder("Structured-generation JSON schema")
+                .mono(true),
+            transcript_json: TextInput::new()
+                .placeholder("Transcript JSON for export / restore")
+                .mono(true),
+        }
+    }
+}
+
 pub struct SettingsPaneInputs {
     pub relay_url: TextInput,
     pub wallet_default_send_sats: TextInput,
@@ -668,41 +713,81 @@ fn build_mission_control_log_lines(
         }
     }
 
-    let model_status = if local_inference_runtime.busy {
-        "Local GPT-OSS 20B is loading.".to_string()
-    } else if local_inference_runtime.is_ready() {
-        format!(
-            "Local GPT-OSS 20B ready on Psionic {}.",
-            if local_inference_runtime.backend_label.trim().is_empty() {
-                "runtime"
-            } else {
-                local_inference_runtime.backend_label.as_str()
-            }
-        )
-    } else if !local_inference_runtime.artifact_present {
-        local_inference_runtime
-            .configured_model_path
+    let (model_status_stream, model_status) = if mission_control_uses_apple_fm() {
+        if provider_runtime.apple_fm.is_ready() {
+            (
+                TerminalStream::Stdout,
+                format!(
+                    "Apple Foundation Models ready via Swift bridge ({}).",
+                    provider_runtime
+                        .apple_fm
+                        .ready_model
+                        .as_deref()
+                        .unwrap_or("apple-foundation-model")
+                ),
+            )
+        } else if let Some(message) = provider_runtime
+            .apple_fm
+            .availability_message
             .as_deref()
-            .map(|path| format!("Local GPT-OSS 20B missing at {}.", path))
-            .unwrap_or_else(|| "Local GPT-OSS 20B artifact missing.".to_string())
-    } else if provider_runtime.active_inference_backend().is_none() {
-        "Local GPT-OSS 20B is present but not loaded.".to_string()
+            .or(provider_runtime.apple_fm.last_error.as_deref())
+        {
+            (
+                TerminalStream::Stderr,
+                format!("Apple Foundation Models unavailable: {message}"),
+            )
+        } else if provider_runtime.apple_fm.reachable {
+            (
+                TerminalStream::Stdout,
+                "Apple Foundation Models bridge reachable but not ready yet.".to_string(),
+            )
+        } else {
+            (
+                TerminalStream::Stderr,
+                "Apple Foundation Models bridge is not running.".to_string(),
+            )
+        }
+    } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
+        if local_inference_runtime.busy {
+            (
+                TerminalStream::Stdout,
+                "Local GPT-OSS CUDA is loading.".to_string(),
+            )
+        } else if local_inference_runtime.is_ready() {
+            (
+                TerminalStream::Stdout,
+                format!(
+                    "Local GPT-OSS ready on Psionic {}.",
+                    if local_inference_runtime.backend_label.trim().is_empty() {
+                        "cuda"
+                    } else {
+                        local_inference_runtime.backend_label.as_str()
+                    }
+                ),
+            )
+        } else if !local_inference_runtime.artifact_present {
+            (
+                TerminalStream::Stderr,
+                local_inference_runtime
+                    .configured_model_path
+                    .as_deref()
+                    .map(|path| format!("Local GPT-OSS artifact missing at {}.", path))
+                    .unwrap_or_else(|| "Local GPT-OSS artifact missing.".to_string()),
+            )
+        } else {
+            (
+                TerminalStream::Stdout,
+                "Local GPT-OSS CUDA is present but not loaded.".to_string(),
+            )
+        }
     } else {
-        format!(
-            "Serving backend ready: {}",
-            provider_runtime.execution_backend_label()
+        (
+            TerminalStream::Stderr,
+            "Mission Control needs Apple Foundation Models on macOS or GPT-OSS on NVIDIA CUDA."
+                .to_string(),
         )
     };
-    push_line(
-        if local_inference_runtime.is_ready() {
-            TerminalStream::Stdout
-        } else if !local_inference_runtime.artifact_present {
-            TerminalStream::Stderr
-        } else {
-            TerminalStream::Stdout
-        },
-        model_status,
-    );
+    push_line(model_status_stream, model_status);
 
     if let Some(action) = mission_action {
         push_line(TerminalStream::Stdout, format!("UI: {action}"));
@@ -799,6 +884,51 @@ fn build_mission_control_log_lines(
     }
 
     lines
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum MissionControlLocalRuntimeLane {
+    AppleFoundationModels,
+    NvidiaGptOss,
+}
+
+pub(crate) const fn mission_control_uses_apple_fm() -> bool {
+    cfg!(target_os = "macos")
+}
+
+pub(crate) fn mission_control_supports_cuda_gpt_oss(
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    !mission_control_uses_apple_fm()
+        && local_inference_runtime
+            .backend_label
+            .trim()
+            .eq_ignore_ascii_case("cuda")
+}
+
+pub(crate) fn mission_control_local_runtime_lane(
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> Option<MissionControlLocalRuntimeLane> {
+    if mission_control_uses_apple_fm() {
+        Some(MissionControlLocalRuntimeLane::AppleFoundationModels)
+    } else if mission_control_supports_cuda_gpt_oss(local_inference_runtime) {
+        Some(MissionControlLocalRuntimeLane::NvidiaGptOss)
+    } else {
+        None
+    }
+}
+
+pub(crate) fn mission_control_local_runtime_is_ready(
+    provider_runtime: &crate::state::provider_runtime::ProviderRuntimeState,
+    local_inference_runtime: &crate::local_inference_runtime::LocalInferenceExecutionSnapshot,
+) -> bool {
+    match mission_control_local_runtime_lane(local_inference_runtime) {
+        Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+            provider_runtime.apple_fm.is_ready()
+        }
+        Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => local_inference_runtime.is_ready(),
+        None => false,
+    }
 }
 
 fn mission_control_log_stream_for_stage(stage: JobLifecycleStage) -> TerminalStream {
@@ -7630,6 +7760,7 @@ pub struct RenderState {
     pub relay_connections_inputs: RelayConnectionsPaneInputs,
     pub network_requests_inputs: NetworkRequestsPaneInputs,
     pub local_inference_inputs: LocalInferencePaneInputs,
+    pub apple_fm_workbench_inputs: AppleFmWorkbenchPaneInputs,
     pub settings_inputs: SettingsPaneInputs,
     pub credentials_inputs: CredentialsPaneInputs,
     pub job_history_inputs: JobHistoryPaneInputs,
@@ -7668,6 +7799,7 @@ pub struct RenderState {
     pub next_runtime_command_seq: u64,
     pub provider_runtime: ProviderRuntimeState,
     pub local_inference: LocalInferencePaneState,
+    pub apple_fm_workbench: AppleFmWorkbenchPaneState,
     pub provider_admin_runtime: Option<crate::provider_admin::DesktopProviderAdminRuntime>,
     pub provider_admin_listen_addr: Option<String>,
     pub provider_admin_last_error: Option<String>,
@@ -7854,15 +7986,15 @@ impl RenderState {
         self.apple_fm_execution_worker.enqueue(command)
     }
 
-    pub fn mission_control_gpt_oss_ready(&self) -> bool {
-        self.ollama_execution.is_ready()
+    pub fn mission_control_local_runtime_ready(&self) -> bool {
+        mission_control_local_runtime_is_ready(&self.provider_runtime, &self.ollama_execution)
     }
 
     pub fn mission_control_go_online_enabled(&self) -> bool {
         !matches!(
             self.provider_runtime.mode,
             ProviderMode::Offline | ProviderMode::Degraded
-        ) || self.mission_control_gpt_oss_ready()
+        ) || self.mission_control_local_runtime_ready()
     }
 
     pub fn configured_provider_relay_urls(&self) -> Vec<String> {
@@ -7928,16 +8060,23 @@ impl RenderState {
         if self.spark_wallet.last_error.is_some() {
             blockers.push(ProviderBlocker::WalletError);
         }
-        if self.provider_runtime.active_inference_backend().is_none() {
-            if !self.provider_runtime.apple_fm.reachable {
-                blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
-            } else if !self.provider_runtime.apple_fm.is_ready() {
-                blockers.push(ProviderBlocker::AppleFoundationModelsModelUnavailable);
+        match mission_control_local_runtime_lane(&self.ollama_execution) {
+            Some(MissionControlLocalRuntimeLane::AppleFoundationModels) => {
+                if !self.provider_runtime.apple_fm.reachable {
+                    blockers.push(ProviderBlocker::AppleFoundationModelsUnavailable);
+                } else if !self.provider_runtime.apple_fm.is_ready() {
+                    blockers.push(ProviderBlocker::AppleFoundationModelsModelUnavailable);
+                }
             }
-            if !self.provider_runtime.ollama.reachable {
+            Some(MissionControlLocalRuntimeLane::NvidiaGptOss) => {
+                if !self.provider_runtime.ollama.reachable {
+                    blockers.push(ProviderBlocker::OllamaUnavailable);
+                } else if !self.provider_runtime.ollama.is_ready() {
+                    blockers.push(ProviderBlocker::OllamaModelUnavailable);
+                }
+            }
+            None => {
                 blockers.push(ProviderBlocker::OllamaUnavailable);
-            } else if !self.provider_runtime.ollama.is_ready() {
-                blockers.push(ProviderBlocker::OllamaModelUnavailable);
             }
         }
         blockers
