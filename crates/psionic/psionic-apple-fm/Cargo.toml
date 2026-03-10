@@ -1,0 +1,22 @@
+[package]
+name = "psionic-apple-fm"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+publish.workspace = true
+description = "Reusable Apple Foundation Models bridge contracts and client for Psionic"
+
+[lints]
+workspace = true
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+reqwest = { workspace = true, features = ["blocking"] }
+serde = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+serde_json = { workspace = true }

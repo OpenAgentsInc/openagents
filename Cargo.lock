@@ -549,6 +549,7 @@ dependencies = [
  "openagents-provider-substrate",
  "openagents-spark",
  "pollster",
+ "psionic-apple-fm",
  "psionic-serve",
  "reqwest",
  "serde",
@@ -6410,6 +6411,16 @@ name = "protoc-bin-vendored-win32"
 version = "3.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "95067976aca6421a523e491fce939a3e65249bac4b977adee0ee9771568e8aa3"
+
+[[package]]
+name = "psionic-apple-fm"
+version = "0.1.0"
+dependencies = [
+ "reqwest",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.17",
+]
 
 [[package]]
 name = "psionic-backend-amd-kfd"
