@@ -5,7 +5,7 @@ use codex_client::{
     DynamicToolCallOutputContentItem, DynamicToolCallResponse, ExperimentalFeatureListParams,
     ExternalAgentConfigDetectParams, ExternalAgentConfigImportParams,
     FileChangeRequestApprovalResponse, FuzzyFileSearchSessionStartParams,
-    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams, GetAccountParams,
+    FuzzyFileSearchSessionStopParams, FuzzyFileSearchSessionUpdateParams,
     ListMcpServerStatusParams, LoginAccountParams, McpServerOauthLoginParams, MergeStrategy,
     ModelListParams, ReviewDelivery, ReviewStartParams, ReviewTarget, ThreadArchiveParams,
     ThreadCompactStartParams, ThreadForkParams, ThreadLoadedListParams,

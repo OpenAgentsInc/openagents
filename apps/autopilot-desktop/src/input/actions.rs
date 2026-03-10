@@ -3058,17 +3058,7 @@ pub(super) fn run_codex_account_action(
 ) -> bool {
     match action {
         CodexAccountPaneAction::Refresh => {
-            state.codex_account.load_state = crate::app_state::PaneLoadState::Loading;
-            state.codex_account.last_error = None;
-            state.codex_account.last_action = Some("Queued account/read".to_string());
-            if let Err(error) = state.queue_codex_command(
-                crate::codex_lane::CodexLaneCommand::AccountRead(GetAccountParams {
-                    refresh_token: true,
-                }),
-            ) {
-                state.codex_account.load_state = crate::app_state::PaneLoadState::Error;
-                state.codex_account.last_error = Some(error);
-            }
+            super::reducers::queue_codex_readiness_refresh(state, true, "manual refresh");
             true
         }
         CodexAccountPaneAction::LoginChatgpt => {

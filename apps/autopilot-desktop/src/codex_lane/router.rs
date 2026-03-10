@@ -20,6 +20,7 @@ pub(super) fn run_codex_lane_loop(
                 active_thread_id: None,
                 last_error: Some(format!("Codex lane runtime initialization failed: {error}")),
                 last_status: Some("Codex lane runtime unavailable".to_string()),
+                install_probe: codex_client::probe_codex_installation(),
             };
             let _ = update_tx.send(CodexLaneUpdate::Snapshot(Box::new(snapshot)));
             return;
