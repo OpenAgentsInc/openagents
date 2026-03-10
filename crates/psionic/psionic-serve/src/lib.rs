@@ -1056,6 +1056,9 @@ pub struct GptOssCudaRuntimeMetrics {
     pub sync_count: usize,
     /// Number of quantized CUDA kernel launches used by the request.
     pub kernel_launches: usize,
+    /// Whether any decode step used the ids-driven grouped expert path.
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub grouped_expert_ids_path: bool,
 }
 
 impl GptOssCudaRuntimeMetrics {
@@ -1069,7 +1072,12 @@ impl GptOssCudaRuntimeMetrics {
         self.submission_count = self.submission_count.saturating_add(other.submission_count);
         self.sync_count = self.sync_count.saturating_add(other.sync_count);
         self.kernel_launches = self.kernel_launches.saturating_add(other.kernel_launches);
+        self.grouped_expert_ids_path |= other.grouped_expert_ids_path;
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 /// Metal-side counters surfaced by the GPT-OSS runtime.

@@ -3372,6 +3372,115 @@ __global__ void expert_mul_mat_vec_q8_1_project_kernel(
     output[selected_slot * rows + row] = result;
 }
 
+template <typename DotFn, int Vdr, int Qi, int SelectedCols, int RowsPerBlock, int WarpsPerBlock>
+__launch_bounds__(WarpsPerBlock * kWarpSize, 1)
+__global__ void expert_mul_mat_vec_q8_1_project_grouped_kernel(
+    const uint8_t *weights,
+    int row_stride,
+    int rows,
+    int rows_per_expert,
+    int block_count,
+    const int32_t *selected_ids,
+    int selected_count,
+    const Q81Block *input,
+    int input_block_stride,
+    const float *bias,
+    float *output,
+    DotFn dot_fn
+) {
+    const int row0 = RowsPerBlock * static_cast<int>(blockIdx.x);
+    const int tid = kWarpSize * static_cast<int>(threadIdx.y) + static_cast<int>(threadIdx.x);
+    const int block_start = tid / (Qi / Vdr);
+    const int quant_index = Vdr * (tid % (Qi / Vdr));
+    constexpr int blocks_per_iter = Vdr * WarpsPerBlock * kWarpSize / Qi;
+
+    float sums[SelectedCols][RowsPerBlock] = {{0.0f}};
+
+#pragma unroll
+    for (int selected_slot = 0; selected_slot < SelectedCols; ++selected_slot) {
+        if (selected_slot >= selected_count) {
+            continue;
+        }
+        const int expert_id = selected_ids[selected_slot];
+        const Q81Block *input_blocks =
+            input + static_cast<size_t>(selected_slot) * static_cast<size_t>(input_block_stride);
+
+#pragma unroll
+        for (int row_offset = 0; row_offset < RowsPerBlock; ++row_offset) {
+            const int row = row0 + row_offset;
+            if (row >= rows) {
+                continue;
+            }
+            const uint8_t *row_weights =
+                weights +
+                (static_cast<size_t>(expert_id) * static_cast<size_t>(rows_per_expert) +
+                 static_cast<size_t>(row)) *
+                    static_cast<size_t>(row_stride);
+            for (int block_index = block_start; block_index < block_count; block_index += blocks_per_iter) {
+                sums[selected_slot][row_offset] += dot_fn(
+                    row_weights,
+                    input_blocks,
+                    block_index,
+                    block_index,
+                    quant_index
+                );
+            }
+        }
+    }
+
+    __shared__ float partials[WarpsPerBlock - 1 > 0 ? WarpsPerBlock - 1 : 1][SelectedCols][RowsPerBlock][kWarpSize];
+    if (threadIdx.y > 0) {
+#pragma unroll
+        for (int selected_slot = 0; selected_slot < SelectedCols; ++selected_slot) {
+#pragma unroll
+            for (int row_offset = 0; row_offset < RowsPerBlock; ++row_offset) {
+                partials[threadIdx.y - 1][selected_slot][row_offset][threadIdx.x] =
+                    sums[selected_slot][row_offset];
+            }
+        }
+    }
+    __syncthreads();
+
+    if (threadIdx.y > 0) {
+        return;
+    }
+
+#pragma unroll
+    for (int selected_slot = 0; selected_slot < SelectedCols; ++selected_slot) {
+#pragma unroll
+        for (int row_offset = 0; row_offset < RowsPerBlock; ++row_offset) {
+#pragma unroll
+            for (int warp_index = 0; warp_index < WarpsPerBlock - 1; ++warp_index) {
+                sums[selected_slot][row_offset] +=
+                    partials[warp_index][selected_slot][row_offset][threadIdx.x];
+            }
+            sums[selected_slot][row_offset] = warp_reduce_sum(sums[selected_slot][row_offset]);
+        }
+    }
+
+    if (threadIdx.x >= RowsPerBlock) {
+        return;
+    }
+
+    const int row = row0 + static_cast<int>(threadIdx.x);
+    if (row >= rows) {
+        return;
+    }
+
+#pragma unroll
+    for (int selected_slot = 0; selected_slot < SelectedCols; ++selected_slot) {
+        if (selected_slot >= selected_count) {
+            continue;
+        }
+        const int expert_id = selected_ids[selected_slot];
+        float result = sums[selected_slot][threadIdx.x];
+        if (bias != nullptr) {
+            result += bias[expert_id * rows + row];
+        }
+        output[selected_slot * rows + row] = result;
+    }
+}
+
 template <typename DotFn, int Vdr, int Qi>
 static void launch_expert_gate_up_swiglu_q8_1_direct(
     const uint8_t *weights,
@@ -5243,10 +5352,10 @@ extern "C" int psionic_cuda_moe_down_project_q8_1_selected4(
     if (selected_count > 4) {
         return 1;
     }
-    const dim3 blocks(static_cast<unsigned int>(rows), static_cast<unsigned int>(selected_count), 1);
-    const dim3 block_dims(kWarpSize, 6, 1);
+    const dim3 blocks(static_cast<unsigned int>((rows + 1) / 2), 1, 1);
+    const dim3 block_dims(kWarpSize, 4, 1);
     if (mode == 0) {
-        expert_mul_mat_vec_q8_1_project_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi, 6><<<
+        expert_mul_mat_vec_q8_1_project_grouped_kernel<Q80Q81Dot, kQ80Q81MmvqVdr, kQ80Qi, 4, 2, 4><<<
             blocks,
             block_dims,
             0,
@@ -5266,7 +5375,7 @@ extern "C" int psionic_cuda_moe_down_project_q8_1_selected4(
             Q80Q81Dot{}
         );
     } else {
-        expert_mul_mat_vec_q8_1_project_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi, 6><<<
+        expert_mul_mat_vec_q8_1_project_grouped_kernel<Mxfp4Q81Dot, kMxfp4Q81MmvqVdr, kMxfp4Qi, 4, 2, 4><<<
             blocks,
             block_dims,
             0,
