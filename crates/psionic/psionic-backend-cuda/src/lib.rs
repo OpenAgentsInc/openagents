@@ -633,6 +633,51 @@ impl CudaSubmission {
         Ok(())
     }
 
+    /// Dequantizes one GGML row directly into a device `f32` vector.
+    pub fn dequantize_row_to_f32(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        rows: usize,
+        row_stride: usize,
+        cols: usize,
+        decode_params: &CudaBuffer,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_dequantize_row_to_f32(
+            &weights.platform,
+            mode,
+            rows,
+            row_stride,
+            cols,
+            &decode_params.platform,
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Gathers one dense row-major `f16` row directly into a device `f32`
+    /// vector using the token id stored in the decode params buffer.
+    pub fn gather_f16_row_to_f32(
+        &mut self,
+        input: &CudaBuffer,
+        rows: usize,
+        cols: usize,
+        decode_params: &CudaBuffer,
+        output: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform.encode_gather_f16_row_to_f32(
+            &input.platform,
+            rows,
+            cols,
+            &decode_params.platform,
+            &output.platform,
+        )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
     /// Launches one quantized row-wise matrix-vector product using a device
     /// `Q8_1` activation buffer.
     pub fn quantized_matvec_q8_1(
@@ -1408,6 +1453,45 @@ impl CudaSubmission {
             up_bias.map(|buffer| &buffer.platform),
             &output.platform,
         )?;
+        self.encoded_operations += 1;
+        Ok(())
+    }
+
+    /// Executes the selected4 GPT-OSS gate/up expert projection and writes the
+    /// activated expert outputs directly as `Q8_1` blocks.
+    #[allow(clippy::too_many_arguments)]
+    pub fn moe_gate_up_swiglu_q8_1_selected4_quantized(
+        &mut self,
+        weights: &CudaBuffer,
+        mode: QuantizationMode,
+        row_stride: usize,
+        rows_per_expert: usize,
+        columns: usize,
+        gate_rows: usize,
+        up_rows: usize,
+        selected_ids: &CudaBuffer,
+        selected_count: usize,
+        input_q8_1: &CudaBuffer,
+        gate_bias: Option<&CudaBuffer>,
+        up_bias: Option<&CudaBuffer>,
+        output_q8_1: &CudaBuffer,
+    ) -> Result<(), RuntimeError> {
+        self.platform
+            .encode_moe_gate_up_swiglu_q8_1_selected4_quantized(
+                &weights.platform,
+                mode,
+                row_stride,
+                rows_per_expert,
+                columns,
+                gate_rows,
+                up_rows,
+                &selected_ids.platform,
+                selected_count,
+                &input_q8_1.platform,
+                gate_bias.map(|buffer| &buffer.platform),
+                up_bias.map(|buffer| &buffer.platform),
+                &output_q8_1.platform,
+            )?;
         self.encoded_operations += 1;
         Ok(())
     }
@@ -3008,6 +3092,23 @@ mod platform {
     ) -> CudaError;
     type QuantizeQ81Kernel =
         unsafe extern "C" fn(*const c_void, c_int, c_int, *mut c_void, CudaStream) -> CudaError;
+    type DequantizeRowToF32Kernel = unsafe extern "C" fn(
+        *const c_void,
+        c_int,
+        c_int,
+        c_int,
+        *const c_void,
+        *mut c_void,
+        CudaStream,
+    ) -> CudaError;
+    type GatherF16RowToF32Kernel = unsafe extern "C" fn(
+        *const c_void,
+        c_int,
+        c_int,
+        *const c_void,
+        *mut c_void,
+        CudaStream,
+    ) -> CudaError;
 
     unsafe extern "C" {
         fn psionic_cuda_quantized_kernels_compiled() -> c_int;
@@ -3036,9 +3137,35 @@ mod platform {
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
+        fn psionic_cuda_q8_0_dequantize_row_to_f32(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            decode_params: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_mxfp4_dequantize_row_to_f32(
+            weights: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            row_stride: c_int,
+            decode_params: *const c_void,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
         fn psionic_cuda_cast_f32_to_f16(
             input: *const c_void,
             element_count: c_int,
+            output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_gather_f16_row_to_f32(
+            input: *const c_void,
+            rows: c_int,
+            cols: c_int,
+            decode_params: *const c_void,
             output: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
@@ -3351,6 +3478,22 @@ mod platform {
             gate_bias: *const c_void,
             up_bias: *const c_void,
             output: *mut c_void,
+            stream: CudaStream,
+        ) -> CudaError;
+        fn psionic_cuda_moe_gate_up_swiglu_q8_1_selected4_quantized(
+            weights: *const c_void,
+            mode: c_int,
+            row_stride: c_int,
+            rows_per_expert: c_int,
+            columns: c_int,
+            gate_rows: c_int,
+            up_rows: c_int,
+            selected_ids: *const c_void,
+            selected_count: c_int,
+            input_q8_1: *const c_void,
+            gate_bias: *const c_void,
+            up_bias: *const c_void,
+            output_q8_1: *mut c_void,
             stream: CudaStream,
         ) -> CudaError;
         fn psionic_cuda_moe_down_aggregate(
@@ -4069,6 +4212,86 @@ mod platform {
                     )
                 },
                 "psionic_cuda_quantize_q8_1",
+            )
+        }
+
+        pub(super) fn encode_dequantize_row_to_f32(
+            &mut self,
+            weights: &PlatformBuffer,
+            mode: QuantizationMode,
+            rows: usize,
+            row_stride: usize,
+            cols: usize,
+            decode_params: &PlatformBuffer,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            if !quantized_kernels_compiled() {
+                return Err(RuntimeError::Backend(String::from(
+                    "cuda quantized text-generation kernels are not available in this build",
+                )));
+            }
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda dequantize row rows exceed c_int"))
+            })?;
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda dequantize row stride exceeds c_int"))
+            })?;
+            let cols = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda dequantize row cols exceed c_int"))
+            })?;
+            let kernel: DequantizeRowToF32Kernel = match mode {
+                QuantizationMode::GgmlQ8_0 => psionic_cuda_q8_0_dequantize_row_to_f32,
+                QuantizationMode::GgmlMxfp4 => psionic_cuda_mxfp4_dequantize_row_to_f32,
+                _ => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda dequantize row does not support mode {mode:?}"
+                    )));
+                }
+            };
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    kernel(
+                        weights.inner.device_ptr.cast(),
+                        rows,
+                        cols,
+                        row_stride,
+                        decode_params.inner.device_ptr.cast(),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_dequantize_row_to_f32",
+            )
+        }
+
+        pub(super) fn encode_gather_f16_row_to_f32(
+            &mut self,
+            input: &PlatformBuffer,
+            rows: usize,
+            cols: usize,
+            decode_params: &PlatformBuffer,
+            output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let rows = c_int::try_from(rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda gather f16 row rows exceed c_int"))
+            })?;
+            let cols = c_int::try_from(cols).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda gather f16 row cols exceed c_int"))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    (psionic_cuda_gather_f16_row_to_f32 as GatherF16RowToF32Kernel)(
+                        input.inner.device_ptr.cast(),
+                        rows,
+                        cols,
+                        decode_params.inner.device_ptr.cast(),
+                        output.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_gather_f16_row_to_f32",
             )
         }
 
@@ -5360,6 +5583,86 @@ mod platform {
         }
 
         #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_gate_up_swiglu_q8_1_selected4_quantized(
+            &mut self,
+            weights: &PlatformBuffer,
+            mode: QuantizationMode,
+            row_stride: usize,
+            rows_per_expert: usize,
+            columns: usize,
+            gate_rows: usize,
+            up_rows: usize,
+            selected_ids: &PlatformBuffer,
+            selected_count: usize,
+            input_q8_1: &PlatformBuffer,
+            gate_bias: Option<&PlatformBuffer>,
+            up_bias: Option<&PlatformBuffer>,
+            output_q8_1: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            let mode = match mode {
+                QuantizationMode::GgmlQ8_0 => 0,
+                QuantizationMode::GgmlMxfp4 => 1,
+                other => {
+                    return Err(RuntimeError::Backend(format!(
+                        "cuda quantized selected4 moe gate/up kernel does not support {other:?}"
+                    )));
+                }
+            };
+            let row_stride = c_int::try_from(row_stride).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized moe gate/up row stride exceeds c_int",
+                ))
+            })?;
+            let rows_per_expert = c_int::try_from(rows_per_expert).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized moe gate/up rows per expert exceeds c_int",
+                ))
+            })?;
+            let columns = c_int::try_from(columns).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized moe gate/up columns exceed c_int",
+                ))
+            })?;
+            let gate_rows = c_int::try_from(gate_rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda quantized moe gate rows exceed c_int"))
+            })?;
+            let up_rows = c_int::try_from(up_rows).map_err(|_| {
+                RuntimeError::Backend(String::from("cuda quantized moe up rows exceed c_int"))
+            })?;
+            let selected_count = c_int::try_from(selected_count).map_err(|_| {
+                RuntimeError::Backend(String::from(
+                    "cuda quantized moe selected count exceeds c_int",
+                ))
+            })?;
+            self.runtime.set_device()?;
+            self.runtime.check(
+                unsafe {
+                    psionic_cuda_moe_gate_up_swiglu_q8_1_selected4_quantized(
+                        weights.inner.device_ptr.cast(),
+                        mode,
+                        row_stride,
+                        rows_per_expert,
+                        columns,
+                        gate_rows,
+                        up_rows,
+                        selected_ids.inner.device_ptr.cast(),
+                        selected_count,
+                        input_q8_1.inner.device_ptr.cast(),
+                        gate_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        up_bias
+                            .map(|buffer| buffer.inner.device_ptr.cast())
+                            .unwrap_or(std::ptr::null_mut()),
+                        output_q8_1.inner.device_ptr.cast(),
+                        self.stream,
+                    )
+                },
+                "psionic_cuda_moe_gate_up_swiglu_q8_1_selected4_quantized",
+            )
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_moe_down_aggregate(
             &mut self,
             weights: &PlatformBuffer,
@@ -6107,6 +6410,34 @@ mod platform {
             )))
         }
 
+        pub(super) fn encode_dequantize_row_to_f32(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _mode: QuantizationMode,
+            _rows: usize,
+            _row_stride: usize,
+            _cols: usize,
+            _decode_params: &PlatformBuffer,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        pub(super) fn encode_gather_f16_row_to_f32(
+            &mut self,
+            _input: &PlatformBuffer,
+            _rows: usize,
+            _cols: usize,
+            _decode_params: &PlatformBuffer,
+            _output: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
         pub(super) fn encode_cast_f32_to_f16(
             &mut self,
             _input: &PlatformBuffer,
@@ -6512,6 +6843,28 @@ mod platform {
         }
 
         #[allow(clippy::too_many_arguments)]
+        pub(super) fn encode_moe_gate_up_swiglu_q8_1_selected4_quantized(
+            &mut self,
+            _weights: &PlatformBuffer,
+            _mode: QuantizationMode,
+            _row_stride: usize,
+            _rows_per_expert: usize,
+            _columns: usize,
+            _gate_rows: usize,
+            _up_rows: usize,
+            _selected_ids: &PlatformBuffer,
+            _selected_count: usize,
+            _input_q8_1: &PlatformBuffer,
+            _gate_bias: Option<&PlatformBuffer>,
+            _up_bias: Option<&PlatformBuffer>,
+            _output_q8_1: &PlatformBuffer,
+        ) -> Result<(), RuntimeError> {
+            Err(RuntimeError::Backend(String::from(
+                "cuda quantized text-generation kernels require Linux CUDA support",
+            )))
+        }
+
+        #[allow(clippy::too_many_arguments)]
         pub(super) fn encode_moe_down_aggregate(
             &mut self,
             _weights: &PlatformBuffer,
@@ -6616,6 +6969,7 @@ mod platform {
 #[cfg(test)]
 mod tests {
     use psionic_backend_cpu::CpuBackend;
+    use psionic_backend_cpu::decode_quantized_row_into;
     use psionic_backend_cpu::quantized_row_dot;
     use psionic_compiler::compile_graph;
     use psionic_core::{DType, DeviceKind, QuantizationMode, Shape, TensorSpec};
@@ -7041,6 +7395,43 @@ mod tests {
     }
 
     #[test]
+    fn cuda_backend_dequantizes_q8_0_row_when_available() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let row_a = sample_q8_0_row(0.25, 1);
+        let row_b = sample_q8_0_row(0.5, -1);
+        let mut expected = Vec::new();
+        decode_quantized_row_into(QuantizationMode::GgmlQ8_0, &row_b, &mut expected)?;
+        let mut bytes = row_a;
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let decode_params = backend.byte_buffer(&i32_slice_to_bytes(&[0_i32, 0_i32, 1_i32]))?;
+        let output = backend.f32_buffer(32)?;
+        let mut submission = backend.begin_submission()?;
+        submission.dequantize_row_to_f32(
+            &weights,
+            QuantizationMode::GgmlQ8_0,
+            2,
+            34,
+            32,
+            &decode_params,
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 1);
+        assert_close(&output.read_f32()?, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
     fn cuda_backend_executes_mxfp4_quantized_matvec_when_available()
     -> Result<(), Box<dyn std::error::Error>> {
         let mut backend = CudaBackend::new();
@@ -7065,6 +7456,69 @@ mod tests {
         let actual =
             backend.quantized_matvec(&weights, QuantizationMode::GgmlMxfp4, 2, 32, &input)?;
         assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_dequantizes_mxfp4_row_when_available() -> Result<(), Box<dyn std::error::Error>>
+    {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let row_a = sample_mxfp4_row(4);
+        let row_b = sample_mxfp4_row(6);
+        let mut expected = Vec::new();
+        decode_quantized_row_into(QuantizationMode::GgmlMxfp4, &row_b, &mut expected)?;
+        let mut bytes = row_a;
+        bytes.extend_from_slice(&row_b);
+        let weights = backend.byte_buffer(&bytes)?;
+        let decode_params = backend.byte_buffer(&i32_slice_to_bytes(&[0_i32, 0_i32, 1_i32]))?;
+        let output = backend.f32_buffer(32)?;
+        let mut submission = backend.begin_submission()?;
+        submission.dequantize_row_to_f32(
+            &weights,
+            QuantizationMode::GgmlMxfp4,
+            2,
+            17,
+            32,
+            &decode_params,
+            &output,
+        )?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 1);
+        assert_close(&output.read_f32()?, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_backend_gathers_f16_row_into_f32_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        let row_a = sample_reference_vector();
+        let row_b = sample_q8_1_exact_vector();
+        let mut bytes =
+            Vec::with_capacity((row_a.len() + row_b.len()) * std::mem::size_of::<u16>());
+        for value in row_a.iter().chain(row_b.iter()) {
+            bytes.extend_from_slice(&f32_to_f16_bits(*value).to_le_bytes());
+        }
+        let input = backend.byte_buffer(&bytes)?;
+        let decode_params = backend.byte_buffer(&i32_slice_to_bytes(&[0_i32, 0_i32, 1_i32]))?;
+        let output = backend.f32_buffer(row_b.len())?;
+        let mut submission = backend.begin_submission()?;
+        submission.gather_f16_row_to_f32(&input, 2, row_b.len(), &decode_params, &output)?;
+        let report = submission.commit(CudaCommandWait::Completed)?;
+        assert_eq!(report.encoded_operations, 1);
+        assert_close(&output.read_f32()?, &row_b, 1e-3);
         Ok(())
     }
 
@@ -8045,6 +8499,91 @@ mod tests {
             up_rows,
         )?;
         assert_close(&actual, &expected, 1e-4);
+        Ok(())
+    }
+
+    #[test]
+    fn cuda_submission_executes_mxfp4_moe_gate_up_swiglu_q8_1_selected4_quantized_when_available()
+    -> Result<(), Box<dyn std::error::Error>> {
+        let mut backend = CudaBackend::new();
+        let Some(_selected) = backend.selected_device().cloned() else {
+            assert_eq!(backend.health().status, HealthStatus::Offline);
+            return Ok(());
+        };
+        if !backend.quantized_kernels_available() {
+            return Ok(());
+        }
+
+        let input = sample_q8_1_exact_vector();
+        let gate_rows = 32usize;
+        let up_rows = 32usize;
+        let rows_per_expert = gate_rows + up_rows;
+        let selected_ids = [3_i32, 1_i32, 0_i32, 2_i32];
+        let selected_count = selected_ids.len();
+        let weights_bytes = sample_mxfp4_expert_gate_up_weights(4, gate_rows, up_rows);
+        let weights = backend.byte_buffer(&weights_bytes)?;
+        let input_buffer = backend.input_buffer(Shape::new(vec![input.len()]), input.clone())?;
+        let input_q8_1 =
+            backend.byte_buffer(&vec![0_u8; crate::ggml_q8_1_storage_bytes(1, 32)?])?;
+        let selected_ids_buffer = backend.byte_buffer(&i32_slice_to_bytes(&selected_ids))?;
+        let output_f32 = backend.f32_buffer(selected_count * gate_rows)?;
+        let output_q8_1 = backend.byte_buffer(&vec![
+            0_u8;
+            crate::ggml_q8_1_storage_bytes(
+                selected_count,
+                gate_rows
+            )?
+        ])?;
+        let separate_q8_1 = backend.byte_buffer(&vec![
+            0_u8;
+            crate::ggml_q8_1_storage_bytes(
+                selected_count,
+                gate_rows
+            )?
+        ])?;
+
+        let mut separate = backend.begin_submission()?;
+        separate.quantize_f32_to_q8_1(&input_buffer, 1, 32, &input_q8_1)?;
+        separate.moe_gate_up_swiglu_q8_1(
+            &weights,
+            QuantizationMode::GgmlMxfp4,
+            17,
+            rows_per_expert,
+            32,
+            gate_rows,
+            up_rows,
+            &selected_ids_buffer,
+            selected_count,
+            &input_q8_1,
+            None,
+            None,
+            &output_f32,
+        )?;
+        separate.quantize_f32_to_q8_1(&output_f32, selected_count, gate_rows, &separate_q8_1)?;
+        let separate_report = separate.commit(CudaCommandWait::Completed)?;
+        assert_eq!(separate_report.encoded_operations, 3);
+
+        let mut fused = backend.begin_submission()?;
+        fused.quantize_f32_to_q8_1(&input_buffer, 1, 32, &input_q8_1)?;
+        fused.moe_gate_up_swiglu_q8_1_selected4_quantized(
+            &weights,
+            QuantizationMode::GgmlMxfp4,
+            17,
+            rows_per_expert,
+            32,
+            gate_rows,
+            up_rows,
+            &selected_ids_buffer,
+            selected_count,
+            &input_q8_1,
+            None,
+            None,
+            &output_q8_1,
+        )?;
+        let fused_report = fused.commit(CudaCommandWait::Completed)?;
+        assert_eq!(fused_report.encoded_operations, 2);
+
+        assert_eq!(output_q8_1.read_bytes()?, separate_q8_1.read_bytes()?);
         Ok(())
     }
 

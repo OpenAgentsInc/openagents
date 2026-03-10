@@ -1416,3 +1416,20 @@ The right near-term target is smaller:
 - This makes `124.36 tok/s` the real floor to beat on `#3276`; the next work
   is still decode-side CUDA parity with `llama.cpp`, not more cache-lookup
   changes.
+
+## 2026-03-09 GPT-OSS Router32 CUDA Checkpoint
+
+- Current exact benchmark floor on this NVIDIA host:
+  Psionic `prompt_cache_hit = 134.62 tok/s`
+- Current same-run control:
+  `llama.cpp prompt_cache_hit = 168.81 tok/s`
+- This checkpoint keeps a dedicated one-warp CUDA router path for the exact
+  GPT-OSS `32`-expert case and keeps the split-router MoE path selected,
+  because the larger fused residual+norm+router kernel still loses on this GPU.
+- Two nearby branches were measured and rejected:
+  `rows_per_block = 16` for the regular shared-input quantized matvec path
+  regressed to `132.82 tok/s`, and a `4 rows/block` selected4 MoE down
+  aggregate rewrite regressed to `131.79 tok/s`.
+- `134.62 tok/s` is the new floor to beat on `#3276`; the next wave should
+  stay focused on ids-enabled grouped-expert execution and decode-attention
+  parity with `llama.cpp`.

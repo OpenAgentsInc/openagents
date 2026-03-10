@@ -1006,3 +1006,47 @@ What should happen next:
 - bias the next wave toward direct `llama.cpp` parity in ids-enabled
   grouped-expert execution and attention dispatch, not more prefix-cache
   micro-tuning
+
+## 2026-03-09 Router32 CUDA Checkpoint
+
+The next durable win came from aligning the GPT-OSS router hot path more
+closely with the exact `32`-expert geometry of the model instead of continuing
+to push on cache bookkeeping.
+
+What changed:
+
+- the CUDA router path now dispatches a dedicated one-warp
+  `router_topk_softmax_32_kernel` when `expert_count == 32`
+- that keeps one lane per expert and avoids paying the generic
+  `kBlockSize = 256` router launch on the exact GPT-OSS case
+- the split router path remains selected for the GPT-OSS MoE lane because the
+  larger fused residual+norm+router kernel is still slower on this host
+
+Measured on the exact same benchmark contract:
+
+- Psionic `cold`: `22.40 tok/s`
+- Psionic `warm_non_hit`: `63.37 tok/s`
+- Psionic `prompt_cache_hit`: `134.62 tok/s`
+- `llama.cpp` `prompt_cache_hit`: `168.81 tok/s`
+
+Interpretation:
+
+- this is the first checkpoint in the current wave that moves Psionic
+  materially above the truthful `124.36 tok/s` floor
+- the gain is real enough to keep: about `+10.26 tok/s` on the tracked
+  `prompt_cache_hit` lane
+- the remaining gap to `llama.cpp` is now about `34.19 tok/s` on this host
+
+What was ruled out in the same iteration:
+
+- widening the regular shared-input quantized matvec launch from
+  `rows_per_block = 8` to `16` regressed the tracked lane to `132.82 tok/s`
+- rewriting the selected4 MoE down-aggregate kernel to handle `4` rows per
+  block regressed the tracked lane to `131.79 tok/s`
+
+What should happen next:
+
+- treat `134.62 tok/s` as the new floor to beat on `#3276`
+- keep the router32 specialization and the split-router GPT-OSS path
+- focus the next work on the remaining `llama.cpp`-parity gaps:
+  ids-enabled grouped expert execution and decode attention dispatch
