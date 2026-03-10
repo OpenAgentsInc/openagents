@@ -510,6 +510,7 @@ impl Default for JobHistoryPaneInputs {
 
 pub struct ChatPaneInputs {
     pub composer: TextInput,
+    pub thread_search: TextInput,
 }
 
 impl Default for ChatPaneInputs {
@@ -517,6 +518,9 @@ impl Default for ChatPaneInputs {
         Self {
             composer: TextInput::new()
                 .placeholder("Write a message, ask for analysis, or command your Autopilot...")
+                .border_color_focused(theme::border::FOCUS),
+            thread_search: TextInput::new()
+                .placeholder("Filter thread history...")
                 .border_color_focused(theme::border::FOCUS),
         }
     }
@@ -822,6 +826,7 @@ pub enum AutopilotMessageStatus {
     Error,
 }
 
+#[derive(Clone)]
 pub struct AutopilotMessage {
     pub id: u64,
     pub role: AutopilotRole,
@@ -1062,10 +1067,13 @@ impl AutopilotChatCollaborationMode {
 #[derive(Clone)]
 pub struct AutopilotThreadMetadata {
     pub thread_name: Option<String>,
+    pub preview: Option<String>,
     pub status: Option<String>,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub created_at: Option<i64>,
+    pub updated_at: Option<i64>,
     pub model: Option<String>,
     pub service_tier: AutopilotChatServiceTier,
     pub reasoning_effort: Option<String>,
@@ -1079,10 +1087,13 @@ impl Default for AutopilotThreadMetadata {
     fn default() -> Self {
         Self {
             thread_name: None,
+            preview: None,
             status: None,
             loaded: false,
             cwd: None,
             path: None,
+            created_at: None,
+            updated_at: None,
             model: None,
             service_tier: AutopilotChatServiceTier::Default,
             reasoning_effort: Some("medium".to_string()),
@@ -1104,10 +1115,13 @@ pub struct AutopilotThreadResumeTarget {
 pub struct AutopilotThreadListEntry {
     pub thread_id: String,
     pub thread_name: Option<String>,
+    pub preview: String,
     pub status: Option<String>,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1151,6 +1165,7 @@ pub struct AutopilotChatState {
     pub sandbox_mode: codex_client::SandboxMode,
     pub threads: Vec<String>,
     pub thread_metadata: std::collections::HashMap<String, AutopilotThreadMetadata>,
+    pub thread_transcript_cache: std::collections::HashMap<String, Vec<AutopilotMessage>>,
     pub active_thread_id: Option<String>,
     pub selected_workspace: ChatWorkspaceSelection,
     pub managed_chat_projection: ManagedChatProjectionState,
@@ -1214,6 +1229,7 @@ impl Default for AutopilotChatState {
             sandbox_mode: codex_client::SandboxMode::DangerFullAccess,
             threads: Vec::new(),
             thread_metadata: std::collections::HashMap::new(),
+            thread_transcript_cache: std::collections::HashMap::new(),
             active_thread_id: None,
             selected_workspace: ChatWorkspaceSelection::Autopilot,
             managed_chat_projection: ManagedChatProjectionState::default(),
@@ -2231,10 +2247,21 @@ impl AutopilotChatState {
                 entry.thread_id.clone(),
                 AutopilotThreadMetadata {
                     thread_name: entry.thread_name,
+                    preview: if entry.preview.trim().is_empty() {
+                        previous.preview
+                    } else {
+                        Some(entry.preview)
+                    },
                     status: entry.status,
                     loaded: entry.loaded,
                     cwd: entry.cwd.or(previous.cwd),
                     path: entry.path.or(previous.path),
+                    created_at: (entry.created_at > 0)
+                        .then_some(entry.created_at)
+                        .or(previous.created_at),
+                    updated_at: (entry.updated_at > 0)
+                        .then_some(entry.updated_at)
+                        .or(previous.updated_at),
                     model: previous.model,
                     service_tier: previous.service_tier,
                     reasoning_effort: previous.reasoning_effort,
@@ -2262,12 +2289,56 @@ impl AutopilotChatState {
         }
     }
 
+    fn cache_active_thread_transcript(&mut self) {
+        let Some(thread_id) = self.active_thread_id.clone() else {
+            return;
+        };
+        if self.messages.is_empty() {
+            return;
+        }
+        self.thread_transcript_cache
+            .insert(thread_id, self.messages.clone());
+    }
+
+    fn restore_cached_thread_transcript(&mut self, thread_id: &str) {
+        let Some(messages) = self.thread_transcript_cache.get(thread_id).cloned() else {
+            self.set_active_thread_transcript(thread_id, Vec::new());
+            return;
+        };
+        self.apply_active_thread_messages(thread_id, messages);
+    }
+
+    pub fn cache_thread_transcript(
+        &mut self,
+        thread_id: &str,
+        messages: Vec<(AutopilotRole, String)>,
+    ) {
+        let mut cached_messages = Vec::new();
+        let mut next_message_id = 1u64;
+        for (role, content) in messages {
+            if content.trim().is_empty() {
+                continue;
+            }
+            cached_messages.push(AutopilotMessage {
+                id: next_message_id,
+                role,
+                status: AutopilotMessageStatus::Done,
+                content,
+                structured: None,
+            });
+            next_message_id = next_message_id.saturating_add(1);
+        }
+        self.thread_transcript_cache
+            .insert(thread_id.to_string(), cached_messages);
+    }
+
     pub fn select_thread_by_index(&mut self, index: usize) -> Option<AutopilotThreadResumeTarget> {
         let thread_id = self.threads.get(index).cloned()?;
+        self.cache_active_thread_transcript();
         self.active_thread_id = Some(thread_id.clone());
         self.reset_transcript_scroll();
         self.last_error = None;
-        self.set_active_thread_transcript(&thread_id, Vec::new());
+        self.restore_cached_thread_transcript(&thread_id);
         let metadata = self.thread_metadata.get(&thread_id).cloned();
         Some(AutopilotThreadResumeTarget {
             thread_id,
@@ -2300,6 +2371,7 @@ impl AutopilotChatState {
     pub fn remove_thread(&mut self, thread_id: &str) {
         self.threads.retain(|value| value != thread_id);
         self.thread_metadata.remove(thread_id);
+        self.thread_transcript_cache.remove(thread_id);
         self.pending_turn_metadata
             .retain(|metadata| metadata.thread_id != thread_id);
         self.turn_metadata_by_turn_id
@@ -2313,32 +2385,31 @@ impl AutopilotChatState {
         }
         if self.active_thread_id.as_deref() == Some(thread_id) {
             self.active_thread_id = self.threads.first().cloned();
+            if let Some(next_thread_id) = self.active_thread_id.clone() {
+                self.restore_cached_thread_transcript(&next_thread_id);
+            } else {
+                self.apply_active_thread_messages("", Vec::new());
+            }
         }
     }
 
-    pub fn set_active_thread_transcript(
-        &mut self,
-        thread_id: &str,
-        messages: Vec<(AutopilotRole, String)>,
-    ) {
-        if !self.is_active_thread(thread_id) {
+    fn apply_active_thread_messages(&mut self, thread_id: &str, messages: Vec<AutopilotMessage>) {
+        if !thread_id.is_empty() && !self.is_active_thread(thread_id) {
             return;
         }
 
-        self.messages.clear();
-        self.next_message_id = 1;
-        for (role, content) in messages {
-            if content.trim().is_empty() {
-                continue;
-            }
-            self.messages.push(AutopilotMessage {
-                id: self.next_message_id,
-                role,
-                status: AutopilotMessageStatus::Done,
-                content,
-                structured: None,
-            });
-            self.next_message_id = self.next_message_id.saturating_add(1);
+        self.messages = messages;
+        self.next_message_id = self
+            .messages
+            .iter()
+            .map(|message| message.id)
+            .max()
+            .unwrap_or(0)
+            .saturating_add(1)
+            .max(1);
+        if !thread_id.is_empty() {
+            self.thread_transcript_cache
+                .insert(thread_id.to_string(), self.messages.clone());
         }
 
         self.active_turn_id = None;
@@ -2368,6 +2439,33 @@ impl AutopilotChatState {
         self.turn_timeline.clear();
         self.transcript_selection = None;
         self.last_error = None;
+    }
+
+    pub fn set_active_thread_transcript(
+        &mut self,
+        thread_id: &str,
+        messages: Vec<(AutopilotRole, String)>,
+    ) {
+        if !self.is_active_thread(thread_id) {
+            return;
+        }
+
+        let mut active_messages = Vec::new();
+        let mut next_message_id = 1u64;
+        for (role, content) in messages {
+            if content.trim().is_empty() {
+                continue;
+            }
+            active_messages.push(AutopilotMessage {
+                id: next_message_id,
+                role,
+                status: AutopilotMessageStatus::Done,
+                content,
+                structured: None,
+            });
+            next_message_id = next_message_id.saturating_add(1);
+        }
+        self.apply_active_thread_messages(thread_id, active_messages);
     }
 
     pub fn submit_prompt(&mut self, prompt: String) {
@@ -3217,6 +3315,78 @@ impl AutopilotChatState {
         self.thread_metadata
             .get(thread_id)
             .map(|metadata| metadata.loaded)
+    }
+
+    pub fn active_thread_preview(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.preview.as_deref())
+    }
+
+    pub fn active_thread_path(&self) -> Option<&str> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.path.as_deref())
+    }
+
+    pub fn active_thread_updated_at(&self) -> Option<i64> {
+        let thread_id = self.active_thread_id.as_ref()?;
+        self.thread_metadata
+            .get(thread_id)
+            .and_then(|metadata| metadata.updated_at)
+    }
+
+    pub fn suggested_thread_name(&self, thread_id: &str) -> Option<String> {
+        let active_candidate = if self.is_active_thread(thread_id) {
+            self.messages
+                .iter()
+                .find(|message| message.role == AutopilotRole::User)
+                .map(|message| message.content.as_str())
+        } else {
+            None
+        };
+        active_candidate
+            .and_then(Self::sanitized_thread_title_candidate)
+            .or_else(|| {
+                self.thread_transcript_cache
+                    .get(thread_id)
+                    .and_then(|messages| {
+                        messages
+                            .iter()
+                            .find(|message| message.role == AutopilotRole::User)
+                            .and_then(|message| {
+                                Self::sanitized_thread_title_candidate(message.content.as_str())
+                            })
+                    })
+            })
+            .or_else(|| {
+                self.thread_metadata
+                    .get(thread_id)
+                    .and_then(|metadata| metadata.preview.as_deref())
+                    .and_then(Self::sanitized_thread_title_candidate)
+            })
+    }
+
+    fn sanitized_thread_title_candidate(value: &str) -> Option<String> {
+        let normalized = value
+            .lines()
+            .map(str::trim)
+            .find(|line| !line.is_empty() && !line.starts_with("```"))?
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" ");
+        if normalized.is_empty() {
+            return None;
+        }
+        let mut candidate = normalized.chars().take(64).collect::<String>();
+        if normalized.chars().count() > 64 {
+            candidate = candidate
+                .trim_end_matches([' ', ',', '.', ':', ';'])
+                .to_string();
+        }
+        (!candidate.is_empty()).then_some(candidate)
     }
 
     pub fn thread_label(&self, thread_id: &str) -> String {
@@ -7499,10 +7669,13 @@ mod tests {
         chat.set_thread_entries(vec![super::AutopilotThreadListEntry {
             thread_id: "thread-other".to_string(),
             thread_name: Some("Other".to_string()),
+            preview: "other preview".to_string(),
             status: Some("idle".to_string()),
             loaded: false,
             cwd: Some("/tmp/other".to_string()),
             path: None,
+            created_at: 1_700_000_000,
+            updated_at: 1_700_000_100,
         }]);
 
         assert_eq!(chat.active_thread_id.as_deref(), Some("thread-active"));
@@ -7549,18 +7722,24 @@ mod tests {
             super::AutopilotThreadListEntry {
                 thread_id: "thread-a".to_string(),
                 thread_name: Some("Alpha".to_string()),
+                preview: "first preview".to_string(),
                 status: Some("idle".to_string()),
                 loaded: false,
                 cwd: Some("/tmp/a".to_string()),
                 path: Some("/tmp/a.jsonl".to_string()),
+                created_at: 1_700_000_000,
+                updated_at: 1_700_000_100,
             },
             super::AutopilotThreadListEntry {
                 thread_id: "thread-b".to_string(),
                 thread_name: None,
+                preview: "second preview".to_string(),
                 status: Some("active:waitingOnApproval".to_string()),
                 loaded: false,
                 cwd: Some("/tmp/b".to_string()),
                 path: None,
+                created_at: 1_700_000_200,
+                updated_at: 1_700_000_300,
             },
         ]);
 
@@ -7569,6 +7748,11 @@ mod tests {
         assert_eq!(chat.thread_label("thread-a"), "Alpha [thread-a]");
         assert_eq!(chat.thread_metadata["thread-a"].loaded, false);
         assert_eq!(chat.thread_metadata["thread-b"].loaded, true);
+        assert_eq!(
+            chat.thread_metadata["thread-a"].preview.as_deref(),
+            Some("first preview")
+        );
+        assert_eq!(chat.active_thread_updated_at(), Some(1_700_000_100));
 
         chat.cycle_thread_filter_archived();
         chat.cycle_thread_filter_sort_key();
@@ -7588,6 +7772,41 @@ mod tests {
         assert_eq!(params.model_providers, Some(vec!["openai".to_string()]));
         assert_eq!(params.search_term.as_deref(), Some("alpha"));
         assert_eq!(params.cwd.as_deref(), Some("/workspace"));
+    }
+
+    #[test]
+    fn chat_state_restores_cached_transcript_when_switching_back() {
+        let mut chat = AutopilotChatState::default();
+        chat.ensure_thread("thread-a".to_string());
+        chat.set_active_thread_transcript(
+            "thread-a",
+            vec![(AutopilotRole::User, "alpha".to_string())],
+        );
+        chat.remember_thread("thread-b");
+
+        let thread_b_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-b")
+            .expect("thread-b should exist");
+        chat.select_thread_by_index(thread_b_index)
+            .expect("thread-b should select");
+        chat.set_active_thread_transcript(
+            "thread-b",
+            vec![(AutopilotRole::User, "beta".to_string())],
+        );
+
+        let thread_a_index = chat
+            .threads
+            .iter()
+            .position(|thread_id| thread_id == "thread-a")
+            .expect("thread-a should exist");
+        chat.select_thread_by_index(thread_a_index)
+            .expect("thread-a should select");
+
+        assert_eq!(chat.active_thread_id.as_deref(), Some("thread-a"));
+        assert_eq!(chat.messages.len(), 1);
+        assert_eq!(chat.messages[0].content, "alpha");
     }
 
     #[test]

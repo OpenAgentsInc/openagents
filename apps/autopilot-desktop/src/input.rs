@@ -2576,6 +2576,8 @@ pub(super) fn run_pane_hit_action(
         PaneHitAction::ChatArchiveThread => run_chat_archive_thread_action(state),
         PaneHitAction::ChatUnarchiveThread => run_chat_unarchive_thread_action(state),
         PaneHitAction::ChatRenameThread => run_chat_rename_thread_action(state),
+        PaneHitAction::ChatReloadThread => run_chat_reload_thread_action(state),
+        PaneHitAction::ChatCopyLastOutput => run_chat_copy_last_output_action(state),
         PaneHitAction::ChatRollbackThread => run_chat_rollback_thread_action(state),
         PaneHitAction::ChatCompactThread => run_chat_compact_thread_action(state),
         PaneHitAction::ChatUnsubscribeThread => run_chat_unsubscribe_thread_action(state),
@@ -2906,11 +2908,14 @@ fn handle_chat_keyboard_input(
     handle_focused_keyboard_submit(
         state,
         logical_key,
-        |s| s.chat_inputs.composer.is_focused(),
+        |s| s.chat_inputs.composer.is_focused() || s.chat_inputs.thread_search.is_focused(),
         dispatch_chat_input_event,
         |s| {
             if s.chat_inputs.composer.is_focused() {
                 return run_chat_submit_action(s);
+            }
+            if s.chat_inputs.thread_search.is_focused() {
+                return run_chat_refresh_threads_action(s);
             }
             false
         },

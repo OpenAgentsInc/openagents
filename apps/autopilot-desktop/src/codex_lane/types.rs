@@ -19,10 +19,13 @@ pub struct CodexSkillSummary {
 pub struct CodexThreadListEntry {
     pub thread_id: String,
     pub thread_name: Option<String>,
+    pub preview: String,
     pub status: Option<String>,
     pub loaded: bool,
     pub cwd: Option<String>,
     pub path: Option<String>,
+    pub created_at: i64,
+    pub updated_at: i64,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]

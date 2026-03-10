@@ -17,9 +17,17 @@ use crate::pane_system::{
     chat_cycle_collaboration_mode_button_bounds, chat_cycle_model_button_bounds,
     chat_cycle_personality_button_bounds, chat_cycle_reasoning_effort_button_bounds,
     chat_cycle_sandbox_mode_button_bounds, chat_cycle_service_tier_button_bounds,
-    chat_interrupt_button_bounds, chat_new_thread_button_bounds, chat_send_button_bounds,
-    chat_thread_rail_bounds, chat_thread_row_bounds, chat_transcript_body_bounds_with_height,
-    chat_transcript_bounds, chat_workspace_rail_bounds, pane_content_bounds,
+    chat_interrupt_button_bounds, chat_new_thread_button_bounds,
+    chat_refresh_threads_button_bounds, chat_send_button_bounds,
+    chat_thread_action_archive_button_bounds, chat_thread_action_copy_button_bounds,
+    chat_thread_action_fork_button_bounds, chat_thread_action_reload_button_bounds,
+    chat_thread_action_rename_button_bounds, chat_thread_action_rollback_button_bounds,
+    chat_thread_action_unarchive_button_bounds, chat_thread_action_unsubscribe_button_bounds,
+    chat_thread_filter_archived_button_bounds, chat_thread_filter_provider_button_bounds,
+    chat_thread_filter_sort_button_bounds, chat_thread_filter_source_button_bounds,
+    chat_thread_rail_bounds, chat_thread_row_bounds, chat_thread_search_input_bounds,
+    chat_transcript_body_bounds_with_height, chat_transcript_bounds, chat_workspace_rail_bounds,
+    pane_content_bounds,
 };
 
 const CHAT_TRANSCRIPT_LINE_HEIGHT: f32 = 14.0;
@@ -1682,17 +1690,60 @@ fn active_thread_subtitle(
         ChatBrowseMode::Autopilot => {}
     }
 
-    let status = autopilot_chat
-        .active_thread_id
-        .as_ref()
-        .and_then(|thread_id| autopilot_chat.thread_metadata.get(thread_id))
+    let thread_id = autopilot_chat.active_thread_id.as_deref();
+    let metadata = thread_id.and_then(|value| autopilot_chat.thread_metadata.get(value));
+    let status = metadata
         .and_then(|metadata| metadata.status.as_ref())
         .map(|value| value.trim().to_ascii_lowercase())
         .unwrap_or_else(|| autopilot_chat.connection_status.trim().to_ascii_lowercase());
-    format!(
-        "autopilot thread  •  {}",
-        if status.is_empty() { "ready" } else { &status }
-    )
+    let loaded = metadata
+        .map(|metadata| {
+            if metadata.loaded {
+                "loaded"
+            } else {
+                "detached"
+            }
+        })
+        .unwrap_or("new");
+    let updated = metadata
+        .and_then(|metadata| metadata.updated_at)
+        .and_then(format_thread_timestamp);
+    let thread_label = thread_id
+        .map(|value| compact_display_token(value, 18))
+        .unwrap_or_else(|| "new-thread".to_string());
+    let mut parts = vec![
+        format!("thread:{}", thread_label),
+        if status.is_empty() {
+            "ready".to_string()
+        } else {
+            status
+        },
+        loaded.to_string(),
+    ];
+    if let Some(updated) = updated {
+        parts.push(format!("updated:{updated}"));
+    }
+    parts.join("  •  ")
+}
+
+fn active_thread_preview_line(autopilot_chat: &AutopilotChatState) -> Option<String> {
+    let preview = autopilot_chat
+        .active_thread_preview()
+        .map(str::trim)
+        .filter(|preview| !preview.is_empty())?;
+    Some(compact_display_token(preview, 84))
+}
+
+fn format_thread_timestamp(raw: i64) -> Option<String> {
+    if raw <= 0 {
+        return None;
+    }
+    let timestamp = if raw > 1_000_000_000_000 {
+        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(raw)?
+    } else {
+        chrono::DateTime::<chrono::Utc>::from_timestamp(raw, 0)?
+    };
+    Some(timestamp.format("%Y-%m-%d %H:%MZ").to_string())
 }
 
 fn auth_summary_label(account_summary: &str) -> String {
@@ -1827,6 +1878,101 @@ fn autopilot_status_lines(
             token_usage
         ),
     ]
+}
+
+fn thread_filter_archived_label(autopilot_chat: &AutopilotChatState) -> &'static str {
+    match autopilot_chat.thread_filter_archived {
+        Some(false) => "Arch live",
+        Some(true) => "Arch only",
+        None => "Arch any",
+    }
+}
+
+fn thread_filter_sort_label(autopilot_chat: &AutopilotChatState) -> &'static str {
+    match autopilot_chat.thread_filter_sort_key {
+        codex_client::ThreadSortKey::UpdatedAt => "Sort recent",
+        codex_client::ThreadSortKey::CreatedAt => "Sort created",
+    }
+}
+
+fn thread_filter_source_label(autopilot_chat: &AutopilotChatState) -> String {
+    let label = match autopilot_chat.thread_filter_source_kind {
+        None => "all".to_string(),
+        Some(codex_client::ThreadSourceKind::AppServer) => "app".to_string(),
+        Some(codex_client::ThreadSourceKind::Cli) => "cli".to_string(),
+        Some(codex_client::ThreadSourceKind::Exec) => "exec".to_string(),
+        Some(other) => format!("{other:?}").to_ascii_lowercase(),
+    };
+    format!("Source {label}")
+}
+
+fn thread_filter_provider_label(autopilot_chat: &AutopilotChatState) -> String {
+    format!(
+        "Provider {}",
+        compact_display_token(
+            autopilot_chat
+                .thread_filter_model_provider
+                .as_deref()
+                .unwrap_or("any"),
+            10,
+        )
+    )
+}
+
+fn autopilot_has_copyable_output(autopilot_chat: &AutopilotChatState) -> bool {
+    autopilot_chat
+        .messages
+        .iter()
+        .any(|message| message.role == AutopilotRole::Codex && !message.content.trim().is_empty())
+}
+
+fn paint_thread_rail_button(
+    bounds: Bounds,
+    label: &str,
+    accent: wgpui::Hsla,
+    active: bool,
+    enabled: bool,
+    paint: &mut PaintContext,
+) {
+    let background = if enabled {
+        if active {
+            accent.with_alpha(0.18)
+        } else {
+            theme::bg::APP.with_alpha(0.22)
+        }
+    } else {
+        theme::bg::APP.with_alpha(0.12)
+    };
+    let border = if enabled {
+        if active {
+            accent.with_alpha(0.5)
+        } else {
+            theme::border::DEFAULT.with_alpha(0.34)
+        }
+    } else {
+        theme::border::DEFAULT.with_alpha(0.18)
+    };
+    let text = if enabled {
+        if active {
+            theme::text::PRIMARY
+        } else {
+            theme::text::SECONDARY
+        }
+    } else {
+        theme::text::MUTED.with_alpha(0.7)
+    };
+    paint.scene.draw_quad(
+        Quad::new(bounds)
+            .with_background(background)
+            .with_border(border, 1.0)
+            .with_corner_radius(6.0),
+    );
+    paint.scene.draw_text(paint.text.layout_mono(
+        label,
+        Point::new(bounds.origin.x + 6.0, bounds.origin.y + 7.0),
+        9.0,
+        text,
+    ));
 }
 
 fn paint_header_chip(bounds: Bounds, label: &str, accent: wgpui::Hsla, paint: &mut PaintContext) {
@@ -2047,9 +2193,16 @@ fn shell_channel_entries(autopilot_chat: &AutopilotChatState) -> Vec<ChatShellCh
                     .map(|name| compact_shell_label(name))
                     .unwrap_or_else(|| compact_shell_label(thread_id));
                 let subtitle = metadata
-                    .and_then(|value| value.status.as_ref())
-                    .map(|status| status.trim().to_ascii_lowercase())
-                    .filter(|status| !status.is_empty())
+                    .and_then(|value| value.preview.as_deref())
+                    .map(str::trim)
+                    .filter(|preview| !preview.is_empty())
+                    .map(|preview| compact_display_token(preview, 28))
+                    .or_else(|| {
+                        metadata
+                            .and_then(|value| value.status.as_ref())
+                            .map(|status| status.trim().to_ascii_lowercase())
+                            .filter(|status| !status.is_empty())
+                    })
                     .unwrap_or_else(|| "thread".to_string());
                 ChatShellChannelEntry {
                     title: format!("# {title}"),
@@ -2207,6 +2360,14 @@ fn paint_chat_shell(
         theme::text::PRIMARY,
     ));
     if matches!(autopilot_chat.chat_browse_mode(), ChatBrowseMode::Autopilot) {
+        paint_thread_rail_button(
+            chat_refresh_threads_button_bounds(content_bounds),
+            "Refresh",
+            theme::accent::PRIMARY,
+            false,
+            true,
+            paint,
+        );
         let new_thread_bounds = chat_new_thread_button_bounds(content_bounds);
         paint.scene.draw_quad(
             Quad::new(new_thread_bounds)
@@ -2223,6 +2384,114 @@ fn paint_chat_shell(
             paint
                 .text
                 .layout("+", plus_origin, 14.0, theme::text::PRIMARY),
+        );
+        paint.scene.draw_text(paint.text.layout_mono(
+            "HISTORY",
+            Point::new(
+                chat_thread_search_input_bounds(content_bounds).origin.x,
+                chat_thread_search_input_bounds(content_bounds).origin.y - 10.0,
+            ),
+            9.0,
+            theme::text::MUTED,
+        ));
+        paint_thread_rail_button(
+            chat_thread_filter_archived_button_bounds(content_bounds),
+            thread_filter_archived_label(autopilot_chat),
+            theme::accent::PRIMARY,
+            autopilot_chat.thread_filter_archived.is_some(),
+            true,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_filter_sort_button_bounds(content_bounds),
+            thread_filter_sort_label(autopilot_chat),
+            theme::status::INFO,
+            autopilot_chat.thread_filter_sort_key == codex_client::ThreadSortKey::CreatedAt,
+            true,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_filter_source_button_bounds(content_bounds),
+            thread_filter_source_label(autopilot_chat).as_str(),
+            theme::status::WARNING,
+            autopilot_chat.thread_filter_source_kind.is_some(),
+            true,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_filter_provider_button_bounds(content_bounds),
+            thread_filter_provider_label(autopilot_chat).as_str(),
+            theme::status::SUCCESS,
+            autopilot_chat.thread_filter_model_provider.is_some(),
+            true,
+            paint,
+        );
+        let active_thread_status = autopilot_chat.active_thread_status().unwrap_or_default();
+        let active_archived = active_thread_status.eq_ignore_ascii_case("archived");
+        let has_active_thread = autopilot_chat.active_thread_id.is_some();
+        paint_thread_rail_button(
+            chat_thread_action_fork_button_bounds(content_bounds),
+            "Fork",
+            theme::accent::PRIMARY,
+            false,
+            has_active_thread,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_archive_button_bounds(content_bounds),
+            "Archive",
+            theme::status::WARNING,
+            false,
+            has_active_thread && !active_archived,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_unarchive_button_bounds(content_bounds),
+            "Restore",
+            theme::status::SUCCESS,
+            active_archived,
+            has_active_thread,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_rename_button_bounds(content_bounds),
+            "Rename",
+            theme::accent::PRIMARY,
+            false,
+            has_active_thread,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_reload_button_bounds(content_bounds),
+            "Reload",
+            theme::status::INFO,
+            false,
+            has_active_thread,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_copy_button_bounds(content_bounds),
+            "Copy",
+            theme::status::SUCCESS,
+            false,
+            autopilot_has_copyable_output(autopilot_chat),
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_rollback_button_bounds(content_bounds),
+            "Rollback",
+            theme::status::ERROR,
+            false,
+            has_active_thread,
+            paint,
+        );
+        paint_thread_rail_button(
+            chat_thread_action_unsubscribe_button_bounds(content_bounds),
+            "Unload",
+            theme::text::MUTED,
+            autopilot_chat.active_thread_loaded().unwrap_or(false),
+            has_active_thread,
+            paint,
         );
     }
     for (index, entry) in shell_channel_entries(autopilot_chat)
@@ -2312,6 +2581,14 @@ fn paint_chat_shell(
         10.0,
         theme::text::MUTED,
     ));
+    if let Some(preview) = active_thread_preview_line(autopilot_chat) {
+        paint.scene.draw_text(paint.text.layout(
+            &preview,
+            Point::new(header_bounds.origin.x + 12.0, header_bounds.origin.y + 44.0),
+            10.0,
+            theme::text::SECONDARY,
+        ));
+    }
     match autopilot_chat.chat_browse_mode() {
         ChatBrowseMode::Autopilot => {
             let status_lines = autopilot_status_lines(autopilot_chat, codex_account_summary);
@@ -2569,6 +2846,13 @@ pub fn paint(
         spacetime_presence,
         paint,
     );
+    if browse_mode == ChatBrowseMode::Autopilot {
+        let search_bounds = chat_thread_search_input_bounds(content_bounds);
+        chat_inputs
+            .thread_search
+            .set_max_width(search_bounds.size.width);
+        chat_inputs.thread_search.paint(search_bounds, paint);
+    }
 
     let transcript_scroll_clip =
         transcript_scroll_clip_bounds_with_height(content_bounds, composer_height);
@@ -2962,11 +3246,23 @@ pub fn dispatch_input_event(state: &mut RenderState, event: &InputEvent) -> bool
     let composer_value = state.chat_inputs.composer.get_value().to_string();
     let composer_height = chat_composer_height_for_value(content_bounds, &composer_value);
     let composer_bounds = chat_composer_input_bounds_with_height(content_bounds, composer_height);
-    state
+    let mut handled = state
         .chat_inputs
         .composer
         .event(event, composer_bounds, &mut state.event_context)
-        .is_handled()
+        .is_handled();
+    if state.autopilot_chat.chat_browse_mode() == ChatBrowseMode::Autopilot {
+        handled |= state
+            .chat_inputs
+            .thread_search
+            .event(
+                event,
+                chat_thread_search_input_bounds(content_bounds),
+                &mut state.event_context,
+            )
+            .is_handled();
+    }
+    handled
 }
 
 pub fn dispatch_transcript_scroll_event(
