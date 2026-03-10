@@ -1,5 +1,7 @@
 //! Trusted-LAN cluster control-plane substrate for Psionic.
 
+mod ordered_state;
+
 use std::{
     collections::{BTreeMap, BTreeSet},
     fs,
@@ -18,6 +20,13 @@ use tokio::{
     sync::{Mutex, oneshot},
     task::JoinHandle,
     time::{MissedTickBehavior, interval},
+};
+
+pub use ordered_state::{
+    ClusterCommand, ClusterConnectionFact, ClusterElectionMessage, ClusterEvent, ClusterEventIndex,
+    ClusterEventLog, ClusterHistoryError, ClusterLeadershipRecord, ClusterLink, ClusterLinkKey,
+    ClusterLinkStatus, ClusterMembershipRecord, ClusterMembershipStatus, ClusterSnapshot,
+    ClusterState, ClusterTerm, ClusterTransportClass, IndexedClusterEvent, LocalClusterEvent,
 };
 
 /// Human-readable crate ownership summary.
@@ -256,7 +265,7 @@ impl LocalClusterConfig {
 }
 
 /// Machine-checkable cluster-join refusal reason for the first local seam.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ClusterJoinRefusalReason {
     /// The remote namespace did not match this node's namespace.
     NamespaceMismatch {
@@ -284,7 +293,7 @@ pub enum ClusterJoinRefusalReason {
 }
 
 /// One refused cluster-join observation.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClusterJoinRefusal {
     /// Remote socket address that attempted the join.
     pub remote_addr: SocketAddr,
@@ -299,7 +308,7 @@ pub struct ClusterJoinRefusal {
 }
 
 /// Peer handshake observations surfaced by the first transport path.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerHandshakeState {
     /// Whether a typed hello was observed from this peer.
     pub saw_hello: bool,
@@ -308,7 +317,7 @@ pub struct PeerHandshakeState {
 }
 
 /// Snapshot of one discovered peer.
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PeerSnapshot {
     /// Remote socket address used for the current local-cluster transport.
     pub remote_addr: SocketAddr,
