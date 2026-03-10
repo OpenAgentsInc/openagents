@@ -17,8 +17,8 @@
 > `d88d284c5`, after landing `PSI-194` / `#3303` in `fa7523ada`, after
 > landing `PSI-195` / `#3304` in `1cdcf3058`, after landing `PSI-196` /
 > `#3305` in `7124eefd7`, after landing `PSI-197` / `#3306` in `d424ab1cf`,
-> after confirming that the current cluster GitHub queue is now closed, and
-> after checking live
+> after opening `PSI-198` through `PSI-201` as `#3307` through `#3310` for the
+> operator-managed multi-subnet follow-on queue, and after checking live
 > GitHub issue search so this roadmap reflects the current GitHub queue rather
 > than local placeholders.
 >
@@ -110,7 +110,11 @@ As of 2026-03-10, the current issue reality is:
 - the next cluster phases now also exist on GitHub
   - `PSI-188` / [#3297](https://github.com/OpenAgentsInc/openagents/issues/3297) through
     `PSI-197` / [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) are landed on `main`
-  - there are currently no remaining open cluster roadmap issues
+  - the next follow-on queue is now open for operator-managed multi-subnet work
+    - `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307)
+    - `PSI-199` / [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308)
+    - `PSI-200` / [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309)
+    - `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310)
 - the current backend execution gates are still real and must remain visible
   - NVIDIA: `#3276` -> `#3288` -> `#3248`
   - Metal: `#3286` -> `#3285` -> `#3269` -> `#3262`
@@ -448,11 +452,38 @@ Required outcome:
 - keep wider trust claims bounded to operator-managed configured peers until a
   new GitHub-backed queue proves anything stronger
 
+### Operator-managed multi-subnet follow-on
+
+Tracked by open `PSI-198` / [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307)
+through `PSI-201` / [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310).
+
+Current truth:
+
+- authenticated configured-peer posture exists, but rollout still depends on
+  hand-built Rust config rather than a reusable operator artifact
+- catchup and snapshot payloads are still local-state objects, not
+  tamper-evident authenticated recovery envelopes
+- configured peers are still retried as seed peers rather than carrying
+  explicit multi-subnet dial policy and degraded reachability truth
+- key rotation or trust-bundle rollout still has no explicit machine-checkable
+  operator story
+
+Required outcome:
+
+- add a reusable operator manifest and trust-bundle digest for configured-peer
+  rollout
+- make recovery payloads tamper-evident before widening multi-subnet claims
+- surface explicit dial policy and degraded peer health for configured peers
+- add key rotation and rollout diagnostics before claiming stronger operational
+  cluster posture
+
 ## GitHub-Backed Roadmap Items
 
-Phases C1 through C6 are now all landed on GitHub/main. The local `PSI-*` IDs below
-still come from the 2026-03-09 cluster audit, but this roadmap now maps them to
-their real GitHub issue numbers directly.
+Phases C1 through C6 are now all landed on GitHub/main. The local `PSI-*` IDs
+below still come from the 2026-03-09 cluster audit, but this roadmap now maps
+them to their real GitHub issue numbers directly. The next multi-subnet
+follow-on queue now also has real GitHub issue numbers instead of placeholder
+notes.
 
 ### Phase C0: shipped cluster-adjacent baseline
 
@@ -516,22 +547,36 @@ Already on `main`:
 | `PSI-196` | [#3305](https://github.com/OpenAgentsInc/openagents/issues/3305) | Closed | Add cluster validation, fault-injection, and performance gates | docs/tests/validation plus cluster crates | Landed in `7124eefd7`: Psionic now ships a reusable cluster validation matrix, restart/rejoin transport coverage, fault-injected recovery/scheduling/replication/sharding tests, a release benchmark gate script, and an operator runbook so cluster claims stay repeatable and evidence-backed. |
 | `PSI-197` | [#3306](https://github.com/OpenAgentsInc/openagents/issues/3306) | Closed | Harden cluster trust beyond the first LAN scope | `psionic-cluster`, security/docs | Landed in `d424ab1cf`: Psionic now exposes machine-checkable trust posture, authenticated configured-peer membership, signed control-plane messages, replay protection, and runbook-backed validation for widened operator-managed cluster posture without retroactively claiming internet-wide safety. |
 
+### Phase D1: operator-managed multi-subnet follow-on
+
+These issues remain outside the completed first trusted-cluster scope. They are
+the next honest queue if Psionic widens from operator-managed configured peers
+toward a more operationally robust multi-subnet substrate.
+
+| Local ID | GitHub | State | Issue | Scope | Why it exists |
+| --- | --- | --- | --- | --- | --- |
+| `PSI-198` | [#3307](https://github.com/OpenAgentsInc/openagents/issues/3307) | Open | Add operator cluster manifest and trust-bundle digests | `psionic-cluster`, security/docs | Configured-peer posture exists, but operator rollout still depends on ad hoc code-level config. A stable manifest and digest are the minimum artifact for machine-checkable rollout and drift detection. |
+| `PSI-199` | [#3308](https://github.com/OpenAgentsInc/openagents/issues/3308) | Open | Add tamper-evident catchup and snapshot envelopes | `psionic-cluster`, ordered-state/tests | Signed control-plane transport exists, but recovery payloads are not yet authenticated or tamper-evident. |
+| `PSI-200` | [#3309](https://github.com/OpenAgentsInc/openagents/issues/3309) | Open | Add explicit multi-subnet peer dial policy and health truth | `psionic-cluster`, transport/docs | Configured peers still behave like retrying seed peers; wider-network clusters need explicit dial policy, degraded reachability truth, and operator-visible peer health. |
+| `PSI-201` | [#3310](https://github.com/OpenAgentsInc/openagents/issues/3310) | Open | Add membership key rotation and rollout diagnostics | `psionic-cluster`, security/docs | Authenticated clusters still lack an explicit operator story for trust-bundle versioning, key rotation, and stale-rollout refusal. |
+
 ## Recommended Order
 
 The shortest honest path from today's `main` is:
 
-1. Treat C1 through C6 as landed on `main`, with the queue closing in
-   `d424ab1cf`.
-2. Keep the active local CUDA throughput queue
+1. Treat C1 through C6 as landed on `main`, with the first trusted-cluster
+   scope closing in `d424ab1cf`.
+2. If cluster work continues now, work the operator-managed multi-subnet queue
+   in this order: `#3307` -> `#3308` -> `#3309` -> `#3310`.
+3. Keep the active local CUDA throughput queue
    `#3276` -> `#3288` -> `#3248` in flight in parallel; do not let cluster work
    become an excuse to stop finishing the local lane.
-3. Treat closure of that local CUDA lane as the gate for widening cluster
+4. Treat closure of that local CUDA lane as the gate for widening cluster
    execution claims beyond the current replicated, layer-sharded, and
    tensor-sharded lanes into broader sharded delivery.
-4. Keep current authenticated configured-peer posture explicit and bounded; if
-   stronger trust or wider network claims are needed, open new GitHub-backed
-   issues instead of extending this roadmap with local placeholders.
-5. Keep current Metal GPT-OSS nodes refused for cluster execution until the
+5. Keep current authenticated configured-peer posture explicit and bounded;
+   the new multi-subnet queue is still operator-managed, not market-safe.
+6. Keep current Metal GPT-OSS nodes refused for cluster execution until the
    Metal roadmap queue `#3286` -> `#3285` -> `#3269` -> `#3262` closes.
 
 Why this order:
