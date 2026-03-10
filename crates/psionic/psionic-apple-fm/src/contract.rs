@@ -16,6 +16,9 @@ pub const APPLE_FM_BRIDGE_SESSIONS_PATH: &str = "/v1/sessions";
 /// Chat-completions endpoint path exposed by the retained Swift bridge.
 pub const APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH: &str = "/v1/chat/completions";
 
+/// Session-response streaming suffix exposed by the retained Swift bridge.
+pub const APPLE_FM_BRIDGE_STREAM_SUFFIX: &str = "/stream";
+
 /// Typed system-model use cases exposed by Apple's Foundation Models surface.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -837,6 +840,47 @@ impl AppleFmTextGenerationResponse {
             total_tokens: self.usage.as_ref().and_then(|usage| usage.total_tokens),
             usage: self.usage.clone(),
         }
+    }
+}
+
+/// Snapshot-versus-terminal stream event kinds for Apple FM text streaming.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AppleFmTextStreamEventKind {
+    /// Intermediate full response snapshot.
+    Snapshot,
+    /// Terminal completion snapshot with final session/usage state.
+    Completed,
+}
+
+/// Stream event payload yielded by the Apple FM text streaming transport.
+#[derive(Clone, Debug, Default, Eq, PartialEq, Serialize, Deserialize)]
+pub struct AppleFmTextStreamEvent {
+    /// Stream event kind.
+    pub kind: AppleFmTextStreamEventKind,
+    /// Served model identifier.
+    pub model: String,
+    /// Full response snapshot so far.
+    pub output: String,
+    /// Optional final session state on terminal completion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub session: Option<AppleFmSession>,
+    /// Optional usage details on terminal completion.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub usage: Option<AppleFmChatUsage>,
+}
+
+impl Default for AppleFmTextStreamEventKind {
+    fn default() -> Self {
+        Self::Snapshot
+    }
+}
+
+impl AppleFmTextStreamEvent {
+    /// Returns whether the event is terminal.
+    #[must_use]
+    pub const fn is_terminal(&self) -> bool {
+        matches!(self.kind, AppleFmTextStreamEventKind::Completed)
     }
 }
 

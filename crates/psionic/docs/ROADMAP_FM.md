@@ -153,7 +153,7 @@ not a Psionic-owned SDK or a complete Apple FM runtime lane.
 
 ## Shipped On Main
 
-`FM-1`, `FM-2`, `FM-3`, and `FM-4` are now landed on `main`.
+`FM-1`, `FM-2`, `FM-3`, `FM-4`, and `FM-5` are now landed on `main`.
 
 What shipped:
 
@@ -202,15 +202,28 @@ What shipped:
   usage detail now marks the current counts as `estimated`
 - the compatibility chat endpoint now rejects `stream: true` instead of
   silently ignoring it before `FM-5`
+- the bridge now exposes a true session streaming endpoint at
+  `/v1/sessions/{id}/responses/stream` using SSE snapshot events
+- `psionic-apple-fm` now exposes a dedicated async Apple FM bridge client and
+  reusable async stream surface for session streaming
+- session streaming now yields full response snapshots, not token deltas, and
+  terminal completion events include final session state plus usage detail
+- the bridge now keeps transcript snapshots stable during in-flight streaming
+  and only updates the visible session transcript after successful completion
+- early client-side stream cancellation now restores the session promptly so a
+  same-session follow-up request can succeed without manual reset
 
-What `FM-1` through `FM-4` did not close:
+What `FM-1` through `FM-5` did not close:
 
-- streaming, structured generation, tools, and typed error taxonomy
+- structured generation, tools, and typed error taxonomy
 - desktop Mission Control cutover on macOS
 - typed transcript import/export as a first-class Rust surface remains `FM-6`;
   `FM-3` only landed raw transcript JSON restore as the bridge/session substrate
 - raw token counts are now truthfully marked as estimated, but the broader
   typed metrics/error taxonomy work still remains `FM-9`
+- the OpenAI-compatible `/v1/chat/completions` path remains a one-shot
+  compatibility wrapper; the shipped streaming surface is the session-first
+  Apple FM lane, which is the roadmap-authoritative interface
 
 ## Mission Control Reality On Main
 
@@ -600,14 +613,13 @@ Acceptance:
 
 ## Recommended Execution Queue
 
-After `FM-4`, the next-item order is:
+After `FM-5`, the next-item order is:
 
-1. `FM-5` streaming
-2. `FM-6` transcripts and session restore
-3. `FM-7` structured generation and schema support
-4. `FM-8` tools
-5. `FM-9` typed errors and metrics truth
-6. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
+1. `FM-6` transcripts and session restore
+2. `FM-7` structured generation and schema support
+3. `FM-8` tools
+4. `FM-9` typed errors and metrics truth
+5. `FM-10` desktop cutover, Mission Control cutover, and packaging cleanup
 
 That order is intentional. Tools and structured generation should not be bolted
 onto the current minimal one-shot bridge. First build the reusable substrate and

@@ -8,21 +8,25 @@
 pub mod client;
 pub mod contract;
 
-pub use client::{AppleFmBridgeClient, AppleFmBridgeClientError};
+pub use client::{
+    AppleFmAsyncBridgeClient, AppleFmBridgeClient, AppleFmBridgeClientError,
+    AppleFmBridgeStreamError, AppleFmTextResponseStream,
+};
 pub use contract::{
     APPLE_FM_BRIDGE_CHAT_COMPLETIONS_PATH, APPLE_FM_BRIDGE_HEALTH_PATH,
-    APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, AppleFmChatChoice,
-    AppleFmChatCompletionRequest, AppleFmChatCompletionResponse, AppleFmChatMessage,
-    AppleFmChatMessageRole, AppleFmChatResponseMessage, AppleFmChatUsage, AppleFmCompletionResult,
-    AppleFmErrorDetail, AppleFmErrorResponse, AppleFmGenerationOptions,
+    APPLE_FM_BRIDGE_MODELS_PATH, APPLE_FM_BRIDGE_SESSIONS_PATH, APPLE_FM_BRIDGE_STREAM_SUFFIX,
+    AppleFmChatChoice, AppleFmChatCompletionRequest, AppleFmChatCompletionResponse,
+    AppleFmChatMessage, AppleFmChatMessageRole, AppleFmChatResponseMessage, AppleFmChatUsage,
+    AppleFmCompletionResult, AppleFmErrorDetail, AppleFmErrorResponse, AppleFmGenerationOptions,
     AppleFmGenerationOptionsValidationError, AppleFmHealthResponse, AppleFmModelInfo,
     AppleFmModelsResponse, AppleFmSamplingMode, AppleFmSamplingModeType, AppleFmSession,
     AppleFmSessionCreateRequest, AppleFmSessionCreateResponse, AppleFmSessionRespondRequest,
     AppleFmSessionRespondResponse, AppleFmSessionToolMetadata, AppleFmSystemLanguageModel,
     AppleFmSystemLanguageModelAvailability, AppleFmSystemLanguageModelGuardrails,
     AppleFmSystemLanguageModelUnavailableReason, AppleFmSystemLanguageModelUseCase,
-    AppleFmTextGenerationRequest, AppleFmTextGenerationResponse, AppleFmUsageMeasurement,
-    AppleFmUsageTruth, DEFAULT_APPLE_FM_MODEL_ID,
+    AppleFmTextGenerationRequest, AppleFmTextGenerationResponse, AppleFmTextStreamEvent,
+    AppleFmTextStreamEventKind, AppleFmUsageMeasurement, AppleFmUsageTruth,
+    DEFAULT_APPLE_FM_MODEL_ID,
 };
 
 /// Human-readable crate ownership summary.

@@ -1,12 +1,13 @@
 # Apple FM API Coverage Matrix
 
-Status: `FM-1`, `FM-2`, `FM-3`, and `FM-4` landed matrix, updated 2026-03-10 from the retained
+Status: `FM-1`, `FM-2`, `FM-3`, `FM-4`, and `FM-5` landed matrix, updated 2026-03-10 from the retained
 Apple FM audit plus a direct scan of `~/code/python-apple-fm-sdk`, after
 moving the current bridge contract and reusable client into
 `psionic-apple-fm`, after landing typed system-model availability, use-case,
 and guardrail coverage, after landing explicit session handles and
 transcript-backed restore via raw transcript JSON, and after landing typed
-generation-options coverage plus truthful estimated usage detail.
+generation-options coverage plus truthful estimated usage detail, and after
+landing SSE session streaming with snapshot semantics.
 
 This is the living coverage matrix for the Psionic Apple Foundation Models
 lane. It maps the exported Python SDK surface and its major behavioral families
@@ -56,7 +57,7 @@ Legend:
 | Session-aware bridge protocol | Reusable bridge/session contract | landed | `FM-3` / `#3348` | The bridge now uses explicit session handles; the old one-shot path remains only as a compatibility wrapper. |
 | Plain-text generation request/response | `psionic-apple-fm::{AppleFmTextGenerationRequest, AppleFmTextGenerationResponse}` | landed | `FM-4` / `#3349` | Reusable Rust lane now exposes first-class text generation without forcing callers through the OpenAI chat envelope. |
 | Generation-options bridge protocol | Reusable typed options contract | landed | `FM-4` / `#3349` | Chat and session-response endpoints now carry typed options and validate them before execution. |
-| Streaming bridge protocol | Reusable stream contract | planned | `FM-5` / `#3350` | Not yet present in retained bridge. |
+| Streaming bridge protocol | `psionic-apple-fm::{AppleFmAsyncBridgeClient, AppleFmTextResponseStream}` + SSE session stream contract | landed | `FM-5` / `#3350` | Session streaming now uses `/v1/sessions/{id}/responses/stream` with snapshot events and terminal completion payloads. |
 | Transcript bridge protocol | Reusable transcript contract | planned | `FM-6` / `#3351` | Not yet present in retained bridge. |
 | Structured-generation bridge protocol | Reusable structured-generation contract | planned | `FM-7` / `#3352` | Not yet present in retained bridge. |
 | Tool-calling bridge protocol | Reusable tool callback contract | planned | `FM-8` / `#3353` | Not yet present in retained bridge. |
@@ -72,17 +73,17 @@ Legend:
 | Plain-text generation with typed options | landed | `FM-4` / `#3349` | One-shot and sessioned responses now honor typed temperature, sampling, and maximum-response-token options. |
 | Unsupported stream flag fails explicitly | landed | `FM-4` / `#3349` | The compatibility chat endpoint now rejects `stream: true` instead of silently ignoring it before `FM-5`. |
 | Usage truth distinguishes exact from estimated | landed | `FM-4` / `#3349` | Estimated bridge counts now live in usage detail with `truth: estimated`; raw exact counts remain unset when the bridge cannot report them truthfully. |
-| Streaming snapshot semantics | planned | `FM-5` / `#3350` | Python SDK yields full response-so-far snapshots, not deltas. |
-| Transcript update timing | planned | `FM-5` / `#3350`, `FM-6` / `#3351` | Transcript updates after successful completion. |
+| Streaming snapshot semantics | landed | `FM-5` / `#3350` | The stream yields full response snapshots, not deltas, and terminal completion includes final session state plus usage detail. |
+| Transcript update timing | landed | `FM-5` / `#3350` | Session transcript snapshots stay stable while a stream is in flight and update only after successful completion. |
 | Raw transcript-backed restore semantics | landed | `FM-3` / `#3348` | Sessions can now be recreated from bridge transcript JSON; typed transcript import/export remains `FM-6`. |
 | Typed, structured-generation behavior | planned | `FM-7` / `#3352` | Must not be reduced to “ask for JSON in the prompt”. |
 | Real tool-calling flow | planned | `FM-8` / `#3353` | Must be session-aware, not prompt flattening. |
 | Typed error mapping | planned | `FM-9` / `#3354` | Must replace generic string failures. |
 | Desktop/macOS Mission Control Apple FM truth | planned | `FM-10` / `#3355` | Mission Control is still GPT-OSS-first on `main`. |
 
-## FM-1 Through FM-4 Landed Scope
+## FM-1 Through FM-5 Landed Scope
 
-The following is explicitly landed by `FM-1` through `FM-4` and should remain the
+The following is explicitly landed by `FM-1` through `FM-5` and should remain the
 starting point for later issues:
 
 - `crates/psionic/psionic-apple-fm` exists as the reusable crate for the Apple
@@ -110,10 +111,17 @@ starting point for later issues:
   response types
 - usage detail can now mark counts as `exact` versus `estimated`, and the
   bridge currently marks its derived counts as `estimated`
+- the bridge now exposes a session-first SSE streaming contract with snapshot
+  events and terminal completion events
+- the reusable crate now exposes an async Apple FM streaming client and stream
+  item types for that session-first streaming lane
+- same-session stream cancellation now restores the session so a follow-up
+  request can succeed without manual repair
+- transcript snapshots returned by session inspection stay stable during
+  in-flight streaming and update only after successful completion
 
-What is intentionally **not** closed by `FM-1` through `FM-4`:
+What is intentionally **not** closed by `FM-1` through `FM-5`:
 
-- streaming
 - transcripts
 - structured generation
 - tools
