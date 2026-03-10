@@ -13,7 +13,10 @@ use std::time::Duration;
 use tokio::net::TcpStream;
 use tokio::sync::{Mutex, RwLock, mpsc};
 use tokio::time::timeout;
-use tokio_tungstenite::{MaybeTlsStream, WebSocketStream, connect_async, tungstenite::Message};
+use tokio_tungstenite::{
+    MaybeTlsStream, WebSocketStream, connect_async,
+    tungstenite::{Error as WebSocketError, Message, error::ProtocolError},
+};
 use tracing::{debug, warn};
 use url::Url;
 
@@ -80,6 +83,21 @@ pub struct RelayConnection {
     incoming_rx: Arc<Mutex<mpsc::UnboundedReceiver<RelayMessage>>>,
     subscriptions: Arc<Mutex<HashMap<String, Subscription>>>,
     recv_task: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
+}
+
+fn is_expected_websocket_disconnect_error(error: &WebSocketError) -> bool {
+    match error {
+        WebSocketError::ConnectionClosed | WebSocketError::AlreadyClosed => true,
+        WebSocketError::Protocol(ProtocolError::ResetWithoutClosingHandshake) => true,
+        WebSocketError::Io(io_error) => matches!(
+            io_error.kind(),
+            std::io::ErrorKind::ConnectionReset
+                | std::io::ErrorKind::ConnectionAborted
+                | std::io::ErrorKind::BrokenPipe
+                | std::io::ErrorKind::UnexpectedEof
+        ),
+        _ => false,
+    }
 }
 
 impl RelayConnection {
@@ -241,7 +259,11 @@ impl RelayConnection {
                     Ok(Message::Binary(_)) => {}
                     Ok(Message::Frame(_)) => {}
                     Err(error) => {
-                        warn!("websocket read error on {}: {}", relay_url, error);
+                        if is_expected_websocket_disconnect_error(&error) {
+                            debug!("websocket closed on {}: {}", relay_url, error);
+                        } else {
+                            warn!("websocket read error on {}: {}", relay_url, error);
+                        }
                         break;
                     }
                 }
@@ -843,6 +865,25 @@ mod tests {
         }
 
         Ok(())
+    }
+
+    #[test]
+    fn expected_websocket_disconnect_errors_are_classified() {
+        assert!(is_expected_websocket_disconnect_error(
+            &WebSocketError::ConnectionClosed,
+        ));
+        assert!(is_expected_websocket_disconnect_error(
+            &WebSocketError::AlreadyClosed,
+        ));
+        assert!(is_expected_websocket_disconnect_error(
+            &WebSocketError::Protocol(ProtocolError::ResetWithoutClosingHandshake),
+        ));
+        assert!(is_expected_websocket_disconnect_error(&WebSocketError::Io(
+            std::io::Error::new(std::io::ErrorKind::ConnectionReset, "reset",)
+        ),));
+        assert!(!is_expected_websocket_disconnect_error(
+            &WebSocketError::Protocol(ProtocolError::ReceivedAfterClosing),
+        ));
     }
 
     #[tokio::test]
